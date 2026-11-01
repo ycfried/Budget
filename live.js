@@ -34,8 +34,16 @@ async function show(view) {
 async function loadMembership() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase.from('household_members')
+  const { data, error } = await supabase.from('household_members')
     .select('household_id, role').eq('user_id', user.id).limit(1).maybeSingle();
+  // Surface membership-read failures instead of silently staying on the
+  // household screen (the Nov 1 stuck-screen bug was exactly this: a
+  // broken read policy made this return nothing with no visible error).
+  if (error) {
+    const el = $('householdMsg');
+    if (el) el.textContent = `Could not load your household membership: ${error.message}`;
+    console.warn('loadMembership failed:', error.message);
+  }
   return data;
 }
 
