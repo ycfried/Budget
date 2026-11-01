@@ -290,8 +290,11 @@ and (as a copy) the compute-week function. All amounts integer cents.
   OFF temporarily (saved, dashboard confirmed "Successfully updated
   settings"); "Allow new users to sign up" remains ON for now. With
   confirmation off, sign-up needs no email and the limit cannot block
-  it. Once both accounts exist, disable new sign-ups entirely — that
-  is the planned permanent state, not confirmation-off forever.
+  it. Owner decision later that evening: "Keep it off for now, it's
+  fine" — i.e. leave confirmation OFF and sign-ups ON for now, do NOT
+  disable sign-ups yet. The planned permanent state (disable new
+  sign-ups once both accounts exist) is deferred until the owner says
+  so; do not apply it unprompted.
 2. **Function secrets** (dashboard, owner via takeover — never via
    chat): PLAID_CLIENT_ID + PLAID_SECRET for plaid-link/exchange, and
    INGEST_SECRET for ingest-amex-alert (the same secret must go into
