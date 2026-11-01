@@ -251,10 +251,13 @@ and (as a copy) the compute-week function. All amounts integer cents.
 
 ## 7. What is NOT done yet (in order)
 
-1. **First real two-account test of the live slice** — owner creates
-   an account, creates the household (bootstrap-household), shares the
-   household ID, spouse creates an account and joins, both add one
-   provisional transaction and confirm the other phone sees it.
+1. **First real two-account test of the live slice (in progress)** —
+   owner created an account and, via the create_household RPC, created
+   the household on Nov 1, 2026, ~5:44 PM EST: ID
+   647d1f23-606f-43af-92e5-1de2f1f34377 (owner = admin). Remaining:
+   spouse creates an account and joins with that ID, both add one
+   provisional transaction and confirm the other phone sees it, and
+   the dashboard week numbers load (the compute-week legacy-key test).
    Then: owner disables new sign-ups in Supabase Auth settings so no
    one else can create an account.
 2. **Function secrets** (dashboard, owner via takeover — never via
