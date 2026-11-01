@@ -100,6 +100,11 @@
       </label>
       <button id="saveAllowanceBtn" class="btn btn-primary" type="button">Save allowance</button>
       <div id="settingsMsg" class="result"></div>
+      <label>Temporary increase for this week ($)
+        <input id="tempIncreaseInput" type="number" step="0.01" min="0" inputmode="decimal">
+      </label>
+      <button id="addTempBtn" class="btn btn-primary" type="button">Add temporary increase</button>
+      <div id="tempMsg" class="result"></div>
       <p class="muted small">Changes are enforced server-side (admin only)
       and written to the audit log. Temporary weekly increases and
       savings attestation land in the next slice.</p>

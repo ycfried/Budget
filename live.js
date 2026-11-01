@@ -71,12 +71,30 @@ async function refresh() {
 
   const { data: { session: s } } = await supabase.auth.getSession();
   const token = s?.access_token ?? '';
+  // Temporary increases for the current week (sum of grants) are passed
+  // as T to compute-week; without this the engine defaults T to 0.
+  let tempTotal = 0;
+  let weekStartForTemp = null;
+  try {
+    // Current Sunday in America/New_York, computed client-side so the
+    // temp sum is available BEFORE compute-week runs (its response is
+    // what sets the week label, so reading the label here is circular).
+    const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const sunday = new Date(ny); sunday.setDate(ny.getDate() - ny.getDay());
+    weekStartForTemp = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
+    if (weekStartForTemp) {
+      const { data: temps } = await supabase.from('temp_increases')
+        .select('amount_cents').eq('household_id', household.household_id)
+        .eq('week_start', weekStartForTemp);
+      tempTotal = (temps ?? []).reduce((sum, r) => sum + (r.amount_cents || 0), 0);
+    }
+  } catch (e) { console.warn('temp increase read failed:', e); }
   // Week numbers from the server.
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/compute-week`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ household_id: household.household_id }),
+      body: JSON.stringify({ household_id: household.household_id, T: tempTotal }),
     });
     const week = await res.json();
     if (week.result) {
@@ -269,6 +287,17 @@ $('syncBankBtn')?.addEventListener('click', async () => {
     ? `Sync failed: ${out.error}`
     : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected item(s).`;
   await refresh();
+});
+
+$('addTempBtn')?.addEventListener('click', async () => {
+  const cents = dollarsToCents($('tempIncreaseInput').value);
+  if (cents === null || cents <= 0) { $('tempMsg').textContent = 'Enter a positive amount.'; return; }
+  const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const sunday = new Date(ny); sunday.setDate(ny.getDate() - ny.getDay());
+  const weekStart = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
+  const { error } = await supabase.rpc('add_temp_increase', { p_household_id: household.household_id, p_week_start: weekStart, p_amount_cents: cents, p_note: '' });
+  $('tempMsg').textContent = error ? `Could not add: ${error.message}` : 'Temporary increase added — dashboard will reflect it on refresh.';
+  if (!error) await refresh();
 });
 
 $('attestSavingsBtn')?.addEventListener('click', async () => {
