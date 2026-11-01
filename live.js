@@ -104,8 +104,23 @@ async function refresh() {
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(50);
   $('fundQueue').innerHTML = (reqs ?? []).length
-    ? (reqs ?? []).map((r) => `<li>${formatCents(r.amount_cents)} · ${esc(r.status.toUpperCase())} · ${esc(r.note || '')}</li>`).join('')
+    ? (reqs ?? []).map((r) => {
+        const btns = (household.role === 'admin' && r.status === 'pending')
+          ? ` <button class="btn btn-small" data-approve="${r.id}" type="button">Approve</button> <button class="btn btn-small" data-decline="${r.id}" type="button">Decline</button>`
+          : '';
+        return `<li>${formatCents(r.amount_cents)} · ${esc(r.status.toUpperCase())} · ${esc(r.note || '')}${btns}</li>`;
+      }).join('')
     : '<li>No fund requests yet.</li>';
+  document.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
+    const { error } = await supabase.rpc('approve_fund_request', { p_request_id: b.dataset.approve });
+    if (error) alert(`Could not approve: ${error.message}`); else await refresh();
+  }));
+  document.querySelectorAll('[data-decline]').forEach((b) => b.addEventListener('click', async () => {
+    const { error } = await supabase.rpc('decline_fund_request', { p_request_id: b.dataset.decline });
+    if (error) alert(`Could not decline: ${error.message}`); else await refresh();
+  }));
+  // Settings card: admin only.
+  $('settingsCard').style.display = household.role === 'admin' ? '' : 'none';
 
   const { data: auditRows } = await supabase.from('audit_log')
     .select('*').eq('household_id', household.household_id)
@@ -241,6 +256,14 @@ $('syncBankBtn')?.addEventListener('click', async () => {
     ? `Sync failed: ${out.error}`
     : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected item(s).`;
   await refresh();
+});
+
+$('saveAllowanceBtn')?.addEventListener('click', async () => {
+  const cents = dollarsToCents($('baseAllowanceInput').value);
+  if (cents === null || cents < 0) { $('settingsMsg').textContent = 'Enter a valid allowance.'; return; }
+  const { error } = await supabase.rpc('set_base_allowance', { p_household_id: household.household_id, p_cents: cents });
+  $('settingsMsg').textContent = error ? `Could not save: ${error.message}` : 'Allowance saved.';
+  if (!error) await refresh();
 });
 
 $('fundRequestForm').addEventListener('submit', async (e) => {

@@ -92,6 +92,18 @@
       <div id="bankMsg" class="result"></div>
     </div>
 
+    <div class="card" id="settingsCard" style="display:none">
+      <h2>Settings (admin only)</h2>
+      <label>Base weekly allowance ($)
+        <input id="baseAllowanceInput" type="number" step="0.01" min="0" inputmode="decimal">
+      </label>
+      <button id="saveAllowanceBtn" class="btn btn-primary" type="button">Save allowance</button>
+      <div id="settingsMsg" class="result"></div>
+      <p class="muted small">Changes are enforced server-side (admin only)
+      and written to the audit log. Temporary weekly increases and
+      savings attestation land in the next slice.</p>
+    </div>
+
     <div class="card">
       <h2>Extra Fund requests</h2>
       <form id="fundRequestForm">
