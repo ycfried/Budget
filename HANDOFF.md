@@ -183,6 +183,14 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   now be approved/declined from the app after a refresh. (Note from
   the same DB check: household_members = 4 — owner + spouse + the
   2 beta-test accounts, whose cleanup is still pending.)
+- Live savings RPC applied Nov 1, evening ("Success. No rows
+  returned"): attest_savings (SECURITY DEFINER, admin-only,
+  audit-logged) + actual_balance_cents column on savings_ledger.
+  Attestations store amount_cents = 0 so they are never mistaken for
+  a money movement; the live UI now has a Savings card (attestation
+  form for admins, history list for both) and a transaction search
+  filter. Still missing in live: temporary weekly increases, week
+  history / surplus releases display, live CSV import.
   The plaid-sync mask-fix redeploy completed the same evening
   ("Successfully updated edge function"; editor confirms the
   /accounts/get mask lookup) — the corrected version is now live.
