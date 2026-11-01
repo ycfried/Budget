@@ -150,8 +150,21 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   because the Plaid session had expired and the owner must sign in
   to Plaid first (owner authorized autonomous connections/tokens,
   login-when-necessary, Nov 1 evening). Owner confirmed "You're in
-  plaid" at 6:40 PM and the keys transfer was resumed. The
-  plaid-sync mask-fix redeploy completed the same evening
+  plaid" at 6:40 PM and the keys transfer was resumed.
+- PLAID KEYS SET, Nov 1, 2026, evening (all three confirmed in the
+  Supabase Custom secrets table, today's timestamp): PLAID_CLIENT_ID,
+  PLAID_SECRET, PLAID_ENV = production. The Plaid dashboard's Free
+  trial banner reads "up to 10 connections" (0/10 used) and "No action
+  is needed to access banks through Plaid's free trial" — so the
+  trial DOES cover real bank connections under Production, and the
+  earlier "10-Item cap unverified" note is now superseded: the cap
+  is 10 connections, verified from the dashboard banner. The
+  Production keys were copied dashboard-to-dashboard by the agent;
+  no key values were asked of the owner or shown in chat. Plaid is
+  now fully configured — the remaining step is the owner tapping
+  "Connect Amex via Plaid" in the live app and signing into Amex
+  himself (Transactions only), then "Sync bank transactions now."
+  The plaid-sync mask-fix redeploy completed the same evening
   ("Successfully updated edge function"; editor confirms the
   /accounts/get mask lookup) — the corrected version is now live.
   Note: the Plaid keys task's Supabase tab showed "no custom secrets
