@@ -2,21 +2,24 @@
 // Fill in the placeholders only when the backend exists. Never commit a
 // real webhook URL, secret, or mailbox credential to this repo.
 //
-// Purpose: poll the DEDICATED ingestion Gmail inbox (which receives only
-// forwarded copies of Amex Large Purchase alerts), and POST each new alert
+// PLAN B (active, owner decision Nov 1, 2026): this script runs bound to
+// the PERSONAL Gmail account and searches ONLY for Amex Large Purchase
+// alerts. No dedicated inbox, no forwarding. See INTEGRATIONS.md.
+// (The dedicated-inbox / forwarding variant is deferred, not active.)
+//
+// Purpose: poll for Amex Large Purchase alerts and POST each new alert
 // as a signed HTTPS event to the backend. The backend — not this script —
 // runs the matcher, checks Authentication-Results, dedupes, and marks
 // everything PROVISIONAL. Anything unparseable is quarantined server-side
 // and creates no transaction.
 //
 // Setup (owner performs the Gmail steps; see INTEGRATIONS.md):
-//   1. Create the dedicated Gmail account.
-//   2. In personal Gmail, add it as a forwarding address and confirm it.
-//   3. Create a filter matching Amex Large Purchase alerts ONLY and
-//      forward matching mail to the dedicated address. Never forward all mail.
-//   4. In Apps Script (script.google.com, bound to the dedicated account),
+//   1. In Apps Script (script.google.com, bound to the personal account),
 //      paste this file, set the Script Properties below, and add a
 //      time-driven trigger (e.g. every 10 minutes).
+//   2. Tighten the search query below to the exact Amex alert
+//      sender/subject once a real alert has been inspected. The query
+//      is the boundary: only threads matching it are ever read.
 //
 // Script Properties to set (Apps Script -> Project Settings -> Script Properties):
 //   WEBHOOK_URL  - https://<your-backend>/api/ingest/amex-alert   (placeholder)
@@ -42,10 +45,11 @@ function pollAmexAlerts() {
   }
   var label = GmailApp.getUserLabelByName('HB_PROCESSED') ||
     GmailApp.createLabel('HB_PROCESSED');
-  // Search only the dedicated inbox, only unprocessed mail. Tighten the
-  // query to the exact Amex alert sender/subject once a real forwarded
-  // alert has been inspected (see INTEGRATIONS.md section B, step 5).
-  var threads = GmailApp.search('in:inbox -label:HB_PROCESSED', 0, 25);
+  // Plan B: search ONLY for Amex Large Purchase alerts in this account,
+  // only unprocessed mail. Tighten the sender/subject terms below to the
+  // exact alert wording once a real alert has been inspected
+  // (see INTEGRATIONS.md section B). Nothing else is read.
+  var threads = GmailApp.search('in:inbox -label:HB_PROCESSED from:(americanexpress.com) "Large Purchase"', 0, 25);
   threads.forEach(function (thread) {
     thread.getMessages().forEach(function (msg) {
       var payload = {

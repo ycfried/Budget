@@ -1,9 +1,27 @@
-# Integrations — Plaid + Gmail forwarding (started Nov 1, 2026)
+# Integrations — Plaid + Gmail (started Nov 1, 2026)
 
-Status: owner-approved to pursue both. **No accounts created, no bank
-connected, no mail forwarded yet** — the steps below that need the owner's
-own logins are the owner's steps. Everything the agent can prepare without
-those logins is prepared here.
+Status: owner-approved to pursue both. **No bank connected, no mail
+forwarded** — the steps below that need the owner's own logins are the
+owner's steps. Everything the agent can prepare without those logins is
+prepared here.
+
+## Owner decision, Nov 1, 2026 — Plan B for Gmail (supersedes the dedicated-inbox plan)
+
+The owner chose **Plan B: ingest directly from the personal Gmail
+account (ycfried1@gmail.com), no dedicated inbox, no forwarding**, because
+it is simpler to set up and use. The dedicated-inbox plan in section B
+below is therefore **deferred, not active** — do not create a dedicated
+inbox or a forwarding address unless the owner reverses this decision.
+
+Tradeoff the owner accepted with Plan B: the ingestion script runs in
+the personal account instead of an isolated inbox. Mitigation, kept in
+the template: the script's search query returns **only** threads matching
+the Amex Large Purchase alert sender/subject, it labels what it sends
+so nothing is re-sent, and the backend still checks
+Authentication-Results, dedupes, and marks everything PROVISIONAL.
+Nothing else in the mailbox is read, forwarded, or sent anywhere. The
+owner may switch back to a dedicated inbox at any time; the matcher and
+backend do not depend on which mailbox the alert came from.
 
 ## Important architecture note (read first)
 
@@ -55,7 +73,27 @@ for your team, Amex coverage for this account type, whether the Amex
 account plus its second card number appear as one Item or two, and the
 Transactions sync behaviour (pending → posted handling, webhooks).
 
-## B. Gmail forwarding — owner's phone checklist
+## B. Gmail — Plan B (active): direct ingestion from the personal account
+
+You do this in your own Gmail; the agent never touches your Gmail
+settings. No forwarding address is added and forwarding stays disabled.
+
+1. In your personal Gmail, the Apps Script poller (template in
+   `integrations/gmail-apps-script.gs`, Plan B version) is installed
+   bound to that account, with its search query tightened to the exact
+   Amex Large Purchase alert sender/subject once a real alert has been
+   inspected.
+2. Add a time-driven trigger (e.g. every 10 minutes). The script sends
+   only matching alert fields to the backend, labelled as processed so
+   nothing is re-sent.
+3. Make one small real purchase (or wait for the next one) and check:
+   does the backend receive it, with headers intact? The live parser is
+   gated on inspecting a real alert, not a sample.
+4. The backend still checks Authentication-Results (SPF/DKIM), dedupes,
+   and marks everything PROVISIONAL; anything unparseable is
+   quarantined and creates nothing.
+
+## B-old. Gmail forwarding — DEFERRED (dedicated-inbox plan, not active)
 
 You do this in your own Gmail; the agent never touches your Gmail
 settings. You need two inboxes: your personal Gmail (unchanged, stays the
