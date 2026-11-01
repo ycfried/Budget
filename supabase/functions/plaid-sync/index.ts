@@ -77,6 +77,21 @@ Deno.serve(async (req) => {
       });
       if (!ct) continue;
       const accessToken = await decryptToken(tokenKey, ct);
+      // Card suffixes come from /accounts/get (account.mask), NOT from
+      // account_id (a Plaid UUID — deriving a suffix from it gives
+      // meaningless digits). Mask is the card's real last 4.
+      const maskByAccount = new Map<string, string>();
+      try {
+        const accRes = await fetch(`https://${env === 'production' ? 'production' : env}.plaid.com/accounts/get`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken }),
+        });
+        const accData = await accRes.json();
+        for (const acc of accData.accounts ?? []) {
+          if (acc.account_id && acc.mask) maskByAccount.set(acc.account_id, String(acc.mask));
+        }
+      } catch { /* mask lookup is best-effort; sync still proceeds */ }
       let cursor: string | null = null;
       // Paginate through /transactions/sync until has_more is false.
       for (let page = 0; page < 20; page++) {
@@ -95,7 +110,7 @@ Deno.serve(async (req) => {
           const signed = Math.round(tx.amount * 100);
           const merchant = String(tx.merchant_name ?? tx.name ?? 'UNKNOWN').toUpperCase().slice(0, 80);
           const date = String(tx.date ?? '').slice(0, 10);
-          const suffix = String(tx.account_id ?? '').slice(-4).replace(/\D/g, '').padStart(4, '0').slice(-4);
+          const suffix = maskByAccount.get(tx.account_id) ?? '0000';
           const hash = await sha256(`${date}|${merchant}|${signed}|${suffix}`);
           const row = {
             household_id: householdId, date, merchant,

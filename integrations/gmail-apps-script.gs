@@ -1,6 +1,8 @@
-// Household Budget — Gmail ingestion poller TEMPLATE (demo, not connected).
-// Fill in the placeholders only when the backend exists. Never commit a
-// real webhook URL, secret, or mailbox credential to this repo.
+// Household Budget — Gmail ingestion poller (LIVE, Plan B).
+// Never commit a real secret or mailbox credential to this repo.
+// The secret lives ONLY in Script Properties and in the Supabase
+// Edge Function secrets (INGEST_SECRET) — both set by the agent via
+// the dashboards, never pasted into this file or into chat.
 //
 // PLAN B (active, owner decision Nov 1, 2026): this script runs bound to
 // the PERSONAL Gmail account and searches ONLY for Amex Large Purchase
@@ -22,9 +24,10 @@
 //      is the boundary: only threads matching it are ever read.
 //
 // Script Properties to set (Apps Script -> Project Settings -> Script Properties):
-//   WEBHOOK_URL  - https://<your-backend>/api/ingest/amex-alert   (placeholder)
-//   SHARED_SECRET - a long random string, stored only in Script Properties
-//                   and in the backend's secret store. Never in this file.
+//   WEBHOOK_URL  - https://tnkhvdkmwmwiogiienee.supabase.co/functions/v1/ingest-amex-alert
+//   SHARED_SECRET - the INGEST_SECRET value already set as a Supabase
+//                   Edge Function secret (agent sets it here too, from
+//                   the same generated value). Never in this file.
 //
 // Security notes:
 //   - Never trust the From header alone. The backend must verify

@@ -115,6 +115,15 @@ storage inside the project itself:
   are inspected to tighten the search query and parser before trusting
   it. Alerts stay provisional-only.
 
+## Known flaw in plaid-sync v1 (fix before first real sync)
+- Card suffix is currently derived from `account_id` (a Plaid UUID),
+  so it will be meaningless digits, not the Amex card's last 4. Dedupe
+  still works (same account_id → same derived suffix every time), but
+  the displayed suffix will be wrong. Fix: call Plaid /accounts/get in
+  plaid-sync, map account_id → account.mask, and use mask as the
+  suffix. Redeploy plaid-sync with that fix before the owner connects
+  a real bank.
+
 ## Order of work today
 1. Plaid: token-column migration, encrypted plaid-exchange rewrite,
    plaid-sync function, Link UI in live.html/live.js, deploy all.
