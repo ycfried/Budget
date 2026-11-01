@@ -189,8 +189,13 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   Attestations store amount_cents = 0 so they are never mistaken for
   a money movement; the live UI now has a Savings card (attestation
   form for admins, history list for both) and a transaction search
-  filter. Still missing in live: temporary weekly increases, week
-  history / surplus releases display, live CSV import.
+  filter. Temporary weekly increases also live Nov 1, evening
+  ("Success. No rows returned"): temp_increases table + admin-only
+  add_temp_increase RPC, audit-logged; the live app sums this week's
+  grants and passes T to compute-week on every dashboard load, and
+  the Settings card has an Add-temporary-increase form. Still
+  missing in live: week history / surplus releases display, live
+  CSV import.
   The plaid-sync mask-fix redeploy completed the same evening
   ("Successfully updated edge function"; editor confirms the
   /accounts/get mask lookup) — the corrected version is now live.
