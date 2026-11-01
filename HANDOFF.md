@@ -124,14 +124,24 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   to a household, creates one household + one admin membership + one
   audit row, returns the new ID. No secret key is involved. live.js
   calls this RPC.
+- Membership policy fix, Nov 1, 2026, evening
+  (`supabase/fix-membership-policy.sql`, "Success. No rows returned",
+  verified in pg_policies: exactly one SELECT policy on
+  household_members, qual `user_id = auth.uid()`): the original
+  self-referential membership read policy made membership reads come
+  back empty, so the live app stayed stuck on the household screen
+  after a household was created. Replaced with the direct rule above;
+  the other tables' membership-check policies (which check a different
+  table) now resolve correctly. live.js also surfaces membership-read
+  errors instead of silently staying on the household screen.
 - Open risk, same root cause, not yet tested: compute-week, plaid-link,
   and plaid-exchange also read the legacy SUPABASE_ANON_KEY /
   SUPABASE_SERVICE_ROLE_KEY. The live app itself uses the new
-  publishable key and works (sign-in + membership read succeeded), so
-  the RPC path is safe — but the first real compute-week call (which
-  happens once a household exists) will prove whether those functions
-  need the same kind of fix. Do not claim they work until that call
-  succeeds.
+  publishable key and works (sign-in + membership read succeeded after
+  the policy fix), so the RPC path is safe — but the first real
+  compute-week call (which happens once the dashboard loads) will
+  prove whether those functions need the same kind of fix. Do not
+  claim they work until that call succeeds.
 - **No secrets have been set on any function yet.** Functions correctly
   return "not configured" until secrets exist. Never set a secret from
   chat; secrets go in the Supabase dashboard (owner, via takeover) or
