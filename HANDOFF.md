@@ -108,9 +108,11 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
 - `ingest-amex-alert` — Gmail alert endpoint: HMAC signature check,
   Authentication-Results pass required, fail-closed quarantine, dedupe,
   provisional-only storage.
-- `bootstrap-household` — creates a household + creator admin
-  membership server-side (service role), refusing if the caller already
-  belongs to a household.
+- `bootstrap-household` — https://tnkhvdkmwmwiogiienee.supabase.co/functions/v1/bootstrap-household
+  Deployed Nov 1, 2026, evening, verbatim, via the dashboard editor.
+  Creates a household + creator admin membership server-side (service
+  role), refusing if the caller already belongs to a household. This
+  was the last function to deploy; all five functions are now live.
 - **No secrets have been set on any function yet.** Functions correctly
   return "not configured" until secrets exist. Never set a secret from
   chat; secrets go in the Supabase dashboard (owner, via takeover) or
