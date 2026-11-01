@@ -278,12 +278,28 @@ and (as a copy) the compute-week function. All amounts integer cents.
    Spouse joined after the grants fix (and after email confirmation
    was turned off temporarily to get past the 2/hr Free email limit).
    Owner confirmed "it works on both" — both phones reach the shared
-   dashboard. Remaining to confirm explicitly: a test transaction
-   added on one phone appears on the other, and the dashboard week
-   numbers load (the compute-week legacy-key test) — treat those as
-   unconfirmed until the owner says so. Then: owner disables new
-   sign-ups in Supabase Auth settings so no one else can create an
-   account (planned permanent state; confirmation-off was temporary).
+   dashboard.
+2. **Agent beta test, Nov 1, 2026, 6:26–6:30 PM EST — PASSED end to
+   end** (two fake accounts, owner's household untouched): signup
+   with no confirmation; Create household succeeded (test household
+   3ffa2bc7-da11-44b2-92e7-de2a3a122445, left for the cleanup step);
+   compute-week loaded real numbers ($375.00 available/allowance,
+   $0.00 spent/debt/credit on a fresh household) — so compute-week
+   works with the caller's own JWT and is NOT affected by the legacy
+   key problem; $1.00 TEST STORE provisional transaction saved and
+   updated the week to $374.00 available / $1.00 spent; second test
+   account joined and saw the same dashboard (LIVE · MEMBER) and the
+   TEST STORE transaction plus both audit entries. One UX bug
+   reproduced: after Create household the app stayed on the household
+   screen until Refresh (same as the owner saw) — fixed the same
+   evening by navigating directly from the RPC/insert result instead
+   of re-reading the membership (live.js, pushed). Cleanup of the
+   test household/accounts/transaction is still pending — do it as a
+   separate step, and do not delete the owner's household.
+3. Owner decision, Nov 1 evening: leave email confirmation OFF and
+   sign-ups ON for now ("Keep it off for now, it's fine") — do NOT
+   disable sign-ups unprompted; the planned permanent close is
+   deferred until the owner says so.
 - Auth note, Nov 1, 2026, evening: the Free plan's built-in email
   limit is 2 emails/hour, which blocked the spouse's sign-up (and the
   agent's beta-test sign-up). Owner approved turning "Confirm email"
