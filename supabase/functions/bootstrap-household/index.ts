@@ -42,14 +42,18 @@ Deno.serve(async (req) => {
 
     const { data: hh, error: hhErr } = await admin.from('households')
       .insert({ name: 'Household', base_allowance_cents: 37500 }).select('id').single();
-    if (hhErr) return json({ error: 'household create failed' }, 500);
+    // Detailed errors are returned on purpose (no secret is ever included):
+    // the first version hid the real cause behind a generic message, which
+    // made a real failure undebuggable from the app.
+    if (hhErr) return json({ error: 'household create failed', step: 'households insert', detail: hhErr.message }, 500);
     const { error: memErr } = await admin.from('household_members')
       .insert({ household_id: hh.id, user_id: user.id, role: 'admin' });
-    if (memErr) return json({ error: 'membership create failed' }, 500);
-    await admin.from('audit_log').insert({
+    if (memErr) return json({ error: 'membership create failed', step: 'household_members insert', detail: memErr.message, household_id: hh.id }, 500);
+    const { error: auditErr } = await admin.from('audit_log').insert({
       household_id: hh.id, actor: user.id, actor_name: 'admin',
       action: 'Household created', detail: 'Created via bootstrap-household; creator is admin.',
     });
+    if (auditErr) console.warn('bootstrap audit insert failed (household still created):', auditErr.message);
     return json({ household_id: hh.id, role: 'admin' });
   } catch (e) {
     return json({ error: String(e?.message ?? e) }, 500);

@@ -151,7 +151,7 @@ $('createHouseholdBtn').addEventListener('click', async () => {
   const out = await res.json();
   $('householdMsg').textContent = out.household_id
     ? `Household created: ${out.household_id}. Share this ID with your spouse so they can join as member.`
-    : `Could not create household: ${out.error ?? 'unknown error'}`;
+    : `Could not create household: ${out.error ?? 'unknown error'}${out.step ? ` (${out.step})` : ''}${out.detail ? ` — ${out.detail}` : ''}`;
   if (out.household_id) await boot();
 });
 $('joinHouseholdBtn').addEventListener('click', async () => {
