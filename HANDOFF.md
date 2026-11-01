@@ -140,7 +140,20 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   access_token_encrypted exists; get_plaid_ciphertext and
   update_plaid_sync exist, both SECURITY DEFINER, granted to
   authenticated only; "members insert own plaid items" policy created.
-  No secrets were set in this step.
+- Plaid functions + secrets, Nov 1, 2026, evening (dashboard
+  toasts confirmed): plaid-exchange v2 deployed ("Successfully
+  updated edge function"), plaid-sync created + deployed
+  ("Successfully deployed edge function"), INGEST_SECRET and
+  PLAID_TOKEN_KEY saved as Edge Function secrets. PLAID_CLIENT_ID,
+  PLAID_SECRET, PLAID_ENV NOT set yet — they come from the owner's
+  Plaid dashboard; an autonomous keys-transfer task was blocked
+  because the Plaid session had expired and the owner must sign in
+  to Plaid first (owner authorized autonomous connections/tokens,
+  login-when-necessary, Nov 1 evening). The deployed plaid-sync is
+  the pre-mask-fix version; the mask-fix redeploy is in flight.
+  Note: the Plaid keys task's Supabase tab showed "no custom secrets
+  yet" at 6:37 PM, before this deploy task's secrets step completed
+  at 6:38 PM — that was timing, not a missing-secret problem.
 - Grants fix, Nov 1, 2026, evening (`supabase/fix-grants.sql`,
   "Success. No rows returned"): the spouse's join failed with
   "permission denied for table household_members" — a missing
