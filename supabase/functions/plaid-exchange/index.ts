@@ -73,12 +73,17 @@ Deno.serve(async (req) => {
     // The upsert runs with the caller's own JWT under the
     // "members insert own plaid items" policy; the ciphertext is
     // useless without PLAID_TOKEN_KEY, which only functions hold.
-    await supabase.from('plaid_items').upsert({
+    const { error: upsertError } = await supabase.from('plaid_items').upsert({
       household_id: householdId,
       plaid_item_id: data.item_id,
       institution_name: body.institution_name ?? null,
       access_token_encrypted: encrypted,
     }, { onConflict: 'household_id,plaid_item_id' });
+    // FIX (Nov 1, evening): the original code ignored the upsert result,
+    // so the app reported "Connected" even when the item row never
+    // landed — which is exactly why a later sync saw 0 items. A failed
+    // store is a failed connection, and must be reported as such.
+    if (upsertError) return json({ error: `could not store plaid item: ${upsertError.message}` }, 500);
     return json({ item_id: data.item_id, connected: true });
   } catch (e) {
     return json({ error: String(e?.message ?? e) }, 500);
