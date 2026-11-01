@@ -93,8 +93,13 @@ async function refresh() {
   const { data: txns } = await supabase.from('transactions')
     .select('*').eq('household_id', household.household_id)
     .order('date', { ascending: false }).limit(100);
-  $('txList').innerHTML = (txns ?? []).length
-    ? (txns ?? []).map((t) => `<li><strong>${esc(t.merchant)}</strong>
+  const q = ($('txSearch')?.value ?? '').trim().toLowerCase();
+  const shown = (txns ?? []).filter((t) => !q
+    || t.merchant.toLowerCase().includes(q)
+    || String(t.date).includes(q)
+    || formatCents(t.amount_cents).toLowerCase().includes(q));
+  $('txList').innerHTML = shown.length
+    ? shown.map((t) => `<li><strong>${esc(t.merchant)}</strong>
         <span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${esc(t.state.toUpperCase())}</span>
         <span class="pill">${esc(t.source.toUpperCase())}</span><br>
         ${formatCents(t.amount_cents)} · ${esc(t.date)} · ••${esc(t.card_suffix)}</li>`).join('')
@@ -121,6 +126,14 @@ async function refresh() {
   }));
   // Settings card: admin only.
   $('settingsCard').style.display = household.role === 'admin' ? '' : 'none';
+  // Savings: latest attestations (read) + admin form.
+  const { data: sav } = await supabase.from('savings_ledger')
+    .select('*').eq('household_id', household.household_id)
+    .order('created_at', { ascending: false }).limit(20);
+  $('savingsList').innerHTML = (sav ?? []).length
+    ? `<ul>${(sav ?? []).map((s) => `<li>Attested balance ${formatCents(s.actual_balance_cents ?? 0)} · ${new Date(s.created_at).toLocaleString()} · ${esc(s.note || '')}</li>`).join('')}</ul>`
+    : '<p class="muted small">No savings attestations yet.</p>';
+  $('savingsFormWrap').style.display = household.role === 'admin' ? '' : 'none';
 
   const { data: auditRows } = await supabase.from('audit_log')
     .select('*').eq('household_id', household.household_id)
@@ -256,6 +269,14 @@ $('syncBankBtn')?.addEventListener('click', async () => {
     ? `Sync failed: ${out.error}`
     : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected item(s).`;
   await refresh();
+});
+
+$('attestSavingsBtn')?.addEventListener('click', async () => {
+  const cents = dollarsToCents($('savingsBalanceInput').value);
+  if (cents === null || cents < 0) { $('savingsMsg').textContent = 'Enter a valid balance.'; return; }
+  const { error } = await supabase.rpc('attest_savings', { p_household_id: household.household_id, p_actual_balance_cents: cents, p_note: $('savingsNoteInput').value.trim() });
+  $('savingsMsg').textContent = error ? `Could not attest: ${error.message}` : 'Balance attested.';
+  if (!error) await refresh();
 });
 
 $('saveAllowanceBtn')?.addEventListener('click', async () => {
