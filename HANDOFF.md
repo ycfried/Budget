@@ -164,6 +164,11 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   now fully configured — the remaining step is the owner tapping
   "Connect Amex via Plaid" in the live app and signing into Amex
   himself (Transactions only), then "Sync bank transactions now."
+  Owner confirmed Nov 1, evening: "I did connect my credit card from
+  Amex the plaid connection went through" — so the Link flow + encrypted
+  exchange worked end to end. Remaining Plaid step: the owner taps
+  "Sync bank transactions now" in the live app and reports the added/
+  updated counts; a first real sync is still unproven until then.
   The plaid-sync mask-fix redeploy completed the same evening
   ("Successfully updated edge function"; editor confirms the
   /accounts/get mask lookup) — the corrected version is now live.
