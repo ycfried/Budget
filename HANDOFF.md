@@ -149,8 +149,11 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   Plaid dashboard; an autonomous keys-transfer task was blocked
   because the Plaid session had expired and the owner must sign in
   to Plaid first (owner authorized autonomous connections/tokens,
-  login-when-necessary, Nov 1 evening). The deployed plaid-sync is
-  the pre-mask-fix version; the mask-fix redeploy is in flight.
+  login-when-necessary, Nov 1 evening). Owner confirmed "You're in
+  plaid" at 6:40 PM and the keys transfer was resumed. The
+  plaid-sync mask-fix redeploy completed the same evening
+  ("Successfully updated edge function"; editor confirms the
+  /accounts/get mask lookup) — the corrected version is now live.
   Note: the Plaid keys task's Supabase tab showed "no custom secrets
   yet" at 6:37 PM, before this deploy task's secrets step completed
   at 6:38 PM — that was timing, not a missing-secret problem.
