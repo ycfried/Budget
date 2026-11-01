@@ -158,7 +158,13 @@ $('createHouseholdBtn').addEventListener('click', async () => {
   $('householdMsg').textContent = data
     ? `Household created: ${data}. Share this ID with your spouse so they can join as member.`
     : `Could not create household: ${error?.message ?? 'unknown error'}`;
-  if (data) await boot();
+  // FIX (Nov 1, evening — reproduced by the beta test): do NOT re-read
+  // the membership here. boot()'s loadMembership() returned null right
+  // after creation (the RPC had just committed), so the app stayed on
+  // the household screen until the user hit Refresh. The RPC already
+  // proves the caller is the new household's admin, so set it directly
+  // and go straight to the dashboard.
+  if (data) { household = { household_id: data, role: 'admin' }; await show('app'); await refresh(); }
 });
 $('joinHouseholdBtn').addEventListener('click', async () => {
   const { data: { user } } = await supabase.auth.getUser();
@@ -167,7 +173,9 @@ $('joinHouseholdBtn').addEventListener('click', async () => {
   const { error } = await supabase.from('household_members')
     .insert({ household_id: id, user_id: user.id, role: 'member' });
   $('householdMsg').textContent = error ? `Join failed: ${error.message}` : 'Joined. Loading shared budget…';
-  if (!error) await boot();
+  // Same direct-navigation fix as create: the insert just proved the
+  // caller is a member of this household, so do not re-read first.
+  if (!error) { household = { household_id: id, role: 'member' }; await show('app'); await refresh(); }
 });
 
 $('manualForm').addEventListener('submit', async (e) => {
