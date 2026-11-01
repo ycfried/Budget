@@ -271,15 +271,19 @@ and (as a copy) the compute-week function. All amounts integer cents.
 
 ## 7. What is NOT done yet (in order)
 
-1. **First real two-account test of the live slice (in progress)** —
-   owner created an account and, via the create_household RPC, created
-   the household on Nov 1, 2026, ~5:44 PM EST: ID
-   647d1f23-606f-43af-92e5-1de2f1f34377 (owner = admin). Remaining:
-   spouse creates an account and joins with that ID, both add one
-   provisional transaction and confirm the other phone sees it, and
-   the dashboard week numbers load (the compute-week legacy-key test).
-   Then: owner disables new sign-ups in Supabase Auth settings so no
-   one else can create an account.
+1. **First real two-account test of the live slice — WORKING on both
+   phones, Nov 1, 2026, evening** — owner created an account and, via
+   the create_household RPC, created the household on Nov 1, ~5:44 PM
+   EST: ID 647d1f23-606f-43af-92e5-1de2f1f34377 (owner = admin).
+   Spouse joined after the grants fix (and after email confirmation
+   was turned off temporarily to get past the 2/hr Free email limit).
+   Owner confirmed "it works on both" — both phones reach the shared
+   dashboard. Remaining to confirm explicitly: a test transaction
+   added on one phone appears on the other, and the dashboard week
+   numbers load (the compute-week legacy-key test) — treat those as
+   unconfirmed until the owner says so. Then: owner disables new
+   sign-ups in Supabase Auth settings so no one else can create an
+   account (planned permanent state; confirmation-off was temporary).
 - Auth note, Nov 1, 2026, evening: the Free plan's built-in email
   limit is 2 emails/hour, which blocked the spouse's sign-up (and the
   agent's beta-test sign-up). Owner approved turning "Confirm email"
