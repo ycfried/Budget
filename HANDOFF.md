@@ -109,10 +109,29 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   Authentication-Results pass required, fail-closed quarantine, dedupe,
   provisional-only storage.
 - `bootstrap-household` — https://tnkhvdkmwmwiogiienee.supabase.co/functions/v1/bootstrap-household
-  Deployed Nov 1, 2026, evening, verbatim, via the dashboard editor.
-  Creates a household + creator admin membership server-side (service
-  role), refusing if the caller already belongs to a household. This
-  was the last function to deploy; all five functions are now live.
+  Deployed Nov 1, 2026, evening, verbatim, via the dashboard editor —
+  but FAILED in its first real use (Nov 1, 5:39 PM EST, two HTTP 500s)
+  and is now UNUSED. Cause, proven from the logs: the user's JWT was
+  valid and auth passed, but the households insert failed because the
+  function reads the deprecated legacy SUPABASE_SERVICE_ROLE_KEY, which
+  this project no longer provisions with a working value. Do not try to
+  fix it by chasing that legacy key.
+- `create_household()` RPC — `supabase/create-household-rpc.sql`,
+  applied Nov 1, 2026, evening ("Success. No rows returned", verified
+  in pg_proc: security_definer = true). This REPLACES bootstrap for
+  household creation. SECURITY DEFINER, granted to `authenticated`
+  only, acts only for auth.uid(), refuses if the caller already belongs
+  to a household, creates one household + one admin membership + one
+  audit row, returns the new ID. No secret key is involved. live.js
+  calls this RPC.
+- Open risk, same root cause, not yet tested: compute-week, plaid-link,
+  and plaid-exchange also read the legacy SUPABASE_ANON_KEY /
+  SUPABASE_SERVICE_ROLE_KEY. The live app itself uses the new
+  publishable key and works (sign-in + membership read succeeded), so
+  the RPC path is safe — but the first real compute-week call (which
+  happens once a household exists) will prove whether those functions
+  need the same kind of fix. Do not claim they work until that call
+  succeeds.
 - **No secrets have been set on any function yet.** Functions correctly
   return "not configured" until secrets exist. Never set a secret from
   chat; secrets go in the Supabase dashboard (owner, via takeover) or
