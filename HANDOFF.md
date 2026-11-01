@@ -134,6 +134,13 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   the other tables' membership-check policies (which check a different
   table) now resolve correctly. live.js also surfaces membership-read
   errors instead of silently staying on the household screen.
+- Plaid token-column migration, Nov 1, 2026, evening
+  (`supabase/plaid-token-column.sql`, "Success. No rows returned",
+  verified in information_schema/pg_proc): plaid_items.
+  access_token_encrypted exists; get_plaid_ciphertext and
+  update_plaid_sync exist, both SECURITY DEFINER, granted to
+  authenticated only; "members insert own plaid items" policy created.
+  No secrets were set in this step.
 - Grants fix, Nov 1, 2026, evening (`supabase/fix-grants.sql`,
   "Success. No rows returned"): the spouse's join failed with
   "permission denied for table household_members" — a missing
