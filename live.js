@@ -137,22 +137,20 @@ $('signOutBtn').addEventListener('click', async () => {
 $('refreshBtn').addEventListener('click', refresh);
 
 $('createHouseholdBtn').addEventListener('click', async () => {
-  // Household creation is server-side only (bootstrap-household Edge
-  // Function): the client must never be able to grant itself admin, or
-  // it could grant itself admin of any household. The function verifies
-  // the caller has no household yet, then creates household + admin
-  // membership and returns the ID to share with the spouse.
-  const { data: { session: s } } = await supabase.auth.getSession();
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/bootstrap-household`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token ?? ''}`, apikey: SUPABASE_ANON_KEY },
-    body: JSON.stringify({}),
-  });
-  const out = await res.json();
-  $('householdMsg').textContent = out.household_id
-    ? `Household created: ${out.household_id}. Share this ID with your spouse so they can join as member.`
-    : `Could not create household: ${out.error ?? 'unknown error'}${out.step ? ` (${out.step})` : ''}${out.detail ? ` — ${out.detail}` : ''}`;
-  if (out.household_id) await boot();
+  // Household creation is server-side only — but NOT via the Edge
+  // Function anymore. The bootstrap-household function failed on Nov 1
+  // (HTTP 500, valid JWT, service-role insert failed) because it reads
+  // the deprecated legacy SUPABASE_SERVICE_ROLE_KEY, which this project
+  // no longer provisions with a working value. The fix is the
+  // create_household() SECURITY DEFINER RPC: it runs as the database
+  // owner, acts only for auth.uid(), refuses if the caller already has
+  // a household, and needs no secret key at all. The client must still
+  // never grant itself admin directly — this RPC is the only path.
+  const { data, error } = await supabase.rpc('create_household');
+  $('householdMsg').textContent = data
+    ? `Household created: ${data}. Share this ID with your spouse so they can join as member.`
+    : `Could not create household: ${error?.message ?? 'unknown error'}`;
+  if (data) await boot();
 });
 $('joinHouseholdBtn').addEventListener('click', async () => {
   const { data: { user } } = await supabase.auth.getUser();
