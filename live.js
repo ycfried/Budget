@@ -188,6 +188,53 @@ $('manualForm').addEventListener('submit', async (e) => {
   f.reset(); await refresh();
 });
 
+async function callFn(name, body) {
+  const { data: { session: s } } = await supabase.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token ?? ''}`, apikey: SUPABASE_ANON_KEY },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+$('connectBankBtn')?.addEventListener('click', async () => {
+  $('bankMsg').textContent = 'Getting a secure Plaid link…';
+  const out = await callFn('plaid-link', { household_id: household.household_id });
+  if (!out.link_token) {
+    $('bankMsg').textContent = `Could not start Plaid Link: ${out.error ?? 'unknown error'}. If it says "not configured," the Plaid server keys are not set yet — no bank can be connected until then.`;
+    return;
+  }
+  const handler = window.Plaid.create({
+    token: out.link_token,
+    onSuccess: async (publicToken, metadata) => {
+      $('bankMsg').textContent = 'Amex approved — finishing the secure connection…';
+      const ex = await callFn('plaid-exchange', {
+        household_id: household.household_id,
+        public_token: publicToken,
+        institution_name: metadata?.institution?.name ?? null,
+      });
+      $('bankMsg').textContent = ex.connected
+        ? `Connected: ${metadata?.institution?.name ?? 'Amex'}. Tap "Sync bank transactions now" to pull transactions.`
+        : `Connection could not be finished: ${ex.error ?? 'unknown error'}`;
+      if (ex.connected) await refresh();
+    },
+    onExit: (err) => {
+      if (err) $('bankMsg').textContent = `Plaid closed: ${err.error_message ?? err.error_code ?? 'cancelled'}`;
+    },
+  });
+  handler.open();
+});
+
+$('syncBankBtn')?.addEventListener('click', async () => {
+  $('bankMsg').textContent = 'Syncing bank transactions…';
+  const out = await callFn('plaid-sync', { household_id: household.household_id });
+  $('bankMsg').textContent = out.error
+    ? `Sync failed: ${out.error}`
+    : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected item(s).`;
+  await refresh();
+});
+
 $('fundRequestForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
