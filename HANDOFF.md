@@ -134,13 +134,23 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   the other tables' membership-check policies (which check a different
   table) now resolve correctly. live.js also surfaces membership-read
   errors instead of silently staying on the household screen.
+- Grants fix, Nov 1, 2026, evening (`supabase/fix-grants.sql`,
+  "Success. No rows returned"): the spouse's join failed with
+  "permission denied for table household_members" — a missing
+  table-level GRANT, not an RLS rejection. Tables created via the SQL
+  editor get no automatic grants to authenticated, and schema.sql never
+  issued any, so every client read/write was refused at the table door
+  (this also explains the owner's stuck household screen). Grants now
+  issued: SELECT on all 7 tables; INSERT on household_members,
+  transactions, fund_requests, audit_log only. No UPDATE/DELETE granted
+  to authenticated. Auth "Confirm email" verified still OFF after this
+  run.
 - Open risk, same root cause, not yet tested: compute-week, plaid-link,
   and plaid-exchange also read the legacy SUPABASE_ANON_KEY /
   SUPABASE_SERVICE_ROLE_KEY. The live app itself uses the new
-  publishable key and works (sign-in + membership read succeeded after
-  the policy fix), so the RPC path is safe — but the first real
-  compute-week call (which happens once the dashboard loads) will
-  prove whether those functions need the same kind of fix. Do not
+  publishable key, so the RPC and direct-table paths are safe — but the
+  first real compute-week call (which happens once the dashboard loads)
+  will prove whether those functions need the same kind of fix. Do not
   claim they work until that call succeeds.
 - **No secrets have been set on any function yet.** Functions correctly
   return "not configured" until secrets exist. Never set a secret from
