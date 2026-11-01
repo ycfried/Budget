@@ -165,10 +165,24 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   "Connect Amex via Plaid" in the live app and signing into Amex
   himself (Transactions only), then "Sync bank transactions now."
   Owner confirmed Nov 1, evening: "I did connect my credit card from
-  Amex the plaid connection went through" — so the Link flow + encrypted
-  exchange worked end to end. Remaining Plaid step: the owner taps
-  "Sync bank transactions now" in the live app and reports the added/
-  updated counts; a first real sync is still unproven until then.
+  Amex the plaid connection went through" — BUT the follow-up sync
+  reported 0 connected items, and a read-only DB check proved
+  plaid_items is EMPTY (0 rows). Root cause: the exchange code
+  ignored the upsert result and reported "Connected" even when the
+  item row never landed. Fix pushed the same evening: a failed store
+  now returns an error instead of Connected, and the fixed exchange
+  is being redeployed. Next step: owner taps Connect Amex again
+  with the fixed version and reports the exact message; if it fails,
+  the error text will name the real cause. A first real sync is
+  still unproven until a row lands.
+- Live admin RPCs applied Nov 1, evening ("Success. No rows
+  returned"): approve_fund_request, decline_fund_request,
+  set_base_allowance — all SECURITY DEFINER, admin-only, audit-logged.
+  The live UI already has Approve/Decline buttons (admin only) and
+  the Settings card, so the owner's $25 PENDING Tzedaka request can
+  now be approved/declined from the app after a refresh. (Note from
+  the same DB check: household_members = 4 — owner + spouse + the
+  2 beta-test accounts, whose cleanup is still pending.)
   The plaid-sync mask-fix redeploy completed the same evening
   ("Successfully updated edge function"; editor confirms the
   /accounts/get mask lookup) — the corrected version is now live.
