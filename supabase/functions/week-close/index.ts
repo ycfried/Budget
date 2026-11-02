@@ -1,4 +1,5 @@
 // week-close — close completed weeks into the Extra Fund (FINAL A4/A5).
+// Deploy note (Nov 2, 2026): redeploying so this function picks up the current SERVICE_ROLE_SECRET value.
 // Admin-only, caller JWT, idempotent: running it twice changes nothing
 // the second time (locked weeks are never recomputed, released weeks
 // are never re-released, restoration entries are unique per refund).

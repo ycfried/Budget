@@ -1,4 +1,5 @@
 // plaid-sync (S3 rewrite) — pulls Amex transactions via Plaid
+// Deploy note (Nov 2, 2026): redeploying so this function picks up the current SERVICE_ROLE_SECRET value.
 // /transactions/sync and writes them for S2's compute-week/week-close.
 //
 // What this function owns (audit items): P0-10b (card-payment kind),
