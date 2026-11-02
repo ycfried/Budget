@@ -76,8 +76,18 @@ const corsHeaders = {
 
 const MAX_MESSAGES_PER_POLL = 50;
 
-async function decryptToken(keyB64: string, b64: string): Promise<string> {
-  const raw = Uint8Array.from(atob(keyB64), (c) => c.charCodeAt(0));
+// Hex key decoding (see gmail-oauth-callback): GMAIL_TOKEN_KEY is
+// 64-char hex, not base64 — atob() on it yields 48 bytes and AES-GCM
+// importKey throws "Invalid key length".
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.trim();
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+async function decryptToken(keyHex: string, b64: string): Promise<string> {
+  const raw = hexToBytes(keyHex);
   const key = await crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['decrypt']);
   const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const iv = bytes.slice(0, 12);
