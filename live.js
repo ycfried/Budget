@@ -661,6 +661,11 @@ async function refresh() {
     if (cb) { cb.disabled = false; cb.classList.remove('btn-primary'); cb.textContent = itemRows.some((i) => i.status === 'active') ? 'Connect another bank account' : 'Connect a bank account'; }
     const sb = $('syncBankBtn');
     if (sb) sb.classList.toggle('btn-primary', itemRows.some((i) => i.status === 'active'));
+    // Decision 15: manual sync is admin-only once server sync is live
+    // (plaid-sync enforces it server-side with a 403); hide the Bank &
+    // Funds sync button for non-admins so members never see a dead
+    // button. (The Home sync row is gated in showView instead.)
+    if (sb) sb.style.display = (household && household.role === 'admin') ? '' : 'none';
     const renderBankList = (elId, rows) => {
       const el = document.getElementById(elId);
       if (!el) return;
@@ -1153,7 +1158,7 @@ function showView(name, opts = {}) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-use') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-sync-top') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {

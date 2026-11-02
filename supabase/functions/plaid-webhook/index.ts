@@ -13,10 +13,14 @@
 // does not issue for this flow, and it would have rejected every real
 // webhook. That version is superseded by this one.
 // Only transactions-sync events are recorded, via the
-// log_webhook_event RPC (dedupe hash rejects Plaid retries). The live
-// app auto-syncs on refresh when it sees an unprocessed event, because
-// the actual sync still needs a household member's identity and this
-// project deliberately has no working service-role identity.
+// log_webhook_event RPC (dedupe hash rejects Plaid retries). Since the
+// server-sync build (Nov 2, 2026) the webhook also triggers plaid-sync
+// itself for the event's household, using the service-role identity
+// (which works now that its table grants are fixed) — so new data is
+// pulled even while the app is closed. The sync trigger is best-effort:
+// a sync failure never changes the 200 response, and the unprocessed
+// event row is still picked up by the app's refresh fallback and the
+// hourly safety net.
 // Never logs tokens, secrets, or card numbers.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -117,5 +121,24 @@ Deno.serve(async (req) => {
     console.warn('plaid-webhook: log failed:', error.message);
     return new Response(JSON.stringify({ error: 'could not record event' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
-  return new Response(JSON.stringify({ recorded: true, webhook_code: code }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  // Server-side sync trigger (best-effort — never affects the 200).
+  let syncTriggered = false;
+  let syncOk = false;
+  try {
+    const { data: itemRow } = await supabase.from('plaid_items')
+      .select('household_id').eq('plaid_item_id', body.item_id ?? '').maybeSingle();
+    if (itemRow?.household_id) {
+      syncTriggered = true;
+      const syncRes = await fetch(`${SUPABASE_URL}/functions/v1/plaid-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+        body: JSON.stringify({ household_id: itemRow.household_id }),
+      });
+      syncOk = syncRes.ok;
+      if (!syncOk) console.warn('plaid-webhook: sync trigger failed:', syncRes.status);
+    }
+  } catch (e) {
+    console.warn('plaid-webhook: sync trigger error:', (e as Error)?.message ?? e);
+  }
+  return new Response(JSON.stringify({ recorded: true, webhook_code: code, sync_triggered: syncTriggered, sync_ok: syncOk }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 });

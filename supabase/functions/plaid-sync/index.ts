@@ -24,7 +24,11 @@
 //     sequence completes without a Plaid error, and never from a
 //     client-supplied value. Restricting those RPCs to admin/service
 //     role is an S1 migration dependency — see S3_INTERFACE_NOTES.md.
-//   * No legacy service-role key is used here.
+//   * Auth (server-sync build, Nov 2, 2026): verify_jwt=false in
+//     config.toml + in-code auth (admin JWT for manual sync, or the
+//     service-key bearer for server calls from plaid-webhook / pg_cron).
+//     A bare call with neither credential 401s. Manual sync is
+//     admin-only (owner decision 15).
 //
 // Plaid amounts: positive for outflows, negative for inflows. The app
 // stores charges positive and inflows negative, so Plaid's sign maps
@@ -81,6 +85,11 @@
 // mid-sequence the cursor is NOT persisted, so the next run re-pulls
 // the same pages idempotently via the upsert order above.
 //
+// Overlap safety (server-sync build): overlapping sync runs need no
+// lock — upserts are idempotent (external_id / pending / hash
+// matching updates instead of duplicating) and the cursor only moves
+// forward, so a stale cursor just re-pulls idempotently.
+//
 // Institution backfill: when plaid_items.institution_name is null,
 // call Plaid /item/get (for institution_id) then
 // /institutions/get_by_id and store institution_name + institution_id.
@@ -96,6 +105,13 @@ const corsHeaders = {
 };
 
 const MAX_PAGES = 200;
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 
 async function decryptToken(keyB64: string, b64: string): Promise<string> {
   const raw = Uint8Array.from(atob(keyB64), (c) => c.charCodeAt(0));
@@ -130,30 +146,46 @@ async function plaidPost(
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
+    // Auth (server-sync build, Nov 2, 2026): verify_jwt=false in
+    // config.toml, so the platform check is OFF and this in-code check
+    // is the only gate. Two paths, in order:
+    //   1. Server path: Bearer == SERVICE_ROLE_SECRET (non-empty both,
+    //      timing-safe compare). Used by plaid-webhook and the hourly
+    //      pg_cron job. No member check: the server is trusted, and
+    //      the household comes from the request body.
+    //   2. Manual path: a user JWT. The caller must be an ADMIN member
+    //      of the household (owner decision 15: manual sync is
+    //      admin-only once server sync is live; previously any member
+    //      could sync).
+    // Anything else (no bearer, wrong key, invalid JWT, non-admin
+    // member) is rejected. A bare call with neither credential 401s.
     const auth = req.headers.get('Authorization') ?? '';
-    if (!auth.startsWith('Bearer ')) return json({ error: 'missing authorization' }, 401);
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: auth } } },
-    );
-    const { data: { user }, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !user) return json({ error: 'unauthorized' }, 401);
+    const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : '';
+    const serviceKey = Deno.env.get('SERVICE_ROLE_SECRET') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const body = await req.json().catch(() => ({}));
     const householdId = String(body.household_id ?? '');
     if (!householdId) return json({ error: 'household_id required' }, 400);
-    const { data: membership } = await supabase
-      .from('household_members')
-      .select('role')
-      .eq('household_id', householdId)
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (!membership) return json({ error: 'not a household member' }, 403);
-    // Coordinator integration: membership/admin already verified above via the
-    // caller JWT. All DB access below uses the service-role key (server-side
-    // only, never in the browser) because member JWTs lost direct table/RPC
+    const isServerCall = token !== '' && serviceKey !== '' && timingSafeEqual(token, serviceKey);
+    if (!isServerCall) {
+      if (!token) return json({ error: 'missing authorization' }, 401);
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: auth } } },
+      );
+      const { data: { user }, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !user) return json({ error: 'unauthorized' }, 401);
+      const { data: membership } = await supabase
+        .from('household_members')
+        .select('role')
+        .eq('household_id', householdId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!membership || membership.role !== 'admin') return json({ error: 'manual sync is admin-only' }, 403);
+    }
+    // All DB access below uses the service-role key (server-side only,
+    // never in the browser) because member JWTs lost direct table/RPC
     // access in the S1 RLS hardening.
-    const serviceKey = Deno.env.get('SERVICE_ROLE_SECRET') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     if (!serviceKey) return json({ error: 'service key not configured' }, 503);
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
 

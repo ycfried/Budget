@@ -30,7 +30,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.plaid-sync]
-verify_jwt = true
+verify_jwt = false
 
 [functions.plaid-webhook]
 verify_jwt = false
