@@ -1,13 +1,15 @@
 // Household Budget — LIVE front end (Supabase).
-// This is a first working slice, not a rewrite of the demo:
 //   * Real Supabase Auth (email + password, two accounts only).
 //   * First account creates the household as admin; second joins by ID.
 //   * Transactions, fund requests, and audit log read/write the shared DB.
 //   * Week numbers come from the server (compute-week Edge Function),
 //     never from client-side math alone.
-//   * Writes that RLS does not yet allow (admin-only allocations, settings,
-//     savings attestation) are NOT faked here — they land in later slices
-//     behind Edge Functions with explicit role checks.
+//   * Admin-only settings and savings attestation run through RPCs with
+//     explicit role checks. Fund allocations against the fund balance
+//     are still missing (approve/decline is a decision record only).
+//   * User-facing labels are bank-agnostic by design: internal function
+//     and database names (plaid-*, source='plaid') stay as-is, but the
+//     UI never names a bank or provider.
 // The demo (index.html / app.js) is untouched and still runs on fake data.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
@@ -24,6 +26,12 @@ const sha = async (text) => {
 
 let session = null;
 let household = null; // { household_id, role }
+let txFilter = 'all'; // all | pending | posted | refunds | excluded
+let lastBankSyncText = null; // last Sync button result, this session only
+let lastBankSyncTime = null;
+// Generic display labels for transaction sources. Database values are
+// unchanged (e.g. 'plaid'); only what the user sees is bank-agnostic.
+const sourceLabel = (s) => ({ plaid: 'BANK', manual: 'MANUAL', csv: 'FILE', amex_alert: 'EMAIL ALERT' }[s] ?? String(s).toUpperCase());
 
 async function show(view) {
   $('view-auth').classList.toggle('hidden', view !== 'auth');
@@ -111,17 +119,58 @@ async function refresh() {
   const { data: txns } = await supabase.from('transactions')
     .select('*').eq('household_id', household.household_id)
     .order('date', { ascending: false }).limit(100);
+  const all = txns ?? [];
   const q = ($('txSearch')?.value ?? '').trim().toLowerCase();
-  const shown = (txns ?? []).filter((t) => !q
+  const byFilter = (t) => txFilter === 'all' ? true
+    : txFilter === 'pending' ? t.state === 'provisional'
+    : txFilter === 'posted' ? t.state === 'verified'
+    : txFilter === 'refunds' ? t.kind === 'refund'
+    : txFilter === 'excluded' ? (t.excluded === true || t.state === 'excluded')
+    : true;
+  const shown = all.filter((t) => byFilter(t) && (!q
     || t.merchant.toLowerCase().includes(q)
     || String(t.date).includes(q)
-    || formatCents(t.amount_cents).toLowerCase().includes(q));
+    || formatCents(t.amount_cents).toLowerCase().includes(q)));
+  const countEl = $('txCount');
+  if (countEl) countEl.textContent = `Showing ${shown.length} of ${all.length} transactions`;
+  document.querySelectorAll('[data-tx-filter]').forEach((c) => {
+    c.classList.toggle('active', c.dataset.txFilter === txFilter);
+    c.setAttribute('aria-pressed', c.dataset.txFilter === txFilter ? 'true' : 'false');
+  });
+  const emptyHint = txFilter === 'excluded'
+    ? 'No excluded transactions. Excluded purchases are hidden from the week math but kept here so you can restore them.'
+    : txFilter === 'refunds'
+    ? 'No refunds in this list yet.'
+    : 'No transactions here yet — add a manual purchase below, or connect a bank account and sync.';
   $('txList').innerHTML = shown.length
-    ? shown.map((t) => `<li><strong>${esc(t.merchant)}</strong>
-        <span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${esc(t.state.toUpperCase())}</span>
-        <span class="pill">${esc(t.source.toUpperCase())}</span><br>
-        ${formatCents(t.amount_cents)} · ${esc(t.date)} · ••${esc(t.card_suffix)}</li>`).join('')
-    : '<li>No transactions yet — add one below, or import via CSV in the demo (live CSV lands next).</li>';
+    ? shown.map((t) => {
+        const excluded = t.excluded === true || t.state === 'excluded';
+        const action = excluded
+          ? `<button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button>`
+          : `<button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button>`;
+        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-line1"><strong>${esc(t.merchant)}</strong><span class="tx-amount">${formatCents(t.amount_cents)}</span></div>
+        <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'EXCLUDED' : esc(t.state.toUpperCase())}</span>
+        <span class="pill">${esc(sourceLabel(t.source))}</span>
+        <span class="muted small">${esc(t.date)} · ••${esc(t.card_suffix)}</span> ${action}</div></li>`;
+      }).join('')
+    : `<li class="tx-empty">${emptyHint}</li>`;
+  document.querySelectorAll('[data-exclude]').forEach((b) => b.addEventListener('click', async () => {
+    const { error } = await supabase.from('transactions')
+      .update({ state: 'excluded', excluded: true }).eq('id', b.dataset.exclude);
+    if (error) alert(`Could not exclude: ${error.message}`); else await refresh();
+  }));
+  document.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
+    // Restore rule (documented choice): there is no stored pre-exclude
+    // state, so a transaction dated before today is treated as posted
+    // and today's (or future) as pending. A pending row restored this
+    // way still becomes verified once the bank confirms it.
+    const row = all.find((t) => t.id === b.dataset.restore);
+    const today = nyTodayString();
+    const state = row && row.date < today ? 'verified' : 'provisional';
+    const { error } = await supabase.from('transactions')
+      .update({ state, excluded: false }).eq('id', b.dataset.restore);
+    if (error) alert(`Could not restore: ${error.message}`); else await refresh();
+  }));
 
   const { data: reqs } = await supabase.from('fund_requests')
     .select('*').eq('household_id', household.household_id)
@@ -129,7 +178,7 @@ async function refresh() {
   $('fundQueue').innerHTML = (reqs ?? []).length
     ? (reqs ?? []).map((r) => {
         const btns = (household.role === 'admin' && r.status === 'pending')
-          ? ` <button class="btn btn-small" data-approve="${r.id}" type="button">Approve</button> <button class="btn btn-small" data-decline="${r.id}" type="button">Decline</button>`
+          ? ` <button class="btn btn-small" data-approve="${r.id}" type="button" aria-label="Approve this Extra Fund request">Approve</button> <button class="btn btn-small" data-decline="${r.id}" type="button" aria-label="Decline this Extra Fund request">Decline</button>`
           : '';
         return `<li>${formatCents(r.amount_cents)} · ${esc(r.status.toUpperCase())} · ${esc(r.note || '')}${btns}</li>`;
       }).join('')
@@ -152,6 +201,16 @@ async function refresh() {
     ? `<ul>${(sav ?? []).map((s) => `<li>Attested balance ${formatCents(s.actual_balance_cents ?? 0)} · ${new Date(s.created_at).toLocaleString()} · ${esc(s.note || '')}</li>`).join('')}</ul>`
     : '<p class="muted small">No savings attestations yet.</p>';
   $('savingsFormWrap').style.display = household.role === 'admin' ? '' : 'none';
+
+  // Connections card: only real, observed values — the last Sync
+  // button result from this session and the page's refresh time.
+  // No sync time is invented for the email poller.
+  const connBank = $('connBankStatus');
+  if (connBank) connBank.textContent = lastBankSyncText
+    ? `${lastBankSyncText} (${lastBankSyncTime})`
+    : 'Not synced yet in this session.';
+  const connRefresh = $('connLastRefresh');
+  if (connRefresh) connRefresh.textContent = new Date().toLocaleString();
 
   const { data: auditRows } = await supabase.from('audit_log')
     .select('*').eq('household_id', household.household_id)
@@ -253,28 +312,28 @@ async function callFn(name, body) {
 }
 
 $('connectBankBtn')?.addEventListener('click', async () => {
-  $('bankMsg').textContent = 'Getting a secure Plaid link…';
+  $('bankMsg').textContent = 'Getting a secure bank connection…';
   const out = await callFn('plaid-link', { household_id: household.household_id });
   if (!out.link_token) {
-    $('bankMsg').textContent = `Could not start Plaid Link: ${out.error ?? 'unknown error'}. If it says "not configured," the Plaid server keys are not set yet — no bank can be connected until then.`;
+    $('bankMsg').textContent = `Could not start the bank connection: ${out.error ?? 'unknown error'}. If it says "not configured," the bank connection is not set up on the server yet.`;
     return;
   }
   const handler = window.Plaid.create({
     token: out.link_token,
     onSuccess: async (publicToken, metadata) => {
-      $('bankMsg').textContent = 'Amex approved — finishing the secure connection…';
+      $('bankMsg').textContent = 'Bank approved — finishing the secure connection…';
       const ex = await callFn('plaid-exchange', {
         household_id: household.household_id,
         public_token: publicToken,
         institution_name: metadata?.institution?.name ?? null,
       });
       $('bankMsg').textContent = ex.connected
-        ? `Connected: ${metadata?.institution?.name ?? 'Amex'}. Tap "Sync bank transactions now" to pull transactions.`
+        ? 'Connected. Tap "Sync bank transactions now" to pull transactions.'
         : `Connection could not be finished: ${ex.error ?? 'unknown error'}`;
       if (ex.connected) await refresh();
     },
     onExit: (err) => {
-      if (err) $('bankMsg').textContent = `Plaid closed: ${err.error_message ?? err.error_code ?? 'cancelled'}`;
+      if (err) $('bankMsg').textContent = `Bank connection closed: ${err.error_message ?? err.error_code ?? 'cancelled'}`;
     },
   });
   handler.open();
@@ -283,10 +342,25 @@ $('connectBankBtn')?.addEventListener('click', async () => {
 $('syncBankBtn')?.addEventListener('click', async () => {
   $('bankMsg').textContent = 'Syncing bank transactions…';
   const out = await callFn('plaid-sync', { household_id: household.household_id });
-  $('bankMsg').textContent = out.error
+  const text = out.error
     ? `Sync failed: ${out.error}`
-    : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected item(s).`;
+    : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).`;
+  $('bankMsg').textContent = text;
+  lastBankSyncText = text;
+  lastBankSyncTime = new Date().toLocaleString();
   await refresh();
+});
+
+// Transaction filters: chips combine with the search box; refresh()
+// re-renders the list with both applied.
+document.querySelectorAll('[data-tx-filter]').forEach((c) => c.addEventListener('click', async () => {
+  txFilter = c.dataset.txFilter;
+  await refresh();
+}));
+let txSearchTimer = null;
+$('txSearch')?.addEventListener('input', () => {
+  clearTimeout(txSearchTimer);
+  txSearchTimer = setTimeout(() => { refresh(); }, 250);
 });
 
 $('addTempBtn')?.addEventListener('click', async () => {

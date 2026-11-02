@@ -12,14 +12,14 @@
 <body>
 <header class="topbar">
   <div><strong>Household Budget</strong> <span id="roleBadge" class="badge">LIVE</span></div>
-  <button id="signOutBtn" class="btn btn-small" type="button">Sign out</button>
+  <button id="signOutBtn" class="btn btn-small" type="button" aria-label="Sign out of the live app">Sign out</button>
 </header>
 
 <div class="demo-banner" role="alert">
   <strong>LIVE — SHARED</strong> — Connected to the Supabase Budget project.
   Both phones see the same household once both accounts join it.
   Last sync: <span id="lastSync">—</span>
-  <button id="refreshBtn" class="btn btn-small" type="button">Refresh</button>
+  <button id="refreshBtn" class="btn btn-small" type="button" aria-label="Refresh the live dashboard">Refresh</button>
 </div>
 
 <main>
@@ -29,8 +29,8 @@
     password you created for this app. No bank login happens here.</p>
     <label>Email <input id="authEmail" type="email" autocomplete="email" required></label>
     <label>Password <input id="authPassword" type="password" autocomplete="current-password" required></label>
-    <button id="signInBtn" class="btn btn-primary btn-block" type="button">Sign in</button>
-    <button id="signUpBtn" class="btn btn-block" type="button">Create account</button>
+    <button id="signInBtn" class="btn btn-primary btn-block" type="button" aria-label="Sign in to the live app">Sign in</button>
+    <button id="signUpBtn" class="btn btn-block" type="button" aria-label="Create a new live account">Create account</button>
     <div id="authMsg" class="result"></div>
     <p class="muted small">After both accounts exist, the owner should disable new
     sign-ups in Supabase Auth settings so no one else can join. Card numbers are
@@ -42,9 +42,9 @@
     <p class="muted">The first account creates the household (as admin). The second
     account joins with the household ID the owner shares — copy it from the
     dashboard below once created.</p>
-    <button id="createHouseholdBtn" class="btn btn-primary btn-block" type="button">Create household (I am the owner / admin)</button>
+    <button id="createHouseholdBtn" class="btn btn-primary btn-block" type="button" aria-label="Create a household as owner and admin">Create household (I am the owner / admin)</button>
     <label>Or join a household <input id="joinId" placeholder="Household ID (uuid)"></label>
-    <button id="joinHouseholdBtn" class="btn btn-block" type="button">Join as member</button>
+    <button id="joinHouseholdBtn" class="btn btn-block" type="button" aria-label="Join an existing household as a member">Join as member</button>
     <div id="householdMsg" class="result"></div>
   </section>
 
@@ -65,49 +65,67 @@
 
     <div class="card">
       <h2>Transactions (shared)</h2>
-      <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)">
+      <p class="muted small">Everything spent on the household cards, from all sources. Use the filters and search to find a purchase, and exclude anything that should not count toward the week.</p>
+      <div class="tx-chips" role="group" aria-label="Filter transactions">
+        <button class="tx-chip active" data-tx-filter="all" type="button" aria-label="Show all transactions">All</button>
+        <button class="tx-chip" data-tx-filter="pending" type="button" aria-label="Show pending transactions only">Pending</button>
+        <button class="tx-chip" data-tx-filter="posted" type="button" aria-label="Show posted transactions only">Posted</button>
+        <button class="tx-chip" data-tx-filter="refunds" type="button" aria-label="Show refunds only">Refunds</button>
+        <button class="tx-chip" data-tx-filter="excluded" type="button" aria-label="Show excluded transactions only">Excluded</button>
+      </div>
+      <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
+      <p id="txCount" class="muted small tx-count"></p>
       <ul id="txList" class="plain"></ul>
     </div>
 
     <div class="card">
       <h2>Add a manual purchase (provisional)</h2>
+      <p class="muted small">Record a purchase by hand. It counts as provisional until the bank confirms it.</p>
       <form id="manualForm">
         <label>Merchant <input name="merchant" required maxlength="80"></label>
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
         <label>Date <input name="date" type="date" required></label>
         <label>Card suffix (last 4 digits only) <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
-        <button class="btn btn-primary" type="submit">Add as PROVISIONAL</button>
+        <button class="btn btn-primary" type="submit" aria-label="Add this purchase as provisional">Add as PROVISIONAL</button>
       </form>
       <p class="muted small">Never enter a full card number.</p>
     </div>
 
     <div class="card">
-      <h2>Bank connection (Plaid — Amex, read-only)</h2>
-      <p class="muted small">Connects via Plaid Link in the app. Transactions
-      only — never Auth or Transfer. The Amex access token is stored
-      encrypted, never in plain text, and never leaves the server
-      functions. If this button reports "not configured," the Plaid
-      server keys are not set yet — no bank can be connected until then.</p>
-      <button id="connectBankBtn" class="btn btn-primary" type="button">Connect Amex via Plaid</button>
-      <button id="syncBankBtn" class="btn" type="button">Sync bank transactions now</button>
+      <h2>Bank connection (read-only)</h2>
+      <p class="muted small">Connect a bank account and pull its transactions
+      into this budget. Read-only — it never moves money. Your bank
+      login token is stored encrypted, never in plain text, and never
+      leaves the server. If this button reports "not configured," the
+      bank connection is not set up on the server yet.</p>
+      <button id="connectBankBtn" class="btn btn-primary" type="button" aria-label="Connect a bank account">Connect a bank account</button>
+      <button id="syncBankBtn" class="btn" type="button" aria-label="Sync bank transactions now">Sync bank transactions now</button>
       <div id="bankMsg" class="result"></div>
+    </div>
+
+    <div class="card" id="connectionsCard">
+      <h2>Connections</h2>
+      <p class="muted small">Where your transactions come from, and when each source was last checked.</p>
+      <ul class="plain">
+        <li><strong>Bank connection:</strong> <span id="connBankStatus">Not synced yet in this session.</span></li>
+        <li><strong>Bank purchase alerts:</strong> checked every 10 minutes by the email poller. Alerts arrive as provisional transactions.</li>
+        <li><strong>Page last refreshed:</strong> <span id="connLastRefresh">—</span></li>
+      </ul>
     </div>
 
     <div class="card" id="settingsCard" style="display:none">
       <h2>Settings (admin only)</h2>
+      <p class="muted small">Change the weekly allowance and add one-off increases for this week. Only the admin can change these, and every change is written to the activity log.</p>
       <label>Base weekly allowance ($)
         <input id="baseAllowanceInput" type="number" step="0.01" min="0" inputmode="decimal">
       </label>
-      <button id="saveAllowanceBtn" class="btn btn-primary" type="button">Save allowance</button>
+      <button id="saveAllowanceBtn" class="btn btn-primary" type="button" aria-label="Save the base weekly allowance">Save allowance</button>
       <div id="settingsMsg" class="result"></div>
       <label>Temporary increase for this week ($)
         <input id="tempIncreaseInput" type="number" step="0.01" min="0" inputmode="decimal">
       </label>
-      <button id="addTempBtn" class="btn btn-primary" type="button">Add temporary increase</button>
+      <button id="addTempBtn" class="btn btn-primary" type="button" aria-label="Add a temporary increase for this week">Add temporary increase</button>
       <div id="tempMsg" class="result"></div>
-      <p class="muted small">Changes are enforced server-side (admin only)
-      and written to the audit log. Temporary weekly increases and
-      savings attestation land in the next slice.</p>
     </div>
 
     <div class="card">
@@ -123,25 +141,25 @@
         <label>Note (optional)
           <input id="savingsNoteInput" type="text">
         </label>
-        <button id="attestSavingsBtn" class="btn btn-primary" type="button">Attest balance</button>
+        <button id="attestSavingsBtn" class="btn btn-primary" type="button" aria-label="Record the actual savings balance">Attest balance</button>
         <div id="savingsMsg" class="result"></div>
       </div>
     </div>
 
     <div class="card">
       <h2>Extra Fund requests</h2>
+      <p class="muted small">Ask for money from the Extra Fund. The admin approves or declines each request, and the decision is written to the activity log.</p>
       <form id="fundRequestForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
         <label>Note (optional) <input name="note" maxlength="120"></label>
-        <button class="btn btn-primary" type="submit">Send request</button>
+        <button class="btn btn-primary" type="submit" aria-label="Send this Extra Fund request">Send request</button>
       </form>
       <ul id="fundQueue" class="plain"></ul>
-      <p class="muted small">Approvals from requests are an admin action in the
-      next slice; this slice records requests and shows the queue.</p>
     </div>
 
     <div class="card">
       <h2>Activity / audit log</h2>
+      <p class="muted small">A shared record of every change in this household — who did what, and when.</p>
       <ul id="auditList" class="plain"></ul>
     </div>
 
