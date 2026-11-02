@@ -1,6 +1,14 @@
 -- Household Budget — S3 backfill: reclassify EXISTING misclassified
 -- card payments (P0-10b). REVIEW BEFORE DEPLOY — READ THE WARNING.
 --
+-- RUN NOV 2, 2026 (~1:16 PM EST) — COMPLETE. Pre-check: 9 rows,
+-- sum -302300; the 9 rows were exported to CSV first (backup), then
+-- reclassified kind='refund' -> kind='payment' in a single atomic
+-- transaction that verified (refund-select 0 rows, payment-select 9
+-- rows / -302300) before committing — no rollback needed. Locked-week
+-- figures were NOT rewritten, per owner decision 16. The statements
+-- below remain commented as the historical record of what ran.
+--
 -- WARNING — THIS CHANGES HISTORICAL WEEK MATH. Do not run blindly.
 -- Rows reclassified here move from kind='refund' to kind='payment'.
 -- Under the old week math a 'refund' reduced net charges (and could
