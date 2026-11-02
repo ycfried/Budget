@@ -711,6 +711,56 @@ async function refresh() {
     }
     const ls = document.getElementById('lastSync'); if (ls) ls.textContent = '—';
   }
+  // Email connections UI — SERVER TRUTH ONLY (email_connections_public
+  // view; the refresh-token ciphertext never leaves the server).
+  // Admin-only card: hidden for members, and no read is attempted for
+  // them. This is ADDITIVE: it never touches the owner's existing
+  // Apps Script email path, which keeps working unchanged.
+  const emailCard = $('section-email');
+  if (emailCard) emailCard.style.display = household.role === 'admin' ? '' : 'none';
+  if (household.role === 'admin') {
+    try {
+      const { data: conns, error: connErr } = await supabase.from('email_connections_public')
+        .select('id, provider, email_address, status, last_poll_at, last_error')
+        .eq('household_id', household.household_id).order('created_at', { ascending: false });
+      if (connErr) throw connErr;
+      const rows = conns ?? [];
+      const line = $('emailStatusLine');
+      if (line) line.textContent = rows.length ? '' : 'No email connected yet.';
+      const listEl = $('emailConnectionsList');
+      if (listEl) {
+        listEl.textContent = '';
+        if (!rows.length) {
+          const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'None — connect an email above.'; listEl.appendChild(p);
+        }
+        for (const c of rows) {
+          const wrap = document.createElement('div'); wrap.className = 'bank-row';
+          const info = document.createElement('div'); info.className = 'bank-info';
+          const name = document.createElement('strong'); name.textContent = c.email_address || 'Email'; info.appendChild(name);
+          const st = document.createElement('div'); st.className = 'muted small';
+          st.textContent = c.status === 'error' ? 'Needs reconnect — access was revoked or expired.' : 'Connected (read-only)';
+          info.appendChild(st);
+          if (c.last_poll_at) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = `Last checked ${fmtDateTime(c.last_poll_at)}`; info.appendChild(l); }
+          if (c.last_error) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = c.last_error; info.appendChild(l); }
+          wrap.appendChild(info);
+          const btn = document.createElement('button'); btn.className = 'btn btn-small btn-danger'; btn.type = 'button';
+          btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${c.email_address || 'email'}`);
+          btn.addEventListener('click', async () => {
+            if (!(await showConfirm('Disconnect email', `Disconnect ${c.email_address || 'this email'}? The app will stop checking it. Past purchases stay in the list.`, 'Disconnect'))) return;
+            const out = await callFn('gmail-disconnect', { household_id: household.household_id, connection_id: c.id });
+            if (!out.disconnected) { console.warn('gmail-disconnect failed:', out.error); await showAlert('Could not disconnect', 'Could not disconnect this email. Try again.'); return; }
+            await refresh();
+          });
+          wrap.appendChild(btn);
+          listEl.appendChild(wrap);
+        }
+      }
+    } catch (e) {
+      console.warn('email connections read failed:', e);
+      const line = $('emailStatusLine'); if (line) line.textContent = 'Could not load email connections.';
+      const listEl = $('emailConnectionsList'); if (listEl) listEl.innerHTML = '<p class="error">Could not load email connections. Try again.</p>';
+    }
+  }
   // Extra Fund summary — COMPLETE (spec A5): Available, Pending (not yet
   // released), Released total, Spent from fund, and Owed back (shortfall),
   // from fund_ledger / surplus_releases / week_closes aggregates. A read
@@ -1010,6 +1060,30 @@ $('registerWebhookBtn')?.addEventListener('click', async () => {
     ? `Automatic sync partly enabled — ${failed.length} connection(s) failed. Try again.`
     : 'Automatic sync enabled. New purchases will be pulled in on your next refresh.', failed.length > 0);
   if (!failed.length) { await refresh(); }
+});
+
+// Email (OAuth) connection — admin only. gmail-oauth-start derives the
+// household from the caller's own admin membership, so no household id
+// is sent (and none would be trusted). A successful start redirects
+// the whole page to Google; after consent the callback page links back
+// to the app. This never touches the Apps Script email path.
+$('connectEmailBtn')?.addEventListener('click', async () => {
+  $('emailMsg').textContent = 'Getting a secure email connection…';
+  const out = await callFn('gmail-oauth-start', {});
+  if (!out.auth_url) {
+    $('emailMsg').textContent = `Could not start the email connection: ${out.error ?? 'unknown error'}. If it says "not configured," the email connection is not set up on the server yet.`;
+    return;
+  }
+  window.location.href = out.auth_url;
+});
+
+$('pollEmailBtn')?.addEventListener('click', async () => {
+  $('emailMsg').textContent = 'Checking email…';
+  const out = await callFn('gmail-poll', { household_id: household.household_id });
+  $('emailMsg').textContent = out.error
+    ? `Email check failed: ${out.error}`
+    : `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`;
+  await refresh();
 });
 
 // Automatic sync: if a verified webhook event is waiting for this

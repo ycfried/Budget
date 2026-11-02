@@ -139,6 +139,78 @@ on this branch and refund restoration is built (see below).
 
 ---
 
+## GMAIL OAUTH DEPLOY CHECKLIST (unverified mode — branch gmail-oauth)
+
+Code-only, NOT deployed, NOT live. The owner's existing Apps Script
+email path is untouched and keeps working; this path is additive,
+per-household. Nothing here changes money rules: email alerts are
+PROVISIONAL only (Plaid authoritative), cash-back is NOT a refund,
+card payments are NOT refunds.
+
+- 1. SQL, one file, re-runnable: supabase/gmail-oauth.sql
+  (email_connections + processed_email_ids + gmail_oauth_states +
+  email_connections_public view; NO client policies on the tables, so
+  the refresh-token ciphertext is never client-readable).
+- 2. Edge Functions, dashboard editor, paste verbatim:
+  - gmail-oauth-start (index.ts only)
+  - gmail-oauth-callback (index.ts only)
+  - gmail-poll (THREE files: index.ts + gmail-parse.ts + canonical.ts
+    ALONGSIDE it — the imports are already './...'. Do NOT rewrite
+    them to ../_shared/...; that path does not exist in the dashboard
+    file tree. Keep the alongside copies in sync with
+    supabase/functions/_shared/gmail-parse.ts and canonical.ts.)
+  - gmail-disconnect (index.ts only)
+- 3. Secrets (NAMES only; values never in repo/chat): GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET, GMAIL_TOKEN_KEY — plus the existing
+  SUPABASE_SECRET_KEY (current secret key) from the audit deploy.
+  Per parent record (Nov 1 overnight), GOOGLE_CLIENT_ID and
+  GOOGLE_CLIENT_SECRET are ALREADY set in Edge Function secrets and
+  the Google Cloud project "OnBudget" already exists with a Testing
+  consent screen, gmail.readonly as the only scope, test users
+  ycfried1@gmail.com and chayasf1@gmail.com, and a Web OAuth client
+  whose only redirect URI is the one in item 4. At deploy time,
+  verify the secret NAMES are present; do not re-set values blindly.
+  GMAIL_TOKEN_KEY still needs to be set (new key for token
+  encryption, same pattern as PLAID_TOKEN_KEY). GOOGLE_CLIENT_ID
+  appears in the authorization URL by design (it is a public OAuth
+  identifier); the SECRET is server-side only.
+- 4. Redirect URI, EXACT (already the client's only redirect URI per
+  parent record — verify, do not add others):
+  https://tnkhvdkmwmwiogiienee.supabase.co/functions/v1/gmail-oauth-callback
+- 5. Google Cloud Console steps REMAINING (cannot be done from code):
+  enable the Gmail API in the "OnBudget" project — it was NOT enabled
+  yet at last record, and the first real API call will fail without
+  it. Consent screen stays in TESTING mode (UNVERIFIED — the owner
+  explicitly chose not to submit for verification for now).
+- 6. Owner steps that remain after deploy:
+  - Consent click: Google WILL show an "unverified app" warning screen
+    (expected in Testing mode) — Advanced → continue. The callback
+    page then says connected and links back to live.html.
+  - After first proof, tighten the alert query/parser against a real
+    alert: current query is 'from:(americanexpress.com) "Large
+    Purchase"' and the parser mirrors the Apps Script patterns —
+    both provisional until checked against a real redacted alert.
+  - Reconnect cadence (see below): Testing-mode refresh tokens expire
+    after 7 days, so the admin reconnects roughly weekly until the app
+    is verified. gmail-poll surfaces this as status='error' +
+    'reauthorization required', never as a silent failure.
+- 7. Consequences of UNVERIFIED/Testing mode, stated plainly:
+  unverified warning at every consent; 7-day refresh-token expiry
+  (above); 100 test-user cap (irrelevant for one household).
+  Verification later is free but needs a custom domain (a github.io
+  subdomain cannot be domain-verified), privacy policy, terms,
+  homepage, and a demo — a later owner decision, not this build.
+- 8. NOT built here: scheduled/automatic polling (gmail-poll accepts a
+  service-key bearer so a future cron CAN call it, but no cron job is
+  created); verification submission; any change to the Apps Script path.
+- 9. Verify after deploy (admin only): Bank & Funds → Connect email →
+  consent → callback says connected → address appears in the list →
+  Check email now → counts message → new purchases appear as
+  provisional with 'Email alert' source → Disconnect removes the row
+  and Google revokes the token.
+
+---
+
 # Household Budget — Handoff
 
 ## FINAL BASE SPEC (Nov 1, 2026, ~11:01 PM — owner-delivered, supersedes all previous spec versions)

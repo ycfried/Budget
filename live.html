@@ -167,6 +167,19 @@
     </div>
 
 
+    <div class="card" id="section-email" style="display:none">
+      <h2>Email alerts (read-only)</h2>
+      <p class="muted small">Read-only — the app can read Amex purchase alerts, never your whole mailbox, and never sends or changes email. Purchases found here stay provisional until the bank confirms them. Connecting here does not change any existing email setup.</p>
+      <div class="btn-row">
+        <button id="connectEmailBtn" class="btn btn-primary" type="button" aria-label="Connect email">Connect email</button>
+        <button id="pollEmailBtn" class="btn" type="button" aria-label="Check email now">Check email now</button>
+      </div>
+      <div id="emailMsg" class="result"></div>
+      <p class="muted small" id="emailStatusLine"></p>
+      <h3>Connected email</h3>
+      <div id="emailConnectionsList"><p class="muted small">Loading…</p></div>
+    </div>
+
     <div class="card" id="settingsCard" style="display:none">
       <h2>Settings (admin only)</h2>
       <p class="muted small">Only the admin can change these.</p>
