@@ -81,12 +81,14 @@ async function refresh() {
   try {
   // Webhook-triggered auto-sync happens first, so the numbers and
   // list below already include any purchases Plaid just announced.
-  await autoSyncIfWebhookPending();
+  await Promise.race([autoSyncIfWebhookPending(), new Promise((r) => setTimeout(r, 8000))]);
   $('householdId').textContent = household.household_id;
   const rbadge = document.getElementById('roleBadge'); if (rbadge) rbadge.textContent = `LIVE · ${household.role.toUpperCase()}`;
   const ls = document.getElementById('lastSync'); if (ls) ls.textContent = new Date().toLocaleString();
 
   const { data: { session: s } } = await supabase.auth.getSession();
+  const pe = document.getElementById('profileEmail'); if (pe && s?.user?.email) pe.textContent = s.user.email;
+  const pr = document.getElementById('profileRole'); if (pr) pr.textContent = household.role;
   const token = s?.access_token ?? '';
   // Temporary increases for the current week (sum of grants) are passed
   // as T to compute-week; without this the engine defaults T to 0.
@@ -132,7 +134,11 @@ async function refresh() {
       if (allowInput && document.activeElement !== allowInput) allowInput.value = (week.result.B / 100).toFixed(2);
       $('finRefundNote').style.display = week.not_production_certified ? 'block' : 'none';
     }
-  } catch (e) { console.warn('compute-week failed:', e); }
+  } catch (e) {
+    console.warn('compute-week failed:', e);
+    const weekErr2 = document.getElementById('weekError');
+    if (weekErr2) { weekErr2.textContent = "Couldn't update this week's numbers — check your connection and try again."; weekErr2.classList.remove('hidden'); }
+  }
 
   const { data: txns } = await supabase.from('transactions')
     .select('*').eq('household_id', household.household_id)
@@ -385,7 +391,7 @@ $('signUpBtn').addEventListener('click', async () => {
 $('signOutBtn').addEventListener('click', async () => {
   await supabase.auth.signOut(); household = null; await show('auth');
 });
-$('refreshBtn').addEventListener('click', refresh);
+// No header Refresh button anymore: tapping a tab refreshes.
 
 $('createHouseholdBtn').addEventListener('click', async () => {
   // Household creation is server-side only — but NOT via the Edge
@@ -557,7 +563,17 @@ function showView(name) {
   });
   window.scrollTo(0, 0);
 }
-document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { showView(b.dataset.view); refresh(); }));
+document.getElementById('profileBtn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const menu = document.getElementById('profileMenu');
+  menu.classList.toggle('hidden');
+  document.getElementById('profileBtn').setAttribute('aria-expanded', menu.classList.contains('hidden') ? 'false' : 'true');
+});
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('profileMenu');
+  if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target) && e.target.id !== 'profileBtn' && !document.getElementById('profileBtn')?.contains(e.target)) menu.classList.add('hidden');
+});
 document.getElementById('showHouseholdIdBtn')?.addEventListener('click', (e) => {
   const el = document.getElementById('householdId');
   el.classList.toggle('hidden');

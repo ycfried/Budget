@@ -198,9 +198,19 @@ label { font-size: 14px; font-weight: 600; }
 #view-app .grid { gap: 10px; }
 #view-app .grid .card { padding: 14px 16px; }
 #view-app .stat-hint { margin: 2px 0 8px; }
-/* Header + banner: let them wrap instead of crowding on narrow phones. */
-#liveTopbar { flex-wrap: wrap; gap: 8px; }
+/* Header: title centered, profile icon on the right (no stray buttons). */
+#liveTopbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; z-index: 30; }
+#liveTopbar .topbar-title { text-align: center; }
+#liveTopbar .topbar-right { display: flex; justify-content: flex-end; }
 #liveTopbar .badge { margin-left: 4px; }
+.profile-btn { width: 42px; height: 42px; border-radius: 50%; background: #f3efe8;
+  border: 1px solid #ddd3bf; color: var(--green); display: flex; align-items: center;
+  justify-content: center; cursor: pointer; }
+.profile-menu { position: absolute; right: 14px; top: 62px; background: #fff;
+  border: 1px solid var(--hairline); border-radius: 14px; padding: 16px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.15); width: 250px; z-index: 40; }
+.profile-menu p { margin: 4px 0; overflow-wrap: anywhere; }
+.profile-menu .btn { margin-top: 12px; width: 100%; }
 /* Filter chips: real tap targets (was 6px padding, easy to miss). */
 .tx-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 14px; }
 .tx-chip {
@@ -309,8 +319,8 @@ label { font-size: 14px; font-weight: 600; }
    #view-app, so the earlier restyle missed them and they looked like
    a different app). Refresh is a normal secondary button; Sign out
    is quiet text, since it is not an action you take often. */
-#liveTopbar #refreshBtn { background: #f3efe8; border: 1px solid #ddd3bf; color: var(--green); }
-#liveTopbar #signOutBtn { background: none; border: 0; color: var(--muted); padding: 11px 8px; }
+/* Side-by-side buttons get real breathing room (live app only). */
+#view-app .btn { margin: 0 8px 8px 0; }
 /* Transaction controls: each filter gets its own line, label above
    its dropdown, so "Month" no longer crowds the button above it. */
 #section-transactions > label { display: block; margin: 10px 0 4px; font-weight: 600; }

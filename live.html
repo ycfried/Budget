@@ -12,9 +12,19 @@
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
-  <div><strong>Household Budget</strong></div>
-  <button id="refreshBtn" class="btn btn-small" type="button" aria-label="Refresh the live dashboard">Refresh</button>
-  <button id="signOutBtn" class="btn btn-small" type="button" aria-label="Sign out of the live app">Sign out</button>
+  <div class="topbar-left"></div>
+  <div class="topbar-title"><strong>Household Budget</strong></div>
+  <div class="topbar-right">
+    <button id="profileBtn" class="profile-btn" type="button" aria-label="Open profile menu" aria-expanded="false">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
+    </button>
+    <div id="profileMenu" class="profile-menu hidden">
+      <p class="small muted">Signed in as</p>
+      <p class="small"><strong id="profileEmail">—</strong></p>
+      <p class="small muted">Role: <span id="profileRole">—</span></p>
+      <button id="signOutBtn" class="btn" type="button" aria-label="Sign out of the live app">Sign out</button>
+    </div>
+  </div>
 </header>
 
 <main>
