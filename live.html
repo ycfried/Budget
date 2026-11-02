@@ -16,9 +16,8 @@
 </header>
 
 <div class="demo-banner" id="liveBanner" role="alert">
-  <strong>LIVE — SHARED</strong> — Connected to the Supabase Budget project.
-  Both phones see the same household once both accounts join it.
-  Last sync: <span id="lastSync">—</span>
+  <strong>Live · Shared</strong>
+  <span class="muted small">Last updated <span id="lastSync">—</span></span>
   <button id="refreshBtn" class="btn btn-small" type="button" aria-label="Refresh the live dashboard">Refresh</button>
 </div>
 
@@ -65,8 +64,8 @@
       <p class="muted small">Household ID: <span id="householdId"></span> · Role: <span id="roleText"></span></p>
       <div id="weekBreakdown" class="hidden"></div>
     </div>
+    <p class="muted small stat-hint">Tap any number for its breakdown.</p>
     <div class="grid" id="section-stats">
-      <p class="muted small" style="grid-column:1/-1">Tap any number for its breakdown.</p>
       <div class="card stat-card" data-stat="allowance" role="button" tabindex="0" aria-label="Show breakdown for Weekly allowance"><div class="kicker">Weekly allowance</div><div class="num" id="statAllowance"></div></div>
       <div class="card stat-card" data-stat="spent" role="button" tabindex="0" aria-label="Show breakdown for Weekly spent (normal)"><div class="kicker">Weekly spent (normal)</div><div class="num" id="statSpent"></div></div>
       <div class="card stat-card" data-stat="debt" role="button" tabindex="0" aria-label="Show breakdown for Incoming debt"><div class="kicker">Incoming debt</div><div class="num" id="statDebt"></div></div>
@@ -200,8 +199,7 @@
 </main>
 
 <footer class="foot muted small">
-  Household Budget — Live (Supabase). The demo at index.html is unchanged and
-  still runs on fake data. This live page is the shared version.
+  Household Budget
 </footer>
 
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
