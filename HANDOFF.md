@@ -212,6 +212,19 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   above all — household isolation and multi-item sync already
   support that. Still missing: fund allocations against the fund
   balance, week history / surplus releases, live CSV import.
+- BETA POLISH PASS 2 LIVE Nov 1, evening (owner unavailable to
+  test; agent-tested against the original spec): card padding
+  22px / 24px gaps, header and banner wrap on narrow phones,
+  filter chips enlarged to real tap targets, long merchant names
+  truncate with ellipsis and expand on tap (amount can never be
+  pushed off-screen), negative weekly-available shown red,
+  refunds tinted, "This week only" toggle (current Sun–Sat week),
+  Exclude now admin-only in the UI with a reason prompt recorded
+  in the audit log. Note: server-side admin-only exclude still
+  needs an RPC to be fully enforced; the spouse no longer sees
+  Exclude/Restore buttons. Spec gaps still open: week history /
+  surplus releases, fund allocations, live CSV import, savings
+  four numbers, persisted sync health, FIN-REFUND-001.
 - Live admin RPCs applied Nov 1, evening ("Success. No rows
   returned"): approve_fund_request, decline_fund_request,
   set_base_allowance — all SECURITY DEFINER, admin-only, audit-logged.
