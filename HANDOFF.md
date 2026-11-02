@@ -648,3 +648,7 @@ and (as a copy) the compute-week function. All amounts integer cents.
 - Gmail: forwarding DISABLED, Cricket gateway address untouched.
 - Live app: https://ycfried.github.io/Budget/live.html loads and
   shows the LIVE banner (not DEMO).
+
+## Brand decision (Nov 1, 2026, ~11:11 PM — owner)
+- App name: **OnBudget** (chosen over Allowance, UnderBudget, Balanced, Weekly, Spare — Spare rejected: does not sound like a budget app).
+- Mark direction: the on-button-style blue ring (gap at top) with thin subtle lines hinting at pie-chart spending categories, on white — file `brand/media-generation-logo-onbutton-segments-white-0-00a81351-a4ce-4af5-a392-712780a4b3ab.webp`. Earlier marks (pot, week dots, sprout, check, house, ring, pies) set aside. Rename + icon set + App Store name-availability check still to do once the mark is confirmed final.
