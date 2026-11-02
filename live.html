@@ -50,12 +50,12 @@
 
   <section id="view-app" class="hidden">
     <nav class="app-nav" aria-label="App sections">
-      <button class="app-nav-link" data-scroll-to="section-week" type="button">Week</button>
-      <button class="app-nav-link" data-scroll-to="section-transactions" type="button">Purchases</button>
-      <button class="app-nav-link" data-scroll-to="section-bank" type="button">Bank</button>
-      <button class="app-nav-link" data-scroll-to="section-savings" type="button">Savings</button>
-      <button class="app-nav-link" data-scroll-to="section-fund" type="button">Extra Fund</button>
-      <button class="app-nav-link" data-scroll-to="section-activity" type="button">Activity</button>
+      <button class="app-nav-link" data-view="week" type="button">Week</button>
+      <button class="app-nav-link" data-view="purchases" type="button">Purchases</button>
+      <button class="app-nav-link" data-view="bank" type="button">Bank</button>
+      <button class="app-nav-link" data-view="savings" type="button">Savings</button>
+      <button class="app-nav-link" data-view="fund" type="button">Extra Fund</button>
+      <button class="app-nav-link" data-view="activity" type="button">Activity</button>
     </nav>
     <div class="card hero" id="section-week">
       <div class="kicker">Available this week · <span id="weekLabel"></span></div>
@@ -63,17 +63,19 @@
       <p class="muted">From the server (compute-week). Provisional transactions are
       included and marked. A negative number means over this week's budget.</p>
       <p class="muted small">Household ID: <span id="householdId"></span> · Role: <span id="roleText"></span></p>
+      <div id="weekBreakdown" class="hidden"></div>
     </div>
-    <div class="grid">
-      <div class="card"><div class="kicker">Weekly allowance</div><div class="num" id="statAllowance"></div></div>
-      <div class="card"><div class="kicker">Weekly spent (normal)</div><div class="num" id="statSpent"></div></div>
-      <div class="card"><div class="kicker">Incoming debt</div><div class="num" id="statDebt"></div></div>
-      <div class="card"><div class="kicker">Refund credit carried</div><div class="num" id="statCredit"></div></div>
+    <div class="grid" id="section-stats">
+      <p class="muted small" style="grid-column:1/-1">Tap any number for its breakdown.</p>
+      <div class="card stat-card" data-stat="allowance" role="button" tabindex="0" aria-label="Show breakdown for Weekly allowance"><div class="kicker">Weekly allowance</div><div class="num" id="statAllowance"></div></div>
+      <div class="card stat-card" data-stat="spent" role="button" tabindex="0" aria-label="Show breakdown for Weekly spent (normal)"><div class="kicker">Weekly spent (normal)</div><div class="num" id="statSpent"></div></div>
+      <div class="card stat-card" data-stat="debt" role="button" tabindex="0" aria-label="Show breakdown for Incoming debt"><div class="kicker">Incoming debt</div><div class="num" id="statDebt"></div></div>
+      <div class="card stat-card" data-stat="credit" role="button" tabindex="0" aria-label="Show breakdown for Refund credit carried"><div class="kicker">Refund credit carried</div><div class="num" id="statCredit"></div></div>
     </div>
 
     <div class="card" id="section-transactions">
       <h2>Transactions (shared)</h2>
-      <p class="muted small">Everything spent on the household cards, from all sources. Use the filters and search to find a purchase, and exclude anything that should not count toward the week.</p>
+      <p class="muted small">Everything spent on the household cards, from all sources. Tap any purchase for its full detail — what week it counts in, where it came from, and its actions. Use the filters and search to find a purchase, and exclude anything that should not count toward the week.</p>
       <div class="tx-chips" role="group" aria-label="Filter transactions">
         <button class="tx-chip active" data-tx-filter="all" type="button" aria-label="Show all transactions">All</button>
         <button class="tx-chip" data-tx-filter="pending" type="button" aria-label="Show pending transactions only">Pending</button>
@@ -87,7 +89,7 @@
       <ul id="txList" class="plain"></ul>
     </div>
 
-    <div class="card">
+    <div class="card" id="section-manual">
       <h2>Add a manual purchase (provisional)</h2>
       <p class="muted small">Record a purchase by hand. It counts as provisional until the bank confirms it.</p>
       <form id="manualForm">

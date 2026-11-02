@@ -164,25 +164,48 @@ async function refresh() {
   $('txList').innerHTML = shown.length
     ? shown.map((t) => {
         const excluded = t.excluded === true || t.state === 'excluded';
-        // Spec A7: only the admin excludes or reverses. UI-gated here;
-        // server-side enforcement still needs an RPC (see report).
         const isAdmin = household.role === 'admin';
+        // Delete is honest about what it can do: a hand-entered
+        // purchase can be truly deleted; a bank/email/file record
+        // cannot be erased (the bank would re-sync it), so for those
+        // "Remove" excludes it from the week and keeps the record.
+        const deleteBtn = !isAdmin ? ''
+          : t.source === 'manual'
+          ? `<button class="btn btn-small" data-delete-tx="${t.id}" type="button" aria-label="Delete ${esc(t.merchant)}">Delete</button>`
+          : `<button class="btn btn-small" data-remove-tx="${t.id}" type="button" aria-label="Remove ${esc(t.merchant)} from the budget">Remove</button>`;
         const action = !isAdmin ? ''
           : excluded
-          ? `<button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button>`
-          : `<button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button>`;
+          ? `<button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${deleteBtn}`
+          : `<button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn}`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
-        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-line1"><strong class="tx-name" title="${esc(t.merchant)}" data-expand-name aria-label="Show full merchant name">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
+        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1"><strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
         <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'EXCLUDED' : esc(t.state.toUpperCase())}</span>
         <span class="pill">${esc(sourceLabel(t.source))}</span>
-        <span class="muted small tx-meta">${esc(t.date)} · ••${esc(t.card_suffix)}</span> ${action}</div></li>`;
+        <span class="muted small tx-meta">${esc(t.date)} · ••${esc(t.card_suffix)}</span> <span class="muted small">Tap for detail ▾</span></div></div>
+        <div class="tx-detail hidden" id="tx-detail-${t.id}">
+          <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${esc(t.kind)})</p>
+          <p class="small muted">Date: ${esc(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
+          Card: ••${esc(t.card_suffix)} · Source: ${esc(sourceLabel(t.source))} · Status: ${excluded ? 'excluded from week math' : esc(t.state)}<br>
+          ${excluded ? 'This purchase is kept for the record but does not count toward any week.' : 'This purchase counts toward its week unless excluded.'}</p>
+          <div>${action}</div>
+        </div></li>`;
       }).join('')
     : `<li class="tx-empty">${emptyHint}</li>`;
-  // Tap a truncated merchant name to expand it in place (title attr
-  // covers long-press / hover on devices that support it).
-  document.querySelectorAll('[data-expand-name]').forEach((el) => el.addEventListener('click', () => {
-    el.classList.toggle('expanded');
+  // Tap a row header to expand / collapse its detail panel.
+  document.querySelectorAll('[data-tx-head]').forEach((el) => el.addEventListener('click', () => {
+    document.getElementById(`tx-detail-${el.dataset.txHead}`)?.classList.toggle('hidden');
   }));
+  // Week breakdown (toggled by tapping a stat card): totals by source
+  // across the loaded transactions, excluding excluded rows.
+  const bd = document.getElementById('weekBreakdown');
+  if (bd) {
+    const counted = all.filter((t) => !(t.excluded === true || t.state === 'excluded'));
+    const bySrc = {};
+    for (const t of counted) bySrc[t.source] = (bySrc[t.source] ?? 0) + t.amount_cents;
+    const refundTotal = counted.filter((t) => t.kind === 'refund').reduce((s, t) => s + t.amount_cents, 0);
+    bd.innerHTML = `<p class="small"><strong>Where this spending came from:</strong><br>${Object.entries(bySrc).map(([s, v]) => `${esc(sourceLabel(s))}: ${formatCents(v)}`).join(' · ') || 'nothing yet'}<br>
+      Refunds in this list: ${formatCents(refundTotal)} · Excluded purchases kept out of the math: ${all.length - counted.length}</p>`;
+  }
   document.querySelectorAll('[data-exclude]').forEach((b) => b.addEventListener('click', async () => {
     // Spec A7: exclusion needs a reason, recorded in the audit log.
     const reason = (window.prompt('Why exclude this purchase? (optional — left blank it is recorded without a reason)') ?? '').trim();
@@ -208,6 +231,23 @@ async function refresh() {
     await refresh();
   }));
 
+  document.querySelectorAll('[data-delete-tx]').forEach((b) => b.addEventListener('click', async () => {
+    const row = all.find((t) => t.id === b.dataset.deleteTx);
+    if (!row || !window.confirm(`Delete "${row.merchant}" ${formatCents(row.amount_cents)}? This removes the hand-entered purchase and cannot be undone.`)) return;
+    const { error } = await supabase.rpc('delete_transaction', { p_transaction_id: b.dataset.deleteTx });
+    if (error) { alert(`Could not delete: ${error.message}`); return; }
+    await refresh();
+  }));
+  document.querySelectorAll('[data-remove-tx]').forEach((b) => b.addEventListener('click', async () => {
+    const row = all.find((t) => t.id === b.dataset.removeTx);
+    if (!row || !window.confirm(`Remove "${row.merchant}" ${formatCents(row.amount_cents)} from the budget? The bank record stays with the bank — this only stops it counting here.`)) return;
+    const { error } = await supabase.from('transactions')
+      .update({ state: 'excluded', excluded: true }).eq('id', b.dataset.removeTx);
+    if (error) { alert(`Could not remove: ${error.message}`); return; }
+    await audit('Transaction removed from budget', `${row.merchant} ${formatCents(row.amount_cents)} excluded from week math.`);
+    await refresh();
+  }));
+
   const { data: reqs } = await supabase.from('fund_requests')
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(50);
@@ -216,9 +256,19 @@ async function refresh() {
         const btns = (household.role === 'admin' && r.status === 'pending')
           ? ` <button class="btn btn-small" data-approve="${r.id}" type="button" aria-label="Approve this Extra Fund request">Approve</button> <button class="btn btn-small" data-decline="${r.id}" type="button" aria-label="Decline this Extra Fund request">Decline</button>`
           : '';
-        return `<li>${formatCents(r.amount_cents)} · ${esc(r.status.toUpperCase())} · ${esc(r.note || '')}${btns}</li>`;
+        return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(r.status.toUpperCase())} · ${esc(r.note || '')} <span class="muted small">Tap for detail ▾</span></div>
+        <div class="tx-detail hidden" id="fund-detail-${r.id}">
+          <p class="small muted">Amount: ${formatCents(r.amount_cents)} · Status: ${esc(r.status)}<br>
+          Note: ${esc(r.note || '—')}<br>
+          Requested: ${esc(new Date(r.created_at).toLocaleString())}<br>
+          ${r.status === 'pending' ? 'Waiting on the admin decision.' : 'Decision recorded; spending against the fund balance is a separate step.'}</p>
+          <div>${btns}</div>
+        </div></li>`;
       }).join('')
     : '<li>No fund requests yet.</li>';
+  document.querySelectorAll('[data-fund-head]').forEach((el) => el.addEventListener('click', () => {
+    document.getElementById(`fund-detail-${el.dataset.fundHead}`)?.classList.toggle('hidden');
+  }));
   document.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
     const { error } = await supabase.rpc('approve_fund_request', { p_request_id: b.dataset.approve });
     if (error) alert(`Could not approve: ${error.message}`); else await refresh();
@@ -248,6 +298,7 @@ async function refresh() {
   const connRefresh = $('connLastRefresh');
   if (connRefresh) connRefresh.textContent = new Date().toLocaleString();
 
+  showView(currentView);
   const { data: auditRows } = await supabase.from('audit_log')
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(50);
@@ -326,6 +377,12 @@ $('manualForm').addEventListener('submit', async (e) => {
   const suffix = f.suffix.value.trim();
   if (!/^\d{4}$/.test(suffix)) { alert('Card suffix must be exactly 4 digits. Never enter a full card number.'); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
+  // Smarter entry: warn on an apparent duplicate instead of silently
+  // creating a second copy of the same purchase.
+  const { data: dupes } = await supabase.from('transactions')
+    .select('merchant, amount_cents, date').eq('household_id', household.household_id)
+    .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
+  if ((dupes ?? []).length && !window.confirm(`A purchase already exists for ${merchant} ${formatCents(amount)} on ${f.date.value}. Add it again anyway?`)) return;
   const hash = await sha(`${f.date.value}|${merchant}|${amount}|${suffix}`);
   const { error } = await supabase.from('transactions').insert({
     household_id: household.household_id, date: f.date.value, merchant,
@@ -418,23 +475,49 @@ async function autoSyncIfWebhookPending() {
   if (pending?.length) await runBankSync();
 }
 
-// Section navigation: tap a tab to jump to that part of the page
-// instead of scrolling one long list. The active tab follows the
-// section nearest the top of the viewport.
-document.querySelectorAll('[data-scroll-to]').forEach((b) => b.addEventListener('click', () => {
-  document.getElementById(b.dataset.scrollTo)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}));
-const navSections = ['section-week', 'section-transactions', 'section-bank', 'section-savings', 'section-fund', 'section-activity'];
-window.addEventListener('scroll', () => {
-  let current = navSections[0];
-  for (const id of navSections) {
+// Section views: the nav tabs are real screens, not jump links —
+// only one section group is shown at a time, so the app is never
+// one long scrollable page. Choice persists across visits.
+const VIEWS = {
+  week: ['section-week', 'section-stats', 'settingsCard', 'finRefundNote'],
+  purchases: ['section-transactions', 'section-manual'],
+  bank: ['section-bank', 'connectionsCard'],
+  savings: ['section-savings'],
+  fund: ['section-fund'],
+  activity: ['section-activity'],
+};
+const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
+let currentView = localStorage.getItem('hb-view') || 'week';
+if (!VIEWS[currentView]) currentView = 'week';
+function showView(name) {
+  currentView = name;
+  localStorage.setItem('hb-view', name);
+  for (const id of ALL_VIEW_SECTIONS) {
     const el = document.getElementById(id);
-    if (el && el.getBoundingClientRect().top <= 80) current = id;
+    if (!el) continue;
+    if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
+    if (id === 'settingsCard') { el.style.display = (household && household.role === 'admin') ? '' : 'none'; continue; }
+    if (id === 'finRefundNote') continue; // refresh() already sets this from the server flag
+    el.style.display = '';
   }
-  document.querySelectorAll('[data-scroll-to]').forEach((b) => {
-    b.classList.toggle('active', b.dataset.scrollTo === current);
+  document.querySelectorAll('[data-view]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.view === name);
+    b.setAttribute('aria-pressed', b.dataset.view === name ? 'true' : 'false');
   });
-}, { passive: true });
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+// Stat cards: tap any number to toggle the week breakdown panel.
+document.querySelectorAll('[data-stat]').forEach((el) => el.addEventListener('click', () => {
+  document.getElementById('weekBreakdown')?.classList.toggle('hidden');
+}));
+function weekRangeOf(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
+  const sat = new Date(sun); sat.setDate(sat.getDate() + 6);
+  const f = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  return `${f(sun)} to ${f(sat)}`;
+}
 
 // Transaction filters: chips combine with the search box; refresh()
 // re-renders the list with both applied.

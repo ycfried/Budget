@@ -268,3 +268,11 @@ label { font-size: 14px; font-weight: 600; }
   .grid { grid-template-columns: 1fr 1fr; }
   .hero .big { font-size: 36px; }
 }
+
+/* View screens + tappable rows (live app only). */
+#view-app .stat-card { cursor: pointer; }
+#view-app .tx-head { cursor: pointer; }
+#view-app .tx-detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e2d8; }
+#view-app .tx-detail p { margin: 4px 0; }
+#view-app .tx-detail .btn { margin-right: 6px; margin-top: 4px; }
+#view-app #weekBreakdown { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.25); }
