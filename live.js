@@ -994,7 +994,11 @@ $('joinHouseholdBtn').addEventListener('click', async () => {
   // never displays or shares.
   const { data, error } = await supabase.rpc('join_household_by_code', { code });
   if (error) console.warn('join_household_by_code failed:', error.message);
-  $('householdMsg').textContent = error ? 'Join failed. Check the invite code and try again.' : 'Joined. Loading shared budget…';
+  // A NULL return means the code was invalid (the function logs the
+  // failed attempt and returns NULL instead of raising, so the log
+  // survives — see supabase/n13-invite-rate-limit.sql). Treat it
+  // exactly like the old exception: same generic message, no join.
+  $('householdMsg').textContent = (error || !data) ? 'Join failed. Check the invite code and try again.' : 'Joined. Loading shared budget…';
   if (!error && data) { household = { household_id: data, role: 'member' }; await show('app'); await refresh(); }
 });
 
