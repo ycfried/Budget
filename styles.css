@@ -368,10 +368,11 @@ body.live #view-app .app-nav-link svg { width: 22px; height: 22px; display: bloc
 body.live #view-app .app-nav-link.active { color: #2f6bff; border-bottom: 0; }
 /* Bottom toast: in-app messages float above the tab bar instead of
    pushing cards around. Brand blue for all messages, errors included
-   (owner: the red error bar was ugly and off-brand). It
-   auto-dismisses after 4 seconds; tapping it dismisses it sooner;
+   (owner: the red error bar was ugly and off-brand). It sits well
+   clear of the tab bar (owner: it was too close to the bottom).
+   It auto-dismisses after 4 seconds; tapping it dismisses it sooner;
    switching tabs clears it. */
-body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 76px; z-index: 40;
+body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 120px; z-index: 40;
   background: #2f6bff; color: #fff; padding: 12px 14px; border-radius: 12px;
   font-size: 14px; line-height: 1.4; box-shadow: 0 8px 24px rgba(16,24,40,.25); }
 /* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
