@@ -148,5 +148,5 @@ test('filterNewMessageIds: drops already-processed ids only', () => {
 });
 
 test('buildAlertQuery: Amex Large Purchase alerts only, no label logic', () => {
-  assert.equal(buildAlertQuery(), 'from:(americanexpress.com) "Large Purchase"');
+  assert.equal(buildAlertQuery(), 'from:(americanexpress.com) subject:"Large Purchase"');
 });

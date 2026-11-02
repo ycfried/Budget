@@ -35,7 +35,7 @@ export function authResultsPass(authResults: string): boolean {
 // gmail.modify scope is never needed. Tightening this against a real
 // alert is an owner step after first proof (see HANDOFF checklist).
 export function buildAlertQuery(): string {
-  return 'from:(americanexpress.com) "Large Purchase"';
+  return 'from:(americanexpress.com) subject:"Large Purchase"';
 }
 
 export type GmailHeader = { name: string; value: string };

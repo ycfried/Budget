@@ -35,7 +35,12 @@ export function authResultsPass(authResults: string): boolean {
 // gmail.modify scope is never needed. Tightening this against a real
 // alert is an owner step after first proof (see HANDOFF checklist).
 export function buildAlertQuery(): string {
-  return 'from:(americanexpress.com) "Large Purchase"';
+  // Subject-phrase only: the bare whole-message phrase also matched
+  // Amex STATEMENT emails, which mention Large Purchase alerts in the
+  // body (owner, Nov 2, 2026: the first poll's 2 matches were
+  // statements, correctly left unparsed). Real charge alerts carry
+  // "Large Purchase Alert" in the subject; statements' subjects don't.
+  return 'from:(americanexpress.com) subject:"Large Purchase"';
 }
 
 export type GmailHeader = { name: string; value: string };
