@@ -1,6 +1,6 @@
 # Household Budget — Handoff (single source of truth)
 
-> Last updated: Nov 1, 2026, ~8:10 PM EST (webhooks deployed; section navigation live).
+> Last updated: Nov 1, 2026, ~8:25 PM EST (real screens, tappable rows, delete live).
 > If this file and any chat message disagree, this file wins — update it
 > whenever the state changes, and say so in the reply that announces it.
 > No secrets, passwords, tokens, or full card numbers ever belong in this
@@ -308,6 +308,17 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   sync" in the app (admin), and a real SYNC_UPDATES_AVAILABLE
   webhook still has to be observed recorded + auto-synced. Do not
   claim webhooks work until that chain is observed.
+- **REAL SCREENS + TAPPABLE ROWS + DELETE, live Nov 1, ~8:20 PM EST:**
+  the nav tabs are now real screens (only one section group shows at
+  a time; choice remembered). Tapping a purchase opens its detail
+  (week it counts in, source, status, actions); tapping a stat card
+  shows the week breakdown by source; fund requests expand too.
+  Delete: hand-entered purchases truly delete via the admin-only
+  delete_transaction RPC (applied Nov 1, ~8:23 PM EST, "Success. No
+  rows returned"; deletion itself is audit-logged). Bank/email/file
+  rows cannot be erased (the bank would re-sync them), so the UI's
+  Remove button excludes them from week math instead. Manual entry
+  warns on an apparent duplicate (same store, amount, date).
 - **SECTION NAVIGATION, live Nov 1, ~8:05 PM EST:** the live app
   has a sticky tab bar (Week · Purchases · Bank · Savings ·
   Extra Fund · Activity) that jumps to each section and highlights
