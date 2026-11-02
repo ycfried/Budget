@@ -1111,7 +1111,7 @@ async function autoSyncIfWebhookPending() {
 // only one section group is shown at a time, so the app is never
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
-  week: ['section-sync-top', 'section-week', 'section-stats', 'section-hint', 'section-recent'],
+  week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
   purchases: ['section-manual', 'section-csv', 'section-transactions'],
   money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask'],
   activity: ['section-activity', 'section-week-history'],
@@ -1158,13 +1158,17 @@ function showView(name, opts = {}) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-sync-top') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-use') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
     b.classList.toggle('active', b.dataset.view === name);
     b.setAttribute('aria-pressed', b.dataset.view === name ? 'true' : 'false');
   });
+  // Home sync button lives inside the hero card now (not its own
+  // section above it): gate the button itself, admin-only.
+  const homeSync = document.getElementById('homeSyncBtn');
+  if (homeSync) homeSync.style.display = (household && household.role === 'admin') ? '' : 'none';
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
