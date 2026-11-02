@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
 
         for (const tx of [...(data.added ?? []), ...(data.modified ?? [])]) {
           const isModified = (data.modified ?? []).includes(tx);
-          const result = await upsertPlaidTx(supabase, householdId, tx, maskByAccount);
+          const result = await upsertPlaidTx(supabaseAdmin, householdId, tx, maskByAccount);
           if (result === 'added') added++;
           else if (result === 'updated') updated++;
           else skipped++;
@@ -321,7 +321,7 @@ Deno.serve(async (req) => {
 // match -> insert. Returns 'added' | 'updated' | 'skipped'.
 async function upsertPlaidTx(
   // deno-lint-ignore no-explicit-any
-  supabase: any,
+  supabaseAdmin: any,
   householdId: string,
   tx: Record<string, any>,
   maskByAccount: Map<string, string>,
