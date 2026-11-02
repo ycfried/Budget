@@ -28,6 +28,8 @@ let session = null;
 let household = null; // { household_id, role }
 let txFilter = 'all'; // all | pending | posted | refunds | excluded
 let txSort = localStorage.getItem('hb-tx-sort') || 'date-desc'; // date-desc | date-asc | amount-asc | amount-desc
+let txMonth = localStorage.getItem('hb-tx-month') || 'all'; // 'all' or 'YYYY-MM'
+let txCard = localStorage.getItem('hb-tx-card') || 'all'; // 'all' or card suffix
 let txWeekOnly = false; // spec B5: transactions filter by week (client-side, current Sun–Sat week)
 let lastBankSyncText = null; // last Sync button result, this session only
 let lastBankSyncTime = null;
@@ -142,7 +144,7 @@ async function refresh() {
   const fmtD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const weekStartStr = fmtD(sundayD); const weekEndStr = fmtD(saturdayD);
   const inThisWeek = (t) => t.date >= weekStartStr && t.date <= weekEndStr;
-  const shown = all.filter((t) => byFilter(t) && (!txWeekOnly || inThisWeek(t)) && (!q
+  const shown = all.filter((t) => byFilter(t) && (txMonth === 'all' || String(t.date).startsWith(txMonth)) && (txCard === 'all' || String(t.card_suffix) === txCard) && (!txWeekOnly || inThisWeek(t)) && (!q
     || t.merchant.toLowerCase().includes(q)
     || String(t.date).includes(q)
     || formatCents(t.amount_cents).toLowerCase().includes(q)));
@@ -155,8 +157,32 @@ async function refresh() {
   shown.sort(sorters[txSort] ?? sorters['date-desc']);
   const sortEl = $('txSort');
   if (sortEl) sortEl.value = txSort;
+  // Month + card dropdowns are built from the months/cards actually
+  // present in the loaded transactions, newest first.
+  const monthSel = $('txMonth');
+  if (monthSel) {
+    const months = [...new Set(all.map((t) => String(t.date).slice(0, 7)))].sort().reverse();
+    const cur = months.includes(txMonth) ? txMonth : 'all';
+    if (cur !== txMonth) { txMonth = cur; localStorage.setItem('hb-tx-month', cur); }
+    monthSel.innerHTML = '<option value="all">All months</option>' + months.map((m) => {
+      const [y, mo] = m.split('-');
+      const label = new Date(`${m}-02T12:00:00`).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      return `<option value="${m}"${m === txMonth ? ' selected' : ''}>${label}</option>`;
+    }).join('');
+  }
+  const cardSel = $('txCard');
+  if (cardSel) {
+    const cards = [...new Set(all.map((t) => String(t.card_suffix)))].sort();
+    const cur = cards.includes(txCard) ? txCard : 'all';
+    if (cur !== txCard) { txCard = cur; localStorage.setItem('hb-tx-card', cur); }
+    cardSel.innerHTML = '<option value="all">All cards</option>' + cards.map((c) =>
+      `<option value="${c}"${c === txCard ? ' selected' : ''}>••${c}</option>`).join('');
+  }
   const countEl = $('txCount');
-  if (countEl) countEl.textContent = `Showing ${shown.length} of ${all.length} transactions${txWeekOnly ? ' · this week only' : ''}`;
+  if (countEl) {
+    const shownTotal = shown.reduce((s, t) => s + t.amount_cents, 0);
+    countEl.textContent = `Showing ${shown.length} of ${all.length} transactions${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)}`;
+  }
   const weekBtn = $('txWeekToggle');
   if (weekBtn) {
     weekBtn.classList.toggle('active', txWeekOnly);
@@ -529,6 +555,16 @@ function weekRangeOf(dateStr) {
   return `${f(sun)} to ${f(sat)}`;
 }
 
+document.getElementById('txMonth')?.addEventListener('change', (e) => {
+  txMonth = e.target.value;
+  localStorage.setItem('hb-tx-month', txMonth);
+  refresh();
+});
+document.getElementById('txCard')?.addEventListener('change', (e) => {
+  txCard = e.target.value;
+  localStorage.setItem('hb-tx-card', txCard);
+  refresh();
+});
 document.getElementById('txSort')?.addEventListener('change', (e) => {
   txSort = e.target.value;
   localStorage.setItem('hb-tx-sort', txSort);
