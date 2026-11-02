@@ -355,6 +355,12 @@ body.live #view-app .app-nav-link { flex: 1 1 0; display: flex; flex-direction: 
   gap: 2px; padding: 4px 2px; font-size: 11px; font-weight: 700; color: #6b7280; border-bottom: 0; }
 body.live #view-app .app-nav-link svg { width: 22px; height: 22px; display: block; }
 body.live #view-app .app-nav-link.active { color: #2f6bff; border-bottom: 0; }
+/* Bottom toast: in-app messages float above the tab bar instead of
+   pushing cards around. Tapping it dismisses it; switching tabs clears it. */
+body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 76px; z-index: 40;
+  background: #0f172a; color: #fff; padding: 12px 14px; border-radius: 12px;
+  font-size: 14px; line-height: 1.4; box-shadow: 0 8px 24px rgba(16,24,40,.25); }
+body.live .toast.error { background: #b91c1c; }
 /* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
    One gap system: rows use flex gap; standalone buttons use one margin. */
 body.live #view-app .btn, body.live .btn { background: #f2f4f7; border: 0; color: #0f172a;

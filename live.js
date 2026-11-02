@@ -730,7 +730,6 @@ async function refresh() {
     const shortfall = hh?.fund_shortfall_cents ?? 0;
     const fs = $('fundSummary');
     if (fs) fs.innerHTML = `<p class="fund-balance">Available <strong>${formatCents(available)}</strong></p>
-      <p class="muted small">Leftover money from weeks you spent under budget.</p>
       <p class="muted small">Pending (not yet released): ${formatCents(pending)}</p>
       <p class="muted small">Released total: ${formatCents(releasedTotal)}</p>
       <p class="muted small">Spent from fund: ${formatCents(spent)}</p>
@@ -740,9 +739,6 @@ async function refresh() {
     const fs = $('fundSummary');
     if (fs) fs.innerHTML = '<p class="error">Could not load fund balances. Try again.</p>';
   }
-  const faw = $('fundAdminWrap');
-  if (faw) faw.style.display = household.role === 'admin' ? '' : 'none';
-
   // Week history display (History tab) — READ-ONLY, from week_closes +
   // surplus_releases. The client never recomputes a week.
   try {
@@ -847,7 +843,7 @@ $('csvFile')?.addEventListener('change', async (e) => {
 });
 $('csvConfirmBtn')?.addEventListener('click', async () => {
   const msg = $('csvMsg');
-  if (!pendingCsvRows.length) { if (msg) msg.textContent = 'Nothing new to import.'; return; }
+  if (!pendingCsvRows.length) { showToast('Nothing new to import.'); return; }
   const rows = pendingCsvRows;
   const inserts = [];
   for (const r of rows) {
@@ -857,14 +853,15 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
       kind: r.amountCents < 0 ? 'refund' : 'charge', dedupe_hash: hash });
   }
   const { data, error } = await supabase.from('transactions').insert(inserts).select('id');
-  if (error) { console.warn('csv insert failed:', error.message); if (msg) msg.textContent = 'Could not import. Nothing was claimed as imported \u2014 try again.'; return; }
+  if (error) { console.warn('csv insert failed:', error.message); showToast('Could not import. Nothing was claimed as imported — try again.', true); return; }
   const added = data?.length ?? rows.length;
   await audit('CSV import', `${added} added, ${rows.length - added} not inserted.`);
   pendingCsvRows = [];
   const fileEl = $('csvFile'); if (fileEl) fileEl.value = '';
   const confirmBtn = $('csvConfirmBtn'); if (confirmBtn) confirmBtn.disabled = true;
   const preview = $('csvPreview'); if (preview) preview.innerHTML = '';
-  if (msg) msg.textContent = `Imported ${added} purchase(s) as provisional.`;
+  if (msg) msg.textContent = '';
+  showToast(`Imported ${added} purchase(s) as provisional.`);
   await refresh();
 });
 
@@ -956,40 +953,40 @@ async function callFn(name, body) {
 }
 
 $('connectBankBtn')?.addEventListener('click', async () => {
-  $('bankMsg').textContent = 'Getting a secure bank connection…';
+  showToast('Getting a secure bank connection…');
   const out = await callFn('plaid-link', { household_id: household.household_id });
   if (!out.link_token) {
-    $('bankMsg').textContent = `Could not start the bank connection: ${out.error ?? 'unknown error'}. If it says "not configured," the bank connection is not set up on the server yet.`;
+    showToast(`Could not start the bank connection: ${out.error ?? 'unknown error'}. If it says "not configured," the bank connection is not set up on the server yet.`, true);
     return;
   }
   const handler = window.Plaid.create({
     token: out.link_token,
     onSuccess: async (publicToken, metadata) => {
-      $('bankMsg').textContent = 'Bank approved — finishing the secure connection…';
+      showToast('Bank approved — finishing the secure connection…');
       const ex = await callFn('plaid-exchange', {
         household_id: household.household_id,
         public_token: publicToken,
         institution_name: metadata?.institution?.name ?? null,
       });
-      $('bankMsg').textContent = ex.connected
+      showToast(ex.connected
         ? 'Connected. Tap "Sync bank transactions now" to pull transactions.'
-        : `Connection could not be finished: ${ex.error ?? 'unknown error'}`;
+        : `Connection could not be finished: ${ex.error ?? 'unknown error'}`, !ex.connected);
       if (ex.connected) { await refresh(); } // connection state now comes from plaid_items on refresh, not localStorage
     },
     onExit: (err) => {
-      if (err) $('bankMsg').textContent = `Bank connection closed: ${err.error_message ?? err.error_code ?? 'cancelled'}`;
+      if (err) showToast(`Bank connection closed: ${err.error_message ?? err.error_code ?? 'cancelled'}`, true);
     },
   });
   handler.open();
 });
 
 async function runBankSync() {
-  $('bankMsg').textContent = 'Syncing bank transactions…';
+  showToast('Syncing bank transactions…');
   const out = await callFn('plaid-sync', { household_id: household.household_id });
   const text = out.error
     ? `Sync failed: ${out.error}`
     : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).`;
-  $('bankMsg').textContent = text;
+  showToast(text, !!out.error);
   // No localStorage sync/connection state: refresh() re-reads last_sync_at
   // from plaid_items, which is the server truth.
   return out;
@@ -1000,21 +997,18 @@ $('syncBankBtn')?.addEventListener('click', async () => {
   await refresh();
 });
 $('homeSyncBtn')?.addEventListener('click', async () => {
-  const msg = $('homeSyncMsg');
-  if (msg) msg.textContent = 'Syncing bank transactions…';
   await runBankSync();
-  if (msg) msg.textContent = $('bankMsg')?.textContent ?? '';
   await refresh();
 });
 
 $('registerWebhookBtn')?.addEventListener('click', async () => {
-  $('bankMsg').textContent = 'Enabling automatic sync…';
+  showToast('Enabling automatic sync…');
   const out = await callFn('plaid-webhook-register', { household_id: household.household_id });
-  if (out.error) { $('bankMsg').textContent = `Could not enable automatic sync: ${out.error}`; return; }
+  if (out.error) { showToast(`Could not enable automatic sync: ${out.error}`, true); return; }
   const failed = (out.results ?? []).filter((r) => !r.ok);
-  $('bankMsg').textContent = failed.length
+  showToast(failed.length
     ? `Automatic sync partly enabled — ${failed.length} connection(s) failed. Try again.`
-    : 'Automatic sync enabled. New purchases will be pulled in on your next refresh.';
+    : 'Automatic sync enabled. New purchases will be pulled in on your next refresh.', failed.length > 0);
   if (!failed.length) { await refresh(); }
 });
 
@@ -1040,12 +1034,26 @@ async function autoSyncIfWebhookPending() {
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
   purchases: ['section-manual', 'section-transactions', 'section-csv'],
-  money: ['section-bank', 'settingsCard', 'section-savings', 'section-fund'],
+  money: ['section-bank', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask'],
   activity: ['section-activity', 'section-week-history'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
 let currentView = localStorage.getItem('hb-view') || 'week';
 if (!VIEWS[currentView]) currentView = 'week';
+// Bottom toast: in-app result messages float above the tab bar instead
+// of popping open inside cards and shoving everything below them down.
+// Function declarations hoist, so handlers below can call these freely.
+function showToast(text, isError) {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = text ?? '';
+  t.classList.toggle('error', !!isError);
+  t.classList.remove('hidden');
+}
+function hideToast() {
+  document.getElementById('toast')?.classList.add('hidden');
+}
+document.getElementById('toast')?.addEventListener('click', hideToast);
 function showView(name, opts = {}) {
   if (!VIEWS[name]) name = 'week';
   currentView = name;
@@ -1060,13 +1068,14 @@ function showView(name, opts = {}) {
     for (const id of ['bankMsg', 'homeSyncMsg', 'settingsMsg', 'tempMsg', 'savingsMsg', 'fundAllocateMsg', 'csvMsg']) {
       const el = document.getElementById(id); if (el) el.textContent = '';
     }
+    hideToast();
     document.getElementById('weekError')?.classList.add('hidden');
   }
   for (const id of ALL_VIEW_SECTIONS) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-use') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
@@ -1282,28 +1291,28 @@ $('txSearch')?.addEventListener('input', () => {
 
 $('addTempBtn')?.addEventListener('click', async () => {
   const cents = parseDollarsStrict($('tempIncreaseInput').value);
-  if (cents === null || cents <= 0) { $('tempMsg').textContent = 'Enter a positive amount.'; return; }
+  if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
   const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
   const sunday = new Date(ny); sunday.setDate(ny.getDate() - ny.getDay());
   const weekStart = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
   const { error } = await supabase.rpc('add_temp_increase', { p_household_id: household.household_id, p_week_start: weekStart, p_amount_cents: cents, p_note: '' });
   if (error) console.warn('add_temp_increase failed:', error.message);
-  $('tempMsg').textContent = error ? 'Could not add the temporary increase. Try again.' : 'Temporary increase added — dashboard will reflect it on refresh.';
+  showToast(error ? 'Could not add the temporary increase. Try again.' : 'Temporary increase added — dashboard will reflect it on refresh.', !!error);
   if (!error) await refresh();
 });
 
 $('attestSavingsBtn')?.addEventListener('click', async () => {
   const cents = parseDollarsStrict($('savingsBalanceInput').value);
-  if (cents === null || cents < 0) { $('savingsMsg').textContent = 'Enter a valid balance (empty is not 0).'; return; }
+  if (cents === null || cents < 0) { showToast('Enter a valid balance (empty is not 0).', true); return; }
   const { error } = await supabase.rpc('attest_savings', { p_household_id: household.household_id, p_actual_balance_cents: cents, p_note: $('savingsNoteInput').value.trim() });
   if (error) console.warn('attest_savings failed:', error.message);
-  $('savingsMsg').textContent = error ? 'Could not record the balance. Try again.' : 'Balance recorded.';
+  showToast(error ? 'Could not record the balance. Try again.' : 'Balance recorded.', !!error);
   if (!error) await refresh();
 });
 
 $('saveAllowanceBtn')?.addEventListener('click', async () => {
   const cents = parseDollarsStrict($('baseAllowanceInput').value);
-  if (cents === null || cents < 0) { $('settingsMsg').textContent = 'Enter a valid allowance (empty is not 0).'; return; }
+  if (cents === null || cents < 0) { showToast('Enter a valid allowance (empty is not 0).', true); return; }
   // Allowance changes require a confirmation sheet showing old -> new.
   let oldCents = currentWeekData?.baseAllowanceCents ?? null;
   if (oldCents === null) {
@@ -1318,7 +1327,7 @@ $('saveAllowanceBtn')?.addEventListener('click', async () => {
   if (!confirmed) return;
   const { error } = await supabase.rpc('set_base_allowance', { p_household_id: household.household_id, p_cents: cents });
   if (error) console.warn('set_base_allowance failed:', error.message);
-  $('settingsMsg').textContent = error ? 'Could not save allowance. Try again.' : 'Allowance saved.';
+  showToast(error ? 'Could not save allowance. Try again.' : 'Allowance saved.', !!error);
   if (!error) await refresh();
 });
 
@@ -1326,7 +1335,7 @@ $('fundAllocateForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
   const cents = parseDollarsStrict(f.amount.value);
-  if (cents === null || cents <= 0) { $('fundAllocateMsg').textContent = 'Enter a positive amount.'; return; }
+  if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
   let { error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: null });
   if (error && /insufficient fund/i.test(error.message)) {
     const reason = await showSheet({ title: 'Fund is short', message: `The fund does not cover ${formatCents(cents)}. Record it anyway with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Record anyway', cancelLabel: 'Cancel' });
@@ -1334,7 +1343,7 @@ $('fundAllocateForm')?.addEventListener('submit', async (e) => {
     ({ error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: reason.trim() }));
   }
   if (error) console.warn('allocate_fund failed:', error.message);
-  $('fundAllocateMsg').textContent = error ? 'Could not record fund spending. Try again.' : 'Fund spending recorded.';
+  showToast(error ? 'Could not record fund spending. Try again.' : 'Fund spending recorded.', !!error);
   if (!error) { f.reset(); await refresh(); }
 });
 $('fundRequestForm').addEventListener('submit', async (e) => {
