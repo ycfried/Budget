@@ -762,6 +762,7 @@ Deno.serve(async (req) => {
       restorations_skipped: restorationsSkipped,
     };
     if (restorationError) {
+      console.error('week-close restoration failed:', restorationError);
       // Loud partial failure: closes/releases above ARE persisted;
       // restoration stopped at the error and is re-runnable (entries
       // are unique per refund). Never report this as success.
@@ -769,6 +770,11 @@ Deno.serve(async (req) => {
     }
     return json(payload);
   } catch (e) {
+    // Log failures: previously the function returned 500s with no
+    // console output, leaving the dashboard logs empty (Nov 2, 2026:
+    // 7 unexplained 500s). The message below is what the next
+    // failure investigation reads first.
+    console.error('week-close failed:', (e as any)?.message ?? e);
     return json({ error: String((e as any)?.message ?? e) }, 500);
   }
 });
