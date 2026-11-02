@@ -88,6 +88,15 @@ test('parse: subject-tail merchant fallback when no "at" phrasing', () => {
   assert.deepEqual(out, { amountCents: 1200, merchant: 'Whole Foods Market', cardSuffix: '0000', date: '2026-10-30' });
 });
 
+test('parse: real Large Purchase Approved format (merchant cell, threshold prose)', () => {
+  const out = parseAmexAlertText({
+    subject: 'Large Purchase Approved',
+    body: 'YEHOSHUA FRIEDMAN Account Ending: 01005 There was a large purchase on your Additional Card Dear YEHOSHUA FRIEDMAN, As you requested, we\'re letting you know that this purchase on your Additional Card ending 101013 was more than $1.00. You can change the dollar amount of these large purchase notifications online. AMAZON MARKEPLACE NA PA $10.59* Mon, Nov 2, 2026',
+    date: '2026-11-02',
+  });
+  assert.deepEqual(out, { amountCents: 1059, merchant: 'AMAZON MARKEPLACE NA PA', cardSuffix: '1005', date: '2026-11-02' });
+});
+
 test('parse: null when no amount, zero amount, no merchant, or bad date', () => {
   assert.equal(parseAmexAlertText({ subject: 'Large Purchase Alert', body: 'at Amazon', date: '2026-10-28' }), null);
   assert.equal(parseAmexAlertText({ subject: 'Large Purchase Alert', body: '$0.00 at Amazon', date: '2026-10-28' }), null);

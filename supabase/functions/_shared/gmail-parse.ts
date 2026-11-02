@@ -110,6 +110,15 @@ export type ParsedAlert = {
 
 // Mirror of the Apps Script parser. `date` must already be YYYY-MM-DD
 // (from gmailDateToNY); anything else fails closed (null).
+//
+// Real-format notes (Nov 2, 2026, from a real "Large Purchase Approved"
+// alert): the merchant is a bare uppercase table cell next to the
+// amount ("AMAZON MARKEPLACE NA PA $10.59*"), with no "at" phrasing and
+// no subject tail — so a third merchant strategy (uppercase run before
+// the amount) is required. And the body quotes the notification
+// threshold in prose ("was more than $1.00"), so the amount must be the
+// LARGEST dollar figure, not the first: the purchase always exceeds
+// its own alert threshold.
 export function parseAmexAlertText(input: {
   subject: string;
   body: string;
@@ -120,9 +129,22 @@ export function parseAmexAlertText(input: {
   const date = String(input?.date ?? '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   const combined = subject + '\n' + text;
-  const amountMatch = text.match(/\$([\d,]+\.\d{2})/) || combined.match(/\$([\d,]+\.\d{2})/);
-  if (!amountMatch) return null;
-  const amountCents = Math.round(parseFloat(amountMatch[1].replace(/,/g, '')) * 100);
+  let hay = text;
+  let matches = [...hay.matchAll(/\$([\d,]+\.\d{2})/g)];
+  if (!matches.length) {
+    hay = combined;
+    matches = [...hay.matchAll(/\$([\d,]+\.\d{2})/g)];
+  }
+  if (!matches.length) return null;
+  let amountCents = 0;
+  let maxPos = 0;
+  for (const m of matches) {
+    const cents = Math.round(parseFloat(m[1].replace(/,/g, '')) * 100);
+    if (cents >= amountCents) {
+      amountCents = cents;
+      maxPos = m.index ?? 0;
+    }
+  }
   if (!amountCents || amountCents <= 0) return null;
   let merchant: string | null = null;
   const atMatch = combined.match(/\bat\s+([A-Za-z0-9][A-Za-z0-9 .&'\-]{1,60})/i);
@@ -131,9 +153,14 @@ export function parseAmexAlertText(input: {
     const subjMatch = subject.match(/[:\-–—]\s*(.+)$/);
     if (subjMatch) merchant = subjMatch[1].trim();
   }
+  if (!merchant) {
+    const before = hay.slice(0, maxPos).trimEnd();
+    const cellMatch = before.match(/([A-Z][A-Z0-9 .&'\-]{1,60})$/);
+    if (cellMatch) merchant = cellMatch[1].trim().replace(/\s+/g, ' ');
+  }
   if (!merchant) return null;
-  const suffixMatch = combined.match(/(?:ending in|•|xx|\*)\s?(\d{4})/i);
-  const cardSuffix = suffixMatch ? suffixMatch[1] : '0000';
+  const suffixMatch = combined.match(/(?:ending(?: in)?:?\s?|•|xx|\*)\s?(\d{4,6})/i);
+  const cardSuffix = suffixMatch ? suffixMatch[1].slice(-4) : '0000';
   return { amountCents, merchant, cardSuffix, date };
 }
 
