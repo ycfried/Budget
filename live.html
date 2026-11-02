@@ -85,6 +85,14 @@
       </div>
       <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
       <button id="txWeekToggle" class="btn btn-small tx-week-toggle" type="button" aria-pressed="false" aria-label="Show only this week's transactions">This week only</button>
+      <label class="muted small">Sort by
+        <select id="txSort" aria-label="Sort transactions">
+          <option value="date-desc">Date: newest first</option>
+          <option value="date-asc">Date: oldest first</option>
+          <option value="amount-asc">Amount: least to most</option>
+          <option value="amount-desc">Amount: most to least</option>
+        </select>
+      </label>
       <p id="txCount" class="muted small tx-count"></p>
       <ul id="txList" class="plain"></ul>
     </div>

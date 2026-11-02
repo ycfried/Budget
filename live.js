@@ -27,6 +27,7 @@ const sha = async (text) => {
 let session = null;
 let household = null; // { household_id, role }
 let txFilter = 'all'; // all | pending | posted | refunds | excluded
+let txSort = localStorage.getItem('hb-tx-sort') || 'date-desc'; // date-desc | date-asc | amount-asc | amount-desc
 let txWeekOnly = false; // spec B5: transactions filter by week (client-side, current Sun–Sat week)
 let lastBankSyncText = null; // last Sync button result, this session only
 let lastBankSyncTime = null;
@@ -145,6 +146,15 @@ async function refresh() {
     || t.merchant.toLowerCase().includes(q)
     || String(t.date).includes(q)
     || formatCents(t.amount_cents).toLowerCase().includes(q)));
+  const sorters = {
+    'date-desc': (a, b) => b.date.localeCompare(a.date),
+    'date-asc': (a, b) => a.date.localeCompare(b.date),
+    'amount-asc': (a, b) => a.amount_cents - b.amount_cents,
+    'amount-desc': (a, b) => b.amount_cents - a.amount_cents,
+  };
+  shown.sort(sorters[txSort] ?? sorters['date-desc']);
+  const sortEl = $('txSort');
+  if (sortEl) sortEl.value = txSort;
   const countEl = $('txCount');
   if (countEl) countEl.textContent = `Showing ${shown.length} of ${all.length} transactions${txWeekOnly ? ' · this week only' : ''}`;
   const weekBtn = $('txWeekToggle');
@@ -518,6 +528,12 @@ function weekRangeOf(dateStr) {
   const f = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
   return `${f(sun)} to ${f(sat)}`;
 }
+
+document.getElementById('txSort')?.addEventListener('change', (e) => {
+  txSort = e.target.value;
+  localStorage.setItem('hb-tx-sort', txSort);
+  refresh();
+});
 
 // Transaction filters: chips combine with the search box; refresh()
 // re-renders the list with both applied.
