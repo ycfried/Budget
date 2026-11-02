@@ -839,6 +839,20 @@ async function boot() {
   household = await loadMembership();
   if (!household) { await show('household'); return; }
   await show('app');
+  // Gmail OAuth return: the callback redirects back here with
+  // ?gmail=connected or ?gmail=failed. The param only picks the
+  // message (server truth on refresh decides what the card shows);
+  // it is cleared so a later refresh does not re-toast.
+  try {
+    const g = new URLSearchParams(window.location.search).get('gmail');
+    if (g === 'connected' || g === 'failed') {
+      showToast(g === 'connected'
+        ? 'Email connected — the app will check it for Amex alerts.'
+        : 'Email connection didn\'t go through — try again from Bank & Funds.', g === 'failed');
+      const u = new URL(window.location.href); u.searchParams.delete('gmail');
+      window.history.replaceState(null, '', u.pathname + u.search + u.hash);
+    }
+  } catch (e) { /* ignore malformed URLs */ }
   await refresh();
 }
 

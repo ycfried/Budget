@@ -49,14 +49,14 @@ function esc(s: string): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function page(title: string, body: string): Response {
-  return new Response(
-    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title></head>` +
-      `<body style="font-family:-apple-system,Helvetica,Arial,sans-serif;padding:32px 20px;color:#0f172a">` +
-      `<h1 style="font-size:22px">${esc(title)}</h1><p>${body}</p>` +
-      `<p><a href="${APP_URL}">Return to OnBudget</a></p></body></html>`,
-    { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
-  );
+// NOTE (Nov 2, 2026): this used to return a rendered HTML page, but
+// Safari displayed that page's source as text instead of rendering
+// it. The callback now redirects straight back to the app instead;
+// the app reports the outcome from server truth (email_connections)
+// and the ?gmail= param only picks the toast message.
+function page(title: string, _body: string): Response {
+  const result = title === 'Email connected' ? 'connected' : 'failed';
+  return Response.redirect(`${APP_URL}?gmail=${result}`, 303);
 }
 
 Deno.serve(async (req) => {
