@@ -418,6 +418,24 @@ async function autoSyncIfWebhookPending() {
   if (pending?.length) await runBankSync();
 }
 
+// Section navigation: tap a tab to jump to that part of the page
+// instead of scrolling one long list. The active tab follows the
+// section nearest the top of the viewport.
+document.querySelectorAll('[data-scroll-to]').forEach((b) => b.addEventListener('click', () => {
+  document.getElementById(b.dataset.scrollTo)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}));
+const navSections = ['section-week', 'section-transactions', 'section-bank', 'section-savings', 'section-fund', 'section-activity'];
+window.addEventListener('scroll', () => {
+  let current = navSections[0];
+  for (const id of navSections) {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top <= 80) current = id;
+  }
+  document.querySelectorAll('[data-scroll-to]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.scrollTo === current);
+  });
+}, { passive: true });
+
 // Transaction filters: chips combine with the search box; refresh()
 // re-renders the list with both applied.
 document.querySelectorAll('[data-tx-filter]').forEach((c) => c.addEventListener('click', async () => {

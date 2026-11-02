@@ -49,7 +49,15 @@
   </section>
 
   <section id="view-app" class="hidden">
-    <div class="card hero">
+    <nav class="app-nav" aria-label="App sections">
+      <button class="app-nav-link" data-scroll-to="section-week" type="button">Week</button>
+      <button class="app-nav-link" data-scroll-to="section-transactions" type="button">Purchases</button>
+      <button class="app-nav-link" data-scroll-to="section-bank" type="button">Bank</button>
+      <button class="app-nav-link" data-scroll-to="section-savings" type="button">Savings</button>
+      <button class="app-nav-link" data-scroll-to="section-fund" type="button">Extra Fund</button>
+      <button class="app-nav-link" data-scroll-to="section-activity" type="button">Activity</button>
+    </nav>
+    <div class="card hero" id="section-week">
       <div class="kicker">Available this week · <span id="weekLabel"></span></div>
       <div id="weeklyAvailable" class="big">$0.00</div>
       <p class="muted">From the server (compute-week). Provisional transactions are
@@ -63,7 +71,7 @@
       <div class="card"><div class="kicker">Refund credit carried</div><div class="num" id="statCredit"></div></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="section-transactions">
       <h2>Transactions (shared)</h2>
       <p class="muted small">Everything spent on the household cards, from all sources. Use the filters and search to find a purchase, and exclude anything that should not count toward the week.</p>
       <div class="tx-chips" role="group" aria-label="Filter transactions">
@@ -92,7 +100,7 @@
       <p class="muted small">Never enter a full card number.</p>
     </div>
 
-    <div class="card">
+    <div class="card" id="section-bank">
       <h2>Bank connection (read-only)</h2>
       <p class="muted small">Connect a bank account and pull its transactions
       into this budget. Read-only — it never moves money. Your bank
@@ -131,7 +139,7 @@
       <div id="tempMsg" class="result"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="section-savings">
       <h2>Savings (manual attestation only)</h2>
       <p class="muted small">The app never moves money. This records
       what you observed in the real savings account. Attestations are
@@ -149,7 +157,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="section-fund">
       <h2>Extra Fund requests</h2>
       <p class="muted small">Ask for money from the Extra Fund. The admin approves or declines each request, and the decision is written to the activity log.</p>
       <form id="fundRequestForm">
@@ -160,7 +168,7 @@
       <ul id="fundQueue" class="plain"></ul>
     </div>
 
-    <div class="card">
+    <div class="card" id="section-activity">
       <h2>Activity / audit log</h2>
       <p class="muted small">A shared record of every change in this household — who did what, and when.</p>
       <ul id="auditList" class="plain"></ul>

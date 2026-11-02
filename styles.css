@@ -173,6 +173,23 @@ label { font-size: 14px; font-weight: 600; }
 .tx-amount { font-weight: 700; }
 .tx-amount.negative { color: var(--soft-green); }
 
+/* Section navigation: stops the live app feeling like one long scroll.
+   Sticky tab bar, live-app only, so the demo is untouched. */
+#view-app .app-nav {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none;
+  background: #faf9f7; padding: 10px 2px 8px; margin: 0 0 8px;
+  border-bottom: 1px solid #e8e2d8;
+}
+#view-app .app-nav::-webkit-scrollbar { display: none; }
+#view-app .app-nav-link {
+  flex: 0 0 auto; background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 8px 12px; font-size: 14px; font-weight: 600; color: var(--muted);
+  cursor: pointer; font-family: var(--sans); white-space: nowrap;
+}
+#view-app .app-nav-link.active { color: var(--green); border-bottom-color: var(--brass); font-weight: 800; }
+#view-app .card[id^="section-"] { scroll-margin-top: 64px; }
+
 /* Live-app polish only — scoped under #view-app / body.live so the demo is untouched. */
 #view-app .card { margin-bottom: 24px; padding: 22px; }
 #view-app .card h2 { margin-bottom: 4px; }
