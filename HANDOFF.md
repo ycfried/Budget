@@ -178,7 +178,17 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   UPDATE grants on plaid_items + "members update own plaid items"
   policy. Next step: owner taps Connect Amex again — the store
   should now succeed. A first real sync is still unproven until a
-  row lands.
+  row lands. UPDATE, Nov 1, evening: reconnect succeeded
+  ("Connected: American Express", 1 connected item) but the first
+  sync reported "0 added, 0 updated, 121 skipped" — Plaid returned
+  121 transactions and every upsert was refused, because
+  transactions had no UPDATE policy (upsert needs one). Fix
+  applied the same evening ("Success. No rows returned"):
+  fix-transactions-upsert.sql — UPDATE grant + "members update
+  own transactions" policy. Next step: owner taps Sync again;
+  the 121 should land this time. Beta-test cleanup: the test
+  household was deleted; the two test auth users still need a
+  final check.
 - Live admin RPCs applied Nov 1, evening ("Success. No rows
   returned"): approve_fund_request, decline_fund_request,
   set_base_allowance — all SECURITY DEFINER, admin-only, audit-logged.
