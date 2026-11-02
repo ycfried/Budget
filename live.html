@@ -88,6 +88,19 @@
       <p id="homeSyncMsg" class="result"></p>
     </div>
 
+    <div class="card" id="section-manual">
+      <h2>Add a purchase by hand</h2>
+      <p class="muted small">Record a purchase by hand. It counts as pending until the bank confirms it.</p>
+      <form id="manualForm">
+        <label>Merchant <input name="merchant" required maxlength="80"></label>
+        <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
+        <label>Date <input name="date" type="date" required></label>
+        <label>Card suffix (last 4 digits only) <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
+        <button class="btn btn-primary" type="submit" aria-label="Add this purchase">Add purchase</button>
+      </form>
+      <p class="muted small">Never enter a full card number.</p>
+    </div>
+
     <div class="card" id="section-transactions">
       <h2>Purchases</h2>
       <p class="muted small">Everything spent on the household cards. Tap a purchase for detail and actions.</p>
@@ -120,19 +133,6 @@
       <p id="txCount" class="muted small tx-count"></p>
       <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
       <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
-    </div>
-
-    <div class="card" id="section-manual">
-      <h2>Add a purchase by hand</h2>
-      <p class="muted small">Record a purchase by hand. It counts as pending until the bank confirms it.</p>
-      <form id="manualForm">
-        <label>Merchant <input name="merchant" required maxlength="80"></label>
-        <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <label>Date <input name="date" type="date" required></label>
-        <label>Card suffix (last 4 digits only) <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
-        <button class="btn btn-primary" type="submit" aria-label="Add this purchase">Add purchase</button>
-      </form>
-      <p class="muted small">Never enter a full card number.</p>
     </div>
 
     <div class="card" id="section-bank">
@@ -183,16 +183,14 @@
 
     <div class="card" id="section-fund">
       <h2>Extra Fund</h2>
+      <p class="muted small">Leftover money from weeks you spent under budget — use it for extras.</p>
       <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
       <div id="fundAdminWrap" style="display:none">
-        <button id="processWeeksBtn" class="btn btn-primary" type="button" aria-label="Process completed weeks into the fund">Process completed weeks</button>
-        <p class="muted small">Run this after a week ends: its surplus moves into the fund, ready to spend.</p>
-        <div id="processWeeksMsg" class="result"></div>
-        <h3>Spend from the fund directly</h3>
+        <h3>Use fund money</h3>
         <form id="fundAllocateForm">
           <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
           <label>Note (optional) <input name="note" maxlength="120"></label>
-          <button class="btn" type="submit" aria-label="Record spending from the Extra Fund">Record fund spending</button>
+          <button class="btn" type="submit" aria-label="Record spending from the Extra Fund">Record it</button>
         </form>
         <div id="fundAllocateMsg" class="result"></div>
       </div>

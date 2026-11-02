@@ -32,6 +32,7 @@ let txMonth = localStorage.getItem('hb-tx-month') || 'all'; // 'all' or 'YYYY-MM
 let txCard = localStorage.getItem('hb-tx-card') || 'all'; // 'all' or card suffix
 let txWeekOnly = false; // spec B5: transactions filter by week (client-side, current Sun–Sat week)
 let txLimit = 100; // purchases load in pages of 100; Load more raises it
+let weekCloseRan = false; // week-close runs itself once per session (admin only)
 let lastRefreshAt = 0; // tab taps refresh in the background, throttled
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
 let currentWeekInputs = null;
@@ -107,6 +108,15 @@ async function refresh() {
       tempTotal = (temps ?? []).reduce((sum, r) => sum + (r.amount_cents || 0), 0);
     }
   } catch (e) { console.warn('temp increase read failed:', e); }
+  // Weeks close themselves now (admin only, once per session): no more
+  // "Process completed weeks" button for the user to remember. A failed
+  // run retries on the next refresh instead of silently giving up.
+  if (household.role === 'admin' && !weekCloseRan) {
+    try {
+      const out = await callFn('week-close', { household_id: household.household_id });
+      if (!out.error) weekCloseRan = true;
+    } catch (e) { /* retry next refresh */ }
+  }
   // Week chain: the previous closed week's outgoing debt/credit carry
   // into this week (before this, every week wrongly started at $0).
   // A missing week_closes table (before the fund SQL lands) just means
@@ -238,7 +248,7 @@ async function refresh() {
     ? 'No excluded transactions. Excluded purchases are hidden from the week math but kept here so you can restore them.'
     : txFilter === 'refunds'
     ? 'No refunds in this list yet.'
-    : 'No transactions here yet — add a manual purchase below, or connect a bank account and sync.';
+    : 'No purchases here yet — add one by hand above, or connect a bank account and sync.';
   $('txList').innerHTML = shown.length
     ? shown.map((t) => {
         const excluded = t.excluded === true || t.state === 'excluded';
@@ -454,7 +464,7 @@ async function refresh() {
       const shortfall = hh?.fund_shortfall_cents ?? 0;
       const fs = $('fundSummary');
       if (fs) fs.innerHTML = `<p class="fund-balance">Available <strong>${formatCents(available)}</strong></p>
-        <p class="muted small">Released into the fund ${formatCents(sum('release'))} · Pending release ${formatCents(pending)} · Spent ${formatCents(spent)}${shortfall > 0 ? ` · Shortfall ${formatCents(shortfall)}` : ''}${held > 0 ? ` · ${held} week(s) held for the undecided refund rule` : ''}</p>`;
+        <p class="muted small">Leftover money from weeks you spent under budget.</p>${pending > 0 ? `<p class="muted small">Another ${formatCents(pending)} is on its way.</p>` : ''}${shortfall > 0 ? `<p class="muted small">Owed back to the fund: ${formatCents(shortfall)}.</p>` : ''}`;
     } else {
       const fs = $('fundSummary');
       if (fs) fs.innerHTML = '<p class="muted small">Fund balances will appear once the fund setup is complete.</p>';
@@ -661,7 +671,7 @@ async function autoSyncIfWebhookPending() {
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent', 'finRefundNote'],
-  purchases: ['section-transactions', 'section-manual'],
+  purchases: ['section-manual', 'section-transactions'],
   money: ['section-bank', 'settingsCard', 'section-savings', 'section-fund'],
   activity: ['section-activity'],
 };
@@ -831,6 +841,9 @@ document.getElementById('txSort')?.addEventListener('change', (e) => {
 // re-renders the list with both applied.
 document.querySelectorAll('[data-tx-filter]').forEach((c) => c.addEventListener('click', async () => {
   txFilter = c.dataset.txFilter;
+  // "All" means all: it also clears the This-week chip, which used to
+  // stay on silently and make All show only this week.
+  if (txFilter === 'all') txWeekOnly = false;
   await refresh();
 }));
 $('txWeekToggle')?.addEventListener('click', async () => {
@@ -882,14 +895,6 @@ $('saveAllowanceBtn')?.addEventListener('click', async () => {
   if (!error) await refresh();
 });
 
-$('processWeeksBtn')?.addEventListener('click', async () => {
-  $('processWeeksMsg').textContent = 'Processing completed weeks…';
-  const out = await callFn('week-close', { household_id: household.household_id });
-  $('processWeeksMsg').textContent = out.error
-    ? `Could not process: ${out.error}`
-    : `Done: ${out.weeks_closed ?? 0} week(s) closed, ${out.releases ?? 0} release(s), ${out.held ?? 0} held for the refund rule. Fund available: ${formatCents(out.fund_available_cents ?? 0)}.`;
-  await refresh();
-});
 $('fundAllocateForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
