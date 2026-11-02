@@ -1112,8 +1112,8 @@ async function autoSyncIfWebhookPending() {
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
   week: ['section-sync-top', 'section-week', 'section-stats', 'section-hint', 'section-recent'],
-  purchases: ['section-manual', 'section-transactions', 'section-csv'],
-  money: ['section-bank', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask'],
+  purchases: ['section-manual', 'section-csv', 'section-transactions'],
+  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask'],
   activity: ['section-activity', 'section-week-history'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();

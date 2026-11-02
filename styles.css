@@ -167,6 +167,14 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--brass);
 }
 label { font-size: 14px; font-weight: 600; }
+/* Compact manual-add form: the three short-value fields (amount, date,
+   card suffix) share one row instead of stacking full-width. Font stays
+   16px so iOS does not zoom on focus; min-width: 0 lets the date input
+   shrink inside its grid cell. Merchant stays full-width: names run long. */
+#section-manual .form-row-3 { display: grid; grid-template-columns: 1fr 1.25fr 0.9fr; gap: 10px; }
+#section-manual .form-row-3 label { min-width: 0; }
+#section-manual .form-row-3 input { min-width: 0; }
+#section-manual input { padding: 9px 10px; }
 .plain { list-style: none; padding: 0; margin: 0; }
 .plain li { border-bottom: 1px solid var(--hairline); padding: 11px 0; }
 .plain li:last-child { border-bottom: 0; }

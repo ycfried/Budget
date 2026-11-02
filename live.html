@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -97,12 +97,24 @@
       <p class="muted small">Record a purchase by hand. It counts as pending until the bank confirms it.</p>
       <form id="manualForm">
         <label>Merchant <input name="merchant" required maxlength="80"></label>
-        <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <label>Date <input name="date" type="date" required></label>
-        <label>Card suffix (last 4 digits only) <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
+        <div class="form-row-3">
+          <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
+          <label>Date <input name="date" type="date" required></label>
+          <label>Card suffix <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
+        </div>
         <button class="btn btn-primary" type="submit" aria-label="Add this purchase">Add purchase</button>
       </form>
       <p class="muted small">Never enter a full card number.</p>
+    </div>
+
+    <div class="card" id="section-csv">
+      <h2>Import purchases from a CSV file</h2>
+      <p class="muted small">Expected columns: Date, Description, Amount, Card Ending. Nothing is added until you review the preview and tap Confirm. Duplicates are skipped. Imports are provisional until the bank confirms them.</p>
+      <label>CSV file <input id="csvFile" type="file" accept=".csv,text/csv"></label>
+      <div id="csvPreview"></div>
+      <button id="csvConfirmBtn" class="btn btn-primary" type="button" disabled aria-label="Confirm CSV import">Confirm import</button>
+      <p id="csvMsg" class="result"></p>
+      <p class="muted small">Never enter a full card number — the file should contain card endings only.</p>
     </div>
 
     <div class="card" id="section-transactions">
@@ -137,16 +149,6 @@
       <p id="txCount" class="muted small tx-count"></p>
       <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
       <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
-    </div>
-
-    <div class="card" id="section-csv">
-      <h2>Import purchases from a CSV file</h2>
-      <p class="muted small">Expected columns: Date, Description, Amount, Card Ending. Nothing is added until you review the preview and tap Confirm. Duplicates are skipped. Imports are provisional until the bank confirms them.</p>
-      <label>CSV file <input id="csvFile" type="file" accept=".csv,text/csv"></label>
-      <div id="csvPreview"></div>
-      <button id="csvConfirmBtn" class="btn btn-primary" type="button" disabled aria-label="Confirm CSV import">Confirm import</button>
-      <p id="csvMsg" class="result"></p>
-      <p class="muted small">Never enter a full card number — the file should contain card endings only.</p>
     </div>
 
     <div class="card" id="section-bank">
@@ -276,6 +278,6 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=2"></script>
+<script type="module" src="live.js?v=3"></script>
 </body>
 </html>
