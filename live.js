@@ -565,6 +565,15 @@ document.getElementById('showHouseholdIdBtn')?.addEventListener('click', (e) => 
 document.querySelectorAll('[data-stat]').forEach((el) => el.addEventListener('click', () => {
   document.getElementById('weekBreakdown')?.classList.toggle('hidden');
 }));
+// HTML form of an amount with smaller cents, for the hero and stat
+// numbers only (formatCents from the engine stays the plain-text form
+// used in search, messages, and audit text).
+function formatCentsHtml(cents) {
+  const sign = cents < 0 ? '-' : '';
+  const abs = Math.abs(cents);
+  return `${sign}$${Math.floor(abs / 100)}<span class="cents">.${String(abs % 100).padStart(2, '0')}</span>`;
+}
+
 // Friendly dates for display only — the raw YYYY-MM-DD stays in the
 // data (and in search), so nothing about filtering changes.
 function fmtLong(dateStr) {
