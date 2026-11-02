@@ -73,6 +73,9 @@ async function audit(action, detail) {
 
 async function refresh() {
   if (!household) return;
+  // Webhook-triggered auto-sync happens first, so the numbers and
+  // list below already include any purchases Plaid just announced.
+  await autoSyncIfWebhookPending();
   $('householdId').textContent = household.household_id;
   $('roleText').textContent = household.role;
   $('roleBadge').textContent = `LIVE · ${household.role.toUpperCase()}`;
@@ -372,7 +375,7 @@ $('connectBankBtn')?.addEventListener('click', async () => {
   handler.open();
 });
 
-$('syncBankBtn')?.addEventListener('click', async () => {
+async function runBankSync() {
   $('bankMsg').textContent = 'Syncing bank transactions…';
   const out = await callFn('plaid-sync', { household_id: household.household_id });
   const text = out.error
@@ -381,8 +384,39 @@ $('syncBankBtn')?.addEventListener('click', async () => {
   $('bankMsg').textContent = text;
   lastBankSyncText = text;
   lastBankSyncTime = new Date().toLocaleString();
+  return out;
+}
+
+$('syncBankBtn')?.addEventListener('click', async () => {
+  await runBankSync();
   await refresh();
 });
+
+$('registerWebhookBtn')?.addEventListener('click', async () => {
+  $('bankMsg').textContent = 'Enabling automatic sync…';
+  const out = await callFn('plaid-webhook-register', { household_id: household.household_id });
+  if (out.error) { $('bankMsg').textContent = `Could not enable automatic sync: ${out.error}`; return; }
+  const failed = (out.results ?? []).filter((r) => !r.ok);
+  $('bankMsg').textContent = failed.length
+    ? `Automatic sync partly enabled — ${failed.length} connection(s) failed: ${failed.map((r) => r.error).join('; ')}`
+    : 'Automatic sync enabled. New purchases will be pulled in on your next refresh.';
+});
+
+// Automatic sync: if a verified webhook event is waiting for this
+// household's items, run a sync at the start of refresh (once —
+// plaid-sync marks events processed, so this does not loop).
+let autoSyncDoneThisLoad = false;
+async function autoSyncIfWebhookPending() {
+  if (autoSyncDoneThisLoad || !household) return;
+  autoSyncDoneThisLoad = true;
+  const { data: items } = await supabase.from('plaid_items')
+    .select('plaid_item_id').eq('household_id', household.household_id);
+  if (!items?.length) return;
+  const { data: pending } = await supabase.from('webhook_events')
+    .select('id').in('plaid_item_id', items.map((i) => i.plaid_item_id))
+    .eq('processed', false).limit(1);
+  if (pending?.length) await runBankSync();
+}
 
 // Transaction filters: chips combine with the search box; refresh()
 // re-renders the list with both applied.

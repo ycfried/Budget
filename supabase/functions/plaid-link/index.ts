@@ -61,6 +61,10 @@ Deno.serve(async (req) => {
         secret,
         user: { client_user_id: `${householdId}:${user.id}` },
         client_name: 'Household Budget',
+        // Webhook URL at Link creation, so future connections get
+        // transactions webhooks automatically (the dashboard does not
+        // offer them; existing items use plaid-webhook-register).
+        webhook: 'https://tnkhvdkmwmwiogiienee.supabase.co/functions/v1/plaid-webhook',
         products: ['transactions'],
         country_codes: ['US'],
         language: 'en',

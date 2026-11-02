@@ -130,6 +130,12 @@ Deno.serve(async (req) => {
           p_household_id: householdId, p_item_id: item.plaid_item_id, p_cursor: cursor,
         });
       }
+      // A successful sync consumes any pending webhook events for this
+      // item, so the live app's auto-sync does not re-run on refresh.
+      await supabase.from('webhook_events')
+        .update({ processed: true })
+        .eq('plaid_item_id', item.plaid_item_id)
+        .eq('processed', false);
     }
     return json({ added, updated, skipped, items: (items ?? []).length });
   } catch (e) {
