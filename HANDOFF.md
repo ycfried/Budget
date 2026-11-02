@@ -383,6 +383,13 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   the section in view — added after the owner said the app felt
   like one long scrollable page.
 
+## Nov 1, ~9:55 PM — navigation + consistency pass (owner-directed)
+- Tabs regrouped 6 → 4: **Home** (week, stats, Settings, FIN note), **Purchases** (transactions + add-by-hand), **Money** (bank + connections + savings + Extra Fund), **Activity** (audit log). Tapping a tab refreshes that screen; header Refresh button already removed.
+- Buttons: one size across the live app (the small variant made neighbours look mismatched); side-by-side buttons get 8px gaps.
+- Wording unified: user-facing status is **Pending / Posted** everywhere (internal state name 'provisional' remains in code only); manual-add heading/button, stats subtitle, and connections note rewritten; 'Base weekly allowance' → 'Weekly allowance'.
+- Header: title centered; profile icon menu (email, role, Sign out) replaces header Sign out button.
+- A read-only design/structure audit agent was commissioned after this pass to catch what it missed; apply its findings when it reports.
+
 ## Public-app direction (owner, Nov 1, 2026, evening)
 
 The owner wants this to become an App Store app anyone can use,
