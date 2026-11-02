@@ -57,20 +57,18 @@
     <nav class="app-nav" aria-label="App sections">
       <button class="app-nav-link" data-view="week" type="button">Home</button>
       <button class="app-nav-link" data-view="purchases" type="button">Purchases</button>
-      <button class="app-nav-link" data-view="bank" type="button">Bank</button>
-      <button class="app-nav-link" data-view="savings" type="button">Savings</button>
-      <button class="app-nav-link" data-view="fund" type="button">Extra Fund</button>
+      <button class="app-nav-link" data-view="money" type="button">Money</button>
       <button class="app-nav-link" data-view="activity" type="button">Activity</button>
     </nav>
     <div class="card hero" id="section-week">
       <div class="kicker">Available this week · <span id="weekLabel">…</span></div>
       <div id="weeklyAvailable" class="big">…</div>
-      <p class="muted">Provisional transactions are included and marked.
+      <p class="muted">Pending purchases are included and marked.
       A negative number means over this week's budget.</p>
       <p class="muted small"><button id="showHouseholdIdBtn" class="btn btn-small" type="button" aria-label="Show the household ID for sharing">Share household ID</button> <span id="householdId" class="hidden"></span></p>
       <div id="weekBreakdown" class="hidden"></div>
       <p id="weekError" class="result error hidden"></p>
-      <p id="weekEmptyHint" class="muted small hidden">No purchases this week yet — the full allowance is still available. Add one by hand, or connect a bank account on the Bank screen.</p>
+      <p id="weekEmptyHint" class="muted small hidden">No purchases this week yet — the full allowance is still available. Add one by hand, or connect a bank account on the Money tab.</p>
     </div>
     <p class="muted small stat-hint" id="section-hint">Tap any number for its breakdown.</p>
     <div class="grid" id="section-stats">
@@ -111,14 +109,14 @@
     </div>
 
     <div class="card" id="section-manual">
-      <h2>Add a manual purchase (provisional)</h2>
-      <p class="muted small">Record a purchase by hand. It counts as provisional until the bank confirms it.</p>
+      <h2>Add a purchase by hand</h2>
+      <p class="muted small">Record a purchase by hand. It counts as pending until the bank confirms it.</p>
       <form id="manualForm">
         <label>Merchant <input name="merchant" required maxlength="80"></label>
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
         <label>Date <input name="date" type="date" required></label>
         <label>Card suffix (last 4 digits only) <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
-        <button class="btn btn-primary" type="submit" aria-label="Add this purchase as provisional">Add as PROVISIONAL</button>
+        <button class="btn btn-primary" type="submit" aria-label="Add this purchase">Add purchase</button>
       </form>
       <p class="muted small">Never enter a full card number.</p>
     </div>
@@ -142,7 +140,7 @@
       <p class="muted small">Where your transactions come from, and when each source was last checked.</p>
       <ul class="plain">
         <li><strong>Bank connection:</strong> <span id="connBankStatus">Not synced yet in this session.</span></li>
-        <li><strong>Bank purchase alerts:</strong> checked every 10 minutes by the email poller. Alerts arrive as provisional transactions.</li>
+        <li><strong>Bank purchase alerts:</strong> checked every 10 minutes by the email poller. Alerts arrive as pending purchases.</li>
         <li><strong>Page last refreshed:</strong> <span id="connLastRefresh">—</span></li>
       </ul>
     </div>
@@ -150,10 +148,10 @@
     <div class="card" id="settingsCard" style="display:none">
       <h2>Settings (admin only)</h2>
       <p class="muted small">Change the weekly allowance and add one-off increases for this week. Only the admin can change these, and every change is written to the activity log.</p>
-      <label>Base weekly allowance ($)
+      <label>Weekly allowance ($)
         <input id="baseAllowanceInput" type="number" step="0.01" min="0" inputmode="decimal">
       </label>
-      <button id="saveAllowanceBtn" class="btn btn-primary" type="button" aria-label="Save the base weekly allowance">Save allowance</button>
+      <button id="saveAllowanceBtn" class="btn btn-primary" type="button" aria-label="Save the weekly allowance">Save allowance</button>
       <div id="settingsMsg" class="result"></div>
       <label>Temporary increase for this week ($)
         <input id="tempIncreaseInput" type="number" step="0.01" min="0" inputmode="decimal">

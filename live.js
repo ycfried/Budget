@@ -447,7 +447,7 @@ $('manualForm').addEventListener('submit', async (e) => {
     state: 'provisional', kind: 'charge', dedupe_hash: hash,
   });
   if (error) { await showAlert('Could not save', error.message); return; }
-  await audit('Manual provisional purchase added', `${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)} (••${suffix}).`);
+  await audit('Purchase added by hand', `${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)} (••${suffix}).`);
   f.reset(); await refresh();
 });
 
@@ -538,15 +538,14 @@ async function autoSyncIfWebhookPending() {
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'settingsCard', 'finRefundNote'],
   purchases: ['section-transactions', 'section-manual'],
-  bank: ['section-bank', 'connectionsCard'],
-  savings: ['section-savings'],
-  fund: ['section-fund'],
+  money: ['section-bank', 'connectionsCard', 'section-savings', 'section-fund'],
   activity: ['section-activity'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
 let currentView = localStorage.getItem('hb-view') || 'week';
 if (!VIEWS[currentView]) currentView = 'week';
 function showView(name) {
+  if (!VIEWS[name]) name = 'week';
   currentView = name;
   localStorage.setItem('hb-view', name);
   for (const id of ALL_VIEW_SECTIONS) {
@@ -610,7 +609,7 @@ function formatAuditDetail(detail) {
   return d;
 }
 function formatAuditAction(action) {
-  return action === 'Manual provisional purchase added' ? 'Purchase added by hand' : action;
+  return action === 'Manual provisional purchase added' ? 'Purchase added by hand' : action; // old rows
 }
 function formatAuditActor(name) {
   if (name === 'admin') return 'Admin';
