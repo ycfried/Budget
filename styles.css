@@ -396,3 +396,6 @@ body.live #section-stats .stat-card { padding: 12px 8px; min-width: 0; }
 body.live #section-stats .kicker { font-size: 10px; }
 body.live #section-stats .num { font-size: 15px; }
 body.live #section-recent .btn-row { margin-top: 20px; }
+
+/* New branding: message boxes are a light blue tint, not the old warm beige. */
+body.live .result { background: #eef4ff; color: #0f172a; }

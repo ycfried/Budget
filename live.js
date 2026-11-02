@@ -442,7 +442,8 @@ async function refresh() {
   const ls = document.getElementById('lastSync'); if (ls) ls.textContent = fmtDateTime(new Date().toISOString());
   // Bank button states: once connected, Connect quiets down and Sync
   // becomes the primary action; the webhook button shows its on-state.
-  const connected = localStorage.getItem(`hb-bank-connected-${household.household_id}`) === '1';
+  const connected = localStorage.getItem(`hb-bank-connected-${household.household_id}`) === '1'
+    || localStorage.getItem(`hb-webhook-on-${household.household_id}`) === '1';
   const cb = $('connectBankBtn');
   if (cb && connected) { cb.classList.remove('btn-primary'); cb.textContent = 'Connected ✓'; cb.disabled = true; }
   const sb = $('syncBankBtn');
