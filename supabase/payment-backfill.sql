@@ -1,0 +1,56 @@
+-- Household Budget — S3 backfill: reclassify EXISTING misclassified
+-- card payments (P0-10b). REVIEW BEFORE DEPLOY — READ THE WARNING.
+--
+-- WARNING — THIS CHANGES HISTORICAL WEEK MATH. Do not run blindly.
+-- Rows reclassified here move from kind='refund' to kind='payment'.
+-- Under the old week math a 'refund' reduced net charges (and could
+-- create refund credit); a 'payment' must not. Re-running week math
+-- after this backfill WILL change historical weeks' charges, surplus
+-- and debt figures. Before running: (1) run the verification SELECTs
+-- below and compare the row count/amounts against the owner's
+-- screenshot expectation (~6 rows, ~$2,273, merchant "MOBILE PAYMENT
+-- - THANK YOU" inside a -$2,370.24 total); (2) have S2 confirm how
+-- week-close/restoration treats kind='payment' rows for already-closed
+-- weeks (locked weeks must not be rewritten — see FINAL A4); (3) take
+-- a backup/export first (there is no restore path in this repo yet,
+-- audit P1-35). Run inside a transaction and roll back if the counts
+-- do not match expectations. This file is a MIGRATION, not a deploy
+-- claim: nothing here has been run against live data.
+--
+-- Scope — ONLY rows meeting ALL of these conditions are touched:
+--   kind = 'refund' (the misclassification) AND
+--   amount_cents < 0 (a negative Plaid inflow) AND
+--   merchant matches the payment pattern (case-insensitive).
+-- Real refunds (e.g. an Amazon -$10.70 return) do NOT match the
+-- pattern and are untouched. Cashback rows are NOT touched by the
+-- UPDATE below — see the commented verification SELECT at the end;
+-- cashback reclassification needs a separate owner review because a
+-- merchant-name cashback pattern can collide with real merchant names.
+--
+-- Step 0 — verification SELECT (run first, compare, then decide):
+-- select count(*), sum(amount_cents) from transactions
+--  where kind = 'refund'
+--    and amount_cents < 0
+--    and merchant ~* 'MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT';
+--
+-- Step 1 — the reclassification (in a transaction):
+-- begin;
+-- update transactions
+--    set kind = 'payment'
+--  where kind = 'refund'
+--    and amount_cents < 0
+--    and merchant ~* 'MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT';
+-- -- Re-run the Step 0 SELECT: it must now return 0 rows.
+-- -- If it does not, or the count changed unexpectedly: rollback;
+-- commit;
+--
+-- NOTE: the statements above are intentionally COMMENTED OUT. This
+-- file must be reviewed and its statements un-commented deliberately
+-- by the parent before any deploy. Uncommenting without the Step 0
+-- check is a process violation, not a shortcut.
+--
+-- Cashback candidates — verification ONLY (do not update from this):
+-- select count(*), sum(amount_cents) from transactions
+--  where kind = 'refund'
+--    and amount_cents < 0
+--    and merchant ~* 'CASH BACK|CASHBACK|REWARD';
