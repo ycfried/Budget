@@ -191,7 +191,7 @@ label { font-size: 14px; font-weight: 600; }
 #view-app .card[id^="section-"] { scroll-margin-top: 64px; }
 
 /* Live-app polish only — scoped under #view-app / body.live so the demo is untouched. */
-#view-app .card { margin-bottom: 24px; padding: 22px; }
+#view-app .card { margin-bottom: 16px; padding: 20px; }
 #view-app .card h2 { margin-bottom: 4px; }
 #view-app .card > .muted.small { line-height: 1.6; }
 #view-app .hero { padding: 20px 22px; }
