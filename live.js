@@ -673,8 +673,12 @@ async function refresh() {
     const renderBankList = (elId, rows) => {
       const el = document.getElementById(elId);
       if (!el) return;
-      el.textContent = '';
-      if (!rows.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'None.'; el.appendChild(p); return; }
+      // Build off-DOM and swap atomically: the old rows stay visible
+      // until the new ones are ready, so the card never collapses to
+      // empty mid-refresh and the cards below never jump up and back
+      // (Nov 2, 2026: the blank-then-fill rebuild was the glitch).
+      const frag = document.createDocumentFragment();
+      if (!rows.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'None.'; frag.appendChild(p); el.replaceChildren(frag); return; }
       for (const item of rows) {
         const wrap = document.createElement('div'); wrap.className = 'bank-row';
         const logo = document.createElement('span'); logo.innerHTML = bankLogoHtml(item.institution_name || 'Bank'); wrap.appendChild(logo);
@@ -707,8 +711,9 @@ async function refresh() {
           });
           wrap.appendChild(btn);
         }
-        el.appendChild(wrap);
+        frag.appendChild(wrap);
       }
+      el.replaceChildren(frag);
     };
     renderBankList('bankAccountsList', itemRows.filter((i) => i.status === 'active'));
     renderBankList('bankPreviouslyList', itemRows.filter((i) => i.status === 'disconnected'));
@@ -738,9 +743,11 @@ async function refresh() {
       if (line) line.textContent = rows.length ? '' : 'No email connected yet.';
       const listEl = $('emailConnectionsList');
       if (listEl) {
-        listEl.textContent = '';
+        // Same atomic swap as the bank lists: build off-DOM so the
+        // card never collapses mid-refresh.
+        const frag = document.createDocumentFragment();
         if (!rows.length) {
-          const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'None — connect an email above.'; listEl.appendChild(p);
+          const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'None — connect an email above.'; frag.appendChild(p);
         }
         for (const c of rows) {
           const wrap = document.createElement('div'); wrap.className = 'bank-row';
@@ -761,8 +768,9 @@ async function refresh() {
             await refresh();
           });
           wrap.appendChild(btn);
-          listEl.appendChild(wrap);
+          frag.appendChild(wrap);
         }
+        listEl.replaceChildren(frag);
       }
     } catch (e) {
       console.warn('email connections read failed:', e);
