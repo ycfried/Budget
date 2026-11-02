@@ -18,6 +18,7 @@ import {
   filterNewMessageIds,
   gmailDateToNY,
   headerValue,
+  htmlToText,
   parseAmexAlertText,
 } from '../supabase/functions/_shared/gmail-parse.ts';
 
@@ -97,6 +98,15 @@ test('parse: real Large Purchase Approved format (merchant cell, threshold prose
   assert.deepEqual(out, { amountCents: 1059, merchant: 'AMAZON MARKEPLACE NA PA', cardSuffix: '1005', date: '2026-11-02' });
 });
 
+test('parse: cell merchant beats "at americanexpress.com" footer prose; "Ending :" suffix', () => {
+  const out = parseAmexAlertText({
+    subject: 'Large Purchase Approved',
+    body: 'YEHOSHUA FRIEDMAN Account Ending : 01005 There was a large purchase. Visit us at americanexpress.com for details. AMAZON MARKEPLACE NA PA $10.59* Mon, Nov 2, 2026',
+    date: '2026-11-02',
+  });
+  assert.deepEqual(out, { amountCents: 1059, merchant: 'AMAZON MARKEPLACE NA PA', cardSuffix: '1005', date: '2026-11-02' });
+});
+
 test('parse: null when no amount, zero amount, no merchant, or bad date', () => {
   assert.equal(parseAmexAlertText({ subject: 'Large Purchase Alert', body: 'at Amazon', date: '2026-10-28' }), null);
   assert.equal(parseAmexAlertText({ subject: 'Large Purchase Alert', body: '$0.00 at Amazon', date: '2026-10-28' }), null);
@@ -129,6 +139,24 @@ test('extractPlainText: single part, multipart prefers text/plain, nested parts'
   );
   assert.equal(extractPlainText(null), '');
   assert.equal(extractPlainText({}), '');
+});
+
+test('htmlToText: drops style/script blocks, keeps cells separated, decodes entities', () => {
+  assert.equal(
+    htmlToText('<style>.x{content:"$999.99"}</style><script>var a="$888.88";</script><table><tr><td>AMAZON MARKEPLACE NA PA</td><td>$10.59*</td></tr></table><p>Fish &amp; Chips &#36;5.00</p>'),
+    'AMAZON MARKEPLACE NA PA $10.59* Fish & Chips $5.00',
+  );
+});
+
+test('extractPlainText: HTML-only Amex alert converts to a parseable alert', () => {
+  const html = '<html><head><style>.pad{padding:0} .price{content:"$999.99"}</style></head><body>'
+    + '<p>YEHOSHUA FRIEDMAN Account Ending: 01005</p>'
+    + '<p>There was a large purchase on your Additional Card. As you requested, we\'re letting you know that this purchase on your Additional Card ending 101013 was more than $1.00.</p>'
+    + '<table><tr><td><p>AMAZON MARKEPLACE NA PA</p></td></tr><tr><td><p>$10.59*</p></td></tr><tr><td><p>Mon, Nov 2, 2026</p></td></tr></table>'
+    + '</body></html>';
+  const text = extractPlainText({ mimeType: 'text/html', body: { data: b64url(html) } });
+  assert.equal(text.includes('$999.99'), false);
+  assert.deepEqual(parseAmexAlertText({ subject: 'Large Purchase Approved', body: text, date: '2026-11-02' }), { amountCents: 1059, merchant: 'AMAZON MARKEPLACE NA PA', cardSuffix: '1005', date: '2026-11-02' });
 });
 
 test('headerValue: case-insensitive lookup, missing header is empty', () => {

@@ -70,19 +70,64 @@ export type GmailPayload = {
 
 // Walk a Gmail message payload and return the text/plain body, falling
 // back to any part that carries data. Returns '' when nothing decodes.
+export function htmlToText(html: string): string {
+  let text = String(html ?? '');
+  text = text.replace(/<script[\s\S]*?<\/script\s*>/gi, ' ');
+  text = text.replace(/<style[\s\S]*?<\/style\s*>/gi, ' ');
+  text = text.replace(/<[^>]*>/g, ' ');
+  text = text.replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'");
+  text = text.replace(/&#(\d+);/g, (_m, code) => {
+    try { return String.fromCharCode(Number(code)); } catch { return ' '; }
+  });
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 export function extractPlainText(payload: GmailPayload | undefined | null): string {
   if (!payload) return '';
-  if (payload.body?.data) {
+  // Prefer a real text/plain part. Amex alerts are often HTML-only
+  // (Nov 2, 2026: the real Large Purchase email has no text/plain
+  // part at all), and the old first-part-wins rule handed the parser
+  // 52KB of raw HTML, where tags between the merchant and amount
+  // cells defeated every merchant strategy. An HTML-only payload is
+  // converted to text instead; anything else falls back to the first
+  // non-empty part, as before.
+  const parts: GmailPayload[] = [];
+  const collect = (p: GmailPayload) => {
+    parts.push(p);
+    (p.parts ?? []).forEach(collect);
+  };
+  collect(payload);
+  const decode = (p: GmailPayload): string => {
     try {
-      const text = decodeBase64Url(payload.body.data);
-      if (text.trim()) return text;
+      const t = decodeBase64Url(p.body?.data ?? '');
+      return t.trim() ? t : '';
     } catch {
-      // fall through to parts
+      return '';
+    }
+  };
+  for (const p of parts) {
+    if ((p.mimeType ?? '').toLowerCase() === 'text/plain') {
+      const t = decode(p);
+      if (t) return t;
     }
   }
-  for (const part of payload.parts ?? []) {
-    const text = extractPlainText(part);
-    if (text.trim()) return text;
+  for (const p of parts) {
+    if ((p.mimeType ?? '').toLowerCase() === 'text/html') {
+      const t = decode(p);
+      if (t) {
+        const converted = htmlToText(t);
+        if (converted) return converted;
+      }
+    }
+  }
+  for (const p of parts) {
+    const t = decode(p);
+    if (t) return t;
   }
   return '';
 }
@@ -125,6 +170,17 @@ export type ParsedAlert = {
 // threshold in prose ("was more than $1.00"), so the amount must be the
 // LARGEST dollar figure, not the first: the purchase always exceeds
 // its own alert threshold.
+//
+// Strategy ORDER matters, proven against the real email (Nov 2, 2026):
+// the stripped HTML text contains footer prose "at
+// americanexpress.com", so the "at NAME" strategy must NOT run first
+// or every alert parses as merchant "americanexpress.com". The
+// amount-adjacent cell runs first (it is adjacent to the amount, the
+// strongest signal); "at NAME" is the fallback for the old prose
+// format, then the subject tail. Likewise the card-suffix pattern
+// must tolerate a space before the colon ("Ending : 01005" after
+// HTML tag-stripping), or the first match becomes the Additional
+// Card's 6-digit "ending 101013" instead of the account's 01005.
 export function parseAmexAlertText(input: {
   subject: string;
   body: string;
@@ -153,19 +209,24 @@ export function parseAmexAlertText(input: {
   }
   if (!amountCents || amountCents <= 0) return null;
   let merchant: string | null = null;
-  const atMatch = combined.match(/\bat\s+([A-Za-z0-9][A-Za-z0-9 .&'\-]{1,60})/i);
-  if (atMatch) merchant = atMatch[1].trim().replace(/\s+/g, ' ');
+  // Cell first: the uppercase run immediately before the amount.
+  // (A run that looks like a domain is not a merchant; fall through.)
+  const before = hay.slice(0, maxPos).trimEnd();
+  const cellMatch = before.match(/([A-Z][A-Z0-9 .&'\-]{1,60})$/);
+  if (cellMatch) {
+    const cell = cellMatch[1].trim().replace(/\s+/g, ' ');
+    if (!/\.(com|net|org|edu|gov|io|co)\b/i.test(cell)) merchant = cell;
+  }
+  if (!merchant) {
+    const atMatch = combined.match(/\bat\s+([A-Za-z0-9][A-Za-z0-9 .&'\-]{1,60})/i);
+    if (atMatch) merchant = atMatch[1].trim().replace(/\s+/g, ' ');
+  }
   if (!merchant) {
     const subjMatch = subject.match(/[:\-–—]\s*(.+)$/);
     if (subjMatch) merchant = subjMatch[1].trim();
   }
-  if (!merchant) {
-    const before = hay.slice(0, maxPos).trimEnd();
-    const cellMatch = before.match(/([A-Z][A-Z0-9 .&'\-]{1,60})$/);
-    if (cellMatch) merchant = cellMatch[1].trim().replace(/\s+/g, ' ');
-  }
   if (!merchant) return null;
-  const suffixMatch = combined.match(/(?:ending(?: in)?:?\s?|•|xx|\*)\s?(\d{4,6})/i);
+  const suffixMatch = combined.match(/(?:ending(?: in)?\s*:?\s?|•|xx|\*)\s?(\d{4,6})/i);
   const cardSuffix = suffixMatch ? suffixMatch[1].slice(-4) : '0000';
   return { amountCents, merchant, cardSuffix, date };
 }
