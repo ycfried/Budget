@@ -388,3 +388,11 @@ body.live input, body.live select { border-radius: 12px; }
 body.live #txFilters { margin-top: 10px; }
 body.live #txFilters label { display: block; margin: 10px 0 4px; font-weight: 600; }
 body.live #txFilters label select { display: block; width: 100%; margin-top: 4px; }
+
+/* Home stats: four compact tiles on one row (owner request), and the
+   Recent purchases buttons get breathing room from the last row. */
+body.live #section-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+body.live #section-stats .stat-card { padding: 12px 8px; min-width: 0; }
+body.live #section-stats .kicker { font-size: 10px; }
+body.live #section-stats .num { font-size: 15px; }
+body.live #section-recent .btn-row { margin-top: 20px; }
