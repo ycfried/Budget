@@ -27,7 +27,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   computeWeek, weekStartOf, nyTodayString, addDays,
   surplusReleaseDate, isWeekLocked,
-} from '../_shared/engine.mjs';
+} from './engine.mjs';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

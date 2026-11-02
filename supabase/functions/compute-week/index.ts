@@ -5,14 +5,14 @@
 // Auth: the caller sends their Supabase user JWT (Authorization: Bearer).
 // The function verifies it, checks the user belongs to the requested
 // household (household_members), and returns the week math from the single
-// shared engine (../_shared/engine.mjs — same file as the PWA/server use).
+// shared engine (engine.mjs alongside this file in the deployed setup — same file as the PWA/server use).
 // Role checks: any household member may READ their own week's numbers;
 // this function performs no writes, so no admin check is needed here.
 // FIN-REFUND-001 is still OPEN: outputs that depend on that case are
 // flagged not_production_certified in the response, exactly as the PWA does.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeWeek, weekStartOf, nyTodayString } from '../_shared/engine.mjs';
+import { computeWeek, weekStartOf, nyTodayString } from './engine.mjs';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
