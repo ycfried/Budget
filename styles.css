@@ -301,3 +301,18 @@ label { font-size: 14px; font-weight: 600; }
 
 /* Long IDs must wrap instead of stretching the card. */
 #householdId { word-break: break-all; }
+
+/* App sections stay hidden until the view switcher shows one — no
+   flashing every section while the first refresh is still loading. */
+#view-app > .card, #view-app > .grid, #view-app > p { display: none; }
+/* Header buttons match the in-app buttons (the header sits outside
+   #view-app, so the earlier restyle missed them and they looked like
+   a different app). Refresh is a normal secondary button; Sign out
+   is quiet text, since it is not an action you take often. */
+#liveTopbar #refreshBtn { background: #f3efe8; border: 1px solid #ddd3bf; color: var(--green); }
+#liveTopbar #signOutBtn { background: none; border: 0; color: var(--muted); padding: 11px 8px; }
+/* Transaction controls: each filter gets its own line, label above
+   its dropdown, so "Month" no longer crowds the button above it. */
+#section-transactions > label { display: block; margin: 10px 0 4px; font-weight: 600; }
+#section-transactions > label select { display: block; width: 100%; margin-top: 4px; }
+#section-transactions .tx-week-toggle { margin-bottom: 4px; }

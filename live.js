@@ -130,7 +130,7 @@ async function refresh() {
       $('statCredit').innerHTML = formatCentsHtml(week.result.outgoingCredit);
       const allowInput = document.getElementById('baseAllowanceInput');
       if (allowInput && document.activeElement !== allowInput) allowInput.value = (week.result.B / 100).toFixed(2);
-      $('finRefundNote').style.display = week.not_production_certified ? '' : 'none';
+      $('finRefundNote').style.display = week.not_production_certified ? 'block' : 'none';
     }
   } catch (e) { console.warn('compute-week failed:', e); }
 
@@ -530,7 +530,7 @@ async function autoSyncIfWebhookPending() {
 // only one section group is shown at a time, so the app is never
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
-  week: ['section-week', 'section-stats', 'settingsCard', 'finRefundNote'],
+  week: ['section-week', 'section-stats', 'section-hint', 'settingsCard', 'finRefundNote'],
   purchases: ['section-transactions', 'section-manual'],
   bank: ['section-bank', 'connectionsCard'],
   savings: ['section-savings'],
@@ -547,9 +547,9 @@ function showView(name) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard') { el.style.display = (household && household.role === 'admin') ? '' : 'none'; continue; }
+    if (id === 'settingsCard') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     if (id === 'finRefundNote') continue; // refresh() already sets this from the server flag
-    el.style.display = '';
+    el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
     b.classList.toggle('active', b.dataset.view === name);
