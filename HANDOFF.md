@@ -194,6 +194,8 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   Beta-test cleanup COMPLETE Nov 1, evening: both test auth
   users deleted, verified 1 household and 2 members (owner +
   spouse) only — no test data remains.
+- Home-screen icon CONFIRMED FIXED by the owner Nov 1, evening:
+  the icon now opens the live app, not the demo.
 - Live admin RPCs applied Nov 1, evening ("Success. No rows
   returned"): approve_fund_request, decline_fund_request,
   set_base_allowance — all SECURITY DEFINER, admin-only, audit-logged.
