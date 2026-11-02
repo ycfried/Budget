@@ -80,7 +80,6 @@ async function refresh() {
   // list below already include any purchases Plaid just announced.
   await autoSyncIfWebhookPending();
   $('householdId').textContent = household.household_id;
-  $('roleText').textContent = household.role;
   $('roleBadge').textContent = `LIVE · ${household.role.toUpperCase()}`;
   const ls = document.getElementById('lastSync'); if (ls) ls.textContent = new Date().toLocaleString();
 
@@ -113,7 +112,7 @@ async function refresh() {
     });
     const week = await res.json();
     if (week.result) {
-      $('weekLabel').textContent = `Week of ${week.week_start} (Sun–Sat, America/New_York)`;
+      $('weekLabel').textContent = `Week of ${fmtLong(week.week_start)} (Sun–Sat)`;
       $('weeklyAvailable').textContent = formatCents(week.result.available);
       // Spec: a negative available balance must be shown clearly.
       $('weeklyAvailable').classList.toggle('negative', week.result.available < 0);
@@ -217,7 +216,7 @@ async function refresh() {
         return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1"><strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
         <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'EXCLUDED' : esc(t.state.toUpperCase())}</span>
         <span class="pill">${esc(sourceLabel(t.source))}</span>
-        <span class="muted small tx-meta">${esc(t.date)} · ••${esc(t.card_suffix)}</span> <span class="muted small">Tap for detail ▾</span></div></div>
+        <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span> <span class="muted small">Tap for detail ▾</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
           <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${esc(t.kind)})</p>
           <p class="small muted">Date: ${esc(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
@@ -543,10 +542,26 @@ function showView(name) {
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+document.getElementById('showHouseholdIdBtn')?.addEventListener('click', (e) => {
+  const el = document.getElementById('householdId');
+  el.classList.toggle('hidden');
+  e.target.textContent = el.classList.contains('hidden') ? 'Share household ID' : 'Hide household ID';
+});
 // Stat cards: tap any number to toggle the week breakdown panel.
 document.querySelectorAll('[data-stat]').forEach((el) => el.addEventListener('click', () => {
   document.getElementById('weekBreakdown')?.classList.toggle('hidden');
 }));
+// Friendly dates for display only — the raw YYYY-MM-DD stays in the
+// data (and in search), so nothing about filtering changes.
+function fmtLong(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  return isNaN(d) ? dateStr : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function fmtShort(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  return isNaN(d) ? dateStr : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function weekRangeOf(dateStr) {
   const d = new Date(`${dateStr}T12:00:00`);
   const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
