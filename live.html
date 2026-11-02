@@ -78,6 +78,16 @@
       <div class="card stat-card" data-stat="credit" role="button" tabindex="0" aria-label="Show breakdown for Refund credit"><div class="kicker">Refund credit</div><div class="num" id="statCredit">…</div></div>
     </div>
 
+    <div class="card" id="section-recent">
+      <h2>Recent purchases</h2>
+      <ul id="recentList" class="plain"><li class="muted small">Loading…</li></ul>
+      <div class="btn-row">
+        <button class="btn" data-view="purchases" type="button" aria-label="See all purchases">See all</button>
+        <button class="btn" id="homeSyncBtn" type="button" aria-label="Sync bank transactions now">Sync bank</button>
+      </div>
+      <p id="homeSyncMsg" class="result"></p>
+    </div>
+
     <div class="card" id="section-transactions">
       <h2>Purchases</h2>
       <p class="muted small">Everything spent on the household cards. Tap a purchase for detail and actions.</p>

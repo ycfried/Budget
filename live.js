@@ -270,6 +270,24 @@ async function refresh() {
         </div></li>`;
       }).join('')
     : `<li class="tx-empty">${emptyHint}</li>`;
+  // Home preview: the 4 newest purchases, tapping one jumps to Purchases.
+  const recentEl = $('recentList');
+  if (recentEl) {
+    const recent = [...all].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
+    recentEl.innerHTML = recent.length
+      ? recent.map((t) => {
+          const excluded = t.excluded === true || t.state === 'excluded';
+          return `<li class="tx-row"><div class="tx-head" data-view="purchases" role="button" tabindex="0" aria-label="See ${esc(t.merchant)} in Purchases"><div class="tx-line1"><span class="tx-icon" aria-hidden="true">${esc(t.merchant.charAt(0).toUpperCase())}</span><strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
+          <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'Excluded' : (t.state === 'provisional' ? 'Pending' : 'Posted')}</span>
+          <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span></div></div></li>`;
+        }).join('')
+      : '<li class="muted small">No purchases yet.</li>';
+    // Rows added after load need the same tab-switch handler as the nav.
+    recentEl.querySelectorAll('[data-view]').forEach((el) => el.addEventListener('click', () => {
+      showView(el.dataset.view);
+      if (Date.now() - lastRefreshAt > 30000) refresh();
+    }));
+  }
   // Tap a row header to expand / collapse its detail panel.
   document.querySelectorAll('[data-tx-head]').forEach((el) => el.addEventListener('click', () => {
     document.getElementById(`tx-detail-${el.dataset.txHead}`)?.classList.toggle('hidden');
@@ -603,6 +621,13 @@ $('syncBankBtn')?.addEventListener('click', async () => {
   await runBankSync();
   await refresh();
 });
+$('homeSyncBtn')?.addEventListener('click', async () => {
+  const msg = $('homeSyncMsg');
+  if (msg) msg.textContent = 'Syncing bank transactions…';
+  await runBankSync();
+  if (msg) msg.textContent = $('bankMsg')?.textContent ?? '';
+  await refresh();
+});
 
 $('registerWebhookBtn')?.addEventListener('click', async () => {
   $('bankMsg').textContent = 'Enabling automatic sync…';
@@ -635,7 +660,7 @@ async function autoSyncIfWebhookPending() {
 // only one section group is shown at a time, so the app is never
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
-  week: ['section-week', 'section-stats', 'section-hint', 'finRefundNote'],
+  week: ['section-week', 'section-stats', 'section-hint', 'section-recent', 'finRefundNote'],
   purchases: ['section-transactions', 'section-manual'],
   money: ['section-bank', 'settingsCard', 'section-savings', 'section-fund'],
   activity: ['section-activity'],
