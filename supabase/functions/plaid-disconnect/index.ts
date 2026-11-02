@@ -72,9 +72,16 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!membership) return json({ error: 'not a household member' }, 403);
     if (membership.role !== 'admin') return json({ error: 'admin only' }, 403);
+    // Coordinator integration: membership/admin already verified above via the
+    // caller JWT. All DB access below uses the service-role key (server-side
+    // only, never in the browser) because member JWTs lost direct table/RPC
+    // access in the S1 RLS hardening.
+    const serviceKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    if (!serviceKey) return json({ error: 'service key not configured' }, 503);
+    const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
 
     // The item must belong to this household.
-    const { data: item } = await supabase.from('plaid_items')
+    const { data: item } = await supabaseAdmin.from('plaid_items')
       .select('plaid_item_id, status')
       .eq('household_id', householdId)
       .eq('plaid_item_id', plaidItemId)
@@ -94,7 +101,7 @@ Deno.serve(async (req) => {
     // item cannot be removed at Plaid, but the local row can still be
     // marked disconnected so sync stops (documented fallback — the
     // Plaid-side item may linger until removed in the Plaid dashboard).
-    const { data: ct } = await supabase.rpc('get_plaid_ciphertext', {
+    const { data: ct } = await supabaseAdmin.rpc('get_plaid_ciphertext', {
       p_household_id: householdId, p_item_id: plaidItemId,
     });
     if (ct) {
@@ -121,7 +128,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { error: markError } = await supabase.from('plaid_items')
+    const { error: markError } = await supabaseAdmin.from('plaid_items')
       .update({ status: 'disconnected', disconnected_at: new Date().toISOString() })
       .eq('household_id', householdId)
       .eq('plaid_item_id', plaidItemId);

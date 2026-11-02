@@ -148,6 +148,13 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
       .maybeSingle();
     if (!membership) return json({ error: 'not a household member' }, 403);
+    // Coordinator integration: membership/admin already verified above via the
+    // caller JWT. All DB access below uses the service-role key (server-side
+    // only, never in the browser) because member JWTs lost direct table/RPC
+    // access in the S1 RLS hardening.
+    const serviceKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    if (!serviceKey) return json({ error: 'service key not configured' }, 503);
+    const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
 
     const clientId = Deno.env.get('PLAID_CLIENT_ID');
     const secret = Deno.env.get('PLAID_SECRET');
@@ -156,7 +163,7 @@ Deno.serve(async (req) => {
     if (!clientId || !secret || !tokenKey) return json({ error: 'plaid not configured' }, 503);
     const base = plaidBase(env);
 
-    const { data: items } = await supabase.from('plaid_items')
+    const { data: items } = await supabaseAdmin.from('plaid_items')
       .select('plaid_item_id, institution_name, institution_id, sync_cursor, status')
       .eq('household_id', householdId);
     const allItems = items ?? [];
@@ -167,7 +174,7 @@ Deno.serve(async (req) => {
     let truncated = false;
 
     for (const item of activeItems) {
-      const { data: ct } = await supabase.rpc('get_plaid_ciphertext', {
+      const { data: ct } = await supabaseAdmin.rpc('get_plaid_ciphertext', {
         p_household_id: householdId, p_item_id: item.plaid_item_id,
       });
       if (!ct) { skipped++; continue; }
@@ -192,7 +199,7 @@ Deno.serve(async (req) => {
           for (const acc of accData.accounts ?? []) {
             if (acc.account_id && acc.mask) maskByAccount.set(acc.account_id, String(acc.mask));
             if (acc.account_id) {
-              const { error: accErr } = await supabase.from('plaid_accounts').upsert({
+              const { error: accErr } = await supabaseAdmin.from('plaid_accounts').upsert({
                 household_id: householdId,
                 plaid_item_id: item.plaid_item_id,
                 plaid_account_id: String(acc.account_id),
@@ -225,7 +232,7 @@ Deno.serve(async (req) => {
               ? String(instData.institution.name)
               : null;
             if (institutionName || institutionId) {
-              await supabase.from('plaid_items').update({
+              await supabaseAdmin.from('plaid_items').update({
                 institution_name: institutionName,
                 institution_id: institutionId,
               }).eq('household_id', householdId).eq('plaid_item_id', item.plaid_item_id);
@@ -259,13 +266,13 @@ Deno.serve(async (req) => {
             ? removed
             : String(removed.transaction_id ?? removed.id ?? '');
           if (!removedId) continue;
-          const { data: row } = await supabase.from('transactions')
+          const { data: row } = await supabaseAdmin.from('transactions')
             .select('id')
             .eq('household_id', householdId)
             .or(`external_id.eq.${removedId},plaid_transaction_id.eq.${removedId},plaid_pending_transaction_id.eq.${removedId}`)
             .maybeSingle();
           if (!row) { skipped++; continue; }
-          const { error } = await supabase.from('transactions')
+          const { error } = await supabaseAdmin.from('transactions')
             .update({ state: 'reversed', excluded: true })
             .eq('id', row.id).eq('household_id', householdId);
           if (error) skipped++; else reversed++;
@@ -283,7 +290,7 @@ Deno.serve(async (req) => {
       // Persist the cursor only after a page sequence that did not hit
       // a Plaid error. On error, the next run re-pulls idempotently.
       if (!plaidFailed && cursor) {
-        await supabase.rpc('update_plaid_sync', {
+        await supabaseAdmin.rpc('update_plaid_sync', {
           p_household_id: householdId, p_item_id: item.plaid_item_id, p_cursor: cursor,
         });
       } else if (plaidFailed) {
@@ -291,7 +298,7 @@ Deno.serve(async (req) => {
       }
 
       // A successful sync consumes pending webhook events for this item.
-      await supabase.from('webhook_events')
+      await supabaseAdmin.from('webhook_events')
         .update({ processed: true })
         .eq('plaid_item_id', item.plaid_item_id)
         .eq('processed', false);
@@ -347,13 +354,13 @@ async function upsertPlaidTx(
   // 1. external_id (this transaction's own id).
   let existing: { id: string } | null = null;
   if (txId) {
-    const { data } = await supabase.from('transactions').select('id')
+    const { data } = await supabaseAdmin.from('transactions').select('id')
       .eq('household_id', householdId).eq('external_id', txId).maybeSingle();
     existing = data;
   }
   // 2. pending_transaction_id linkage (pending -> posted transition).
   if (!existing && pendingTxId) {
-    const { data } = await supabase.from('transactions').select('id')
+    const { data } = await supabaseAdmin.from('transactions').select('id')
       .eq('household_id', householdId)
       .or(`external_id.eq.${pendingTxId},plaid_pending_transaction_id.eq.${pendingTxId}`)
       .maybeSingle();
@@ -364,21 +371,21 @@ async function upsertPlaidTx(
   //    (identical real purchases), take the earliest provisional one
   //    and leave the others alone.
   if (!existing) {
-    const { data } = await supabase.from('transactions').select('id,state')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state')
       .eq('household_id', householdId).eq('dedupe_hash', hash)
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
     existing = data;
   }
 
   if (existing) {
-    const { error } = await supabase.from('transactions').update({
+    const { error } = await supabaseAdmin.from('transactions').update({
       date, merchant, amount_cents: signed, card_suffix: suffix,
       state, kind, external_id: txId, dedupe_hash: hash,
       plaid_transaction_id: txId, plaid_pending_transaction_id: pendingTxId,
     }).eq('id', existing.id).eq('household_id', householdId);
     return error ? 'skipped' : 'updated';
   }
-  const { error } = await supabase.from('transactions').insert(row);
+  const { error } = await supabaseAdmin.from('transactions').insert(row);
   return error ? 'skipped' : 'added';
 }
 

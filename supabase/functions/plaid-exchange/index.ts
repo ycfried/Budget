@@ -52,6 +52,13 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
       .maybeSingle();
     if (!membership) return json({ error: 'not a household member' }, 403);
+    // Coordinator integration: membership/admin already verified above via the
+    // caller JWT. All DB access below uses the service-role key (server-side
+    // only, never in the browser) because member JWTs lost direct table/RPC
+    // access in the S1 RLS hardening.
+    const serviceKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    if (!serviceKey) return json({ error: 'service key not configured' }, 503);
+    const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
 
     const clientId = Deno.env.get('PLAID_CLIENT_ID');
     const secret = Deno.env.get('PLAID_SECRET');
@@ -73,7 +80,7 @@ Deno.serve(async (req) => {
     // The upsert runs with the caller's own JWT under the
     // "members insert own plaid items" policy; the ciphertext is
     // useless without PLAID_TOKEN_KEY, which only functions hold.
-    const { error: upsertError } = await supabase.from('plaid_items').upsert({
+    const { error: upsertError } = await supabaseAdmin.from('plaid_items').upsert({
       household_id: householdId,
       plaid_item_id: data.item_id,
       institution_name: body.institution_name ?? null,

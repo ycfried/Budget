@@ -5,14 +5,66 @@
 // Auth: the caller sends their Supabase user JWT (Authorization: Bearer).
 // The function verifies it, checks the user belongs to the requested
 // household (household_members), and returns the week math from the single
-// shared engine (engine.mjs alongside this file in the deployed setup — same file as the PWA/server use).
+// shared engine (engine.mjs alongside this file).
 // Role checks: any household member may READ their own week's numbers;
 // this function performs no writes, so no admin check is needed here.
-// FIN-REFUND-001 is still OPEN: outputs that depend on that case are
-// flagged not_production_certified in the response, exactly as the PWA does.
+//
+// FINAL (A2/A4) contract — read before changing the response:
+// - Client-supplied D, T, and any legacy credit fields are IGNORED
+//   entirely (audit P1-5). D is derived server-side from the latest
+//   week_closes row before the requested week, minus restoration debt
+//   cuts posted after that close (see below). T is derived server-side
+//   from temp_increases for the requested week, unless the week already
+//   has a close with a stored snapshot, in which case the snapshot's
+//   B/T win (a later allowance change never rewrites a closed week).
+// - Week math counts: charges (including provisional charges) net of
+//   fund allocations; posted refunds linked to a purchase in this week
+//   (open weeks only — a locked week's refunds go through restoration,
+//   never through this week's C); unlinked posted refunds dated in this
+//   week (fallback until the S3 linking workstream links everything);
+//   and, for the CURRENT week only, unposted late charges from locked
+//   weeks (audit P0-9 — see week-close for how they freeze into a
+//   snapshot when the current week closes).
+// - Excluded from math (engine.isExcludedFromMath): excluded rows,
+//   state 'reversed', kind 'payment', kind 'cashback', and provisional
+//   REFUNDS (pending restores nothing, audit P0-12). Provisional
+//   charges still count. Cash-back reclassified by an admin via the
+//   reclassify_transaction RPC counts under its CURRENT kind.
+// - C is floored at 0 (FINAL A2). A negative net in an open week (a
+//   refund larger than the week's charges) floors here; any amount
+//   beyond the original purchase is captured by week-close's held
+//   queue, not by this function.
+//
+// RESPONSE SHAPE (exact — the UI workstream codes against these 8
+// fields and no others; do not add fields without coordinating):
+// {
+//   week_start: "YYYY-MM-DD" (Sunday, normalized from the request),
+//   base_available_cents: base capacity left after incoming debt,
+//   temp_cents: active temporary increment for the week,
+//   carried_debt_cents: incoming debt D carried INTO the week
+//     (NOT the engine's carriedDebt output, which is max(0, D - B);
+//     the UI asked for "carried debt" and the dashboard's "incoming
+//     debt" is D — see S2_NOTES.md for the mapping and the open
+//     confirmation item),
+//   charges_cents: C (floored net eligible charges),
+//   available_cents: base_available + temp - charges (may be negative),
+//   week_locked: boolean (28-day open window, FINAL A4),
+//   pending_refund_excluded_cents: absolute total of provisional
+//     refunds excluded from this week's math (display only)
+// }
+// Pre-migration fallbacks: if the restoration-snapshots migration has
+// not been applied yet (no snapshot columns, no restoration_entries
+// table, no original_purchase_id column), this function still works
+// on the old columns and treats linked-refund attribution and
+// restoration debt cuts as zero, rather than failing the dashboard.
+// Those fallbacks are marked FALLBACK below and disappear once the
+// migration is applied.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeWeek, weekStartOf, nyTodayString } from './engine.mjs';
+import {
+  computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
+  isExcludedFromMath, pendingRefundExcludedCents, chargeContribution,
+} from './engine.mjs';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,10 +90,14 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const householdId = String(body.household_id ?? '');
-    const weekStart = String(body.week_start ?? weekStartOf(nyTodayString()));
     if (!householdId) return json({ error: 'household_id required' }, 400);
+    const rawWeek = String(body.week_start ?? '');
+    const today = nyTodayString();
+    const currentWeekStart = weekStartOf(today);
+    const weekStart = rawWeek ? weekStartOf(rawWeek) : currentWeekStart;
+    // NOTE: body.D, body.T, and any legacy credit fields are
+    // deliberately never read here. Server-side derivation only.
 
-    // Membership check (RLS on household_members enforces this too).
     const { data: membership, error: memErr } = await supabase
       .from('household_members')
       .select('role')
@@ -50,7 +106,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (memErr || !membership) return json({ error: 'not a household member' }, 403);
 
-    // Household base allowance.
     const { data: household, error: hhErr } = await supabase
       .from('households')
       .select('base_allowance_cents')
@@ -58,57 +113,185 @@ Deno.serve(async (req) => {
       .single();
     if (hhErr || !household) return json({ error: 'household not found' }, 404);
 
-    // This week's net spending, derived here (not trusted from the
-    // caller): signed amounts, minus portions already allocated to the
-    // Extra Fund. Refunds are stored NEGATIVE, so net = charges +
-    // refunds - allocated. The old code computed charges - refunds,
-    // which overstated spending by 2x the refund in refund weeks.
-    // A negative net is excess refund credit X, not negative charges.
-    // Uses the same week window as the engine: [weekStart, weekStart+7).
-    const weekEnd = addDaysStr(weekStart, 7);
-    const { data: txns, error: txErr } = await supabase
+    // Week closes, with snapshot columns when the migration exists.
+    // FALLBACK: without the migration, snapshot fields are null and
+    // the live allowance / temp sums below are used instead.
+    let closes: any[] = [];
+    const closesRes = await supabase
+      .from('week_closes')
+      .select('week_start, surplus_cents, outgoing_debt_cents, late_adjustment_cents, base_allowance_cents, temp_increase_cents, created_at')
+      .eq('household_id', householdId);
+    if (closesRes.error) {
+      const retry = await supabase
+        .from('week_closes')
+        .select('week_start, surplus_cents, outgoing_debt_cents, created_at')
+        .eq('household_id', householdId);
+      if (retry.error) return json({ error: 'week close read failed' }, 500);
+      closes = (retry.data ?? []).map((c: any) => ({ ...c, late_adjustment_cents: 0, base_allowance_cents: null, temp_increase_cents: null }));
+    } else {
+      closes = closesRes.data ?? [];
+    }
+    const closeByWeek = new Map(closes.map((c: any) => [c.week_start, c]));
+    const thisClose = closeByWeek.get(weekStart);
+
+    // Temporary increases for the requested week (server-side).
+    const { data: temps, error: tempErr } = await supabase
+      .from('temp_increases')
+      .select('week_start, amount_cents')
+      .eq('household_id', householdId);
+    if (tempErr) return json({ error: 'temp increase read failed' }, 500);
+    const tempSum = (temps ?? [])
+      .filter((t: any) => t.week_start === weekStart)
+      .reduce((s: number, t: any) => s + (t.amount_cents ?? 0), 0);
+
+    // Restoration debt cuts posted after the latest close (FALLBACK:
+    // no table yet -> no cuts). These reduce the debt carried into
+    // later weeks; cuts are never subtracted twice because only
+    // entries after the latest close week are counted.
+    let restorationCuts = 0;
+    const latestCloseBefore = closes
+      .filter((c: any) => c.week_start < weekStart)
+      .sort((a: any, b: any) => (a.week_start < b.week_start ? 1 : -1))[0];
+    if (latestCloseBefore) {
+      const restRes = await supabase
+        .from('restoration_entries')
+        .select('week_start, debt_reduction_cents')
+        .eq('household_id', householdId);
+      if (!restRes.error) {
+        restorationCuts = (restRes.data ?? [])
+          .filter((r: any) => r.week_start > latestCloseBefore.week_start && r.week_start <= weekStart)
+          .reduce((s: number, r: any) => s + (r.debt_reduction_cents ?? 0), 0);
+      }
+    }
+
+    // Transactions for the household (household-scale; see S2_NOTES.md
+    // for the pagination note). FALLBACK: without the migration's
+    // linkage column, refunds net by date in their own week.
+    let txns: any[] = [];
+    let hasLinkage = true;
+    const txRes = await supabase
       .from('transactions')
-      .select('amount_cents, kind, excluded, state, fund_allocation_cents')
+      .select('id, date, amount_cents, kind, state, excluded, fund_allocation_cents, original_purchase_id, created_at')
       .eq('household_id', householdId)
-      .gte('date', weekStart)
-      .lt('date', weekEnd)
-      .eq('excluded', false)
-      .neq('state', 'reversed');
-    if (txErr) return json({ error: 'transaction read failed' }, 500);
+      .limit(10000);
+    if (txRes.error) {
+      const retry = await supabase
+        .from('transactions')
+        .select('id, date, amount_cents, kind, state, excluded, fund_allocation_cents, created_at')
+        .eq('household_id', householdId)
+        .limit(10000);
+      if (retry.error) return json({ error: 'transaction read failed' }, 500);
+      txns = (retry.data ?? []).map((t: any) => ({ ...t, original_purchase_id: null }));
+      hasLinkage = false;
+    } else {
+      txns = txRes.data ?? [];
+    }
 
-    const net = (txns ?? []).reduce((s, t) => s + t.amount_cents - (t.fund_allocation_cents ?? 0), 0);
-    const C = net >= 0 ? net : 0;
-    const X = net < 0 ? -net : 0;
+    const weekEnd = addDays(weekStart, 7);
+    const inWindow = (t: any) => t.date >= weekStart && t.date < weekEnd;
+    const windowRows = txns.filter(inWindow);
+    const weekLocked = isWeekLocked(weekStart, currentWeekStart);
 
-    // Carried debt/credit come from the caller (the live app reads the
-    // latest week_close); temporary increments likewise. Defaults keep
-    // a plain current-week read working.
-    const result = computeWeek({
-      B: household.base_allowance_cents,
-      T: body.T ?? 0,
-      R_in: body.R_in ?? 0,
-      X,
-      D: body.D ?? 0,
-      C,
-    });
+    // Charges in the window (charge/fund_charge net of fund allocation;
+    // provisional charges count; refunds/payments/cash-back do not
+    // contribute here — see chargeContribution).
+    let chargesNet = windowRows.reduce((s: number, t: any) => s + chargeContribution(t), 0);
 
-    // FIN-REFUND-001 flag: the deferred case is X > 0 with no debt and no
-    // charges, where the engine reports both surplus and outgoing credit.
-    const finRefund001Affected = X > 0 && (body.D ?? 0) === 0 && C === 0;
+    // Posted refunds: linked to a purchase in this week (open weeks
+    // only), plus unlinked posted refunds dated in this week.
+    const purchaseIdsInWindow = new Set(
+      windowRows.filter((t: any) => t.kind === 'charge' || t.kind === 'fund_charge').map((t: any) => t.id),
+    );
+    const postedRefund = (t: any) =>
+      t.kind === 'refund' && t.state === 'verified' && t.excluded !== true && t.state !== 'reversed';
+    if (!weekLocked) {
+      for (const t of txns) {
+        if (postedRefund(t) && t.original_purchase_id && purchaseIdsInWindow.has(t.original_purchase_id)) {
+          chargesNet += t.amount_cents ?? 0; // negative: reduces C
+        }
+      }
+    }
+    for (const t of windowRows) {
+      if (postedRefund(t) && (!hasLinkage || !t.original_purchase_id)) {
+        // Unlinked (or pre-migration) posted refund dated in this week.
+        // Pre-migration fallback: every posted refund in the window
+        // nets here, since linkage cannot be checked.
+        // Locked-week reconstruction guard: a refund that arrived
+        // AFTER this week's close was recorded does not rewrite it.
+        if (thisClose && t.created_at && thisClose.created_at && t.created_at > thisClose.created_at) continue;
+        chargesNet += t.amount_cents ?? 0;
+      }
+    }
 
+    // Late charges (P0-9): for the CURRENT week, add locked-week
+    // charges not yet frozen into any close snapshot. For a week
+    // that already has a close, use its stored late adjustment so a
+    // recompute reproduces the close; other past weeks get 0 here
+    // (late charges belong to the current week until they freeze).
+    let latePart = 0;
+    if (weekStart === currentWeekStart) {
+      const lockedTotal = txns
+        .filter((t: any) => {
+          const w = weekStartOf(t.date);
+          return isWeekLocked(w, currentWeekStart) && closeByWeek.has(w)
+            && (t.kind === 'charge' || t.kind === 'fund_charge')
+            && t.excluded !== true && t.state !== 'reversed';
+        })
+        .reduce((s: number, t: any) => s + (t.amount_cents ?? 0) - (t.fund_allocation_cents ?? 0), 0);
+      const alreadyPosted = closes.reduce((s: number, c: any) => s + (c.late_adjustment_cents ?? 0), 0);
+      latePart = Math.max(0, lockedTotal - alreadyPosted);
+      chargesNet += latePart;
+    } else if (thisClose) {
+      latePart = thisClose.late_adjustment_cents ?? 0;
+      chargesNet += latePart;
+    }
+
+    // Pending refunds excluded from math (display only). Window-dated
+    // provisional refunds plus provisional refunds linked to a
+    // purchase in this week but dated elsewhere, de-duplicated by id.
+    const pendingById = new Map<string, any>();
+    for (const t of windowRows) {
+      if (t.kind === 'refund' && t.state === 'provisional' && t.excluded !== true && t.state !== 'reversed') {
+        pendingById.set(t.id, t);
+      }
+    }
+    for (const t of txns) {
+      if (t.kind === 'refund' && t.state === 'provisional' && t.excluded !== true && t.state !== 'reversed'
+        && t.original_purchase_id && purchaseIdsInWindow.has(t.original_purchase_id)) {
+        pendingById.set(t.id, t);
+      }
+    }
+    const pendingExcluded = [...pendingById.values()]
+      .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
+    void pendingRefundExcludedCents;
+    void isExcludedFromMath;
+
+    const B = thisClose && thisClose.base_allowance_cents != null
+      ? thisClose.base_allowance_cents
+      : household.base_allowance_cents;
+    const T = thisClose && thisClose.temp_increase_cents != null
+      ? thisClose.temp_increase_cents
+      : tempSum;
+    const D = latestCloseBefore
+      ? Math.max(0, (latestCloseBefore.outgoing_debt_cents ?? 0) - restorationCuts)
+      : 0;
+    const C = Math.max(0, chargesNet);
+
+    const result = computeWeek({ B, T, D, C });
+
+    // EXACT response shape — no extra fields.
     return json({
-      household_id: householdId,
       week_start: weekStart,
-      role: membership.role,
-      inputs: { B: result.B, T: result.T, R_in: result.R_in, X: result.X, D: result.D, C: result.C },
-      result,
-      not_production_certified: finRefund001Affected,
-      fin_refund_001: finRefund001Affected
-        ? 'OPEN: owner has deferred the refund-credit/surplus policy; do not use for automatic fund release.'
-        : null,
+      base_available_cents: result.baseAvailable,
+      temp_cents: result.T,
+      carried_debt_cents: result.D,
+      charges_cents: result.C,
+      available_cents: result.available,
+      week_locked: weekLocked,
+      pending_refund_excluded_cents: pendingExcluded,
     });
   } catch (e) {
-    return json({ error: String(e?.message ?? e) }, 500);
+    return json({ error: String((e as any)?.message ?? e) }, 500);
   }
 });
 
@@ -117,11 +300,4 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
-}
-
-function addDaysStr(dateStr: string, days: number) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const utc = new Date(Date.UTC(y, m - 1, d));
-  utc.setUTCDate(utc.getUTCDate() + days);
-  return utc.toISOString().slice(0, 10);
 }

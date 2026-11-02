@@ -75,6 +75,8 @@ create or replace view public.plaid_items_public as
     household_id,
     plaid_item_id,
     institution_name,
+    institution_id,
+    status,
     sync_cursor,
     last_sync_at,
     created_at

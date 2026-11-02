@@ -639,7 +639,7 @@ async function refresh() {
   // state. No token, cursor, or secret is ever rendered.
   let bankLastSyncAt = null;
   try {
-    const { data: items, error: itemsErr } = await supabase.from('plaid_items')
+    const { data: items, error: itemsErr } = await supabase.from('plaid_items_public')
       .select('id, plaid_item_id, institution_name, institution_id, status, last_sync_at')
       .eq('household_id', household.household_id).order('created_at', { ascending: false });
     if (itemsErr) throw itemsErr;
@@ -1025,7 +1025,7 @@ let autoSyncDoneThisLoad = false;
 async function autoSyncIfWebhookPending() {
   if (autoSyncDoneThisLoad || !household) return;
   autoSyncDoneThisLoad = true;
-  const { data: items } = await supabase.from('plaid_items')
+  const { data: items } = await supabase.from('plaid_items_public')
     .select('plaid_item_id').eq('household_id', household.household_id);
   if (!items?.length) return;
   const { data: pending } = await supabase.from('webhook_events')

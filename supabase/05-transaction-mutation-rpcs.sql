@@ -157,8 +157,8 @@ declare
   v_row transactions%rowtype;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
-  if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge') then
-    raise exception 'invalid kind: must be charge, refund, or fund_charge';
+  if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge', 'payment', 'cashback') then
+    raise exception 'invalid kind: must be charge, refund, fund_charge, payment, or cashback';
   end if;
   select * into v_row from transactions where id = txn_id;
   if not found then raise exception 'transaction not found'; end if;

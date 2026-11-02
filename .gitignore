@@ -1,3 +1,4 @@
 node_modules/
 .env
 *.log
+AUDIT_FULL.md

@@ -1,3 +1,136 @@
+# BRANCH NOTE — audit-fixes (NOT DEPLOYED — read first)
+
+This branch (`audit-fixes`) contains the overnight post-audit build. NOTHING
+here is live until the parent deploys it (checklist below). Do NOT merge to
+main until the deploy checklist has been walked in order. The pre-existing
+HANDOFF content below is retained for context but is known to be partly
+contradictory (audit P1-47: a full HANDOFF rewrite is still owed); where it
+disagrees with the FINAL spec (`Household_Budget_Spec_FINAL.pdf`) or with
+this section, the FINAL spec and this section win. FIN-REFUND-001 is MOOT
+under the FINAL spec (not open) — the old refund-credit model is retired
+on this branch and refund restoration is built (see below).
+
+## What changed on this branch (by workstream)
+- S1 (SQL security + invites): `supabase/01-invite-codes.sql` (invite_code,
+  generate_invite_code(), backfill, create_household() sets a code,
+  join_household_by_code(code-or-legacy-UUID)), `02-rls-hardening.sql`
+  (member direct writes revoked; member transaction inserts limited to
+  manual/csv + provisional; fund-request pending + household validation;
+  anon log_webhook_event revoked), `03-plaid-vault.sql`
+  (plaid_items_public view WITHOUT access_token_encrypted; ciphertext RPCs
+  revoked from members), `04-admin-rpcs.sql` (approve_and_allocate caps at
+  requested amount with remainder_cents + split status, accumulates
+  allocations, household lock; update_fund_shortfall path; old→new
+  allowance audit; old approve path now delegates),
+  `05-transaction-mutation-rpcs.sql` (exclude/restore/reclassify RPCs),
+  `INTERFACE.md`.
+- S2 (restoration engine): `engine.mjs` + all three function copies rewritten
+  (inputs B/T/D/C only; available = base_available + T − C);
+  `restoration.mjs` (simulation, incremental/posted-only/temp-excluded/
+  held-excess/shortfall-first/fund-credit/idempotent rules);
+  `supabase/restoration-snapshots.sql` (restoration_entries, held_refunds,
+  linkage columns, week-close B/T snapshots, resolve_held_refund RPC —
+  release action is REJECTED pending an owner decision on where released
+  excess goes); `compute-week` (derives D/T server-side, ignores client
+  values; returns the 8-field shape, no credit fields); `week-close`
+  (snapshots, close-date-anchored pending window, post-release surplus
+  delta, locked-week late adjustments, every write error checked,
+  shortfall only via update_fund_shortfall); `test/engine.test.mjs`
+  rewritten — 27 pass, 0 fail (old credit fixtures deleted).
+- S3 (ingestion + Plaid + payments): `integrations/gmail-apps-script.gs` +
+  `ingest-amex-alert` rewritten to ONE contract (`integrations/
+  INGEST_CONTRACT.md`: x-budget-signature, per-household secret,
+  timestamp+nonce replay protection, constant-time compare, HB_PROCESSED
+  only on stored:true; key fallback SUPABASE_SECRET_KEY then legacy key);
+  `plaid-sync` rewritten (cursor load/persist, removed[] → reversed,
+  pending→posted linkage, canonical dedupe, payment/cashback kinds,
+  plaid_accounts upsert, institution backfill, disconnected skip);
+  `plaid-disconnect` (new, admin-only); `payment-kind.sql`,
+  `payment-backfill.sql` (UPDATE COMMENTED OUT — see checklist),
+  `dedupe-fix.sql`, `plaid-accounts.sql`, `ingest-secrets.sql`,
+  `_shared/canonical.ts`, `S3_INTERFACE_NOTES.md`.
+- S4 (live UI + public surfaces): `live.html`/`live.js` (showSheet escaping,
+  strict amount validation, Credit stat + FIN note removed, debt-aware
+  hero, outgoing-debt stat, this-week spent scope, server-truth bank
+  state, bank accounts + logos, merchant icons, fund summary, week
+  history, savings four numbers display, live CSV import, password reset
+  link, delete-account button, invite-code join/share);
+  `styles.css` (live-scoped only); `demo.html` + `app.js` (demo credit
+  retired); `index.html` replaced by landing content (public root is now
+  the landing page; demo lives at demo.html with NO link from landing —
+  owner to confirm); `landing.html`, `reset.html`,
+  `supabase/functions/delete-account/index.ts`, `docs/BACKUP.md`.
+- Coordinator integration patches: `plaid-sync`, `plaid-webhook-register`,
+  `plaid-disconnect`, `plaid-exchange` now use a service-key client for
+  DB access after caller membership/admin verification (caller JWT still
+  proves identity); `week-close` uses a service-key client for table
+  writes (update_fund_shortfall RPC stays on the caller JWT);
+  `plaid-webhook` uses a service-key client for log_webhook_event;
+  `05` reclassify allows payment/cashback; `03` view gained
+  institution_id + status and `live.js` bank queries moved to the view;
+  `supabase/07-service-rpc-access.sql` (ciphertext/sync RPCs accept
+  service_role explicitly, members NOT re-granted; log_webhook_event is
+  service_role only; member INSERT/UPDATE on plaid_items revoked — no
+  client code writes plaid_items, all functions use the service key);
+  `supabase/08-decline-fix.sql` (closes audit P1-11: decline writes its
+  audit row only when the request was actually pending).
+
+## DEPLOY CHECKLIST (parent executes — coordinator never deploys)
+- 0. BACKUP FIRST (docs/BACKUP.md). Do this deploy while the household is
+  not using the app: between the SQL deploy and the Pages push, the OLD
+  live app will error on admin actions (direct writes now revoked).
+- 1. Edge Function secrets: set SUPABASE_SECRET_KEY (the CURRENT secret
+  key — the legacy service key is dead and must not be relied on).
+  Confirm PLAID_CLIENT_ID / PLAID_SECRET / PLAID_ENV / PLAID_TOKEN_KEY
+  are set. Keep "Verify JWT with legacy secret" OFF on plaid-webhook.
+- 2. SQL, in this order, in the Supabase SQL editor (stop on any error):
+  01-invite-codes, 02-rls-hardening, 03-plaid-vault, 04-admin-rpcs,
+  05-transaction-mutation-rpcs, restoration-snapshots,
+  payment-kind (§2 linkage columns are no-ops if restoration-snapshots
+  ran first — verify types match), dedupe-fix, plaid-accounts,
+  ingest-secrets, 07-service-rpc-access, 08-decline-fix.
+  DO NOT RUN payment-backfill.sql's UPDATE (it is commented out on
+  purpose). Before ever running it: run its verification SELECT and
+  confirm ~6 rows / ~$2,273 of MOBILE PAYMENT rows; get a ruling on
+  locked-week handling (locked weeks must not be rewritten); back up.
+- 3. Edge Functions, deploy/redeploy: compute-week, week-close, plaid-sync,
+  plaid-exchange, plaid-disconnect (new), plaid-webhook, plaid-webhook-
+  register, ingest-amex-alert, delete-account (new). Deno type-check
+  first (the build environment had no Deno, so functions were NOT
+  type-checked here).
+- 4. Owner's Gmail: paste the rewritten Apps Script into the "Household
+  Budget Amex Ingest" project; create the owner's per-household ingest
+  secret (ingest-secrets table) and set Script Properties to the new
+  contract (household_id + secret). Remove the old shared INGEST_SECRET
+  only after the new path proves a stored:true delivery.
+- 5. Pages: merge audit-fixes → main, then verify: sign-in works, join
+  by invite code works, bank list renders from plaid_items_public,
+  compute-week returns the 8-field shape, week-close runs without
+  errors (watch the FIRST run closely — restoration posting needs 07
+  applied; a 500 with partial counts means re-run, it is idempotent).
+- 6. Auth lockdown (OWNER DECISION — not yet approved): disable "Allow
+  new users to sign up" in Supabase Auth settings. After transition,
+  remove the legacy-UUID path from join_household_by_code (follow-up
+  migration) — the UUID is already public, so history scrubbing alone
+  fixes nothing. Note: invite codes in this build are reusable and
+  non-expiring (audit proposed single-use/expiring — owner to rule).
+- 7. Owner decisions still open (see final build report): held-refund
+  release destination (S2 rejects money-posting release until ruled);
+  split-remainder re-approval (this build: split is closed, remainder
+  recorded only); blank exclusion/reclassification reasons (spec wants
+  a reason — this build accepts blanks); savings transfer_in/withdrawal/
+  interest write paths (display shows $0 until added); landing page
+  with no demo link (confirm vs adding a labelled demo link);
+  auth-results strictness (DKIM+SPF both required — confirm after a
+  real alert's headers); Plaid refund original_purchase_id stays NULL
+  (no reliable link field — matcher work later).
+- 8. Reaudit: runs AFTER this deploy lands (separate step). Do NOT claim
+  the build is live or verified until then. AUDIT_FULL.md (untracked)
+  contains the household UUID and must NOT be committed to the public
+  repo unredacted.
+
+---
+
 # Household Budget — Handoff
 
 ## FINAL BASE SPEC (Nov 1, 2026, ~11:01 PM — owner-delivered, supersedes all previous spec versions)
@@ -539,7 +672,7 @@ and (as a copy) the compute-week function. All amounts integer cents.
 1. **First real two-account test of the live slice — WORKING on both
    phones, Nov 1, 2026, evening** — owner created an account and, via
    the create_household RPC, created the household on Nov 1, ~5:44 PM
-   EST: ID 647d1f23-606f-43af-92e5-1de2f1f34377 (owner = admin).
+   EST: ID [REDACTED — household join now uses invite codes, see audit-fixes section] (owner = admin).
    Spouse joined after the grants fix (and after email confirmation
    was turned off temporarily to get past the 2/hr Free email limit).
    Owner confirmed "it works on both" — both phones reach the shared

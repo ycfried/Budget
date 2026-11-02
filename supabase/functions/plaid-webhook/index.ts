@@ -21,7 +21,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
 function b64urlToBytes(s) {
   const b64 = s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '=');
@@ -102,7 +102,8 @@ Deno.serve(async (req) => {
   if (!isSyncEvent) {
     return new Response(JSON.stringify({ ignored: true, webhook_code: code }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  if (!SUPABASE_SERVICE_KEY) return new Response(JSON.stringify({ error: 'service key not configured' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const dedupe = await sha256Hex(`${body.item_id}|${code}|${body.new_transactions ?? ''}`);
   const { error } = await supabase.rpc('log_webhook_event', {
     p_item_id: body.item_id ?? null,
