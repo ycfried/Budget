@@ -83,7 +83,7 @@ async function refresh() {
   // list below already include any purchases Plaid just announced.
   await autoSyncIfWebhookPending();
   $('householdId').textContent = household.household_id;
-  $('roleBadge').textContent = `LIVE · ${household.role.toUpperCase()}`;
+  const rbadge = document.getElementById('roleBadge'); if (rbadge) rbadge.textContent = `LIVE · ${household.role.toUpperCase()}`;
   const ls = document.getElementById('lastSync'); if (ls) ls.textContent = new Date().toLocaleString();
 
   const { data: { session: s } } = await supabase.auth.getSession();
