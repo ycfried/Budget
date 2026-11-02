@@ -10,7 +10,19 @@
 //   * User-facing labels are bank-agnostic by design: internal function
 //     and database names (plaid-*, source='plaid') stay as-is, but the
 //     UI never names a bank or provider.
-// The demo (index.html / app.js) is untouched and still runs on fake data.
+// S4 (live UI) notes — read before touching admin UI:
+//   * Hiding an admin button from a non-admin is PRESENTATION ONLY. Role
+//     enforcement lives in the server RPCs / Edge Functions / RLS; a member
+//     calling an admin RPC directly must still be refused server-side.
+//   * Week numbers come from compute-week under the FINAL-spec contract:
+//     {week_start, base_available_cents, temp_cents, carried_debt_cents,
+//     charges_cents, available_cents, week_locked,
+//     pending_refund_excluded_cents}. No credit/R/X fields are used, and
+//     the client never sends D, T, or R_in to compute-week.
+//   * Bank connection state comes from the server plaid_items /
+//     plaid_accounts rows, never from per-device localStorage.
+//   * The demo entry is demo.html (app.js); the public root is landing.html
+//     content in index.html. Live styling stays under body.live / #view-app.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString } from './engine.mjs';
@@ -19,6 +31,128 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const dollarsToCents = (s) => Math.round(Number(s) * 100);
+// Strict money-input parsing (S4): empty, blank, or non-numeric input is
+// null — never 0. Callers reject null instead of sending 0 for an empty
+// field. An explicitly typed "0" parses to 0 and is the caller's choice.
+const parseDollarsStrict = (s) => {
+  if (s === null || s === undefined) return null;
+  const t = String(s).trim();
+  if (!t || !/^-?\d+(\.\d{1,2})?$/.test(t)) return null;
+  const n = Number(t);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100);
+};
+// Curated institution-name -> logo domain map (bank logos only; no token
+// or account data is ever rendered). Fallback is a letter tile.
+const BANK_LOGO_DOMAINS = [
+  ['american express', 'americanexpress.com'], ['bank of america', 'bankofamerica.com'],
+  ['capital one', 'capitalone.com'], ['chase', 'chase.com'], ['citi', 'citibank.com'],
+  ['discover', 'discover.com'], ['pnc', 'pnc.com'], ['td', 'td.com'],
+  ['us bank', 'usbank.com'], ['wells fargo', 'wellsfargo.com'],
+];
+const bankDomainFor = (name) => {
+  const n = String(name || '').toLowerCase();
+  for (const [k, d] of BANK_LOGO_DOMAINS) if (n.includes(k)) return d;
+  return null;
+};
+// ONE shared merchant-icon helper, used by BOTH Purchases rows and Home
+// recent rows. Curated keyword -> domain; anything unmapped (or any logo
+// load failure) falls back to the existing merchant-initial tile.
+const MERCHANT_LOGO_DOMAINS = [
+  ['trader joe', 'traderjoes.com'], ['whole foods', 'wholefoodsmarket.com'],
+  ['home depot', 'homedepot.com'], ["lowe", 'lowes.com'], ['shoprite', 'shoprite.com'],
+  ['mcdonald', 'mcdonalds.com'], ['starbucks', 'starbucks.com'], ['chipotle', 'chipotle.com'],
+  ['amazon', 'amazon.com'], ['walmart', 'walmart.com'], ['target', 'target.com'],
+  ['costco', 'costco.com'], ['apple', 'apple.com'], ['cvs', 'cvs.com'],
+  ['walgreens', 'walgreens.com'], ['exxon', 'exxon.com'], ['shell', 'shell.com'],
+  ['uber', 'uber.com'], ['lyft', 'lyft.com'], ['netflix', 'netflix.com'], ['spotify', 'spotify.com'],
+];
+const merchantDomainFor = (name) => {
+  const n = String(name || '').toLowerCase();
+  for (const [k, d] of MERCHANT_LOGO_DOMAINS) if (n.includes(k)) return d;
+  return null;
+};
+function iconForMerchant(name) {
+  const safe = String(name || '?');
+  const initial = esc(safe.trim().charAt(0).toUpperCase() || '?');
+  const domain = merchantDomainFor(safe);
+  if (!domain) return `<span class="tx-icon" aria-hidden="true">${initial}</span>`;
+  // On logo failure the <img> removes itself and the tile shows its letter.
+  return `<span class="tx-icon tx-icon-logo" aria-hidden="true"><img class="tx-logo" src="https://logo.clearbit.com/${domain}" alt="" loading="lazy" onerror="var p=this.parentNode;this.remove();p.textContent='${initial}';"></span>`;
+}
+function bankLogoHtml(name) {
+  const initial = esc(String(name || '?').trim().charAt(0).toUpperCase() || '?');
+  const domain = bankDomainFor(name);
+  if (!domain) return `<span class="bank-logo-tile" aria-hidden="true">${initial}</span>`;
+  return `<span class="bank-logo" aria-hidden="true"><img class="bank-logo-img" src="https://logo.clearbit.com/${domain}" alt="" loading="lazy" onerror="var p=this.parentNode;this.remove();p.textContent='${initial}';p.classList.add('bank-logo-tile');"></span>`;
+}
+// Transaction state pill: 'reversed' renders as Reversed, never Posted.
+function statePill(t, excluded) {
+  if (excluded) return '<span class="pill warn">Excluded</span>';
+  if (t.state === 'reversed') return '<span class="pill rev">Reversed</span>';
+  if (t.state === 'provisional') return '<span class="pill warn">Pending</span>';
+  return '<span class="pill ok">Posted</span>';
+}
+function stateWord(t, excluded) {
+  if (excluded) return 'excluded from week math';
+  if (t.state === 'reversed') return 'reversed (does not count)';
+  if (t.state === 'provisional') return 'pending';
+  return 'posted';
+}
+// Canonical CSV dedupe key (client preview): normalized merchant / date /
+// amount / suffix. Normalization collapses whitespace and drops punctuation
+// so "Trader Joe's" and "TRADER JOES" dedupe; the stored dedupe_hash below
+// keeps the manual-insert form (uppercased merchant) so it stays consistent
+// with the existing unique (household_id, dedupe_hash) constraint.
+const normalizeMerchant = (m) => String(m || '').toUpperCase().trim().replace(/\s+/g, ' ');
+const csvRowKey = (r) => `${normalizeMerchant(r.merchant).replace(/[^A-Z0-9 ]/g, '')}|${r.date}|${r.amountCents}|${r.suffix}`;
+function parseAmountLive(raw) {
+  let s = String(raw).trim().replace(/[$,]/g, '');
+  let neg = false;
+  if (s.startsWith('(') && s.endsWith(')')) { neg = true; s = s.slice(1, -1); }
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(Math.abs(n) * 100) * (neg || n < 0 ? -1 : 1);
+}
+// Port of the demo CSV parser (app.js parseCsv): header Date/Description/
+// Amount/Card Ending, quote-aware split, YYYY-MM-DD or MM/DD/YYYY dates.
+// Returns {rows, errors}; rows carry no insert until the user confirms.
+function parseCsvLive(text) {
+  const lines = String(text).split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return { rows: [], errors: ['CSV needs a header row and at least one data row.'] };
+  const split = (line) => {
+    const out = []; let cur = '', inQ = false;
+    for (const ch of line) {
+      if (ch === '"') inQ = !inQ;
+      else if (ch === ',' && !inQ) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    out.push(cur); return out.map((v) => v.trim());
+  };
+  const header = split(lines[0]).map((h) => h.toLowerCase());
+  const di = header.findIndex((h) => h.includes('date'));
+  const mi = header.findIndex((h) => h.includes('description') || h.includes('merchant'));
+  const ai = header.findIndex((h) => h.includes('amount'));
+  const si = header.findIndex((h) => h.includes('ending') || h.includes('card'));
+  if (di < 0 || mi < 0 || ai < 0) return { rows: [], errors: ['Header must include Date, Description, and Amount columns.'] };
+  const rows = []; const errors = [];
+  for (const line of lines.slice(1)) {
+    const cols = split(line);
+    const dateRaw = cols[di] || '';
+    const merchant = normalizeMerchant(cols[mi] || '');
+    const cents = parseAmountLive(cols[ai] || '');
+    const suffixMatch = si >= 0 ? String(cols[si] || '').match(/(\d{4})\s*$/) : null;
+    const suffix = suffixMatch ? suffixMatch[1] : '0000';
+    let date = dateRaw;
+    const mdy = dateRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (mdy) date = `${mdy[3]}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !merchant || cents === null) { errors.push(`Skipped unparseable row: ${line}`); continue; }
+    rows.push({ date, merchant, amountCents: cents, suffix });
+  }
+  return { rows, errors };
+}
+let pendingCsvRows = []; // previewed, NOT inserted, until the user confirms
+
 const sha = async (text) => {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -35,7 +169,6 @@ let txLimit = 100; // purchases load in pages of 100; Load more raises it
 let weekCloseRan = false; // week-close runs itself once per session (admin only)
 let lastRefreshAt = 0; // tab taps refresh in the background, throttled
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
-let currentWeekInputs = null;
 // Generic display labels for transaction sources. Database values are
 // unchanged (e.g. 'plaid'); only what the user sees is bank-agnostic.
 const sourceLabel = (s) => ({ plaid: 'Bank', manual: 'By hand', csv: 'File', amex_alert: 'Email alert' }[s] ?? String(s));
@@ -90,91 +223,103 @@ async function refresh() {
   const pe = document.getElementById('profileEmail'); if (pe && s?.user?.email) pe.textContent = s.user.email;
   const pr = document.getElementById('profileRole'); if (pr) pr.textContent = household.role;
   const token = s?.access_token ?? '';
-  // Temporary increases for the current week (sum of grants) are passed
-  // as T to compute-week; without this the engine defaults T to 0.
-  let tempTotal = 0;
-  let weekStartForTemp = null;
+  // Week numbers from the server (FINAL-spec contract). The client sends
+  // ONLY household_id — never D, T, or R_in — and never chains any credit:
+  // there is no credit field in this contract at all.
+  let baseAllowanceCents = null;
   try {
-    // Current Sunday in America/New_York, computed client-side so the
-    // temp sum is available BEFORE compute-week runs (its response is
-    // what sets the week label, so reading the label here is circular).
-    const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const sunday = new Date(ny); sunday.setDate(ny.getDate() - ny.getDay());
-    weekStartForTemp = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
-    if (weekStartForTemp) {
-      const { data: temps } = await supabase.from('temp_increases')
-        .select('amount_cents').eq('household_id', household.household_id)
-        .eq('week_start', weekStartForTemp);
-      tempTotal = (temps ?? []).reduce((sum, r) => sum + (r.amount_cents || 0), 0);
-    }
-  } catch (e) { console.warn('temp increase read failed:', e); }
-  // Weeks close themselves now (admin only, once per session): no more
-  // "Process completed weeks" button for the user to remember. A failed
-  // run retries on the next refresh instead of silently giving up.
+    const { data: hhRow } = await supabase.from('households')
+      .select('base_allowance_cents').eq('id', household.household_id).maybeSingle();
+    if (hhRow && Number.isInteger(hhRow.base_allowance_cents)) baseAllowanceCents = hhRow.base_allowance_cents;
+  } catch (e) { console.warn('base allowance read failed:', e); }
+  // Weeks close themselves (admin only, once per session) — unchanged.
   if (household.role === 'admin' && !weekCloseRan) {
     try {
       const out = await callFn('week-close', { household_id: household.household_id });
       if (!out.error) weekCloseRan = true;
     } catch (e) { /* retry next refresh */ }
   }
-  // Week chain: the previous closed week's outgoing debt/credit carry
-  // into this week (before this, every week wrongly started at $0).
-  // A missing week_closes table (before the fund SQL lands) just means
-  // the chain starts at zero — never a crash.
-  let chainD = 0, chainR = 0;
-  try {
-    const { data: prev } = await supabase.from('week_closes')
-      .select('outgoing_debt_cents, outgoing_credit_cents, week_start')
-      .eq('household_id', household.household_id)
-      .lt('week_start', weekStartForTemp ?? '9999-12-31')
-      .order('week_start', { ascending: false }).limit(1).maybeSingle();
-    if (prev) { chainD = prev.outgoing_debt_cents || 0; chainR = prev.outgoing_credit_cents || 0; }
-  } catch (e) { /* chain unavailable; start at zero */ }
-  // Week numbers from the server.
+  const weekErrEl = document.getElementById('weekError');
+  const clearWeekNumbers = () => {
+    $('weekLabel').textContent = 'Week numbers unavailable';
+    $('weeklyAvailable').textContent = '—';
+    $('statAllowance').textContent = '—'; $('statSpent').textContent = '—';
+    $('statDebt').textContent = '—'; $('statOutgoing').textContent = '—';
+    const bar = document.getElementById('weekProgressBar');
+    if (bar) { bar.style.width = '0%'; bar.parentElement?.classList.remove('over'); }
+    const pt = document.getElementById('weekProgressText');
+    if (pt) pt.textContent = '';
+    currentWeekData = null;
+  };
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/compute-week`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ household_id: household.household_id, T: tempTotal, D: chainD, R_in: chainR }),
+      body: JSON.stringify({ household_id: household.household_id }),
     });
     const week = await res.json();
-    const weekErr = document.getElementById('weekError');
-    if (weekErr) {
-      if (!week.result) { weekErr.textContent = "Couldn't update this week's numbers — switch tabs or reopen the app to try again."; weekErr.classList.remove('hidden'); }
-      else weekErr.classList.add('hidden');
-    }
-    if (week.result) {
-      $('weekLabel').textContent = `Week of ${fmtLong(week.week_start)} (Sun–Sat)`;
-      $('weeklyAvailable').innerHTML = formatCentsHtml(week.result.available);
-      // Spec: a negative available balance must be shown clearly.
-      $('weeklyAvailable').classList.toggle('negative', week.result.available < 0);
-      $('statAllowance').innerHTML = formatCentsHtml(week.result.B);
-      $('statSpent').innerHTML = formatCentsHtml(week.result.C);
-      $('statDebt').innerHTML = formatCentsHtml(week.result.D);
-      $('statCredit').innerHTML = formatCentsHtml(week.result.outgoingCredit);
-      currentWeekData = week.result; currentWeekInputs = { B: week.result.B, T: tempTotal, D: chainD, R_in: chainR };
-      // Hero progress: spent this week against the weekly allowance.
-      const budget = week.result.B + tempTotal;
-      const pct = budget > 0 ? Math.min(100, Math.round((week.result.C / budget) * 100)) : 0;
+    const r = week.result ?? week;
+    const hasFields = r && Number.isInteger(r.base_available_cents) && Number.isInteger(r.temp_cents)
+      && Number.isInteger(r.carried_debt_cents) && Number.isInteger(r.charges_cents)
+      && Number.isInteger(r.available_cents);
+    if (!hasFields) {
+      if (weekErrEl) { weekErrEl.textContent = "Couldn't update this week's numbers — switch tabs or reopen the app to try again."; weekErrEl.classList.remove('hidden'); }
+      clearWeekNumbers();
+    } else {
+      if (weekErrEl) weekErrEl.classList.add('hidden');
+      const weekStart = week.week_start ?? r.week_start ?? null;
+      const baseAvailable = r.base_available_cents, tempC = r.temp_cents;
+      const carried = r.carried_debt_cents, charges = r.charges_cents, avail = r.available_cents;
+      // Outgoing debt is derived from server outputs only (no credit):
+      // new debt = charges above base room + temp room; outgoing = carried + new.
+      const newDebt = Math.max(0, charges - baseAvailable - tempC);
+      const outgoingDebt = carried + newDebt;
+      if (weekStart) $('weekLabel').textContent = `Week of ${fmtLong(weekStart)} (Sun–Sat)`;
+      $('weeklyAvailable').innerHTML = formatCentsHtml(avail);
+      $('weeklyAvailable').classList.toggle('negative', avail < 0);
+      $('statAllowance').innerHTML = formatCentsHtml(baseAllowanceCents ?? baseAvailable);
+      $('statSpent').innerHTML = formatCentsHtml(charges);
+      $('statDebt').innerHTML = formatCentsHtml(carried);
+      $('statOutgoing').innerHTML = formatCentsHtml(outgoingDebt);
+      currentWeekData = { weekStart, baseAvailableCents: baseAvailable, tempCents: tempC,
+        carriedDebtCents: carried, chargesCents: charges, availableCents: avail,
+        outgoingDebtCents: outgoingDebt, weekLocked: !!r.week_locked,
+        pendingRefundExcludedCents: r.pending_refund_excluded_cents ?? 0,
+        baseAllowanceCents };
+      // Hero progress, debt-aware: spending room is base room + temp room
+      // (carried debt already came off the top). Overspend is NOT silently
+      // capped: the bar fills and an explicit "Over by" amount is shown.
+      const capacity = baseAvailable + tempC;
+      const pct = capacity > 0 ? (charges / capacity) * 100 : (charges > 0 ? 100 : 0);
       const bar = document.getElementById('weekProgressBar');
-      if (bar) bar.style.width = `${pct}%`;
+      if (bar) { bar.style.width = `${Math.min(100, Math.round(pct))}%`; bar.parentElement?.classList.toggle('over', charges > capacity); }
       const pt = document.getElementById('weekProgressText');
-      if (pt) pt.textContent = `Spent ${formatCents(week.result.C)} of ${formatCents(budget)} allowance`;
+      if (pt) {
+        let t = `Spent ${formatCents(charges)} of ${formatCents(capacity)} spending room`;
+        if (carried > 0) t += ` · ${formatCents(carried)} carried debt already came off the top`;
+        if (charges > capacity) t += ` · Over by ${formatCents(charges - capacity)}`;
+        if (r.week_locked) t += ' · This week is locked';
+        if ((r.pending_refund_excluded_cents ?? 0) > 0) t += ` · ${formatCents(r.pending_refund_excluded_cents)} in pending refunds excluded from this week`;
+        pt.textContent = t;
+      }
       lastRefreshAt = Date.now();
       const allowInput = document.getElementById('baseAllowanceInput');
-      if (allowInput && document.activeElement !== allowInput) allowInput.value = (week.result.B / 100).toFixed(2);
-      $('finRefundNote').style.display = week.not_production_certified ? 'block' : 'none';
+      if (allowInput && document.activeElement !== allowInput && baseAllowanceCents !== null) allowInput.value = (baseAllowanceCents / 100).toFixed(2);
     }
   } catch (e) {
     console.warn('compute-week failed:', e);
-    const weekErr2 = document.getElementById('weekError');
-    if (weekErr2) { weekErr2.textContent = "Couldn't update this week's numbers — check your connection and try again."; weekErr2.classList.remove('hidden'); }
+    if (weekErrEl) { weekErrEl.textContent = "Couldn't update this week's numbers — check your connection and try again."; weekErrEl.classList.remove('hidden'); }
+    clearWeekNumbers();
   }
 
-  const { data: txns } = await supabase.from('transactions')
+  const { data: txns, error: txErr } = await supabase.from('transactions')
     .select('*').eq('household_id', household.household_id)
     .order('date', { ascending: false }).limit(txLimit);
-  const all = txns ?? [];
+  // Read failures are an ERROR STATE, never a silent empty list or stale
+  // numbers: txReadFailed overrides the lists below.
+  const txReadFailed = !!txErr;
+  if (txErr) console.warn('transactions read failed:', txErr.message);
+  const all = txReadFailed ? [] : (txns ?? []);
   const q = ($('txSearch')?.value ?? '').trim().toLowerCase();
   const byFilter = (t) => txFilter === 'all' ? true
     : txFilter === 'pending' ? t.state === 'provisional'
@@ -213,7 +358,7 @@ async function refresh() {
     monthSel.innerHTML = '<option value="all">All months</option>' + months.map((m) => {
       const [y, mo] = m.split('-');
       const label = new Date(`${m}-02T12:00:00`).toLocaleString('en-US', { month: 'long', year: 'numeric' });
-      return `<option value="${m}"${m === txMonth ? ' selected' : ''}>${label}</option>`;
+      return `<option value="${esc(m)}"${m === txMonth ? ' selected' : ''}>${esc(label)}</option>`;
     }).join('');
   }
   const cardSel = $('txCard');
@@ -222,16 +367,16 @@ async function refresh() {
     const cur = cards.includes(txCard) ? txCard : 'all';
     if (cur !== txCard) { txCard = cur; localStorage.setItem('hb-tx-card', cur); }
     cardSel.innerHTML = '<option value="all">All cards</option>' + cards.map((c) =>
-      `<option value="${c}"${c === txCard ? ' selected' : ''}>••${c}</option>`).join('');
+      `<option value="${esc(c)}"${c === txCard ? ' selected' : ''}>••${esc(c)}</option>`).join('');
   }
   const thisWeekTxns = all.filter((t) => inThisWeek(t) && !(t.excluded === true || t.state === 'excluded'));
   const emptyHintEl = document.getElementById('weekEmptyHint');
   if (emptyHintEl) emptyHintEl.classList.toggle('hidden', thisWeekTxns.length > 0);
   const countEl = $('txCount');
   if (countEl) {
-    const shownTotal = shown.reduce((s, t) => s + t.amount_cents, 0);
+    const shownTotal = shown.filter((t) => !(t.excluded === true || t.state === 'excluded')).reduce((s, t) => s + t.amount_cents, 0);
     const capped = all.length >= txLimit ? ' of loaded purchases — tap Load more for older ones' : ' of loaded purchases';
-    countEl.textContent = `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)}`;
+    countEl.textContent = txReadFailed ? 'Could not load purchases — try again.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)} (excluded rows not counted)`;
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
@@ -249,7 +394,9 @@ async function refresh() {
     : txFilter === 'refunds'
     ? 'No refunds in this list yet.'
     : 'No purchases here yet — add one by hand above, or connect a bank account and sync.';
-  $('txList').innerHTML = shown.length
+  $('txList').innerHTML = txReadFailed
+    ? `<li class="tx-empty error">Could not load purchases. Check your connection and try again — nothing here is a complete list.</li>`
+    : shown.length
     ? shown.map((t) => {
         const excluded = t.excluded === true || t.state === 'excluded';
         const isAdmin = household.role === 'admin';
@@ -262,20 +409,25 @@ async function refresh() {
           ? `<button class="btn btn-small btn-danger" data-delete-tx="${t.id}" type="button" aria-label="Delete ${esc(t.merchant)}">Delete</button>`
           : `<button class="btn btn-small btn-danger" data-remove-tx="${t.id}" type="button" aria-label="Remove ${esc(t.merchant)} from the budget">Remove</button>`;
         const fundBtn = `<button class="btn btn-small" data-use-fund="${t.id}" type="button" aria-label="Use Extra Fund for ${esc(t.merchant)}">Use Extra Fund</button>`;
+        // Admin actions are hidden from non-admins in the UI; enforcement
+        // is server-side in the RPCs (see header note). Reclassify is
+        // admin-only and goes through reclassify_transaction.
+        const reclassBtn = !isAdmin ? ''
+          : `<button class="btn btn-small" data-reclassify="${t.id}" type="button" aria-label="Reclassify ${esc(t.merchant)}">Reclassify</button>`;
         const action = !isAdmin ? fundBtn
           : excluded
-          ? `<div class="btn-row"><button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${deleteBtn}</div>`
-          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${fundBtn}</div>`;
+          ? `<div class="btn-row"><button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${deleteBtn} ${reclassBtn}</div>`
+          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${reclassBtn} ${fundBtn}</div>`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
-        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1"><span class="tx-icon" aria-hidden="true">${esc(t.merchant.charAt(0).toUpperCase())}</span><strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
-        <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'Excluded' : (t.state === 'provisional' ? 'Pending' : 'Posted')}</span>
+        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
+        <div class="tx-line2">${statePill(t, excluded)}
         <span class="pill">${esc(sourceLabel(t.source))}</span>
         <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span> <span class="muted small">Tap for detail ▾</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
           <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${t.kind === 'refund' ? 'Refund' : 'Purchase'})</p>
           <p class="small muted">Date: ${fmtLong(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
-          Card: ••${esc(t.card_suffix)} · Source: ${esc(sourceLabel(t.source))} · Status: ${excluded ? 'excluded from week math' : (t.state === 'provisional' ? 'pending' : 'posted')}<br>
-          ${excluded ? 'This purchase is kept for the record but does not count toward any week.' : 'This purchase counts toward its week unless excluded.'}</p>
+          Card: ••${esc(t.card_suffix)} · Source: ${esc(sourceLabel(t.source))} · Status: ${stateWord(t, excluded)}<br>
+          ${excluded ? 'This purchase is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This purchase was reversed and does not count.' : 'This purchase counts toward its week unless excluded.'}</p>
           <div>${action}</div>
         </div></li>`;
       }).join('')
@@ -284,17 +436,19 @@ async function refresh() {
   const recentEl = $('recentList');
   if (recentEl) {
     const recent = [...all].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
-    recentEl.innerHTML = recent.length
+    recentEl.innerHTML = txReadFailed
+      ? '<li class="muted small error">Could not load recent purchases.</li>'
+      : recent.length
       ? recent.map((t) => {
           const excluded = t.excluded === true || t.state === 'excluded';
-          return `<li class="tx-row"><div class="tx-head" data-view="purchases" role="button" tabindex="0" aria-label="See ${esc(t.merchant)} in Purchases"><div class="tx-line1"><span class="tx-icon" aria-hidden="true">${esc(t.merchant.charAt(0).toUpperCase())}</span><strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
-          <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'Excluded' : (t.state === 'provisional' ? 'Pending' : 'Posted')}</span>
+          return `<li class="tx-row"><div class="tx-head" data-view="purchases" role="button" tabindex="0" aria-label="See ${esc(t.merchant)} in Purchases"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
+          <div class="tx-line2">${statePill(t, excluded)}
           <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span></div></div></li>`;
         }).join('')
       : '<li class="muted small">No purchases yet.</li>';
     // Rows added after load need the same tab-switch handler as the nav.
     recentEl.querySelectorAll('[data-view]').forEach((el) => el.addEventListener('click', () => {
-      showView(el.dataset.view);
+      showView(el.dataset.view, { clearMessages: true });
       if (Date.now() - lastRefreshAt > 30000) refresh();
     }));
   }
@@ -307,19 +461,23 @@ async function refresh() {
   const bd = document.getElementById('weekBreakdown');
   if (bd && currentWeekData) {
     const w = currentWeekData;
-    const counted = all.filter((t) => !(t.excluded === true || t.state === 'excluded'));
+    // Spent breakdown sums THIS WEEK ONLY (not all loaded history), and
+    // excludes excluded and reversed rows. Server charges are authoritative.
+    const counted = all.filter((t) => inThisWeek(t) && !(t.excluded === true || t.state === 'excluded') && t.state !== 'reversed');
     const bySrc = {};
     for (const t of counted) bySrc[t.source] = (bySrc[t.source] ?? 0) + t.amount_cents;
     const refundTotal = counted.filter((t) => t.kind === 'refund').reduce((s, t) => s + t.amount_cents, 0);
     const panels = {
-      allowance: `<strong>Weekly allowance ${formatCents(w.B)}</strong> plus ${formatCents(currentWeekInputs?.T ?? 0)} in temporary increases this week.`,
-      spent: `<strong>Where this spending came from:</strong><br>${Object.entries(bySrc).map(([s, v]) => `${esc(sourceLabel(s))}: ${formatCents(v)}`).join(' · ') || 'nothing yet'}<br>Refunds in this list: ${formatCents(refundTotal)} · Excluded purchases kept out of the math: ${all.length - counted.length}`,
-      debt: w.D > 0
-        ? `<strong>${formatCents(w.D)} carried over</strong> from earlier weeks — it comes off the top of this week's allowance before anything else.`
+      allowance: txReadFailed ? 'Could not load purchases for the breakdown.'
+        : `<strong>Weekly allowance ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}</strong> plus ${formatCents(w.tempCents)} in temporary increases this week. Carried debt ${formatCents(w.carriedDebtCents)} comes off the top, leaving ${formatCents(w.baseAvailableCents)} of base spending room.`,
+      spent: txReadFailed ? 'Could not load this week\'s purchases for the breakdown.'
+        : `<strong>This week only — charges ${formatCents(w.chargesCents)}:</strong><br>${Object.entries(bySrc).map(([s2, v]) => `${esc(sourceLabel(s2))}: ${formatCents(v)}`).join(' · ') || 'nothing yet'}<br>Refunds in this week\'s list: ${formatCents(refundTotal)} · Excluded purchases kept out of the math: ${all.filter((t) => t.excluded === true || t.state === 'excluded').length}`,
+      debt: w.carriedDebtCents > 0
+        ? `<strong>${formatCents(w.carriedDebtCents)} carried over</strong> from earlier weeks — it comes off the top of this week's allowance before anything else.`
         : 'No carried-over overspending: this week starts with the full allowance.',
-      credit: w.outgoingCredit > 0
-        ? `<strong>${formatCents(w.outgoingCredit)} in refund credit</strong> is still available — it covers spending after the allowance and any temporary increases run out.`
-        : 'No refund credit available right now.',
+      outgoing: w.outgoingDebtCents > 0
+        ? `<strong>${formatCents(w.outgoingDebtCents)} outgoing debt</strong> = ${formatCents(w.carriedDebtCents)} carried in plus ${formatCents(w.outgoingDebtCents - w.carriedDebtCents)} new debt from spending above this week's room. It carries into next week.`
+        : 'No outgoing debt: this week\'s spending stayed within its room.',
     };
     bd.dataset.panels = JSON.stringify(panels);
     if (!bd.classList.contains('hidden') && bd.dataset.stat && panels[bd.dataset.stat]) {
@@ -330,73 +488,91 @@ async function refresh() {
     const row = all.find((t) => t.id === b.dataset.useFund);
     const amountText = await showSheet({ title: 'Use Extra Fund', message: `Ask the admin to cover "${row?.merchant ?? 'this purchase'}" (${formatCents(row?.amount_cents ?? 0)}) from the Extra Fund?`, inputLabel: 'Amount ($)', inputValue: row ? (row.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Send request', cancelLabel: 'Cancel' });
     if (amountText === null) return;
-    const cents = dollarsToCents(amountText);
+    const cents = parseDollarsStrict(amountText);
     if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
     const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from('fund_requests').insert({
       household_id: household.household_id, requested_by: user.id,
       amount_cents: cents, note: '', status: 'pending', transaction_id: b.dataset.useFund,
     });
-    if (error) { await showAlert('Could not send request', error.message); return; }
+    if (error) { console.warn('fund request (use-fund) failed:', error.message); await showAlert('Could not send request', 'Could not send this request. Try again.'); return; }
     await audit('Extra Fund request created', `Requested ${formatCents(cents)} for ${row?.merchant ?? 'a purchase'}.`);
     await refresh();
   }));
   document.querySelectorAll('[data-exclude]').forEach((b) => b.addEventListener('click', async () => {
-    // Spec A7: exclusion needs a reason, recorded in the audit log.
-    const reason = ((await showSheet({ title: 'Exclude purchase', message: 'Why exclude this purchase? It stays in the list but stops counting toward the week.', inputLabel: 'Reason (optional)', confirmLabel: 'Exclude', cancelLabel: 'Keep it' })) ?? '').trim();
+    // Exclusion goes through exclude_transaction (never a direct .update),
+    // and a reason is required — it is recorded in the audit log.
+    const reason = await showSheet({ title: 'Exclude purchase', message: 'Why exclude this purchase? It stays in the list but stops counting toward the week.', inputLabel: 'Reason (required)', confirmLabel: 'Exclude', cancelLabel: 'Keep it' });
+    if (reason === null) return;
+    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for excluding this purchase.'); return; }
     const row = all.find((t) => t.id === b.dataset.exclude);
-    const { error } = await supabase.from('transactions')
-      .update({ state: 'excluded', excluded: true }).eq('id', b.dataset.exclude);
-    if (error) { await showAlert('Could not exclude', error.message); return; }
-    await audit('Transaction excluded', `${row ? row.merchant : 'Purchase'} ${row ? formatCents(row.amount_cents) : ''}${reason ? ` — reason: ${reason}` : ' — no reason given'}.`);
+    const { error } = await supabase.rpc('exclude_transaction', { txn_id: b.dataset.exclude, reason: reason.trim() });
+    if (error) { console.warn('exclude_transaction failed:', error.message); await showAlert('Could not exclude', 'Could not exclude this purchase. Try again.'); return; }
+    await audit('Transaction excluded', `${row ? row.merchant : 'Purchase'} ${row ? formatCents(row.amount_cents) : ''} — reason: ${reason.trim()}.`);
     await refresh();
   }));
   document.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
-    // Restore rule (documented choice): there is no stored pre-exclude
-    // state, so a transaction dated before today is treated as posted
-    // and today's (or future) as pending. A pending row restored this
-    // way still becomes verified once the bank confirms it.
+    // Restore goes through restore_transaction; the server restores the
+    // stored pre-exclude state — the client never invents one.
     const row = all.find((t) => t.id === b.dataset.restore);
-    const today = nyTodayString();
-    const state = row && row.date < today ? 'verified' : 'provisional';
-    const { error } = await supabase.from('transactions')
-      .update({ state, excluded: false }).eq('id', b.dataset.restore);
-    if (error) { await showAlert('Could not restore', error.message); return; }
-    await audit('Transaction restored', `${row ? row.merchant : 'Purchase'} returned to the week as ${state === 'provisional' ? 'pending' : 'posted'}.`);
+    const { error } = await supabase.rpc('restore_transaction', { txn_id: b.dataset.restore });
+    if (error) { console.warn('restore_transaction failed:', error.message); await showAlert('Could not restore', 'Could not restore this purchase. Try again.'); return; }
+    await audit('Transaction restored', `${row ? row.merchant : 'Purchase'} returned to the week.`);
     await refresh();
   }));
-
+  document.querySelectorAll('[data-reclassify]').forEach((b) => b.addEventListener('click', async () => {
+    const newKind = await showSheet({ title: 'Reclassify purchase', message: 'Change how this purchase counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+    if (newKind === null) return;
+    const reason = await showSheet({ title: 'Reclassify purchase', message: 'Why reclassify this purchase?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
+    if (reason === null) return;
+    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for reclassifying this purchase.'); return; }
+    const row = all.find((t) => t.id === b.dataset.reclassify);
+    const { error } = await supabase.rpc('reclassify_transaction', { txn_id: b.dataset.reclassify, new_kind: newKind, reason: reason.trim() });
+    if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', 'Could not reclassify this purchase. Try again.'); return; }
+    await audit('Transaction reclassified', `${row ? row.merchant : 'Purchase'} reclassified to ${newKind} — reason: ${reason.trim()}.`);
+    await refresh();
+  }));
   document.querySelectorAll('[data-delete-tx]').forEach((b) => b.addEventListener('click', async () => {
     const row = all.find((t) => t.id === b.dataset.deleteTx);
     if (!row || !(await showConfirm('Delete purchase', `"${row.merchant}" ${formatCents(row.amount_cents)} — this removes the hand-entered purchase and cannot be undone.`, 'Delete'))) return;
     const { error } = await supabase.rpc('delete_transaction', { p_transaction_id: b.dataset.deleteTx });
-    if (error) { await showAlert('Could not delete', error.message); return; }
+    if (error) { console.warn('delete_transaction failed:', error.message); await showAlert('Could not delete', 'Could not delete this purchase. Try again.'); return; }
     await refresh();
   }));
   document.querySelectorAll('[data-remove-tx]').forEach((b) => b.addEventListener('click', async () => {
     const row = all.find((t) => t.id === b.dataset.removeTx);
-    if (!row || !(await showConfirm('Remove from budget', `"${row.merchant}" ${formatCents(row.amount_cents)} — the bank record stays with the bank; this only stops it counting here.`, 'Remove'))) return;
-    const { error } = await supabase.from('transactions')
-      .update({ state: 'excluded', excluded: true }).eq('id', b.dataset.removeTx);
-    if (error) { await showAlert('Could not remove', error.message); return; }
-    await audit('Transaction removed from budget', `${row.merchant} ${formatCents(row.amount_cents)} excluded from week math.`);
+    // "Remove" for a bank/email/file record is an exclusion, not a delete:
+    // the record stays with its source; it only stops counting here. It
+    // goes through exclude_transaction with a required reason.
+    const reason = await showSheet({ title: 'Remove from budget', message: `"${row?.merchant ?? 'This purchase'}" ${formatCents(row?.amount_cents ?? 0)} — the record stays with its source; this only stops it counting here. Give a reason to continue.`, inputLabel: 'Reason (required)', confirmLabel: 'Remove', cancelLabel: 'Keep it' });
+    if (reason === null) return;
+    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for removing this purchase.'); return; }
+    const { error } = await supabase.rpc('exclude_transaction', { txn_id: b.dataset.removeTx, reason: reason.trim() });
+    if (error) { console.warn('exclude_transaction (remove) failed:', error.message); await showAlert('Could not remove', 'Could not remove this purchase. Try again.'); return; }
+    await audit('Transaction removed from budget', `${row.merchant} ${formatCents(row.amount_cents)} excluded from week math — reason: ${reason.trim()}.`);
     await refresh();
   }));
 
-  const { data: reqs } = await supabase.from('fund_requests')
+  const { data: reqs, error: reqsErr } = await supabase.from('fund_requests')
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(50);
-  $('fundQueue').innerHTML = (reqs ?? []).length
+  if (reqsErr) console.warn('fund_requests read failed:', reqsErr.message);
+  $('fundQueue').innerHTML = reqsErr
+    ? '<li class="error">Could not load fund requests. Try again.</li>'
+    : (reqs ?? []).length
     ? (reqs ?? []).map((r) => {
         const btns = (household.role === 'admin' && r.status === 'pending')
           ? `<div class="btn-row"><button class="btn btn-small btn-primary" data-approve="${r.id}" type="button" aria-label="Approve this Extra Fund request">Approve</button> <button class="btn btn-small btn-quiet" data-decline="${r.id}" type="button" aria-label="Decline this Extra Fund request">Decline</button></div>`
           : '';
-        return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(r.status.toUpperCase())} · ${esc(r.note || '')} <span class="muted small">Tap for detail ▾</span></div>
+        const statusLabel = r.status === 'split'
+          ? (r.remainder_cents != null ? `Split — ${formatCents(r.remainder_cents)} remaining` : 'Split')
+          : r.status.toUpperCase();
+        return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(statusLabel)} · ${esc(r.note || '')} <span class="muted small">Tap for detail ▾</span></div>
         <div class="tx-detail hidden" id="fund-detail-${r.id}">
-          <p class="small muted">Amount: ${formatCents(r.amount_cents)} · Status: ${esc(r.status)}<br>
+          <p class="small muted">Amount: ${formatCents(r.amount_cents)} · Status: ${esc(statusLabel)}<br>
           Note: ${esc(r.note || '—')}<br>
           Requested: ${fmtDateTime(r.created_at)}<br>
-          ${r.status === 'pending' ? 'Waiting on the admin decision.' : r.status === 'approved' ? 'Approved — the fund balance above already reflects it.' : 'Declined by the admin.'}</p>
+          ${r.status === 'pending' ? 'Waiting on the admin decision.' : r.status === 'approved' ? 'Approved — the fund balance above already reflects it.' : r.status === 'split' ? (r.remainder_cents != null ? `Split approval — ${formatCents(r.remainder_cents)} of this request is still unapproved.` : 'Split approval — part of this request was approved.') : 'Declined by the admin.'}</p>
           <div>${btns}</div>
         </div></li>`;
       }).join('')
@@ -408,80 +584,196 @@ async function refresh() {
     const req = (reqs ?? []).find((r) => r.id === b.dataset.approve);
     const amountText = await showSheet({ title: 'Approve from the fund', message: `Approve how much of this ${formatCents(req?.amount_cents ?? 0)} request? Enter less for a split approval.`, inputLabel: 'Amount ($)', inputValue: req ? (req.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Approve', cancelLabel: 'Cancel' });
     if (amountText === null) return;
-    const cents = dollarsToCents(amountText);
+    const cents = parseDollarsStrict(amountText);
     if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
-    let { error } = await supabase.rpc('approve_and_allocate', { p_request_id: b.dataset.approve, p_amount_cents: cents, p_override_reason: null });
+    // The server rejects amount > requested; the client rejects it first
+    // so no over-approval is ever sent.
+    if (req && cents > req.amount_cents) { await showAlert('Too much', `You cannot approve more than the requested ${formatCents(req.amount_cents)}.`); return; }
+    let { error } = await supabase.rpc('approve_and_allocate', { request_id: b.dataset.approve, amount_cents: cents, override_reason: null });
     if (error && /insufficient fund/i.test(error.message)) {
       const reason = await showSheet({ title: 'Fund is short', message: `The fund does not cover ${formatCents(cents)}. You can still approve with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Approve anyway', cancelLabel: 'Cancel' });
       if (reason === null) return;
-      ({ error } = await supabase.rpc('approve_and_allocate', { p_request_id: b.dataset.approve, p_amount_cents: cents, p_override_reason: reason.trim() }));
+      ({ error } = await supabase.rpc('approve_and_allocate', { request_id: b.dataset.approve, amount_cents: cents, override_reason: reason.trim() }));
     }
-    if (error) await showAlert('Could not approve', error.message); else await refresh();
+    if (error) { console.warn('approve_and_allocate failed:', error.message); await showAlert('Could not approve', 'Could not approve this request. Try again.'); } else await refresh();
   }));
   document.querySelectorAll('[data-decline]').forEach((b) => b.addEventListener('click', async () => {
     const { error } = await supabase.rpc('decline_fund_request', { p_request_id: b.dataset.decline });
-    if (error) await showAlert('Could not decline', error.message); else await refresh();
+    if (error) { console.warn('decline_fund_request failed:', error.message); await showAlert('Could not decline', 'Could not decline this request. Try again.'); } else await refresh();
   }));
   // Settings card: admin only.
   $('settingsCard').style.display = household.role === 'admin' ? '' : 'none';
-  // Savings: latest attestations (read) + admin form.
-  const { data: sav } = await supabase.from('savings_ledger')
+  // Savings: FOUR numbers from savings_ledger kinds (transfer_in,
+  // withdrawal, interest, adjustment). Balance is the latest attested
+  // actual_balance_cents — never a sum of movements. See the S4 report for
+  // the ledger-kind gap: the live write path today only attests a balance
+  // (kind 'adjustment', amount 0), so transfer/withdrawal/interest totals
+  // stay $0 until a write path for those kinds lands (S1).
+  const { data: sav, error: savErr } = await supabase.from('savings_ledger')
     .select('*').eq('household_id', household.household_id)
-    .order('created_at', { ascending: false }).limit(20);
-  $('savingsList').innerHTML = (sav ?? []).length
-    ? `<ul>${(sav ?? []).map((s) => `<li>Recorded balance ${formatCents(s.actual_balance_cents ?? 0)} · ${fmtDateTime(s.created_at)} · ${esc(s.note || '')}</li>`).join('')}</ul>${(sav ?? []).length >= 20 ? '<p class="muted small">Showing the latest 20 records.</p>' : ''}`
+    .order('created_at', { ascending: false }).limit(1000);
+  if (savErr) console.warn('savings_ledger read failed:', savErr.message);
+  const savRows = savErr ? [] : (sav ?? []);
+  const latestBalRow = savRows.find((r) => r.actual_balance_cents !== null && r.actual_balance_cents !== undefined);
+  const savBalance = latestBalRow ? latestBalRow.actual_balance_cents : null;
+  const savIn = savRows.filter((r) => r.kind === 'transfer_in').reduce((t, r) => t + (r.amount_cents || 0), 0);
+  const savOutSum = savRows.filter((r) => r.kind === 'withdrawal').reduce((t, r) => t + (r.amount_cents || 0), 0);
+  const savOut = Math.abs(savOutSum);
+  const savInterestAdj = savRows.filter((r) => r.kind === 'interest' || r.kind === 'adjustment').reduce((t, r) => t + (r.amount_cents || 0), 0);
+  const savSumEl = $('savingsSummary');
+  if (savSumEl) {
+    savSumEl.innerHTML = savErr
+      ? '<p class="error">Could not load savings. Try again.</p>'
+      : `<div class="sav-grid"><div><div class="kicker">Balance</div><div class="num">${savBalance !== null ? formatCents(savBalance) : 'Not recorded yet'}</div></div><div><div class="kicker">Transferred in</div><div class="num">${formatCents(savIn)}</div></div><div><div class="kicker">Withdrawn</div><div class="num">${formatCents(savOut)}</div></div><div><div class="kicker">Interest / adjustments</div><div class="num">${formatCents(savInterestAdj)}</div></div></div>${savBalance === null ? '<p class="muted small">No savings attestation with a recorded balance was found.</p>' : ''}${!savRows.some((r) => ['transfer_in', 'withdrawal', 'interest'].includes(r.kind)) ? '<p class="muted small">No transfers, withdrawals, or interest have been recorded in the savings ledger yet.</p>' : ''}`;
+  }
+  $('savingsList').innerHTML = savErr
+    ? '<p class="error">Could not load savings records. Try again.</p>'
+    : savRows.length
+    ? `<ul>${savRows.slice(0, 20).map((r) => `<li>${esc(r.kind)} ${formatCents(r.amount_cents ?? 0)}${r.actual_balance_cents != null ? ` · Recorded balance ${formatCents(r.actual_balance_cents)}` : ''} · ${fmtDateTime(r.created_at)} · ${esc(r.note || '')}</li>`).join('')}</ul>${savRows.length > 20 ? '<p class="muted small">Showing the latest 20 records.</p>' : ''}`
     : '<p class="muted small">No savings records yet.</p>';
   $('savingsFormWrap').style.display = household.role === 'admin' ? '' : 'none';
 
-  // Bank sync line: persisted across visits (localStorage), never the
-  // old "not synced yet in this session" confession on reopen.
-  const syncKey = `hb-last-sync-${household.household_id}`;
-  const storedSync = localStorage.getItem(syncKey);
-  const syncLine = $('bankSyncLine');
-  if (syncLine) syncLine.textContent = storedSync ? `Last synced ${storedSync}` : 'Not synced yet.';
-  const ls = document.getElementById('lastSync'); if (ls) ls.textContent = fmtDateTime(new Date().toISOString());
-  // Bank button states: once connected, Connect quiets down and Sync
-  // becomes the primary action; the webhook button shows its on-state.
-  const connected = localStorage.getItem(`hb-bank-connected-${household.household_id}`) === '1'
-    || localStorage.getItem(`hb-webhook-on-${household.household_id}`) === '1';
-  const cb = $('connectBankBtn');
-  if (cb && connected) { cb.classList.remove('btn-primary'); cb.textContent = 'Connected ✓'; cb.disabled = true; }
-  const sb = $('syncBankBtn');
-  if (sb && connected) sb.classList.add('btn-primary');
-  const wb = $('registerWebhookBtn');
-  if (wb && localStorage.getItem(`hb-webhook-on-${household.household_id}`) === '1') { wb.textContent = 'Automatic sync is on ✓'; wb.disabled = true; }
-  // Extra Fund summary: balances from the fund ledger + pending releases.
-  // Before the fund SQL lands these queries fail — show an honest note.
+  // Bank accounts UI — SERVER TRUTH ONLY. Connected state derives from
+  // plaid_items rows (status 'active' vs 'disconnected') and their
+  // plaid_accounts rows. localStorage is never consulted for connection
+  // state. No token, cursor, or secret is ever rendered.
+  let bankLastSyncAt = null;
   try {
-    const { data: ledger } = await supabase.from('fund_ledger').select('kind, amount_cents').eq('household_id', household.household_id);
-    const { data: releases } = await supabase.from('surplus_releases').select('surplus_cents, released_cents, status').eq('household_id', household.household_id);
-    const { data: hh } = await supabase.from('households').select('fund_shortfall_cents').eq('id', household.household_id).maybeSingle();
-    if (ledger) {
-      const sum = (k) => (ledger ?? []).filter((r) => r.kind === k).reduce((s, r) => s + r.amount_cents, 0);
-      const available = (ledger ?? []).reduce((s, r) => s + r.amount_cents, 0);
-      const spent = Math.abs(sum('allocation') + sum('override_allocation'));
-      const pending = (releases ?? []).filter((r) => r.status === 'pending').reduce((s, r) => s + r.surplus_cents, 0);
-      const held = (releases ?? []).filter((r) => r.status === 'held').length;
-      const shortfall = hh?.fund_shortfall_cents ?? 0;
-      const fs = $('fundSummary');
-      if (fs) fs.innerHTML = `<p class="fund-balance">Available <strong>${formatCents(available)}</strong></p>
-        <p class="muted small">Leftover money from weeks you spent under budget.</p>${pending > 0 ? `<p class="muted small">Another ${formatCents(pending)} is on its way.</p>` : ''}${shortfall > 0 ? `<p class="muted small">Owed back to the fund: ${formatCents(shortfall)}.</p>` : ''}`;
-    } else {
-      const fs = $('fundSummary');
-      if (fs) fs.innerHTML = '<p class="muted small">Fund balances will appear once the fund setup is complete.</p>';
+    const { data: items, error: itemsErr } = await supabase.from('plaid_items')
+      .select('id, plaid_item_id, institution_name, institution_id, status, last_sync_at')
+      .eq('household_id', household.household_id).order('created_at', { ascending: false });
+    if (itemsErr) throw itemsErr;
+    const itemRows = items ?? [];
+    let acctRows = [];
+    if (itemRows.length) {
+      const { data: accts, error: acctsErr } = await supabase.from('plaid_accounts')
+        .select('plaid_item_id, plaid_account_id, name, mask, type, subtype')
+        .in('plaid_item_id', itemRows.map((i) => i.plaid_item_id));
+      if (acctsErr) { console.warn('plaid_accounts read failed (items still shown):', acctsErr.message); }
+      else acctRows = accts ?? [];
     }
+    const syncTimes = itemRows.map((i) => i.last_sync_at).filter(Boolean).sort();
+    bankLastSyncAt = syncTimes.length ? syncTimes[syncTimes.length - 1] : null;
+    const syncLine = $('bankSyncLine');
+    if (syncLine) syncLine.textContent = bankLastSyncAt ? `Last synced ${fmtDateTime(bankLastSyncAt)}` : 'Not synced yet.';
+    const ls = document.getElementById('lastSync'); if (ls) ls.textContent = bankLastSyncAt ? fmtDateTime(bankLastSyncAt) : 'Not synced yet';
+    const cb = $('connectBankBtn');
+    if (cb) { cb.disabled = false; cb.classList.remove('btn-primary'); cb.textContent = itemRows.some((i) => i.status === 'active') ? 'Connect another bank account' : 'Connect a bank account'; }
+    const sb = $('syncBankBtn');
+    if (sb) sb.classList.toggle('btn-primary', itemRows.some((i) => i.status === 'active'));
+    const renderBankList = (elId, rows) => {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      el.textContent = '';
+      if (!rows.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'None.'; el.appendChild(p); return; }
+      for (const item of rows) {
+        const wrap = document.createElement('div'); wrap.className = 'bank-row';
+        const logo = document.createElement('span'); logo.innerHTML = bankLogoHtml(item.institution_name || 'Bank'); wrap.appendChild(logo);
+        const info = document.createElement('div'); info.className = 'bank-info';
+        const name = document.createElement('strong'); name.textContent = item.institution_name || 'Bank'; info.appendChild(name);
+        const accts = acctRows.filter((x) => x.plaid_item_id === item.plaid_item_id);
+        if (accts.length) {
+          for (const acct of accts) {
+            const line = document.createElement('div'); line.className = 'muted small';
+            line.textContent = `${acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}${acct.type ? ` · ${acct.type}` : ''}${acct.subtype ? ` (${acct.subtype})` : ''}`;
+            info.appendChild(line);
+          }
+        } else {
+          const line = document.createElement('div'); line.className = 'muted small'; line.textContent = 'Account details unavailable.'; info.appendChild(line);
+        }
+        if (item.last_sync_at) { const line = document.createElement('div'); line.className = 'muted small'; line.textContent = `Last synced ${fmtDateTime(item.last_sync_at)}`; info.appendChild(line); }
+        wrap.appendChild(info);
+        if (item.status === 'active' && household.role === 'admin') {
+          const btn = document.createElement('button'); btn.className = 'btn btn-small btn-danger'; btn.type = 'button';
+          btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${item.institution_name || 'bank'}`);
+          btn.addEventListener('click', async () => {
+            if (!(await showConfirm('Disconnect bank', `Disconnect ${item.institution_name || 'this bank'}? The app will stop syncing it. Past purchases stay in the list.`, 'Disconnect'))) return;
+            // Sibling S3 plaid-disconnect requires BOTH household_id and plaid_item_id
+            // (the S4 brief listed only plaid_item_id); sending both satisfies
+            // the implemented function and is harmless if a stricter function
+            // ignores the extra field.
+            const out = await callFn('plaid-disconnect', { household_id: household.household_id, plaid_item_id: item.plaid_item_id });
+            if (!out.disconnected) { console.warn('plaid-disconnect failed:', out.error); await showAlert('Could not disconnect', 'Could not disconnect this bank. Try again.'); return; }
+            await refresh();
+          });
+          wrap.appendChild(btn);
+        }
+        el.appendChild(wrap);
+      }
+    };
+    renderBankList('bankAccountsList', itemRows.filter((i) => i.status === 'active'));
+    renderBankList('bankPreviouslyList', itemRows.filter((i) => i.status === 'disconnected'));
   } catch (e) {
+    console.warn('bank accounts read failed:', e);
+    const syncLine = $('bankSyncLine'); if (syncLine) syncLine.textContent = 'Could not load bank accounts.';
+    for (const id of ['bankAccountsList', 'bankPreviouslyList']) {
+      const el = document.getElementById(id); if (el) el.innerHTML = '<p class="error">Could not load bank accounts. Try again.</p>';
+    }
+    const ls = document.getElementById('lastSync'); if (ls) ls.textContent = '—';
+  }
+  // Extra Fund summary — COMPLETE (spec A5): Available, Pending (not yet
+  // released), Released total, Spent from fund, and Owed back (shortfall),
+  // from fund_ledger / surplus_releases / week_closes aggregates. A read
+  // failure is an error state, not a soft "will appear later" note.
+  try {
+    const { data: ledger, error: ledgerErr } = await supabase.from('fund_ledger').select('kind, amount_cents').eq('household_id', household.household_id);
+    const { data: releases, error: relErr } = await supabase.from('surplus_releases').select('surplus_cents, released_cents, status').eq('household_id', household.household_id);
+    const { data: hh, error: hhErr } = await supabase.from('households').select('fund_shortfall_cents').eq('id', household.household_id).maybeSingle();
+    if (ledgerErr || relErr || hhErr) throw (ledgerErr || relErr || hhErr);
+    const sumKind = (k) => (ledger ?? []).filter((r) => r.kind === k).reduce((t, r) => t + r.amount_cents, 0);
+    const available = (ledger ?? []).reduce((t, r) => t + r.amount_cents, 0);
+    const spent = Math.abs(sumKind('allocation') + sumKind('override_allocation'));
+    const pending = (releases ?? []).filter((r) => r.status === 'pending').reduce((t, r) => t + Math.max(0, (r.surplus_cents || 0) - (r.released_cents || 0)), 0);
+    const releasedTotal = (releases ?? []).filter((r) => r.status === 'released').reduce((t, r) => t + (r.released_cents || r.surplus_cents || 0), 0);
+    const heldRows = (releases ?? []).filter((r) => r.status === 'held');
+    const heldTotal = heldRows.reduce((t, r) => t + (r.surplus_cents || 0), 0);
+    const shortfall = hh?.fund_shortfall_cents ?? 0;
     const fs = $('fundSummary');
-    if (fs) fs.innerHTML = '<p class="muted small">Fund balances will appear once the fund setup is complete.</p>';
+    if (fs) fs.innerHTML = `<p class="fund-balance">Available <strong>${formatCents(available)}</strong></p>
+      <p class="muted small">Leftover money from weeks you spent under budget.</p>
+      <p class="muted small">Pending (not yet released): ${formatCents(pending)}</p>
+      <p class="muted small">Released total: ${formatCents(releasedTotal)}</p>
+      <p class="muted small">Spent from fund: ${formatCents(spent)}</p>
+      <p class="muted small">Owed back (shortfall): ${formatCents(shortfall)}</p>${heldRows.length ? `<p class="muted small">Held for review: ${formatCents(heldTotal)} across ${heldRows.length} week(s).</p>` : ''}`;
+  } catch (e) {
+    console.warn('fund summary read failed:', e);
+    const fs = $('fundSummary');
+    if (fs) fs.innerHTML = '<p class="error">Could not load fund balances. Try again.</p>';
   }
   const faw = $('fundAdminWrap');
   if (faw) faw.style.display = household.role === 'admin' ? '' : 'none';
 
+  // Week history display (History tab) — READ-ONLY, from week_closes +
+  // surplus_releases. The client never recomputes a week.
+  try {
+    const { data: closes, error: closesErr } = await supabase.from('week_closes')
+      .select('week_start, surplus_cents, outgoing_debt_cents').eq('household_id', household.household_id)
+      .order('week_start', { ascending: false }).limit(100);
+    const { data: rels, error: relsErr } = await supabase.from('surplus_releases')
+      .select('week_start, surplus_cents, released_cents, status').eq('household_id', household.household_id);
+    if (closesErr || relsErr) throw (closesErr || relsErr);
+    const relByWeek = new Map((rels ?? []).map((r) => [r.week_start, r]));
+    const wh = $('weekHistoryList');
+    if (wh) wh.innerHTML = (closes ?? []).length
+      ? (closes ?? []).map((c) => {
+          const rel = relByWeek.get(c.week_start);
+          const relText = !rel ? 'No release record' : rel.status === 'released' ? `Released ${formatCents(rel.released_cents ?? rel.surplus_cents ?? 0)}` : rel.status === 'pending' ? `Pending release ${formatCents(rel.surplus_cents ?? 0)}` : `Held ${formatCents(rel.surplus_cents ?? 0)}`;
+          return `<li>Week of ${fmtLong(c.week_start)} · Surplus ${formatCents(c.surplus_cents ?? 0)} · Debt carried ${formatCents(c.outgoing_debt_cents ?? 0)} · ${relText} · ${rel ? esc(rel.status) : 'no release'}</li>`;
+        }).join('')
+      : '<li class="muted small">No closed weeks yet.</li>';
+  } catch (e) {
+    console.warn('week history read failed:', e);
+    const wh = $('weekHistoryList'); if (wh) wh.innerHTML = '<li class="error">Could not load week history. Try again.</li>';
+  }
+
   showView(currentView);
-  const { data: auditRows } = await supabase.from('audit_log')
+  const { data: auditRows, error: auditErr } = await supabase.from('audit_log')
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(50);
-  $('auditList').innerHTML = (auditRows ?? []).length
+  if (auditErr) console.warn('audit_log read failed:', auditErr.message);
+  $('auditList').innerHTML = auditErr
+    ? '<li class="error">Could not load history. Try again.</li>'
+    : (auditRows ?? []).length
     ? (auditRows ?? []).map((a) => `<li><strong>${esc(formatAuditAction(a.action))}</strong> <span class="muted">(${esc(formatAuditActor(a.actor_name))} · ${fmtDateTime(a.created_at)})</span><br>${esc(formatAuditDetail(a.detail))}</li>`).join('') + ((auditRows ?? []).length >= 50 ? '<li class="muted small">Showing the latest 50 entries.</li>' : '')
     : '<li>No audit entries yet.</li>';
   } finally {
@@ -499,18 +791,91 @@ async function boot() {
   await refresh();
 }
 
+$('forgotPasswordBtn')?.addEventListener('click', async () => {
+  let email = ($('authEmail')?.value ?? '').trim();
+  if (!email) {
+    const typed = await showSheet({ title: 'Forgot password?', message: 'Enter the email for your account. A reset link will be sent to it.', inputLabel: 'Email', inputType: 'email', confirmLabel: 'Send reset link', cancelLabel: 'Cancel' });
+    if (typed === null) return;
+    email = typed.trim();
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { $('authMsg').textContent = 'Enter a valid email address.'; return; }
+  const base = window.location.href.replace(/live\.html.*$/, '');
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${base}reset.html` });
+  if (error) console.warn('password reset request failed:', error.message);
+  // Generic wording either way: do not reveal whether an account exists.
+  $('authMsg').textContent = 'If an account exists for that email, a password-reset link was sent to it.';
+});
 $('signInBtn').addEventListener('click', async () => {
   const { error } = await supabase.auth.signInWithPassword({
     email: $('authEmail').value.trim(), password: $('authPassword').value,
   });
-  $('authMsg').textContent = error ? error.message : 'Signed in.';
-  if (!error) await boot();
+  if (error) console.warn('sign-in failed:', error.message);
+  $('authMsg').textContent = error ? 'Could not sign in. Check your email and password and try again.' : 'Signed in.';
+  if (!error) await // ---- Live CSV import (Purchases tab) ----
+// Port of the demo parser. NOTHING is inserted on file pick: the file is
+// parsed, previewed with duplicate-skip counts, and inserted ONLY after
+// the user taps Confirm. Inserts are source='csv', state='provisional'
+// (member inserts are constrained to manual/csv + provisional by S1 SQL).
+$('csvFile')?.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  const preview = $('csvPreview'); const confirmBtn = $('csvConfirmBtn'); const msg = $('csvMsg');
+  pendingCsvRows = [];
+  if (confirmBtn) confirmBtn.disabled = true;
+  if (!file) { if (preview) preview.innerHTML = ''; return; }
+  const text = await file.text();
+  const parsed = parseCsvLive(text);
+  // Existing rows for client-side preview dedupe (normalized key). The
+  // server unique (household_id, dedupe_hash) constraint is the backstop
+  // for any row this preview misses (e.g. beyond the 1000-row fetch).
+  const { data: existing } = await supabase.from('transactions')
+    .select('merchant, amount_cents, date, card_suffix').eq('household_id', household.household_id).limit(1000);
+  const existingKeys = new Set((existing ?? []).map((t) => csvRowKey({ merchant: t.merchant, date: t.date, amountCents: t.amount_cents, suffix: t.card_suffix })));
+  const seen = new Set(); let dupes = 0;
+  const previewRows = parsed.rows.map((r) => {
+    const key = csvRowKey(r);
+    const isDupe = existingKeys.has(key) || seen.has(key);
+    if (isDupe) dupes++; else seen.add(key);
+    return { ...r, isDupe };
+  });
+  pendingCsvRows = previewRows.filter((r) => !r.isDupe);
+  const newCount = pendingCsvRows.length;
+  if (preview) preview.innerHTML = `<p class="muted small">${newCount} new, ${dupes} duplicate(s) skipped, ${parsed.errors.length} unparseable row(s).</p>`
+    + (parsed.errors.length ? `<p class="muted small">${parsed.errors.map((er) => esc(er)).join('<br>')}</p>` : '')
+    + `<ul class="plain">${previewRows.map((r) => `<li class="csv-row${r.isDupe ? ' csv-dupe' : ''}">${esc(r.date)} \u00b7 ${esc(r.merchant)} \u00b7 ${formatCents(r.amountCents)} \u00b7 \u2022\u2022${esc(r.suffix)} \u2014 ${r.isDupe ? 'Duplicate, will be skipped' : 'New'}</li>`).join('')}</ul>`;
+  if (msg) msg.textContent = '';
+  if (confirmBtn) confirmBtn.disabled = newCount === 0;
+});
+$('csvConfirmBtn')?.addEventListener('click', async () => {
+  const msg = $('csvMsg');
+  if (!pendingCsvRows.length) { if (msg) msg.textContent = 'Nothing new to import.'; return; }
+  const rows = pendingCsvRows;
+  const inserts = [];
+  for (const r of rows) {
+    const hash = await sha(`${r.date}|${normalizeMerchant(r.merchant)}|${r.amountCents}|${r.suffix}`);
+    inserts.push({ household_id: household.household_id, date: r.date, merchant: r.merchant,
+      amount_cents: r.amountCents, card_suffix: r.suffix, source: 'csv', state: 'provisional',
+      kind: r.amountCents < 0 ? 'refund' : 'charge', dedupe_hash: hash });
+  }
+  const { data, error } = await supabase.from('transactions').insert(inserts).select('id');
+  if (error) { console.warn('csv insert failed:', error.message); if (msg) msg.textContent = 'Could not import. Nothing was claimed as imported \u2014 try again.'; return; }
+  const added = data?.length ?? rows.length;
+  await audit('CSV import', `${added} added, ${rows.length - added} not inserted.`);
+  pendingCsvRows = [];
+  const fileEl = $('csvFile'); if (fileEl) fileEl.value = '';
+  const confirmBtn = $('csvConfirmBtn'); if (confirmBtn) confirmBtn.disabled = true;
+  const preview = $('csvPreview'); if (preview) preview.innerHTML = '';
+  if (msg) msg.textContent = `Imported ${added} purchase(s) as provisional.`;
+  await refresh();
+});
+
+boot();
 });
 $('signUpBtn').addEventListener('click', async () => {
   const { error } = await supabase.auth.signUp({
     email: $('authEmail').value.trim(), password: $('authPassword').value,
   });
-  $('authMsg').textContent = error ? error.message : 'Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.';
+  if (error) console.warn('sign-up failed:', error.message);
+  $('authMsg').textContent = error ? 'Could not create the account. Try again.' : 'Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.';
   if (!error) await boot();
 });
 $('signOutBtn').addEventListener('click', async () => {
@@ -529,9 +894,10 @@ $('createHouseholdBtn').addEventListener('click', async () => {
   // a household, and needs no secret key at all. The client must still
   // never grant itself admin directly — this RPC is the only path.
   const { data, error } = await supabase.rpc('create_household');
+  if (error) console.warn('create_household failed:', error.message);
   $('householdMsg').textContent = data
-    ? `Household created: ${data}. Share this ID with your spouse so they can join as member.`
-    : `Could not create household: ${error?.message ?? 'unknown error'}`;
+    ? 'Household created. Share the invite code from your profile menu so the second account can join as member.'
+    : 'Could not create household. Try again.';
   // FIX (Nov 1, evening — reproduced by the beta test): do NOT re-read
   // the membership here. boot()'s loadMembership() returned null right
   // after creation (the RPC had just committed), so the app stayed on
@@ -542,20 +908,23 @@ $('createHouseholdBtn').addEventListener('click', async () => {
 });
 $('joinHouseholdBtn').addEventListener('click', async () => {
   const { data: { user } } = await supabase.auth.getUser();
-  const id = $('joinId').value.trim();
-  if (!user || !id) return;
-  const { error } = await supabase.from('household_members')
-    .insert({ household_id: id, user_id: user.id, role: 'member' });
-  $('householdMsg').textContent = error ? `Join failed: ${error.message}` : 'Joined. Loading shared budget…';
-  // Same direct-navigation fix as create: the insert just proved the
-  // caller is a member of this household, so do not re-read first.
-  if (!error) { household = { household_id: id, role: 'member' }; await show('app'); await refresh(); }
+  const code = $('joinId').value.trim();
+  if (!user) { $('householdMsg').textContent = 'Sign in first.'; return; }
+  if (!code) { $('householdMsg').textContent = 'Enter the invite code from the household owner.'; return; }
+  // Join takes an invite CODE, not a UUID. join_household_by_code returns
+  // the household UUID, which the client stores for its own queries but
+  // never displays or shares.
+  const { data, error } = await supabase.rpc('join_household_by_code', { code });
+  if (error) console.warn('join_household_by_code failed:', error.message);
+  $('householdMsg').textContent = error ? 'Join failed. Check the invite code and try again.' : 'Joined. Loading shared budget…';
+  if (!error && data) { household = { household_id: data, role: 'member' }; await show('app'); await refresh(); }
 });
 
 $('manualForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
-  const amount = dollarsToCents(f.amount.value);
+  const amount = parseDollarsStrict(f.amount.value);
+  if (amount === null || amount <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
   const suffix = f.suffix.value.trim();
   if (!/^\d{4}$/.test(suffix)) { await showAlert('Card suffix', 'Card suffix must be exactly 4 digits. Never enter a full card number.'); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
@@ -571,7 +940,7 @@ $('manualForm').addEventListener('submit', async (e) => {
     amount_cents: amount, card_suffix: suffix, source: 'manual',
     state: 'provisional', kind: 'charge', dedupe_hash: hash,
   });
-  if (error) { await showAlert('Could not save', error.message); return; }
+  if (error) { console.warn('manual insert failed:', error.message); await showAlert('Could not save', 'Could not save this purchase. Try again.'); return; }
   await audit('Purchase added by hand', `${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)} (••${suffix}).`);
   f.reset(); await refresh();
 });
@@ -605,7 +974,7 @@ $('connectBankBtn')?.addEventListener('click', async () => {
       $('bankMsg').textContent = ex.connected
         ? 'Connected. Tap "Sync bank transactions now" to pull transactions.'
         : `Connection could not be finished: ${ex.error ?? 'unknown error'}`;
-      if (ex.connected) { localStorage.setItem(`hb-bank-connected-${household.household_id}`, '1'); await refresh(); }
+      if (ex.connected) { await refresh(); } // connection state now comes from plaid_items on refresh, not localStorage
     },
     onExit: (err) => {
       if (err) $('bankMsg').textContent = `Bank connection closed: ${err.error_message ?? err.error_code ?? 'cancelled'}`;
@@ -621,10 +990,8 @@ async function runBankSync() {
     ? `Sync failed: ${out.error}`
     : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).`;
   $('bankMsg').textContent = text;
-  if (!out.error) {
-    localStorage.setItem(`hb-last-sync-${household.household_id}`, fmtDateTime(new Date().toISOString()));
-    localStorage.setItem(`hb-bank-connected-${household.household_id}`, '1');
-  }
+  // No localStorage sync/connection state: refresh() re-reads last_sync_at
+  // from plaid_items, which is the server truth.
   return out;
 }
 
@@ -646,9 +1013,9 @@ $('registerWebhookBtn')?.addEventListener('click', async () => {
   if (out.error) { $('bankMsg').textContent = `Could not enable automatic sync: ${out.error}`; return; }
   const failed = (out.results ?? []).filter((r) => !r.ok);
   $('bankMsg').textContent = failed.length
-    ? `Automatic sync partly enabled — ${failed.length} connection(s) failed: ${failed.map((r) => r.error).join('; ')}`
+    ? `Automatic sync partly enabled — ${failed.length} connection(s) failed. Try again.`
     : 'Automatic sync enabled. New purchases will be pulled in on your next refresh.';
-  if (!failed.length) { localStorage.setItem(`hb-webhook-on-${household.household_id}`, '1'); await refresh(); }
+  if (!failed.length) { await refresh(); }
 });
 
 // Automatic sync: if a verified webhook event is waiting for this
@@ -671,24 +1038,35 @@ async function autoSyncIfWebhookPending() {
 // only one section group is shown at a time, so the app is never
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
-  week: ['section-week', 'section-stats', 'section-hint', 'section-recent', 'finRefundNote'],
-  purchases: ['section-manual', 'section-transactions'],
+  week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
+  purchases: ['section-manual', 'section-transactions', 'section-csv'],
   money: ['section-bank', 'settingsCard', 'section-savings', 'section-fund'],
-  activity: ['section-activity'],
+  activity: ['section-activity', 'section-week-history'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
 let currentView = localStorage.getItem('hb-view') || 'week';
 if (!VIEWS[currentView]) currentView = 'week';
-function showView(name) {
+function showView(name, opts = {}) {
   if (!VIEWS[name]) name = 'week';
   currentView = name;
   localStorage.setItem('hb-view', name);
+  // Success/error messages do NOT persist across tabs: a user-initiated
+  // tab switch clears every in-app result message (refresh() calls
+  // showView without opts, so messages set during a refresh survive).
+  if (opts.clearMessages) {
+    // Clear TRANSIENT messages only (by id) — never content lists such as
+    // savingsList, savingsSummary, or the CSV preview, which refresh()
+    // only repopulates on a timed refresh.
+    for (const id of ['bankMsg', 'homeSyncMsg', 'settingsMsg', 'tempMsg', 'savingsMsg', 'fundAllocateMsg', 'csvMsg']) {
+      const el = document.getElementById(id); if (el) el.textContent = '';
+    }
+    document.getElementById('weekError')?.classList.add('hidden');
+  }
   for (const id of ALL_VIEW_SECTIONS) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
     if (id === 'settingsCard') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
-    if (id === 'finRefundNote') continue; // refresh() already sets this from the server flag
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
@@ -698,7 +1076,7 @@ function showView(name) {
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
-  showView(b.dataset.view);
+  showView(b.dataset.view, { clearMessages: true });
   // Cached content shows instantly; data refreshes in the background,
   // at most once every 30s, so tab taps never stare at empty cards.
   if (Date.now() - lastRefreshAt > 30000) refresh();
@@ -715,14 +1093,38 @@ document.addEventListener('click', (e) => {
 });
 document.getElementById('menuShareIdBtn')?.addEventListener('click', async () => {
   document.getElementById('profileMenu')?.classList.add('hidden');
-  await showSheet({ title: 'Household ID', message: `Share this ID with the second account so they can join as a member:<br><strong style="overflow-wrap:anywhere">${household?.household_id ?? ''}</strong>`, inputLabel: null, confirmLabel: 'Done' });
+  // Share shows/copies the invite CODE, never the household UUID.
+  if (!household) { await showAlert('Not signed in', 'Sign in first, then share the invite code.'); return; }
+  let code = null;
+  try {
+    const { data } = await supabase.from('households').select('invite_code').eq('id', household.household_id).maybeSingle();
+    code = data?.invite_code ?? null;
+  } catch (e) { console.warn('invite_code read failed:', e); }
+  if (!code) { await showSheet({ title: 'Invite code', message: 'No invite code is set up for this household yet. Ask the household owner to set one up before the second account joins.', confirmLabel: 'Done' }); return; }
+  let copied = false;
+  try { await navigator.clipboard.writeText(code); copied = true; } catch (e) { /* clipboard may be unavailable; the code is still shown */ }
+  await showSheet({ title: 'Invite code', message: `Share this code with the second account so they can join as a member:\n${code}${copied ? '\n(Copied to clipboard.)' : ''}`, confirmLabel: 'Done' });
+});
+document.getElementById('menuDeleteBtn')?.addEventListener('click', async () => {
+  document.getElementById('profileMenu')?.classList.add('hidden');
+  if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
+  // TWO-STEP confirmation: "Delete account" then "Yes, delete everything".
+  if (!(await showConfirm('Delete account', 'Delete your account and remove yourself from this household? If you are the last member, the household is deleted too. This cannot be undone.', 'Delete account'))) return;
+  if (!(await showConfirm('Delete everything?', 'This permanently deletes your account and, if you are the last member, the whole household. Are you sure?', 'Yes, delete everything'))) return;
+  const out = await callFn('delete-account', {});
+  if (out.error || !out.deleted) { console.warn('delete-account failed:', out.error); await showAlert('Could not delete account', 'Could not delete your account. Try again.'); return; }
+  await supabase.auth.signOut(); household = null; await show('auth');
+  $('authMsg').textContent = 'Your account was deleted.';
 });
 document.getElementById('menuPasswordBtn')?.addEventListener('click', async () => {
   document.getElementById('profileMenu')?.classList.add('hidden');
+  if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
   const pw = await showSheet({ title: 'Change password', message: 'Enter a new password for this account.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change password', cancelLabel: 'Cancel' });
   if (!pw) return;
+  if (pw.length < 6) { await showAlert('Password too short', 'Enter a password of at least 6 characters.'); return; }
   const { error } = await supabase.auth.updateUser({ password: pw });
-  await showAlert(error ? 'Could not change password' : 'Password changed', error ? error.message : 'Your password is updated.');
+  if (error) console.warn('password change failed:', error.message);
+  await showAlert(error ? 'Could not change password' : 'Password changed', error ? 'Could not change your password. Try again.' : 'Your password is updated.');
 });
 // Stat cards: tap a number to see that number's own breakdown.
 document.querySelectorAll('[data-stat]').forEach((el) => el.addEventListener('click', () => {
@@ -789,20 +1191,29 @@ function fmtShort(dateStr) {
 
 // In-app sheet (replaces the browser's grey prompt/confirm/alert
 // boxes, which looked cheap and blocked the whole page).
-function showSheet({ title, message, inputLabel, inputValue = '', inputType = 'text', confirmLabel = 'OK', cancelLabel = null }) {
+function showSheet({ title, message, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null }) {
+  // SECURITY: EVERY interpolated value is escaped with esc() — title,
+  // message, input label/value, option labels/values, and button labels.
+  // No raw caller value reaches innerHTML through any showSheet path.
+  // Messages are plain text (never HTML); the sheet CSS renders newlines.
   return new Promise((resolve) => {
     document.getElementById('sheetOverlay')?.remove();
+    const safeType = ['text', 'password', 'number', 'email'].includes(inputType) ? inputType : 'text';
     const overlay = document.createElement('div');
     overlay.id = 'sheetOverlay';
-    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${title.replace(/"/g, '')}">
-      <h3>${title}</h3><p>${message}</p>
-      ${inputLabel ? `<label>${inputLabel}<input id="sheetInput" type="${inputType}" value="${String(inputValue).replace(/"/g, '')}"></label>` : ''}
+    const inputHtml = !inputLabel ? '' : inputOptions
+      ? `<label>${esc(inputLabel)}<select id="sheetInput">${inputOptions.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}</select></label>`
+      : `<label>${esc(inputLabel)}<input id="sheetInput" type="${safeType}" value="${esc(inputValue)}"></label>`;
+    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+      <h3>${esc(title)}</h3><p>${esc(message)}</p>
+      ${inputHtml}
       <div class="sheet-btns">
-        ${cancelLabel ? `<button class="btn" type="button" id="sheetCancel">${cancelLabel}</button>` : ''}
-        <button class="btn btn-primary" type="button" id="sheetConfirm">${confirmLabel}</button>
+        ${cancelLabel ? `<button class="btn" type="button" id="sheetCancel">${esc(cancelLabel)}</button>` : ''}
+        <button class="btn btn-primary" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
       </div></div>`;
     document.body.appendChild(overlay);
-    const done = (v) => { overlay.remove(); resolve(v); };
+    let settled = false;
+    const done = (v) => { if (settled) return; settled = true; overlay.remove(); resolve(v); };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) done(inputLabel ? null : false); });
     overlay.querySelector('#sheetCancel')?.addEventListener('click', () => done(inputLabel ? null : false));
     overlay.querySelector('#sheetConfirm').addEventListener('click', () => {
@@ -870,36 +1281,51 @@ $('txSearch')?.addEventListener('input', () => {
 });
 
 $('addTempBtn')?.addEventListener('click', async () => {
-  const cents = dollarsToCents($('tempIncreaseInput').value);
+  const cents = parseDollarsStrict($('tempIncreaseInput').value);
   if (cents === null || cents <= 0) { $('tempMsg').textContent = 'Enter a positive amount.'; return; }
   const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
   const sunday = new Date(ny); sunday.setDate(ny.getDate() - ny.getDay());
   const weekStart = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
   const { error } = await supabase.rpc('add_temp_increase', { p_household_id: household.household_id, p_week_start: weekStart, p_amount_cents: cents, p_note: '' });
-  $('tempMsg').textContent = error ? `Could not add: ${error.message}` : 'Temporary increase added — dashboard will reflect it on refresh.';
+  if (error) console.warn('add_temp_increase failed:', error.message);
+  $('tempMsg').textContent = error ? 'Could not add the temporary increase. Try again.' : 'Temporary increase added — dashboard will reflect it on refresh.';
   if (!error) await refresh();
 });
 
 $('attestSavingsBtn')?.addEventListener('click', async () => {
-  const cents = dollarsToCents($('savingsBalanceInput').value);
-  if (cents === null || cents < 0) { $('savingsMsg').textContent = 'Enter a valid balance.'; return; }
+  const cents = parseDollarsStrict($('savingsBalanceInput').value);
+  if (cents === null || cents < 0) { $('savingsMsg').textContent = 'Enter a valid balance (empty is not 0).'; return; }
   const { error } = await supabase.rpc('attest_savings', { p_household_id: household.household_id, p_actual_balance_cents: cents, p_note: $('savingsNoteInput').value.trim() });
-  $('savingsMsg').textContent = error ? `Could not record: ${error.message}` : 'Balance recorded.';
+  if (error) console.warn('attest_savings failed:', error.message);
+  $('savingsMsg').textContent = error ? 'Could not record the balance. Try again.' : 'Balance recorded.';
   if (!error) await refresh();
 });
 
 $('saveAllowanceBtn')?.addEventListener('click', async () => {
-  const cents = dollarsToCents($('baseAllowanceInput').value);
-  if (cents === null || cents < 0) { $('settingsMsg').textContent = 'Enter a valid allowance.'; return; }
+  const cents = parseDollarsStrict($('baseAllowanceInput').value);
+  if (cents === null || cents < 0) { $('settingsMsg').textContent = 'Enter a valid allowance (empty is not 0).'; return; }
+  // Allowance changes require a confirmation sheet showing old -> new.
+  let oldCents = currentWeekData?.baseAllowanceCents ?? null;
+  if (oldCents === null) {
+    try {
+      const { data: hhRow } = await supabase.from('households').select('base_allowance_cents').eq('id', household.household_id).maybeSingle();
+      oldCents = hhRow?.base_allowance_cents ?? null;
+    } catch (e) { /* old value stays unknown; the sheet says so */ }
+  }
+  const confirmed = await showSheet({ title: 'Change allowance', message: oldCents === null
+    ? `Set the weekly allowance to ${formatCents(cents)}? (The current allowance could not be read, so no old value is shown.)`
+    : `Change the weekly allowance from ${formatCents(oldCents)} to ${formatCents(cents)}?`, confirmLabel: 'Change allowance', cancelLabel: 'Keep current' });
+  if (!confirmed) return;
   const { error } = await supabase.rpc('set_base_allowance', { p_household_id: household.household_id, p_cents: cents });
-  $('settingsMsg').textContent = error ? `Could not save: ${error.message}` : 'Allowance saved.';
+  if (error) console.warn('set_base_allowance failed:', error.message);
+  $('settingsMsg').textContent = error ? 'Could not save allowance. Try again.' : 'Allowance saved.';
   if (!error) await refresh();
 });
 
 $('fundAllocateForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
-  const cents = dollarsToCents(f.amount.value);
+  const cents = parseDollarsStrict(f.amount.value);
   if (cents === null || cents <= 0) { $('fundAllocateMsg').textContent = 'Enter a positive amount.'; return; }
   let { error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: null });
   if (error && /insufficient fund/i.test(error.message)) {
@@ -907,19 +1333,22 @@ $('fundAllocateForm')?.addEventListener('submit', async (e) => {
     if (reason === null) return;
     ({ error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: reason.trim() }));
   }
-  $('fundAllocateMsg').textContent = error ? `Could not record: ${error.message}` : 'Fund spending recorded.';
+  if (error) console.warn('allocate_fund failed:', error.message);
+  $('fundAllocateMsg').textContent = error ? 'Could not record fund spending. Try again.' : 'Fund spending recorded.';
   if (!error) { f.reset(); await refresh(); }
 });
 $('fundRequestForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
+  const cents = parseDollarsStrict(f.amount.value);
+  if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
   const { data: { user } } = await supabase.auth.getUser();
   const { error } = await supabase.from('fund_requests').insert({
     household_id: household.household_id, requested_by: user.id,
-    amount_cents: dollarsToCents(f.amount.value), note: f.note.value.trim(), status: 'pending',
+    amount_cents: cents, note: f.note.value.trim(), status: 'pending',
   });
-  if (error) { await showAlert('Could not save request', error.message); return; }
-  await audit('Extra Fund request created', `Requested ${formatCents(dollarsToCents(f.amount.value))}.`);
+  if (error) { console.warn('fund request insert failed:', error.message); await showAlert('Could not save request', 'Could not save this request. Try again.'); return; }
+  await audit('Extra Fund request created', `Requested ${formatCents(cents)}.`);
   f.reset(); await refresh();
 });
 

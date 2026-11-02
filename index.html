@@ -3,253 +3,42 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#20392f">
-<title>Household Budget — Demo</title>
-<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ffffff">
+<title>Household Budget — OnBudget</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="styles.css?v=2">
+<style>
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; background: #fff; color: #0f172a; line-height: 1.6; }
+  main { max-width: 640px; margin: 0 auto; padding: 56px 20px 48px; }
+  .mark { width: 44px; height: 44px; border-radius: 50%; background: #2f6bff; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; }
+  h1 { font-size: 34px; letter-spacing: -0.02em; line-height: 1.15; margin: 20px 0 8px; }
+  h2 { font-size: 20px; letter-spacing: -0.01em; margin: 32px 0 4px; }
+  p { color: #475569; }
+  .btn { display: inline-block; margin-top: 24px; padding: 14px 22px; border-radius: 14px; background: #2f6bff; color: #fff; font-weight: 700; text-decoration: none; }
+  .card { border: 1px solid #ececf1; border-radius: 20px; padding: 20px; margin-top: 16px; }
+  .card p { margin: 4px 0; }
+  .foot { margin-top: 40px; font-size: 13px; color: #6b7280; }
+</style>
 </head>
 <body>
-<header class="topbar">
-  <div>
-    <strong>Household Budget</strong>
-    <span id="roleBadge" class="badge">DEMO</span>
-  </div>
-  <button id="switchUserBtn" class="btn btn-small" type="button">Switch user</button>
-</header>
-
-<div class="demo-banner" role="alert">
-  <strong>DEMO DATA</strong> — Fake transactions only. No live Gmail, Plaid, or bank
-  connection. No real money moves here. Last sync: <span id="lastSync">—</span>
-  <button id="refreshBtn" class="btn btn-small" type="button">Refresh</button>
-</div>
-
-<nav class="tabs" aria-label="Sections">
-  <button class="tab active" data-tab="dashboard" type="button">Dashboard</button>
-  <button class="tab" data-tab="transactions" type="button">Transactions</button>
-  <button class="tab" data-tab="fund" type="button">Extra Fund</button>
-  <button class="tab" data-tab="savings" type="button">Savings</button>
-  <button class="tab admin-tab" data-tab="settings" type="button">Settings</button>
-  <button class="tab" data-tab="audit" type="button">Audit</button>
-</nav>
-
 <main>
-  <!-- DEMO SIGN-IN -->
-  <section id="view-signin" class="card">
-    <h1>Household Budget</h1>
-    <p class="muted">Private household pilot — two users only. This is a <strong>local demo
-    sign-in</strong>, not production authentication. Pick a demo role to continue.</p>
-    <button id="signinAdmin" class="btn btn-primary btn-block" type="button">Continue as Owner (Admin) — DEMO</button>
-    <button id="signinMember" class="btn btn-block" type="button">Continue as Spouse (Member) — DEMO</button>
-    <p class="muted small">No password is used in this demo. No account is created.
-    Card numbers are never shown — suffixes only (e.g. ••1005).</p>
-  </section>
-
-  <!-- DASHBOARD -->
-  <section id="tab-dashboard" class="tabpane">
-    <div class="card hero">
-      <div class="kicker">Available this week · <span id="weekLabel"></span></div>
-      <div id="weeklyAvailable" class="big">$0.00</div>
-      <p class="muted">Estimate — provisional transactions are included and marked.
-      A negative number means the household is over this week's budget.</p>
-    </div>
-    <div class="grid">
-      <div class="card"><div class="kicker">Weekly allowance</div><div class="num" id="statAllowance"></div></div>
-      <div class="card"><div class="kicker">Weekly spent (normal)</div><div class="num" id="statSpent"></div></div>
-      <div class="card"><div class="kicker">Incoming debt</div><div class="num" id="statDebt"></div></div>
-      <div class="card"><div class="kicker">Extra Fund available</div><div class="num" id="statFund"></div></div>
-      <div class="card"><div class="kicker">Extra Fund pending release</div><div class="num" id="statPending"></div></div>
-      <div class="card"><div class="kicker">Refund credit carried forward</div><div class="num" id="statCredit"></div></div>
-    </div>
-    <div class="card">
-      <h2>Sync status</h2>
-      <ul id="syncList" class="plain"></ul>
-      <p class="muted small">Sources: <span id="sourceCounts"></span>. An absent alert does
-      not prove no spending occurred. Provisional = not yet bank-verified.</p>
-    </div>
-    <div class="card" id="finRefundNote">
-      <h2>Open question — FIN-REFUND-001</h2>
-      <p class="muted">The refund-credit / surplus policy is <strong>unresolved</strong>.
-      Financial outputs that depend on an excess refund in a week with no debt and
-      no charges are <strong>not production-certified</strong> until the owner chooses
-      the rule. See OPEN_QUESTIONS.md. This demo does not silently resolve it.</p>
-    </div>
-  </section>
-
-  <!-- TRANSACTIONS -->
-  <section id="tab-transactions" class="tabpane hidden">
-    <div class="card">
-      <h2>Transactions</h2>
-      <label>Search merchant <input id="txSearch" type="search" placeholder="e.g. grocery"></label>
-      <label>Filter
-        <select id="txFilter">
-          <option value="all">All</option>
-          <option value="current">Current week</option>
-          <option value="provisional">Provisional only</option>
-          <option value="verified">Verified only</option>
-          <option value="refunds">Refunds</option>
-          <option value="fund">Fund-allocated</option>
-        </select>
-      </label>
-      <ul id="txList" class="plain"></ul>
-    </div>
-
-    <div class="card">
-      <h2>Add a manual purchase (provisional)</h2>
-      <form id="manualForm">
-        <label>Merchant <input name="merchant" required maxlength="80"></label>
-        <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <label>Date <input name="date" type="date" required></label>
-        <label>Card suffix (last 4 digits only) <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
-        <button class="btn btn-primary" type="submit">Add as PROVISIONAL</button>
-      </form>
-      <p class="muted small">Manual entries are marked PROVISIONAL and count in this
-      week's budget until reconciled. Never enter a full card number.</p>
-    </div>
-
-    <div class="card">
-      <h2>CSV import (Amex-style, demo)</h2>
-      <p class="muted small">Expected columns: Date, Description, Amount, Card Ending.
-      Rows are deduplicated by a stable hash — re-importing the same file adds nothing.</p>
-      <input id="csvFile" type="file" accept=".csv,text/csv">
-      <button id="csvSampleBtn" class="btn" type="button">Load sample CSV</button>
-      <div id="csvResult" class="result"></div>
-    </div>
-
-    <div class="card">
-      <h2>Synthetic Amex-alert ingest (demo only)</h2>
-      <p class="muted small"><strong>SYNTHETIC SAMPLE — not a live Gmail connection.</strong>
-      Paste an alert-style text; the parser extracts amount, merchant, date, and card
-      suffix. If it cannot parse confidently, it fails closed into quarantine and
-      creates nothing.</p>
-      <button id="alertSampleBtn" class="btn" type="button">Load sample alert</button>
-      <textarea id="alertText" rows="5" placeholder="Paste a sample Amex alert here…"></textarea>
-      <button id="alertParseBtn" class="btn btn-primary" type="button">Parse as provisional</button>
-      <div id="alertResult" class="result"></div>
-    </div>
-  </section>
-
-  <!-- EXTRA FUND -->
-  <section id="tab-fund" class="tabpane hidden">
-    <div class="card">
-      <h2>Extra Fund</h2>
-      <div class="grid">
-        <div><div class="kicker">Available</div><div class="num" id="fundAvailable"></div></div>
-        <div><div class="kicker">Pending release</div><div class="num" id="fundPending"></div></div>
-        <div><div class="kicker">Spent (allocated)</div><div class="num" id="fundSpent"></div></div>
-        <div><div class="kicker">Shortfall</div><div class="num" id="fundShortfall"></div></div>
-      </div>
-      <p class="muted small">The fund is a ledger number, not cash held at Amex.
-      Nothing is spent from it until an admin approves an allocation.</p>
-    </div>
-    <div class="card" id="fundRequestCard">
-      <h2>Request Extra Fund use (member)</h2>
-      <form id="fundRequestForm">
-        <label>Transaction
-          <select name="txId" id="fundTxSelect" required></select>
-        </label>
-        <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <label>Note (optional) <input name="note" maxlength="120"></label>
-        <button class="btn btn-primary" type="submit">Send request</button>
-      </form>
-      <p class="muted small admin-note">Admins approve from the queue below; members
-      cannot approve their own requests.</p>
-    </div>
-    <div class="card">
-      <h2>Request queue &amp; allocations</h2>
-      <ul id="fundQueue" class="plain"></ul>
-      <h3>Allocations</h3>
-      <ul id="fundAllocations" class="plain"></ul>
-    </div>
-  </section>
-
-  <!-- SAVINGS -->
-  <section id="tab-savings" class="tabpane hidden">
-    <div class="card">
-      <h2>Savings reconciliation (read-only — never a transfer)</h2>
-      <div class="grid">
-        <div><div class="kicker">Fund available</div><div class="num" id="savFund"></div></div>
-        <div><div class="kicker">Earned, not yet transferred</div><div class="num" id="savEarned"></div></div>
-        <div><div class="kicker">Actual savings balance</div><div class="num" id="savActual"></div></div>
-        <div><div class="kicker">Interest (tracked separately)</div><div class="num" id="savInterest"></div></div>
-      </div>
-      <p class="muted small">Positive "earned, not yet transferred" is the suggested
-      amount to move by hand. A transfer is confirmed only when it appears in
-      imported bank data or the admin attests to it. This app never moves money.</p>
-    </div>
-    <div class="card admin-only-card">
-      <h2>Record a savings movement (admin, manual attestation — demo)</h2>
-      <form id="savInForm" class="inline-form">
-        <label>Transfer IN to savings ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <button class="btn" type="submit">Record transfer in</button>
-      </form>
-      <form id="savOutForm" class="inline-form">
-        <label>Withdrawal OUT of savings ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <button class="btn" type="submit">Record withdrawal</button>
-      </form>
-      <form id="savInterestForm" class="inline-form">
-        <label>Interest ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <button class="btn" type="submit">Record interest</button>
-      </form>
-      <p class="muted small">Members see this page read-only.</p>
-    </div>
-  </section>
-
-  <!-- SETTINGS (admin only) -->
-  <section id="tab-settings" class="tabpane hidden">
-    <div class="card">
-      <h2>Settings (admin only)</h2>
-      <p class="muted small">Role restrictions are also enforced by the server
-      (see server.mjs): a member calling an admin endpoint gets a 403.</p>
-      <form id="settingsForm">
-        <label>Base weekly allowance ($) <input name="base" type="number" step="1" min="0" required></label>
-        <label>Temporary increase, current week ($) <input name="temp" type="number" step="1" min="0"></label>
-        <label>Temporary increase reason <input name="tempReason" maxlength="120"></label>
-        <button class="btn btn-primary" type="submit">Save settings</button>
-      </form>
-      <p class="muted small">Base allowance changes apply from the current week.
-      Temporary increases never generate surplus and never pay down earlier debt.</p>
-    </div>
-    <div class="card">
-      <h2>Member invitation (demo placeholder)</h2>
-      <p class="muted">Household has 2 members: Owner (admin) and Spouse (member).
-      No public signup. This button sends nothing — it only records that the
-      placeholder was used, so the real invite flow is not faked.</p>
-      <button id="inviteBtn" class="btn" type="button">Invite member (placeholder — sends nothing)</button>
-    </div>
-    <div class="card">
-      <h2>Integrations status</h2>
-      <ul class="plain">
-        <li>Gmail alerts — <strong>Not connected (demo)</strong></li>
-        <li>Plaid — <strong>Not connected (demo)</strong></li>
-        <li>CSV import — <strong>Available (demo)</strong></li>
-      </ul>
-    </div>
-    <div class="card">
-      <h2>Excluded transactions</h2>
-      <ul id="excludedList" class="plain"></ul>
-    </div>
-  </section>
-
-  <!-- AUDIT -->
-  <section id="tab-audit" class="tabpane hidden">
-    <div class="card">
-      <h2>Activity / audit log</h2>
-      <p class="muted small">Visible to both users. Entries are append-only in this
-      demo — there is no delete or edit control.</p>
-      <ul id="auditList" class="plain"></ul>
-    </div>
-  </section>
+  <div class="mark" aria-hidden="true">◐</div>
+  <h1>Household Budget</h1>
+  <p>A private budget for two people sharing one household — one weekly allowance, one shared record, no surprises.</p>
+  <a class="btn" href="live.html">Sign in</a>
+  <h2>How it works</h2>
+  <div class="card">
+    <p><strong>One weekly allowance.</strong> You set a single amount to spend each Sunday-to-Saturday week. What you spend is counted against that week; spending over it carries into the next week.</p>
+  </div>
+  <div class="card">
+    <p><strong>An Extra Fund for leftovers.</strong> Money you do not spend in a week becomes the Extra Fund after a short holding period. Either person can ask to use it; the household admin approves each use.</p>
+  </div>
+  <div class="card">
+    <p><strong>Bank purchases, read-only.</strong> Connect a bank account and purchases appear automatically. The app can see purchases — it never moves money.</p>
+  </div>
+  <div class="card">
+    <p><strong>A shared history.</strong> Every change is recorded in an audit log both people can read, so the numbers are never a mystery.</p>
+  </div>
+  <p class="foot">Private household app — two members only. No public sign-up. This app never moves money and never shows full card numbers.</p>
 </main>
-
-<footer class="foot muted small">
-  Household Budget — Milestone A prototype. DEMO DATA only. No live sync, no
-  production security, no App Store readiness claimed. See README.md.
-</footer>
-
-<script type="module" src="app.js"></script>
 </body>
 </html>

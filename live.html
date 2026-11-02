@@ -22,8 +22,9 @@
       <p class="small muted">Signed in as</p>
       <p class="small"><strong id="profileEmail">—</strong></p>
       <p class="small muted">Role: <span id="profileRole">—</span></p>
-      <button id="menuShareIdBtn" class="btn" type="button" aria-label="Share the household ID">Share household ID</button>
+      <button id="menuShareIdBtn" class="btn" type="button" aria-label="Share the invite code">Share invite code</button>
       <button id="menuPasswordBtn" class="btn" type="button" aria-label="Change your password">Change password</button>
+      <button id="menuDeleteBtn" class="btn btn-danger" type="button" aria-label="Delete your account">Delete account</button>
       <button id="signOutBtn" class="btn" type="button" aria-label="Sign out of the live app">Sign out</button>
     </div>
   </div>
@@ -37,6 +38,7 @@
     <label>Password <input id="authPassword" type="password" autocomplete="current-password" required></label>
     <button id="signInBtn" class="btn btn-primary btn-block" type="button" aria-label="Sign in to the live app">Sign in</button>
     <button id="signUpBtn" class="btn btn-block" type="button" aria-label="Create a new live account">Create account</button>
+    <button id="forgotPasswordBtn" class="btn btn-quiet btn-block" type="button" aria-label="Reset your password">Forgot password?</button>
     <div id="authMsg" class="result"></div>
     <p class="muted small">Card numbers are never shown — suffixes only.</p>
   </section>
@@ -44,10 +46,10 @@
   <section id="view-household" class="card hidden">
     <h1>Your household</h1>
     <p class="muted">The first account creates the household (as admin). The second
-    account joins with the household ID the owner shares — ask the owner to
+    account joins with the invite code the owner shares — ask the owner to
     share it from their profile menu.</p>
     <button id="createHouseholdBtn" class="btn btn-primary btn-block" type="button" aria-label="Create a household as owner and admin">Create household (I am the owner / admin)</button>
-    <label>Or join a household <input id="joinId" placeholder="Household ID from the owner"></label>
+    <label>Or join a household <input id="joinId" placeholder="Invite code from the owner"></label>
     <button id="joinHouseholdBtn" class="btn btn-block" type="button" aria-label="Join an existing household as a member">Join as member</button>
     <div id="householdMsg" class="result"></div>
   </section>
@@ -75,7 +77,7 @@
       <div class="card stat-card" data-stat="allowance" role="button" tabindex="0" aria-label="Show breakdown for Allowance"><div class="kicker">Allowance</div><div class="num" id="statAllowance">…</div></div>
       <div class="card stat-card" data-stat="spent" role="button" tabindex="0" aria-label="Show breakdown for Spent"><div class="kicker">Spent</div><div class="num" id="statSpent">…</div></div>
       <div class="card stat-card" data-stat="debt" role="button" tabindex="0" aria-label="Show breakdown for Carried over"><div class="kicker">Carried over</div><div class="num" id="statDebt">…</div></div>
-      <div class="card stat-card" data-stat="credit" role="button" tabindex="0" aria-label="Show breakdown for Credit"><div class="kicker">Credit</div><div class="num" id="statCredit">…</div></div>
+      <div class="card stat-card" data-stat="outgoing" role="button" tabindex="0" aria-label="Show breakdown for Outgoing debt"><div class="kicker">Outgoing debt</div><div class="num" id="statOutgoing">…</div></div>
     </div>
 
     <div class="card" id="section-recent">
@@ -135,6 +137,16 @@
       <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
     </div>
 
+    <div class="card" id="section-csv">
+      <h2>Import purchases from a CSV file</h2>
+      <p class="muted small">Expected columns: Date, Description, Amount, Card Ending. Nothing is added until you review the preview and tap Confirm. Duplicates are skipped. Imports are provisional until the bank confirms them.</p>
+      <label>CSV file <input id="csvFile" type="file" accept=".csv,text/csv"></label>
+      <div id="csvPreview"></div>
+      <button id="csvConfirmBtn" class="btn btn-primary" type="button" disabled aria-label="Confirm CSV import">Confirm import</button>
+      <p id="csvMsg" class="result"></p>
+      <p class="muted small">Never enter a full card number — the file should contain card endings only.</p>
+    </div>
+
     <div class="card" id="section-bank">
       <h2>Bank connection (read-only)</h2>
       <p class="muted small">Read-only — the app can see purchases, never move money.</p>
@@ -145,6 +157,11 @@
       </div>
       <div id="bankMsg" class="result"></div>
       <p class="muted small" id="bankSyncLine"></p>
+      <h3>Connected accounts</h3>
+      <div id="bankAccountsList"><p class="muted small">Loading…</p></div>
+      <h3>Previously connected</h3>
+      <p class="muted small">Accounts you disconnected stay listed here for the record. No tokens or account numbers are shown.</p>
+      <div id="bankPreviouslyList"><p class="muted small">Loading…</p></div>
     </div>
 
 
@@ -168,6 +185,7 @@
     <div class="card" id="section-savings">
       <h2>Savings (recorded by hand)</h2>
       <p class="muted small">Record what you see in the real savings account. This is not spending, not income, and never changes the Extra Fund.</p>
+      <div id="savingsSummary"></div>
       <div id="savingsList" class="result"></div>
       <div id="savingsFormWrap" style="display:none">
         <label>Actual savings balance ($)
@@ -204,15 +222,18 @@
       <ul id="fundQueue" class="plain"></ul>
     </div>
 
+    <div class="card" id="section-week-history">
+      <h2>Week history</h2>
+      <p class="muted small">Closed weeks, read-only — week start, surplus, debt carried, released amount, and release status. The app never recomputes a closed week here.</p>
+      <ul id="weekHistoryList" class="plain"><li class="muted small">Loading…</li></ul>
+    </div>
+
     <div class="card" id="section-activity">
       <h2>History</h2>
       <p class="muted small">A shared record of every change in this household — who did what, and when.</p>
       <ul id="auditList" class="plain"><li class="muted small">Loading…</li></ul>
     </div>
 
-    <div class="card" id="finRefundNote">
-      <p class="muted small">A note on refunds: one refund rule is still undecided, so refund-week figures may change.</p>
-    </div>
   </section>
 </main>
 

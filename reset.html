@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Household Budget — Reset password</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; background: #fff; color: #0f172a; }
+  main { max-width: 480px; margin: 0 auto; padding: 48px 20px; }
+  h1 { font-size: 26px; letter-spacing: -0.02em; }
+  p { color: #6b7280; line-height: 1.6; }
+  label { display: block; font-size: 14px; font-weight: 700; margin-top: 16px; }
+  input { width: 100%; box-sizing: border-box; padding: 12px; margin-top: 6px; border: 1px solid #e5e7eb; border-radius: 12px; font-size: 16px; }
+  button { width: 100%; margin-top: 20px; padding: 14px; border: 0; border-radius: 14px; background: #2f6bff; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+  a { color: #2f6bff; }
+  #msg { margin-top: 16px; padding: 12px; border-radius: 12px; background: #eef4ff; }
+  #msg:empty { display: none; }
+  #msg.error { background: #fef2f2; color: #dc2626; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Choose a new password</h1>
+  <p>Use the link from your reset email to reach this page, then enter a new password below.</p>
+  <label>New password <input id="newPassword" type="password" autocomplete="new-password"></label>
+  <label>Confirm new password <input id="confirmPassword" type="password" autocomplete="new-password"></label>
+  <button id="saveBtn" type="button">Save new password</button>
+  <p id="msg"></p>
+  <p><a href="live.html">Back to sign in</a></p>
+</main>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = (id) => document.getElementById(id);
+const msg = $('msg');
+// PKCE-style recovery links carry ?code=…; exchange it for a session so
+// updateUser below runs as the recovering user. Hash-style links
+// (#access_token=…) are picked up automatically by the Supabase client.
+const code = new URLSearchParams(window.location.search).get('code');
+if (code) {
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  if (error) { msg.textContent = 'This reset link could not be used. Request a new one from the sign-in screen.'; msg.classList.add('error'); }
+}
+$('saveBtn').addEventListener('click', async () => {
+  const pw = $('newPassword').value;
+  const confirm = $('confirmPassword').value;
+  if (!pw || pw.length < 6) { msg.textContent = 'Enter a password of at least 6 characters.'; msg.classList.add('error'); return; }
+  if (pw !== confirm) { msg.textContent = 'The two passwords do not match.'; msg.classList.add('error'); return; }
+  const { error } = await supabase.auth.updateUser({ password: pw });
+  if (error) { console.warn('password reset failed:', error.message); msg.textContent = 'Could not save the new password. The link may have expired — request a new one from the sign-in screen.'; msg.classList.add('error'); return; }
+  msg.classList.remove('error');
+  msg.textContent = 'Password saved. You can now sign in with it.';
+});
+</script>
+</body>
+</html>

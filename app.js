@@ -109,20 +109,20 @@ function computeAll() {
     ? weekList.sort()[0]
     : currentWeek;
   const weeks = weekStartsBetween(firstWeek < currentWeek ? firstWeek : currentWeek, currentWeek);
-  let D = 0, R_in = 0;
+  let D = 0; // No credit chain in the demo: week inputs are B/T/D/C only.
   const results = {};
   for (const w of weeks) {
     const g = groups[w] || { gross: 0, refunds: 0 };
     const net = g.gross - g.refunds;
     const C = Math.max(0, net);
-    const X = Math.max(0, -net);
     const B = w === currentWeek ? state.settings.baseAllowance : 37500;
     const temp = state.settings.temp;
     const T = temp && temp.weekStart === w ? temp.amount : 0;
-    const res = computeWeek({ B, T, R_in, X, D, C });
+    // Excess refunds (X) create no credit in the demo: they are not
+    // passed to the engine and are not displayed anywhere.
+    const res = computeWeek({ B, T, D, C });
     results[w] = { ...res, weekStart: w, gross: g.gross, refunds: g.refunds };
     D = res.outgoingDebt;
-    R_in = res.outgoingCredit;
   }
   // Fund releases (closed weeks only), in chronological order, netting any
   // outstanding shortfall before money becomes spendable.
@@ -172,7 +172,6 @@ function render() {
   $('statDebt').textContent = formatCents(cur.D);
   $('statFund').textContent = formatCents(all.fund.available);
   $('statPending').textContent = formatCents(all.fund.pending);
-  $('statCredit').textContent = formatCents(cur.outgoingCredit);
   $('lastSync').textContent = new Date(state.lastSync).toLocaleString();
   const prov = state.transactions.filter((t) => t.state === 'provisional').length;
   const ver = state.transactions.filter((t) => t.state === 'verified').length;
