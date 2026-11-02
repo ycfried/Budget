@@ -10,7 +10,7 @@
 //         get 403. This is the path the app's "Check email now" button
 //         uses.
 //     (b) a server bearer: the Authorization token equals the
-//         SUPABASE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY env value.
+//         SERVICE_ROLE_SECRET / SUPABASE_SERVICE_ROLE_KEY env value.
 //         Anyone holding that key already has full database access, so
 //         this grants nothing new; it exists so a future scheduled
 //         trigger can call this function without a user session.
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
     const auth = req.headers.get('Authorization') ?? '';
     if (!auth.startsWith('Bearer ')) return json({ error: 'missing authorization' }, 401);
     const bearer = auth.slice('Bearer '.length);
-    const serviceKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const serviceKey = Deno.env.get('SERVICE_ROLE_SECRET') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     if (!serviceKey) return json({ error: 'service key not configured' }, 503);
 
     const body = await req.json().catch(() => ({}));

@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
     }
     if (!code || !state) return page('Email connection failed', 'Missing authorization code or state. Nothing was connected. Please try again from the app.');
 
-    const serviceKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const serviceKey = Deno.env.get('SERVICE_ROLE_SECRET') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     if (!serviceKey) return page('Email connection failed', 'Server is not configured. Nothing was connected.');
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
 
