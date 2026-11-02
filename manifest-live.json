@@ -1,5 +1,5 @@
 {
-  "background_color": "#faf9f7",
+  "background_color": "#ffffff",
   "description": "A shared household spending tracker.",
   "display": "standalone",
   "icons": [
@@ -22,8 +22,8 @@
       "type": "image/png"
     }
   ],
-  "name": "Household Budget",
-  "short_name": "Budget",
+  "name": "OnBudget",
+  "short_name": "OnBudget",
   "start_url": "live.html",
-  "theme_color": "#20392f"
+  "theme_color": "#2f6bff"
 }
