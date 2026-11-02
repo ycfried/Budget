@@ -196,6 +196,22 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   spouse) only — no test data remains.
 - Home-screen icon CONFIRMED FIXED by the owner Nov 1, evening:
   the icon now opens the live app, not the demo.
+- POLISH PASS LIVE Nov 1, evening: transaction filter chips
+  (All / Pending / Posted / Refunds / Excluded, combined with
+  search, with a Showing-X-of-Y count), per-row Exclude/Restore
+  (excluded rows dimmed, labeled EXCLUDED, and dropped from week
+  math by compute-week's excluded=false filter), plain-English
+  subtitles on every card, labels on every button, stale "next
+  slice" copy removed, Connections card (bank sync result this
+  session + email poller note + last refresh). User-facing labels
+  are now bank-agnostic ("Connect a bank account", "Bank
+  connection (read-only)", source pills BANK / EMAIL ALERT /
+  FILE / MANUAL); internal function and database names unchanged
+  by design. Owner direction Nov 1 evening: the app must scale to
+  other households and other bank accounts, easy and user-friendly
+  above all — household isolation and multi-item sync already
+  support that. Still missing: fund allocations against the fund
+  balance, week history / surplus releases, live CSV import.
 - Live admin RPCs applied Nov 1, evening ("Success. No rows
   returned"): approve_fund_request, decline_fund_request,
   set_base_allowance — all SECURITY DEFINER, admin-only, audit-logged.
