@@ -1,6 +1,6 @@
 # Household Budget — Handoff (single source of truth)
 
-> Last updated: Nov 1, 2026, ~8:25 PM EST (real screens, tappable rows, delete live).
+> Last updated: Nov 1, 2026, ~9:45 PM EST (all evening progress: screens, filters, webhooks, proper-look batch, review).
 > If this file and any chat message disagree, this file wins — update it
 > whenever the state changes, and say so in the reply that announces it.
 > No secrets, passwords, tokens, or full card numbers ever belong in this
@@ -308,6 +308,64 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   sync" in the app (admin), and a real SYNC_UPDATES_AVAILABLE
   webhook still has to be observed recorded + auto-synced. Do not
   claim webhooks work until that chain is observed.
+- **EVENING POLISH, live Nov 1, ~8:40–9:45 PM EST** (all in the
+  repo and pushed; nothing held locally):
+  - Purchases sort: date newest/oldest, amount least→most and
+    most→least; remembered across visits; works with filters and
+    search.
+  - Purchases filter by month (built from months actually present,
+    year included) and by card suffix; the count line shows the
+    total of the shown rows.
+  - Week screen tightened: empty message boxes no longer render as
+    blank strips (`.result:empty` hidden); card spacing and stat
+    grid gaps reduced; the "tap a number" hint no longer takes a
+    grid row.
+  - Top banner REMOVED (Nov 1, ~9:36 PM): Refresh moved into the
+    header next to Sign out; last-updated time stays on the
+    Connections screen. The LIVE · ADMIN header badge was also
+    removed (~9:41 PM) after the owner circled it; the header is now
+    just the title, Refresh, and Sign out. Role is still enforced
+    server-side and visible via which cards appear (Settings is
+    admin-only).
+  - Proper-look batch (~9:38 PM): friendly dates ("Week of Nov 1,
+    2026", "Nov 1" in lists; raw ISO dates stay in data and search);
+    hero no longer mentions "compute-week"; the household UUID is
+    behind a "Share household ID" tap instead of sitting on the
+    dashboard; stat labels simplified ("Spent this week", "Owed
+    from last week", "Refund credit"); cents render smaller in the
+    hero and stat numbers; empty weeks teach ("No purchases this
+    week yet…"); Refresh shows "Updating…" while it works and a
+    plain error appears if the week's numbers fail to load.
+  - Browser prompt/confirm/alert dialogs REPLACED with in-app
+    sheets (exclude reason, delete, remove, duplicate warning, all
+    error messages) — no grey browser boxes remain in the live app.
+  - Buttons/chips restyled, live app only (demo untouched):
+    filter chips are filled pills (warm tint off, solid deep green
+    on); buttons have a clear hierarchy (solid green primary, warm
+    filled secondary) and dim on tap; nav active tab has a bolder
+    brass underline.
+  - Real home-screen icons: PNG icons generated (180px
+    apple-touch-icon, 192px, 512px incl. maskable) and wired into
+    manifest-live.json; the old icon was SVG, which iPhones mostly
+    ignore — the owner must delete and re-add the home-screen icon
+    once to pick the new one up.
+  - Fund allocations per spec A5/A4 (week close → 7-day pending →
+    release → allocation) were APPROVED by the owner Nov 1 evening
+    and are IN PROGRESS (not yet live). Two findings from the
+    spec check that this work must resolve: live week chaining is
+    broken (live.js passes only T to compute-week, so debt/credit
+    do not carry between weeks) and the compute-week refund-sign
+    question (C = charges − refunds with refunds stored negative)
+    must be verified by hand before trusting refund weeks.
+  - Public-app review saved as REVIEW_PUBLIC_APP.md in this repo
+    (spec gaps, onboarding, App Store readiness, cost triggers,
+    phased roadmap). Owner direction recorded: App Store app for
+    anyone, onboarding as simple as possible, paid tiers only when
+    scale demands them.
+  - Git hygiene verified Nov 1, ~9:45 PM: working tree clean, local
+    HEAD equals GitHub main — every file above is pushed,
+    including the new PNG icons, REVIEW_PUBLIC_APP.md, and
+    supabase/delete-transaction-rpc.sql.
 - **REAL SCREENS + TAPPABLE ROWS + DELETE, live Nov 1, ~8:20 PM EST:**
   the nav tabs are now real screens (only one section group shows at
   a time; choice remembered). Tapping a purchase opens its detail
