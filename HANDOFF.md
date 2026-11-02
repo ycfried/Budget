@@ -1,6 +1,6 @@
 # Household Budget — Handoff (single source of truth)
 
-> Last updated: Nov 1, 2026, evening (after the Supabase backend was built).
+> Last updated: Nov 1, 2026, ~8:10 PM EST (webhooks deployed; section navigation live).
 > If this file and any chat message disagree, this file wins — update it
 > whenever the state changes, and say so in the reply that announces it.
 > No secrets, passwords, tokens, or full card numbers ever belong in this
@@ -283,6 +283,36 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   return "not configured" until secrets exist. Never set a secret from
   chat; secrets go in the Supabase dashboard (owner, via takeover) or
   the Secure Vault flow.
+
+- **PLAID WEBHOOKS DEPLOYED Nov 1, 2026, ~8:03–8:09 PM EST** (all
+  five steps confirmed, every file pasted verbatim from this repo,
+  no secrets set — none needed). Design, corrected after the v1
+  HMAC design was caught wrong: Plaid verifies webhooks with a
+  signed JWT in the `Plaid-Verification` header (ES256, kid fetched
+  via /webhook_verification_key/get, iat within 5 minutes, SHA-256
+  of the raw body must match the request_body_sha256 claim). There
+  is NO shared webhook secret. Steps done: (1) webhook-events-v2.sql
+  — UPDATE grant on webhook_events + "members update own webhook
+  events" policy ("Success. No rows returned"); (2) plaid-webhook
+  redeployed with the corrected JWT version, "Verify JWT with legacy
+  secret" toggle verified still OFF; (3) plaid-webhook-register
+  created and deployed (admin-only; registers the webhook URL on
+  each household item via Plaid /item/webhook/update, token
+  decrypted in memory only); (4) plaid-link redeployed, now passes
+  the webhook URL at Link token creation so future connections get
+  webhooks automatically; (5) plaid-sync redeployed — after a
+  successful sync it marks that item's webhook_events processed.
+  Live app: Bank card has an "Enable automatic sync" button and
+  auto-syncs on refresh when an unprocessed webhook event exists.
+  NOT yet proven: the owner still has to tap "Enable automatic
+  sync" in the app (admin), and a real SYNC_UPDATES_AVAILABLE
+  webhook still has to be observed recorded + auto-synced. Do not
+  claim webhooks work until that chain is observed.
+- **SECTION NAVIGATION, live Nov 1, ~8:05 PM EST:** the live app
+  has a sticky tab bar (Week · Purchases · Bank · Savings ·
+  Extra Fund · Activity) that jumps to each section and highlights
+  the section in view — added after the owner said the app felt
+  like one long scrollable page.
 
 ## 4. The money engine (canonical, do not re-derive)
 
