@@ -356,9 +356,11 @@ body.live #view-app .app-nav-link { flex: 1 1 0; display: flex; flex-direction: 
 body.live #view-app .app-nav-link svg { width: 22px; height: 22px; display: block; }
 body.live #view-app .app-nav-link.active { color: #2f6bff; border-bottom: 0; }
 /* Bottom toast: in-app messages float above the tab bar instead of
-   pushing cards around. Tapping it dismisses it; switching tabs clears it. */
+   pushing cards around. Brand blue (errors stay red so they stand out).
+   It auto-dismisses after 4 seconds; tapping it dismisses it sooner;
+   switching tabs clears it. */
 body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 76px; z-index: 40;
-  background: #0f172a; color: #fff; padding: 12px 14px; border-radius: 12px;
+  background: #2f6bff; color: #fff; padding: 12px 14px; border-radius: 12px;
   font-size: 14px; line-height: 1.4; box-shadow: 0 8px 24px rgba(16,24,40,.25); }
 body.live .toast.error { background: #b91c1c; }
 /* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
@@ -395,12 +397,13 @@ body.live #txFilters { margin-top: 10px; }
 body.live #txFilters label { display: block; margin: 10px 0 4px; font-weight: 600; }
 body.live #txFilters label select { display: block; width: 100%; margin-top: 4px; }
 
-/* Home stats: four compact tiles on one row (owner request), and the
+/* Home stats: two-by-two tiles (owner request Nov 2 — the four-in-a-row
+   tiles left numbers small and cards mostly empty), and the
    Recent purchases buttons get breathing room from the last row. */
-body.live #section-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-body.live #section-stats .stat-card { padding: 12px 8px; min-width: 0; }
-body.live #section-stats .kicker { font-size: 10px; }
-body.live #section-stats .num { font-size: 15px; }
+body.live #section-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+body.live #section-stats .stat-card { padding: 14px 12px; min-width: 0; }
+body.live #section-stats .kicker { font-size: 11px; }
+body.live #section-stats .num { font-size: 24px; }
 body.live #section-recent .btn-row { margin-top: 20px; }
 
 /* New branding: message boxes are a light blue tint, not the old warm beige. */

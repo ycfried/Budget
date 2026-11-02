@@ -1032,7 +1032,7 @@ async function autoSyncIfWebhookPending() {
 // only one section group is shown at a time, so the app is never
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
-  week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
+  week: ['section-sync-top', 'section-week', 'section-stats', 'section-hint', 'section-recent'],
   purchases: ['section-manual', 'section-transactions', 'section-csv'],
   money: ['section-bank', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask'],
   activity: ['section-activity', 'section-week-history'],
@@ -1043,14 +1043,18 @@ if (!VIEWS[currentView]) currentView = 'week';
 // Bottom toast: in-app result messages float above the tab bar instead
 // of popping open inside cards and shoving everything below them down.
 // Function declarations hoist, so handlers below can call these freely.
+let toastTimer = null;
 function showToast(text, isError) {
   const t = document.getElementById('toast');
   if (!t) return;
   t.textContent = text ?? '';
   t.classList.toggle('error', !!isError);
   t.classList.remove('hidden');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 4000);
 }
 function hideToast() {
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
   document.getElementById('toast')?.classList.add('hidden');
 }
 document.getElementById('toast')?.addEventListener('click', hideToast);
