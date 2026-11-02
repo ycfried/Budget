@@ -173,24 +173,53 @@ label { font-size: 14px; font-weight: 600; }
 .tx-amount { font-weight: 700; }
 .tx-amount.negative { color: var(--soft-green); }
 
-/* Live-app polish only — scoped under #view-app so the demo is untouched. */
-#view-app .card { margin-bottom: 20px; }
+/* Live-app polish only — scoped under #view-app / body.live so the demo is untouched. */
+#view-app .card { margin-bottom: 24px; padding: 22px; }
 #view-app .card h2 { margin-bottom: 4px; }
-.tx-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px 0 12px; }
+#view-app .card > .muted.small { line-height: 1.6; }
+#view-app .hero { padding: 26px 22px; }
+#view-app .grid { gap: 14px; }
+#view-app .grid .card { padding: 18px; }
+/* Header + banner: let them wrap instead of crowding on narrow phones. */
+#liveTopbar { flex-wrap: wrap; gap: 8px; }
+#liveTopbar .badge { margin-left: 4px; }
+#liveBanner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#liveBanner .btn { margin-left: auto; }
+/* Filter chips: real tap targets (was 6px padding, easy to miss). */
+.tx-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 14px; }
 .tx-chip {
   background: none; border: 0; border-bottom: 2px solid transparent;
-  padding: 6px 10px; font-size: 14px; font-weight: 600; color: var(--muted);
+  padding: 10px 12px; font-size: 15px; font-weight: 600; color: var(--muted);
   cursor: pointer; font-family: var(--sans);
 }
 .tx-chip.active { color: var(--green); border-bottom-color: var(--brass); font-weight: 800; }
-.tx-count { margin: 0 0 6px; }
-.tx-row { padding: 12px 0; }
-.tx-line1 { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
-.tx-line1 .tx-amount { white-space: nowrap; font-size: 16px; }
-.tx-line2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
-.tx-line2 .btn-small { margin-left: auto; }
+.tx-week-toggle { margin: 0 0 10px; }
+.tx-week-toggle.active { background: var(--green); color: #fff; }
+.tx-count { margin: 2px 0 8px; }
+/* Transaction rows: merchant truncates with ellipsis, amount never pushed off. */
+.tx-row { padding: 14px 0; }
+.tx-line1 { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; min-width: 0; }
+.tx-line1 .tx-name {
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+.tx-line1 .tx-name.expanded { white-space: normal; overflow: visible; }
+.tx-line1 .tx-amount { flex: 0 0 auto; white-space: nowrap; font-size: 16px; }
+.tx-line2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.tx-line2 .pill { margin-left: 0; }
+.tx-line2 .tx-meta { min-width: 0; }
+.tx-line2 .btn-small { margin-left: auto; flex: 0 0 auto; }
 .tx-excluded { opacity: 0.55; }
 .tx-empty { color: var(--muted); font-size: 14px; line-height: 1.5; }
+/* Bank card buttons + fund queue buttons: breathing room, wrap cleanly. */
+#view-app .card .btn + .btn { margin-left: 8px; }
+#fundQueue li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+@media (max-width: 480px) {
+  #view-app .card { padding: 20px 18px; }
+  #view-app .grid .num { font-size: 20px; }
+  #view-app .grid .kicker { font-size: 11px; }
+  .tx-line1 .tx-amount { font-size: 15px; }
+}
 
 /* Status pills: soft tints only. */
 .pill {

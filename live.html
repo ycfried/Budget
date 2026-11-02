@@ -9,13 +9,13 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css?v=2">
 </head>
-<body>
-<header class="topbar">
+<body class="live">
+<header class="topbar" id="liveTopbar">
   <div><strong>Household Budget</strong> <span id="roleBadge" class="badge">LIVE</span></div>
   <button id="signOutBtn" class="btn btn-small" type="button" aria-label="Sign out of the live app">Sign out</button>
 </header>
 
-<div class="demo-banner" role="alert">
+<div class="demo-banner" id="liveBanner" role="alert">
   <strong>LIVE — SHARED</strong> — Connected to the Supabase Budget project.
   Both phones see the same household once both accounts join it.
   Last sync: <span id="lastSync">—</span>
@@ -74,6 +74,7 @@
         <button class="tx-chip" data-tx-filter="excluded" type="button" aria-label="Show excluded transactions only">Excluded</button>
       </div>
       <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
+      <button id="txWeekToggle" class="btn btn-small tx-week-toggle" type="button" aria-pressed="false" aria-label="Show only this week's transactions">This week only</button>
       <p id="txCount" class="muted small tx-count"></p>
       <ul id="txList" class="plain"></ul>
     </div>

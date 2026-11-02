@@ -27,6 +27,7 @@ const sha = async (text) => {
 let session = null;
 let household = null; // { household_id, role }
 let txFilter = 'all'; // all | pending | posted | refunds | excluded
+let txWeekOnly = false; // spec B5: transactions filter by week (client-side, current Sun–Sat week)
 let lastBankSyncText = null; // last Sync button result, this session only
 let lastBankSyncTime = null;
 // Generic display labels for transaction sources. Database values are
@@ -108,6 +109,8 @@ async function refresh() {
     if (week.result) {
       $('weekLabel').textContent = `Week of ${week.week_start} (Sun–Sat, America/New_York)`;
       $('weeklyAvailable').textContent = formatCents(week.result.available);
+      // Spec: a negative available balance must be shown clearly.
+      $('weeklyAvailable').classList.toggle('negative', week.result.available < 0);
       $('statAllowance').textContent = formatCents(week.result.B);
       $('statSpent').textContent = formatCents(week.result.C);
       $('statDebt').textContent = formatCents(week.result.D);
@@ -127,12 +130,25 @@ async function refresh() {
     : txFilter === 'refunds' ? t.kind === 'refund'
     : txFilter === 'excluded' ? (t.excluded === true || t.state === 'excluded')
     : true;
-  const shown = all.filter((t) => byFilter(t) && (!q
+  // This-week filter: current Sunday–Saturday in America/New_York.
+  const todayNy = nyTodayString();
+  const todayD = new Date(`${todayNy}T12:00:00`);
+  const sundayD = new Date(todayD); sundayD.setDate(todayD.getDate() - todayD.getDay());
+  const saturdayD = new Date(sundayD); saturdayD.setDate(saturdayD.getDate() + 6);
+  const fmtD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const weekStartStr = fmtD(sundayD); const weekEndStr = fmtD(saturdayD);
+  const inThisWeek = (t) => t.date >= weekStartStr && t.date <= weekEndStr;
+  const shown = all.filter((t) => byFilter(t) && (!txWeekOnly || inThisWeek(t)) && (!q
     || t.merchant.toLowerCase().includes(q)
     || String(t.date).includes(q)
     || formatCents(t.amount_cents).toLowerCase().includes(q)));
   const countEl = $('txCount');
-  if (countEl) countEl.textContent = `Showing ${shown.length} of ${all.length} transactions`;
+  if (countEl) countEl.textContent = `Showing ${shown.length} of ${all.length} transactions${txWeekOnly ? ' · this week only' : ''}`;
+  const weekBtn = $('txWeekToggle');
+  if (weekBtn) {
+    weekBtn.classList.toggle('active', txWeekOnly);
+    weekBtn.setAttribute('aria-pressed', txWeekOnly ? 'true' : 'false');
+  }
   document.querySelectorAll('[data-tx-filter]').forEach((c) => {
     c.classList.toggle('active', c.dataset.txFilter === txFilter);
     c.setAttribute('aria-pressed', c.dataset.txFilter === txFilter ? 'true' : 'false');
@@ -145,19 +161,34 @@ async function refresh() {
   $('txList').innerHTML = shown.length
     ? shown.map((t) => {
         const excluded = t.excluded === true || t.state === 'excluded';
-        const action = excluded
+        // Spec A7: only the admin excludes or reverses. UI-gated here;
+        // server-side enforcement still needs an RPC (see report).
+        const isAdmin = household.role === 'admin';
+        const action = !isAdmin ? ''
+          : excluded
           ? `<button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button>`
           : `<button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button>`;
-        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-line1"><strong>${esc(t.merchant)}</strong><span class="tx-amount">${formatCents(t.amount_cents)}</span></div>
+        const neg = t.amount_cents < 0 ? ' negative' : '';
+        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-line1"><strong class="tx-name" title="${esc(t.merchant)}" data-expand-name aria-label="Show full merchant name">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
         <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'EXCLUDED' : esc(t.state.toUpperCase())}</span>
         <span class="pill">${esc(sourceLabel(t.source))}</span>
-        <span class="muted small">${esc(t.date)} · ••${esc(t.card_suffix)}</span> ${action}</div></li>`;
+        <span class="muted small tx-meta">${esc(t.date)} · ••${esc(t.card_suffix)}</span> ${action}</div></li>`;
       }).join('')
     : `<li class="tx-empty">${emptyHint}</li>`;
+  // Tap a truncated merchant name to expand it in place (title attr
+  // covers long-press / hover on devices that support it).
+  document.querySelectorAll('[data-expand-name]').forEach((el) => el.addEventListener('click', () => {
+    el.classList.toggle('expanded');
+  }));
   document.querySelectorAll('[data-exclude]').forEach((b) => b.addEventListener('click', async () => {
+    // Spec A7: exclusion needs a reason, recorded in the audit log.
+    const reason = (window.prompt('Why exclude this purchase? (optional — left blank it is recorded without a reason)') ?? '').trim();
+    const row = all.find((t) => t.id === b.dataset.exclude);
     const { error } = await supabase.from('transactions')
       .update({ state: 'excluded', excluded: true }).eq('id', b.dataset.exclude);
-    if (error) alert(`Could not exclude: ${error.message}`); else await refresh();
+    if (error) { alert(`Could not exclude: ${error.message}`); return; }
+    await audit('Transaction excluded', `${row ? row.merchant : 'Purchase'} ${row ? formatCents(row.amount_cents) : ''}${reason ? ` — reason: ${reason}` : ' — no reason given'}.`);
+    await refresh();
   }));
   document.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
     // Restore rule (documented choice): there is no stored pre-exclude
@@ -169,7 +200,9 @@ async function refresh() {
     const state = row && row.date < today ? 'verified' : 'provisional';
     const { error } = await supabase.from('transactions')
       .update({ state, excluded: false }).eq('id', b.dataset.restore);
-    if (error) alert(`Could not restore: ${error.message}`); else await refresh();
+    if (error) { alert(`Could not restore: ${error.message}`); return; }
+    await audit('Transaction restored', `${row ? row.merchant : 'Purchase'} returned to the week as ${state}.`);
+    await refresh();
   }));
 
   const { data: reqs } = await supabase.from('fund_requests')
@@ -357,6 +390,10 @@ document.querySelectorAll('[data-tx-filter]').forEach((c) => c.addEventListener(
   txFilter = c.dataset.txFilter;
   await refresh();
 }));
+$('txWeekToggle')?.addEventListener('click', async () => {
+  txWeekOnly = !txWeekOnly;
+  await refresh();
+});
 let txSearchTimer = null;
 $('txSearch')?.addEventListener('input', () => {
   clearTimeout(txSearchTimer);
