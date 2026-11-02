@@ -259,6 +259,15 @@
       <ul id="fundQueue" class="plain"></ul>
     </div>
 
+    <div class="card" id="section-restoration" style="display:none">
+      <h2>Refund restorations &amp; held refunds</h2>
+      <p class="muted small">Admin only. Restorations the refund rules posted, and refunds held for review because they exceeded the original charge.</p>
+      <h3>Restorations</h3>
+      <div id="restorationList"><p class="muted small">Loading…</p></div>
+      <h3>Held for review</h3>
+      <div id="heldList"><p class="muted small">Loading…</p></div>
+    </div>
+
     <div class="card" id="section-week-history">
       <h2>Week history</h2>
       <p class="muted small">Closed weeks, read-only — week start, surplus, debt carried, released amount, and release status. The app never recomputes a closed week here.</p>
@@ -280,6 +289,6 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=7"></script>
+<script type="module" src="live.js?v=8"></script>
 </body>
 </html>

@@ -806,6 +806,67 @@ async function refresh() {
     const fs = $('fundSummary');
     if (fs) fs.innerHTML = '<p class="error">Could not load fund balances. Try again.</p>';
   }
+  // Refund restorations + held refunds (admin only, READ-ONLY lists).
+  // Members never see this section (showView gates it) and no read
+  // is attempted for them, mirroring the email card. Pending held
+  // rows get a Release button calling the existing
+  // resolve_held_refund RPC with action 'release' (owner decision 2:
+  // release goes to spendable surplus, shortfall first).
+  const restCard = $('section-restoration');
+  if (restCard) restCard.style.display = household.role === 'admin' ? '' : 'none';
+  if (household.role === 'admin') {
+    try {
+      const { data: restRows, error: restErr } = await supabase.from('restoration_entries')
+        .select('week_start, restored_surplus_cents, debt_reduction_cents, fund_credit_cents, created_at')
+        .eq('household_id', household.household_id).order('created_at', { ascending: false }).limit(100);
+      const { data: heldRows2, error: heldErr } = await supabase.from('held_refunds')
+        .select('id, held_cents, status, resolution_note, created_at')
+        .eq('household_id', household.household_id).order('created_at', { ascending: false }).limit(100);
+      if (restErr || heldErr) throw (restErr || heldErr);
+      const rl = $('restorationList');
+      if (rl) {
+        const frag = document.createDocumentFragment();
+        if (!(restRows ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No restorations yet.'; frag.appendChild(p); }
+        for (const r of restRows ?? []) {
+          const p = document.createElement('p'); p.className = 'muted small';
+          p.textContent = `Week of ${fmtLong(r.week_start)} · Restored ${formatCents(r.restored_surplus_cents ?? 0)} · Debt cut ${formatCents(r.debt_reduction_cents ?? 0)}${(r.fund_credit_cents ?? 0) ? ` · Fund +${formatCents(r.fund_credit_cents)}` : ''}`;
+          frag.appendChild(p);
+        }
+        rl.replaceChildren(frag);
+      }
+      const hl = $('heldList');
+      if (hl) {
+        const frag = document.createDocumentFragment();
+        if (!(heldRows2 ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'Nothing held for review.'; frag.appendChild(p); }
+        for (const h of heldRows2 ?? []) {
+          const wrap = document.createElement('div'); wrap.className = 'bank-row';
+          const info = document.createElement('div'); info.className = 'bank-info';
+          const amt = document.createElement('strong'); amt.textContent = formatCents(h.held_cents); info.appendChild(amt);
+          const st = document.createElement('div'); st.className = 'muted small';
+          st.textContent = h.status === 'pending' ? 'Held for review' : `Resolved${h.resolution_note ? ` — ${h.resolution_note}` : ''}`;
+          info.appendChild(st);
+          wrap.appendChild(info);
+          if (h.status === 'pending') {
+            const btn = document.createElement('button'); btn.className = 'btn btn-small btn-primary'; btn.type = 'button';
+            btn.textContent = 'Release';
+            btn.setAttribute('aria-label', `Release held refund ${formatCents(h.held_cents)} to spendable surplus`);
+            btn.addEventListener('click', async () => {
+              if (!(await showConfirm('Release held refund', `Release ${formatCents(h.held_cents)} to spendable surplus? Any amount owed back is covered first.`, 'Release'))) return;
+              const { error } = await supabase.rpc('resolve_held_refund', { p_held_id: h.id, p_action: 'release', p_note: '' });
+              if (error) { console.warn('resolve_held_refund failed:', error.message); await showAlert('Could not release', 'Could not release this held refund. Try again.'); } else await refresh();
+            });
+            wrap.appendChild(btn);
+          }
+          frag.appendChild(wrap);
+        }
+        hl.replaceChildren(frag);
+      }
+    } catch (e) {
+      console.warn('restoration/held read failed:', e);
+      const rl = $('restorationList'); if (rl) rl.innerHTML = '<p class="error">Could not load restorations. Try again.</p>';
+      const hl = $('heldList'); if (hl) hl.innerHTML = '<p class="error">Could not load held refunds. Try again.</p>';
+    }
+  }
   // Week history display (History tab) — READ-ONLY, from week_closes +
   // surplus_releases. The client never recomputes a week.
   try {
@@ -1143,7 +1204,7 @@ async function autoSyncIfWebhookPending() {
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
   purchases: ['section-manual', 'section-csv', 'section-transactions'],
-  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask'],
+  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration'],
   activity: ['section-activity', 'section-week-history'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
@@ -1188,7 +1249,7 @@ function showView(name, opts = {}) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-use') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-restoration') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
