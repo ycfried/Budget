@@ -171,18 +171,17 @@ drop policy if exists "users join as member for themselves" on household_members
 
 -- join_household_by_code(code text) returns uuid
 --   * Accepts a 6-character invite code (case-insensitive, surrounding
---     whitespace ignored) OR a legacy household UUID (transition only).
+--     whitespace ignored). The legacy household-UUID path was REMOVED
+--     Nov 2, 2026 per owner decision 11 (audit P0-1 closure); codes
+--     stay reusable and non-expiring.
 --   * Refuses if the caller already belongs to ANY household
 --     (raise exception — matches create_household() behaviour and
 --     closes P1-25 for this path).
 --   * Inserts role='member' (never 'admin' — a join must never mint
 --     an admin) and writes one audit_log row, then returns the
 --     household uuid.
---   * Unknown code / unknown UUID / malformed input all raise the
---     same generic 'invalid invite code' error, so an attacker cannot
---     distinguish "no such code" from "malformed input". (Whether a
---     UUID exists is NOT leaked either: a well-formed but unknown
---     UUID raises the identical message.)
+--   * Unknown code / malformed input raises the generic
+--     'invalid invite code' error.
 create or replace function public.join_household_by_code(code text)
 returns uuid
 language plpgsql
@@ -192,7 +191,6 @@ as $$
 declare
   v_input text;
   v_household_id uuid;
-  v_as_uuid uuid;
 begin
   if auth.uid() is null then
     raise exception 'not authenticated';
@@ -205,21 +203,9 @@ begin
     raise exception 'already in a household';
   end if;
 
-  -- Path 1: 6-character invite code from the unambiguous alphabet.
+  -- Invite code only: 6 characters from the unambiguous alphabet.
   if v_input ~ '^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$' then
     select id into v_household_id from households where invite_code = v_input;
-  else
-    -- Path 2 (TRANSITION ONLY — see MIGRATION NOTE): legacy UUID.
-    -- A non-UUID string that is not a code lands here and fails the
-    -- cast, which is intentionally mapped to the generic error.
-    begin
-      v_as_uuid := v_input::uuid;
-    exception when invalid_text_representation then
-      v_as_uuid := null;
-    end;
-    if v_as_uuid is not null then
-      select id into v_household_id from households where id = v_as_uuid;
-    end if;
   end if;
 
   if v_household_id is null then
@@ -230,7 +216,7 @@ begin
     values (v_household_id, auth.uid(), 'member');
   insert into audit_log (household_id, actor, actor_name, action, detail)
     values (v_household_id, auth.uid(), 'member', 'Household joined',
-            'Joined via invite code (or legacy household id during transition).');
+            'Joined via invite code.');
   return v_household_id;
 end;
 $$;
@@ -238,20 +224,13 @@ revoke execute on function public.join_household_by_code(text) from public;
 grant execute on function public.join_household_by_code(text) to authenticated;
 
 -- =====================================================================
--- MIGRATION NOTE — UUID JOIN PATH REMOVAL (parent decision, NOT done
--- here): after every client has moved to invite codes, remove Path 2
--- (the legacy-UUID branch) from join_household_by_code() and rotate
--- any household UUID that was ever published (notably the owner
--- household UUID published in the public repo per audit P0-1 — a
--- published UUID stays usable as a join secret until Path 2 is
--- removed, and ideally the exposed household's join path is rotated
--- regardless). Do NOT remove Path 2 in this file: the brief reserves
--- the cutover decision to the parent, and removing it early would
--- break any client still joining by UUID.
--- Also still owed outside this file (parent / dashboard action, not
--- SQL): disable open sign-ups in Supabase Auth now that both
--- accounts exist, and remove household UUIDs from the public repo
--- (audit P0-1). SQL alone cannot close those two doors.
+-- MIGRATION NOTE — UUID JOIN PATH REMOVED Nov 2, 2026 (owner
+-- decision 11, audit P0-1 closure): Path 2 (the legacy-UUID branch)
+-- is gone from join_household_by_code() above. A household UUID can
+-- no longer be used to join; only the 6-character invite code works.
+-- Note: the old "disable open sign-ups" item in this note is obsolete
+-- — the owner decided Nov 2, 2026 (morning) that sign-ups stay ON, so
+-- the invite-code join is the protection going forward.
 -- =====================================================================
 
 -- =====================================================================
