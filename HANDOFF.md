@@ -325,6 +325,20 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   the section in view — added after the owner said the app felt
   like one long scrollable page.
 
+## Public-app direction (owner, Nov 1, 2026, evening)
+
+The owner wants this to become an App Store app anyone can use,
+with onboarding as simple as possible. Scale later means paid
+tiers (Plaid beyond trial, Supabase Pro, Apple Developer), but
+nothing paid before scale demands it. Full gap analysis against
+the spec, onboarding, design, App Store readiness, and cost
+triggers: see REVIEW_PUBLIC_APP.md in this repo. Headline
+findings: live week chaining is broken (debt/credit do not carry
+between weeks — the in-flight week-close work is the fix); the
+refund-sign question in compute-week must be verified by hand;
+UUID-paste onboarding + open sign-ups + no account deletion
+cannot ship publicly; there are no backups at all.
+
 ## 4. The money engine (canonical, do not re-derive)
 
 `engine.mjs` is the single formula, shared by the PWA, the Node server,
