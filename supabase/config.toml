@@ -1,0 +1,50 @@
+# Supabase project configuration for GitHub "Deploy to production".
+#
+# Why this file exists (Nov 2, 2026): the dashboard code editor silently
+# joins pasted lines, which broke the plaid-sync and week-close deploys
+# three times. The GitHub integration deploys ONLY functions declared
+# here under [functions.<slug>] -- without this file it deploys nothing.
+# No database migrations exist in this repo, so a production deploy
+# touches Edge Functions only. No secrets are declared here; the
+# dashboard secrets (SERVICE_ROLE_SECRET, Plaid keys, etc.) stay as-is.
+#
+# verify_jwt notes (match how each function is actually called):
+# - false ONLY for the two functions called by outside services that
+#   send no Supabase JWT: plaid-webhook (Plaid sends its own signature
+#   header, verified inside the function) and ingest-amex-alert (Apps
+#   Script sends an HMAC header, verified inside the function).
+# - true for everything the app calls with the signed-in user's JWT;
+#   each of those functions also verifies the caller itself.
+
+[functions.compute-week]
+verify_jwt = true
+
+[functions.plaid-link]
+verify_jwt = true
+
+[functions.plaid-exchange]
+verify_jwt = true
+
+[functions.plaid-sync]
+verify_jwt = true
+
+[functions.plaid-webhook]
+verify_jwt = false
+
+[functions.plaid-webhook-register]
+verify_jwt = true
+
+[functions.plaid-disconnect]
+verify_jwt = true
+
+[functions.ingest-amex-alert]
+verify_jwt = false
+
+[functions.week-close]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
+
+[functions.bootstrap-household]
+verify_jwt = true
