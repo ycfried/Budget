@@ -186,9 +186,13 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   applied the same evening ("Success. No rows returned"):
   fix-transactions-upsert.sql — UPDATE grant + "members update
   own transactions" policy. Next step: owner taps Sync again;
-  the 121 should land this time. Beta-test cleanup: the test
-  household was deleted; the two test auth users still need a
-  final check.
+  the 121 should land this time. PROVEN Nov 1, evening: the
+  retry sync landed the real Amex transactions — owner's
+  screenshot shows PLAID-badged rows (VERIFIED for posted,
+  PROVISIONAL for pending, card ••1005, dates Oct 27–Nov 1,
+  including a -$10.70 refund). Plaid end-to-end is now PROVEN.
+  Beta-test cleanup: the test household was deleted; the two
+  test auth users still need a final check.
 - Live admin RPCs applied Nov 1, evening ("Success. No rows
   returned"): approve_fund_request, decline_fund_request,
   set_base_allowance — all SECURITY DEFINER, admin-only, audit-logged.
