@@ -167,14 +167,18 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   Owner confirmed Nov 1, evening: "I did connect my credit card from
   Amex the plaid connection went through" — BUT the follow-up sync
   reported 0 connected items, and a read-only DB check proved
-  plaid_items is EMPTY (0 rows). Root cause: the exchange code
-  ignored the upsert result and reported "Connected" even when the
-  item row never landed. Fix pushed the same evening: a failed store
-  now returns an error instead of Connected, and the fixed exchange
-  is being redeployed. Next step: owner taps Connect Amex again
-  with the fixed version and reports the exact message; if it fails,
-  the error text will name the real cause. A first real sync is
-  still unproven until a row lands.
+  plaid_items is EMPTY (0 rows). Root cause chain, both fixed the
+  same evening: (1) the exchange code ignored the upsert result and
+  reported "Connected" even when the item row never landed; (2) the
+  reconnect with the fixed exchange surfaced the true error,
+  "permission denied for table plaid_items" — fix-grants.sql had
+  granted only SELECT on plaid_items, and the token-column migration
+  added an insert policy but no insert grant. fix-plaid-grants.sql
+  applied Nov 1, evening ("Success. No rows returned"): INSERT +
+  UPDATE grants on plaid_items + "members update own plaid items"
+  policy. Next step: owner taps Connect Amex again — the store
+  should now succeed. A first real sync is still unproven until a
+  row lands.
 - Live admin RPCs applied Nov 1, evening ("Success. No rows
   returned"): approve_fund_request, decline_fund_request,
   set_base_allowance — all SECURITY DEFINER, admin-only, audit-logged.
