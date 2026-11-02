@@ -200,6 +200,15 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   the Settings card has an Add-temporary-increase form. Still
   missing in live: week history / surplus releases display, live
   CSV import.
+- GMAIL INSTALLED Nov 1, evening: Apps Script project "Household
+  Budget Amex Ingest" in the owner's personal Gmail, script verbatim,
+  WEBHOOK_URL + SHARED_SECRET properties set, 10-minute trigger
+  active (1 trigger shown), manual run succeeded 7:26:11–7:26:13 PM
+  with no errors after the owner approved OAuth himself. No Gmail
+  settings/forwarding/filters changed. NOT yet proven: an actual
+  Amex alert being ingested — the manual run found no error, but
+  no alert ingestion has been observed yet; the first real Amex
+  alert is the remaining Gmail proof point.
   The plaid-sync mask-fix redeploy completed the same evening
   ("Successfully updated edge function"; editor confirms the
   /accounts/get mask lookup) — the corrected version is now live.
