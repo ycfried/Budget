@@ -281,7 +281,7 @@ async function refresh() {
     const { error } = await supabase.from('transactions')
       .update({ state, excluded: false }).eq('id', b.dataset.restore);
     if (error) { await showAlert('Could not restore', error.message); return; }
-    await audit('Transaction restored', `${row ? row.merchant : 'Purchase'} returned to the week as ${state}.`);
+    await audit('Transaction restored', `${row ? row.merchant : 'Purchase'} returned to the week as ${state === 'provisional' ? 'pending' : 'posted'}.`);
     await refresh();
   }));
 
@@ -357,7 +357,7 @@ async function refresh() {
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(50);
   $('auditList').innerHTML = (auditRows ?? []).length
-    ? (auditRows ?? []).map((a) => `<li><strong>${esc(a.action)}</strong> <span class="muted">(${esc(a.actor_name)} · ${fmtDateTime(a.created_at)})</span><br>${esc(a.detail)}</li>`).join('')
+    ? (auditRows ?? []).map((a) => `<li><strong>${esc(formatAuditAction(a.action))}</strong> <span class="muted">(${esc(formatAuditActor(a.actor_name))} · ${fmtDateTime(a.created_at)})</span><br>${esc(formatAuditDetail(a.detail))}</li>`).join('')
     : '<li>No audit entries yet.</li>';
   } finally {
     if (rb) { rb.disabled = false; rb.textContent = 'Refresh'; }
@@ -447,7 +447,7 @@ $('manualForm').addEventListener('submit', async (e) => {
     state: 'provisional', kind: 'charge', dedupe_hash: hash,
   });
   if (error) { await showAlert('Could not save', error.message); return; }
-  await audit('Manual provisional purchase added', `${merchant} ${formatCents(amount)} on ${f.date.value} (••${suffix}).`);
+  await audit('Manual provisional purchase added', `${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)} (••${suffix}).`);
   f.reset(); await refresh();
 });
 
@@ -594,6 +594,31 @@ function formatCentsHtml(cents) {
 
 // Friendly dates for display only — the raw YYYY-MM-DD stays in the
 // data (and in search), so nothing about filtering changes.
+// Audit display formatter: stored rows contain internal text
+// (UUIDs, "create_household RPC", ISO dates, raw cent counts).
+// The log on screen translates those into plain sentences.
+function formatAuditDetail(detail) {
+  let d = String(detail ?? '');
+  d = d.replace(/Request [0-9a-f-]{36} approved/gi, 'Request approved');
+  d = d.replace(/Request [0-9a-f-]{36} declined/gi, 'Request declined');
+  d = d.replace(/^Created via create_household RPC.*$/i, 'Household created.');
+  d = d.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '');
+  d = d.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (_, y, m, dd) => fmtLong(`${y}-${m}-${dd}`));
+  d = d.replace(/\b(\d+) cents\b/g, (_, n) => formatCents(Number(n)));
+  d = d.replace(/as provisional/g, 'as pending');
+  d = d.replace(/\s{2,}/g, ' ').replace(/\.{2,}/g, '.').trim();
+  return d;
+}
+function formatAuditAction(action) {
+  return action === 'Manual provisional purchase added' ? 'Purchase added by hand' : action;
+}
+function formatAuditActor(name) {
+  if (name === 'admin') return 'Admin';
+  if (name === 'member') return 'Member';
+  if (typeof name === 'string' && name.includes('@')) return name.split('@')[0];
+  return name;
+}
+
 function fmtDateTime(iso) {
   const d = new Date(iso);
   return isNaN(d) ? String(iso) : d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
