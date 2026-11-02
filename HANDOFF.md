@@ -191,8 +191,9 @@ every commit must use `git -c user.name="Household Budget" -c user.email="demo@e
   screenshot shows PLAID-badged rows (VERIFIED for posted,
   PROVISIONAL for pending, card ••1005, dates Oct 27–Nov 1,
   including a -$10.70 refund). Plaid end-to-end is now PROVEN.
-  Beta-test cleanup: the test household was deleted; the two
-  test auth users still need a final check.
+  Beta-test cleanup COMPLETE Nov 1, evening: both test auth
+  users deleted, verified 1 household and 2 members (owner +
+  spouse) only — no test data remains.
 - Live admin RPCs applied Nov 1, evening ("Success. No rows
   returned"): approve_fund_request, decline_fund_request,
   set_base_allowance — all SECURITY DEFINER, admin-only, audit-logged.
