@@ -11,6 +11,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   authResultsPass,
   buildAlertQuery,
@@ -157,6 +158,32 @@ test('extractPlainText: HTML-only Amex alert converts to a parseable alert', () 
   const text = extractPlainText({ mimeType: 'text/html', body: { data: b64url(html) } });
   assert.equal(text.includes('$999.99'), false);
   assert.deepEqual(parseAmexAlertText({ subject: 'Large Purchase Approved', body: text, date: '2026-11-02' }), { amountCents: 1059, merchant: 'AMAZON MARKEPLACE NA PA', cardSuffix: '1005', date: '2026-11-02' });
+});
+
+// --- N12 drift guard ------------------------------------------------------
+// The poll imports gmail-poll/gmail-parse.ts; the tests import the
+// _shared copy. The two files drifted before (query comment, then
+// parser fixes applied to both by hand), so this test extracts each
+// named function from both files and requires them identical.
+// Extraction slices from the function's declaration to the next
+// top-level `export function` — robust against braces and quotes
+// inside regexes, which brace-counting would miscount.
+test('parse copies stay identical: gmail-poll vs _shared (N12)', () => {
+  const read = (p) => fs.readFileSync(new URL(p, import.meta.url), 'utf8');
+  const poll = read('../supabase/functions/gmail-poll/gmail-parse.ts');
+  const shared = read('../supabase/functions/_shared/gmail-parse.ts');
+  const extract = (source, name) => {
+    const start = source.indexOf(`export function ${name}`);
+    assert.notEqual(start, -1, `${name} missing from a parse copy`);
+    let end = source.indexOf('\nexport function ', start + 1);
+    if (end === -1) end = source.length;
+    const body = source.slice(start, end).trimEnd();
+    assert.ok(body.length > 100, `${name} extraction too short to trust`);
+    return body;
+  };
+  for (const name of ['parseAmexAlertText', 'extractPlainText', 'htmlToText']) {
+    assert.equal(extract(poll, name), extract(shared, name), `${name} drifted between parse copies`);
+  }
 });
 
 test('headerValue: case-insensitive lookup, missing header is empty', () => {
