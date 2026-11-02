@@ -87,7 +87,7 @@
 // file; no new auth flow is invented.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { canonicalHash, classifyKind, normalizeMerchant } from '../_shared/canonical.ts';
+import { canonicalHash, classifyKind, normalizeMerchant } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

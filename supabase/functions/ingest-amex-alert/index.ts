@@ -54,7 +54,7 @@ import {
   hmacSha256Hex,
   normalizeMerchant,
   timingSafeEqualHex,
-} from '../_shared/canonical.ts';
+} from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
