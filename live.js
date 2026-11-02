@@ -659,6 +659,10 @@ async function refresh() {
     const ls = document.getElementById('lastSync'); if (ls) ls.textContent = bankLastSyncAt ? fmtDateTime(bankLastSyncAt) : 'Not synced yet';
     const cb = $('connectBankBtn');
     if (cb) { cb.disabled = false; cb.classList.remove('btn-primary'); cb.textContent = itemRows.some((i) => i.status === 'active') ? 'Connect another bank account' : 'Connect a bank account'; }
+    // Reaudit N1: bank linking is admin-only (plaid-link/plaid-exchange
+    // enforce it server-side with a 403); hide the connect button for
+    // non-admins so members never see a dead button.
+    if (cb) cb.style.display = (household && household.role === 'admin') ? '' : 'none';
     const sb = $('syncBankBtn');
     if (sb) sb.classList.toggle('btn-primary', itemRows.some((i) => i.status === 'active'));
     // Decision 15: manual sync is admin-only once server sync is live

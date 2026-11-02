@@ -7,7 +7,8 @@
 //   * This function requests Transactions ONLY. Do NOT add Auth or
 //     Transfer to the products list — Plaid's own docs say that excludes
 //     credit-card accounts from the flow.
-//   * The caller must be a household member (JWT + membership check).
+//   * The caller must be a household ADMIN (reaudit N1, Nov 2, 2026:
+//     link/exchange are admin-only, matching sync/disconnect/register).
 //   * The access token returned by plaid-exchange is never stored in the
 //     database — only the Plaid item id and sync cursor go to plaid_items.
 //   * No Plaid account, Item, or bank connection is created by this code
@@ -45,6 +46,7 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
       .maybeSingle();
     if (!membership) return json({ error: 'not a household member' }, 403);
+    if (membership.role !== 'admin') return json({ error: 'bank linking is admin-only' }, 403);
 
     const clientId = Deno.env.get('PLAID_CLIENT_ID');
     const secret = Deno.env.get('PLAID_SECRET');

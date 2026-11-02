@@ -52,7 +52,8 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
       .maybeSingle();
     if (!membership) return json({ error: 'not a household member' }, 403);
-    // Coordinator integration: membership/admin already verified above via the
+    if (membership.role !== 'admin') return json({ error: 'bank linking is admin-only' }, 403);
+    // Coordinator integration: admin membership verified above via the
     // caller JWT. All DB access below uses the service-role key (server-side
     // only, never in the browser) because member JWTs lost direct table/RPC
     // access in the S1 RLS hardening.
