@@ -276,3 +276,25 @@ label { font-size: 14px; font-weight: 600; }
 #view-app .tx-detail p { margin: 4px 0; }
 #view-app .tx-detail .btn { margin-right: 6px; margin-top: 4px; }
 #view-app #weekBreakdown { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.25); }
+
+/* In-app sheet (replaces browser prompt/confirm/alert boxes). */
+#sheetOverlay { position: fixed; inset: 0; z-index: 50; background: rgba(32,57,47,.45);
+  display: flex; align-items: flex-end; justify-content: center; padding: 16px; }
+#sheetOverlay .sheet { background: #fff; border-radius: 16px; padding: 22px; width: 100%; max-width: 480px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+#sheetOverlay .sheet h3 { margin: 0 0 8px; font-family: var(--serif); }
+#sheetOverlay .sheet p { margin: 0 0 14px; color: var(--muted); line-height: 1.5; }
+#sheetOverlay .sheet label { display: block; margin-bottom: 14px; font-weight: 600; }
+#sheetOverlay .sheet input { width: 100%; margin-top: 6px; }
+#sheetOverlay .sheet-btns { display: flex; gap: 10px; justify-content: flex-end; }
+/* Smaller cents, like a finance app: $372.25 with a smaller .25. */
+.cents { font-size: .6em; }
+/* Buttons + chips, live app only (demo untouched): filled, warm, clear. */
+#view-app .btn { background: #f3efe8; border: 1px solid #ddd3bf; color: var(--green); }
+#view-app .btn-primary { background: var(--green); border-color: var(--green); color: #fff; }
+#view-app .btn:active, #liveTopbar .btn:active { opacity: .75; }
+#liveTopbar .btn:disabled { opacity: .6; }
+#view-app .tx-chip { background: #f3efe8; color: var(--green); border: 0; border-radius: 999px;
+  padding: 8px 14px; font-weight: 700; }
+#view-app .tx-chip.active { background: var(--green); color: #fff; border: 0; }
+#view-app .app-nav-link.active { border-bottom-width: 3px; }

@@ -1,1 +1,29 @@
-{"background_color":"#faf9f7","description":"Private household spending tracker — live shared version (Supabase).","display":"standalone","icons":[{"purpose":"any","sizes":"512x512","src":"icon.svg","type":"image/svg+xml"}],"name":"Household Budget","short_name":"Budget","start_url":"live.html","theme_color":"#20392f"}
+{
+  "background_color": "#faf9f7",
+  "description": "A shared household spending tracker.",
+  "display": "standalone",
+  "icons": [
+    {
+      "purpose": "any",
+      "sizes": "192x192",
+      "src": "icon-192.png",
+      "type": "image/png"
+    },
+    {
+      "purpose": "any",
+      "sizes": "512x512",
+      "src": "icon-512.png",
+      "type": "image/png"
+    },
+    {
+      "purpose": "maskable",
+      "sizes": "512x512",
+      "src": "icon-512.png",
+      "type": "image/png"
+    }
+  ],
+  "name": "Household Budget",
+  "short_name": "Budget",
+  "start_url": "live.html",
+  "theme_color": "#20392f"
+}

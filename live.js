@@ -76,6 +76,9 @@ async function audit(action, detail) {
 
 async function refresh() {
   if (!household) return;
+  const rb = document.getElementById('refreshBtn');
+  if (rb) { rb.disabled = true; rb.textContent = 'Updating…'; }
+  try {
   // Webhook-triggered auto-sync happens first, so the numbers and
   // list below already include any purchases Plaid just announced.
   await autoSyncIfWebhookPending();
@@ -111,15 +114,20 @@ async function refresh() {
       body: JSON.stringify({ household_id: household.household_id, T: tempTotal }),
     });
     const week = await res.json();
+    const weekErr = document.getElementById('weekError');
+    if (weekErr) {
+      if (!week.result) { weekErr.textContent = "Couldn't update this week's numbers — tap Refresh to try again."; weekErr.classList.remove('hidden'); }
+      else weekErr.classList.add('hidden');
+    }
     if (week.result) {
       $('weekLabel').textContent = `Week of ${fmtLong(week.week_start)} (Sun–Sat)`;
-      $('weeklyAvailable').textContent = formatCents(week.result.available);
+      $('weeklyAvailable').innerHTML = formatCentsHtml(week.result.available);
       // Spec: a negative available balance must be shown clearly.
       $('weeklyAvailable').classList.toggle('negative', week.result.available < 0);
-      $('statAllowance').textContent = formatCents(week.result.B);
-      $('statSpent').textContent = formatCents(week.result.C);
-      $('statDebt').textContent = formatCents(week.result.D);
-      $('statCredit').textContent = formatCents(week.result.outgoingCredit);
+      $('statAllowance').innerHTML = formatCentsHtml(week.result.B);
+      $('statSpent').innerHTML = formatCentsHtml(week.result.C);
+      $('statDebt').innerHTML = formatCentsHtml(week.result.D);
+      $('statCredit').innerHTML = formatCentsHtml(week.result.outgoingCredit);
       $('finRefundNote').style.display = week.not_production_certified ? '' : 'none';
     }
   } catch (e) { console.warn('compute-week failed:', e); }
@@ -177,6 +185,9 @@ async function refresh() {
     cardSel.innerHTML = '<option value="all">All cards</option>' + cards.map((c) =>
       `<option value="${c}"${c === txCard ? ' selected' : ''}>••${c}</option>`).join('');
   }
+  const thisWeekTxns = all.filter((t) => inThisWeek(t) && !(t.excluded === true || t.state === 'excluded'));
+  const emptyHintEl = document.getElementById('weekEmptyHint');
+  if (emptyHintEl) emptyHintEl.classList.toggle('hidden', thisWeekTxns.length > 0);
   const countEl = $('txCount');
   if (countEl) {
     const shownTotal = shown.reduce((s, t) => s + t.amount_cents, 0);
@@ -243,11 +254,11 @@ async function refresh() {
   }
   document.querySelectorAll('[data-exclude]').forEach((b) => b.addEventListener('click', async () => {
     // Spec A7: exclusion needs a reason, recorded in the audit log.
-    const reason = (window.prompt('Why exclude this purchase? (optional — left blank it is recorded without a reason)') ?? '').trim();
+    const reason = ((await showSheet({ title: 'Exclude purchase', message: 'Why exclude this purchase? It stays in the list but stops counting toward the week.', inputLabel: 'Reason (optional)', confirmLabel: 'Exclude', cancelLabel: 'Keep it' })) ?? '').trim();
     const row = all.find((t) => t.id === b.dataset.exclude);
     const { error } = await supabase.from('transactions')
       .update({ state: 'excluded', excluded: true }).eq('id', b.dataset.exclude);
-    if (error) { alert(`Could not exclude: ${error.message}`); return; }
+    if (error) { await showAlert('Could not exclude', error.message); return; }
     await audit('Transaction excluded', `${row ? row.merchant : 'Purchase'} ${row ? formatCents(row.amount_cents) : ''}${reason ? ` — reason: ${reason}` : ' — no reason given'}.`);
     await refresh();
   }));
@@ -261,24 +272,24 @@ async function refresh() {
     const state = row && row.date < today ? 'verified' : 'provisional';
     const { error } = await supabase.from('transactions')
       .update({ state, excluded: false }).eq('id', b.dataset.restore);
-    if (error) { alert(`Could not restore: ${error.message}`); return; }
+    if (error) { await showAlert('Could not restore', error.message); return; }
     await audit('Transaction restored', `${row ? row.merchant : 'Purchase'} returned to the week as ${state}.`);
     await refresh();
   }));
 
   document.querySelectorAll('[data-delete-tx]').forEach((b) => b.addEventListener('click', async () => {
     const row = all.find((t) => t.id === b.dataset.deleteTx);
-    if (!row || !window.confirm(`Delete "${row.merchant}" ${formatCents(row.amount_cents)}? This removes the hand-entered purchase and cannot be undone.`)) return;
+    if (!row || !(await showConfirm('Delete purchase', `"${row.merchant}" ${formatCents(row.amount_cents)} — this removes the hand-entered purchase and cannot be undone.`, 'Delete'))) return;
     const { error } = await supabase.rpc('delete_transaction', { p_transaction_id: b.dataset.deleteTx });
-    if (error) { alert(`Could not delete: ${error.message}`); return; }
+    if (error) { await showAlert('Could not delete', error.message); return; }
     await refresh();
   }));
   document.querySelectorAll('[data-remove-tx]').forEach((b) => b.addEventListener('click', async () => {
     const row = all.find((t) => t.id === b.dataset.removeTx);
-    if (!row || !window.confirm(`Remove "${row.merchant}" ${formatCents(row.amount_cents)} from the budget? The bank record stays with the bank — this only stops it counting here.`)) return;
+    if (!row || !(await showConfirm('Remove from budget', `"${row.merchant}" ${formatCents(row.amount_cents)} — the bank record stays with the bank; this only stops it counting here.`, 'Remove'))) return;
     const { error } = await supabase.from('transactions')
       .update({ state: 'excluded', excluded: true }).eq('id', b.dataset.removeTx);
-    if (error) { alert(`Could not remove: ${error.message}`); return; }
+    if (error) { await showAlert('Could not remove', error.message); return; }
     await audit('Transaction removed from budget', `${row.merchant} ${formatCents(row.amount_cents)} excluded from week math.`);
     await refresh();
   }));
@@ -306,11 +317,11 @@ async function refresh() {
   }));
   document.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
     const { error } = await supabase.rpc('approve_fund_request', { p_request_id: b.dataset.approve });
-    if (error) alert(`Could not approve: ${error.message}`); else await refresh();
+    if (error) await showAlert('Could not approve', error.message); else await refresh();
   }));
   document.querySelectorAll('[data-decline]').forEach((b) => b.addEventListener('click', async () => {
     const { error } = await supabase.rpc('decline_fund_request', { p_request_id: b.dataset.decline });
-    if (error) alert(`Could not decline: ${error.message}`); else await refresh();
+    if (error) await showAlert('Could not decline', error.message); else await refresh();
   }));
   // Settings card: admin only.
   $('settingsCard').style.display = household.role === 'admin' ? '' : 'none';
@@ -340,6 +351,9 @@ async function refresh() {
   $('auditList').innerHTML = (auditRows ?? []).length
     ? (auditRows ?? []).map((a) => `<li><strong>${esc(a.action)}</strong> <span class="muted">(${esc(a.actor_name)} · ${esc(new Date(a.created_at).toLocaleString())})</span><br>${esc(a.detail)}</li>`).join('')
     : '<li>No audit entries yet.</li>';
+  } finally {
+    if (rb) { rb.disabled = false; rb.textContent = 'Refresh'; }
+  }
 }
 
 async function boot() {
@@ -410,21 +424,21 @@ $('manualForm').addEventListener('submit', async (e) => {
   const f = e.target;
   const amount = dollarsToCents(f.amount.value);
   const suffix = f.suffix.value.trim();
-  if (!/^\d{4}$/.test(suffix)) { alert('Card suffix must be exactly 4 digits. Never enter a full card number.'); return; }
+  if (!/^\d{4}$/.test(suffix)) { await showAlert('Card suffix', 'Card suffix must be exactly 4 digits. Never enter a full card number.'); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
   // Smarter entry: warn on an apparent duplicate instead of silently
   // creating a second copy of the same purchase.
   const { data: dupes } = await supabase.from('transactions')
     .select('merchant, amount_cents, date').eq('household_id', household.household_id)
     .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
-  if ((dupes ?? []).length && !window.confirm(`A purchase already exists for ${merchant} ${formatCents(amount)} on ${f.date.value}. Add it again anyway?`)) return;
+  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A purchase already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add anyway'))) return;
   const hash = await sha(`${f.date.value}|${merchant}|${amount}|${suffix}`);
   const { error } = await supabase.from('transactions').insert({
     household_id: household.household_id, date: f.date.value, merchant,
     amount_cents: amount, card_suffix: suffix, source: 'manual',
     state: 'provisional', kind: 'charge', dedupe_hash: hash,
   });
-  if (error) { alert(`Could not save: ${error.message}`); return; }
+  if (error) { await showAlert('Could not save', error.message); return; }
   await audit('Manual provisional purchase added', `${merchant} ${formatCents(amount)} on ${f.date.value} (••${suffix}).`);
   f.reset(); await refresh();
 });
@@ -562,6 +576,33 @@ function fmtShort(dateStr) {
   return isNaN(d) ? dateStr : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+// In-app sheet (replaces the browser's grey prompt/confirm/alert
+// boxes, which looked cheap and blocked the whole page).
+function showSheet({ title, message, inputLabel, inputValue = '', confirmLabel = 'OK', cancelLabel = null }) {
+  return new Promise((resolve) => {
+    document.getElementById('sheetOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'sheetOverlay';
+    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${title.replace(/"/g, '')}">
+      <h3>${title}</h3><p>${message}</p>
+      ${inputLabel ? `<label>${inputLabel}<input id="sheetInput" type="text" value="${String(inputValue).replace(/"/g, '')}"></label>` : ''}
+      <div class="sheet-btns">
+        ${cancelLabel ? `<button class="btn" type="button" id="sheetCancel">${cancelLabel}</button>` : ''}
+        <button class="btn btn-primary" type="button" id="sheetConfirm">${confirmLabel}</button>
+      </div></div>`;
+    document.body.appendChild(overlay);
+    const done = (v) => { overlay.remove(); resolve(v); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) done(inputLabel ? null : false); });
+    overlay.querySelector('#sheetCancel')?.addEventListener('click', () => done(inputLabel ? null : false));
+    overlay.querySelector('#sheetConfirm').addEventListener('click', () => {
+      done(inputLabel ? document.getElementById('sheetInput').value : true);
+    });
+    if (inputLabel) document.getElementById('sheetInput').focus();
+  });
+}
+const showAlert = (title, message) => showSheet({ title, message, confirmLabel: 'OK' });
+const showConfirm = (title, message, confirmLabel = 'OK') => showSheet({ title, message, confirmLabel, cancelLabel: 'Cancel' });
+
 function weekRangeOf(dateStr) {
   const d = new Date(`${dateStr}T12:00:00`);
   const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
@@ -637,7 +678,7 @@ $('fundRequestForm').addEventListener('submit', async (e) => {
     household_id: household.household_id, requested_by: user.id,
     amount_cents: dollarsToCents(f.amount.value), note: f.note.value.trim(), status: 'pending',
   });
-  if (error) { alert(`Could not save request: ${error.message}`); return; }
+  if (error) { await showAlert('Could not save request', error.message); return; }
   await audit('Extra Fund request created', `Requested ${formatCents(dollarsToCents(f.amount.value))}.`);
   f.reset(); await refresh();
 });
