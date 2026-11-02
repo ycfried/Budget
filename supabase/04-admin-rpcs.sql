@@ -97,6 +97,17 @@ alter table fund_requests
 --      * decided_by / decided_at are now recorded (the old RPC left
 --        them NULL even on approval).
 -- ---------------------------------------------------------------------
+--    NOTE (deploy fix, Nov 2): the live function still uses the old
+--    p_-prefixed parameter names, and Postgres forbids renaming
+--    parameters via CREATE OR REPLACE (error 42P13). The DROP below
+--    MUST run before the CREATE, or the file fails here. Safe: no
+--    view/trigger depends on this function (the old
+--    approve_fund_request references it only inside a PL/pgSQL body,
+--    which Postgres does not track), and §7 below replaces
+--    approve_fund_request anyway, calling the new function
+--    positionally. Re-running this file after a partial failure is
+--    safe: §0 is IF NOT EXISTS and the DROP is IF EXISTS.
+drop function if exists public.approve_and_allocate(uuid, integer, text);
 create or replace function public.approve_and_allocate(request_id uuid, amount_cents integer, override_reason text)
 returns void
 language plpgsql
