@@ -11,8 +11,10 @@
 -- and without an explicit grant the service role cannot execute them at
 -- all. This migration fixes both halves WITHOUT re-opening member access:
 --
---   * Both RPCs accept service_role explicitly (trusted server path) and
---     still require household membership for authenticated callers.
+--   * get_plaid_ciphertext accepts service_role ONLY (reaudit N2, Nov 2,
+--     2026: the old membership branch was unreachable but a future
+--     re-grant would have silently reopened P0-4, so it is deleted).
+--     update_plaid_sync keeps its membership path (sync-state writes).
 --   * EXECUTE is granted to service_role ONLY. Authenticated members are
 --     NOT re-granted (that would reopen audit P0-4 / P1-16).
 --   * log_webhook_event is granted to service_role, and its authenticated
@@ -24,7 +26,7 @@
 -- 'service key not configured' or RPC errors) if this file is skipped.
 --
 -- -----------------------------------------------------------------------
--- get_plaid_ciphertext: service_role path + membership path
+-- get_plaid_ciphertext: service_role ONLY (reaudit N2, Nov 2, 2026)
 -- -----------------------------------------------------------------------
 create or replace function public.get_plaid_ciphertext(p_household_id uuid, p_item_id text)
 returns text
@@ -35,16 +37,11 @@ as $$
 declare
   ct text;
 begin
-  if auth.role() = 'service_role' then
-    select access_token_encrypted into ct from plaid_items
-      where household_id = p_household_id and plaid_item_id = p_item_id;
-    return ct;
-  end if;
-  if auth.uid() is null then raise exception 'not authenticated'; end if;
-  if not exists (select 1 from household_members
-                 where household_id = p_household_id and user_id = auth.uid()) then
-    raise exception 'not a household member';
-  end if;
+  -- The old membership branch is deleted, not just unreachable: it let
+  -- any authenticated member read any household's Plaid ciphertext if
+  -- EXECUTE were ever re-granted. All live callers (plaid-sync,
+  -- plaid-webhook-register, plaid-disconnect) use the service-role key.
+  if auth.role() <> 'service_role' then raise exception 'service role only'; end if;
   select access_token_encrypted into ct from plaid_items
     where household_id = p_household_id and plaid_item_id = p_item_id;
   return ct;
