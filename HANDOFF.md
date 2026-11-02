@@ -79,15 +79,23 @@ on this branch and refund restoration is built (see below).
 - 0. BACKUP FIRST (docs/BACKUP.md). Do this deploy while the household is
   not using the app: between the SQL deploy and the Pages push, the OLD
   live app will error on admin actions (direct writes now revoked).
-- 1. Edge Function secrets: set SUPABASE_SECRET_KEY (the CURRENT secret
-  key — the legacy service key is dead and must not be relied on).
+- 1. Edge Function secrets: set SERVICE_ROLE_SECRET (a custom secret
+  holding the CURRENT secret key value — the dashboard REJECTS the
+  SUPABASE_ prefix, so a custom secret named SUPABASE_SECRET_KEY is
+  impossible to create; the function code was renamed accordingly.
+  The legacy service key is dead and must not be relied on).
   Confirm PLAID_CLIENT_ID / PLAID_SECRET / PLAID_ENV / PLAID_TOKEN_KEY
   are set. Keep "Verify JWT with legacy secret" OFF on plaid-webhook.
 - 2. SQL, in this order, in the Supabase SQL editor (stop on any error):
-  01-invite-codes, 02-rls-hardening, 03-plaid-vault, 04-admin-rpcs,
+  01-invite-codes, 02-rls-hardening, plaid-accounts (MUST run BEFORE
+  03-plaid-vault: file 3's plaid_items_public view selects
+  institution_id/status, which only file 9 creates — running file 3
+  first fails with "column institution_id does not exist" and leaves
+  plaid_items unreadable to clients, which is what stopped the first
+  deploy attempt), 03-plaid-vault, 04-admin-rpcs,
   05-transaction-mutation-rpcs, restoration-snapshots,
   payment-kind (§2 linkage columns are no-ops if restoration-snapshots
-  ran first — verify types match), dedupe-fix, plaid-accounts,
+  ran first — verify types match), dedupe-fix,
   ingest-secrets, 07-service-rpc-access, 08-decline-fix.
   DO NOT RUN payment-backfill.sql's UPDATE (it is commented out on
   purpose). Before ever running it: run its verification SELECT and

@@ -1,7 +1,7 @@
 // delete-account — Household Budget account deletion (S4).
 //
 // DEPLOY NOTE (parent must do this at deploy): set the service-role key in
-// the Edge Function secrets as SUPABASE_SECRET_KEY, falling back to the
+// the Edge Function secrets as SERVICE_ROLE_SECRET, falling back to the
 // legacy SUPABASE_SERVICE_ROLE_KEY. The key NEVER reaches the client: it
 // lives only in this function's environment. If neither is set, this
 // function refuses with a generic 500 and deletes nothing.
@@ -33,9 +33,9 @@ Deno.serve(async (req) => {
     if (!auth.startsWith('Bearer ')) return json({ error: 'missing authorization' }, 401);
     const url = Deno.env.get('SUPABASE_URL')!;
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const serviceKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const serviceKey = Deno.env.get('SERVICE_ROLE_SECRET') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     if (!serviceKey) {
-      console.error('delete-account: no service key configured (SUPABASE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY)');
+      console.error('delete-account: no service key configured (SERVICE_ROLE_SECRET / SUPABASE_SERVICE_ROLE_KEY)');
       return json({ error: 'account deletion is not configured' }, 500);
     }
     // Verify the caller with their own JWT (anon client, RLS on).

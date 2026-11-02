@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     // caller JWT. All DB access below uses the service-role key (server-side
     // only, never in the browser) because member JWTs lost direct table/RPC
     // access in the S1 RLS hardening.
-    const serviceKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const serviceKey = Deno.env.get('SERVICE_ROLE_SECRET') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     if (!serviceKey) return json({ error: 'service key not configured' }, 503);
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
 

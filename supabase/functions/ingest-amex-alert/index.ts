@@ -29,7 +29,7 @@
 // the spec requires for the Gmail source.
 //
 // Service key migration (audit P1-2): the dead legacy key is NOT used.
-// The key is read from env with fallback order SUPABASE_SECRET_KEY
+// The key is read from env with fallback order SERVICE_ROLE_SECRET
 // then SUPABASE_SERVICE_ROLE_KEY. DEPLOY NOTE: the parent must set the
 // CURRENT secret key in Edge Function secrets; do not claim the legacy
 // key works. The service-role client is used ONLY for the secret/nonce
@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     // Service key with the documented fallback order. No legacy-key
     // assumption: if neither env var is set, this is a 503, not a
     // silent fallback to a broken key.
-    const serviceKey = Deno.env.get('SUPABASE_SECRET_KEY')
+    const serviceKey = Deno.env.get('SERVICE_ROLE_SECRET')
       ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!serviceKey) return json({ error: 'ingest not configured' }, 503);
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
