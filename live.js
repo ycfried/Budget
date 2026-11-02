@@ -68,7 +68,7 @@ async function audit(action, detail) {
   const { error } = await supabase.from('audit_log').insert({
     household_id: household.household_id,
     actor: user?.id ?? null,
-    actor_name: household.role,
+    actor_name: user?.email ?? household.role,
     action, detail,
   });
   if (error) console.warn('audit insert blocked (expected until insert policies land):', error.message);
@@ -128,6 +128,8 @@ async function refresh() {
       $('statSpent').innerHTML = formatCentsHtml(week.result.C);
       $('statDebt').innerHTML = formatCentsHtml(week.result.D);
       $('statCredit').innerHTML = formatCentsHtml(week.result.outgoingCredit);
+      const allowInput = document.getElementById('baseAllowanceInput');
+      if (allowInput && document.activeElement !== allowInput) allowInput.value = (week.result.B / 100).toFixed(2);
       $('finRefundNote').style.display = week.not_production_certified ? '' : 'none';
     }
   } catch (e) { console.warn('compute-week failed:', e); }
@@ -225,13 +227,13 @@ async function refresh() {
           : `<button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn}`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
         return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1"><strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
-        <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'EXCLUDED' : esc(t.state.toUpperCase())}</span>
+        <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'EXCLUDED' : (t.state === 'provisional' ? 'PENDING' : 'POSTED')}</span>
         <span class="pill">${esc(sourceLabel(t.source))}</span>
         <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span> <span class="muted small">Tap for detail ▾</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
-          <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${esc(t.kind)})</p>
-          <p class="small muted">Date: ${esc(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
-          Card: ••${esc(t.card_suffix)} · Source: ${esc(sourceLabel(t.source))} · Status: ${excluded ? 'excluded from week math' : esc(t.state)}<br>
+          <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${t.kind === 'refund' ? 'Refund' : 'Purchase'})</p>
+          <p class="small muted">Date: ${fmtLong(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
+          Card: ••${esc(t.card_suffix)} · Source: ${esc(sourceLabel(t.source))} · Status: ${excluded ? 'excluded from week math' : (t.state === 'provisional' ? 'pending' : 'posted')}<br>
           ${excluded ? 'This purchase is kept for the record but does not count toward any week.' : 'This purchase counts toward its week unless excluded.'}</p>
           <div>${action}</div>
         </div></li>`;
@@ -306,7 +308,7 @@ async function refresh() {
         <div class="tx-detail hidden" id="fund-detail-${r.id}">
           <p class="small muted">Amount: ${formatCents(r.amount_cents)} · Status: ${esc(r.status)}<br>
           Note: ${esc(r.note || '—')}<br>
-          Requested: ${esc(new Date(r.created_at).toLocaleString())}<br>
+          Requested: ${fmtDateTime(r.created_at)}<br>
           ${r.status === 'pending' ? 'Waiting on the admin decision.' : 'Decision recorded; spending against the fund balance is a separate step.'}</p>
           <div>${btns}</div>
         </div></li>`;
@@ -330,7 +332,7 @@ async function refresh() {
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(20);
   $('savingsList').innerHTML = (sav ?? []).length
-    ? `<ul>${(sav ?? []).map((s) => `<li>Attested balance ${formatCents(s.actual_balance_cents ?? 0)} · ${new Date(s.created_at).toLocaleString()} · ${esc(s.note || '')}</li>`).join('')}</ul>`
+    ? `<ul>${(sav ?? []).map((s) => `<li>Attested balance ${formatCents(s.actual_balance_cents ?? 0)} · ${fmtDateTime(s.created_at)} · ${esc(s.note || '')}</li>`).join('')}</ul>`
     : '<p class="muted small">No savings attestations yet.</p>';
   $('savingsFormWrap').style.display = household.role === 'admin' ? '' : 'none';
 
@@ -342,14 +344,14 @@ async function refresh() {
     ? `${lastBankSyncText} (${lastBankSyncTime})`
     : 'Not synced yet in this session.';
   const connRefresh = $('connLastRefresh');
-  if (connRefresh) connRefresh.textContent = new Date().toLocaleString();
+  if (connRefresh) connRefresh.textContent = fmtDateTime(new Date().toISOString());
 
   showView(currentView);
   const { data: auditRows } = await supabase.from('audit_log')
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(50);
   $('auditList').innerHTML = (auditRows ?? []).length
-    ? (auditRows ?? []).map((a) => `<li><strong>${esc(a.action)}</strong> <span class="muted">(${esc(a.actor_name)} · ${esc(new Date(a.created_at).toLocaleString())})</span><br>${esc(a.detail)}</li>`).join('')
+    ? (auditRows ?? []).map((a) => `<li><strong>${esc(a.action)}</strong> <span class="muted">(${esc(a.actor_name)} · ${fmtDateTime(a.created_at)})</span><br>${esc(a.detail)}</li>`).join('')
     : '<li>No audit entries yet.</li>';
   } finally {
     if (rb) { rb.disabled = false; rb.textContent = 'Refresh'; }
@@ -489,7 +491,7 @@ async function runBankSync() {
     : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).`;
   $('bankMsg').textContent = text;
   lastBankSyncText = text;
-  lastBankSyncTime = new Date().toLocaleString();
+  lastBankSyncTime = fmtDateTime(new Date().toISOString());
   return out;
 }
 
@@ -576,6 +578,11 @@ function formatCentsHtml(cents) {
 
 // Friendly dates for display only — the raw YYYY-MM-DD stays in the
 // data (and in search), so nothing about filtering changes.
+function fmtDateTime(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? String(iso) : d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 function fmtLong(dateStr) {
   const d = new Date(`${dateStr}T12:00:00`);
   return isNaN(d) ? dateStr : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -617,7 +624,7 @@ function weekRangeOf(dateStr) {
   const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
   const sat = new Date(sun); sat.setDate(sat.getDate() + 6);
   const f = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
-  return `${f(sun)} to ${f(sat)}`;
+  return `${fmtShort(f(sun))} – ${fmtLong(f(sat))}`;
 }
 
 document.getElementById('txMonth')?.addEventListener('change', (e) => {

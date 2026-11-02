@@ -298,3 +298,6 @@ label { font-size: 14px; font-weight: 600; }
   padding: 8px 14px; font-weight: 700; }
 #view-app .tx-chip.active { background: var(--green); color: #fff; border: 0; }
 #view-app .app-nav-link.active { border-bottom-width: 3px; }
+
+/* Long IDs must wrap instead of stretching the card. */
+#householdId { word-break: break-all; }
