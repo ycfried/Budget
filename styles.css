@@ -229,7 +229,6 @@ label { font-size: 14px; font-weight: 600; }
   flex: 1 1 auto; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
 }
-.tx-line1 .tx-name.expanded { white-space: normal; overflow: visible; }
 .tx-line1 .tx-amount { flex: 0 0 auto; white-space: nowrap; font-size: 16px; }
 .tx-line2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 .tx-line2 .pill { margin-left: 0; }
@@ -330,3 +329,62 @@ label { font-size: 14px; font-weight: 600; }
 /* Live app: one button size everywhere (the small variant made
    neighbouring buttons look mismatched). */
 #view-app .btn-small { padding: 11px 16px; font-size: 15px; border-radius: 10px; }
+
+/* ===== Live-app restyle (Nov 1, owner-picked reference: Fireart-style
+   finance shots — white, near-black type, one blue accent, pill
+   buttons, bottom tab bar). Scoped to body.live so the demo is untouched. */
+body.live {
+  --green: #2f6bff; --green-deep: #0f172a; --brass: #2f6bff;
+  --bg: #ffffff; --card: #ffffff; --text: #0f172a; --muted: #6b7280;
+  --hairline: #ececf1; --input-border: #e5e7eb;
+  --serif: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  padding-bottom: 88px; /* room for the fixed bottom tab bar */
+}
+body.live .card { border-radius: 20px; box-shadow: 0 1px 2px rgba(16,24,40,.05); }
+body.live h1, body.live h2, body.live h3 { letter-spacing: -0.02em; }
+/* Header scrolls away; the tab bar is the persistent navigation now. */
+body.live #liveTopbar { position: relative; background: #fff; border-bottom: 1px solid #ececf1; }
+body.live #liveTopbar strong { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+body.live .profile-btn { background: #eef1f6; border: 0; color: #0f172a; }
+body.live .profile-menu { border-color: #ececf1; border-radius: 18px; box-shadow: 0 12px 32px rgba(16,24,40,.14); }
+/* Bottom tab bar with icons, like the reference apps. */
+body.live #view-app .app-nav { position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 30;
+  background: #fff; border-top: 1px solid #ececf1; border-bottom: 0; margin: 0;
+  padding: 8px 4px calc(8px + env(safe-area-inset-bottom)); justify-content: space-around; }
+body.live #view-app .app-nav-link { flex: 1 1 0; display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding: 4px 2px; font-size: 11px; font-weight: 700; color: #6b7280; border-bottom: 0; }
+body.live #view-app .app-nav-link svg { width: 22px; height: 22px; display: block; }
+body.live #view-app .app-nav-link.active { color: #2f6bff; border-bottom: 0; }
+/* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
+   One gap system: rows use flex gap; standalone buttons use one margin. */
+body.live #view-app .btn, body.live .btn { background: #f2f4f7; border: 0; color: #0f172a;
+  border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 700; }
+body.live #view-app .btn-primary, body.live .btn-primary { background: #2f6bff; color: #fff; }
+body.live #view-app .btn-danger, body.live .btn-danger { background: #fef2f2; color: #dc2626; }
+body.live #view-app .btn-quiet, body.live .btn-quiet { background: none; color: #6b7280; }
+body.live #view-app .btn-small { padding: 13px 18px; font-size: 15px; border-radius: 14px; }
+body.live #view-app .btn { margin: 0 10px 10px 0; }
+body.live #view-app .card .btn + .btn { margin-left: 0; }
+body.live #view-app .tx-detail .btn { margin-right: 10px; }
+body.live .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+body.live .btn-row .btn { margin: 0; }
+/* Chips: grey pills, blue when active. */
+body.live #view-app .tx-chip { background: #f2f4f7; color: #0f172a; padding: 9px 15px; font-weight: 700; }
+body.live #view-app .tx-chip.active { background: #2f6bff; color: #fff; }
+/* Hero + stats: big bold numbers, thin progress bar. */
+body.live .hero .big { font-size: 42px; font-weight: 800; letter-spacing: -0.02em; }
+body.live .kicker { color: #6b7280; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+body.live .num { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; }
+body.live .hero-progress { height: 6px; background: #eef1f6; border-radius: 999px; overflow: hidden; margin: 12px 0 6px; }
+body.live .hero-progress > div { height: 100%; background: #2f6bff; border-radius: 999px; width: 0%; }
+body.live .fund-balance { font-size: 28px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 4px; }
+/* Transaction rows: icon square + merchant, like the reference lists. */
+body.live .tx-line1 { display: flex; align-items: center; gap: 10px; }
+body.live .tx-icon { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 10px; background: #eef1f6;
+  color: #0f172a; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+body.live .tx-line1 .tx-name { flex: 1; }
+body.live #view-app #weekBreakdown { border-top: 1px solid #ececf1; }
+body.live input, body.live select { border-radius: 12px; }
+body.live #txFilters { margin-top: 10px; }
+body.live #txFilters label { display: block; margin: 10px 0 4px; font-weight: 600; }
+body.live #txFilters label select { display: block; width: 100%; margin-top: 4px; }

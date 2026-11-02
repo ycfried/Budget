@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#20392f">
+<meta name="theme-color" content="#ffffff">
 <title>Household Budget — Live</title>
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=2">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -22,6 +22,8 @@
       <p class="small muted">Signed in as</p>
       <p class="small"><strong id="profileEmail">—</strong></p>
       <p class="small muted">Role: <span id="profileRole">—</span></p>
+      <button id="menuShareIdBtn" class="btn" type="button" aria-label="Share the household ID">Share household ID</button>
+      <button id="menuPasswordBtn" class="btn" type="button" aria-label="Change your password">Change password</button>
       <button id="signOutBtn" class="btn" type="button" aria-label="Sign out of the live app">Sign out</button>
     </div>
   </div>
@@ -30,82 +32,84 @@
 <main>
   <section id="view-auth" class="card">
     <h1>Household Budget</h1>
-    <p class="muted">Private household — two users only. Sign in with the email and
-    password you created for this app. No bank login happens here.</p>
+    <p class="muted">Sign in to your household budget.</p>
     <label>Email <input id="authEmail" type="email" autocomplete="email" required></label>
     <label>Password <input id="authPassword" type="password" autocomplete="current-password" required></label>
     <button id="signInBtn" class="btn btn-primary btn-block" type="button" aria-label="Sign in to the live app">Sign in</button>
     <button id="signUpBtn" class="btn btn-block" type="button" aria-label="Create a new live account">Create account</button>
     <div id="authMsg" class="result"></div>
-    <p class="muted small">After both accounts exist, the owner should disable new
-    sign-ups in Supabase Auth settings so no one else can join. Card numbers are
-    never shown — suffixes only.</p>
+    <p class="muted small">Card numbers are never shown — suffixes only.</p>
   </section>
 
   <section id="view-household" class="card hidden">
     <h1>Your household</h1>
     <p class="muted">The first account creates the household (as admin). The second
-    account joins with the household ID the owner shares — copy it from the
-    dashboard below once created.</p>
+    account joins with the household ID the owner shares — ask the owner to
+    share it from their profile menu.</p>
     <button id="createHouseholdBtn" class="btn btn-primary btn-block" type="button" aria-label="Create a household as owner and admin">Create household (I am the owner / admin)</button>
-    <label>Or join a household <input id="joinId" placeholder="Household ID (uuid)"></label>
+    <label>Or join a household <input id="joinId" placeholder="Household ID from the owner"></label>
     <button id="joinHouseholdBtn" class="btn btn-block" type="button" aria-label="Join an existing household as a member">Join as member</button>
     <div id="householdMsg" class="result"></div>
   </section>
 
   <section id="view-app" class="hidden">
     <nav class="app-nav" aria-label="App sections">
-      <button class="app-nav-link" data-view="week" type="button">Home</button>
-      <button class="app-nav-link" data-view="purchases" type="button">Purchases</button>
-      <button class="app-nav-link" data-view="money" type="button">Money</button>
-      <button class="app-nav-link" data-view="activity" type="button">Activity</button>
+      <button class="app-nav-link" data-view="week" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg><span>Home</span></button>
+      <button class="app-nav-link" data-view="purchases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg><span>Purchases</span></button>
+      <button class="app-nav-link" data-view="money" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg><span>Bank &amp; Funds</span></button>
+      <button class="app-nav-link" data-view="activity" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>History</span></button>
     </nav>
     <div class="card hero" id="section-week">
       <div class="kicker">Available this week · <span id="weekLabel">…</span></div>
       <div id="weeklyAvailable" class="big">…</div>
       <p class="muted">Pending purchases are included and marked.
-      A negative number means over this week's budget.</p>
-      <p class="muted small"><button id="showHouseholdIdBtn" class="btn btn-small" type="button" aria-label="Show the household ID for sharing">Share household ID</button> <span id="householdId" class="hidden"></span></p>
+      If the big number is negative, you're over this week's budget.</p>
+      <div class="hero-progress" aria-hidden="true"><div id="weekProgressBar"></div></div>
+      <p class="muted small" id="weekProgressText"></p>
       <div id="weekBreakdown" class="hidden"></div>
       <p id="weekError" class="result error hidden"></p>
       <p id="weekEmptyHint" class="muted small hidden">No purchases this week yet — the full allowance is still available. Add one by hand, or connect a bank account on the Money tab.</p>
     </div>
-    <p class="muted small stat-hint" id="section-hint">Tap any number for its breakdown.</p>
+    <p class="muted small stat-hint" id="section-hint">Tap a number for details.</p>
     <div class="grid" id="section-stats">
       <div class="card stat-card" data-stat="allowance" role="button" tabindex="0" aria-label="Show breakdown for Weekly allowance"><div class="kicker">Weekly allowance</div><div class="num" id="statAllowance">…</div></div>
       <div class="card stat-card" data-stat="spent" role="button" tabindex="0" aria-label="Show breakdown for Spent this week"><div class="kicker">Spent this week</div><div class="num" id="statSpent">…</div></div>
-      <div class="card stat-card" data-stat="debt" role="button" tabindex="0" aria-label="Show breakdown for Owed from last week"><div class="kicker">Owed from last week</div><div class="num" id="statDebt">…</div></div>
+      <div class="card stat-card" data-stat="debt" role="button" tabindex="0" aria-label="Show breakdown for Carried over from last week"><div class="kicker">Carried over from last week</div><div class="num" id="statDebt">…</div></div>
       <div class="card stat-card" data-stat="credit" role="button" tabindex="0" aria-label="Show breakdown for Refund credit"><div class="kicker">Refund credit</div><div class="num" id="statCredit">…</div></div>
     </div>
 
     <div class="card" id="section-transactions">
-      <h2>Transactions (shared)</h2>
-      <p class="muted small">Everything spent on the household cards, from all sources. Tap any purchase for its full detail — what week it counts in, where it came from, and its actions. Use the filters and search to find a purchase, and exclude anything that should not count toward the week.</p>
-      <div class="tx-chips" role="group" aria-label="Filter transactions">
-        <button class="tx-chip active" data-tx-filter="all" type="button" aria-label="Show all transactions">All</button>
-        <button class="tx-chip" data-tx-filter="pending" type="button" aria-label="Show pending transactions only">Pending</button>
-        <button class="tx-chip" data-tx-filter="posted" type="button" aria-label="Show posted transactions only">Posted</button>
+      <h2>Purchases</h2>
+      <p class="muted small">Everything spent on the household cards. Tap a purchase for detail and actions.</p>
+      <div class="tx-chips" role="group" aria-label="Filter purchases">
+        <button class="tx-chip active" data-tx-filter="all" type="button" aria-label="Show all purchases">All</button>
+        <button class="tx-chip" data-tx-filter="pending" type="button" aria-label="Show pending purchases only">Pending</button>
+        <button class="tx-chip" data-tx-filter="posted" type="button" aria-label="Show posted purchases only">Posted</button>
         <button class="tx-chip" data-tx-filter="refunds" type="button" aria-label="Show refunds only">Refunds</button>
-        <button class="tx-chip" data-tx-filter="excluded" type="button" aria-label="Show excluded transactions only">Excluded</button>
+        <button class="tx-chip" data-tx-filter="excluded" type="button" aria-label="Show excluded purchases only">Excluded</button>
+        <button class="tx-chip" id="txWeekToggle" type="button" aria-pressed="false" aria-label="Show only this week's purchases">This week</button>
       </div>
-      <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
-      <button id="txWeekToggle" class="btn btn-small tx-week-toggle" type="button" aria-pressed="false" aria-label="Show only this week's transactions">This week only</button>
-      <label class="muted small">Month
-        <select id="txMonth" aria-label="Filter by month"><option value="all">All months</option></select>
-      </label>
-      <label class="muted small">Card
-        <select id="txCard" aria-label="Filter by card"><option value="all">All cards</option></select>
-      </label>
-      <label class="muted small">Sort by
-        <select id="txSort" aria-label="Sort transactions">
-          <option value="date-desc">Date: newest first</option>
-          <option value="date-asc">Date: oldest first</option>
-          <option value="amount-asc">Amount: least to most</option>
-          <option value="amount-desc">Amount: most to least</option>
-        </select>
-      </label>
+      <input id="txSearch" type="search" placeholder="Search purchases (merchant, amount, date)" aria-label="Search purchases">
+      <button id="txFiltersToggle" class="btn" type="button" aria-expanded="false" aria-label="Show more filters">Filters ▾</button>
+      <div id="txFilters" class="hidden">
+        <label class="muted small">Month
+          <select id="txMonth" aria-label="Filter by month"><option value="all">All months</option></select>
+        </label>
+        <label class="muted small">Card
+          <select id="txCard" aria-label="Filter by card"><option value="all">All cards</option></select>
+        </label>
+        <label class="muted small">Sort by
+          <select id="txSort" aria-label="Sort purchases">
+            <option value="date-desc">Date: newest first</option>
+            <option value="date-asc">Date: oldest first</option>
+            <option value="amount-asc">Amount: least to most</option>
+            <option value="amount-desc">Amount: most to least</option>
+          </select>
+        </label>
+      </div>
       <p id="txCount" class="muted small tx-count"></p>
-      <ul id="txList" class="plain"></ul>
+      <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
+      <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
     </div>
 
     <div class="card" id="section-manual">
@@ -123,48 +127,37 @@
 
     <div class="card" id="section-bank">
       <h2>Bank connection (read-only)</h2>
-      <p class="muted small">Connect a bank account and pull its transactions
-      into this budget. Read-only — it never moves money. Your bank
-      login token is stored encrypted, never in plain text, and never
-      leaves the server. If this button reports "not configured," the
-      bank connection is not set up on the server yet.</p>
-      <button id="connectBankBtn" class="btn btn-primary" type="button" aria-label="Connect a bank account">Connect a bank account</button>
-      <button id="syncBankBtn" class="btn" type="button" aria-label="Sync bank transactions now">Sync bank transactions now</button>
-      <button id="registerWebhookBtn" class="btn" type="button" aria-label="Enable automatic bank sync">Enable automatic sync</button>
+      <p class="muted small">Read-only — the app can see purchases, never move money.</p>
+      <div class="btn-row">
+        <button id="connectBankBtn" class="btn btn-primary" type="button" aria-label="Connect a bank account">Connect a bank account</button>
+        <button id="syncBankBtn" class="btn" type="button" aria-label="Sync bank transactions now">Sync bank transactions now</button>
+        <button id="registerWebhookBtn" class="btn" type="button" aria-label="Enable automatic bank sync">Enable automatic sync</button>
+      </div>
       <div id="bankMsg" class="result"></div>
-      <p class="muted small">Automatic sync: once enabled, the bank notifies the app when new purchases appear, and the app pulls them in on its next refresh — no need to tap Sync each time.</p>
+      <p class="muted small" id="bankSyncLine"></p>
     </div>
 
-    <div class="card" id="connectionsCard">
-      <h2>Connections</h2>
-      <p class="muted small">Where your transactions come from, and when each source was last checked.</p>
-      <ul class="plain">
-        <li><strong>Bank connection:</strong> <span id="connBankStatus">Not synced yet in this session.</span></li>
-        <li><strong>Bank purchase alerts:</strong> checked every 10 minutes by the email poller. Alerts arrive as pending purchases.</li>
-        <li><strong>Page last refreshed:</strong> <span id="connLastRefresh">—</span></li>
-      </ul>
-    </div>
 
     <div class="card" id="settingsCard" style="display:none">
       <h2>Settings (admin only)</h2>
-      <p class="muted small">Change the weekly allowance and add one-off increases for this week. Only the admin can change these, and every change is written to the activity log.</p>
-      <label>Weekly allowance ($)
+      <p class="muted small">Only the admin can change these.</p>
+      <h3>Weekly allowance</h3>
+      <label>Amount ($)
         <input id="baseAllowanceInput" type="number" step="0.01" min="0" inputmode="decimal">
       </label>
       <button id="saveAllowanceBtn" class="btn btn-primary" type="button" aria-label="Save the weekly allowance">Save allowance</button>
       <div id="settingsMsg" class="result"></div>
-      <label>Temporary increase for this week ($)
+      <h3>Temporary increase</h3>
+      <label>Amount for this week ($)
         <input id="tempIncreaseInput" type="number" step="0.01" min="0" inputmode="decimal">
       </label>
-      <button id="addTempBtn" class="btn btn-primary" type="button" aria-label="Add a temporary increase for this week">Add temporary increase</button>
+      <button id="addTempBtn" class="btn" type="button" aria-label="Add a temporary increase for this week">Add temporary increase</button>
       <div id="tempMsg" class="result"></div>
     </div>
 
     <div class="card" id="section-savings">
-      <h2>Savings (manual attestation only)</h2>
-      <p class="muted small">The app never moves money. This records
-      what you observed in the real savings account. Attestations are
-      not spending, not income, and never change the Extra Fund.</p>
+      <h2>Savings (recorded by hand)</h2>
+      <p class="muted small">Record what you see in the real savings account. This is not spending, not income, and never changes the Extra Fund.</p>
       <div id="savingsList" class="result"></div>
       <div id="savingsFormWrap" style="display:none">
         <label>Actual savings balance ($)
@@ -173,14 +166,28 @@
         <label>Note (optional)
           <input id="savingsNoteInput" type="text">
         </label>
-        <button id="attestSavingsBtn" class="btn btn-primary" type="button" aria-label="Record the actual savings balance">Attest balance</button>
+        <button id="attestSavingsBtn" class="btn btn-primary" type="button" aria-label="Record the actual savings balance">Record balance</button>
         <div id="savingsMsg" class="result"></div>
       </div>
     </div>
 
     <div class="card" id="section-fund">
-      <h2>Extra Fund requests</h2>
-      <p class="muted small">Ask for money from the Extra Fund. The admin approves or declines each request, and the decision is written to the activity log.</p>
+      <h2>Extra Fund</h2>
+      <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
+      <div id="fundAdminWrap" style="display:none">
+        <button id="processWeeksBtn" class="btn btn-primary" type="button" aria-label="Process completed weeks into the fund">Process completed weeks</button>
+        <p class="muted small">Run this after a week ends: its surplus moves into the fund, ready to spend.</p>
+        <div id="processWeeksMsg" class="result"></div>
+        <h3>Spend from the fund directly</h3>
+        <form id="fundAllocateForm">
+          <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
+          <label>Note (optional) <input name="note" maxlength="120"></label>
+          <button class="btn" type="submit" aria-label="Record spending from the Extra Fund">Record fund spending</button>
+        </form>
+        <div id="fundAllocateMsg" class="result"></div>
+      </div>
+      <h3>Ask for fund money</h3>
+      <p class="muted small">Ask for money from the Extra Fund. The admin approves or declines each request.</p>
       <form id="fundRequestForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
         <label>Note (optional) <input name="note" maxlength="120"></label>
@@ -190,22 +197,19 @@
     </div>
 
     <div class="card" id="section-activity">
-      <h2>Activity / audit log</h2>
+      <h2>History</h2>
       <p class="muted small">A shared record of every change in this household — who did what, and when.</p>
-      <ul id="auditList" class="plain"></ul>
+      <ul id="auditList" class="plain"><li class="muted small">Loading…</li></ul>
     </div>
 
     <div class="card" id="finRefundNote">
-      <h2>Open question — FIN-REFUND-001</h2>
-      <p class="muted">The refund-credit / surplus policy is <strong>unresolved</strong>.
-      Outputs that depend on an excess refund in a week with no debt and no charges
-      are <strong>not production-certified</strong> until the owner chooses the rule.</p>
+      <p class="muted small">A note on refunds: one refund rule is still undecided, so refund-week figures may change.</p>
     </div>
   </section>
 </main>
 
 <footer class="foot muted small">
-  Household Budget
+  Household Budget · Last updated <span id="lastSync">—</span>
 </footer>
 
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>

@@ -58,12 +58,17 @@ Deno.serve(async (req) => {
       .single();
     if (hhErr || !household) return json({ error: 'household not found' }, 404);
 
-    // This week's eligible charges, net of linked refunds, floored at 0.
+    // This week's net spending, derived here (not trusted from the
+    // caller): signed amounts, minus portions already allocated to the
+    // Extra Fund. Refunds are stored NEGATIVE, so net = charges +
+    // refunds - allocated. The old code computed charges - refunds,
+    // which overstated spending by 2x the refund in refund weeks.
+    // A negative net is excess refund credit X, not negative charges.
     // Uses the same week window as the engine: [weekStart, weekStart+7).
     const weekEnd = addDaysStr(weekStart, 7);
     const { data: txns, error: txErr } = await supabase
       .from('transactions')
-      .select('amount_cents, kind, excluded, state')
+      .select('amount_cents, kind, excluded, state, fund_allocation_cents')
       .eq('household_id', householdId)
       .gte('date', weekStart)
       .lt('date', weekEnd)
@@ -71,29 +76,25 @@ Deno.serve(async (req) => {
       .neq('state', 'reversed');
     if (txErr) return json({ error: 'transaction read failed' }, 500);
 
-    const charges = (txns ?? [])
-      .filter((t) => t.kind === 'charge')
-      .reduce((s, t) => s + t.amount_cents, 0);
-    const refunds = (txns ?? [])
-      .filter((t) => t.kind === 'refund')
-      .reduce((s, t) => s + t.amount_cents, 0);
-    const C = Math.max(0, charges - refunds);
+    const net = (txns ?? []).reduce((s, t) => s + t.amount_cents - (t.fund_allocation_cents ?? 0), 0);
+    const C = net >= 0 ? net : 0;
+    const X = net < 0 ? -net : 0;
 
-    // Temporary increments and carried credit/debt are supplied by the
-    // caller for now (they live in week-state rows once the week-close
-    // function lands); default to 0 so a plain current-week read works.
+    // Carried debt/credit come from the caller (the live app reads the
+    // latest week_close); temporary increments likewise. Defaults keep
+    // a plain current-week read working.
     const result = computeWeek({
       B: household.base_allowance_cents,
       T: body.T ?? 0,
       R_in: body.R_in ?? 0,
-      X: body.X ?? 0,
+      X,
       D: body.D ?? 0,
       C,
     });
 
     // FIN-REFUND-001 flag: the deferred case is X > 0 with no debt and no
     // charges, where the engine reports both surplus and outgoing credit.
-    const finRefund001Affected = (body.X ?? 0) > 0 && (body.D ?? 0) === 0 && C === 0;
+    const finRefund001Affected = X > 0 && (body.D ?? 0) === 0 && C === 0;
 
     return json({
       household_id: householdId,

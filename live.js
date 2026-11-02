@@ -31,11 +31,13 @@ let txSort = localStorage.getItem('hb-tx-sort') || 'date-desc'; // date-desc | d
 let txMonth = localStorage.getItem('hb-tx-month') || 'all'; // 'all' or 'YYYY-MM'
 let txCard = localStorage.getItem('hb-tx-card') || 'all'; // 'all' or card suffix
 let txWeekOnly = false; // spec B5: transactions filter by week (client-side, current Sun–Sat week)
-let lastBankSyncText = null; // last Sync button result, this session only
-let lastBankSyncTime = null;
+let txLimit = 100; // purchases load in pages of 100; Load more raises it
+let lastRefreshAt = 0; // tab taps refresh in the background, throttled
+let currentWeekData = null; // last compute-week result, for per-stat breakdowns
+let currentWeekInputs = null;
 // Generic display labels for transaction sources. Database values are
 // unchanged (e.g. 'plaid'); only what the user sees is bank-agnostic.
-const sourceLabel = (s) => ({ plaid: 'BANK', manual: 'MANUAL', csv: 'FILE', amex_alert: 'EMAIL ALERT' }[s] ?? String(s).toUpperCase());
+const sourceLabel = (s) => ({ plaid: 'Bank', manual: 'By hand', csv: 'File', amex_alert: 'Email alert' }[s] ?? String(s));
 
 async function show(view) {
   $('view-auth').classList.toggle('hidden', view !== 'auth');
@@ -82,9 +84,6 @@ async function refresh() {
   // Webhook-triggered auto-sync happens first, so the numbers and
   // list below already include any purchases Plaid just announced.
   await Promise.race([autoSyncIfWebhookPending(), new Promise((r) => setTimeout(r, 8000))]);
-  $('householdId').textContent = household.household_id;
-  const rbadge = document.getElementById('roleBadge'); if (rbadge) rbadge.textContent = `LIVE · ${household.role.toUpperCase()}`;
-  const ls = document.getElementById('lastSync'); if (ls) ls.textContent = new Date().toLocaleString();
 
   const { data: { session: s } } = await supabase.auth.getSession();
   const pe = document.getElementById('profileEmail'); if (pe && s?.user?.email) pe.textContent = s.user.email;
@@ -108,17 +107,30 @@ async function refresh() {
       tempTotal = (temps ?? []).reduce((sum, r) => sum + (r.amount_cents || 0), 0);
     }
   } catch (e) { console.warn('temp increase read failed:', e); }
+  // Week chain: the previous closed week's outgoing debt/credit carry
+  // into this week (before this, every week wrongly started at $0).
+  // A missing week_closes table (before the fund SQL lands) just means
+  // the chain starts at zero — never a crash.
+  let chainD = 0, chainR = 0;
+  try {
+    const { data: prev } = await supabase.from('week_closes')
+      .select('outgoing_debt_cents, outgoing_credit_cents, week_start')
+      .eq('household_id', household.household_id)
+      .lt('week_start', weekStartForTemp ?? '9999-12-31')
+      .order('week_start', { ascending: false }).limit(1).maybeSingle();
+    if (prev) { chainD = prev.outgoing_debt_cents || 0; chainR = prev.outgoing_credit_cents || 0; }
+  } catch (e) { /* chain unavailable; start at zero */ }
   // Week numbers from the server.
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/compute-week`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ household_id: household.household_id, T: tempTotal }),
+      body: JSON.stringify({ household_id: household.household_id, T: tempTotal, D: chainD, R_in: chainR }),
     });
     const week = await res.json();
     const weekErr = document.getElementById('weekError');
     if (weekErr) {
-      if (!week.result) { weekErr.textContent = "Couldn't update this week's numbers — tap Refresh to try again."; weekErr.classList.remove('hidden'); }
+      if (!week.result) { weekErr.textContent = "Couldn't update this week's numbers — switch tabs or reopen the app to try again."; weekErr.classList.remove('hidden'); }
       else weekErr.classList.add('hidden');
     }
     if (week.result) {
@@ -130,6 +142,15 @@ async function refresh() {
       $('statSpent').innerHTML = formatCentsHtml(week.result.C);
       $('statDebt').innerHTML = formatCentsHtml(week.result.D);
       $('statCredit').innerHTML = formatCentsHtml(week.result.outgoingCredit);
+      currentWeekData = week.result; currentWeekInputs = { B: week.result.B, T: tempTotal, D: chainD, R_in: chainR };
+      // Hero progress: spent this week against the weekly allowance.
+      const budget = week.result.B + tempTotal;
+      const pct = budget > 0 ? Math.min(100, Math.round((week.result.C / budget) * 100)) : 0;
+      const bar = document.getElementById('weekProgressBar');
+      if (bar) bar.style.width = `${pct}%`;
+      const pt = document.getElementById('weekProgressText');
+      if (pt) pt.textContent = `Spent ${formatCents(week.result.C)} of ${formatCents(budget)} allowance`;
+      lastRefreshAt = Date.now();
       const allowInput = document.getElementById('baseAllowanceInput');
       if (allowInput && document.activeElement !== allowInput) allowInput.value = (week.result.B / 100).toFixed(2);
       $('finRefundNote').style.display = week.not_production_certified ? 'block' : 'none';
@@ -142,7 +163,7 @@ async function refresh() {
 
   const { data: txns } = await supabase.from('transactions')
     .select('*').eq('household_id', household.household_id)
-    .order('date', { ascending: false }).limit(100);
+    .order('date', { ascending: false }).limit(txLimit);
   const all = txns ?? [];
   const q = ($('txSearch')?.value ?? '').trim().toLowerCase();
   const byFilter = (t) => txFilter === 'all' ? true
@@ -199,8 +220,11 @@ async function refresh() {
   const countEl = $('txCount');
   if (countEl) {
     const shownTotal = shown.reduce((s, t) => s + t.amount_cents, 0);
-    countEl.textContent = `Showing ${shown.length} of ${all.length} transactions${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)}`;
+    const capped = all.length >= txLimit ? ' of loaded purchases — tap Load more for older ones' : ' of loaded purchases';
+    countEl.textContent = `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)}`;
   }
+  const loadMore = $('txLoadMore');
+  if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
   const weekBtn = $('txWeekToggle');
   if (weekBtn) {
     weekBtn.classList.toggle('active', txWeekOnly);
@@ -225,15 +249,16 @@ async function refresh() {
         // "Remove" excludes it from the week and keeps the record.
         const deleteBtn = !isAdmin ? ''
           : t.source === 'manual'
-          ? `<button class="btn btn-small" data-delete-tx="${t.id}" type="button" aria-label="Delete ${esc(t.merchant)}">Delete</button>`
-          : `<button class="btn btn-small" data-remove-tx="${t.id}" type="button" aria-label="Remove ${esc(t.merchant)} from the budget">Remove</button>`;
-        const action = !isAdmin ? ''
+          ? `<button class="btn btn-small btn-danger" data-delete-tx="${t.id}" type="button" aria-label="Delete ${esc(t.merchant)}">Delete</button>`
+          : `<button class="btn btn-small btn-danger" data-remove-tx="${t.id}" type="button" aria-label="Remove ${esc(t.merchant)} from the budget">Remove</button>`;
+        const fundBtn = `<button class="btn btn-small" data-use-fund="${t.id}" type="button" aria-label="Use Extra Fund for ${esc(t.merchant)}">Use Extra Fund</button>`;
+        const action = !isAdmin ? fundBtn
           : excluded
-          ? `<button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${deleteBtn}`
-          : `<button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn}`;
+          ? `<div class="btn-row"><button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${deleteBtn}</div>`
+          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${fundBtn}</div>`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
-        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1"><strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
-        <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'EXCLUDED' : (t.state === 'provisional' ? 'PENDING' : 'POSTED')}</span>
+        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1"><span class="tx-icon" aria-hidden="true">${esc(t.merchant.charAt(0).toUpperCase())}</span><strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
+        <div class="tx-line2"><span class="pill ${t.state === 'provisional' ? 'warn' : 'ok'}">${excluded ? 'Excluded' : (t.state === 'provisional' ? 'Pending' : 'Posted')}</span>
         <span class="pill">${esc(sourceLabel(t.source))}</span>
         <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span> <span class="muted small">Tap for detail ▾</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
@@ -249,17 +274,45 @@ async function refresh() {
   document.querySelectorAll('[data-tx-head]').forEach((el) => el.addEventListener('click', () => {
     document.getElementById(`tx-detail-${el.dataset.txHead}`)?.classList.toggle('hidden');
   }));
-  // Week breakdown (toggled by tapping a stat card): totals by source
-  // across the loaded transactions, excluding excluded rows.
+  // Per-stat breakdowns: each number explains itself (the old panel
+  // showed the same spending-by-source text for every stat).
   const bd = document.getElementById('weekBreakdown');
-  if (bd) {
+  if (bd && currentWeekData) {
+    const w = currentWeekData;
     const counted = all.filter((t) => !(t.excluded === true || t.state === 'excluded'));
     const bySrc = {};
     for (const t of counted) bySrc[t.source] = (bySrc[t.source] ?? 0) + t.amount_cents;
     const refundTotal = counted.filter((t) => t.kind === 'refund').reduce((s, t) => s + t.amount_cents, 0);
-    bd.innerHTML = `<p class="small"><strong>Where this spending came from:</strong><br>${Object.entries(bySrc).map(([s, v]) => `${esc(sourceLabel(s))}: ${formatCents(v)}`).join(' · ') || 'nothing yet'}<br>
-      Refunds in this list: ${formatCents(refundTotal)} · Excluded purchases kept out of the math: ${all.length - counted.length}</p>`;
+    const panels = {
+      allowance: `<strong>Weekly allowance ${formatCents(w.B)}</strong> plus ${formatCents(currentWeekInputs?.T ?? 0)} in temporary increases this week.`,
+      spent: `<strong>Where this spending came from:</strong><br>${Object.entries(bySrc).map(([s, v]) => `${esc(sourceLabel(s))}: ${formatCents(v)}`).join(' · ') || 'nothing yet'}<br>Refunds in this list: ${formatCents(refundTotal)} · Excluded purchases kept out of the math: ${all.length - counted.length}`,
+      debt: w.D > 0
+        ? `<strong>${formatCents(w.D)} carried over</strong> from earlier weeks — it comes off the top of this week's allowance before anything else.`
+        : 'No carried-over overspending: this week starts with the full allowance.',
+      credit: w.outgoingCredit > 0
+        ? `<strong>${formatCents(w.outgoingCredit)} in refund credit</strong> is still available — it covers spending after the allowance and any temporary increases run out.`
+        : 'No refund credit available right now.',
+    };
+    bd.dataset.panels = JSON.stringify(panels);
+    if (!bd.classList.contains('hidden') && bd.dataset.stat && panels[bd.dataset.stat]) {
+      bd.innerHTML = `<p class="small">${panels[bd.dataset.stat]}</p>`;
+    }
   }
+  document.querySelectorAll('[data-use-fund]').forEach((b) => b.addEventListener('click', async () => {
+    const row = all.find((t) => t.id === b.dataset.useFund);
+    const amountText = await showSheet({ title: 'Use Extra Fund', message: `Ask the admin to cover "${row?.merchant ?? 'this purchase'}" (${formatCents(row?.amount_cents ?? 0)}) from the Extra Fund?`, inputLabel: 'Amount ($)', inputValue: row ? (row.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Send request', cancelLabel: 'Cancel' });
+    if (amountText === null) return;
+    const cents = dollarsToCents(amountText);
+    if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase.from('fund_requests').insert({
+      household_id: household.household_id, requested_by: user.id,
+      amount_cents: cents, note: '', status: 'pending', transaction_id: b.dataset.useFund,
+    });
+    if (error) { await showAlert('Could not send request', error.message); return; }
+    await audit('Extra Fund request created', `Requested ${formatCents(cents)} for ${row?.merchant ?? 'a purchase'}.`);
+    await refresh();
+  }));
   document.querySelectorAll('[data-exclude]').forEach((b) => b.addEventListener('click', async () => {
     // Spec A7: exclusion needs a reason, recorded in the audit log.
     const reason = ((await showSheet({ title: 'Exclude purchase', message: 'Why exclude this purchase? It stays in the list but stops counting toward the week.', inputLabel: 'Reason (optional)', confirmLabel: 'Exclude', cancelLabel: 'Keep it' })) ?? '').trim();
@@ -308,14 +361,14 @@ async function refresh() {
   $('fundQueue').innerHTML = (reqs ?? []).length
     ? (reqs ?? []).map((r) => {
         const btns = (household.role === 'admin' && r.status === 'pending')
-          ? ` <button class="btn btn-small" data-approve="${r.id}" type="button" aria-label="Approve this Extra Fund request">Approve</button> <button class="btn btn-small" data-decline="${r.id}" type="button" aria-label="Decline this Extra Fund request">Decline</button>`
+          ? `<div class="btn-row"><button class="btn btn-small btn-primary" data-approve="${r.id}" type="button" aria-label="Approve this Extra Fund request">Approve</button> <button class="btn btn-small btn-quiet" data-decline="${r.id}" type="button" aria-label="Decline this Extra Fund request">Decline</button></div>`
           : '';
         return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(r.status.toUpperCase())} · ${esc(r.note || '')} <span class="muted small">Tap for detail ▾</span></div>
         <div class="tx-detail hidden" id="fund-detail-${r.id}">
           <p class="small muted">Amount: ${formatCents(r.amount_cents)} · Status: ${esc(r.status)}<br>
           Note: ${esc(r.note || '—')}<br>
           Requested: ${fmtDateTime(r.created_at)}<br>
-          ${r.status === 'pending' ? 'Waiting on the admin decision.' : 'Decision recorded; spending against the fund balance is a separate step.'}</p>
+          ${r.status === 'pending' ? 'Waiting on the admin decision.' : r.status === 'approved' ? 'Approved — the fund balance above already reflects it.' : 'Declined by the admin.'}</p>
           <div>${btns}</div>
         </div></li>`;
       }).join('')
@@ -324,7 +377,17 @@ async function refresh() {
     document.getElementById(`fund-detail-${el.dataset.fundHead}`)?.classList.toggle('hidden');
   }));
   document.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
-    const { error } = await supabase.rpc('approve_fund_request', { p_request_id: b.dataset.approve });
+    const req = (reqs ?? []).find((r) => r.id === b.dataset.approve);
+    const amountText = await showSheet({ title: 'Approve from the fund', message: `Approve how much of this ${formatCents(req?.amount_cents ?? 0)} request? Enter less for a split approval.`, inputLabel: 'Amount ($)', inputValue: req ? (req.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Approve', cancelLabel: 'Cancel' });
+    if (amountText === null) return;
+    const cents = dollarsToCents(amountText);
+    if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
+    let { error } = await supabase.rpc('approve_and_allocate', { p_request_id: b.dataset.approve, p_amount_cents: cents, p_override_reason: null });
+    if (error && /insufficient fund/i.test(error.message)) {
+      const reason = await showSheet({ title: 'Fund is short', message: `The fund does not cover ${formatCents(cents)}. You can still approve with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Approve anyway', cancelLabel: 'Cancel' });
+      if (reason === null) return;
+      ({ error } = await supabase.rpc('approve_and_allocate', { p_request_id: b.dataset.approve, p_amount_cents: cents, p_override_reason: reason.trim() }));
+    }
     if (error) await showAlert('Could not approve', error.message); else await refresh();
   }));
   document.querySelectorAll('[data-decline]').forEach((b) => b.addEventListener('click', async () => {
@@ -338,26 +401,59 @@ async function refresh() {
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(20);
   $('savingsList').innerHTML = (sav ?? []).length
-    ? `<ul>${(sav ?? []).map((s) => `<li>Attested balance ${formatCents(s.actual_balance_cents ?? 0)} · ${fmtDateTime(s.created_at)} · ${esc(s.note || '')}</li>`).join('')}</ul>`
-    : '<p class="muted small">No savings attestations yet.</p>';
+    ? `<ul>${(sav ?? []).map((s) => `<li>Recorded balance ${formatCents(s.actual_balance_cents ?? 0)} · ${fmtDateTime(s.created_at)} · ${esc(s.note || '')}</li>`).join('')}</ul>${(sav ?? []).length >= 20 ? '<p class="muted small">Showing the latest 20 records.</p>' : ''}`
+    : '<p class="muted small">No savings records yet.</p>';
   $('savingsFormWrap').style.display = household.role === 'admin' ? '' : 'none';
 
-  // Connections card: only real, observed values — the last Sync
-  // button result from this session and the page's refresh time.
-  // No sync time is invented for the email poller.
-  const connBank = $('connBankStatus');
-  if (connBank) connBank.textContent = lastBankSyncText
-    ? `${lastBankSyncText} (${lastBankSyncTime})`
-    : 'Not synced yet in this session.';
-  const connRefresh = $('connLastRefresh');
-  if (connRefresh) connRefresh.textContent = fmtDateTime(new Date().toISOString());
+  // Bank sync line: persisted across visits (localStorage), never the
+  // old "not synced yet in this session" confession on reopen.
+  const syncKey = `hb-last-sync-${household.household_id}`;
+  const storedSync = localStorage.getItem(syncKey);
+  const syncLine = $('bankSyncLine');
+  if (syncLine) syncLine.textContent = storedSync ? `Last synced ${storedSync}` : 'Not synced yet.';
+  const ls = document.getElementById('lastSync'); if (ls) ls.textContent = fmtDateTime(new Date().toISOString());
+  // Bank button states: once connected, Connect quiets down and Sync
+  // becomes the primary action; the webhook button shows its on-state.
+  const connected = localStorage.getItem(`hb-bank-connected-${household.household_id}`) === '1';
+  const cb = $('connectBankBtn');
+  if (cb && connected) { cb.classList.remove('btn-primary'); cb.textContent = 'Connected ✓'; cb.disabled = true; }
+  const sb = $('syncBankBtn');
+  if (sb && connected) sb.classList.add('btn-primary');
+  const wb = $('registerWebhookBtn');
+  if (wb && localStorage.getItem(`hb-webhook-on-${household.household_id}`) === '1') { wb.textContent = 'Automatic sync is on ✓'; wb.disabled = true; }
+  // Extra Fund summary: balances from the fund ledger + pending releases.
+  // Before the fund SQL lands these queries fail — show an honest note.
+  try {
+    const { data: ledger } = await supabase.from('fund_ledger').select('kind, amount_cents').eq('household_id', household.household_id);
+    const { data: releases } = await supabase.from('surplus_releases').select('surplus_cents, released_cents, status').eq('household_id', household.household_id);
+    const { data: hh } = await supabase.from('households').select('fund_shortfall_cents').eq('id', household.household_id).maybeSingle();
+    if (ledger) {
+      const sum = (k) => (ledger ?? []).filter((r) => r.kind === k).reduce((s, r) => s + r.amount_cents, 0);
+      const available = (ledger ?? []).reduce((s, r) => s + r.amount_cents, 0);
+      const spent = Math.abs(sum('allocation') + sum('override_allocation'));
+      const pending = (releases ?? []).filter((r) => r.status === 'pending').reduce((s, r) => s + r.surplus_cents, 0);
+      const held = (releases ?? []).filter((r) => r.status === 'held').length;
+      const shortfall = hh?.fund_shortfall_cents ?? 0;
+      const fs = $('fundSummary');
+      if (fs) fs.innerHTML = `<p class="fund-balance">Available <strong>${formatCents(available)}</strong></p>
+        <p class="muted small">Released into the fund ${formatCents(sum('release'))} · Pending release ${formatCents(pending)} · Spent ${formatCents(spent)}${shortfall > 0 ? ` · Shortfall ${formatCents(shortfall)}` : ''}${held > 0 ? ` · ${held} week(s) held for the undecided refund rule` : ''}</p>`;
+    } else {
+      const fs = $('fundSummary');
+      if (fs) fs.innerHTML = '<p class="muted small">Fund balances will appear once the fund setup is complete.</p>';
+    }
+  } catch (e) {
+    const fs = $('fundSummary');
+    if (fs) fs.innerHTML = '<p class="muted small">Fund balances will appear once the fund setup is complete.</p>';
+  }
+  const faw = $('fundAdminWrap');
+  if (faw) faw.style.display = household.role === 'admin' ? '' : 'none';
 
   showView(currentView);
   const { data: auditRows } = await supabase.from('audit_log')
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(50);
   $('auditList').innerHTML = (auditRows ?? []).length
-    ? (auditRows ?? []).map((a) => `<li><strong>${esc(formatAuditAction(a.action))}</strong> <span class="muted">(${esc(formatAuditActor(a.actor_name))} · ${fmtDateTime(a.created_at)})</span><br>${esc(formatAuditDetail(a.detail))}</li>`).join('')
+    ? (auditRows ?? []).map((a) => `<li><strong>${esc(formatAuditAction(a.action))}</strong> <span class="muted">(${esc(formatAuditActor(a.actor_name))} · ${fmtDateTime(a.created_at)})</span><br>${esc(formatAuditDetail(a.detail))}</li>`).join('') + ((auditRows ?? []).length >= 50 ? '<li class="muted small">Showing the latest 50 entries.</li>' : '')
     : '<li>No audit entries yet.</li>';
   } finally {
     if (rb) { rb.disabled = false; rb.textContent = 'Refresh'; }
@@ -480,7 +576,7 @@ $('connectBankBtn')?.addEventListener('click', async () => {
       $('bankMsg').textContent = ex.connected
         ? 'Connected. Tap "Sync bank transactions now" to pull transactions.'
         : `Connection could not be finished: ${ex.error ?? 'unknown error'}`;
-      if (ex.connected) await refresh();
+      if (ex.connected) { localStorage.setItem(`hb-bank-connected-${household.household_id}`, '1'); await refresh(); }
     },
     onExit: (err) => {
       if (err) $('bankMsg').textContent = `Bank connection closed: ${err.error_message ?? err.error_code ?? 'cancelled'}`;
@@ -496,8 +592,10 @@ async function runBankSync() {
     ? `Sync failed: ${out.error}`
     : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).`;
   $('bankMsg').textContent = text;
-  lastBankSyncText = text;
-  lastBankSyncTime = fmtDateTime(new Date().toISOString());
+  if (!out.error) {
+    localStorage.setItem(`hb-last-sync-${household.household_id}`, fmtDateTime(new Date().toISOString()));
+    localStorage.setItem(`hb-bank-connected-${household.household_id}`, '1');
+  }
   return out;
 }
 
@@ -514,6 +612,7 @@ $('registerWebhookBtn')?.addEventListener('click', async () => {
   $('bankMsg').textContent = failed.length
     ? `Automatic sync partly enabled — ${failed.length} connection(s) failed: ${failed.map((r) => r.error).join('; ')}`
     : 'Automatic sync enabled. New purchases will be pulled in on your next refresh.';
+  if (!failed.length) { localStorage.setItem(`hb-webhook-on-${household.household_id}`, '1'); await refresh(); }
 });
 
 // Automatic sync: if a verified webhook event is waiting for this
@@ -536,9 +635,9 @@ async function autoSyncIfWebhookPending() {
 // only one section group is shown at a time, so the app is never
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
-  week: ['section-week', 'section-stats', 'section-hint', 'settingsCard', 'finRefundNote'],
+  week: ['section-week', 'section-stats', 'section-hint', 'finRefundNote'],
   purchases: ['section-transactions', 'section-manual'],
-  money: ['section-bank', 'connectionsCard', 'section-savings', 'section-fund'],
+  money: ['section-bank', 'settingsCard', 'section-savings', 'section-fund'],
   activity: ['section-activity'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
@@ -562,7 +661,12 @@ function showView(name) {
   });
   window.scrollTo(0, 0);
 }
-document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { showView(b.dataset.view); refresh(); }));
+document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+  showView(b.dataset.view);
+  // Cached content shows instantly; data refreshes in the background,
+  // at most once every 30s, so tab taps never stare at empty cards.
+  if (Date.now() - lastRefreshAt > 30000) refresh();
+}));
 document.getElementById('profileBtn')?.addEventListener('click', (e) => {
   e.stopPropagation();
   const menu = document.getElementById('profileMenu');
@@ -573,14 +677,29 @@ document.addEventListener('click', (e) => {
   const menu = document.getElementById('profileMenu');
   if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target) && e.target.id !== 'profileBtn' && !document.getElementById('profileBtn')?.contains(e.target)) menu.classList.add('hidden');
 });
-document.getElementById('showHouseholdIdBtn')?.addEventListener('click', (e) => {
-  const el = document.getElementById('householdId');
-  el.classList.toggle('hidden');
-  e.target.textContent = el.classList.contains('hidden') ? 'Share household ID' : 'Hide household ID';
+document.getElementById('menuShareIdBtn')?.addEventListener('click', async () => {
+  document.getElementById('profileMenu')?.classList.add('hidden');
+  await showSheet({ title: 'Household ID', message: `Share this ID with the second account so they can join as a member:<br><strong style="overflow-wrap:anywhere">${household?.household_id ?? ''}</strong>`, inputLabel: null, confirmLabel: 'Done' });
 });
-// Stat cards: tap any number to toggle the week breakdown panel.
+document.getElementById('menuPasswordBtn')?.addEventListener('click', async () => {
+  document.getElementById('profileMenu')?.classList.add('hidden');
+  const pw = await showSheet({ title: 'Change password', message: 'Enter a new password for this account.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change password', cancelLabel: 'Cancel' });
+  if (!pw) return;
+  const { error } = await supabase.auth.updateUser({ password: pw });
+  await showAlert(error ? 'Could not change password' : 'Password changed', error ? error.message : 'Your password is updated.');
+});
+// Stat cards: tap a number to see that number's own breakdown.
 document.querySelectorAll('[data-stat]').forEach((el) => el.addEventListener('click', () => {
-  document.getElementById('weekBreakdown')?.classList.toggle('hidden');
+  const bd = document.getElementById('weekBreakdown');
+  if (!bd) return;
+  const stat = el.dataset.stat;
+  if (!bd.classList.contains('hidden') && bd.dataset.stat === stat) { bd.classList.add('hidden'); return; }
+  bd.dataset.stat = stat;
+  try {
+    const panels = JSON.parse(bd.dataset.panels || '{}');
+    if (panels[stat]) bd.innerHTML = `<p class="small">${panels[stat]}</p>`;
+  } catch (e) { /* panel text refreshes on next data load */ }
+  bd.classList.remove('hidden');
 }));
 // HTML form of an amount with smaller cents, for the hero and stat
 // numbers only (formatCents from the engine stays the plain-text form
@@ -634,14 +753,14 @@ function fmtShort(dateStr) {
 
 // In-app sheet (replaces the browser's grey prompt/confirm/alert
 // boxes, which looked cheap and blocked the whole page).
-function showSheet({ title, message, inputLabel, inputValue = '', confirmLabel = 'OK', cancelLabel = null }) {
+function showSheet({ title, message, inputLabel, inputValue = '', inputType = 'text', confirmLabel = 'OK', cancelLabel = null }) {
   return new Promise((resolve) => {
     document.getElementById('sheetOverlay')?.remove();
     const overlay = document.createElement('div');
     overlay.id = 'sheetOverlay';
     overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${title.replace(/"/g, '')}">
       <h3>${title}</h3><p>${message}</p>
-      ${inputLabel ? `<label>${inputLabel}<input id="sheetInput" type="text" value="${String(inputValue).replace(/"/g, '')}"></label>` : ''}
+      ${inputLabel ? `<label>${inputLabel}<input id="sheetInput" type="${inputType}" value="${String(inputValue).replace(/"/g, '')}"></label>` : ''}
       <div class="sheet-btns">
         ${cancelLabel ? `<button class="btn" type="button" id="sheetCancel">${cancelLabel}</button>` : ''}
         <button class="btn btn-primary" type="button" id="sheetConfirm">${confirmLabel}</button>
@@ -693,6 +812,18 @@ $('txWeekToggle')?.addEventListener('click', async () => {
   txWeekOnly = !txWeekOnly;
   await refresh();
 });
+$('txLoadMore')?.addEventListener('click', async () => {
+  txLimit += 100;
+  await refresh();
+});
+$('txFiltersToggle')?.addEventListener('click', (e) => {
+  const f = document.getElementById('txFilters');
+  if (!f) return;
+  f.classList.toggle('hidden');
+  const open = !f.classList.contains('hidden');
+  e.target.textContent = open ? 'Filters ▴' : 'Filters ▾';
+  e.target.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
 let txSearchTimer = null;
 $('txSearch')?.addEventListener('input', () => {
   clearTimeout(txSearchTimer);
@@ -714,7 +845,7 @@ $('attestSavingsBtn')?.addEventListener('click', async () => {
   const cents = dollarsToCents($('savingsBalanceInput').value);
   if (cents === null || cents < 0) { $('savingsMsg').textContent = 'Enter a valid balance.'; return; }
   const { error } = await supabase.rpc('attest_savings', { p_household_id: household.household_id, p_actual_balance_cents: cents, p_note: $('savingsNoteInput').value.trim() });
-  $('savingsMsg').textContent = error ? `Could not attest: ${error.message}` : 'Balance attested.';
+  $('savingsMsg').textContent = error ? `Could not record: ${error.message}` : 'Balance recorded.';
   if (!error) await refresh();
 });
 
@@ -726,6 +857,28 @@ $('saveAllowanceBtn')?.addEventListener('click', async () => {
   if (!error) await refresh();
 });
 
+$('processWeeksBtn')?.addEventListener('click', async () => {
+  $('processWeeksMsg').textContent = 'Processing completed weeks…';
+  const out = await callFn('week-close', { household_id: household.household_id });
+  $('processWeeksMsg').textContent = out.error
+    ? `Could not process: ${out.error}`
+    : `Done: ${out.weeks_closed ?? 0} week(s) closed, ${out.releases ?? 0} release(s), ${out.held ?? 0} held for the refund rule. Fund available: ${formatCents(out.fund_available_cents ?? 0)}.`;
+  await refresh();
+});
+$('fundAllocateForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const cents = dollarsToCents(f.amount.value);
+  if (cents === null || cents <= 0) { $('fundAllocateMsg').textContent = 'Enter a positive amount.'; return; }
+  let { error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: null });
+  if (error && /insufficient fund/i.test(error.message)) {
+    const reason = await showSheet({ title: 'Fund is short', message: `The fund does not cover ${formatCents(cents)}. Record it anyway with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Record anyway', cancelLabel: 'Cancel' });
+    if (reason === null) return;
+    ({ error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: reason.trim() }));
+  }
+  $('fundAllocateMsg').textContent = error ? `Could not record: ${error.message}` : 'Fund spending recorded.';
+  if (!error) { f.reset(); await refresh(); }
+});
 $('fundRequestForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
