@@ -1,4 +1,10 @@
-# Household Budget — Handoff (single source of truth)
+# Household Budget — Handoff
+
+## FINAL BASE SPEC (Nov 1, 2026, ~11:01 PM — owner-delivered, supersedes all previous spec versions)
+- File: `Household_Budget_Spec_FINAL.pdf` in this repo (uploaded as Household_Budget___Revised_iOS_Spec__v2-2.pdf, 20 pages). From now on this is the base. The old v2 PDF (19 pages) is superseded.
+- Headline delta vs old v2 (verified by text diff; everything else is repagination/reordering): the ENTIRE refund-credit model is removed (no R_in/X/R_out, no credit-pays-debt-first, available = base_available + T − C) and replaced by REFUND RESTORATION (read-only simulation from the purchase's week to the present; one restoration entry in the current week with restored surplus + debt reduction; posted-only; temp-covered portion restores nothing; over-refund held for admin review; restoration offsets shortfall first; fund-purchase refunds credit the fund). Amex cash-back statement credits are NOT refunds (excluded by default, admin can classify).
+- Consequence: FIN-REFUND-001's old question is MOOT (the credit model is gone), but restoration itself is UNBUILT — the current engine/week-close still implement the old credit model (R chaining, "Refund credit" stat, held weeks). Retiring the old model and building restoration is the biggest post-audit build item. The running full audit has been redirected to this final spec.
+ (single source of truth)
 
 > Last updated: Nov 1, 2026, ~9:45 PM EST (all evening progress: screens, filters, webhooks, proper-look batch, review).
 > If this file and any chat message disagree, this file wins — update it

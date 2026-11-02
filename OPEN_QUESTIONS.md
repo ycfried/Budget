@@ -1,6 +1,7 @@
 # Open questions
 
-## FIN-REFUND-001 — DEFERRED, UNRESOLVED (do not lose this)
+## FIN-REFUND-001 — SUPERSEDED by the final spec (Nov 1, 2026, ~11:01 PM): the refund-credit model that created this question was removed entirely and replaced by refund restoration, so the old question is moot. Restoration itself is unbuilt; the old-model code (R chaining, held weeks) must be retired in the post-audit build. Original entry below, kept for history:
+FIN-REFUND-001 — DEFERRED, UNRESOLVED (do not lose this)
 
 **Status:** OPEN. No policy chosen. No acceptance test for this case is marked passed.
 
