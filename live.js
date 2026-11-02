@@ -521,7 +521,7 @@ async function refresh() {
     await refresh();
   }));
   document.querySelectorAll('[data-reclassify]').forEach((b) => b.addEventListener('click', async () => {
-    const newKind = await showSheet({ title: 'Reclassify purchase', message: 'Change how this purchase counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+    const newKind = await showSheet({ title: 'Reclassify purchase', message: 'Change how this purchase counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
     if (newKind === null) return;
     const reason = await showSheet({ title: 'Reclassify purchase', message: 'Why reclassify this purchase?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
     if (reason === null) return;
@@ -1213,7 +1213,7 @@ document.getElementById('menuPasswordBtn')?.addEventListener('click', async () =
   if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
   const pw = await showSheet({ title: 'Change password', message: 'Enter a new password for this account.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change password', cancelLabel: 'Cancel' });
   if (!pw) return;
-  if (pw.length < 6) { await showAlert('Password too short', 'Enter a password of at least 6 characters.'); return; }
+  if (pw.length < 8) { await showAlert('Password too short', 'Enter a password of at least 8 characters.'); return; }
   const { error } = await supabase.auth.updateUser({ password: pw });
   if (error) console.warn('password change failed:', error.message);
   await showAlert(error ? 'Could not change password' : 'Password changed', error ? 'Could not change your password. Try again.' : 'Your password is updated.');
@@ -1390,6 +1390,15 @@ $('attestSavingsBtn')?.addEventListener('click', async () => {
   const { error } = await supabase.rpc('attest_savings', { p_household_id: household.household_id, p_actual_balance_cents: cents, p_note: $('savingsNoteInput').value.trim() });
   if (error) console.warn('attest_savings failed:', error.message);
   showToast(error ? 'Could not record the balance. Try again.' : 'Balance recorded.', !!error);
+  if (!error) await refresh();
+});
+
+$('recordSavingsMovementBtn')?.addEventListener('click', async () => {
+  const cents = parseDollarsStrict($('savingsAmountInput').value);
+  if (cents === null || cents <= 0) { showToast('Enter a valid amount (must be more than 0).', true); return; }
+  const { error } = await supabase.rpc('record_savings_entry', { p_household_id: household.household_id, p_kind: $('savingsKindInput').value, p_amount_cents: cents, p_note: $('savingsMovementNoteInput').value.trim() });
+  if (error) console.warn('record_savings_entry failed:', error.message);
+  showToast(error ? 'Could not record the movement. Try again.' : 'Movement recorded.', !!error);
   if (!error) await refresh();
 });
 

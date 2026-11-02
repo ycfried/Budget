@@ -139,13 +139,12 @@ grant select on held_refunds to authenticated;
 --   An audit_log row records held_id, action, and note. This is the
 --   admin-reviewed closure path: the excess amount is acknowledged
 --   and written off the queue, not credited anywhere.
--- - action 'release': REJECTED. Releasing a held excess amount as
---   spendable money is a money-posting policy decision the FINAL
---   spec does not define ("held for admin review and restores
---   nothing until the admin resolves it" does not say where a
---   released excess goes). The exception message says so plainly.
---   The owner must rule on the money-posting variant before any
---   'release' implementation ships; until then, use 'write_off'.
+-- - action 'release' (owner decision 2, Nov 2, 2026): the held excess
+--   becomes spendable surplus. Like a weekly surplus release, it
+--   offsets the fund shortfall first; the remainder posts to
+--   fund_ledger as kind='release' (immediately spendable — no 7-day
+--   pending, because the admin explicitly released it). Then the held
+--   row resolves with its own audit record stating the amounts.
 -- - any other action, a missing row, a non-pending row, or a
 --   non-admin caller: exception, no change.
 create or replace function public.resolve_held_refund(p_held_id uuid, p_action text, p_note text)
@@ -157,6 +156,9 @@ as $$
 declare
   v_row held_refunds%rowtype;
   v_note text;
+  v_shortfall integer;
+  v_applied integer;
+  v_to_fund integer;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_row from held_refunds where id = p_held_id;
@@ -167,10 +169,32 @@ begin
     raise exception 'admin only';
   end if;
   if p_action = 'release' then
-    raise exception 'release (money-posting) requires an owner decision; use write_off to close without moving money';
+    select fund_shortfall_cents into v_shortfall from households where id = v_row.household_id;
+    v_shortfall := coalesce(v_shortfall, 0);
+    v_applied := least(v_shortfall, v_row.held_cents);
+    v_to_fund := v_row.held_cents - v_applied;
+    if v_to_fund > 0 then
+      insert into fund_ledger (household_id, kind, amount_cents, note, created_by)
+        values (v_row.household_id, 'release', v_to_fund,
+                'Held refund ' || p_held_id::text || ' released to spendable surplus.', auth.uid());
+    end if;
+    if v_applied > 0 then
+      update households set fund_shortfall_cents = v_shortfall - v_applied where id = v_row.household_id;
+    end if;
+    v_note := nullif(btrim(coalesce(p_note, '')), '');
+    if v_note is null then v_note := 'release'; end if;
+    update held_refunds
+      set status = 'resolved', resolved_at = now(), resolution_note = v_note
+      where id = p_held_id;
+    insert into audit_log (household_id, actor, actor_name, action, detail)
+      values (v_row.household_id, auth.uid(), 'admin', 'Held refund released',
+              'Held refund ' || p_held_id::text || ' released to spendable surplus: '
+              || v_to_fund::text || ' cents to the fund, '
+              || v_applied::text || ' cents offset shortfall.');
+    return;
   end if;
   if p_action not in ('write_off', 'resolve') then
-    raise exception 'unknown action: % (expected write_off or resolve)', p_action;
+    raise exception 'unknown action: % (expected write_off, resolve, or release)', p_action;
   end if;
   v_note := nullif(btrim(coalesce(p_note, '')), '');
   if v_note is null then v_note := p_action; end if;

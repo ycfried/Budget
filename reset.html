@@ -47,7 +47,7 @@ if (code) {
 $('saveBtn').addEventListener('click', async () => {
   const pw = $('newPassword').value;
   const confirm = $('confirmPassword').value;
-  if (!pw || pw.length < 6) { msg.textContent = 'Enter a password of at least 6 characters.'; msg.classList.add('error'); return; }
+  if (!pw || pw.length < 8) { msg.textContent = 'Enter a password of at least 8 characters.'; msg.classList.add('error'); return; }
   if (pw !== confirm) { msg.textContent = 'The two passwords do not match.'; msg.classList.add('error'); return; }
   const { error } = await supabase.auth.updateUser({ password: pw });
   if (error) { console.warn('password reset failed:', error.message); msg.textContent = 'Could not save the new password. The link may have expired — request a new one from the sign-in screen.'; msg.classList.add('error'); return; }
