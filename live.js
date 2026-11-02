@@ -82,7 +82,7 @@ async function refresh() {
   $('householdId').textContent = household.household_id;
   $('roleText').textContent = household.role;
   $('roleBadge').textContent = `LIVE · ${household.role.toUpperCase()}`;
-  $('lastSync').textContent = new Date().toLocaleString();
+  const ls = document.getElementById('lastSync'); if (ls) ls.textContent = new Date().toLocaleString();
 
   const { data: { session: s } } = await supabase.auth.getSession();
   const token = s?.access_token ?? '';

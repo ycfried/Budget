@@ -201,8 +201,6 @@ label { font-size: 14px; font-weight: 600; }
 /* Header + banner: let them wrap instead of crowding on narrow phones. */
 #liveTopbar { flex-wrap: wrap; gap: 8px; }
 #liveTopbar .badge { margin-left: 4px; }
-#liveBanner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-#liveBanner .btn { margin-left: auto; }
 /* Filter chips: real tap targets (was 6px padding, easy to miss). */
 .tx-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 14px; }
 .tx-chip {
