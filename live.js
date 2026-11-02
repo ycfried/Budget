@@ -197,8 +197,8 @@ async function refresh() {
   const sorters = {
     'date-desc': (a, b) => b.date.localeCompare(a.date),
     'date-asc': (a, b) => a.date.localeCompare(b.date),
-    'amount-asc': (a, b) => a.amount_cents - b.amount_cents,
-    'amount-desc': (a, b) => b.amount_cents - a.amount_cents,
+    'amount-asc': (a, b) => (Math.abs(a.amount_cents) - Math.abs(b.amount_cents)) || b.date.localeCompare(a.date),
+    'amount-desc': (a, b) => (Math.abs(b.amount_cents) - Math.abs(a.amount_cents)) || b.date.localeCompare(a.date),
   };
   shown.sort(sorters[txSort] ?? sorters['date-desc']);
   const sortEl = $('txSort');
