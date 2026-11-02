@@ -175,6 +175,9 @@ label { font-size: 14px; font-weight: 600; }
 #section-manual .form-row-3 label { min-width: 0; }
 #section-manual .form-row-3 input { min-width: 0; }
 #section-manual input { padding: 9px 10px; }
+/* Two-column short-field row (savings movement: kind + amount). */
+.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form-row-2 label, .form-row-2 select, .form-row-2 input { min-width: 0; }
 .plain { list-style: none; padding: 0; margin: 0; }
 .plain li { border-bottom: 1px solid var(--hairline); padding: 11px 0; }
 .plain li:last-child { border-bottom: 0; }

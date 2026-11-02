@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -211,16 +211,18 @@
           <input id="savingsNoteInput" type="text">
         </label>
         <button id="attestSavingsBtn" class="btn btn-primary" type="button" aria-label="Record the actual savings balance">Record balance</button>
-        <label>Record a movement
-          <select id="savingsKindInput">
-            <option value="transfer_in">Transferred in</option>
-            <option value="withdrawal">Withdrawn</option>
-            <option value="interest">Interest</option>
-          </select>
-        </label>
-        <label>Amount ($)
-          <input id="savingsAmountInput" type="number" step="0.01" min="0" inputmode="decimal">
-        </label>
+        <div class="form-row-2">
+          <label>Record a movement
+            <select id="savingsKindInput">
+              <option value="transfer_in">Transferred in</option>
+              <option value="withdrawal">Withdrawn</option>
+              <option value="interest">Interest</option>
+            </select>
+          </label>
+          <label>Amount ($)
+            <input id="savingsAmountInput" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+        </div>
         <label>Note (optional)
           <input id="savingsMovementNoteInput" type="text">
         </label>
