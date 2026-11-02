@@ -9,10 +9,14 @@
 # dashboard secrets (SERVICE_ROLE_SECRET, Plaid keys, etc.) stay as-is.
 #
 # verify_jwt notes (match how each function is actually called):
-# - false ONLY for the two functions called by outside services that
+# - false ONLY for the functions called by outside services that
 #   send no Supabase JWT: plaid-webhook (Plaid sends its own signature
 #   header, verified inside the function) and ingest-amex-alert (Apps
 #   Script sends an HMAC header, verified inside the function).
+#   Gmail additions: gmail-oauth-callback (Google redirects the
+#   browser here, no JWT) and gmail-poll (dual auth verified inside
+#   the function: admin JWT or service-key bearer, so a future
+#   scheduled trigger can call it without a user session).
 # - true for everything the app calls with the signed-in user's JWT;
 #   each of those functions also verifies the caller itself.
 
@@ -47,4 +51,16 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.bootstrap-household]
+verify_jwt = true
+
+[functions.gmail-oauth-start]
+verify_jwt = true
+
+[functions.gmail-oauth-callback]
+verify_jwt = false
+
+[functions.gmail-poll]
+verify_jwt = false
+
+[functions.gmail-disconnect]
 verify_jwt = true
