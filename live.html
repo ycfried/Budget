@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=16">
+<link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -19,11 +19,15 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
     </button>
     <div id="profileMenu" class="profile-menu hidden">
-      <p class="small muted">Signed in as</p>
-      <p class="small"><strong id="profileEmail">—</strong></p>
-      <p class="small muted">Role: <span id="profileRole">—</span></p>
-      <button id="menuSettingsBtn" class="btn" type="button" aria-label="Open Settings">Settings</button>
-      <button id="signOutBtn" class="btn" type="button" aria-label="Sign out of the live app">Sign out</button>
+      <div class="profile-menu-head">
+        <p class="small muted">Signed in as</p>
+        <p class="profile-email"><strong id="profileEmail">—</strong></p>
+        <p><span class="role-pill" id="profileRole">—</span></p>
+      </div>
+      <div class="profile-menu-rows">
+        <button id="menuSettingsBtn" class="profile-menu-row" type="button" aria-label="Open Settings">Settings</button>
+        <button id="signOutBtn" class="profile-menu-row profile-menu-row-danger" type="button" aria-label="Sign out of the live app">Sign out</button>
+      </div>
     </div>
   </div>
 </header>
@@ -109,7 +113,7 @@
     <div class="card" id="section-manual">
       <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Add a transaction by hand</h2>
-      <p class="muted small">Record a transaction by hand. It counts as pending until the bank confirms it.</p>
+      <p class="muted small">Record a transaction by hand. It counts as pending until the bank confirms it. Your draft stays here if you switch screens — Back keeps it, Cancel clears it.</p>
       <form id="manualForm">
         <label>Merchant <input name="merchant" required maxlength="80"></label>
         <div class="form-row-3">
@@ -118,6 +122,7 @@
           <label>Card suffix <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
         </div>
         <button class="btn btn-primary" type="submit" aria-label="Add this transaction">Add transaction</button>
+        <button class="btn" id="manualCancelBtn" type="button" aria-label="Cancel and clear this draft">Cancel</button>
       </form>
       <p class="muted small">Never enter a full card number.</p>
     </div>
@@ -228,7 +233,7 @@
     <div class="card" id="section-settings-head">
       <div class="btn-row"><button class="btn" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
       <h2>Settings</h2>
-      <p class="muted small">Connections, Budget, and Account &amp; household. Bank and email connections moved here from Funds.</p>
+      <p class="muted small" id="settingsIntro">Connections, Budget, and Account &amp; household. Bank and email connections moved here from Funds.</p>
     </div>
 
     <div class="card" id="section-bank">
@@ -299,6 +304,9 @@
           <h2>Extra Fund</h2>
           <p class="muted small">Leftover money from weeks you spent under budget — use it for extras.</p>
           <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
+          <div class="btn-row">
+            <button class="btn btn-tertiary" id="fundAskBesideBtn" type="button" aria-label="Ask for fund money">Ask for fund money</button>
+          </div>
         </div>
         <div class="fund-balance-panel">
           <h2>Charity</h2>
@@ -462,7 +470,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=25"></script>
+<script type="module" src="live.js?v=26"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

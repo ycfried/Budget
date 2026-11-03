@@ -26,7 +26,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText } from './filterState.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
@@ -95,10 +95,14 @@ function statePill(t, excluded) {
   return '<span class="pill ok">Posted</span>';
 }
 function stateWord(t, excluded) {
-  if (excluded) return 'excluded from week math';
-  if (t.state === 'reversed') return 'reversed (does not count)';
-  if (t.state === 'provisional') return 'pending';
-  return 'posted';
+  // Same Title Case labels as statePill above — one status mapping
+  // for both the pill and the detail "Status:" line (UX audit 11).
+  // The counting sentence in the detail panel still explains
+  // separately whether the row counts toward its week.
+  if (excluded) return 'Excluded';
+  if (t.state === 'reversed') return 'Reversed';
+  if (t.state === 'provisional') return 'Pending';
+  return 'Posted';
 }
 // Canonical CSV dedupe key (client preview): normalized merchant / date /
 // amount / suffix. Normalization collapses whitespace and drops punctuation
@@ -300,10 +304,20 @@ async function refresh() {
       const weekStart = week.week_start ?? r.week_start ?? null;
       const baseAvailable = r.base_available_cents, tempC = r.temp_cents;
       const carried = r.carried_debt_cents, charges = r.charges_cents, avail = r.available_cents;
-      // Outgoing debt is derived from server outputs only (no credit):
-      // new debt = charges above base room + temp room; outgoing = carried + new.
-      const newDebt = Math.max(0, charges - baseAvailable - tempC);
-      const outgoingDebt = carried + newDebt;
+      // Outgoing debt follows engine.mjs computeWeek exactly (the
+      // server returns incoming debt D, not the engine's carriedDebt
+      // component): outgoing = debt the allowance did not cover +
+      // new debt from spending above base room + temp room. The
+      // previous client formula added the full incoming debt, which
+      // overstated outgoing whenever the allowance absorbed part of
+      // it (engine fixture: D 42500, B 37500, C 0 -> outgoing 5000,
+      // not 42500). Display derivation only — server numbers are
+      // untouched, and week-close stores the engine value.
+      const recon = weeklyReconciliation({
+        allowance: baseAllowanceCents ?? (baseAvailable + carried),
+        carried, temp: tempC, spent: charges,
+      });
+      const outgoingDebt = recon.outgoing;
       if (weekStart) $('weekLabel').textContent = `Week of ${fmtLong(weekStart)} (Sun–Sat)`;
       $('weeklyAvailable').innerHTML = formatCentsHtml(avail);
       $('weeklyAvailable').classList.toggle('negative', avail < 0);
@@ -322,7 +336,8 @@ async function refresh() {
         carriedDebtCents: carried, chargesCents: charges, availableCents: avail,
         outgoingDebtCents: outgoingDebt, weekLocked: !!r.week_locked,
         pendingRefundExcludedCents: r.pending_refund_excluded_cents ?? 0,
-        baseAllowanceCents };
+        baseAllowanceCents, baseRoomCents: recon.baseRoom,
+        unabsorbedDebtCents: recon.unabsorbed, newDebtCents: recon.newDebt };
       // Hero progress, debt-aware: spending room is base room + temp room
       // (carried debt already came off the top). Overspend is NOT silently
       // capped: the bar fills and an explicit "Over by" amount is shown.
@@ -452,7 +467,7 @@ async function refresh() {
     // the gifts total. (Week math already excludes them everywhere.)
     const shownTotal = shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && (txFilter === 'charity' || t.kind !== 'charity')).reduce((s, t) => s + t.amount_cents, 0);
     const capped = all.length >= txLimit ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
-    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)} (${txFilter === 'charity' ? 'excluded rows not counted' : 'charity gifts and excluded rows not counted'})`;
+    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total of the rows shown ${formatCents(shownTotal)} (${txFilter === 'charity' ? 'excluded rows not counted' : 'charity gifts and excluded rows not counted'})`;
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
@@ -548,7 +563,12 @@ async function refresh() {
           ? `<div class="btn-row">${deleteBtn}</div>`
           : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${reclassBtn} ${charityBtn} ${fundBtnAdmin}</div>`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
-        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
+        // UX audit 05: the row's accessible name carries merchant,
+        // amount, date, and status, so repeated merchants never share
+        // an identical "Tap for detail" name; the chevron marks the
+        // row as a disclosure (it rotates when the detail opens).
+        const rowLabel = `${t.merchant} ${formatCents(t.amount_cents)} ${fmtShort(t.date)} ${stateWord(t, excluded)} — show detail`;
+        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="${esc(rowLabel)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span><span class="tx-chevron" aria-hidden="true"></span></div>
         <div class="tx-line2">${statePill(t, excluded)}
         <span class="pill">${esc(sourceLabel(t.source))}</span>
         <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span> <span class="muted small">Tap for detail</span></div></div>
@@ -584,6 +604,13 @@ async function refresh() {
   // Tap a row header to expand / collapse its detail panel.
   document.querySelectorAll('[data-tx-head]').forEach((el) => el.addEventListener('click', () => {
     document.getElementById(`tx-detail-${el.dataset.txHead}`)?.classList.toggle('hidden');
+    el.classList.toggle('open');
+  }));
+  // Keyboard users get the same disclosure: Enter/Space on a focused
+  // row header toggles its detail (a div with role=button does not
+  // fire click on keys by itself).
+  document.querySelectorAll('[data-tx-head]').forEach((el) => el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); }
   }));
   // Per-stat breakdowns: each number explains itself (the old panel
   // showed the same spending-by-source text for every stat).
@@ -619,7 +646,7 @@ async function refresh() {
         ? `<strong>${formatCents(w.carriedDebtCents)} carried over</strong> from earlier weeks — it comes off the top of this week's allowance before anything else.`
         : 'No carried-over overspending: this week starts with the full allowance.',
       outgoing: w.outgoingDebtCents > 0
-        ? `<strong>${formatCents(w.outgoingDebtCents)} outgoing debt</strong> = ${formatCents(w.carriedDebtCents)} carried in plus ${formatCents(w.outgoingDebtCents - w.carriedDebtCents)} new debt from spending above this week's room. It carries into next week.`
+        ? `<strong>${formatCents(w.outgoingDebtCents)} outgoing debt</strong> = ${formatCents(w.unabsorbedDebtCents ?? Math.max(0, w.carriedDebtCents - (w.baseAllowanceCents ?? w.baseAvailableCents)))} debt the allowance did not cover plus ${formatCents(w.newDebtCents ?? Math.max(0, w.outgoingDebtCents - (w.unabsorbedDebtCents ?? 0)))} new debt from spending above this week's room. It carries into next week.`
         : 'No outgoing debt: this week\'s spending stayed within its room.',
     };
     bd.dataset.panels = JSON.stringify(panels);
@@ -920,12 +947,17 @@ async function refresh() {
   }
   // Email connections UI — SERVER TRUTH ONLY (email_connections_public
   // view; the refresh-token ciphertext never leaves the server).
-  // Admin-only card: hidden for members, and no read is attempted for
-  // them. This is ADDITIVE: it never touches the owner's existing
+  // The card is visible to all members: the view is member-readable
+  // by design (household_members RLS), and UX audit 10 asks that
+  // status lines stay visible. What members do NOT get is actions:
+  // Connect / Check buttons are hidden in showView, Disconnect
+  // buttons are rendered admin-only below, and the connect /
+  // disconnect Edge Functions still enforce admin server-side.
+  // This is ADDITIVE: it never touches the owner's existing
   // Apps Script email path, which keeps working unchanged.
   const emailCard = $('section-email');
-  if (emailCard) emailCard.style.display = household.role === 'admin' ? '' : 'none';
-  if (household.role === 'admin') {
+  if (emailCard) emailCard.style.display = '';
+  {
     try {
       const { data: conns, error: connErr } = await supabase.from('email_connections_public')
         .select('id, provider, email_address, status, last_poll_at, last_error')
@@ -940,7 +972,7 @@ async function refresh() {
         // card never collapses mid-refresh.
         const frag = document.createDocumentFragment();
         if (!rows.length) {
-          const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'None — connect an email above.'; frag.appendChild(p);
+          const p = document.createElement('p'); p.className = 'muted small'; p.textContent = household.role === 'admin' ? 'None — connect an email above.' : 'None — the admin connects email alerts.'; frag.appendChild(p);
         }
         for (const c of rows) {
           const wrap = document.createElement('div'); wrap.className = 'bank-row';
@@ -952,6 +984,7 @@ async function refresh() {
           if (c.last_poll_at) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = `Last checked ${fmtDateTime(c.last_poll_at)}`; info.appendChild(l); }
           if (c.last_error) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = c.last_error; info.appendChild(l); }
           wrap.appendChild(info);
+          if (household.role === 'admin') {
           const btn = document.createElement('button'); btn.className = 'btn btn-small btn-danger'; btn.type = 'button';
           btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${c.email_address || 'email'}`);
           btn.addEventListener('click', async () => {
@@ -961,6 +994,7 @@ async function refresh() {
             await refresh();
           });
           wrap.appendChild(btn);
+          }
           frag.appendChild(wrap);
         }
         listEl.replaceChildren(frag);
@@ -990,14 +1024,18 @@ async function refresh() {
     const shortfall = hh?.fund_shortfall_cents ?? 0;
     currentFundData = { available, pending, releasedTotal, spent, shortfall };
     const fp = $('homeFundPrimary'); if (fp) fp.innerHTML = formatCentsHtml(available);
+    // UX audit 07: a member cannot spend fund money, only request it
+    // and wait for approval — so members read "Available to request",
+    // never "Spendable now". Admin wording stays as-is.
+    const fundFreeWord = household.role === 'admin' ? 'Spendable now' : 'Available to request';
     const fsec = $('homeFundSecondary');
-    if (fsec) fsec.textContent = pending > 0 ? `Pending ${formatCents(pending)}` : shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : 'Spendable now';
+    if (fsec) fsec.textContent = pending > 0 ? `Pending ${formatCents(pending)}` : shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : fundFreeWord;
     const fs = $('fundSummary');
     // Delta C3: Available prominent, pending/owed as ONE secondary
     // line, released/spent as one more line — the card stays short.
-    if (fs) fs.innerHTML = `<p class="fund-balance">Available <strong>${formatCents(available)}</strong></p>
-      <p class="muted small">${[pending > 0 ? `Pending ${formatCents(pending)}` : null, shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : null].filter(Boolean).join(' · ') || 'Spendable now'}</p>
-      <p class="muted small">Released ${formatCents(releasedTotal)} · Spent ${formatCents(spent)}</p>${heldRows.length ? `<p class="muted small">Held for review: ${formatCents(heldTotal)} across ${heldRows.length} week(s).</p>` : ''}`;
+    if (fs) fs.innerHTML = `<p class="fund-balance">${household.role === 'admin' ? 'Available' : 'Available to request'} <strong>${formatCents(available)}</strong></p>
+      <p class="muted small">${[pending > 0 ? `Pending ${formatCents(pending)}` : null, shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : null].filter(Boolean).join(' · ') || fundFreeWord}</p>
+      <p class="muted small">Released ${formatCents(releasedTotal)} · Spent ${formatCents(spent)}</p>${heldRows.length ? `<p class="muted small">Held for review: ${formatCents(heldTotal)} across ${heldRows.length} ${heldRows.length === 1 ? 'week' : 'weeks'}.</p>` : ''}`;
     updateFundTopupPreview();
   } catch (e) {
     console.warn('fund summary read failed:', e);
@@ -1278,9 +1316,16 @@ async function refresh() {
     if (wh) wh.innerHTML = shownCloses.length
       ? shownCloses.map((c) => {
           const rel = relByWeek.get(c.week_start);
-          const relText = !rel ? 'No release record' : rel.status === 'released' ? `Released ${formatCents(rel.released_cents ?? rel.surplus_cents ?? 0)}` : rel.status === 'pending' ? `Pending release ${formatCents(rel.surplus_cents ?? 0)}` : `Held ${formatCents(rel.surplus_cents ?? 0)}`;
+          // Owner screenshot (Nov 3): the one-line summary wraps
+          // badly and is hard to scan. Each closed week is now a
+          // block: a heading plus one labeled row per figure. Every
+          // figure is kept; only the presentation changes, and a
+          // missing figure still reads "not recorded", never $0.
+          const relLabel = !rel ? 'Release' : rel.status === 'released' ? 'Released' : rel.status === 'pending' ? 'Pending release' : 'Held';
+          const relCents = !rel ? null : rel.status === 'released' ? (rel.released_cents ?? rel.surplus_cents) : rel.surplus_cents;
+          const relValue = (relCents === null || relCents === undefined) ? 'not recorded' : formatCents(relCents);
           const carryIn = carryInByWeek.get(c.week_start);
-          return `<li>Week of ${fmtLong(c.week_start)} · Carry-in ${carryIn === null ? 'not recorded' : fmtOrMissing(carryIn)} · Surplus ${fmtOrMissing(c.surplus_cents)} · Debt carried out ${fmtOrMissing(c.outgoing_debt_cents)} · ${relText}</li>`;
+          return `<li class="week-block"><strong>Week of ${fmtLong(c.week_start)}</strong><div class="week-metrics"><div><span>Carry-in</span><span>${carryIn === null ? 'not recorded' : fmtOrMissing(carryIn)}</span></div><div><span>Surplus</span><span>${fmtOrMissing(c.surplus_cents)}</span></div><div><span>Debt carried out</span><span>${fmtOrMissing(c.outgoing_debt_cents)}</span></div><div><span>${relLabel}</span><span>${relValue}</span></div></div></li>`;
         }).join('')
       : `<li class="muted small">${(historyFilter.from || historyFilter.to) ? 'No closed weeks in the selected period.' : 'No closed weeks yet.'}</li>`;
   } catch (e) {
@@ -1333,7 +1378,17 @@ async function refresh() {
         let html = '';
         for (const [day, rows] of groups) {
           html += `<li class="muted small"><strong>${esc(day)}</strong></li>`;
-          html += rows.map((a) => `<li><strong>${esc(formatAuditAction(a.action))}</strong> <span class="muted">(${esc(formatAuditActor(a.actor_name))} · ${fmtDateTime(a.created_at)})</span><br>${esc(formatAuditDetail(a.detail))}</li>`).join('');
+          // UX audit 09 / owner screenshot: repeated weekly-processing
+          // rows collapse into one line with a count (e.g. "Weeks
+          // processed ×3"); user actions never collapse, even when
+          // two look identical, because they may be distinct events.
+          const grouped = groupDayActivity(rows.map((a) => ({
+            action: formatAuditAction(a.action),
+            detail: formatAuditDetail(a.detail),
+            actor: formatAuditActor(a.actor_name),
+            time: fmtDateTime(a.created_at),
+          })));
+          html += grouped.map((g) => `<li><strong>${esc(g.action)}${g.count > 1 ? ` ×${g.count}` : ''}</strong> <span class="muted">(${esc(g.actor)} · ${esc(g.time)})</span><br>${esc(g.detail)}</li>`).join('');
         }
         return html + ((historyFilter.from || historyFilter.to)
           ? '<li class="muted small">Showing entries in the selected period.</li>'
@@ -1791,6 +1846,28 @@ function showView(name, opts = {}) {
     const incDisc = document.getElementById('charityIncomeDisclosure');
     if (incDisc) incDisc.style.display = isAdmin ? '' : 'none';
   }
+  // UX audit 10: Settings must not promise members a Budget section
+  // they never see, and admin-only action buttons must not appear
+  // for members. Bank connect/sync are already hidden in refresh();
+  // this covers the remaining buttons (auto-sync, email connect /
+  // check, invite sharing) and the intro line. Read-only status
+  // lines stay visible, and server authorization is untouched —
+  // hiding here is presentation only, the RPCs still enforce it.
+  if (name === 'settings' && household) {
+    const isAdmin = household.role === 'admin';
+    const setBtn = (id, visible) => {
+      const b = document.getElementById(id);
+      if (b) b.style.display = visible ? '' : 'none';
+    };
+    setBtn('registerWebhookBtn', isAdmin);
+    setBtn('connectEmailBtn', isAdmin);
+    setBtn('pollEmailBtn', isAdmin);
+    setBtn('settingsShareIdBtn', isAdmin);
+    const intro = document.getElementById('settingsIntro');
+    if (intro) intro.textContent = isAdmin
+      ? 'Connections, Budget, and Account & household. Bank and email connections moved here from Funds.'
+      : 'Connections and Account & household. Only the admin can change bank and email connections.';
+  }
   // R7: the Add forms are never permanently expanded — the choice
   // card shows on the Transactions screen, and only the chosen form
   // shows. Opening or closing a form writes nothing.
@@ -1899,11 +1976,11 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
     const bd = lastSpentBreakdown
       ? `\nDated this week: ${formatCents(lastSpentBreakdown.datedTotal)}\nLate charges from earlier locked weeks: ${formatCents(lastSpentBreakdown.lateTotal)}`
       : '';
-    await showSheet({ title: 'Weekly Budget', message: `Left: ${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}\nSpent: ${formatCents(w.chargesCents)}${bd}\nAllowance: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}\nCarried debt: ${formatCents(w.carriedDebtCents)}\nTemporary increase: ${formatCents(w.tempCents)}\nOutgoing debt: ${formatCents(w.outgoingDebtCents)}`, confirmLabel: 'Close' });
+    await showSheet({ title: 'Weekly Budget', message: `Left: ${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}\nSpent: ${formatCents(w.chargesCents)}${bd}\nAllowance: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}\nCarried debt: ${formatCents(w.carriedDebtCents)}\nTemporary increase: ${formatCents(w.tempCents)}\nOutgoing debt: ${formatCents(w.outgoingDebtCents)}\nHow it fits together:\nBase spending room: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)} allowance - ${formatCents(w.carriedDebtCents)} carried debt = ${formatCents(w.baseRoomCents ?? w.baseAvailableCents)} (never below $0)\nLeft: ${formatCents(w.baseRoomCents ?? w.baseAvailableCents)} room + ${formatCents(w.tempCents)} temporary - ${formatCents(w.chargesCents)} spent = ${formatCents(w.availableCents)}\nOutgoing debt: ${formatCents(w.unabsorbedDebtCents ?? 0)} debt the allowance did not cover + ${formatCents(w.newDebtCents ?? 0)} new debt from spending above room = ${formatCents(w.outgoingDebtCents)}`, confirmLabel: 'Close' });
   } else if (kind === 'fund') {
     const f = currentFundData;
     if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
-    await showSheet({ title: 'Extra Fund', message: `Spendable available: ${formatCents(f.available)}\nPending (not yet released): ${formatCents(f.pending)}\nReleased total: ${formatCents(f.releasedTotal)}\nSpent from fund: ${formatCents(f.spent)}\nOwed back (shortfall): ${formatCents(f.shortfall)}`, confirmLabel: 'Close' });
+    await showSheet({ title: 'Extra Fund', message: `${household.role === 'admin' ? 'Spendable available' : 'Available to request'}: ${formatCents(f.available)}\nPending (not yet released): ${formatCents(f.pending)}\nReleased total: ${formatCents(f.releasedTotal)}\nSpent from fund: ${formatCents(f.spent)}\nOwed back (shortfall): ${formatCents(f.shortfall)}`, confirmLabel: 'Close' });
   } else {
     const c = currentCharityData;
     if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
@@ -1916,7 +1993,7 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
 function formatCentsHtml(cents) {
   const sign = cents < 0 ? '-' : '';
   const abs = Math.abs(cents);
-  return `${sign}$${Math.floor(abs / 100)}<span class="cents">.${String(abs % 100).padStart(2, '0')}</span>`;
+  return `${sign}$${Math.floor(abs / 100).toLocaleString('en-US')}<span class="cents">.${String(abs % 100).padStart(2, '0')}</span>`;
 }
 
 // Friendly dates for display only — the raw YYYY-MM-DD stays in the
@@ -1933,6 +2010,9 @@ function formatAuditDetail(detail) {
   d = d.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (_, y, m, dd) => fmtLong(`${y}-${m}-${dd}`));
   d = d.replace(/\b(\d+) cents\b/g, (_, n) => formatCents(Number(n)));
   d = d.replace(/as provisional/g, 'as pending');
+  // UX audit 09: household wording for the week-close summary and
+  // dedupe wording (display only — stored rows are untouched).
+  d = householdActivityText(d);
   d = d.replace(/\s{2,}/g, ' ').replace(/\.{2,}/g, '.').trim();
   return d;
 }
@@ -2039,6 +2119,14 @@ $('addManualBtn')?.addEventListener('click', () => setAddForm('manual'));
 $('addCsvBtn')?.addEventListener('click', () => setAddForm('csv'));
 $('addCharityBtn')?.addEventListener('click', () => setAddForm('charity'));
 $('manualBackBtn')?.addEventListener('click', () => setAddForm(null));
+// UX audit 06: an explicit Cancel closes the form AND clears the
+// draft. Back only returns to the Add choices — the draft stays,
+// as the form hint now states. Purchases-only: no refund option
+// here (owner decision Nov 3).
+$('manualCancelBtn')?.addEventListener('click', () => {
+  document.getElementById('manualForm')?.reset();
+  setAddForm(null);
+});
 $('csvBackBtn')?.addEventListener('click', () => setAddForm(null));
 $('charityBackBtn')?.addEventListener('click', () => setAddForm(null));
 // Delta C3: Funds forms open from the actions card, one at a time.
@@ -2046,6 +2134,9 @@ const setFundForm = (which) => { fundFormOpen = which; showView('money'); };
 $('fundActionAddBtn')?.addEventListener('click', () => setFundForm('add'));
 $('fundActionUseBtn')?.addEventListener('click', () => setFundForm('use'));
 $('fundActionAskBtn')?.addEventListener('click', () => setFundForm('ask'));
+// UX audit 07: the same Ask action beside the Extra Fund balance
+// itself (not only in the actions card below it).
+$('fundAskBesideBtn')?.addEventListener('click', () => setFundForm('ask'));
 $('fundActionIncomeBtn')?.addEventListener('click', () => setFundForm('income'));
 $('fundAddBackBtn')?.addEventListener('click', () => setFundForm(null));
 $('fundUseBackBtn')?.addEventListener('click', () => setFundForm(null));

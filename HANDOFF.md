@@ -613,3 +613,43 @@ default because these were unset — that is fixed, not a standing bug.
   member-vs-admin Review visibility. Live-fetch proof at merge:
   v25/v16 served, "View history" + "Past savings records" present,
   3 bottom tabs.
+- UX audit fixes Nov 3, evening (branch ux-audit-fixes, NOT merged,
+  live.js v26 / styles v17; reconciled against v25, NOT a rebuild
+  of the delta): 02 Weekly Budget sheet now shows the reconciliation
+  (base room = allowance - carried debt floored at 0; Left = room +
+  temp - spent; outgoing = unabsorbed debt + new debt) — and the
+  client outgoing derivation was corrected to the engine formula
+  (it had added the full incoming debt; engine fixture D 42500 /
+  B 37500 / C 0 -> outgoing 5000, not 42500; server math untouched).
+  03 Transactions count line now reads "total of the rows shown".
+  07 members read "Available to request" on the Home fund card, the
+  Funds Extra Fund card, and the fund sheet (admin wording
+  unchanged); Ask for fund money sits beside the Extra Fund balance
+  as well as in the actions card, for all roles. 06 manual form has
+  an explicit Cancel (closes + clears the draft); Back keeps the
+  draft, and the hint says so; purchases-only, no refund option
+  (owner decision Nov 3). 10 Settings intro is role-aware (members
+  never promised a Budget section); auto-sync, email connect/check,
+  and invite-share buttons hide for members, bank status lines stay
+  visible, and the email card is now visible to members read-only
+  (email_connections_public is member-readable by RLS; Disconnect
+  stays admin-only; server authorization untouched). 09 activity
+  groups repeated "Weeks processed" rows per day into one line with
+  a count (user actions never collapse) and maps week(s)/canonical
+  wording to household language, display-only. 11 thousands
+  separators in formatCents + formatCentsHtml; one Title Case status
+  mapping (stateWord now matches statePill). 05 transaction rows
+  carry merchant + amount + date + status in the accessible name
+  plus a CSS chevron that rotates on open, with Enter/Space support.
+  01 savings-transfer VERDICT (see below): no code change.
+  Owner screenshots folded in: week history redesigned as blocks
+  (heading + labeled metric rows, "not recorded" kept honest);
+  profile menu restyled (email + role pill, menu rows, red Sign
+  out, viewport-capped width, same ids/handlers); History From/To
+  date fields stack at 520px and below, and all other side-by-side
+  rows were checked (btn-row wraps, fund/sav grids stack, search
+  input shrinks). Tests 98/98 (89 before + 9 new ux-audit-fixes
+  tests). Still to prove live: the full checklist on a real phone
+  at 320/390/desktop, incl. the stacked date fields, profile menu,
+  week blocks, grouped activity, member Settings view, and the
+  member "Available to request" wording.
