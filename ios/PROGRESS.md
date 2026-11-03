@@ -368,3 +368,4 @@ No cloud build/retry/signing/deployment or financial-data access occurred.
 Only the simulator script, its regression check and this progress document changed,
 all under ios/ on ios-native-rebuild. Ordinary commit message only; any new
 simulator execution still requires separate explicit approval. Stopped after fix.
+Authorized fixture-only simulator validation of 971903a; no live access.
