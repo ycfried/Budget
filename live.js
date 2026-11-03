@@ -1341,12 +1341,19 @@ async function autoSyncIfWebhookPending() {
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
   purchases: ['section-add-choice', 'section-manual', 'section-csv', 'section-transactions'],
-  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
+  money: ['section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
+  // R2: Settings is reached from the profile menu, not a nav tab.
+  // Connections (bank + email), Budget (allowance + temp increase)
+  // and Account & household live here; Funds no longer shows them.
+  settings: ['section-settings-head', 'section-bank', 'section-email', 'settingsCard', 'section-settings-account'],
   activity: ['section-activity', 'section-week-history'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
 let currentView = localStorage.getItem('hb-view') || 'week';
 if (!VIEWS[currentView]) currentView = 'week';
+// R2: the view Settings returns to (Back button). Settings is not a
+// nav tab, so it is never persisted as hb-view.
+let previousView = 'week';
 // R7: which Add form (if any) is open on the Transactions screen:
 // null = choice card, 'manual' = hand form, 'csv' = import form.
 let addFormOpen = null;
@@ -1370,8 +1377,11 @@ function hideToast() {
 document.getElementById('toast')?.addEventListener('click', hideToast);
 function showView(name, opts = {}) {
   if (!VIEWS[name]) name = 'week';
+  // Record only the view left when entering Settings, so Back
+  // returns there even after tab taps in between.
+  if (name === 'settings' && currentView !== 'settings') previousView = currentView;
   currentView = name;
-  localStorage.setItem('hb-view', name);
+  if (name !== 'settings') localStorage.setItem('hb-view', name);
   // Success/error messages do NOT persist across tabs: a user-initiated
   // tab switch clears every in-app result message (refresh() calls
   // showView without opts, so messages set during a refresh survive).
@@ -1429,7 +1439,7 @@ document.addEventListener('click', (e) => {
   const menu = document.getElementById('profileMenu');
   if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target) && e.target.id !== 'profileBtn' && !document.getElementById('profileBtn')?.contains(e.target)) menu.classList.add('hidden');
 });
-document.getElementById('menuShareIdBtn')?.addEventListener('click', async () => {
+async function shareInviteCode() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   // Share shows/copies the invite CODE, never the household UUID.
   if (!household) { await showAlert('Not signed in', 'Sign in first, then share the invite code.'); return; }
@@ -1442,8 +1452,8 @@ document.getElementById('menuShareIdBtn')?.addEventListener('click', async () =>
   let copied = false;
   try { await navigator.clipboard.writeText(code); copied = true; } catch (e) { /* clipboard may be unavailable; the code is still shown */ }
   await showSheet({ title: 'Invite code', message: `Share this code with the second account so they can join as a member:\n${code}${copied ? '\n(Copied to clipboard.)' : ''}`, confirmLabel: 'Done' });
-});
-document.getElementById('menuDeleteBtn')?.addEventListener('click', async () => {
+}
+async function deleteAccountFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
   // TWO-STEP confirmation: "Delete account" then "Yes, delete everything".
@@ -1453,8 +1463,8 @@ document.getElementById('menuDeleteBtn')?.addEventListener('click', async () => 
   if (out.error || !out.deleted) { console.warn('delete-account failed:', out.error); await showAlert('Could not delete account', 'Could not delete your account. Try again.'); return; }
   await supabase.auth.signOut(); household = null; await show('auth');
   $('authMsg').textContent = 'Your account was deleted.';
-});
-document.getElementById('menuPasswordBtn')?.addEventListener('click', async () => {
+}
+async function changePasswordFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
   const pw = await showSheet({ title: 'Change password', message: 'Enter a new password for this account.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change password', cancelLabel: 'Cancel' });
@@ -1463,7 +1473,15 @@ document.getElementById('menuPasswordBtn')?.addEventListener('click', async () =
   const { error } = await supabase.auth.updateUser({ password: pw });
   if (error) console.warn('password change failed:', error.message);
   await showAlert(error ? 'Could not change password' : 'Password changed', error ? 'Could not change your password. Try again.' : 'Your password is updated.');
+}
+document.getElementById('menuSettingsBtn')?.addEventListener('click', () => {
+  document.getElementById('profileMenu')?.classList.add('hidden');
+  showView('settings');
 });
+document.getElementById('settingsShareIdBtn')?.addEventListener('click', shareInviteCode);
+document.getElementById('settingsPasswordBtn')?.addEventListener('click', changePasswordFlow);
+document.getElementById('settingsDeleteBtn')?.addEventListener('click', deleteAccountFlow);
+document.getElementById('settingsBackBtn')?.addEventListener('click', () => showView(previousView || 'week'));
 // R5 + R6: Home cards — tap a card for a focused titled bottom
 // sheet over the stationary Home screen. Opening or closing a sheet
 // writes nothing and triggers no sync; it only reads the numbers

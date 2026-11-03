@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=11">
+<link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -22,9 +22,7 @@
       <p class="small muted">Signed in as</p>
       <p class="small"><strong id="profileEmail">—</strong></p>
       <p class="small muted">Role: <span id="profileRole">—</span></p>
-      <button id="menuShareIdBtn" class="btn" type="button" aria-label="Share the invite code">Share invite code</button>
-      <button id="menuPasswordBtn" class="btn" type="button" aria-label="Change your password">Change password</button>
-      <button id="menuDeleteBtn" class="btn btn-danger" type="button" aria-label="Delete your account">Delete account</button>
+      <button id="menuSettingsBtn" class="btn" type="button" aria-label="Open Settings">Settings</button>
       <button id="signOutBtn" class="btn" type="button" aria-label="Sign out of the live app">Sign out</button>
     </div>
   </div>
@@ -171,6 +169,12 @@
       <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
     </div>
 
+    <div class="card" id="section-settings-head">
+      <div class="btn-row"><button class="btn" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
+      <h2>Settings</h2>
+      <p class="muted small">Connections, Budget, and Account &amp; household. Bank and email connections moved here from Funds.</p>
+    </div>
+
     <div class="card" id="section-bank">
       <h2>Bank connection (read-only)</h2>
       <p class="muted small">Read-only — the app can see transactions, never move money.</p>
@@ -203,7 +207,7 @@
     </div>
 
     <div class="card" id="settingsCard" style="display:none">
-      <h2>Settings (admin only)</h2>
+      <h2>Budget (admin only)</h2>
       <p class="muted small">Only the admin can change these.</p>
       <h3>Weekly allowance</h3>
       <label>Amount ($)
@@ -217,6 +221,20 @@
       </label>
       <button id="addTempBtn" class="btn" type="button" aria-label="Add a temporary increase for this week">Add temporary increase</button>
       <div id="tempMsg" class="result"></div>
+    </div>
+
+    <div class="card" id="section-settings-account">
+      <h2>Account &amp; household</h2>
+      <p class="muted small">Invite code, password, and account deletion live here now — not in the profile menu.</p>
+      <div class="btn-row">
+        <button id="settingsShareIdBtn" class="btn" type="button" aria-label="Share the invite code">Share invite code</button>
+        <button id="settingsPasswordBtn" class="btn" type="button" aria-label="Change your password">Change password</button>
+      </div>
+      <div class="danger-area">
+        <h3>Delete account</h3>
+        <p class="muted small">Deleting removes you from this household. If you are the last member, the household is deleted too. This cannot be undone.</p>
+        <button id="settingsDeleteBtn" class="btn btn-danger" type="button" aria-label="Delete your account">Delete account</button>
+      </div>
     </div>
 
     <div class="card" id="section-savings">
@@ -315,6 +333,6 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=17"></script>
+<script type="module" src="live.js?v=18"></script>
 </body>
 </html>
