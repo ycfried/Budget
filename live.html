@@ -91,7 +91,17 @@
       <p id="homeSyncMsg" class="result"></p>
     </div>
 
+    <div class="card" id="section-add-choice">
+      <h2>Add</h2>
+      <p class="muted small">Record a transaction you already made, or import a file of them.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="addManualBtn" type="button" aria-label="Add a transaction by hand">Add by hand</button>
+        <button class="btn" id="addCsvBtn" type="button" aria-label="Import transactions from a CSV file">Import CSV</button>
+      </div>
+    </div>
+
     <div class="card" id="section-manual">
+      <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Add a transaction by hand</h2>
       <p class="muted small">Record a transaction by hand. It counts as pending until the bank confirms it.</p>
       <form id="manualForm">
@@ -107,6 +117,7 @@
     </div>
 
     <div class="card" id="section-csv">
+      <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Import transactions from a CSV file</h2>
       <p class="muted small">Expected columns: Date, Description, Amount, Card Ending. Nothing is added until you review the preview and tap Confirm. Duplicates are skipped. Imports are provisional until the bank confirms them.</p>
       <label>CSV file <input id="csvFile" type="file" accept=".csv,text/csv"></label>
@@ -143,6 +154,11 @@
           <input id="txMaxAmount" type="number" step="0.01" inputmode="decimal" aria-label="Maximum transaction amount">
         </label>
         <p class="muted small">Amounts compare to the signed amount, and both bounds apply together with the month, card, and week filters. Leave either end blank for no limit there. A refund counts as a negative amount, so a $10 refund sits below a $0 minimum.</p>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="txFiltersApplyBtn" type="button" aria-label="Apply filters">Apply</button>
+          <button class="btn" id="txFiltersResetBtn" type="button" aria-label="Reset filters and sort to defaults">Reset</button>
+          <button class="btn" id="txFiltersCancelBtn" type="button" aria-label="Close filters without applying changes">Cancel</button>
+        </div>
       </div>
       <div class="btn-row">
         <label class="muted small">Sort by
@@ -299,6 +315,6 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=16"></script>
+<script type="module" src="live.js?v=17"></script>
 </body>
 </html>

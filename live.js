@@ -1340,13 +1340,16 @@ async function autoSyncIfWebhookPending() {
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
-  purchases: ['section-manual', 'section-csv', 'section-transactions'],
+  purchases: ['section-add-choice', 'section-manual', 'section-csv', 'section-transactions'],
   money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
   activity: ['section-activity', 'section-week-history'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
 let currentView = localStorage.getItem('hb-view') || 'week';
 if (!VIEWS[currentView]) currentView = 'week';
+// R7: which Add form (if any) is open on the Transactions screen:
+// null = choice card, 'manual' = hand form, 'csv' = import form.
+let addFormOpen = null;
 // Bottom toast: in-app result messages float above the tab bar instead
 // of popping open inside cards and shoving everything below them down.
 // Function declarations hoist, so handlers below can call these freely.
@@ -1388,6 +1391,17 @@ function showView(name, opts = {}) {
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
     if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
+  }
+  // R7: the Add forms are never permanently expanded — the choice
+  // card shows on the Transactions screen, and only the chosen form
+  // shows. Opening or closing a form writes nothing.
+  if (name === 'purchases') {
+    const choice = document.getElementById('section-add-choice');
+    if (choice) choice.style.display = addFormOpen ? 'none' : 'block';
+    const man = document.getElementById('section-manual');
+    if (man) man.style.display = addFormOpen === 'manual' ? 'block' : 'none';
+    const csv = document.getElementById('section-csv');
+    if (csv) csv.style.display = addFormOpen === 'csv' ? 'block' : 'none';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
     b.classList.toggle('active', b.dataset.view === name);
@@ -1604,13 +1618,59 @@ $('txLoadMore')?.addEventListener('click', async () => {
   txLimit += 100;
   await refresh();
 });
+const setAddForm = (which) => { addFormOpen = which; showView('purchases'); };
+$('addManualBtn')?.addEventListener('click', () => setAddForm('manual'));
+$('addCsvBtn')?.addEventListener('click', () => setAddForm('csv'));
+$('manualBackBtn')?.addEventListener('click', () => setAddForm(null));
+$('csvBackBtn')?.addEventListener('click', () => setAddForm(null));
+// R8 filters sheet: Apply commits (closes the panel), Reset clears
+// the draft + sort to defaults, Cancel restores the values that were
+// there when the panel opened and leaves the list unchanged.
+let txFiltersSnapshot = null;
+const closeTxFilters = () => {
+  const f = document.getElementById('txFilters');
+  if (f) f.classList.add('hidden');
+  const t = document.getElementById('txFiltersToggle');
+  if (t) { t.textContent = 'Filters ▾'; t.setAttribute('aria-expanded', 'false'); }
+};
 $('txFiltersToggle')?.addEventListener('click', (e) => {
   const f = document.getElementById('txFilters');
   if (!f) return;
-  f.classList.toggle('hidden');
-  const open = !f.classList.contains('hidden');
-  e.target.textContent = open ? 'Filters ▴' : 'Filters ▾';
-  e.target.setAttribute('aria-expanded', open ? 'true' : 'false');
+  const willOpen = f.classList.contains('hidden');
+  if (willOpen) {
+    txFiltersSnapshot = {
+      month: txMonth,
+      card: txCard,
+      min: document.getElementById('txMinAmount')?.value ?? '',
+      max: document.getElementById('txMaxAmount')?.value ?? '',
+      sort: txSort,
+    };
+    f.classList.remove('hidden');
+    e.target.textContent = 'Filters ▴'; e.target.setAttribute('aria-expanded', 'true');
+  } else closeTxFilters();
+});
+$('txFiltersApplyBtn')?.addEventListener('click', () => closeTxFilters());
+$('txFiltersCancelBtn')?.addEventListener('click', () => {
+  if (txFiltersSnapshot) {
+    // Month/card are state variables refresh() renders from, so
+    // restoring the DOM alone would not restore the list — restore
+    // the variables (and their persisted values) too.
+    txMonth = txFiltersSnapshot.month; localStorage.setItem('hb-tx-month', txMonth);
+    txCard = txFiltersSnapshot.card; localStorage.setItem('hb-tx-card', txCard);
+    const mn = document.getElementById('txMinAmount'); if (mn) mn.value = txFiltersSnapshot.min;
+    const mx = document.getElementById('txMaxAmount'); if (mx) mx.value = txFiltersSnapshot.max;
+    txSort = txFiltersSnapshot.sort; localStorage.setItem('hb-tx-sort', txSort);
+    refresh();
+  }
+  closeTxFilters();
+});
+$('txFiltersResetBtn')?.addEventListener('click', () => {
+  txMonth = 'all'; localStorage.setItem('hb-tx-month', txMonth);
+  txCard = 'all'; localStorage.setItem('hb-tx-card', txCard);
+  const mn = document.getElementById('txMinAmount'); if (mn) mn.value = '';
+  const mx = document.getElementById('txMaxAmount'); if (mx) mx.value = '';
+  txSort = 'date-desc'; localStorage.setItem('hb-tx-sort', txSort);
+  refresh(); closeTxFilters();
 });
 let txSearchTimer = null;
 $('txSearch')?.addEventListener('input', () => {
