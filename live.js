@@ -25,7 +25,7 @@
 //     content in index.html. Live styling stays under body.live / #view-app.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease } from './engine.mjs';
+import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
@@ -160,7 +160,7 @@ const sha = async (text) => {
 
 let session = null;
 let household = null; // { household_id, role }
-let txFilter = 'all'; // all | pending | posted | refunds | excluded
+let txFilter = 'all'; // all | pending | posted | refunds | charity | excluded
 let txSort = localStorage.getItem('hb-tx-sort') || 'date-desc'; // date-desc | date-asc | amount-asc | amount-desc
 let txMonth = localStorage.getItem('hb-tx-month') || 'all'; // 'all' or 'YYYY-MM'
 let txCard = localStorage.getItem('hb-tx-card') || 'all'; // 'all' or card suffix
@@ -171,6 +171,7 @@ let lastRefreshAt = 0; // tab taps refresh in the background, throttled
 let refreshInFlight = 0; // R1: overlapping refreshes share one Updating… state
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
 let currentFundData = null; // last fund aggregates, for the Extra Fund card sheet
+let currentCharityData = null; // last charity aggregates, for the Charity card sheet
 // R3 nicknames: keyed by stable Plaid account id, never by suffix alone.
 // nicknameBySuffix is a display hint only, built from the same rows, and
 // drops any suffix claimed by two accounts.
@@ -346,6 +347,7 @@ async function refresh() {
     : txFilter === 'pending' ? t.state === 'provisional'
     : txFilter === 'posted' ? t.state === 'verified'
     : txFilter === 'refunds' ? t.kind === 'refund'
+    : txFilter === 'charity' ? t.kind === 'charity'
     : txFilter === 'excluded' ? (t.excluded === true || t.state === 'excluded')
     : true;
   // This-week filter: current Sunday–Saturday in America/New_York.
@@ -443,6 +445,8 @@ async function refresh() {
     ? 'No excluded transactions. Excluded transactions are hidden from the week math but kept here so you can restore them.'
     : txFilter === 'refunds'
     ? 'No refunds in this list yet.'
+    : txFilter === 'charity'
+    ? 'No charity gifts in this list yet — record one from Add, or mark a posted donation as a gift.'
     : 'No transactions here yet — add one by hand above, or connect a bank account and sync.';
   $('txList').innerHTML = txReadFailed
     ? `<li class="tx-empty error">Could not load transactions. Check your connection and try again — nothing here is a complete list.</li>`
@@ -464,20 +468,34 @@ async function refresh() {
         // admin-only and goes through reclassify_transaction.
         const reclassBtn = !isAdmin ? ''
           : `<button class="btn btn-small" data-reclassify="${t.id}" type="button" aria-label="Reclassify ${esc(t.merchant)}">Reclassify</button>`;
-        const action = !isAdmin ? fundBtn
+        // R13: a posted charge can be marked as a charity gift (whole
+        // row only, server-guarded: posted, unexcluded, no fund part,
+        // November 2026 onward, unlocked week). A gift row itself
+        // gets no Exclude / Reclassify / Use Fund buttons — it is
+        // already outside weekly spending, and only Delete/Remove
+        // (or Restore when excluded) still applies.
+        const charityBtn = !isAdmin ? ''
+          : (t.kind === 'charge' && t.state === 'verified' && !excluded)
+          ? `<button class="btn btn-small" data-mark-charity="${t.id}" type="button" aria-label="Mark ${esc(t.merchant)} as a charity gift">Mark as charity</button>`
+          : '';
+        const cardLabel = (t.kind === 'charity' && String(t.card_suffix) === '0000') ? 'Cash / no card' : `••${esc(t.card_suffix)}`;
+        const kindLabel = t.kind === 'refund' ? 'Refund' : t.kind === 'charity' ? 'Charity gift' : 'Transaction';
+        const action = !isAdmin ? (t.kind === 'charity' ? '' : fundBtn)
           : excluded
           ? `<div class="btn-row"><button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${deleteBtn} ${reclassBtn}</div>`
-          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${reclassBtn} ${fundBtn}</div>`;
+          : t.kind === 'charity'
+          ? `<div class="btn-row">${deleteBtn}</div>`
+          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${reclassBtn} ${charityBtn} ${fundBtn}</div>`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
         return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
         <div class="tx-line2">${statePill(t, excluded)}
         <span class="pill">${esc(sourceLabel(t.source))}</span>
-        <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span> <span class="muted small">Tap for detail ▾</span></div></div>
+        <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span> <span class="muted small">Tap for detail ▾</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
-          <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${t.kind === 'refund' ? 'Refund' : 'Transaction'})</p>
+          <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${kindLabel})</p>
           <p class="small muted">Date: ${fmtLong(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
-          Card: ••${esc(t.card_suffix)} · Source: ${esc(sourceLabel(t.source))} · Status: ${stateWord(t, excluded)}<br>
-          ${excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : 'This transaction counts toward its week unless excluded.'}</p>
+          Card: ${cardLabel} · Source: ${esc(sourceLabel(t.source))} · Status: ${stateWord(t, excluded)}<br>
+          ${t.kind === 'charity' ? 'This gift is outside weekly spending and counts toward charity given once posted.' : excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : 'This transaction counts toward its week unless excluded.'}</p>
           <div>${action}</div>
         </div></li>`;
       }).join('')
@@ -591,6 +609,20 @@ async function refresh() {
     const { error } = await supabase.rpc('reclassify_transaction', { txn_id: b.dataset.reclassify, new_kind: newKind, reason: reason.trim() });
     if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', 'Could not reclassify this transaction. Try again.'); return; }
     await audit('Transaction reclassified', `${row ? row.merchant : 'Transaction'} reclassified to ${newKind} — reason: ${reason.trim()}.`);
+    await refresh();
+  }));
+  document.querySelectorAll('[data-mark-charity]').forEach((b) => b.addEventListener('click', async () => {
+    const row = all.find((t) => t.id === b.dataset.markCharity);
+    if (!row || !(await showConfirm('Mark as charity gift', `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`, 'Mark as charity'))) return;
+    const { error } = await supabase.rpc('mark_transaction_charity', { p_transaction_id: b.dataset.markCharity });
+    if (error) {
+      console.warn('mark_transaction_charity failed:', error.message);
+      const refusal = /locked|fund|posted|charge|November 2026|excluded/i.test(error.message || '');
+      if (refusal) await showAlert('Cannot mark as charity', error.message);
+      else showToast(/could not find|does not exist|schema cache/i.test(error.message || '') ? 'Charity isn\'t live yet — the database step still needs approval.' : 'Could not mark this as charity. Try again.', true);
+      return;
+    }
+    showToast(`Marked as charity gift: ${formatCents(row.amount_cents)} to ${row.merchant}.`);
     await refresh();
   }));
   document.querySelectorAll('[data-delete-tx]').forEach((b) => b.addEventListener('click', async () => {
@@ -937,6 +969,89 @@ async function refresh() {
     } catch (e) {
       console.warn('fund topups read failed:', e);
       const tl = $('fundTopupsList'); if (tl) tl.innerHTML = '<li class="error">Could not load money added. Try again.</li>';
+    }
+  }
+  // R13 charity aggregates — November 2026 onward, all members read.
+  // Committed is summed per active income row at that row's own rate
+  // (half-up, engine helper); Given counts only verified, unexcluded
+  // charity rows. Until r13-charity.sql is applied live the tables
+  // do not exist, so a read failure is an error state on the cards,
+  // never zeros presented as real numbers.
+  try {
+    const { data: incRows, error: incErr } = await supabase.from('charity_income')
+      .select('amount_cents, rate_bp').eq('household_id', household.household_id).eq('status', 'active').limit(1000);
+    const { data: setRow, error: setErr } = await supabase.from('charity_settings')
+      .select('default_rate_bp').eq('household_id', household.household_id).maybeSingle();
+    const { data: giftRows, error: giftErr } = await supabase.from('transactions')
+      .select('amount_cents').eq('household_id', household.household_id).eq('kind', 'charity')
+      .eq('state', 'verified').eq('excluded', false).gte('date', '2026-11-01').limit(1000);
+    if (incErr || setErr || giftErr) throw (incErr || setErr || giftErr);
+    const committed = (incRows ?? []).reduce((s, r) => s + charityCommittedCents(r.amount_cents ?? 0, r.rate_bp ?? 1000), 0);
+    const given = (giftRows ?? []).reduce((s, r) => s + (r.amount_cents ?? 0), 0);
+    const remaining = committed - given;
+    const defaultRateBp = setRow?.default_rate_bp ?? 1000;
+    currentCharityData = { committed, given, remaining, defaultRateBp };
+    const cp = $('homeCharityPrimary');
+    if (cp) cp.textContent = (committed === 0 && given === 0) ? '—' : remaining < 0 ? `Ahead by ${formatCents(Math.abs(remaining))}` : formatCents(remaining);
+    const cs = $('homeCharitySecondary');
+    if (cs) cs.textContent = (committed === 0 && given === 0) ? 'No charity tracked yet.' : `Given ${formatCents(given)} · Committed ${formatCents(committed)}`;
+    const ch = $('charitySummary');
+    if (ch) ch.innerHTML = `<p class="fund-balance">Remaining <strong>${remaining < 0 ? `Ahead by ${formatCents(Math.abs(remaining))}` : formatCents(remaining)}</strong></p>
+      <p class="muted small">Committed: ${formatCents(committed)}</p>
+      <p class="muted small">Given: ${formatCents(given)}</p>
+      <p class="muted small">Default rate: ${(defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}% · Period: November 2026 onward</p>`;
+    const cr = $('charityRateCurrent');
+    if (cr) cr.textContent = `Current default rate: ${(defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%.`;
+    updateCharityIncomePreview();
+  } catch (e) {
+    console.warn('charity read failed:', e);
+    currentCharityData = null;
+    const cp = $('homeCharityPrimary'); if (cp) cp.textContent = '—';
+    const cs = $('homeCharitySecondary'); if (cs) cs.textContent = 'Could not load charity yet.';
+    const ch = $('charitySummary'); if (ch) ch.innerHTML = '<p class="error">Could not load charity. Try again.</p>';
+  }
+  // R13 charity income list (admin only, READ-ONLY except Correct,
+  // which prefills the form for an append-only reversal + replacement).
+  if (household.role === 'admin') {
+    try {
+      const { data: allInc, error: allIncErr } = await supabase.from('charity_income')
+        .select('id, source_label, amount_cents, income_date, rate_bp, status, note')
+        .eq('household_id', household.household_id).order('income_date', { ascending: false }).limit(50);
+      if (allIncErr) throw allIncErr;
+      const il = $('charityIncomeList');
+      if (il) {
+        const frag = document.createDocumentFragment();
+        if (!(allInc ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No income recorded yet.'; frag.appendChild(p); }
+        for (const r of allInc ?? []) {
+          const li = document.createElement('li');
+          const committedOne = charityCommittedCents(r.amount_cents ?? 0, r.rate_bp ?? 1000);
+          li.innerHTML = `<strong>${esc(r.source_label)}</strong> · ${formatCents(r.amount_cents)} on ${fmtLong(r.income_date)} at ${(r.rate_bp / 100).toFixed(2).replace(/\.?0+$/, '')}% → commits ${formatCents(committedOne)}${r.note ? ` · ${esc(r.note)}` : ''}${r.status === 'reversed' ? ' <span class="muted small">(Reversed — replaced)</span>' : ''}`;
+          if (r.status === 'active') {
+            const btn = document.createElement('button'); btn.className = 'btn btn-small'; btn.type = 'button';
+            btn.textContent = 'Correct'; btn.setAttribute('aria-label', `Correct income ${esc(r.source_label)}`);
+            btn.addEventListener('click', () => {
+              correctingIncomeId = r.id;
+              const f = document.getElementById('charityIncomeForm');
+              if (f) {
+                f.source.value = r.source_label; f.amount.value = (r.amount_cents / 100).toFixed(2);
+                f.date.value = r.income_date; f.rate.value = (r.rate_bp / 100).toFixed(2).replace(/\.?0+$/, '');
+                f.note.value = r.note || '';
+              }
+              const mode = $('charityIncomeMode');
+              if (mode) mode.textContent = 'Correcting an earlier entry — saving reverses it and adds a replacement. The old entry stays, marked reversed.';
+              const cancel = $('charityIncomeCancelBtn');
+              if (cancel) cancel.style.display = '';
+              updateCharityIncomePreview();
+            });
+            li.appendChild(document.createTextNode(' ')); li.appendChild(btn);
+          }
+          frag.appendChild(li);
+        }
+        il.replaceChildren(frag);
+      }
+    } catch (e) {
+      console.warn('charity income read failed:', e);
+      const il = $('charityIncomeList'); if (il) il.innerHTML = '<li class="error">Could not load income. Try again.</li>';
     }
   }
   // Refund restorations + held refunds (admin only, READ-ONLY lists).
@@ -1441,8 +1556,8 @@ async function autoSyncIfWebhookPending() {
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
-  purchases: ['section-add-choice', 'section-manual', 'section-csv', 'section-transactions'],
-  money: ['section-savings', 'section-fund', 'section-fund-add', 'section-fund-topups', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
+  purchases: ['section-add-choice', 'section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
+  money: ['section-savings', 'section-fund', 'section-fund-add', 'section-fund-topups', 'section-charity', 'section-charity-income', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
   // R2: Settings is reached from the profile menu, not a nav tab.
   // Connections (bank + email), Budget (allowance + temp increase)
   // and Account & household live here; Funds no longer shows them.
@@ -1500,7 +1615,7 @@ function showView(name, opts = {}) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-add' || id === 'section-fund-topups' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-add' || id === 'section-fund-topups' || id === 'section-charity-income' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   // R7: the Add forms are never permanently expanded — the choice
@@ -1513,6 +1628,12 @@ function showView(name, opts = {}) {
     if (man) man.style.display = addFormOpen === 'manual' ? 'block' : 'none';
     const csv = document.getElementById('section-csv');
     if (csv) csv.style.display = addFormOpen === 'csv' ? 'block' : 'none';
+    // R13: the gift form is admin-only at the server; the button is
+    // hidden from members here so it never promises what it refuses.
+    const gift = document.getElementById('section-charity-gift');
+    if (gift) gift.style.display = addFormOpen === 'charity' ? 'block' : 'none';
+    const giftBtn = document.getElementById('addCharityBtn');
+    if (giftBtn) giftBtn.style.display = (household && household.role === 'admin') ? '' : 'none';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
     b.classList.toggle('active', b.dataset.view === name);
@@ -1598,7 +1719,9 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
     if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
     await showSheet({ title: 'Extra Fund', message: `Spendable available: ${formatCents(f.available)}\nPending (not yet released): ${formatCents(f.pending)}\nReleased total: ${formatCents(f.releasedTotal)}\nSpent from fund: ${formatCents(f.spent)}\nOwed back (shortfall): ${formatCents(f.shortfall)}`, confirmLabel: 'Close' });
   } else {
-    await showSheet({ title: 'Charity', message: 'Charity tracking (committed, given, remaining) arrives with the next slice. No charity numbers are shown until that slice is built — nothing here is estimated.', confirmLabel: 'Close' });
+    const c = currentCharityData;
+    if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
+    await showSheet({ title: 'Charity · November 2026 onward', message: `Remaining: ${c.remaining < 0 ? `Ahead by ${formatCents(Math.abs(c.remaining))}` : formatCents(c.remaining)}\nCommitted: ${formatCents(c.committed)}\nGiven: ${formatCents(c.given)}\nDefault rate: ${(c.defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%`, confirmLabel: 'Close' });
   }
 }));
 // HTML form of an amount with smaller cents, for the hero and stat
@@ -1740,8 +1863,117 @@ $('txLoadMore')?.addEventListener('click', async () => {
 const setAddForm = (which) => { addFormOpen = which; showView('purchases'); };
 $('addManualBtn')?.addEventListener('click', () => setAddForm('manual'));
 $('addCsvBtn')?.addEventListener('click', () => setAddForm('csv'));
+$('addCharityBtn')?.addEventListener('click', () => setAddForm('charity'));
 $('manualBackBtn')?.addEventListener('click', () => setAddForm(null));
 $('csvBackBtn')?.addEventListener('click', () => setAddForm(null));
+$('charityBackBtn')?.addEventListener('click', () => setAddForm(null));
+// R13 charity gift form: admin-only RPC, explicitly confirmed by
+// entry, so the gift posts as verified (Given) at once and never
+// enters weekly spending. Duplicate warning mirrors the manual form.
+$('charityGiftForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const amount = parseDollarsStrict(f.amount.value);
+  if (amount === null || amount <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
+  if (!f.date.value) { await showAlert('Date required', 'Pick the date of the gift.'); return; }
+  if (f.date.value < '2026-11-01') { await showAlert('Charity starts November 2026', 'Gifts before November 2026 are outside the charity period.'); return; }
+  const suffix = f.suffix.value.trim();
+  if (suffix && !/^\d{4}$/.test(suffix)) { await showAlert('Card suffix', 'Card suffix must be exactly 4 digits, or left blank for a cash gift. Never enter a full card number.'); return; }
+  const merchant = f.merchant.value.trim().toUpperCase();
+  const { data: dupes } = await supabase.from('transactions')
+    .select('merchant, amount_cents, date').eq('household_id', household.household_id)
+    .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
+  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Record this gift anyway?`, 'Record anyway'))) return;
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  // The gift hash carries a per-submit nonce: two real identical
+  // gifts on one day (the Nov 3 case: three $2 gifts to one org) must
+  // not collide on the transactions unique hash, or the second gift
+  // could never be recorded. The duplicate warning above is the
+  // guard against accidental re-entry, not the hash.
+  const nonce = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  const hash = await sha(`charity|${f.date.value}|${merchant}|${amount}|${suffix || '0000'}|${nonce}`);
+  const { error } = await supabase.rpc('record_charity_gift', { p_household_id: household.household_id, p_merchant: merchant, p_amount_cents: amount, p_date: f.date.value, p_card_suffix: suffix || '0000', p_note: f.note.value.trim(), p_dedupe_hash: hash });
+  if (submitBtn) submitBtn.disabled = false;
+  if (error) {
+    console.warn('record_charity_gift failed:', error.message);
+    const notLive = /could not find|does not exist|schema cache/i.test(error.message || '');
+    showToast(notLive ? 'Charity isn\'t live yet — the database step still needs approval.' : error.message && /admin only/i.test(error.message) ? 'Only the admin can record charity gifts.' : 'Could not record this gift. Try again.', true);
+    return;
+  }
+  f.reset(); setAddForm(null);
+  showToast(`Gift recorded: ${formatCents(amount)} to ${merchant}.`);
+  await refresh();
+});
+// R13 charity rate + income forms (admin only, server-enforced).
+// Rate inputs are percents; parseDollarsStrict turns "10.5" into
+// 1050, which is exactly basis points, so no float math is needed.
+function updateCharityIncomePreview() {
+  const pv = $('charityIncomePreview'); if (!pv) return;
+  const f = document.getElementById('charityIncomeForm'); if (!f) return;
+  const cents = parseDollarsStrict(f.amount.value);
+  if (cents === null || cents <= 0) { pv.textContent = 'Enter an amount to see what it commits.'; return; }
+  if (!currentCharityData) { pv.textContent = 'Rate preview is unavailable until charity loads — the server still applies the saved default when you save.'; return; }
+  const overrideBp = parseDollarsStrict(f.rate.value);
+  const rateBp = overrideBp !== null ? overrideBp : currentCharityData.defaultRateBp;
+  pv.textContent = `This commits ${formatCents(charityCommittedCents(cents, rateBp))} at ${(rateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%.`;
+}
+document.querySelector('#charityIncomeForm input[name="amount"]')?.addEventListener('input', updateCharityIncomePreview);
+document.querySelector('#charityIncomeForm input[name="rate"]')?.addEventListener('input', updateCharityIncomePreview);
+$('charityRateForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const bp = parseDollarsStrict(f.rate.value);
+  if (bp === null || bp < 0 || bp > 10000) { showToast('Enter a rate between 0% and 100%.', true); return; }
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  const { error } = await supabase.rpc('set_charity_default_rate', { p_household_id: household.household_id, p_rate_bp: bp });
+  if (submitBtn) submitBtn.disabled = false;
+  if (error) { console.warn('set_charity_default_rate failed:', error.message); showToast(/could not find|does not exist|schema cache/i.test(error.message || '') ? 'Charity isn\'t live yet — the database step still needs approval.' : 'Could not save the default rate. Try again.', true); return; }
+  f.reset();
+  showToast(`Default charity rate saved: ${(bp / 100).toFixed(2).replace(/\.?0+$/, '')}% for future incomes.`);
+  await refresh();
+});
+let correctingIncomeId = null;
+$('charityIncomeCancelBtn')?.addEventListener('click', () => {
+  correctingIncomeId = null;
+  const f = document.getElementById('charityIncomeForm'); if (f) f.reset();
+  const mode = $('charityIncomeMode'); if (mode) mode.textContent = 'Adding new income.';
+  const cancel = $('charityIncomeCancelBtn'); if (cancel) cancel.style.display = 'none';
+  updateCharityIncomePreview();
+});
+$('charityIncomeForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const cents = parseDollarsStrict(f.amount.value);
+  if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
+  if (!f.date.value) { showToast('Pick the date of the income.', true); return; }
+  if (f.date.value < '2026-11-01') { showToast('Charity starts November 2026 — income before then cannot accrue.', true); return; }
+  const overrideBp = parseDollarsStrict(f.rate.value);
+  if (overrideBp !== null && (overrideBp < 0 || overrideBp > 10000)) { showToast('Enter a rate between 0% and 100%, or leave it blank for the default.', true); return; }
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  let data = null; let error = null;
+  if (correctingIncomeId) {
+    ({ data, error } = await supabase.rpc('correct_charity_income', { p_income_id: correctingIncomeId, p_amount_cents: cents, p_income_date: f.date.value, p_source_label: f.source.value.trim(), p_rate_bp: overrideBp, p_note: f.note.value.trim() }));
+  } else {
+    ({ data, error } = await supabase.rpc('record_charity_income', { p_household_id: household.household_id, p_amount_cents: cents, p_income_date: f.date.value, p_source_label: f.source.value.trim(), p_rate_bp: overrideBp, p_note: f.note.value.trim() }));
+  }
+  if (submitBtn) submitBtn.disabled = false;
+  if (error) {
+    console.warn('charity income save failed:', error.message);
+    showToast(/could not find|does not exist|schema cache/i.test(error.message || '') ? 'Charity isn\'t live yet — the database step still needs approval.' : 'Could not save this income. Try again.', true);
+    return;
+  }
+  const wasCorrection = !!correctingIncomeId;
+  correctingIncomeId = null;
+  f.reset();
+  const mode = $('charityIncomeMode'); if (mode) mode.textContent = 'Adding new income.';
+  const cancel = $('charityIncomeCancelBtn'); if (cancel) cancel.style.display = 'none';
+  updateCharityIncomePreview();
+  showToast(wasCorrection ? `Income corrected — now commits ${formatCents(data?.committed_cents ?? 0)}. The old entry stays, marked reversed.` : `Income saved — commits ${formatCents(data?.committed_cents ?? 0)} to charity.`);
+  await refresh();
+});
 // R8 filters sheet: Apply commits (closes the panel), Reset clears
 // the draft + sort to defaults, Cancel restores the values that were
 // there when the panel opened and leaves the list unchanged.

@@ -178,6 +178,8 @@ label { font-size: 14px; font-weight: 600; }
 /* R12 Add money: money input capped instead of full-width (audit P1-3
    pattern), and the confirmation checkbox sits inline, not full-width. */
 #section-fund-add input[name="amount"] { max-width: 220px; }
+/* R13 charity: same capped money-input pattern for gift/income forms. */
+#section-charity-gift input[name="amount"], #section-charity-income input[name="amount"] { max-width: 220px; }
 #section-fund-add .check-label { display: flex; align-items: flex-start; gap: 8px; }
 #section-fund-add .check-label input[type="checkbox"] { width: auto; margin: 2px 0 14px; accent-color: var(--green); }
 /* Two-column short-field row (savings movement: kind + amount). */
