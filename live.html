@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=12">
+<link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -276,6 +276,25 @@
       <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
     </div>
 
+    <div class="card" id="section-fund-add" style="display:none">
+      <h2>Add money</h2>
+      <p class="muted small">Log cash you already put into checking as Extra Fund money. This never changes your weekly allowance, spending, or debt. Anything owed back is covered first — the rest becomes spendable fund money.</p>
+      <form id="fundTopupForm">
+        <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
+        <label>Note (optional) <input name="note" maxlength="120"></label>
+        <label class="check-label"><input id="fundTopupConfirm" type="checkbox"> I have already put this money in checking</label>
+        <p id="fundTopupPreview" class="muted small">Enter an amount to see the split.</p>
+        <button class="btn btn-primary" type="submit" aria-label="Save this Extra Fund top-up">Save top-up</button>
+      </form>
+      <p class="muted small">Bank deposits never add fund money by themselves. Log each deposit here only once — if you already logged it, do not log it again when you see it in Transactions.</p>
+    </div>
+
+    <div class="card" id="section-fund-topups" style="display:none">
+      <h2>Money added</h2>
+      <p class="muted small">Top-ups logged here, newest first, with the shortfall split each one made.</p>
+      <ul id="fundTopupsList" class="plain"><li class="muted small">Loading…</li></ul>
+    </div>
+
     <div class="card" id="section-fund-use" style="display:none">
       <h2>Use fund money</h2>
       <form id="fundAllocateForm">
@@ -333,6 +352,6 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=20"></script>
+<script type="module" src="live.js?v=21"></script>
 </body>
 </html>

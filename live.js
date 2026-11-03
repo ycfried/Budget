@@ -25,7 +25,7 @@
 //     content in index.html. Live styling stays under body.live / #view-app.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import { formatCents, weekStartOf, nyTodayString } from './engine.mjs';
+import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease } from './engine.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
@@ -904,10 +904,40 @@ async function refresh() {
       <p class="muted small">Released total: ${formatCents(releasedTotal)}</p>
       <p class="muted small">Spent from fund: ${formatCents(spent)}</p>
       <p class="muted small">Owed back (shortfall): ${formatCents(shortfall)}</p>${heldRows.length ? `<p class="muted small">Held for review: ${formatCents(heldTotal)} across ${heldRows.length} week(s).</p>` : ''}`;
+    updateFundTopupPreview();
   } catch (e) {
     console.warn('fund summary read failed:', e);
     const fs = $('fundSummary');
     if (fs) fs.innerHTML = '<p class="error">Could not load fund balances. Try again.</p>';
+  }
+  // R12 top-up history (admin only, READ-ONLY list). One row per
+  // top-up with the split it made, newest first. Until
+  // r12-add-money.sql is applied live this shows a load error,
+  // never an empty list. The preview split is informational only;
+  // the server split returned by add_fund_money is authoritative.
+  if (household.role === 'admin') {
+    try {
+      const { data: topRows, error: topErr } = await supabase.from('fund_topups')
+        .select('amount_cents, shortfall_covered_cents, fund_added_cents, shortfall_after_cents, note, created_at')
+        .eq('household_id', household.household_id).order('created_at', { ascending: false }).limit(50);
+      if (topErr) throw topErr;
+      const tl = $('fundTopupsList');
+      if (tl) {
+        const frag = document.createDocumentFragment();
+        if (!(topRows ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No money added yet.'; frag.appendChild(p); }
+        for (const r of topRows ?? []) {
+          const li = document.createElement('li');
+          const d = new Date(r.created_at);
+          const when = Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          li.innerHTML = `<strong>${formatCents(r.amount_cents)}</strong> <span class="muted small">${esc(when)} · ${formatCents(r.shortfall_covered_cents ?? 0)} covered owed back · ${formatCents(r.fund_added_cents ?? 0)} added to fund · Owed back after ${formatCents(r.shortfall_after_cents ?? 0)}${r.note ? ` · ${esc(r.note)}` : ''}</span>`;
+          frag.appendChild(li);
+        }
+        tl.replaceChildren(frag);
+      }
+    } catch (e) {
+      console.warn('fund topups read failed:', e);
+      const tl = $('fundTopupsList'); if (tl) tl.innerHTML = '<li class="error">Could not load money added. Try again.</li>';
+    }
   }
   // Refund restorations + held refunds (admin only, READ-ONLY lists).
   // Members never see this section (showView gates it) and no read
@@ -1412,7 +1442,7 @@ async function autoSyncIfWebhookPending() {
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
   purchases: ['section-add-choice', 'section-manual', 'section-csv', 'section-transactions'],
-  money: ['section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
+  money: ['section-savings', 'section-fund', 'section-fund-add', 'section-fund-topups', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
   // R2: Settings is reached from the profile menu, not a nav tab.
   // Connections (bank + email), Budget (allowance + temp increase)
   // and Account & household live here; Funds no longer shows them.
@@ -1470,7 +1500,7 @@ function showView(name, opts = {}) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-add' || id === 'section-fund-topups' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   // R7: the Add forms are never permanently expanded — the choice
@@ -1843,6 +1873,55 @@ $('saveAllowanceBtn')?.addEventListener('click', async (e) => {
   if (!error) await refresh();
 });
 
+// R12 Add Money preview: shortfall-first split from the last loaded
+// fund balances, using the shared engine helper (same rule the server
+// applies). Informational only — the server split is authoritative.
+function updateFundTopupPreview() {
+  const pv = $('fundTopupPreview'); if (!pv) return;
+  const amtEl = document.querySelector('#fundTopupForm input[name="amount"]');
+  const cents = parseDollarsStrict(amtEl?.value ?? '');
+  if (cents === null || cents <= 0) { pv.textContent = 'Enter an amount to see the split.'; return; }
+  const shortfall = currentFundData?.shortfall;
+  if (shortfall === undefined || shortfall === null) { pv.textContent = 'Fund balance has not loaded yet — the server still covers anything owed back first when you save.'; return; }
+  const s = applyShortfallToRelease(cents, shortfall);
+  const covered = cents - s.releasedToFund;
+  pv.textContent = `Split: ${formatCents(s.releasedToFund)} added to fund · ${formatCents(covered)} covers owed back · Owed back after ${formatCents(s.remainingShortfall)}.`;
+}
+document.querySelector('#fundTopupForm input[name="amount"]')?.addEventListener('input', updateFundTopupPreview);
+// R12 Add Money submit: admin only (server-enforced), unchecked-by-
+// default confirmation, busy control, and a per-submit client key so
+// a double-tap or a retried submit after a network failure replays
+// the same top-up instead of crediting twice.
+let lastTopupAttempt = null; // { key, cents } for the in-flight/failed submit
+$('fundTopupForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const cents = parseDollarsStrict(f.amount.value);
+  if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
+  if (!$('fundTopupConfirm')?.checked) { showToast('Check the box to confirm you already put this money in checking.', true); return; }
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  const key = (lastTopupAttempt && lastTopupAttempt.cents === cents) ? lastTopupAttempt.key
+    : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+  lastTopupAttempt = { key, cents };
+  const { data, error } = await supabase.rpc('add_fund_money', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_client_key: key });
+  if (submitBtn) submitBtn.disabled = false;
+  if (error) {
+    console.warn('add_fund_money failed:', error.message);
+    const notLive = /could not find|does not exist|schema cache/i.test(error.message || '');
+    showToast(notLive ? 'Add money isn\'t live yet — the database step still needs approval.' : 'Could not save this top-up. Try again.', true);
+    return;
+  }
+  lastTopupAttempt = null;
+  f.reset();
+  updateFundTopupPreview();
+  const covered = data?.shortfall_covered_cents ?? null;
+  const added = data?.fund_added_cents ?? null;
+  showToast((covered !== null && added !== null)
+    ? `Top-up saved: ${formatCents(covered)} covered owed back, ${formatCents(added)} added to fund.`
+    : 'Top-up saved.');
+  await refresh();
+});
 $('fundAllocateForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;

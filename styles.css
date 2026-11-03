@@ -175,6 +175,11 @@ label { font-size: 14px; font-weight: 600; }
 #section-manual .form-row-3 label { min-width: 0; }
 #section-manual .form-row-3 input { min-width: 0; }
 #section-manual input { padding: 9px 10px; }
+/* R12 Add money: money input capped instead of full-width (audit P1-3
+   pattern), and the confirmation checkbox sits inline, not full-width. */
+#section-fund-add input[name="amount"] { max-width: 220px; }
+#section-fund-add .check-label { display: flex; align-items: flex-start; gap: 8px; }
+#section-fund-add .check-label input[type="checkbox"] { width: auto; margin: 2px 0 14px; accent-color: var(--green); }
 /* Two-column short-field row (savings movement: kind + amount). */
 .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .form-row-2 label, .form-row-2 select, .form-row-2 input { min-width: 0; }
