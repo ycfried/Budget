@@ -673,7 +673,11 @@ async function refresh() {
     : savRows.length
     ? `<ul>${savRows.slice(0, 20).map((r) => `<li>${esc(r.kind)} ${formatCents(r.amount_cents ?? 0)}${r.actual_balance_cents != null ? ` · Recorded balance ${formatCents(r.actual_balance_cents)}` : ''} · ${fmtDateTime(r.created_at)} · ${esc(r.note || '')}</li>`).join('')}</ul>${savRows.length > 20 ? '<p class="muted small">Showing the latest 20 records.</p>' : ''}`
     : '<p class="muted small">No savings records yet.</p>';
-  $('savingsFormWrap').style.display = household.role === 'admin' ? '' : 'none';
+  // R11: legacy manual Savings forms are hidden (records and the
+  // summary above stay visible; backend history untouched). Do not
+  // re-enable this form without an owner decision on where savings
+  // recording lives on the Funds page.
+  $('savingsFormWrap').style.display = 'none';
 
   // Bank accounts UI — SERVER TRUTH ONLY. Connected state derives from
   // plaid_items rows (status 'active' vs 'disconnected') and their
@@ -909,7 +913,7 @@ async function refresh() {
       const hl = $('heldList'); if (hl) hl.innerHTML = '<p class="error">Could not load held refunds. Try again.</p>';
     }
   }
-  // Possible duplicates (admin only, Money tab). Reads pending
+  // Possible duplicates (admin only, Funds tab). Reads pending
   // duplicate_candidates + both transactions per pair; Same purchase
   // and Separate both go through resolve_duplicate_candidate, which
   // never deletes a row. Until dedupe-review-queue.sql is applied
@@ -1023,7 +1027,7 @@ async function boot() {
     if (g === 'connected' || g === 'failed') {
       showToast(g === 'connected'
         ? 'Email connected — the app will check it for Amex alerts.'
-        : 'Email connection didn\'t go through — try again from Bank & Funds.', g === 'failed');
+        : 'Email connection didn\'t go through — try again from Funds.', g === 'failed');
       const u = new URL(window.location.href); u.searchParams.delete('gmail');
       window.history.replaceState(null, '', u.pathname + u.search + u.hash);
     }
