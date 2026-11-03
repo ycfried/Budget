@@ -1,0 +1,30 @@
+name: OnBudget isolated simulator proof
+on:
+  push:
+    branches: [ios-native-rebuild]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/onbudget-ios-sample.yml'
+permissions:
+  contents: read
+concurrency:
+  group: onbudget-isolated-simulator
+  cancel-in-progress: true
+jobs:
+  simulator:
+    if: >-
+      github.ref == 'refs/heads/ios-native-rebuild' &&
+      github.event.repository.private == false &&
+      startsWith(github.event.head_commit.message, 'ci(ios): approved cloud build')
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ios-native-rebuild
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate, compile and test synthetic app
+        env:
+          ONBUDGET_APPROVED_WORKFLOW: '1'
+        run: bash ios/scripts/macos_simulator_test.sh
