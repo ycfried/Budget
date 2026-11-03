@@ -390,3 +390,34 @@ default because these were unset — that is fixed, not a standing bug.
   items are the native build (§8) and, for strangers' Gmail,
   verification (§8). The remaining §7 items are proofs and polish,
   not money-trust blockers.
+
+## Addendum — Nov 2, evening (after the rewrite)
+
+- **CSV import is a real bug, not just an unproven tap (P1-29 UI half).**
+  Owner repro, Nov 2 evening, on his phone: file attaches (name shows),
+  no preview renders, Confirm stays disabled. This is the same symptom
+  automation hit earlier — the "automation limitation" conclusion was
+  wrong; the UI path itself fails, at least on his phone. Checked:
+  live.html IDs all match the JS (csvFile, csvPreview, csvConfirmBtn,
+  csvMsg) — not a wiring typo. Strongest hypothesis: `file.text()`
+  rejects on WhatsApp-originated files, and the change handler has no
+  try/catch and no error UI, so it dies silently with zero message.
+  Workarounds to try first: Save to Files, then pick from Files; or
+  stale PWA cache (delete home-screen icon, re-add from Safari).
+  Fix needed: try/catch around the read with a visible error, then
+  root-cause the read failure. Parser itself is proven (3/3 rows).
+- **FINAL vs v2 spec — follow FINAL (verified from both PDFs' text).**
+  Exactly one substantive contradiction: refunds. V2 uses a carried
+  refund-credit balance (R_in→R_out, covered_credit) offsetting future
+  weeks; FINAL removes it entirely, replaced by refund restoration
+  (re-simulate locked weeks, one entry in current week, incremental,
+  never double, only after posting, temp-covered part restores
+  nothing, over-charge held). Owner confirmed Nov 2 evening: the
+  change makes sense (old model could double-benefit) and FINAL is
+  what the live app runs. Plus one gap filled: v2 never mentions
+  cashback; FINAL says Amex cash-back credits are NOT refunds,
+  excluded by default, admin can classify. Everything else agrees
+  ($375 Sun–Sat week, temp increments, debt, idempotent close).
+  Quirk: the FINAL PDF still carries the v2 cover page (built by
+  editing v2 in place) — filename + refund sections are what make
+  it FINAL.
