@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=15">
+<link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -57,7 +57,6 @@
       <button class="app-nav-link" data-view="week" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg><span>Home</span></button>
       <button class="app-nav-link" data-view="purchases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg><span>Transactions</span></button>
       <button class="app-nav-link" data-view="money" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg><span>Funds</span></button>
-      <button class="app-nav-link" data-view="activity" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>History</span></button>
     </nav>
     <div class="card hero" id="section-week">
       <div class="hero-head">
@@ -89,18 +88,26 @@
       <p id="homeSyncMsg" class="result"></p>
     </div>
 
+    <div class="card" id="section-history-link">
+      <h2>History</h2>
+      <p class="muted small">Closed weeks and a shared record of every change in this household, grouped by day.</p>
+      <div class="btn-row">
+        <button class="btn" data-view="activity" type="button" aria-label="Open History">View history</button>
+      </div>
+    </div>
+
     <div class="card" id="section-add-choice">
       <h2>Add</h2>
       <p class="muted small">Record a transaction you already made, or import a file of them.</p>
       <div class="btn-row">
         <button class="btn btn-primary" id="addManualBtn" type="button" aria-label="Add a transaction by hand">Add by hand</button>
         <button class="btn" id="addCsvBtn" type="button" aria-label="Import transactions from a CSV file">Import CSV</button>
-        <button class="btn" id="addCharityBtn" type="button" aria-label="Record a charity gift">Give to charity</button>
+        <button class="btn btn-tertiary" id="addCharityBtn" type="button" aria-label="Record a charity gift">Give to charity</button>
       </div>
     </div>
 
     <div class="card" id="section-manual">
-      <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add choices">Back</button></div>
+      <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Add a transaction by hand</h2>
       <p class="muted small">Record a transaction by hand. It counts as pending until the bank confirms it.</p>
       <form id="manualForm">
@@ -116,7 +123,7 @@
     </div>
 
     <div class="card" id="section-csv">
-      <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add choices">Back</button></div>
+      <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Import transactions from a CSV file</h2>
       <p class="muted small">Expected columns: Date, Description, Amount, Card Ending. Nothing is added until you review the preview and tap Confirm. Duplicates are skipped. Imports are provisional until the bank confirms them.</p>
       <label>CSV file <input id="csvFile" type="file" accept=".csv,text/csv"></label>
@@ -127,7 +134,7 @@
     </div>
 
     <div class="card" id="section-charity-gift">
-      <div class="btn-row"><button class="btn" id="charityBackBtn" type="button" aria-label="Back to Add choices">Back</button></div>
+      <div class="btn-row"><button class="btn" id="charityBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Give to charity</h2>
       <p class="muted small">Record a gift you already gave. A gift entered here counts as given at once, and it never counts as weekly spending. Only the admin can record gifts.</p>
       <form id="charityGiftForm">
@@ -144,44 +151,74 @@
     </div>
 
     <div class="card" id="section-transactions">
-      <h2>Transactions</h2>
+      <div class="tx-head-row">
+        <h2>Transactions</h2>
+        <button class="btn btn-primary" id="txAddBtn" type="button" aria-label="Add a transaction">Add</button>
+      </div>
       <p class="muted small">Everything spent on the household cards. Tap a transaction for detail and actions.</p>
-      <div class="tx-chips" role="group" aria-label="Filter transactions">
-        <button class="tx-chip active" data-tx-filter="all" type="button" aria-label="Show all transactions">All</button>
-        <button class="tx-chip" data-tx-filter="pending" type="button" aria-label="Show pending transactions only">Pending</button>
-        <button class="tx-chip" data-tx-filter="posted" type="button" aria-label="Show posted transactions only">Posted</button>
-        <button class="tx-chip" data-tx-filter="refunds" type="button" aria-label="Show refunds only">Refunds</button>
-        <button class="tx-chip" data-tx-filter="charity" type="button" aria-label="Show charity gifts only">Charity</button>
-        <button class="tx-chip" data-tx-filter="excluded" type="button" aria-label="Show excluded transactions only">Excluded</button>
-        <button class="tx-chip" id="txWeekToggle" type="button" aria-pressed="false" aria-label="Show only this week's transactions">This week</button>
+      <div class="tx-search-row">
+        <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
+        <button id="txFiltersToggle" class="btn" type="button" aria-expanded="false" aria-label="Open filters">Filters</button>
       </div>
-      <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
-      <button id="txFiltersToggle" class="btn" type="button" aria-expanded="false" aria-label="Show more filters">Filters</button>
-      <div id="txFilters" class="hidden">
-        <label class="muted small">Month
-          <select id="txMonth" aria-label="Filter by month"><option value="all">All months</option></select>
-        </label>
-        <label class="muted small">Card / Account
-          <select id="txCard" aria-label="Filter by card or account"><option value="all">All cards</option></select>
-        </label>
-        <label class="muted small">Amount from ($)
-          <input id="txMinAmount" type="number" step="0.01" inputmode="decimal" aria-label="Minimum transaction amount">
-        </label>
-        <label class="muted small">Amount to ($)
-          <input id="txMaxAmount" type="number" step="0.01" inputmode="decimal" aria-label="Maximum transaction amount">
-        </label>
-        <p class="muted small">Amounts compare to the signed amount, and both bounds apply together with the month, card, and week filters. Leave either end blank for no limit there. A refund counts as a negative amount, so a $10 refund sits below a $0 minimum.</p>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="txFiltersApplyBtn" type="button" aria-label="Apply filters">Apply</button>
-          <button class="btn" id="txFiltersResetBtn" type="button" aria-label="Reset filters and sort to defaults">Reset</button>
-          <button class="btn" id="txFiltersCancelBtn" type="button" aria-label="Close filters without applying changes">Cancel</button>
+      <div id="txActiveFilters" class="tx-active-filters" aria-label="Active filters"></div>
+      <div id="txFiltersSheet" class="tx-sheet hidden" role="dialog" aria-modal="true" aria-label="Transaction filters">
+        <div class="tx-sheet-card">
+          <h3>Filters</h3>
+          <div class="tx-sheet-group">
+            <h4>Status</h4>
+            <label>Status
+              <select id="txStatusSelect" aria-label="Filter by status">
+                <option value="all">All</option>
+                <option value="pending">Pending</option>
+                <option value="posted">Posted</option>
+                <option value="refunds">Refunds</option>
+                <option value="charity">Charity</option>
+                <option value="excluded">Excluded</option>
+              </select>
+            </label>
+          </div>
+          <div class="tx-sheet-group">
+            <h4>Dates</h4>
+            <label>Month
+              <select id="txMonth" aria-label="Filter by month"><option value="all">All months</option></select>
+            </label>
+            <label class="check-label"><input id="txWeekCheck" type="checkbox"> This week only</label>
+            <label>From date
+              <input id="txFromDate" type="date" aria-label="Filter from date">
+            </label>
+            <label>To date
+              <input id="txToDate" type="date" aria-label="Filter to date">
+            </label>
+          </div>
+          <div class="tx-sheet-group">
+            <h4>Card / Account</h4>
+            <label>Card / Account
+              <select id="txCard" aria-label="Filter by card or account"><option value="all">All cards</option></select>
+            </label>
+          </div>
+          <div class="tx-sheet-group">
+            <h4>Amount</h4>
+            <label>Amount from ($)
+              <input id="txMinAmount" type="number" step="0.01" inputmode="decimal" aria-label="Minimum transaction amount">
+            </label>
+            <label>Amount to ($)
+              <input id="txMaxAmount" type="number" step="0.01" inputmode="decimal" aria-label="Maximum transaction amount">
+            </label>
+            <p class="muted small">Amounts compare to the signed amount, and both bounds apply together with the month, card, and week filters. Leave either end blank for no limit there. A refund counts as a negative amount, so a $10 refund sits below a $0 minimum.</p>
+          </div>
+          <div class="tx-sheet-group">
+            <h4>Sorting</h4>
+            <label>Sort by
+              <select id="txSortField" aria-label="Sort transactions by"><option value="date">Date</option><option value="amount">Amount</option></select>
+            </label>
+            <button id="txSortDirBtn" class="btn" type="button" aria-label="Sort direction">↓ Newest first</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="txFiltersApplyBtn" type="button" aria-label="Apply filters">Apply</button>
+            <button class="btn" id="txFiltersResetBtn" type="button" aria-label="Reset filters and sort to defaults">Reset</button>
+            <button class="btn btn-tertiary" id="txFiltersCancelBtn" type="button" aria-label="Close filters without applying changes">Cancel</button>
+          </div>
         </div>
-      </div>
-      <div class="btn-row">
-        <label class="muted small">Sort by
-          <select id="txSortField" aria-label="Sort transactions by"><option value="date">Date</option><option value="amount">Amount</option></select>
-        </label>
-        <button id="txSortDirBtn" class="btn" type="button" aria-label="Sort direction">Newest first</button>
       </div>
       <p id="txCount" class="muted small tx-count"></p>
       <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
@@ -189,7 +226,7 @@
     </div>
 
     <div class="card" id="section-settings-head">
-      <div class="btn-row"><button class="btn" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">Back</button></div>
+      <div class="btn-row"><button class="btn" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
       <h2>Settings</h2>
       <p class="muted small">Connections, Budget, and Account &amp; household. Bank and email connections moved here from Funds.</p>
     </div>
@@ -200,7 +237,7 @@
       <div class="btn-row">
         <button id="connectBankBtn" class="btn btn-primary" type="button" aria-label="Connect a bank account">Connect a bank account</button>
         <button id="syncBankBtn" class="btn" type="button" aria-label="Sync bank transactions now">Sync bank transactions now</button>
-        <button id="registerWebhookBtn" class="btn" type="button" aria-label="Enable automatic bank sync">Enable automatic sync</button>
+        <button id="registerWebhookBtn" class="btn btn-tertiary" type="button" aria-label="Enable automatic bank sync">Enable automatic sync</button>
       </div>
       <div id="bankMsg" class="result"></div>
       <p class="muted small" id="bankSyncLine"></p>
@@ -256,46 +293,42 @@
       </div>
     </div>
 
-    <div class="card" id="section-savings">
-      <h2>Savings (recorded by hand)</h2>
-      <p class="muted small">Record what you see in the real savings account. This is not spending, not income, and never changes the Extra Fund.</p>
-      <div id="savingsSummary"></div>
-      <div id="savingsFormWrap" style="display:none">
-        <label>Actual savings balance ($)
-          <input id="savingsBalanceInput" type="number" step="0.01" min="0" inputmode="decimal">
-        </label>
-        <label>Note (optional)
-          <input id="savingsNoteInput" type="text">
-        </label>
-        <button id="attestSavingsBtn" class="btn btn-primary" type="button" aria-label="Record the actual savings balance">Record balance</button>
-        <div class="form-row-2">
-          <label>Record a movement
-            <select id="savingsKindInput">
-              <option value="transfer_in">Transferred in</option>
-              <option value="withdrawal">Withdrawn</option>
-              <option value="interest">Interest</option>
-            </select>
-          </label>
-          <label>Amount ($)
-            <input id="savingsAmountInput" type="number" step="0.01" min="0" inputmode="decimal">
-          </label>
+    <div class="card" id="section-fund-balances">
+      <div class="fund-balance-grid">
+        <div class="fund-balance-panel">
+          <h2>Extra Fund</h2>
+          <p class="muted small">Leftover money from weeks you spent under budget — use it for extras.</p>
+          <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
         </div>
-        <label>Note (optional)
-          <input id="savingsMovementNoteInput" type="text">
-        </label>
-        <button id="recordSavingsMovementBtn" class="btn" type="button" aria-label="Record a savings movement">Record movement</button>
-        <div id="savingsMsg" class="result"></div>
+        <div class="fund-balance-panel">
+          <h2>Charity</h2>
+          <p class="muted small">November 2026 onward. Committed is 10% of income recorded here (or the rate set for that income); given is confirmed gifts only. A negative remaining means you are ahead.</p>
+          <div id="charitySummary"><p class="muted small">Loading charity…</p></div>
+        </div>
       </div>
-      <div id="savingsList" class="result"></div>
     </div>
 
-    <div class="card" id="section-fund">
-      <h2>Extra Fund</h2>
-      <p class="muted small">Leftover money from weeks you spent under budget — use it for extras.</p>
-      <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
+    <div class="card" id="section-fund-actions">
+      <h2>Funds actions</h2>
+      <p class="muted small">Money moves open one at a time, so the page stays short.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="fundActionAddBtn" type="button" aria-label="Add money to the Extra Fund">Add money</button>
+        <button class="btn" id="fundActionUseBtn" type="button" aria-label="Use fund money">Use fund money</button>
+        <button class="btn btn-tertiary" id="fundActionAskBtn" type="button" aria-label="Ask for fund money">Ask for fund money</button>
+        <button class="btn btn-tertiary" id="fundActionIncomeBtn" type="button" aria-label="Record charity income">Record income</button>
+      </div>
+      <details id="fundTopupsDisclosure" class="activity-disclosure">
+        <summary>View activity · Money added</summary>
+        <ul id="fundTopupsList" class="plain"><li class="muted small">Loading…</li></ul>
+      </details>
+      <details id="charityIncomeDisclosure" class="activity-disclosure">
+        <summary>View activity · Charity income</summary>
+        <ul id="charityIncomeList" class="plain"><li class="muted small">Loading…</li></ul>
+      </details>
     </div>
 
     <div class="card" id="section-fund-add" style="display:none">
+      <div class="btn-row"><button class="btn" id="fundAddBackBtn" type="button" aria-label="Back to Funds actions">← Back</button></div>
       <h2>Add money</h2>
       <p class="muted small">Log cash you already put into checking as Extra Fund money. This never changes your weekly allowance, spending, or debt. Anything owed back is covered first — the rest becomes spendable fund money.</p>
       <form id="fundTopupForm">
@@ -308,19 +341,8 @@
       <p class="muted small">Bank deposits never add fund money by themselves. Log each deposit here only once — if you already logged it, do not log it again when you see it in Transactions.</p>
     </div>
 
-    <div class="card" id="section-fund-topups" style="display:none">
-      <h2>Money added</h2>
-      <p class="muted small">Top-ups logged here, newest first, with the shortfall split each one made.</p>
-      <ul id="fundTopupsList" class="plain"><li class="muted small">Loading…</li></ul>
-    </div>
-
-    <div class="card" id="section-charity">
-      <h2>Charity</h2>
-      <p class="muted small">November 2026 onward. Committed is 10% of income recorded here (or the rate set for that income); given is confirmed gifts only. A negative remaining means you are ahead.</p>
-      <div id="charitySummary"><p class="muted small">Loading charity…</p></div>
-    </div>
-
     <div class="card" id="section-charity-income" style="display:none">
+      <div class="btn-row"><button class="btn" id="charityIncomeBackBtn" type="button" aria-label="Back to Funds actions">← Back</button></div>
       <h2>Charity income &amp; rate</h2>
       <p class="muted small">Only the admin records income. Nothing is pulled in automatically — a transfer, refund, reimbursement, loan, or fund top-up never counts as income on its own.</p>
       <p class="muted small" id="charityRateCurrent">Current default rate: 10%.</p>
@@ -343,11 +365,10 @@
         <button class="btn btn-primary" type="submit" aria-label="Save this charity income">Save income</button>
         <button class="btn" id="charityIncomeCancelBtn" type="button" style="display:none" aria-label="Stop correcting and add new income instead">Cancel correction</button>
       </form>
-      <h3>Income recorded</h3>
-      <ul id="charityIncomeList" class="plain"><li class="muted small">Loading…</li></ul>
     </div>
 
     <div class="card" id="section-fund-use" style="display:none">
+      <div class="btn-row"><button class="btn" id="fundUseBackBtn" type="button" aria-label="Back to Funds actions">← Back</button></div>
       <h2>Use fund money</h2>
       <form id="fundAllocateForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
@@ -358,6 +379,7 @@
     </div>
 
     <div class="card" id="section-fund-ask">
+      <div class="btn-row"><button class="btn" id="fundAskBackBtn" type="button" aria-label="Back to Funds actions">← Back</button></div>
       <h2>Ask for fund money</h2>
       <p class="muted small">Ask for money from the Extra Fund. The admin approves or declines each request.</p>
       <form id="fundRequestForm">
@@ -365,22 +387,57 @@
         <label>Note (optional) <input name="note" maxlength="120"></label>
         <button class="btn btn-primary" type="submit" aria-label="Send this Extra Fund request">Send request</button>
       </form>
-      <ul id="fundQueue" class="plain"></ul>
+      <details class="activity-disclosure">
+        <summary>View activity · Fund requests</summary>
+        <ul id="fundQueue" class="plain"></ul>
+      </details>
     </div>
 
-    <div class="card" id="section-restoration" style="display:none">
-      <h2>Refund restorations &amp; held refunds</h2>
-      <p class="muted small">Admin only. Restorations the refund rules posted, and refunds held for review because they exceeded the original charge.</p>
-      <h3>Restorations</h3>
-      <div id="restorationList"><p class="muted small">Loading…</p></div>
-      <h3>Held for review</h3>
-      <div id="heldList"><p class="muted small">Loading…</p></div>
+    <div class="card" id="section-fund-review" style="display:none">
+      <h2>Review</h2>
+      <p class="muted small">Admin only. Refund restorations, held refunds, and possible duplicates — nothing here deletes a row.</p>
+      <details id="reviewDetails" class="activity-disclosure">
+        <summary>Open review</summary>
+        <h3>Refund restorations &amp; held refunds</h3>
+        <p class="muted small">Restorations the refund rules posted, and refunds held for review because they exceeded the original charge.</p>
+        <h4>Restorations</h4>
+        <div id="restorationList"><p class="muted small">Loading…</p></div>
+        <h4>Held for review</h4>
+        <div id="heldList"><p class="muted small">Loading…</p></div>
+        <h3>Possible duplicates</h3>
+        <p class="muted small">Pairs the bank and email feeds may have counted twice. Nothing here is deleted — Same purchase keeps one row and excludes the other from counts; Separate keeps both and never flags the pair again.</p>
+        <div id="dedupeList"><p class="muted small">Loading…</p></div>
+      </details>
     </div>
 
-    <div class="card" id="section-dedupe" style="display:none">
-      <h2>Possible duplicates</h2>
-      <p class="muted small">Admin only. Pairs the bank and email feeds may have counted twice. Nothing here is deleted — Same purchase keeps one row and excludes the other from counts; Separate keeps both and never flags the pair again.</p>
-      <div id="dedupeList"><p class="muted small">Loading…</p></div>
+    <div class="card" id="section-savings-past">
+      <p class="muted small">Extra Fund is the savings story now. Older savings records are kept, read-only, on request.</p>
+      <div class="btn-row">
+        <button class="btn btn-quiet" id="pastSavingsToggle" type="button" aria-expanded="false" aria-label="Show past savings records">Past savings records</button>
+      </div>
+      <div id="pastSavingsWrap" class="hidden">
+        <div id="savingsSummary"></div>
+        <div id="savingsList" class="result"></div>
+      </div>
+    </div>
+
+    <div class="card" id="section-history-filter">
+      <h2>History</h2>
+      <p class="muted small">Weekly summaries below are the financial record; the day-grouped activity after them is the shared record of account changes. Filter by date to narrow both, or clear it to see everything.</p>
+      <div class="form-row-2">
+        <label>From date
+          <input id="historyFromInput" type="date" aria-label="History from date">
+        </label>
+        <label>To date
+          <input id="historyToInput" type="date" aria-label="History to date">
+        </label>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="historyFilterApplyBtn" type="button" aria-label="Apply history date filter">Apply filter</button>
+        <button class="btn" id="historyFilterClearBtn" type="button" aria-label="Clear history date filter">Clear</button>
+      </div>
+      <p id="historyPeriodLine" class="muted small">Showing all recorded history.</p>
+      <p id="historyCountLine" class="muted small"></p>
     </div>
 
     <div class="card" id="section-week-history">
@@ -390,9 +447,10 @@
     </div>
 
     <div class="card" id="section-activity">
-      <h2>History</h2>
+      <h2>Activity</h2>
       <p class="muted small">Weekly summaries are above. Below, a shared record of every change in this household — who did what, and when — grouped by day, newest first.</p>
       <ul id="auditList" class="plain"><li class="muted small">Loading…</li></ul>
+      <button id="historyLoadMoreBtn" class="btn hidden" type="button">Load more</button>
     </div>
 
   </section>
@@ -404,7 +462,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=24"></script>
+<script type="module" src="live.js?v=25"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.
