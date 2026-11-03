@@ -95,7 +95,7 @@ final class HouseholdStoreTests: XCTestCase {
     }
 }
 
-private actor SuspendedService: HouseholdService {
+private actor SuspendedService: SampleHouseholdService {
     private var read: CheckedContinuation<HouseholdSnapshot, any Error>?
     private var started: CheckedContinuation<Void, Never>?
     func openSample(role: Role) -> Session { Session(role: role, displayName: "Sample") }

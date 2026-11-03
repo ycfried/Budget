@@ -101,3 +101,11 @@ No new Apple SDK/simulator build is claimed. Financial summaries remain fixed.
 Remaining M1-adjacent work (persistent cache, full match provenance, seven-day
 server aging, production state mapping) proceeds under the dependent milestones,
 not by inventing a local financial engine.
+
+## M2 offline completion record
+
+Transport-free typed/nullable contracts, unknown values, conservative explicit
+retry/cancellation states, per-unresolved-intent IDs, sample-control separation and
+source freshness are implemented. 82 local XCTest tests pass; no new Xcode run.
+See M2_CONTRACTS.md and PROGRESS.md for evidence and boundaries. Deployed API
+compatibility and durable/server reconciliation remain dependent M3–M5 work.

@@ -73,15 +73,18 @@ public struct ActionReceipt: Equatable, Sendable {
     public let message: String
 }
 public protocol HouseholdService: Sendable {
-    func openSample(role: Role) async -> Session
     func snapshot() async throws -> HouseholdSnapshot
     func submit(_ action: HouseholdAction, idempotencyKey: UUID) async throws -> ActionReceipt
-    func setScenario(_ scenario: SampleScenario) async
     func signOut() async
+}
+/// Sample controls are deliberately absent from a future production repository.
+public protocol SampleHouseholdService: HouseholdService {
+    func openSample(role: Role) async -> Session
+    func setScenario(_ scenario: SampleScenario) async
 }
 /// Stateful synthetic interaction service. No HTTP/SDK or accounting engine.
 /// Only record state/history changes; every monetary summary remains a literal fixture.
-public actor MockHouseholdService: HouseholdService {
+public actor MockHouseholdService: SampleHouseholdService {
     private var session: Session?
     private var scenario: SampleScenario = .normal
     private var receipts: [UUID: (HouseholdAction, ActionReceipt)] = [:]
@@ -101,6 +104,7 @@ public actor MockHouseholdService: HouseholdService {
     }
     public func setScenario(_ value: SampleScenario) { scenario = value }
     public func snapshot() throws -> HouseholdSnapshot {
+        try Task.checkCancellation()
         guard session != nil else { throw ServiceError.signedOut }
         if scenario == .offline { throw ServiceError.offline }
         if scenario == .failure { throw ServiceError.simulatedFailure }
@@ -111,6 +115,7 @@ public actor MockHouseholdService: HouseholdService {
             audit: events + base.audit, sources: base.sources)
     }
     public func submit(_ action: HouseholdAction, idempotencyKey: UUID) throws -> ActionReceipt {
+        try Task.checkCancellation()
         guard let session else { throw ServiceError.signedOut }
         guard !action.adminOnly || session.role == .admin else { throw ServiceError.forbidden }
         guard scenario != .offline else { throw ServiceError.offline }

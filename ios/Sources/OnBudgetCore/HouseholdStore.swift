@@ -8,7 +8,7 @@ import Observation
 #endif
 @MainActor
 public final class HouseholdStore {
-    private let service: any HouseholdService
+    private let service: any SampleHouseholdService
     public private(set) var session: Session?
     public private(set) var snapshot: HouseholdSnapshot?
     public var scenario: SampleScenario = .normal
@@ -19,14 +19,15 @@ public final class HouseholdStore {
     public private(set) var sampleActions: [String] = []
     private var toastTask: Task<Void, Never>?
     private var generation = 0
-    private var pendingOperation: (action: HouseholdAction, id: UUID)?
+    private var pendingOperations: [(action: HouseholdAction, id: UUID)] = []
+    public private(set) var writeState: WriteState = .idle
     public private(set) var closing = false
     public private(set) var opening = false
     #if canImport(SwiftUI)
     @ObservationIgnored
     #endif
     private let onSnapshot: @MainActor (WidgetSnapshot?) -> Void
-    public init(service: any HouseholdService = MockHouseholdService(), onSnapshot: @escaping @MainActor (WidgetSnapshot?) -> Void = { _ in }) {
+    public init(service: any SampleHouseholdService = MockHouseholdService(), onSnapshot: @escaping @MainActor (WidgetSnapshot?) -> Void = { _ in }) {
         self.service = service; self.onSnapshot = onSnapshot
     }
     public func openSample(_ role: Role) async {
@@ -45,8 +46,10 @@ public final class HouseholdStore {
         let current = generation
         defer { if generation == current { loading = false } }
         do {
+            try Task.checkCancellation()
             await service.setScenario(scenario)
             let response = try await service.snapshot()
+            try Task.checkCancellation()
             guard generation == current else { return }
             snapshot = response; readError = nil
             onSnapshot(WidgetSnapshot(available: Money(cents: response.dashboard.week.availableCents),
@@ -61,20 +64,28 @@ public final class HouseholdStore {
         submitting = true
         let current = generation
         defer { if generation == current { submitting = false } }
+        let operation: UUID
+        if let pending = pendingOperations.first(where: { $0.action == action }) { operation = pending.id }
+        else { operation = UUID(); pendingOperations.append((action, operation)) }
+        writeState = .submitting(operation)
         do {
-            let operation: UUID
-            if let pending = pendingOperation, pending.action == action { operation = pending.id }
-            else { operation = UUID(); pendingOperation = (action, operation) }
+            try Task.checkCancellation()
             let receipt = try await service.submit(action, idempotencyKey: operation)
             guard generation == current else { return false }
-            pendingOperation = nil
+            pendingOperations.removeAll { $0.id == operation }
+            writeState = .succeeded(operation)
             sampleActions.insert(action.label, at: 0)
             notify(receipt.message)
             await refresh()
             if generation == current, readError != nil { notify("Sample action saved, but refresh failed. Retry refresh before another action.") }
             return generation == current
         } catch {
-            if generation == current { notify(error.localizedDescription) }
+            if generation == current {
+                let failure = OperationFailure(error)
+                writeState = .failed(operation, failure)
+                if failure.retry == .doNotRetry { pendingOperations.removeAll { $0.id == operation } }
+                notify(error is CancellationError ? "Request cancelled. Its outcome may be unknown; retry the same intent to reconcile." : error.localizedDescription)
+            }
             return false
         }
     }
@@ -82,7 +93,7 @@ public final class HouseholdStore {
         guard !closing else { return }
         closing = true
         generation += 1
-        pendingOperation = nil
+        pendingOperations = []; writeState = .idle
         session = nil; snapshot = nil; sampleActions = []; readError = nil; scenario = .normal
         submitting = false; loading = false; toastTask?.cancel(); toast = nil
         opening = false

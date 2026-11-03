@@ -39,6 +39,7 @@ struct FreshnessView: View {
             Label(source.name, systemImage: source.stale ? "clock.badge.exclamationmark" : "checkmark.circle")
                 .font(.subheadline.bold())
             Text(source.status).font(.caption)
+            Text("Source freshness: \(source.freshness.wireValue)").font(.caption).foregroundStyle(.secondary)
             if let date = source.lastUpdated {
                 Text(date, format: .dateTime.month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
             } else { Text("Not updated").font(.caption).foregroundStyle(.secondary) }

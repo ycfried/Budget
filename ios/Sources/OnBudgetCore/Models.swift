@@ -105,7 +105,11 @@ public struct SourceHealth: Identifiable, Equatable, Sendable {
     public var id: String { name }
     public let name, status: String
     public let lastUpdated: Date?
-    public let stale: Bool
+    public let freshness: SourceFreshness
+    public var stale: Bool { freshness != .fresh }
+    public init(name: String, status: String, lastUpdated: Date?, freshness: SourceFreshness) {
+        self.name = name; self.status = status; self.lastUpdated = lastUpdated; self.freshness = freshness
+    }
 }
 public struct HouseholdSnapshot: Equatable, Sendable {
     public let dashboard: Dashboard

@@ -148,3 +148,41 @@ Next safe milestone: M2 typed intent/response/error and per-source read contract
 followed by richer offline fixtures and coverage. Staging, policy/reversal/summary
 contracts, Apple capabilities/signing and any new cloud build remain separately
 gated. No approval is needed to reconsider already-settled financial rules.
+
+## M2 — offline contracts and failure recovery (November 3, 2026)
+
+Implemented transport-independent Codable operation envelopes, typed partial weekly
+responses, explicit missing/null/value fields, structured unknown attributes/error
+codes, strict integer cents and matching write acknowledgement IDs. The complete
+legacy weekly decoder now rejects error/success ambiguity. Source freshness has
+known and unknown wire states, preserves nullable/absent raw timestamps without
+inventing age defaults, and is typed in sample source presentation.
+
+Separated sample login/scenario controls from the read/write repository protocol.
+The sample store retains stable IDs for multiple interleaved unresolved intents,
+publishes typed write/failure state, never retries automatically, handles cancellation
+without promising rollback, keeps cancelled reads read-only, and clears operation
+state on logout. The mock checks task cancellation before atomic mutation. No
+financial engine, monetary summary mutation, transport or real integration added.
+
+Verified locally using Swift 6.1.2 on Linux: **82 XCTest core tests passed, 0 failed**
+(64 existing + 18 new). New coverage includes missing/null/zero, unknown fields,
+malformed/fractional/overflow cents, envelope errors/ambiguity, operation correlation,
+typed request round-trip, source states/timestamps, interleaved lost-response replay,
+cancellation before mutation and after simulated commit, cancelled read recovery.
+Apple App/Widget Swift syntax parse, PBX/project/static metadata validation and
+`git diff --check` passed. Safety scan passed before push. These are local checks,
+not Xcode type checking, simulator execution, signing or distribution validation.
+The historical simulator PASS remains run 41648851937 at commit 1d66a0f; no cloud
+build was triggered for M1/M2 and this revision is not claimed Xcode-validated.
+
+All records, credentials interfaces and financial snapshots remain synthetic.
+M2 offline foundations are implemented; real API compatibility remains unverified.
+See docs/M2_CONTRACTS.md for protocol boundaries, numeric representation limits,
+manual retry semantics and deferred durable intent/reconciliation work. M3 identity,
+M4 full server snapshots and M5 persistent intents remain incomplete. Approval is
+required before staging/service access or another cloud build. Outstanding API and
+product decisions remain command/envelope/idempotency/reconciliation contracts,
+source timestamp/state semantics, complete financial/provenance payloads,
+future-effective policy/reversals, refund links and admin departure/deletion policy.
+No production, staging, Supabase, bank, Gmail or Apple service was connected.

@@ -45,9 +45,9 @@ public enum Fixtures {
                     releaseStatus: "Released", revisionNote: "")],
             audit: [AuditEvent(id: "audit-sample", actor: "Sample admin", action: "Fund request approved",
                 detail: "Synthetic allocation recorded by the sample service.", date: instant)],
-            sources: [SourceHealth(name: "Bank", status: "Sample connected account", lastUpdated: instant, stale: false),
-                SourceHealth(name: "Email", status: "Preview only · native connection deferred", lastUpdated: nil, stale: true),
-                SourceHealth(name: "CSV", status: "No sample import yet", lastUpdated: nil, stale: true)])
+            sources: [SourceHealth(name: "Bank", status: "Sample connected account", lastUpdated: instant, freshness: .fresh),
+                SourceHealth(name: "Email", status: "Preview only · native connection deferred", lastUpdated: nil, freshness: .unavailable),
+                SourceHealth(name: "CSV", status: "No sample import yet", lastUpdated: nil, freshness: .neverSynced)])
     }
     private static func purchase(_ id: String, _ date: String, _ name: String, _ cents: Int64,
         _ suffix: String, _ source: String, _ state: String, kind: String = "charge",

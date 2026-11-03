@@ -3,13 +3,13 @@ import Foundation
 /// Documentation-backed request values only; no transport or endpoint configuration.
 /// Approval of a staging environment is required before implementing a network adapter.
 public enum BackendContracts {
-    public struct ComputeWeekRequest: Encodable, Equatable, Sendable {
+    public struct ComputeWeekRequest: Codable, Equatable, Sendable {
         public let householdID: String
         public let weekStart: String?
         public init(householdID: String, weekStart: String? = nil) { self.householdID = householdID; self.weekStart = weekStart }
         enum CodingKeys: String, CodingKey { case householdID = "household_id", weekStart = "week_start" }
     }
-    public struct ApproveRequest: Encodable, Equatable, Sendable {
+    public struct ApproveRequest: Codable, Equatable, Sendable {
         public let requestID: String
         public let amountCents: Int64
         public let overrideReason: String?
@@ -26,9 +26,13 @@ public enum BackendContracts {
         }
     }
     public static func decodeWeek(_ data: Data) throws -> WeekResponse {
-        struct Envelope: Decodable { let result: WeekResponse }
-        if let wrapped = try? JSONDecoder().decode(Envelope.self, from: data) { return wrapped.result }
-        return try JSONDecoder().decode(WeekResponse.self, from: data)
+        let decoder = JSONDecoder()
+        let record = try decoder.decode(APIRecord.self, from: data)
+        // Envelope errors/nulls must never fall back to a coincidental direct success.
+        if record.fields.keys.contains("result") || record.fields.keys.contains("error") {
+            return try decoder.decode(OperationResponse<WeekResponse>.self, from: data).requireResult()
+        }
+        return try decoder.decode(WeekResponse.self, from: data)
     }
 }
 
