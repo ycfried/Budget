@@ -909,6 +909,64 @@ async function refresh() {
       const hl = $('heldList'); if (hl) hl.innerHTML = '<p class="error">Could not load held refunds. Try again.</p>';
     }
   }
+  // Possible duplicates (admin only, Money tab). Reads pending
+  // duplicate_candidates + both transactions per pair; Same purchase
+  // and Separate both go through resolve_duplicate_candidate, which
+  // never deletes a row. Until dedupe-review-queue.sql is applied
+  // live this shows a load error, never an empty list.
+  const dedupeCard = $('section-dedupe');
+  if (dedupeCard) dedupeCard.style.display = household.role === 'admin' ? '' : 'none';
+  if (household.role === 'admin') {
+    try {
+      const { data: candRows, error: candErr } = await supabase.from('duplicate_candidates')
+        .select('id, canonical_transaction_id, duplicate_transaction_id, reason, merchant_a, merchant_b')
+        .eq('household_id', household.household_id).eq('status', 'pending').order('created_at', { ascending: true }).limit(100);
+      if (candErr) throw candErr;
+      const dl = $('dedupeList');
+      if (dl) {
+        const frag = document.createDocumentFragment();
+        if (!(candRows ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No possible duplicates waiting.'; frag.appendChild(p); }
+        for (const c of candRows ?? []) {
+          const { data: txRows } = await supabase.from('transactions')
+            .select('id, merchant, amount_cents, date, card_suffix, source, excluded')
+            .in('id', [c.canonical_transaction_id, c.duplicate_transaction_id]);
+          const byId = new Map((txRows ?? []).map((t) => [t.id, t]));
+          const keep = byId.get(c.canonical_transaction_id);
+          const dup = byId.get(c.duplicate_transaction_id);
+          const wrap = document.createElement('div'); wrap.className = 'bank-row';
+          const info = document.createElement('div'); info.className = 'bank-info';
+          const k = document.createElement('div'); k.textContent = keep ? `Keep: ${keep.merchant} · ${formatCents(keep.amount_cents)} · ${keep.date} · ••${keep.card_suffix} (${keep.source})` : 'Keep: transaction not found'; info.appendChild(k);
+          const d = document.createElement('div'); d.textContent = dup ? `Possible duplicate: ${dup.merchant} · ${formatCents(dup.amount_cents)} · ${dup.date} · ••${dup.card_suffix} (${dup.source})` : 'Possible duplicate: transaction not found'; info.appendChild(d);
+          wrap.appendChild(info);
+          const aliasLabel = document.createElement('label'); aliasLabel.className = 'muted small';
+          const aliasBox = document.createElement('input'); aliasBox.type = 'checkbox'; aliasBox.setAttribute('aria-label', 'Remember these merchant names as the same merchant for future review');
+          aliasLabel.appendChild(aliasBox); aliasLabel.appendChild(document.createTextNode(' Remember as same merchant'));
+          wrap.appendChild(aliasLabel);
+          const sameBtn = document.createElement('button'); sameBtn.className = 'btn btn-small btn-primary'; sameBtn.type = 'button'; sameBtn.textContent = 'Same purchase';
+          sameBtn.addEventListener('click', async () => {
+            if (!(await showConfirm('Same purchase', 'Keep one transaction and exclude the other from counts? Neither row is deleted.', 'Same purchase'))) return;
+            sameBtn.disabled = true;
+            const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'merge', p_note: '', p_remember_alias: aliasBox.checked });
+            if (error) { console.warn('resolve_duplicate_candidate failed:', error.message); sameBtn.disabled = false; await showAlert('Could not resolve', 'Could not resolve this pair. Try again.'); } else await refresh();
+          });
+          wrap.appendChild(sameBtn);
+          const sepBtn = document.createElement('button'); sepBtn.className = 'btn btn-small'; sepBtn.type = 'button'; sepBtn.textContent = 'Separate';
+          sepBtn.addEventListener('click', async () => {
+            if (!(await showConfirm('Separate purchases', 'Keep both transactions and never flag this pair again?', 'Separate'))) return;
+            sepBtn.disabled = true;
+            const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'separate', p_note: '', p_remember_alias: false });
+            if (error) { console.warn('resolve_duplicate_candidate failed:', error.message); sepBtn.disabled = false; await showAlert('Could not resolve', 'Could not resolve this pair. Try again.'); } else await refresh();
+          });
+          wrap.appendChild(sepBtn);
+          frag.appendChild(wrap);
+        }
+        dl.replaceChildren(frag);
+      }
+    } catch (e) {
+      console.warn('dedupe read failed:', e);
+      const dl = $('dedupeList'); if (dl) dl.innerHTML = '<p class="error">Could not load possible duplicates. The review tables may not be live yet — try again after the dedupe SQL is applied.</p>';
+    }
+  }
   // Week history display (History tab) — READ-ONLY, from week_closes +
   // surplus_releases. The client never recomputes a week.
   try {
@@ -1267,7 +1325,7 @@ async function autoSyncIfWebhookPending() {
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
   purchases: ['section-manual', 'section-csv', 'section-transactions'],
-  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration'],
+  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
   activity: ['section-activity', 'section-week-history'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
@@ -1312,7 +1370,7 @@ function showView(name, opts = {}) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-restoration') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
