@@ -12,6 +12,18 @@
 // left with no members (its rows cascade-delete under the schema FKs),
 // (3) the caller's auth user via the admin API. Nothing else is deleted,
 // and no other user's data is touched.
+//
+// FAILURE SAFETY (Round 3, bug 9): the old version swallowed the
+// household-cleanup error and returned a generic error after the
+// membership was already deleted, leaving an orphaned auth account
+// with no household. Two changes fix that class: (a) the FK
+// migration (delete-account-fk-migration.sql) re-points every
+// user-referencing history column to ON DELETE SET NULL, so the
+// auth-user delete is no longer blocked by the caller's own history
+// rows; (b) this function now restores the membership rows if any
+// later step fails, and reports the failing step instead of a
+// generic error, so a failure leaves the account intact and
+// diagnosable instead of half-deleted.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
@@ -45,25 +57,45 @@ Deno.serve(async (req) => {
     // Admin client (service role) for the deletes below.
     const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: memberships, error: memErr } = await admin
-      .from('household_members').select('household_id').eq('user_id', user.id);
-    if (memErr) return json({ error: 'could not delete account' }, 500);
+      .from('household_members').select('household_id, role').eq('user_id', user.id);
+    if (memErr) return json({ error: 'could not delete account', step: 'membership-read' }, 500);
     const householdIds = (memberships ?? []).map((m) => m.household_id);
+    // Restore helper: if a later step fails, put the membership
+    // rows back so the account is intact, not half-deleted.
+    const restoreMemberships = async () => {
+      // Per-row inserts, not one upsert: if one household is already
+      // gone, its row fails alone instead of failing the whole batch.
+      for (const m of memberships ?? []) {
+        const { error } = await admin.from('household_members')
+          .insert({ household_id: m.household_id, user_id: user.id, role: m.role });
+        if (error) console.error('delete-account: membership restore failed for household', m.household_id, error.message);
+      }
+    };
+    const fail = async (step: string, message: string) => {
+      console.error(`delete-account failed at ${step}:`, message);
+      await restoreMemberships();
+      return json({ error: 'could not delete account', step }, 500);
+    };
     const { error: delMemErr } = await admin
       .from('household_members').delete().eq('user_id', user.id);
-    if (delMemErr) return json({ error: 'could not delete account' }, 500);
-    // Delete any household left with no members.
+    if (delMemErr) return json({ error: 'could not delete account', step: 'membership-delete' }, 500);
+    // Delete any household left with no members. A failure here used
+    // to be swallowed; it is now fatal, because leaving an emptied
+    // household behind with a live invite code would expose its data
+    // to whoever joins next. Memberships are restored instead.
     for (const hid of householdIds) {
       const { data: remaining } = await admin
         .from('household_members').select('user_id').eq('household_id', hid).limit(1);
       if (!remaining?.length) {
-        await admin.from('households').delete().eq('id', hid);
+        const { error: delHhErr } = await admin.from('households').delete().eq('id', hid);
+        if (delHhErr) return await fail('household-cleanup', delHhErr.message);
       }
     }
     const { error: delUserErr } = await admin.auth.admin.deleteUser(user.id);
-    if (delUserErr) return json({ error: 'could not delete account' }, 500);
+    if (delUserErr) return await fail('auth-delete', delUserErr.message);
     return json({ deleted: true });
   } catch (e) {
     console.error('delete-account failed:', String((e as Error)?.message ?? e));
-    return json({ error: 'could not delete account' }, 500);
+    return json({ error: 'could not delete account', step: 'unexpected' }, 500);
   }
 });

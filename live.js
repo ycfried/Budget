@@ -1720,7 +1720,14 @@ async function deleteAccountFlow() {
   if (!(await showConfirm('Delete account', 'Delete your account and remove yourself from this household? If you are the last member, the household is deleted too. This cannot be undone.', 'Delete account'))) return;
   if (!(await showConfirm('Delete everything?', 'This permanently deletes your account and, if you are the last member, the whole household. Are you sure?', 'Yes, delete everything'))) return;
   const out = await callFn('delete-account', {});
-  if (out.error || !out.deleted) { console.warn('delete-account failed:', out.error); await showAlert('Could not delete account', 'Could not delete your account. Try again.'); return; }
+  if (out.error || !out.deleted) {
+    console.warn('delete-account failed:', out.error, out.step);
+    // Surface the failing step (Round 3, bug 9): a generic error hid
+    // a half-deleted account. Nothing is deleted on failure now —
+    // the server restores the membership first.
+    await showAlert('Could not delete account', `Could not delete your account. Nothing was deleted — try again.${out.step ? ` (step: ${out.step})` : ''}`);
+    return;
+  }
   await supabase.auth.signOut(); household = null;
   if ($('authEmail')) $('authEmail').value = '';
   if ($('authPassword')) $('authPassword').value = '';
@@ -1915,6 +1922,7 @@ $('charityBackBtn')?.addEventListener('click', () => setAddForm(null));
 // entry, so the gift posts as verified (Given) at once and never
 // enters weekly spending. Duplicate warning mirrors the manual form.
 let giftSubmitting = false;
+let lastGiftAttempt = null; // { key, merchant, amount, date, suffix } for gift idempotency retries
 $('charityGiftForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   // Same double-tap guard as the manual form: the duplicate check
@@ -1943,7 +1951,15 @@ $('charityGiftForm')?.addEventListener('submit', async (e) => {
   // guard against accidental re-entry, not the hash.
   const nonce = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
   const hash = await sha(`charity|${f.date.value}|${merchant}|${amount}|${suffix || '0000'}|${nonce}`);
-  const { error } = await supabase.rpc('record_charity_gift', { p_household_id: household.household_id, p_merchant: merchant, p_amount_cents: amount, p_date: f.date.value, p_card_suffix: suffix || '0000', p_note: f.note.value.trim(), p_dedupe_hash: hash });
+  // Client-key idempotency (Round 3, bug 8 server half): a retry of
+  // the same intended gift reuses its key, so the server replays
+  // the original row instead of recording a second gift. A fresh
+  // submit gets a fresh key, so real identical gifts stay distinct.
+  const giftKey = (lastGiftAttempt && lastGiftAttempt.merchant === merchant && lastGiftAttempt.amount === amount && lastGiftAttempt.date === f.date.value && lastGiftAttempt.suffix === (suffix || '0000'))
+    ? lastGiftAttempt.key
+    : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+  lastGiftAttempt = { key: giftKey, merchant, amount, date: f.date.value, suffix: suffix || '0000' };
+  const { error } = await supabase.rpc('record_charity_gift', { p_household_id: household.household_id, p_merchant: merchant, p_amount_cents: amount, p_date: f.date.value, p_card_suffix: suffix || '0000', p_note: f.note.value.trim(), p_dedupe_hash: hash, p_client_key: giftKey });
   if (error) {
     console.warn('record_charity_gift failed:', error.message);
     const notLive = /could not find|does not exist|schema cache/i.test(error.message || '');
@@ -1951,7 +1967,7 @@ $('charityGiftForm')?.addEventListener('submit', async (e) => {
     done();
     return;
   }
-  f.reset(); setAddForm(null); done();
+  f.reset(); setAddForm(null); lastGiftAttempt = null; done();
   showToast(`Gift recorded: ${formatCents(amount)} to ${merchant}.`);
   await refresh();
 });
