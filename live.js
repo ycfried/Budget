@@ -1010,6 +1010,8 @@ $('csvFile')?.addEventListener('change', async (e) => {
 $('csvConfirmBtn')?.addEventListener('click', async () => {
   const msg = $('csvMsg');
   if (!pendingCsvRows.length) { showToast('Nothing new to import.'); return; }
+  // R1 busy control: block repeat taps while the import is inserting.
+  const confirmBtnTop = $('csvConfirmBtn'); if (confirmBtnTop) confirmBtnTop.disabled = true;
   const rows = pendingCsvRows;
   const inserts = [];
   for (const r of rows) {
@@ -1019,7 +1021,7 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
       kind: r.amountCents < 0 ? 'refund' : 'charge', dedupe_hash: hash });
   }
   const { data, error } = await supabase.from('transactions').insert(inserts).select('id');
-  if (error) { console.warn('csv insert failed:', error.message); showToast('Could not import. Nothing was claimed as imported — try again.', true); return; }
+  if (error) { console.warn('csv insert failed:', error.message); showToast('Could not import. Nothing was claimed as imported — try again.', true); if (confirmBtnTop) confirmBtnTop.disabled = false; return; }
   const added = data?.length ?? rows.length;
   await audit('CSV import', `${added} added, ${rows.length - added} not inserted.`);
   pendingCsvRows = [];
@@ -1101,15 +1103,19 @@ $('manualForm').addEventListener('submit', async (e) => {
     .select('merchant, amount_cents, date').eq('household_id', household.household_id)
     .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
   if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A purchase already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add anyway'))) return;
+  // R1 busy control: block repeat submits while the insert is in
+  // flight, so a double tap cannot create the purchase twice.
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
   const hash = await sha(`${f.date.value}|${merchant}|${amount}|${suffix}`);
   const { error } = await supabase.from('transactions').insert({
     household_id: household.household_id, date: f.date.value, merchant,
     amount_cents: amount, card_suffix: suffix, source: 'manual',
     state: 'provisional', kind: 'charge', dedupe_hash: hash,
   });
-  if (error) { console.warn('manual insert failed:', error.message); await showAlert('Could not save', 'Could not save this purchase. Try again.'); return; }
+  if (error) { console.warn('manual insert failed:', error.message); await showAlert('Could not save', 'Could not save this purchase. Try again.'); if (submitBtn) submitBtn.disabled = false; return; }
   await audit('Purchase added by hand', `${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)} (••${suffix}).`);
-  f.reset(); await refresh();
+  f.reset(); if (submitBtn) submitBtn.disabled = false; await refresh();
 });
 
 async function callFn(name, body) {
@@ -1491,37 +1497,50 @@ $('txSearch')?.addEventListener('input', () => {
   txSearchTimer = setTimeout(() => { refresh(); }, 250);
 });
 
-$('addTempBtn')?.addEventListener('click', async () => {
+$('addTempBtn')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
   const cents = parseDollarsStrict($('tempIncreaseInput').value);
   if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
   const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
   const sunday = new Date(ny); sunday.setDate(ny.getDate() - ny.getDay());
   const weekStart = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
+  // R1 busy control: a double tap must not add the increase twice.
+  if (btn) btn.disabled = true;
   const { error } = await supabase.rpc('add_temp_increase', { p_household_id: household.household_id, p_week_start: weekStart, p_amount_cents: cents, p_note: '' });
+  if (btn) btn.disabled = false;
   if (error) console.warn('add_temp_increase failed:', error.message);
   showToast(error ? 'Could not add the temporary increase. Try again.' : 'Temporary increase added — dashboard will reflect it on refresh.', !!error);
   if (!error) await refresh();
 });
 
-$('attestSavingsBtn')?.addEventListener('click', async () => {
+$('attestSavingsBtn')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
   const cents = parseDollarsStrict($('savingsBalanceInput').value);
   if (cents === null || cents < 0) { showToast('Enter a valid balance (empty is not 0).', true); return; }
+  // R1 busy control: block repeat taps while the record is saving.
+  if (btn) btn.disabled = true;
   const { error } = await supabase.rpc('attest_savings', { p_household_id: household.household_id, p_actual_balance_cents: cents, p_note: $('savingsNoteInput').value.trim() });
+  if (btn) btn.disabled = false;
   if (error) console.warn('attest_savings failed:', error.message);
   showToast(error ? 'Could not record the balance. Try again.' : 'Balance recorded.', !!error);
   if (!error) await refresh();
 });
 
-$('recordSavingsMovementBtn')?.addEventListener('click', async () => {
+$('recordSavingsMovementBtn')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
   const cents = parseDollarsStrict($('savingsAmountInput').value);
   if (cents === null || cents <= 0) { showToast('Enter a valid amount (must be more than 0).', true); return; }
+  // R1 busy control: block repeat taps while the movement is saving.
+  if (btn) btn.disabled = true;
   const { error } = await supabase.rpc('record_savings_entry', { p_household_id: household.household_id, p_kind: $('savingsKindInput').value, p_amount_cents: cents, p_note: $('savingsMovementNoteInput').value.trim() });
+  if (btn) btn.disabled = false;
   if (error) console.warn('record_savings_entry failed:', error.message);
   showToast(error ? 'Could not record the movement. Try again.' : 'Movement recorded.', !!error);
   if (!error) await refresh();
 });
 
-$('saveAllowanceBtn')?.addEventListener('click', async () => {
+$('saveAllowanceBtn')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
   const cents = parseDollarsStrict($('baseAllowanceInput').value);
   if (cents === null || cents < 0) { showToast('Enter a valid allowance (empty is not 0).', true); return; }
   // Allowance changes require a confirmation sheet showing old -> new.
@@ -1536,7 +1555,10 @@ $('saveAllowanceBtn')?.addEventListener('click', async () => {
     ? `Set the weekly allowance to ${formatCents(cents)}? (The current allowance could not be read, so no old value is shown.)`
     : `Change the weekly allowance from ${formatCents(oldCents)} to ${formatCents(cents)}?`, confirmLabel: 'Change allowance', cancelLabel: 'Keep current' });
   if (!confirmed) return;
+  // R1 busy control: block repeat taps while the allowance is saving.
+  if (btn) btn.disabled = true;
   const { error } = await supabase.rpc('set_base_allowance', { p_household_id: household.household_id, p_cents: cents });
+  if (btn) btn.disabled = false;
   if (error) console.warn('set_base_allowance failed:', error.message);
   showToast(error ? 'Could not save allowance. Try again.' : 'Allowance saved.', !!error);
   if (!error) await refresh();
@@ -1547,12 +1569,17 @@ $('fundAllocateForm')?.addEventListener('submit', async (e) => {
   const f = e.target;
   const cents = parseDollarsStrict(f.amount.value);
   if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
+  // R1 busy control: block repeat submits while the allocation (and
+  // any override retry) is in flight, so one tap cannot spend twice.
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
   let { error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: null });
   if (error && /insufficient fund/i.test(error.message)) {
     const reason = await showSheet({ title: 'Fund is short', message: `The fund does not cover ${formatCents(cents)}. Record it anyway with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Record anyway', cancelLabel: 'Cancel' });
-    if (reason === null) return;
+    if (reason === null) { if (submitBtn) submitBtn.disabled = false; return; }
     ({ error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: reason.trim() }));
   }
+  if (submitBtn) submitBtn.disabled = false;
   if (error) console.warn('allocate_fund failed:', error.message);
   showToast(error ? 'Could not record fund spending. Try again.' : 'Fund spending recorded.', !!error);
   if (!error) { f.reset(); await refresh(); }
@@ -1562,14 +1589,17 @@ $('fundRequestForm').addEventListener('submit', async (e) => {
   const f = e.target;
   const cents = parseDollarsStrict(f.amount.value);
   if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
+  // R1 busy control: block repeat submits while the request is saving.
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
   const { data: { user } } = await supabase.auth.getUser();
   const { error } = await supabase.from('fund_requests').insert({
     household_id: household.household_id, requested_by: user.id,
     amount_cents: cents, note: f.note.value.trim(), status: 'pending',
   });
-  if (error) { console.warn('fund request insert failed:', error.message); await showAlert('Could not save request', 'Could not save this request. Try again.'); return; }
+  if (error) { console.warn('fund request insert failed:', error.message); await showAlert('Could not save request', 'Could not save this request. Try again.'); if (submitBtn) submitBtn.disabled = false; return; }
   await audit('Extra Fund request created', `Requested ${formatCents(cents)}.`);
-  f.reset(); await refresh();
+  f.reset(); if (submitBtn) submitBtn.disabled = false; await refresh();
 });
 
 boot();
