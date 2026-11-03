@@ -277,3 +277,13 @@ pattern scan passed. These are not Xcode, Keychain, live Auth/RLS or device resu
 All runtime test data remain synthetic; no financial calculations or write APIs
 were added. All edits remain under ios/. Any new simulator build needs separate
 approval; the existing read-window approval does not authorize one.
+
+## One authorized fixture-only simulator validation — execution pending
+
+Owner explicitly approved exactly one additional run of the existing restricted
+workflow, max 25 minutes, unsigned, fixtures only, no uploads/signing/live requests,
+workflow modifications or retries. Application baseline is 251be1b; this trigger
+changes this progress record only. Default live composition remains locked and
+has no runtime project configuration/credentials. This is not approval for a live
+connection or financial writes. Results will be appended after the run completes.
+No branch push will occur while the job is running, preserving the approved SHA.
