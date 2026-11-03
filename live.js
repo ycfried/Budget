@@ -461,17 +461,28 @@ async function refresh() {
   const bd = document.getElementById('weekBreakdown');
   if (bd && currentWeekData) {
     const w = currentWeekData;
-    // Spent breakdown sums THIS WEEK ONLY (not all loaded history), and
-    // excludes excluded and reversed rows. Server charges are authoritative.
+    // Spent breakdown: server charges are authoritative. The server total
+    // mixes charges dated this week with late charges from locked weeks
+    // (A2); the panel shows those two parts separately so the itemized
+    // lines always sum exactly to the server total. Excluded and
+    // reversed rows are left out. The late part is derived (server
+    // total minus dated charges minus verified refunds the server
+    // nets), because the loaded list cannot enumerate late rows on its
+    // own — it is labeled as late charges, never as dated charges.
     const counted = all.filter((t) => inThisWeek(t) && !(t.excluded === true || t.state === 'excluded') && t.state !== 'reversed');
+    const datedRows = counted.filter((t) => t.kind === 'charge' || t.kind === 'fund_charge');
+    const datedAmt = (t) => (t.amount_cents ?? 0) - (t.fund_allocation_cents ?? 0);
     const bySrc = {};
-    for (const t of counted) bySrc[t.source] = (bySrc[t.source] ?? 0) + t.amount_cents;
+    for (const t of datedRows) bySrc[t.source] = (bySrc[t.source] ?? 0) + datedAmt(t);
+    const datedTotal = datedRows.reduce((s, t) => s + datedAmt(t), 0);
     const refundTotal = counted.filter((t) => t.kind === 'refund').reduce((s, t) => s + t.amount_cents, 0);
+    const verifiedRefundNet = counted.filter((t) => t.kind === 'refund' && t.state === 'verified').reduce((s, t) => s + t.amount_cents, 0);
+    const lateTotal = (w.chargesCents ?? 0) - datedTotal - verifiedRefundNet;
     const panels = {
       allowance: txReadFailed ? 'Could not load purchases for the breakdown.'
         : `<strong>Weekly allowance ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}</strong> plus ${formatCents(w.tempCents)} in temporary increases this week. Carried debt ${formatCents(w.carriedDebtCents)} comes off the top, leaving ${formatCents(w.baseAvailableCents)} of base spending room.`,
       spent: txReadFailed ? 'Could not load this week\'s purchases for the breakdown.'
-        : `<strong>This week only — charges ${formatCents(w.chargesCents)}:</strong><br>${Object.entries(bySrc).map(([s2, v]) => `${esc(sourceLabel(s2))}: ${formatCents(v)}`).join(' · ') || 'nothing yet'}<br>Refunds in this week\'s list: ${formatCents(refundTotal)} · Excluded purchases kept out of the math: ${all.filter((t) => t.excluded === true || t.state === 'excluded').length}`,
+        : `<strong>Charges ${formatCents(w.chargesCents)} this week:</strong><br>Dated this week — ${Object.entries(bySrc).map(([s2, v]) => `${esc(sourceLabel(s2))}: ${formatCents(v)}`).join(' · ') || 'nothing yet'} (total ${formatCents(datedTotal)})<br>Late charges from earlier locked weeks: ${formatCents(lateTotal)}<br>Refunds in this week\'s list: ${formatCents(refundTotal)} · Excluded purchases kept out of the math: ${all.filter((t) => t.excluded === true || t.state === 'excluded').length}`,
       debt: w.carriedDebtCents > 0
         ? `<strong>${formatCents(w.carriedDebtCents)} carried over</strong> from earlier weeks — it comes off the top of this week's allowance before anything else.`
         : 'No carried-over overspending: this week starts with the full allowance.',
