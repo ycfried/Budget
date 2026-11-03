@@ -75,12 +75,11 @@
       <p id="weekError" class="result error hidden"></p>
       <p id="weekEmptyHint" class="muted small hidden">No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account on the Funds tab.</p>
     </div>
-    <p class="muted small stat-hint" id="section-hint">Tap a number for details.</p>
+    <p class="muted small stat-hint" id="section-hint">Tap a card for its breakdown.</p>
     <div class="grid" id="section-stats">
-      <div class="card stat-card" data-stat="allowance" role="button" tabindex="0" aria-label="Show breakdown for Allowance"><div class="kicker">Allowance</div><div class="num" id="statAllowance">…</div></div>
-      <div class="card stat-card" data-stat="spent" role="button" tabindex="0" aria-label="Show breakdown for Spent"><div class="kicker">Spent</div><div class="num" id="statSpent">…</div></div>
-      <div class="card stat-card" data-stat="debt" role="button" tabindex="0" aria-label="Show breakdown for Carried over"><div class="kicker">Carried over</div><div class="num" id="statDebt">…</div></div>
-      <div class="card stat-card" data-stat="outgoing" role="button" tabindex="0" aria-label="Show breakdown for Outgoing debt"><div class="kicker">Outgoing debt</div><div class="num" id="statOutgoing">…</div></div>
+      <div class="card stat-card" data-home-card="weekly" role="button" tabindex="0" aria-label="Show Weekly Budget breakdown"><div class="kicker">Weekly Budget</div><div class="num" id="homeWeeklyPrimary">…</div><div class="muted small" id="homeWeeklySecondary">…</div></div>
+      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><div class="kicker">Charity · November 2026 onward</div><div class="num" id="homeCharityPrimary">—</div><div class="muted small" id="homeCharitySecondary">Charity tracking arrives with the next slice.</div></div>
+      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary">…</div><div class="muted small" id="homeFundSecondary">…</div></div>
     </div>
 
     <div class="card" id="section-recent">

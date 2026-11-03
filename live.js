@@ -170,6 +170,7 @@ let weekCloseRan = false; // week-close runs itself once per session (admin only
 let lastRefreshAt = 0; // tab taps refresh in the background, throttled
 let refreshInFlight = 0; // R1: overlapping refreshes share one Updating… state
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
+let currentFundData = null; // last fund aggregates, for the Extra Fund card sheet
 // Generic display labels for transaction sources. Database values are
 // unchanged (e.g. 'plaid'); only what the user sees is bank-agnostic.
 const sourceLabel = (s) => ({ plaid: 'Bank', manual: 'By hand', csv: 'File', amex_alert: 'Email alert' }[s] ?? String(s));
@@ -250,8 +251,8 @@ async function refresh() {
   const clearWeekNumbers = () => {
     $('weekLabel').textContent = 'Week numbers unavailable';
     $('weeklyAvailable').textContent = '—';
-    $('statAllowance').textContent = '—'; $('statSpent').textContent = '—';
-    $('statDebt').textContent = '—'; $('statOutgoing').textContent = '—';
+    $('homeWeeklyPrimary').textContent = '—'; $('homeWeeklySecondary').textContent = '—';
+    $('homeFundPrimary').textContent = '—'; $('homeFundSecondary').textContent = '—';
     const bar = document.getElementById('weekProgressBar');
     if (bar) { bar.style.width = '0%'; bar.parentElement?.classList.remove('over'); }
     const pt = document.getElementById('weekProgressText');
@@ -284,10 +285,17 @@ async function refresh() {
       if (weekStart) $('weekLabel').textContent = `Week of ${fmtLong(weekStart)} (Sun–Sat)`;
       $('weeklyAvailable').innerHTML = formatCentsHtml(avail);
       $('weeklyAvailable').classList.toggle('negative', avail < 0);
-      $('statAllowance').innerHTML = formatCentsHtml(baseAllowanceCents ?? baseAvailable);
-      $('statSpent').innerHTML = formatCentsHtml(charges);
-      $('statDebt').innerHTML = formatCentsHtml(carried);
-      $('statOutgoing').innerHTML = formatCentsHtml(outgoingDebt);
+      // R5: Weekly Budget card — amount left primary, spent underneath.
+      // Negative remaining reads "Over budget by $X", never a negative
+      // amount presented as money left. Allowance and carried debt
+      // stay inside the tap-to-open breakdown, not on the card.
+      const wp = $('homeWeeklyPrimary');
+      if (wp) {
+        if (avail < 0) { wp.textContent = `Over budget by ${formatCents(Math.abs(avail))}`; }
+        else wp.innerHTML = formatCentsHtml(avail);
+      }
+      const ws = $('homeWeeklySecondary');
+      if (ws) ws.textContent = `Spent ${formatCents(charges)}`;
       currentWeekData = { weekStart, baseAvailableCents: baseAvailable, tempCents: tempC,
         carriedDebtCents: carried, chargesCents: charges, availableCents: avail,
         outgoingDebtCents: outgoingDebt, weekLocked: !!r.week_locked,
@@ -841,6 +849,10 @@ async function refresh() {
     const heldRows = (releases ?? []).filter((r) => r.status === 'held');
     const heldTotal = heldRows.reduce((t, r) => t + (r.surplus_cents || 0), 0);
     const shortfall = hh?.fund_shortfall_cents ?? 0;
+    currentFundData = { available, pending, releasedTotal, spent, shortfall };
+    const fp = $('homeFundPrimary'); if (fp) fp.innerHTML = formatCentsHtml(available);
+    const fsec = $('homeFundSecondary');
+    if (fsec) fsec.textContent = pending > 0 ? `Pending ${formatCents(pending)}` : shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : 'Spendable now';
     const fs = $('fundSummary');
     if (fs) fs.innerHTML = `<p class="fund-balance">Available <strong>${formatCents(available)}</strong></p>
       <p class="muted small">Pending (not yet released): ${formatCents(pending)}</p>
@@ -1438,18 +1450,23 @@ document.getElementById('menuPasswordBtn')?.addEventListener('click', async () =
   if (error) console.warn('password change failed:', error.message);
   await showAlert(error ? 'Could not change password' : 'Password changed', error ? 'Could not change your password. Try again.' : 'Your password is updated.');
 });
-// Stat cards: tap a number to see that number's own breakdown.
-document.querySelectorAll('[data-stat]').forEach((el) => el.addEventListener('click', () => {
-  const bd = document.getElementById('weekBreakdown');
-  if (!bd) return;
-  const stat = el.dataset.stat;
-  if (!bd.classList.contains('hidden') && bd.dataset.stat === stat) { bd.classList.add('hidden'); return; }
-  bd.dataset.stat = stat;
-  try {
-    const panels = JSON.parse(bd.dataset.panels || '{}');
-    if (panels[stat]) bd.innerHTML = `<p class="small">${panels[stat]}</p>`;
-  } catch (e) { /* panel text refreshes on next data load */ }
-  bd.classList.remove('hidden');
+// R5 + R6: Home cards — tap a card for a focused titled bottom
+// sheet over the stationary Home screen. Opening or closing a sheet
+// writes nothing and triggers no sync; it only reads the numbers
+// already loaded by refresh().
+document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListener('click', async () => {
+  const kind = el.dataset.homeCard;
+  if (kind === 'weekly') {
+    const w = currentWeekData;
+    if (!w) { await showAlert('Weekly Budget', 'Weekly numbers are not loaded yet. Try again in a moment.'); return; }
+    await showSheet({ title: 'Weekly Budget', message: `Left: ${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}\nSpent: ${formatCents(w.chargesCents)}\nAllowance: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}\nCarried debt: ${formatCents(w.carriedDebtCents)}\nTemporary increase: ${formatCents(w.tempCents)}\nOutgoing debt: ${formatCents(w.outgoingDebtCents)}`, confirmLabel: 'Close' });
+  } else if (kind === 'fund') {
+    const f = currentFundData;
+    if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
+    await showSheet({ title: 'Extra Fund', message: `Spendable available: ${formatCents(f.available)}\nPending (not yet released): ${formatCents(f.pending)}\nReleased total: ${formatCents(f.releasedTotal)}\nSpent from fund: ${formatCents(f.spent)}\nOwed back (shortfall): ${formatCents(f.shortfall)}`, confirmLabel: 'Close' });
+  } else {
+    await showSheet({ title: 'Charity', message: 'Charity tracking (committed, given, remaining) arrives with the next slice. No charity numbers are shown until that slice is built — nothing here is estimated.', confirmLabel: 'Close' });
+  }
 }));
 // HTML form of an amount with smaller cents, for the hero and stat
 // numbers only (formatCents from the engine stays the plain-text form
