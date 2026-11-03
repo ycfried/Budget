@@ -5,6 +5,17 @@ commit `1d66a0f2c0750297f040fe1835108416880c138d` (includes `17601f5`).
 This review changes documentation only. No build, production read/write, staging
 connection, Supabase edit, workflow change, signing, deployment or spending occurred.
 
+## Subsequent offline milestone note
+
+The inventory below is the review at 1d66a0f, not a claim that its original
+receipt-only implementation is unchanged. Offline milestone M1 now adds typed
+transaction states/kinds, mutable synthetic transactions/requests and state/audit
+history, exact prior-state restoration, safe retry IDs and legacy-row DTOs.
+These remain PARTIAL end-to-end features: no server, matcher or financial engine
+is connected. Financial summaries stay fixed. See [implementation plan](IMPLEMENTATION_PLAN.md)
+and [current progress](../PROGRESS.md) for new code/test evidence. The prior successful
+simulator run does not verify these later UI changes.
+
 ## Evidence, precedence and status meaning
 
 Sources: the full [FINAL PDF][spec] (20 pages, including the page 9 state diagram),

@@ -22,12 +22,13 @@ final class ContractAndDisplayTests: XCTestCase {
         XCTAssertEqual(object["request_id"] as? String, "synthetic-request")
         XCTAssertEqual(object["amount_cents"] as? Int, 500)
         XCTAssertNil(object["p_request_id"])
+        XCTAssertTrue(object["override_reason"] is NSNull)
     }
     func testFiltersAndSearchAndSort() {
         let rows = Fixtures.snapshot().purchases
         var query = PurchaseQuery()
         query.filter = .pending
-        XCTAssertEqual(query.apply(to: rows).count, 3)
+        XCTAssertEqual(query.apply(to: rows).map(\.id), ["sample-4"])
         query.filter = .review
         XCTAssertEqual(query.apply(to: rows).map(\.id), ["sample-3"])
         query.filter = .all; query.search = "maple"
@@ -51,7 +52,7 @@ final class ContractAndDisplayTests: XCTestCase {
         XCTAssertFalse(try PurchaseDate("2026-11-08").isInWeek(startingAt: start))
     }
     func testReversedIsNeverPostedAndUnknownIsVisible() throws {
-        let reversed = try XCTUnwrap(Fixtures.snapshot().purchases.last)
+        let reversed = try XCTUnwrap(Fixtures.snapshot().purchases.first(where: { $0.id == "sample-8" }))
         XCTAssertEqual(reversed.stateLabel, "Reversed")
         let data = try JSONEncoder().encode(reversed)
         let text = try XCTUnwrap(String(data: data, encoding: .utf8)).replacingOccurrences(of: "reversed", with: "new_state")

@@ -44,7 +44,7 @@ struct ActionEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section { SampleNotice(); Text("This records a sample action only. Financial summaries remain fixed.").font(.caption) }
+                Section { SampleNotice(); Text("Sample transactions and request states update locally. Financial summaries remain fixed.").font(.caption) }
                 Section(mode.title) {
                     if case .manual = mode {
                         TextField("Merchant", text: $merchant).textInputAutocapitalization(.words)
@@ -80,6 +80,7 @@ struct ActionEditor: View {
                     }.disabled(!model.canWrite)
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .modifier(ToastOverlay())
             .navigationTitle(mode.title).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }

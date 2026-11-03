@@ -3,8 +3,9 @@
 Genuine SwiftUI app and WidgetKit extension. All data is synthetic. There is no
 Supabase SDK, URLSession transport, live endpoint, integration credential, account
 login, or financial engine in the native target. The fixed financial responses
-are display fixtures; sample write actions record receipts/audit events in memory
-without recalculating balances or changing transactions. This is not a connected,
+are display fixtures; sample transaction/request actions update in-memory records and attributable
+state history without recalculating balances. Policy/fund/savings actions remain
+intent-only previews until server authority is available. This is not a connected,
 signed, or App Store ready application.
 
 ## Repository safety
@@ -78,10 +79,28 @@ The widget deep link opens Home; it carries no IDs, balances, or session secrets
 
 Select sample admin or sample member. More contains Savings, Weekly history,
 Connections, and Settings & audit. Change scenarios in Settings to inspect
-overspending, offline read-only behavior, and a failing refresh. Transient messages
+overspending, offline read-only behavior, a failing refresh, and safe retry after a
+committed sample action loses its response. Transient messages
 use the owner's blue, four-second bottom toast. All action forms are sample-only.
 Do not enter actual passwords, invite codes, account details, or financial data.
 Gmail connect is intentionally absent, preserving the later launch decision.
 
 See `PROGRESS.md`, `docs/REQUIREMENTS.md`, `docs/BACKEND_CONTRACTS.md`, and
 `docs/CLOUD_BUILD_DRAFT.md` for validation, parity gaps and the inactive CI proposal.
+
+## Offline milestone M1
+
+Typed states distinguish provisional/bank pending/posted/review/excluded/reversed/
+voided/quarantined and retain unknown server values. Purchase details refresh by
+identity and show original amount plus attributable state history. Manual entries,
+CSV sample rows, review/exclude/restore/reclassification/void and request decisions
+update local records. Manual void retains history; it does not claim to implement
+the existing backend deletion policy. Known provider events are injected through a
+mock-only test interface; no SDK or account is connected.
+
+Retrying the same operation does not duplicate a saved action. Identical-looking
+CSV rows stay distinct; separate imports are not auto-matched/deduplicated. Negative
+CSV credits require classification rather than being assumed to be refunds. No
+restoration, allocation, savings, week-close or budget engine is implemented.
+All financial summary/ledger/closed-week/restoration values remain literal fixtures.
+See docs/IMPLEMENTATION_PLAN.md for remaining milestones and approval gates.

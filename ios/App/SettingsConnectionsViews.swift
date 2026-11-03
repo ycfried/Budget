@@ -41,7 +41,7 @@ struct SettingsView: View {
                 Picker("Scenario", selection: $model.scenario) {
                     ForEach(SampleScenario.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.onChange(of: model.scenario) { _, _ in Task { await model.refresh() } }
-                Text("Offline and read-error scenarios retain the last-known sample and disable writes.").font(.caption)
+                Text("Offline/read errors retain last-known data. Lost-response mode saves once, then supports a safe retry.").font(.caption)
             }
             if model.isAdmin {
                 Section("Budget settings") {

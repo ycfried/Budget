@@ -49,6 +49,38 @@ final class HouseholdStoreTests: XCTestCase {
         XCTAssertNil(store.readError)
         XCTAssertTrue(store.canWrite)
     }
+    func testLostResponseRetryReusesIntentAndDoesNotDuplicatePurchase() async throws {
+        let service = MockHouseholdService()
+        let store = HouseholdStore(service: service)
+        await store.openSample(.admin)
+        let before = try XCTUnwrap(store.snapshot)
+        store.scenario = .responseLost
+        await store.refresh()
+        let input = try ManualPurchase(merchant: "Retry sample", amount: Money(cents: 100), date: PurchaseDate("2026-11-03"), cardSuffix: "1111")
+        let first = await store.submit(.manual(input))
+        XCTAssertFalse(first)
+        XCTAssertNotNil(store.toast)
+        XCTAssertFalse(store.submitting)
+        let retry = await store.submit(.manual(input))
+        XCTAssertTrue(retry)
+        XCTAssertEqual(store.snapshot?.purchases.count, before.purchases.count + 1)
+        XCTAssertEqual(store.snapshot?.audit.count, before.audit.count + 1)
+        XCTAssertEqual(store.sampleActions.count, 1)
+    }
+    func testFailedResponseIdentityDoesNotLeakIntoNewSession() async throws {
+        let service = MockHouseholdService()
+        let store = HouseholdStore(service: service)
+        await store.openSample(.admin)
+        store.scenario = .responseLost
+        await store.refresh()
+        let first = await store.submit(.flag(id: "sample-1", note: "sample"))
+        XCTAssertFalse(first)
+        await store.signOut()
+        await store.openSample(.member)
+        XCTAssertEqual(store.snapshot?.purchases.first?.state, .posted)
+        XCTAssertTrue(store.sampleActions.isEmpty)
+        XCTAssertNil(store.toast)
+    }
     func testLateRefreshCannotRepopulateAfterSignOut() async {
         let service = SuspendedService()
         let store = HouseholdStore(service: service)

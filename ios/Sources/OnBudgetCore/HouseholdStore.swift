@@ -19,6 +19,8 @@ public final class HouseholdStore {
     public private(set) var sampleActions: [String] = []
     private var toastTask: Task<Void, Never>?
     private var generation = 0
+    private var pendingOperation: (action: HouseholdAction, id: UUID)?
+    public private(set) var closing = false
     public private(set) var opening = false
     #if canImport(SwiftUI)
     @ObservationIgnored
@@ -28,7 +30,7 @@ public final class HouseholdStore {
         self.service = service; self.onSnapshot = onSnapshot
     }
     public func openSample(_ role: Role) async {
-        guard !opening, !loading else { return }
+        guard !opening, !loading, !closing, session == nil else { return }
         opening = true
         let current = generation
         let opened = await service.openSample(role: role)
@@ -60,24 +62,33 @@ public final class HouseholdStore {
         let current = generation
         defer { if generation == current { submitting = false } }
         do {
-            let receipt = try await service.submit(action, idempotencyKey: UUID())
+            let operation: UUID
+            if let pending = pendingOperation, pending.action == action { operation = pending.id }
+            else { operation = UUID(); pendingOperation = (action, operation) }
+            let receipt = try await service.submit(action, idempotencyKey: operation)
             guard generation == current else { return false }
+            pendingOperation = nil
             sampleActions.insert(action.label, at: 0)
             notify(receipt.message)
             await refresh()
-            return true
+            if generation == current, readError != nil { notify("Sample action saved, but refresh failed. Retry refresh before another action.") }
+            return generation == current
         } catch {
             if generation == current { notify(error.localizedDescription) }
             return false
         }
     }
     public func signOut() async {
+        guard !closing else { return }
+        closing = true
         generation += 1
+        pendingOperation = nil
         session = nil; snapshot = nil; sampleActions = []; readError = nil; scenario = .normal
         submitting = false; loading = false; toastTask?.cancel(); toast = nil
         opening = false
         onSnapshot(nil)
         await service.signOut()
+        closing = false
     }
     public func notify(_ message: String) {
         toastTask?.cancel(); toast = message
@@ -87,6 +98,6 @@ public final class HouseholdStore {
             self?.toast = nil
         }
     }
-    public var canWrite: Bool { session != nil && !opening && readError == nil && !loading && !submitting }
+    public var canWrite: Bool { session != nil && !opening && !closing && readError == nil && !loading && !submitting }
     public var isAdmin: Bool { session?.role == .admin }
 }

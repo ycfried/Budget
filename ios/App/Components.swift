@@ -49,17 +49,18 @@ struct PurchaseRow: View {
     let purchase: Purchase
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: purchase.kind == "refund" ? "arrow.uturn.backward.circle" : "bag")
+            Image(systemName: purchase.kind == .refund ? "arrow.uturn.backward.circle" : "bag")
                 .foregroundStyle(Brand.blue).frame(width: 28).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(purchase.merchant).font(.headline)
                 Text("\(purchase.date.rawValue) · ••\(purchase.cardSuffix)").font(.caption).foregroundStyle(.secondary)
-                Text("\(purchase.stateLabel) · \(purchase.kind)").font(.caption)
+                Text("\(purchase.stateLabel) · \(purchase.kind.wireValue)").font(.caption)
                 if purchase.needsReview { Label("Needs review", systemImage: "flag").font(.caption) }
             }
             Spacer(minLength: 8)
             Text(purchase.amount.formatted).monospacedDigit()
         }.accessibilityElement(children: .combine)
+            .accessibilityLabel("\(purchase.merchant), \(purchase.amount.formatted), \(purchase.stateLabel), \(purchase.date.rawValue)")
     }
 }
 struct RootView: View {
@@ -88,6 +89,7 @@ struct RootView: View {
             guard url.scheme == "onbudget-sample", url.host == "home", url.query == nil else { return }
             selectedTab = 0
         }
+        .onChange(of: model.session == nil) { _, signedOut in if signedOut { selectedTab = 0 } }
         .modifier(ToastOverlay())
     }
 }

@@ -29,32 +29,54 @@ public struct Purchase: Identifiable, Codable, Equatable, Sendable {
     public let id: String
     public let date: PurchaseDate
     public let merchant: String
-    public let amount: Money
+    public internal(set) var amount: Money
+    public let originalAmount: Money
     public let cardSuffix: String
     public let source: String
-    /// Keep unknown backend values visible rather than decoding them as 'posted'.
-    public let state: String
-    public let kind: String
-    public let excluded: Bool
-    public let needsReview: Bool
+    public internal(set) var state: TransactionState
+    public internal(set) var kind: TransactionKind
+    public internal(set) var priorState: TransactionState?
+    public internal(set) var reviewOrigin: TransactionState?
+    public internal(set) var history: [TransactionEvent]
+    public let originalPurchaseID: String?
     public let provenance: String
     public let allocation: Money
-    public var stateLabel: String {
-        if excluded { return "Excluded" }
-        switch state {
-        case "provisional": return "Pending"
-        case "verified": return "Posted"
-        case "reversed": return "Reversed"
-        default: return "Unknown (\(state))"
+    public var excluded: Bool { state == .excluded }
+    public var needsReview: Bool { state == .review }
+    public var stateLabel: String { state.label }
+    public init(id: String, date: PurchaseDate, merchant: String, amount: Money,
+        cardSuffix: String, source: String, state: String, kind: String,
+        excluded: Bool = false, needsReview: Bool = false, provenance: String,
+        allocation: Money, priorState: TransactionState? = nil,
+        originalAmount: Money? = nil, originalPurchaseID: String? = nil,
+        history: [TransactionEvent] = []) {
+        self.id = id; self.date = date; self.merchant = merchant; self.amount = amount
+        self.originalAmount = originalAmount ?? amount
+        self.cardSuffix = cardSuffix; self.source = source
+        let decoded = TransactionState(wireValue: state)
+        switch decoded {
+        case .unknown: self.state = decoded
+        default:
+            self.state = decoded.isTerminal || decoded == .quarantined ? decoded
+                : excluded ? .excluded : needsReview ? .review : decoded
         }
+        self.kind = TransactionKind(wireValue: kind); self.priorState = priorState
+        self.reviewOrigin = needsReview && decoded != .review ? decoded : nil
+        self.provenance = provenance; self.allocation = allocation
+        self.originalPurchaseID = originalPurchaseID; self.history = history
     }
 }
 public struct FundSummary: Equatable, Sendable {
     public let available, pending, released, spent, adjustments, shortfall: Money
 }
 public struct FundRequest: Identifiable, Equatable, Sendable {
-    public let id, merchant, requester, note, status: String
-    public let amount, remainder: Money
+    public let id, merchant, requester, note: String
+    public internal(set) var status: String
+    public let amount: Money
+    public internal(set) var remainder: Money
+    public var transactionID: String? = nil
+    public var decidedBy: String? = nil
+    public var approvedAmount: Money? = nil
 }
 public struct LedgerRecord: Identifiable, Equatable, Sendable {
     public let id, title, detail: String
@@ -100,15 +122,20 @@ public struct HouseholdSnapshot: Equatable, Sendable {
 }
 
 public enum PurchaseFilter: String, CaseIterable, Sendable {
-    case all = "All", pending = "Pending", posted = "Posted", refunds = "Refunds", excluded = "Excluded", review = "Review"
+    case all = "All", provisional = "Provisional", pending = "Pending", posted = "Posted"
+    case refunds = "Refunds", excluded = "Excluded", review = "Review", reversed = "Reversed", voided = "Voided", quarantined = "Quarantined"
     public func includes(_ purchase: Purchase) -> Bool {
         switch self {
         case .all: true
-        case .pending: purchase.state == "provisional" && !purchase.excluded
-        case .posted: purchase.state == "verified" && !purchase.excluded
-        case .refunds: purchase.kind == "refund"
+        case .provisional: purchase.state == .provisional
+        case .pending: purchase.state == .pending
+        case .posted: purchase.state == .posted
+        case .refunds: purchase.kind == .refund
         case .excluded: purchase.excluded
         case .review: purchase.needsReview
+        case .reversed: purchase.state == .reversed
+        case .voided: purchase.state == .voided
+        case .quarantined: purchase.state == .quarantined
         }
     }
 }
@@ -128,7 +155,7 @@ public struct PurchaseQuery: Sendable {
         return purchases.filter { purchase in
             filter.includes(purchase) && (card == "All" || purchase.cardSuffix == card)
             && (month == "All" || purchase.date.rawValue.hasPrefix(month))
-            && (kind == "All" || purchase.kind == kind)
+            && (kind == "All" || purchase.kind.wireValue == kind)
             && (weekStart == "All" || week.map { purchase.date.isInWeek(startingAt: $0) } == true)
             && (needle.isEmpty || "\(purchase.merchant) \(purchase.amount.formatted) \(purchase.date.rawValue)".localizedCaseInsensitiveContains(needle))
         }.sorted {

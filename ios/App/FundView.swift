@@ -26,6 +26,8 @@ struct FundView: View {
                             Text(request.merchant).font(.headline)
                             Text("\(request.requester) · \(request.amount.formatted) · \(request.status)")
                             if !request.note.isEmpty { Text(request.note).font(.caption) }
+                            if let approved = request.approvedAmount { Text("Approved \(approved.formatted)").font(.caption) }
+                            if let actor = request.decidedBy { Text("Decided by \(actor)").font(.caption) }
                             if request.status == "split" {
                                 Text("Closed split · remainder \(request.remainder.formatted) is not re-approvable.").font(.caption)
                             }
@@ -63,7 +65,7 @@ struct FundView: View {
             .confirmationDialog("Decline this sample request?", isPresented: Binding(get: { decline != nil }, set: { if !$0 { decline = nil } })) {
                 Button("Record sample decline", role: .destructive) {
                     guard let request = decline else { return }
-                    Task { await model.submit(.decline(requestID: request.id)); decline = nil }
+                    Task { if await model.submit(.decline(requestID: request.id)) { decline = nil } }
                 }
             }
             .refreshable { await model.refresh() }

@@ -24,7 +24,8 @@ Main baseline: `1ab8c9acd1e4df0e4f4e65e34d8540de90dfb419`.
 Xcode compilation and simulator testing are **verified**, not blocked or unrun.
 That evidence applies to the tested commit and sample workflow; it does not prove
 complete specification coverage, device signing, connected behavior or store readiness.
-No new build or test run is part of this documentation task.
+No additional cloud build is authorized. The new offline milestone below has local
+unit-test evidence only; its UI changes have not been compiled with the Apple SDK.
 
 ## Implemented foundation
 
@@ -49,9 +50,12 @@ No new build or test run is part of this documentation task.
 
 ## Functionality that remains a prototype
 
-`MockHouseholdService` returns fixed fixtures and receipts. Actions do not create
-purchases, import transactions, update request views or recalculate balances.
-Approval/decline guards are in-memory; they are not server/RLS verification.
+`MockHouseholdService` now owns mutable synthetic purchases and requests. Manual
+entries, CSV sample rows, review/exclusion/restore/reclassification/void, request
+creation and decisions visibly update those records and their local history.
+Financial dashboard/fund/savings/closed-week/restoration/held totals stay fixed.
+Allocation/policy/savings/held-release forms still record intents only. In-memory
+role/idempotency guards are not server/RLS verification.
 Authentication, household create/join, password recovery/change and account deletion
 are disconnected interfaces. Clearing the sample session does not delete an account.
 Bank/Gmail interfaces fail closed; Gmail connect is intentionally hidden per handoff.
@@ -83,7 +87,7 @@ Xcode blocker. Actual Apple compilation subsequently passed in the verified run.
   and remains unchanged. Simulator execution requires the special approved commit
   prefix. This documentation update uses a normal message and does not authorize
   or request a simulator build. GitHub may record a skipped workflow evaluation.
-- Current changes are documentation only under `ios/`. Main, web application,
+- Current offline implementation and documentation changes stay under `ios/`. Main, web application,
   Supabase, other workflows, settings and deployment integrations are untouched.
 - No production access, signing, deployment, purchases or additional builds.
   Future build executions require separate approval.
@@ -99,3 +103,48 @@ Xcode blocker. Actual Apple compilation subsequently passed in the verified run.
    bank-only native launch until the documented Gmail verification gate is satisfied.
 5. Any backend changes, workflow changes, new cloud build, spending or production
    operations remain outside the current authorization.
+
+## Offline milestone M1 — stateful workflows (after 3db3e5f)
+
+Plan: [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md). This milestone follows
+the FINAL state diagram and later owner decisions without a Swift financial engine.
+
+- Typed transaction states distinguish provisional, bank pending, posted, review,
+  excluded, reversed, voided and quarantined; unknown state/kind strings survive.
+  Legacy row DTOs map verified to posted and bank provisional to pending without
+  date-based promotion. Restores use the explicit pre-exclusion state.
+- Manual entry/CSV import append synthetic records; identical-looking rows stay
+  distinct. The same operation ID replays once; different imports are not matched.
+  Negative CSV credits are unclassified/review items, never presumed refunds.
+- Review/quarantine approval, reclassification, exclusion/restore and manual void
+  update records and attributable state history. Manual void retains the record;
+  it is not a new backend deletion policy. Provider-only test hooks can model
+  pending/posting/removal and original-versus-posted amounts; no real provider runs.
+- Fund requests appear in queues and full/split/decline decisions close them;
+  closed split remainder and concurrent one-winner decisions are tested. Only the
+  request remainder changes arithmetically; no fund balances/allocations are computed.
+- Purchase details resolve current records by ID, show original amounts/history,
+  and offer role/state-appropriate actions. Filters cover all typed states; empty,
+  opening/cleanup and keyboard-dismissal behavior and accessibility labels improved.
+- Lost-response scenario saves once and retries the same operation ID; conflicting
+  reuse is rejected. Logout clears domain, audit and operation state and blocks
+  reentry until cleanup completes. Failed forms retain input.
+- Transport-free contracts include unknown-safe legacy row decoding and the
+  required explicit null override_reason RPC argument. No networking was added.
+
+Validation: 64 local XCTest core tests passed, zero failures (Swift 6.1.2 Linux);
+final serialization check is included in the final recorded rerun. UI/Widget Swift
+syntax parsing and PBX/source/plist graph validation passed. No Xcode, simulator or
+cloud build was run for these changes. The earlier Apple simulator PASS remains
+valid for 1d66a0f only. Public compiler tooling was restored and signature-verified
+for local tests; no application/backend/provider services were connected.
+
+Still synthetic: every session/user/household, purchase/request/history event,
+financial summary, sync status and provider transition. Nothing is persisted across
+sample sign-out. No matcher, refund linkage, refund restoration, weekly accounting,
+fund/savings engine, RLS, real Auth or integration is implemented in Swift.
+
+Next safe milestone: M2 typed intent/response/error and per-source read contracts,
+followed by richer offline fixtures and coverage. Staging, policy/reversal/summary
+contracts, Apple capabilities/signing and any new cloud build remain separately
+gated. No approval is needed to reconsider already-settled financial rules.

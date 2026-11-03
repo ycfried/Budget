@@ -51,7 +51,7 @@ final class ServiceTests: XCTestCase {
         let service = MockHouseholdService()
         _ = await service.openSample(role: .admin)
         do { _ = try await service.submit(.approve(requestID: "split-sample", amount: Money(cents: 100), overrideReason: ""), idempotencyKey: UUID()); XCTFail("Split remainder must remain closed") }
-        catch { XCTAssertEqual(error as? ServiceError, .invalidRequest) }
+        catch { XCTAssertEqual(error as? ServiceError, .alreadySubmitted) }
     }
     func testOverapprovalAndInvalidAmountRejected() async {
         let service = MockHouseholdService()

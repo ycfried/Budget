@@ -15,11 +15,13 @@ public enum Fixtures {
                 purchase("sample-1", "2026-11-02", "Maple Market", 4_250, "1111", "plaid", "verified"),
                 purchase("sample-2", "2026-11-02", "Harbor Café", 1_875, "2222", "amex_alert", "provisional"),
                 purchase("sample-3", "2026-11-01", "Trail Supply", 8_000, "1111", "manual", "provisional", review: true),
-                purchase("sample-4", "2026-10-31", "Maple Market refund", -1_500, "1111", "plaid", "provisional", kind: "refund"),
+                purchase("sample-4", "2026-10-31", "Maple Market refund", -1_500, "1111", "plaid", "pending", kind: "refund"),
                 purchase("sample-5", "2026-10-30", "Card payment", -25_000, "1111", "plaid", "verified", kind: "payment"),
                 purchase("sample-6", "2026-10-29", "Rewards credit", -500, "1111", "plaid", "verified", kind: "cashback"),
                 purchase("sample-7", "2026-10-28", "Duplicate sample", 1_000, "2222", "manual", "excluded", excluded: true),
-                purchase("sample-8", "2026-10-27", "Reversed hold", 6_000, "1111", "plaid", "reversed")
+                purchase("sample-8", "2026-10-27", "Reversed hold", 6_000, "1111", "plaid", "reversed"),
+                purchase("sample-9", "2026-10-26", "Quarantined sample", 900, "2222", "amex_alert", "quarantined"),
+                purchase("sample-10", "2026-10-25", "Voided sample", 900, "2222", "manual", "voided")
             ],
             fund: FundSummary(available: Money(cents: 13_000), pending: Money(cents: 7_500),
                 released: Money(cents: 25_000), spent: Money(cents: 12_000), adjustments: Money(cents: 0), shortfall: Money(cents: 0)),
@@ -52,6 +54,7 @@ public enum Fixtures {
         excluded: Bool = false, review: Bool = false) -> Purchase {
         Purchase(id: id, date: try! PurchaseDate(date), merchant: name, amount: Money(cents: cents),
             cardSuffix: suffix, source: source, state: state, kind: kind, excluded: excluded, needsReview: review,
-            provenance: "Synthetic \(source) fixture. No real account or matching evidence.", allocation: Money(cents: 0))
+            provenance: "Synthetic \(source) fixture. No real account or matching evidence.", allocation: Money(cents: 0),
+            priorState: excluded ? .provisional : nil)
     }
 }
