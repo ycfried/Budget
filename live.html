@@ -137,6 +137,13 @@
         <label class="muted small">Card
           <select id="txCard" aria-label="Filter by card"><option value="all">All cards</option></select>
         </label>
+        <label class="muted small">Amount from ($)
+          <input id="txMinAmount" type="number" step="0.01" inputmode="decimal" aria-label="Minimum transaction amount">
+        </label>
+        <label class="muted small">Amount to ($)
+          <input id="txMaxAmount" type="number" step="0.01" inputmode="decimal" aria-label="Maximum transaction amount">
+        </label>
+        <p class="muted small">Amounts compare to the signed amount, and both bounds apply together with the month, card, and week filters. Leave either end blank for no limit there. A refund counts as a negative amount, so a $10 refund sits below a $0 minimum.</p>
         <label class="muted small">Sort by
           <select id="txSort" aria-label="Sort transactions">
             <option value="date-desc">Date: newest first</option>
@@ -289,6 +296,6 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=13"></script>
+<script type="module" src="live.js?v=14"></script>
 </body>
 </html>

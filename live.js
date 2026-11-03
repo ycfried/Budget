@@ -342,7 +342,17 @@ async function refresh() {
   const fmtD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const weekStartStr = fmtD(sundayD); const weekEndStr = fmtD(saturdayD);
   const inThisWeek = (t) => t.date >= weekStartStr && t.date <= weekEndStr;
-  const shown = all.filter((t) => byFilter(t) && (txMonth === 'all' || String(t.date).startsWith(txMonth)) && (txCard === 'all' || String(t.card_suffix) === txCard) && (!txWeekOnly || inThisWeek(t)) && (!q
+  // R8 amount bounds: inclusive, either end alone, applied together
+  // with the month/card/week/search filters. Bounds compare to the
+  // SIGNED amount (a $10 refund is −$10) — the signed-refund
+  // meaning the handoff doc left open, stated here rather than
+  // silently reinterpreted as absolute value. A blank or unparseable
+  // end means no limit on that side; min above max is a validation
+  // state, not an empty result.
+  const minCents = parseDollarsStrict($('txMinAmount')?.value ?? '');
+  const maxCents = parseDollarsStrict($('txMaxAmount')?.value ?? '');
+  const amountRangeInvalid = minCents !== null && maxCents !== null && minCents > maxCents;
+  const shown = amountRangeInvalid ? [] : all.filter((t) => byFilter(t) && (txMonth === 'all' || String(t.date).startsWith(txMonth)) && (txCard === 'all' || String(t.card_suffix) === txCard) && (!txWeekOnly || inThisWeek(t)) && (minCents === null || t.amount_cents >= minCents) && (maxCents === null || t.amount_cents <= maxCents) && (!q
     || t.merchant.toLowerCase().includes(q)
     || String(t.date).includes(q)
     || formatCents(t.amount_cents).toLowerCase().includes(q)));
@@ -383,7 +393,7 @@ async function refresh() {
   if (countEl) {
     const shownTotal = shown.filter((t) => !(t.excluded === true || t.state === 'excluded')).reduce((s, t) => s + t.amount_cents, 0);
     const capped = all.length >= txLimit ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
-    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)} (excluded rows not counted)`;
+    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)} (excluded rows not counted)`;
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
@@ -1507,6 +1517,15 @@ $('txSearch')?.addEventListener('input', () => {
   clearTimeout(txSearchTimer);
   txSearchTimer = setTimeout(() => { refresh(); }, 250);
 });
+// R8 amount bounds apply live, like search (debounced, not persisted
+// like month/card/sort) — typing a bound re-filters the list.
+let txAmountTimer = null;
+for (const id of ['txMinAmount', 'txMaxAmount']) {
+  document.getElementById(id)?.addEventListener('input', () => {
+    clearTimeout(txAmountTimer);
+    txAmountTimer = setTimeout(() => { refresh(); }, 250);
+  });
+}
 
 $('addTempBtn')?.addEventListener('click', async (e) => {
   const btn = e.currentTarget;
