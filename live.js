@@ -25,7 +25,7 @@
 //     content in index.html. Live styling stays under body.live / #view-app.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import { formatCents, weekStartOf, nyTodayString } from './engine.mjs';
+import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
@@ -160,7 +160,7 @@ const sha = async (text) => {
 
 let session = null;
 let household = null; // { household_id, role }
-let txFilter = 'all'; // all | pending | posted | refunds | excluded
+let txFilter = 'all'; // all | pending | posted | refunds | charity | excluded
 let txSort = localStorage.getItem('hb-tx-sort') || 'date-desc'; // date-desc | date-asc | amount-asc | amount-desc
 let txMonth = localStorage.getItem('hb-tx-month') || 'all'; // 'all' or 'YYYY-MM'
 let txCard = localStorage.getItem('hb-tx-card') || 'all'; // 'all' or card suffix
@@ -171,6 +171,13 @@ let lastRefreshAt = 0; // tab taps refresh in the background, throttled
 let refreshInFlight = 0; // R1: overlapping refreshes share one Updating… state
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
 let currentFundData = null; // last fund aggregates, for the Extra Fund card sheet
+let currentCharityData = null; // last charity aggregates, for the Charity card sheet
+// R3 nicknames: keyed by stable Plaid account id, never by suffix alone.
+// nicknameBySuffix is a display hint only, built from the same rows, and
+// drops any suffix claimed by two accounts.
+let nicknameByAccount = new Map();
+let nicknameBySuffix = new Map();
+let nicknamesLoaded = false;
 // Generic display labels for transaction sources. Database values are
 // unchanged (e.g. 'plaid'); only what the user sees is bank-agnostic.
 const sourceLabel = (s) => ({ plaid: 'Bank', manual: 'By hand', csv: 'File', amex_alert: 'Email alert' }[s] ?? String(s));
@@ -340,6 +347,7 @@ async function refresh() {
     : txFilter === 'pending' ? t.state === 'provisional'
     : txFilter === 'posted' ? t.state === 'verified'
     : txFilter === 'refunds' ? t.kind === 'refund'
+    : txFilter === 'charity' ? t.kind === 'charity'
     : txFilter === 'excluded' ? (t.excluded === true || t.state === 'excluded')
     : true;
   // This-week filter: current Sunday–Saturday in America/New_York.
@@ -405,8 +413,13 @@ async function refresh() {
     const cards = [...new Set(all.map((t) => String(t.card_suffix)))].sort();
     const cur = cards.includes(txCard) ? txCard : 'all';
     if (cur !== txCard) { txCard = cur; localStorage.setItem('hb-tx-card', cur); }
-    cardSel.innerHTML = '<option value="all">All cards</option>' + cards.map((c) =>
-      `<option value="${esc(c)}"${c === txCard ? ' selected' : ''}>••${esc(c)}</option>`).join('');
+    // R3: a nickname shows in the filter only when it was loaded from
+    // the Settings bank list (keyed by Plaid account id) and maps to
+    // exactly one suffix; ambiguous suffixes stay suffix-only.
+    cardSel.innerHTML = '<option value="all">All cards</option>' + cards.map((c) => {
+      const nick = nicknameBySuffix.get(c);
+      return `<option value="${esc(c)}"${c === txCard ? ' selected' : ''}>••${esc(c)}${nick ? ` · ${esc(nick)}` : ''}</option>`;
+    }).join('');
   }
   const thisWeekTxns = all.filter((t) => inThisWeek(t) && !(t.excluded === true || t.state === 'excluded'));
   const emptyHintEl = document.getElementById('weekEmptyHint');
@@ -432,6 +445,8 @@ async function refresh() {
     ? 'No excluded transactions. Excluded transactions are hidden from the week math but kept here so you can restore them.'
     : txFilter === 'refunds'
     ? 'No refunds in this list yet.'
+    : txFilter === 'charity'
+    ? 'No charity gifts in this list yet — record one from Add, or mark a posted donation as a gift.'
     : 'No transactions here yet — add one by hand above, or connect a bank account and sync.';
   $('txList').innerHTML = txReadFailed
     ? `<li class="tx-empty error">Could not load transactions. Check your connection and try again — nothing here is a complete list.</li>`
@@ -453,20 +468,34 @@ async function refresh() {
         // admin-only and goes through reclassify_transaction.
         const reclassBtn = !isAdmin ? ''
           : `<button class="btn btn-small" data-reclassify="${t.id}" type="button" aria-label="Reclassify ${esc(t.merchant)}">Reclassify</button>`;
-        const action = !isAdmin ? fundBtn
+        // R13: a posted charge can be marked as a charity gift (whole
+        // row only, server-guarded: posted, unexcluded, no fund part,
+        // November 2026 onward, unlocked week). A gift row itself
+        // gets no Exclude / Reclassify / Use Fund buttons — it is
+        // already outside weekly spending, and only Delete/Remove
+        // (or Restore when excluded) still applies.
+        const charityBtn = !isAdmin ? ''
+          : (t.kind === 'charge' && t.state === 'verified' && !excluded)
+          ? `<button class="btn btn-small" data-mark-charity="${t.id}" type="button" aria-label="Mark ${esc(t.merchant)} as a charity gift">Mark as charity</button>`
+          : '';
+        const cardLabel = (t.kind === 'charity' && String(t.card_suffix) === '0000') ? 'Cash / no card' : `••${esc(t.card_suffix)}`;
+        const kindLabel = t.kind === 'refund' ? 'Refund' : t.kind === 'charity' ? 'Charity gift' : 'Transaction';
+        const action = !isAdmin ? (t.kind === 'charity' ? '' : fundBtn)
           : excluded
           ? `<div class="btn-row"><button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${deleteBtn} ${reclassBtn}</div>`
-          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${reclassBtn} ${fundBtn}</div>`;
+          : t.kind === 'charity'
+          ? `<div class="btn-row">${deleteBtn}</div>`
+          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${reclassBtn} ${charityBtn} ${fundBtn}</div>`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
         return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
         <div class="tx-line2">${statePill(t, excluded)}
         <span class="pill">${esc(sourceLabel(t.source))}</span>
-        <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span> <span class="muted small">Tap for detail ▾</span></div></div>
+        <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span> <span class="muted small">Tap for detail ▾</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
-          <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${t.kind === 'refund' ? 'Refund' : 'Transaction'})</p>
+          <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${kindLabel})</p>
           <p class="small muted">Date: ${fmtLong(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
-          Card: ••${esc(t.card_suffix)} · Source: ${esc(sourceLabel(t.source))} · Status: ${stateWord(t, excluded)}<br>
-          ${excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : 'This transaction counts toward its week unless excluded.'}</p>
+          Card: ${cardLabel} · Source: ${esc(sourceLabel(t.source))} · Status: ${stateWord(t, excluded)}<br>
+          ${t.kind === 'charity' ? 'This gift is outside weekly spending and counts toward charity given once posted.' : excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : 'This transaction counts toward its week unless excluded.'}</p>
           <div>${action}</div>
         </div></li>`;
       }).join('')
@@ -580,6 +609,20 @@ async function refresh() {
     const { error } = await supabase.rpc('reclassify_transaction', { txn_id: b.dataset.reclassify, new_kind: newKind, reason: reason.trim() });
     if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', 'Could not reclassify this transaction. Try again.'); return; }
     await audit('Transaction reclassified', `${row ? row.merchant : 'Transaction'} reclassified to ${newKind} — reason: ${reason.trim()}.`);
+    await refresh();
+  }));
+  document.querySelectorAll('[data-mark-charity]').forEach((b) => b.addEventListener('click', async () => {
+    const row = all.find((t) => t.id === b.dataset.markCharity);
+    if (!row || !(await showConfirm('Mark as charity gift', `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`, 'Mark as charity'))) return;
+    const { error } = await supabase.rpc('mark_transaction_charity', { p_transaction_id: b.dataset.markCharity });
+    if (error) {
+      console.warn('mark_transaction_charity failed:', error.message);
+      const refusal = /locked|fund|posted|charge|November 2026|excluded/i.test(error.message || '');
+      if (refusal) await showAlert('Cannot mark as charity', error.message);
+      else showToast(/could not find|does not exist|schema cache/i.test(error.message || '') ? 'Charity isn\'t live yet — the database step still needs approval.' : 'Could not mark this as charity. Try again.', true);
+      return;
+    }
+    showToast(`Marked as charity gift: ${formatCents(row.amount_cents)} to ${row.merchant}.`);
     await refresh();
   }));
   document.querySelectorAll('[data-delete-tx]').forEach((b) => b.addEventListener('click', async () => {
@@ -706,6 +749,23 @@ async function refresh() {
       if (acctsErr) { console.warn('plaid_accounts read failed (items still shown):', acctsErr.message); }
       else acctRows = accts ?? [];
     }
+    // R3: load nicknames (gracefully absent until r3-account-nicknames.sql
+    // is applied live — the bank list still renders, without nicknames).
+    nicknameByAccount = new Map(); nicknameBySuffix = new Map(); nicknamesLoaded = false;
+    try {
+      const { data: nicks, error: nickErr } = await supabase.from('account_nicknames')
+        .select('plaid_item_id, plaid_account_id, card_suffix, nickname').eq('household_id', household.household_id);
+      if (nickErr) throw nickErr;
+      const suffixCounts = new Map();
+      for (const n of nicks ?? []) {
+        nicknameByAccount.set(`${n.plaid_item_id}|${n.plaid_account_id}`, n.nickname);
+        if (n.card_suffix) suffixCounts.set(n.card_suffix, (suffixCounts.get(n.card_suffix) ?? 0) + 1);
+      }
+      for (const n of nicks ?? []) {
+        if (n.card_suffix && suffixCounts.get(n.card_suffix) === 1) nicknameBySuffix.set(n.card_suffix, n.nickname);
+      }
+      nicknamesLoaded = true;
+    } catch (e) { console.warn('nicknames read failed (table may not be live yet):', e.message); }
     const syncTimes = itemRows.map((i) => i.last_sync_at).filter(Boolean).sort();
     bankLastSyncAt = syncTimes.length ? syncTimes[syncTimes.length - 1] : null;
     const syncLine = $('bankSyncLine');
@@ -742,8 +802,25 @@ async function refresh() {
         if (accts.length) {
           for (const acct of accts) {
             const line = document.createElement('div'); line.className = 'muted small';
-            line.textContent = `${acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}${acct.type ? ` · ${acct.type}` : ''}${acct.subtype ? ` (${acct.subtype})` : ''}`;
+            const nick = nicknameByAccount.get(`${item.plaid_item_id}|${acct.plaid_account_id}`);
+            line.textContent = `${nick ? `${nick} · ` : ''}${acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}${acct.type ? ` · ${acct.type}` : ''}${acct.subtype ? ` (${acct.subtype})` : ''}`;
             info.appendChild(line);
+            // R3: nickname editing lives in Settings, admin-only, via
+            // the RPC (never a direct table write). Until the R3 SQL
+            // is applied, the button explains that instead of failing.
+            if (household.role === 'admin') {
+              const nickBtn = document.createElement('button'); nickBtn.className = 'btn btn-small'; nickBtn.type = 'button';
+              nickBtn.textContent = nick ? 'Edit nickname' : 'Add nickname';
+              nickBtn.setAttribute('aria-label', `Set a nickname for ${acct.name || 'this account'}`);
+              nickBtn.addEventListener('click', async () => {
+                if (!nicknamesLoaded) { await showAlert('Nicknames not live yet', 'Nicknames need the R3 database step applied first. Until then, accounts show their bank names.'); return; }
+                const value = await showSheet({ title: 'Nickname', message: 'Give this account a short name (up to 40 characters). Leave it blank to remove the nickname. The nickname is only a label — it never changes bank links, matching, or week math.', inputLabel: 'Nickname', inputValue: nick ?? '', confirmLabel: 'Save', cancelLabel: 'Cancel' });
+                if (value === null) return;
+                const { error } = await supabase.rpc('set_account_nickname', { p_household_id: household.household_id, p_plaid_item_id: item.plaid_item_id, p_plaid_account_id: acct.plaid_account_id, p_card_suffix: acct.mask ?? null, p_nickname: value.trim() ? value.trim().slice(0, 40) : null });
+                if (error) { console.warn('set_account_nickname failed:', error.message); await showAlert('Could not save nickname', 'Could not save this nickname. Try again.'); } else await refresh();
+              });
+              info.appendChild(nickBtn);
+            }
           }
         } else {
           const line = document.createElement('div'); line.className = 'muted small'; line.textContent = 'Account details unavailable.'; info.appendChild(line);
@@ -859,10 +936,123 @@ async function refresh() {
       <p class="muted small">Released total: ${formatCents(releasedTotal)}</p>
       <p class="muted small">Spent from fund: ${formatCents(spent)}</p>
       <p class="muted small">Owed back (shortfall): ${formatCents(shortfall)}</p>${heldRows.length ? `<p class="muted small">Held for review: ${formatCents(heldTotal)} across ${heldRows.length} week(s).</p>` : ''}`;
+    updateFundTopupPreview();
   } catch (e) {
     console.warn('fund summary read failed:', e);
     const fs = $('fundSummary');
     if (fs) fs.innerHTML = '<p class="error">Could not load fund balances. Try again.</p>';
+  }
+  // R12 top-up history (admin only, READ-ONLY list). One row per
+  // top-up with the split it made, newest first. Until
+  // r12-add-money.sql is applied live this shows a load error,
+  // never an empty list. The preview split is informational only;
+  // the server split returned by add_fund_money is authoritative.
+  if (household.role === 'admin') {
+    try {
+      const { data: topRows, error: topErr } = await supabase.from('fund_topups')
+        .select('amount_cents, shortfall_covered_cents, fund_added_cents, shortfall_after_cents, note, created_at')
+        .eq('household_id', household.household_id).order('created_at', { ascending: false }).limit(50);
+      if (topErr) throw topErr;
+      const tl = $('fundTopupsList');
+      if (tl) {
+        const frag = document.createDocumentFragment();
+        if (!(topRows ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No money added yet.'; frag.appendChild(p); }
+        for (const r of topRows ?? []) {
+          const li = document.createElement('li');
+          const d = new Date(r.created_at);
+          const when = Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          li.innerHTML = `<strong>${formatCents(r.amount_cents)}</strong> <span class="muted small">${esc(when)} · ${formatCents(r.shortfall_covered_cents ?? 0)} covered owed back · ${formatCents(r.fund_added_cents ?? 0)} added to fund · Owed back after ${formatCents(r.shortfall_after_cents ?? 0)}${r.note ? ` · ${esc(r.note)}` : ''}</span>`;
+          frag.appendChild(li);
+        }
+        tl.replaceChildren(frag);
+      }
+    } catch (e) {
+      console.warn('fund topups read failed:', e);
+      const tl = $('fundTopupsList'); if (tl) tl.innerHTML = '<li class="error">Could not load money added. Try again.</li>';
+    }
+  }
+  // R13 charity aggregates — November 2026 onward, all members read.
+  // Committed is summed per active income row at that row's own rate
+  // (half-up, engine helper); Given counts only verified, unexcluded
+  // charity rows. Until r13-charity.sql is applied live the tables
+  // do not exist, so a read failure is an error state on the cards,
+  // never zeros presented as real numbers.
+  try {
+    const { data: incRows, error: incErr } = await supabase.from('charity_income')
+      .select('amount_cents, rate_bp').eq('household_id', household.household_id).eq('status', 'active').limit(1000);
+    const { data: setRow, error: setErr } = await supabase.from('charity_settings')
+      .select('default_rate_bp').eq('household_id', household.household_id).maybeSingle();
+    const { data: giftRows, error: giftErr } = await supabase.from('transactions')
+      .select('amount_cents').eq('household_id', household.household_id).eq('kind', 'charity')
+      .eq('state', 'verified').eq('excluded', false).gte('date', '2026-11-01').limit(1000);
+    if (incErr || setErr || giftErr) throw (incErr || setErr || giftErr);
+    const committed = (incRows ?? []).reduce((s, r) => s + charityCommittedCents(r.amount_cents ?? 0, r.rate_bp ?? 1000), 0);
+    const given = (giftRows ?? []).reduce((s, r) => s + (r.amount_cents ?? 0), 0);
+    const remaining = committed - given;
+    const defaultRateBp = setRow?.default_rate_bp ?? 1000;
+    currentCharityData = { committed, given, remaining, defaultRateBp };
+    const cp = $('homeCharityPrimary');
+    if (cp) cp.textContent = (committed === 0 && given === 0) ? '—' : remaining < 0 ? `Ahead by ${formatCents(Math.abs(remaining))}` : formatCents(remaining);
+    const cs = $('homeCharitySecondary');
+    if (cs) cs.textContent = (committed === 0 && given === 0) ? 'No charity tracked yet.' : `Given ${formatCents(given)} · Committed ${formatCents(committed)}`;
+    const ch = $('charitySummary');
+    if (ch) ch.innerHTML = `<p class="fund-balance">Remaining <strong>${remaining < 0 ? `Ahead by ${formatCents(Math.abs(remaining))}` : formatCents(remaining)}</strong></p>
+      <p class="muted small">Committed: ${formatCents(committed)}</p>
+      <p class="muted small">Given: ${formatCents(given)}</p>
+      <p class="muted small">Default rate: ${(defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}% · Period: November 2026 onward</p>`;
+    const cr = $('charityRateCurrent');
+    if (cr) cr.textContent = `Current default rate: ${(defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%.`;
+    updateCharityIncomePreview();
+  } catch (e) {
+    console.warn('charity read failed:', e);
+    currentCharityData = null;
+    const cp = $('homeCharityPrimary'); if (cp) cp.textContent = '—';
+    const cs = $('homeCharitySecondary'); if (cs) cs.textContent = 'Could not load charity yet.';
+    const ch = $('charitySummary'); if (ch) ch.innerHTML = '<p class="error">Could not load charity. Try again.</p>';
+  }
+  // R13 charity income list (admin only, READ-ONLY except Correct,
+  // which prefills the form for an append-only reversal + replacement).
+  if (household.role === 'admin') {
+    try {
+      const { data: allInc, error: allIncErr } = await supabase.from('charity_income')
+        .select('id, source_label, amount_cents, income_date, rate_bp, status, note')
+        .eq('household_id', household.household_id).order('income_date', { ascending: false }).limit(50);
+      if (allIncErr) throw allIncErr;
+      const il = $('charityIncomeList');
+      if (il) {
+        const frag = document.createDocumentFragment();
+        if (!(allInc ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No income recorded yet.'; frag.appendChild(p); }
+        for (const r of allInc ?? []) {
+          const li = document.createElement('li');
+          const committedOne = charityCommittedCents(r.amount_cents ?? 0, r.rate_bp ?? 1000);
+          li.innerHTML = `<strong>${esc(r.source_label)}</strong> · ${formatCents(r.amount_cents)} on ${fmtLong(r.income_date)} at ${(r.rate_bp / 100).toFixed(2).replace(/\.?0+$/, '')}% → commits ${formatCents(committedOne)}${r.note ? ` · ${esc(r.note)}` : ''}${r.status === 'reversed' ? ' <span class="muted small">(Reversed — replaced)</span>' : ''}`;
+          if (r.status === 'active') {
+            const btn = document.createElement('button'); btn.className = 'btn btn-small'; btn.type = 'button';
+            btn.textContent = 'Correct'; btn.setAttribute('aria-label', `Correct income ${esc(r.source_label)}`);
+            btn.addEventListener('click', () => {
+              correctingIncomeId = r.id;
+              const f = document.getElementById('charityIncomeForm');
+              if (f) {
+                f.source.value = r.source_label; f.amount.value = (r.amount_cents / 100).toFixed(2);
+                f.date.value = r.income_date; f.rate.value = (r.rate_bp / 100).toFixed(2).replace(/\.?0+$/, '');
+                f.note.value = r.note || '';
+              }
+              const mode = $('charityIncomeMode');
+              if (mode) mode.textContent = 'Correcting an earlier entry — saving reverses it and adds a replacement. The old entry stays, marked reversed.';
+              const cancel = $('charityIncomeCancelBtn');
+              if (cancel) cancel.style.display = '';
+              updateCharityIncomePreview();
+            });
+            li.appendChild(document.createTextNode(' ')); li.appendChild(btn);
+          }
+          frag.appendChild(li);
+        }
+        il.replaceChildren(frag);
+      }
+    } catch (e) {
+      console.warn('charity income read failed:', e);
+      const il = $('charityIncomeList'); if (il) il.innerHTML = '<li class="error">Could not load income. Try again.</li>';
+    }
   }
   // Refund restorations + held refunds (admin only, READ-ONLY lists).
   // Members never see this section (showView gates it) and no read
@@ -994,11 +1184,20 @@ async function refresh() {
     if (closesErr || relsErr) throw (closesErr || relsErr);
     const relByWeek = new Map((rels ?? []).map((r) => [r.week_start, r]));
     const wh = $('weekHistoryList');
+    // R10: weekly summaries first, with carry-in explained. Carry-in
+    // for a week is the previous closed week's outgoing debt (the
+    // debt-carry chain); a first week has no carry-in on record, and
+    // missing figures are shown as not recorded, never as $0.
+    const asc = [...(closes ?? [])].sort((a, b) => String(a.week_start).localeCompare(String(b.week_start)));
+    const carryInByWeek = new Map();
+    asc.forEach((c, i) => { carryInByWeek.set(c.week_start, i === 0 ? null : asc[i - 1].outgoing_debt_cents); });
+    const fmtOrMissing = (v) => Number.isInteger(v) ? formatCents(v) : 'not recorded';
     if (wh) wh.innerHTML = (closes ?? []).length
       ? (closes ?? []).map((c) => {
           const rel = relByWeek.get(c.week_start);
           const relText = !rel ? 'No release record' : rel.status === 'released' ? `Released ${formatCents(rel.released_cents ?? rel.surplus_cents ?? 0)}` : rel.status === 'pending' ? `Pending release ${formatCents(rel.surplus_cents ?? 0)}` : `Held ${formatCents(rel.surplus_cents ?? 0)}`;
-          return `<li>Week of ${fmtLong(c.week_start)} · Surplus ${formatCents(c.surplus_cents ?? 0)} · Debt carried ${formatCents(c.outgoing_debt_cents ?? 0)} · ${relText} · ${rel ? esc(rel.status) : 'no release'}</li>`;
+          const carryIn = carryInByWeek.get(c.week_start);
+          return `<li>Week of ${fmtLong(c.week_start)} · Carry-in ${carryIn === null ? 'not recorded' : fmtOrMissing(carryIn)} · Surplus ${fmtOrMissing(c.surplus_cents)} · Debt carried out ${fmtOrMissing(c.outgoing_debt_cents)} · ${relText}</li>`;
         }).join('')
       : '<li class="muted small">No closed weeks yet.</li>';
   } catch (e) {
@@ -1011,10 +1210,27 @@ async function refresh() {
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(50);
   if (auditErr) console.warn('audit_log read failed:', auditErr.message);
+  // R10: Activity is the secondary view, grouped by day (newest day
+  // first), instead of one flat list. Locked snapshots are never
+  // recomputed here — this only re-presents the audit rows.
   $('auditList').innerHTML = auditErr
     ? '<li class="error">Could not load history. Try again.</li>'
     : (auditRows ?? []).length
-    ? (auditRows ?? []).map((a) => `<li><strong>${esc(formatAuditAction(a.action))}</strong> <span class="muted">(${esc(formatAuditActor(a.actor_name))} · ${fmtDateTime(a.created_at)})</span><br>${esc(formatAuditDetail(a.detail))}</li>`).join('') + ((auditRows ?? []).length >= 50 ? '<li class="muted small">Showing the latest 50 entries.</li>' : '')
+    ? (() => {
+        const groups = new Map();
+        for (const a of auditRows ?? []) {
+          const day = new Date(a.created_at);
+          const key = isNaN(day) ? 'Unknown date' : day.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(a);
+        }
+        let html = '';
+        for (const [day, rows] of groups) {
+          html += `<li class="muted small"><strong>${esc(day)}</strong></li>`;
+          html += rows.map((a) => `<li><strong>${esc(formatAuditAction(a.action))}</strong> <span class="muted">(${esc(formatAuditActor(a.actor_name))} · ${fmtDateTime(a.created_at)})</span><br>${esc(formatAuditDetail(a.detail))}</li>`).join('');
+        }
+        return html + ((auditRows ?? []).length >= 50 ? '<li class="muted small">Showing the latest 50 entries.</li>' : '');
+      })()
     : '<li>No audit entries yet.</li>';
   } finally {
     if (rb) { rb.disabled = false; rb.textContent = 'Refresh'; }
@@ -1340,13 +1556,20 @@ async function autoSyncIfWebhookPending() {
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
-  purchases: ['section-add-choice', 'section-manual', 'section-csv', 'section-transactions'],
-  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
+  purchases: ['section-add-choice', 'section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
+  money: ['section-savings', 'section-fund', 'section-fund-add', 'section-fund-topups', 'section-charity', 'section-charity-income', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
+  // R2: Settings is reached from the profile menu, not a nav tab.
+  // Connections (bank + email), Budget (allowance + temp increase)
+  // and Account & household live here; Funds no longer shows them.
+  settings: ['section-settings-head', 'section-bank', 'section-email', 'settingsCard', 'section-settings-account'],
   activity: ['section-activity', 'section-week-history'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
 let currentView = localStorage.getItem('hb-view') || 'week';
 if (!VIEWS[currentView]) currentView = 'week';
+// R2: the view Settings returns to (Back button). Settings is not a
+// nav tab, so it is never persisted as hb-view.
+let previousView = 'week';
 // R7: which Add form (if any) is open on the Transactions screen:
 // null = choice card, 'manual' = hand form, 'csv' = import form.
 let addFormOpen = null;
@@ -1370,8 +1593,11 @@ function hideToast() {
 document.getElementById('toast')?.addEventListener('click', hideToast);
 function showView(name, opts = {}) {
   if (!VIEWS[name]) name = 'week';
+  // Record only the view left when entering Settings, so Back
+  // returns there even after tab taps in between.
+  if (name === 'settings' && currentView !== 'settings') previousView = currentView;
   currentView = name;
-  localStorage.setItem('hb-view', name);
+  if (name !== 'settings') localStorage.setItem('hb-view', name);
   // Success/error messages do NOT persist across tabs: a user-initiated
   // tab switch clears every in-app result message (refresh() calls
   // showView without opts, so messages set during a refresh survive).
@@ -1389,7 +1615,7 @@ function showView(name, opts = {}) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-add' || id === 'section-fund-topups' || id === 'section-charity-income' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   // R7: the Add forms are never permanently expanded — the choice
@@ -1402,6 +1628,12 @@ function showView(name, opts = {}) {
     if (man) man.style.display = addFormOpen === 'manual' ? 'block' : 'none';
     const csv = document.getElementById('section-csv');
     if (csv) csv.style.display = addFormOpen === 'csv' ? 'block' : 'none';
+    // R13: the gift form is admin-only at the server; the button is
+    // hidden from members here so it never promises what it refuses.
+    const gift = document.getElementById('section-charity-gift');
+    if (gift) gift.style.display = addFormOpen === 'charity' ? 'block' : 'none';
+    const giftBtn = document.getElementById('addCharityBtn');
+    if (giftBtn) giftBtn.style.display = (household && household.role === 'admin') ? '' : 'none';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
     b.classList.toggle('active', b.dataset.view === name);
@@ -1429,7 +1661,7 @@ document.addEventListener('click', (e) => {
   const menu = document.getElementById('profileMenu');
   if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target) && e.target.id !== 'profileBtn' && !document.getElementById('profileBtn')?.contains(e.target)) menu.classList.add('hidden');
 });
-document.getElementById('menuShareIdBtn')?.addEventListener('click', async () => {
+async function shareInviteCode() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   // Share shows/copies the invite CODE, never the household UUID.
   if (!household) { await showAlert('Not signed in', 'Sign in first, then share the invite code.'); return; }
@@ -1442,8 +1674,8 @@ document.getElementById('menuShareIdBtn')?.addEventListener('click', async () =>
   let copied = false;
   try { await navigator.clipboard.writeText(code); copied = true; } catch (e) { /* clipboard may be unavailable; the code is still shown */ }
   await showSheet({ title: 'Invite code', message: `Share this code with the second account so they can join as a member:\n${code}${copied ? '\n(Copied to clipboard.)' : ''}`, confirmLabel: 'Done' });
-});
-document.getElementById('menuDeleteBtn')?.addEventListener('click', async () => {
+}
+async function deleteAccountFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
   // TWO-STEP confirmation: "Delete account" then "Yes, delete everything".
@@ -1453,8 +1685,8 @@ document.getElementById('menuDeleteBtn')?.addEventListener('click', async () => 
   if (out.error || !out.deleted) { console.warn('delete-account failed:', out.error); await showAlert('Could not delete account', 'Could not delete your account. Try again.'); return; }
   await supabase.auth.signOut(); household = null; await show('auth');
   $('authMsg').textContent = 'Your account was deleted.';
-});
-document.getElementById('menuPasswordBtn')?.addEventListener('click', async () => {
+}
+async function changePasswordFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
   const pw = await showSheet({ title: 'Change password', message: 'Enter a new password for this account.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change password', cancelLabel: 'Cancel' });
@@ -1463,7 +1695,15 @@ document.getElementById('menuPasswordBtn')?.addEventListener('click', async () =
   const { error } = await supabase.auth.updateUser({ password: pw });
   if (error) console.warn('password change failed:', error.message);
   await showAlert(error ? 'Could not change password' : 'Password changed', error ? 'Could not change your password. Try again.' : 'Your password is updated.');
+}
+document.getElementById('menuSettingsBtn')?.addEventListener('click', () => {
+  document.getElementById('profileMenu')?.classList.add('hidden');
+  showView('settings');
 });
+document.getElementById('settingsShareIdBtn')?.addEventListener('click', shareInviteCode);
+document.getElementById('settingsPasswordBtn')?.addEventListener('click', changePasswordFlow);
+document.getElementById('settingsDeleteBtn')?.addEventListener('click', deleteAccountFlow);
+document.getElementById('settingsBackBtn')?.addEventListener('click', () => showView(previousView || 'week'));
 // R5 + R6: Home cards — tap a card for a focused titled bottom
 // sheet over the stationary Home screen. Opening or closing a sheet
 // writes nothing and triggers no sync; it only reads the numbers
@@ -1479,7 +1719,9 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
     if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
     await showSheet({ title: 'Extra Fund', message: `Spendable available: ${formatCents(f.available)}\nPending (not yet released): ${formatCents(f.pending)}\nReleased total: ${formatCents(f.releasedTotal)}\nSpent from fund: ${formatCents(f.spent)}\nOwed back (shortfall): ${formatCents(f.shortfall)}`, confirmLabel: 'Close' });
   } else {
-    await showSheet({ title: 'Charity', message: 'Charity tracking (committed, given, remaining) arrives with the next slice. No charity numbers are shown until that slice is built — nothing here is estimated.', confirmLabel: 'Close' });
+    const c = currentCharityData;
+    if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
+    await showSheet({ title: 'Charity · November 2026 onward', message: `Remaining: ${c.remaining < 0 ? `Ahead by ${formatCents(Math.abs(c.remaining))}` : formatCents(c.remaining)}\nCommitted: ${formatCents(c.committed)}\nGiven: ${formatCents(c.given)}\nDefault rate: ${(c.defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%`, confirmLabel: 'Close' });
   }
 }));
 // HTML form of an amount with smaller cents, for the hero and stat
@@ -1621,8 +1863,117 @@ $('txLoadMore')?.addEventListener('click', async () => {
 const setAddForm = (which) => { addFormOpen = which; showView('purchases'); };
 $('addManualBtn')?.addEventListener('click', () => setAddForm('manual'));
 $('addCsvBtn')?.addEventListener('click', () => setAddForm('csv'));
+$('addCharityBtn')?.addEventListener('click', () => setAddForm('charity'));
 $('manualBackBtn')?.addEventListener('click', () => setAddForm(null));
 $('csvBackBtn')?.addEventListener('click', () => setAddForm(null));
+$('charityBackBtn')?.addEventListener('click', () => setAddForm(null));
+// R13 charity gift form: admin-only RPC, explicitly confirmed by
+// entry, so the gift posts as verified (Given) at once and never
+// enters weekly spending. Duplicate warning mirrors the manual form.
+$('charityGiftForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const amount = parseDollarsStrict(f.amount.value);
+  if (amount === null || amount <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
+  if (!f.date.value) { await showAlert('Date required', 'Pick the date of the gift.'); return; }
+  if (f.date.value < '2026-11-01') { await showAlert('Charity starts November 2026', 'Gifts before November 2026 are outside the charity period.'); return; }
+  const suffix = f.suffix.value.trim();
+  if (suffix && !/^\d{4}$/.test(suffix)) { await showAlert('Card suffix', 'Card suffix must be exactly 4 digits, or left blank for a cash gift. Never enter a full card number.'); return; }
+  const merchant = f.merchant.value.trim().toUpperCase();
+  const { data: dupes } = await supabase.from('transactions')
+    .select('merchant, amount_cents, date').eq('household_id', household.household_id)
+    .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
+  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Record this gift anyway?`, 'Record anyway'))) return;
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  // The gift hash carries a per-submit nonce: two real identical
+  // gifts on one day (the Nov 3 case: three $2 gifts to one org) must
+  // not collide on the transactions unique hash, or the second gift
+  // could never be recorded. The duplicate warning above is the
+  // guard against accidental re-entry, not the hash.
+  const nonce = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  const hash = await sha(`charity|${f.date.value}|${merchant}|${amount}|${suffix || '0000'}|${nonce}`);
+  const { error } = await supabase.rpc('record_charity_gift', { p_household_id: household.household_id, p_merchant: merchant, p_amount_cents: amount, p_date: f.date.value, p_card_suffix: suffix || '0000', p_note: f.note.value.trim(), p_dedupe_hash: hash });
+  if (submitBtn) submitBtn.disabled = false;
+  if (error) {
+    console.warn('record_charity_gift failed:', error.message);
+    const notLive = /could not find|does not exist|schema cache/i.test(error.message || '');
+    showToast(notLive ? 'Charity isn\'t live yet — the database step still needs approval.' : error.message && /admin only/i.test(error.message) ? 'Only the admin can record charity gifts.' : 'Could not record this gift. Try again.', true);
+    return;
+  }
+  f.reset(); setAddForm(null);
+  showToast(`Gift recorded: ${formatCents(amount)} to ${merchant}.`);
+  await refresh();
+});
+// R13 charity rate + income forms (admin only, server-enforced).
+// Rate inputs are percents; parseDollarsStrict turns "10.5" into
+// 1050, which is exactly basis points, so no float math is needed.
+function updateCharityIncomePreview() {
+  const pv = $('charityIncomePreview'); if (!pv) return;
+  const f = document.getElementById('charityIncomeForm'); if (!f) return;
+  const cents = parseDollarsStrict(f.amount.value);
+  if (cents === null || cents <= 0) { pv.textContent = 'Enter an amount to see what it commits.'; return; }
+  if (!currentCharityData) { pv.textContent = 'Rate preview is unavailable until charity loads — the server still applies the saved default when you save.'; return; }
+  const overrideBp = parseDollarsStrict(f.rate.value);
+  const rateBp = overrideBp !== null ? overrideBp : currentCharityData.defaultRateBp;
+  pv.textContent = `This commits ${formatCents(charityCommittedCents(cents, rateBp))} at ${(rateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%.`;
+}
+document.querySelector('#charityIncomeForm input[name="amount"]')?.addEventListener('input', updateCharityIncomePreview);
+document.querySelector('#charityIncomeForm input[name="rate"]')?.addEventListener('input', updateCharityIncomePreview);
+$('charityRateForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const bp = parseDollarsStrict(f.rate.value);
+  if (bp === null || bp < 0 || bp > 10000) { showToast('Enter a rate between 0% and 100%.', true); return; }
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  const { error } = await supabase.rpc('set_charity_default_rate', { p_household_id: household.household_id, p_rate_bp: bp });
+  if (submitBtn) submitBtn.disabled = false;
+  if (error) { console.warn('set_charity_default_rate failed:', error.message); showToast(/could not find|does not exist|schema cache/i.test(error.message || '') ? 'Charity isn\'t live yet — the database step still needs approval.' : 'Could not save the default rate. Try again.', true); return; }
+  f.reset();
+  showToast(`Default charity rate saved: ${(bp / 100).toFixed(2).replace(/\.?0+$/, '')}% for future incomes.`);
+  await refresh();
+});
+let correctingIncomeId = null;
+$('charityIncomeCancelBtn')?.addEventListener('click', () => {
+  correctingIncomeId = null;
+  const f = document.getElementById('charityIncomeForm'); if (f) f.reset();
+  const mode = $('charityIncomeMode'); if (mode) mode.textContent = 'Adding new income.';
+  const cancel = $('charityIncomeCancelBtn'); if (cancel) cancel.style.display = 'none';
+  updateCharityIncomePreview();
+});
+$('charityIncomeForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const cents = parseDollarsStrict(f.amount.value);
+  if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
+  if (!f.date.value) { showToast('Pick the date of the income.', true); return; }
+  if (f.date.value < '2026-11-01') { showToast('Charity starts November 2026 — income before then cannot accrue.', true); return; }
+  const overrideBp = parseDollarsStrict(f.rate.value);
+  if (overrideBp !== null && (overrideBp < 0 || overrideBp > 10000)) { showToast('Enter a rate between 0% and 100%, or leave it blank for the default.', true); return; }
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  let data = null; let error = null;
+  if (correctingIncomeId) {
+    ({ data, error } = await supabase.rpc('correct_charity_income', { p_income_id: correctingIncomeId, p_amount_cents: cents, p_income_date: f.date.value, p_source_label: f.source.value.trim(), p_rate_bp: overrideBp, p_note: f.note.value.trim() }));
+  } else {
+    ({ data, error } = await supabase.rpc('record_charity_income', { p_household_id: household.household_id, p_amount_cents: cents, p_income_date: f.date.value, p_source_label: f.source.value.trim(), p_rate_bp: overrideBp, p_note: f.note.value.trim() }));
+  }
+  if (submitBtn) submitBtn.disabled = false;
+  if (error) {
+    console.warn('charity income save failed:', error.message);
+    showToast(/could not find|does not exist|schema cache/i.test(error.message || '') ? 'Charity isn\'t live yet — the database step still needs approval.' : 'Could not save this income. Try again.', true);
+    return;
+  }
+  const wasCorrection = !!correctingIncomeId;
+  correctingIncomeId = null;
+  f.reset();
+  const mode = $('charityIncomeMode'); if (mode) mode.textContent = 'Adding new income.';
+  const cancel = $('charityIncomeCancelBtn'); if (cancel) cancel.style.display = 'none';
+  updateCharityIncomePreview();
+  showToast(wasCorrection ? `Income corrected — now commits ${formatCents(data?.committed_cents ?? 0)}. The old entry stays, marked reversed.` : `Income saved — commits ${formatCents(data?.committed_cents ?? 0)} to charity.`);
+  await refresh();
+});
 // R8 filters sheet: Apply commits (closes the panel), Reset clears
 // the draft + sort to defaults, Cancel restores the values that were
 // there when the panel opened and leaves the list unchanged.
@@ -1754,6 +2105,55 @@ $('saveAllowanceBtn')?.addEventListener('click', async (e) => {
   if (!error) await refresh();
 });
 
+// R12 Add Money preview: shortfall-first split from the last loaded
+// fund balances, using the shared engine helper (same rule the server
+// applies). Informational only — the server split is authoritative.
+function updateFundTopupPreview() {
+  const pv = $('fundTopupPreview'); if (!pv) return;
+  const amtEl = document.querySelector('#fundTopupForm input[name="amount"]');
+  const cents = parseDollarsStrict(amtEl?.value ?? '');
+  if (cents === null || cents <= 0) { pv.textContent = 'Enter an amount to see the split.'; return; }
+  const shortfall = currentFundData?.shortfall;
+  if (shortfall === undefined || shortfall === null) { pv.textContent = 'Fund balance has not loaded yet — the server still covers anything owed back first when you save.'; return; }
+  const s = applyShortfallToRelease(cents, shortfall);
+  const covered = cents - s.releasedToFund;
+  pv.textContent = `Split: ${formatCents(s.releasedToFund)} added to fund · ${formatCents(covered)} covers owed back · Owed back after ${formatCents(s.remainingShortfall)}.`;
+}
+document.querySelector('#fundTopupForm input[name="amount"]')?.addEventListener('input', updateFundTopupPreview);
+// R12 Add Money submit: admin only (server-enforced), unchecked-by-
+// default confirmation, busy control, and a per-submit client key so
+// a double-tap or a retried submit after a network failure replays
+// the same top-up instead of crediting twice.
+let lastTopupAttempt = null; // { key, cents } for the in-flight/failed submit
+$('fundTopupForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const cents = parseDollarsStrict(f.amount.value);
+  if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
+  if (!$('fundTopupConfirm')?.checked) { showToast('Check the box to confirm you already put this money in checking.', true); return; }
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  const key = (lastTopupAttempt && lastTopupAttempt.cents === cents) ? lastTopupAttempt.key
+    : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+  lastTopupAttempt = { key, cents };
+  const { data, error } = await supabase.rpc('add_fund_money', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_client_key: key });
+  if (submitBtn) submitBtn.disabled = false;
+  if (error) {
+    console.warn('add_fund_money failed:', error.message);
+    const notLive = /could not find|does not exist|schema cache/i.test(error.message || '');
+    showToast(notLive ? 'Add money isn\'t live yet — the database step still needs approval.' : 'Could not save this top-up. Try again.', true);
+    return;
+  }
+  lastTopupAttempt = null;
+  f.reset();
+  updateFundTopupPreview();
+  const covered = data?.shortfall_covered_cents ?? null;
+  const added = data?.fund_added_cents ?? null;
+  showToast((covered !== null && added !== null)
+    ? `Top-up saved: ${formatCents(covered)} covered owed back, ${formatCents(added)} added to fund.`
+    : 'Top-up saved.');
+  await refresh();
+});
 $('fundAllocateForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;

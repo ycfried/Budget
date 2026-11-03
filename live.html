@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=11">
+<link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -22,9 +22,7 @@
       <p class="small muted">Signed in as</p>
       <p class="small"><strong id="profileEmail">—</strong></p>
       <p class="small muted">Role: <span id="profileRole">—</span></p>
-      <button id="menuShareIdBtn" class="btn" type="button" aria-label="Share the invite code">Share invite code</button>
-      <button id="menuPasswordBtn" class="btn" type="button" aria-label="Change your password">Change password</button>
-      <button id="menuDeleteBtn" class="btn btn-danger" type="button" aria-label="Delete your account">Delete account</button>
+      <button id="menuSettingsBtn" class="btn" type="button" aria-label="Open Settings">Settings</button>
       <button id="signOutBtn" class="btn" type="button" aria-label="Sign out of the live app">Sign out</button>
     </div>
   </div>
@@ -78,7 +76,7 @@
     <p class="muted small stat-hint" id="section-hint">Tap a card for its breakdown.</p>
     <div class="grid" id="section-stats">
       <div class="card stat-card" data-home-card="weekly" role="button" tabindex="0" aria-label="Show Weekly Budget breakdown"><div class="kicker">Weekly Budget</div><div class="num" id="homeWeeklyPrimary">…</div><div class="muted small" id="homeWeeklySecondary">…</div></div>
-      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><div class="kicker">Charity · November 2026 onward</div><div class="num" id="homeCharityPrimary">—</div><div class="muted small" id="homeCharitySecondary">Charity tracking arrives with the next slice.</div></div>
+      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><div class="kicker">Charity · November 2026 onward</div><div class="num" id="homeCharityPrimary">—</div><div class="muted small" id="homeCharitySecondary">Loading charity…</div></div>
       <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary">…</div><div class="muted small" id="homeFundSecondary">…</div></div>
     </div>
 
@@ -97,6 +95,7 @@
       <div class="btn-row">
         <button class="btn btn-primary" id="addManualBtn" type="button" aria-label="Add a transaction by hand">Add by hand</button>
         <button class="btn" id="addCsvBtn" type="button" aria-label="Import transactions from a CSV file">Import CSV</button>
+        <button class="btn" id="addCharityBtn" type="button" aria-label="Record a charity gift">Give to charity</button>
       </div>
     </div>
 
@@ -127,6 +126,23 @@
       <p class="muted small">Never enter a full card number — the file should contain card endings only.</p>
     </div>
 
+    <div class="card" id="section-charity-gift">
+      <div class="btn-row"><button class="btn" id="charityBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
+      <h2>Give to charity</h2>
+      <p class="muted small">Record a gift you already gave. A gift entered here counts as given at once, and it never counts as weekly spending. Only the admin can record gifts.</p>
+      <form id="charityGiftForm">
+        <label>Organization <input name="merchant" required maxlength="80"></label>
+        <div class="form-row-3">
+          <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
+          <label>Date <input name="date" type="date" required></label>
+          <label>Card suffix <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="only if paid by card"></label>
+        </div>
+        <label>Note (optional) <input name="note" maxlength="120"></label>
+        <button class="btn btn-primary" type="submit" aria-label="Record this charity gift">Record gift</button>
+      </form>
+      <p class="muted small">Leave the card suffix blank for a cash gift. Never enter a full card number.</p>
+    </div>
+
     <div class="card" id="section-transactions">
       <h2>Transactions</h2>
       <p class="muted small">Everything spent on the household cards. Tap a transaction for detail and actions.</p>
@@ -135,6 +151,7 @@
         <button class="tx-chip" data-tx-filter="pending" type="button" aria-label="Show pending transactions only">Pending</button>
         <button class="tx-chip" data-tx-filter="posted" type="button" aria-label="Show posted transactions only">Posted</button>
         <button class="tx-chip" data-tx-filter="refunds" type="button" aria-label="Show refunds only">Refunds</button>
+        <button class="tx-chip" data-tx-filter="charity" type="button" aria-label="Show charity gifts only">Charity</button>
         <button class="tx-chip" data-tx-filter="excluded" type="button" aria-label="Show excluded transactions only">Excluded</button>
         <button class="tx-chip" id="txWeekToggle" type="button" aria-pressed="false" aria-label="Show only this week's transactions">This week</button>
       </div>
@@ -144,8 +161,8 @@
         <label class="muted small">Month
           <select id="txMonth" aria-label="Filter by month"><option value="all">All months</option></select>
         </label>
-        <label class="muted small">Card
-          <select id="txCard" aria-label="Filter by card"><option value="all">All cards</option></select>
+        <label class="muted small">Card / Account
+          <select id="txCard" aria-label="Filter by card or account"><option value="all">All cards</option></select>
         </label>
         <label class="muted small">Amount from ($)
           <input id="txMinAmount" type="number" step="0.01" inputmode="decimal" aria-label="Minimum transaction amount">
@@ -169,6 +186,12 @@
       <p id="txCount" class="muted small tx-count"></p>
       <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
       <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
+    </div>
+
+    <div class="card" id="section-settings-head">
+      <div class="btn-row"><button class="btn" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
+      <h2>Settings</h2>
+      <p class="muted small">Connections, Budget, and Account &amp; household. Bank and email connections moved here from Funds.</p>
     </div>
 
     <div class="card" id="section-bank">
@@ -203,7 +226,7 @@
     </div>
 
     <div class="card" id="settingsCard" style="display:none">
-      <h2>Settings (admin only)</h2>
+      <h2>Budget (admin only)</h2>
       <p class="muted small">Only the admin can change these.</p>
       <h3>Weekly allowance</h3>
       <label>Amount ($)
@@ -217,6 +240,20 @@
       </label>
       <button id="addTempBtn" class="btn" type="button" aria-label="Add a temporary increase for this week">Add temporary increase</button>
       <div id="tempMsg" class="result"></div>
+    </div>
+
+    <div class="card" id="section-settings-account">
+      <h2>Account &amp; household</h2>
+      <p class="muted small">Invite code, password, and account deletion live here now — not in the profile menu.</p>
+      <div class="btn-row">
+        <button id="settingsShareIdBtn" class="btn" type="button" aria-label="Share the invite code">Share invite code</button>
+        <button id="settingsPasswordBtn" class="btn" type="button" aria-label="Change your password">Change password</button>
+      </div>
+      <div class="danger-area">
+        <h3>Delete account</h3>
+        <p class="muted small">Deleting removes you from this household. If you are the last member, the household is deleted too. This cannot be undone.</p>
+        <button id="settingsDeleteBtn" class="btn btn-danger" type="button" aria-label="Delete your account">Delete account</button>
+      </div>
     </div>
 
     <div class="card" id="section-savings">
@@ -256,6 +293,58 @@
       <h2>Extra Fund</h2>
       <p class="muted small">Leftover money from weeks you spent under budget — use it for extras.</p>
       <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
+    </div>
+
+    <div class="card" id="section-fund-add" style="display:none">
+      <h2>Add money</h2>
+      <p class="muted small">Log cash you already put into checking as Extra Fund money. This never changes your weekly allowance, spending, or debt. Anything owed back is covered first — the rest becomes spendable fund money.</p>
+      <form id="fundTopupForm">
+        <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
+        <label>Note (optional) <input name="note" maxlength="120"></label>
+        <label class="check-label"><input id="fundTopupConfirm" type="checkbox"> I have already put this money in checking</label>
+        <p id="fundTopupPreview" class="muted small">Enter an amount to see the split.</p>
+        <button class="btn btn-primary" type="submit" aria-label="Save this Extra Fund top-up">Save top-up</button>
+      </form>
+      <p class="muted small">Bank deposits never add fund money by themselves. Log each deposit here only once — if you already logged it, do not log it again when you see it in Transactions.</p>
+    </div>
+
+    <div class="card" id="section-fund-topups" style="display:none">
+      <h2>Money added</h2>
+      <p class="muted small">Top-ups logged here, newest first, with the shortfall split each one made.</p>
+      <ul id="fundTopupsList" class="plain"><li class="muted small">Loading…</li></ul>
+    </div>
+
+    <div class="card" id="section-charity">
+      <h2>Charity</h2>
+      <p class="muted small">November 2026 onward. Committed is 10% of income recorded here (or the rate set for that income); given is confirmed gifts only. A negative remaining means you are ahead.</p>
+      <div id="charitySummary"><p class="muted small">Loading charity…</p></div>
+    </div>
+
+    <div class="card" id="section-charity-income" style="display:none">
+      <h2>Charity income &amp; rate</h2>
+      <p class="muted small">Only the admin records income. Nothing is pulled in automatically — a transfer, refund, reimbursement, loan, or fund top-up never counts as income on its own.</p>
+      <p class="muted small" id="charityRateCurrent">Current default rate: 10%.</p>
+      <form id="charityRateForm">
+        <label>Default rate (%) <input name="rate" type="number" step="0.01" min="0" max="100" required></label>
+        <button class="btn" type="submit" aria-label="Save the default charity rate">Save default rate</button>
+      </form>
+      <p class="muted small">Changing the default affects future incomes only. To change an old income, correct it below — the old entry stays, marked reversed.</p>
+      <h3>Record income</h3>
+      <p class="muted small" id="charityIncomeMode">Adding new income.</p>
+      <form id="charityIncomeForm">
+        <label>Source (for example, Paycheck) <input name="source" maxlength="80"></label>
+        <div class="form-row-3">
+          <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
+          <label>Date <input name="date" type="date" required></label>
+          <label>Rate % (blank = default) <input name="rate" type="number" step="0.01" min="0" max="100"></label>
+        </div>
+        <label>Note (optional) <input name="note" maxlength="120"></label>
+        <p id="charityIncomePreview" class="muted small">Enter an amount to see what it commits.</p>
+        <button class="btn btn-primary" type="submit" aria-label="Save this charity income">Save income</button>
+        <button class="btn" id="charityIncomeCancelBtn" type="button" style="display:none" aria-label="Stop correcting and add new income instead">Cancel correction</button>
+      </form>
+      <h3>Income recorded</h3>
+      <ul id="charityIncomeList" class="plain"><li class="muted small">Loading…</li></ul>
     </div>
 
     <div class="card" id="section-fund-use" style="display:none">
@@ -302,7 +391,7 @@
 
     <div class="card" id="section-activity">
       <h2>History</h2>
-      <p class="muted small">A shared record of every change in this household — who did what, and when.</p>
+      <p class="muted small">Weekly summaries are above. Below, a shared record of every change in this household — who did what, and when — grouped by day, newest first.</p>
       <ul id="auditList" class="plain"><li class="muted small">Loading…</li></ul>
     </div>
 
@@ -315,6 +404,6 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=17"></script>
+<script type="module" src="live.js?v=22"></script>
 </body>
 </html>

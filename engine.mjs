@@ -231,6 +231,14 @@ export function applyShortfallToRelease(releaseAmountCents, shortfallCents) {
   };
 }
 
+// R13 charity: committed per income, half-up rounded, in integer cents.
+// rateBp is basis points (1000 = 10%). An override REPLACES the
+// default, so the caller passes the single effective rate for that
+// income — never default + override.
+export function charityCommittedCents(amountCents, rateBp) {
+  return Math.floor((amountCents * rateBp + 5000) / 10000);
+}
+
 // A late charge reduces already-released surplus: fund goes to at most zero,
 // any remainder becomes a shortfall (never a negative fund, never a clawback
 // from the normal weekly budget).

@@ -175,6 +175,13 @@ label { font-size: 14px; font-weight: 600; }
 #section-manual .form-row-3 label { min-width: 0; }
 #section-manual .form-row-3 input { min-width: 0; }
 #section-manual input { padding: 9px 10px; }
+/* R12 Add money: money input capped instead of full-width (audit P1-3
+   pattern), and the confirmation checkbox sits inline, not full-width. */
+#section-fund-add input[name="amount"] { max-width: 220px; }
+/* R13 charity: same capped money-input pattern for gift/income forms. */
+#section-charity-gift input[name="amount"], #section-charity-income input[name="amount"] { max-width: 220px; }
+#section-fund-add .check-label { display: flex; align-items: flex-start; gap: 8px; }
+#section-fund-add .check-label input[type="checkbox"] { width: auto; margin: 2px 0 14px; accent-color: var(--green); }
 /* Two-column short-field row (savings movement: kind + amount). */
 .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .form-row-2 label, .form-row-2 select, .form-row-2 input { min-width: 0; }
@@ -391,6 +398,8 @@ body.live .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
    card height, 44px touch target, same admin-only bank sync. */
 body.live .hero-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 body.live .hero-head .hero-sync-btn { margin: 0; width: 44px; height: 44px; min-width: 44px; padding: 0; font-size: 22px; line-height: 1; border-radius: 50%; }
+/* R2: deletion lives in a distinct danger area inside Settings. */
+body.live .danger-area { border: 1px solid #fecaca; border-radius: 12px; padding: 12px; margin-top: 12px; }
 body.live .btn-row .btn { margin: 0; }
 /* Chips: grey pills, blue when active. */
 body.live #view-app .tx-chip { background: #f2f4f7; color: #0f172a; padding: 9px 15px; font-weight: 700; }
