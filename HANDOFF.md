@@ -580,8 +580,9 @@ default because these were unset — that is fixed, not a standing bug.
   function redeployed on the merge; its deploy status and a
   bug-9 end-to-end retest on a new synthetic household remain
   unproven.
-- Delta package Nov 3, evening (branch delta-package, NOT merged,
-  live.js v25 / styles v16, owner-approved History + Funds gates):
+- Delta package Nov 3, evening (PR #10 merged to main, live
+  verified serving live.js v25 / styles v16; branch delta-package
+  was 42f28f9, owner-approved History + Funds gates):
   A1 whole manual Savings section removed from everyday Funds
   screens (card, figures, form, write handlers); records untouched
   in the database, reachable read-only via a "Past savings records"
@@ -609,4 +610,6 @@ default because these were unset — that is fixed, not a standing bug.
   purchases-only). Tests 89/89 (6 new delta helpers). Still to
   prove live (doc section D): the full checklist on a real phone
   at 320/390/desktop, incl. sheet behavior, sync progress, and
-  member-vs-admin Review visibility.
+  member-vs-admin Review visibility. Live-fetch proof at merge:
+  v25/v16 served, "View history" + "Past savings records" present,
+  3 bottom tabs.
