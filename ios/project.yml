@@ -1,0 +1,72 @@
+# Local XcodeGen input. No cloud triggers, deployment, signing, or backend access.
+name: OnBudget
+options:
+  bundleIdPrefix: example.onbudget.sample
+  deploymentTarget:
+    iOS: '17.0'
+  xcodeVersion: '16.0'
+packages:
+  OnBudgetCore:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    DEVELOPMENT_TEAM: ''
+    CODE_SIGNING_ALLOWED: 'NO'
+    CURRENT_PROJECT_VERSION: '1'
+    MARKETING_VERSION: '0.1.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    GENERATE_INFOPLIST_FILE: 'YES'
+    ENABLE_USER_SCRIPT_SANDBOXING: 'YES'
+targets:
+  OnBudget:
+    type: application
+    platform: iOS
+    sources: [App, Resources]
+    dependencies:
+      - package: OnBudgetCore
+      - target: OnBudgetWidget
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: example.onbudget.sample
+        INFOPLIST_KEY_CFBundleDisplayName: OnBudget Sample
+        INFOPLIST_KEY_UILaunchScreen_Generation: 'YES'
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: 'YES'
+        INFOPLIST_KEY_OnBudgetAppGroup: ''
+    info:
+      path: Generated/App-Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLSchemes: [onbudget-sample]
+  OnBudgetWidget:
+    type: app-extension
+    platform: iOS
+    sources: [Widget, Resources/PrivacyInfo.xcprivacy]
+    dependencies:
+      - package: OnBudgetCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: example.onbudget.sample.widget
+        SKIP_INSTALL: 'YES'
+        INFOPLIST_KEY_OnBudgetAppGroup: ''
+    info:
+      path: Generated/Widget-Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+  OnBudgetUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: OnBudget
+schemes:
+  OnBudget:
+    build:
+      targets:
+        OnBudget: all
+        OnBudgetWidget: all
+    test:
+      gatherCoverageData: true
+      targets: [OnBudgetUITests]

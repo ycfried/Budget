@@ -1,0 +1,13 @@
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcarchive
+*.ipa
+*.p12
+*.mobileprovision
+.env*
+project.xcodeproj/
+OnBudget.xcodeproj/
+Generated/
