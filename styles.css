@@ -516,3 +516,43 @@ body.live .activity-disclosure summary { cursor: pointer; font-weight: 700; padd
 /* B3: the Home sync icon spins while a sync runs. */
 @keyframes delta-spin { to { transform: rotate(360deg); } }
 body.live .hero-sync-btn.syncing svg { animation: delta-spin 1s linear infinite; }
+
+/* ===== UX audit fixes (Nov 3, 2026) — live app only ===== */
+/* Audit 05: CSS chevron on transaction rows; it rotates when the
+   row's detail opens (the .open class is toggled with the detail). */
+body.live .tx-chevron { flex: 0 0 auto; width: 9px; height: 9px; border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin-left: 2px; }
+body.live .tx-head.open .tx-chevron { transform: rotate(45deg); }
+/* Owner screenshot: closed weeks as scannable blocks — a heading
+   plus one labeled row per figure — instead of a run-on sentence. */
+body.live .week-block { padding: 14px 0; }
+body.live .week-metrics { display: grid; gap: 4px; margin-top: 8px; }
+body.live .week-metrics > div { display: flex; justify-content: space-between; gap: 12px; }
+body.live .week-metrics > div > span:first-child { color: #6b7280; }
+body.live .week-metrics > div > span:last-child { font-weight: 700; white-space: nowrap; }
+/* Owner screenshot: profile menu as a proper menu card — header with
+   email + role pill, menu rows with separation, Sign out in red.
+   Width is capped to the viewport so it never runs off phone
+   screens; ids and handlers are unchanged. */
+body.live .profile-menu { width: min(280px, calc(100vw - 32px)); padding: 0; overflow: hidden; }
+body.live .profile-menu-head { padding: 16px 16px 12px; border-bottom: 1px solid #ececf1; }
+body.live .profile-menu-head p { margin: 4px 0; }
+body.live .profile-email { font-size: 16px; overflow-wrap: anywhere; }
+body.live .role-pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px;
+  border-radius: 999px; background: #eef4ff; color: #2f6bff; text-transform: capitalize; }
+body.live .profile-menu-rows { padding: 8px; }
+body.live .profile-menu-row { display: block; width: 100%; text-align: left; background: none; border: 0;
+  border-radius: 10px; padding: 12px; font-size: 15px; font-weight: 700; color: #0f172a;
+  cursor: pointer; font-family: var(--sans); }
+body.live .profile-menu-row:active { background: #f2f4f7; }
+body.live .profile-menu-row-danger { color: #dc2626; }
+/* Date-overlap bug (owner screenshot): side-by-side field rows stack
+   at phone widths instead of colliding. The History From/To row
+   (.form-row-2) and the manual-add triple (.form-row-3) both stack
+   at 520px and below; every other side-by-side row was checked and
+   already wraps or stacks (btn-row wraps, fund-balance-grid and
+   sav-grid stack, tx-search-row input shrinks with min-width: 0). */
+@media (max-width: 520px) {
+  .form-row-2 { grid-template-columns: 1fr; }
+  #section-manual .form-row-3 { grid-template-columns: 1fr; }
+}

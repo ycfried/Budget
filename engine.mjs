@@ -266,5 +266,6 @@ export function isWeekLocked(weekStart, currentWeekStart) {
 export function formatCents(cents) {
   const sign = cents < 0 ? '-' : '';
   const abs = Math.abs(cents);
-  return `${sign}$${(abs / 100).toFixed(2)}`;
+  const dollars = Math.floor(abs / 100).toLocaleString('en-US');
+  return `${sign}$${dollars}.${String(abs % 100).padStart(2, '0')}`;
 }
