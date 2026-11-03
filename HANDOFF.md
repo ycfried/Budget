@@ -468,3 +468,28 @@ default because these were unset — that is fixed, not a standing bug.
   stale on read failure, dead weekBreakdown panel. Also still
   open from the doc: R1 per-section loading/Error-Retry, R10
   date/week filters + Clear, R3 nickname ordering note.
+
+## Addendum — Nov 3, evening (SQL applied + branch merged live)
+- Owner authorized the full chain ("you could approve"): all six
+  SQL files applied in order via the Supabase SQL editor and each
+  verified with a read-only check — A1 grants, dedupe tables/RPC,
+  R3 nicknames, R12 top-ups, R13 charity (kind check now includes
+  'charity', all five RPCs), then the Amazon merge. Amazon Step 0
+  showed exactly the two $10.59 rows; Step 3 confirms the Plaid
+  AMAZON row counts and the email AMAZON MARKEPLACE NA PA row is
+  excluded (kept as evidence, not deleted), with a merged candidate
+  + alias + audit row recorded. The $10.59 double-count is fixed.
+- PR #4 merged full-build-2 into main (8fa5eb2). Live verified by
+  fresh fetch: live.js v22, styles v14, Add money / Give to charity
+  / Charity income all served. Native ios-native-rebuild tip
+  unchanged (971903a); no ios/ files and no workflow on main.
+- Still open, not fixed by this round: the possible second $2
+  double-count (bank TOIREMORG vs email TOIREMORG CHARITY) needs a
+  human look — it predates lookalike detection, so it will not
+  appear on the Possible duplicates card by itself; plus the audit
+  carryovers (glyph buttons, sort-row shapes, full-width money
+  inputs outside the new forms, .btn-small sizing, dedupe N+1,
+  savings recording with no form, fund card staleness, dead
+  weekBreakdown panel) and the doc leftovers (R1 per-section
+  loading/Error-Retry, R10 date/week filters + Clear, part-gift
+  splits, locked-week reclassification).
