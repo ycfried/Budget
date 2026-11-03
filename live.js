@@ -994,11 +994,20 @@ async function refresh() {
     if (closesErr || relsErr) throw (closesErr || relsErr);
     const relByWeek = new Map((rels ?? []).map((r) => [r.week_start, r]));
     const wh = $('weekHistoryList');
+    // R10: weekly summaries first, with carry-in explained. Carry-in
+    // for a week is the previous closed week's outgoing debt (the
+    // debt-carry chain); a first week has no carry-in on record, and
+    // missing figures are shown as not recorded, never as $0.
+    const asc = [...(closes ?? [])].sort((a, b) => String(a.week_start).localeCompare(String(b.week_start)));
+    const carryInByWeek = new Map();
+    asc.forEach((c, i) => { carryInByWeek.set(c.week_start, i === 0 ? null : asc[i - 1].outgoing_debt_cents); });
+    const fmtOrMissing = (v) => Number.isInteger(v) ? formatCents(v) : 'not recorded';
     if (wh) wh.innerHTML = (closes ?? []).length
       ? (closes ?? []).map((c) => {
           const rel = relByWeek.get(c.week_start);
           const relText = !rel ? 'No release record' : rel.status === 'released' ? `Released ${formatCents(rel.released_cents ?? rel.surplus_cents ?? 0)}` : rel.status === 'pending' ? `Pending release ${formatCents(rel.surplus_cents ?? 0)}` : `Held ${formatCents(rel.surplus_cents ?? 0)}`;
-          return `<li>Week of ${fmtLong(c.week_start)} · Surplus ${formatCents(c.surplus_cents ?? 0)} · Debt carried ${formatCents(c.outgoing_debt_cents ?? 0)} · ${relText} · ${rel ? esc(rel.status) : 'no release'}</li>`;
+          const carryIn = carryInByWeek.get(c.week_start);
+          return `<li>Week of ${fmtLong(c.week_start)} · Carry-in ${carryIn === null ? 'not recorded' : fmtOrMissing(carryIn)} · Surplus ${fmtOrMissing(c.surplus_cents)} · Debt carried out ${fmtOrMissing(c.outgoing_debt_cents)} · ${relText}</li>`;
         }).join('')
       : '<li class="muted small">No closed weeks yet.</li>';
   } catch (e) {
@@ -1011,10 +1020,27 @@ async function refresh() {
     .select('*').eq('household_id', household.household_id)
     .order('created_at', { ascending: false }).limit(50);
   if (auditErr) console.warn('audit_log read failed:', auditErr.message);
+  // R10: Activity is the secondary view, grouped by day (newest day
+  // first), instead of one flat list. Locked snapshots are never
+  // recomputed here — this only re-presents the audit rows.
   $('auditList').innerHTML = auditErr
     ? '<li class="error">Could not load history. Try again.</li>'
     : (auditRows ?? []).length
-    ? (auditRows ?? []).map((a) => `<li><strong>${esc(formatAuditAction(a.action))}</strong> <span class="muted">(${esc(formatAuditActor(a.actor_name))} · ${fmtDateTime(a.created_at)})</span><br>${esc(formatAuditDetail(a.detail))}</li>`).join('') + ((auditRows ?? []).length >= 50 ? '<li class="muted small">Showing the latest 50 entries.</li>' : '')
+    ? (() => {
+        const groups = new Map();
+        for (const a of auditRows ?? []) {
+          const day = new Date(a.created_at);
+          const key = isNaN(day) ? 'Unknown date' : day.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(a);
+        }
+        let html = '';
+        for (const [day, rows] of groups) {
+          html += `<li class="muted small"><strong>${esc(day)}</strong></li>`;
+          html += rows.map((a) => `<li><strong>${esc(formatAuditAction(a.action))}</strong> <span class="muted">(${esc(formatAuditActor(a.actor_name))} · ${fmtDateTime(a.created_at)})</span><br>${esc(formatAuditDetail(a.detail))}</li>`).join('');
+        }
+        return html + ((auditRows ?? []).length >= 50 ? '<li class="muted small">Showing the latest 50 entries.</li>' : '');
+      })()
     : '<li>No audit entries yet.</li>';
   } finally {
     if (rb) { rb.disabled = false; rb.textContent = 'Refresh'; }
