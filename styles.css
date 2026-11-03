@@ -382,6 +382,9 @@ body.live #view-app .app-nav-link.active { color: #2f6bff; border-bottom: 0; }
 body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 120px; z-index: 40;
   background: #2f6bff; color: #fff; padding: 12px 14px; border-radius: 12px;
   font-size: 14px; line-height: 1.4; box-shadow: 0 8px 24px rgba(16,24,40,.25); }
+/* Error toasts stay white on blue: the generic .error color below
+   otherwise leaks red text into the toast (Nov 3 fix round). */
+body.live .toast.error { color: #fff; }
 /* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
    One gap system: rows use flex gap; standalone buttons use one margin. */
 body.live #view-app .btn, body.live .btn { background: #f2f4f7; border: 0; color: #0f172a;
@@ -389,8 +392,15 @@ body.live #view-app .btn, body.live .btn { background: #f2f4f7; border: 0; color
 body.live #view-app .btn-primary, body.live .btn-primary { background: #2f6bff; color: #fff; }
 body.live #view-app .btn-danger, body.live .btn-danger { background: #fef2f2; color: #dc2626; }
 body.live #view-app .btn-quiet, body.live .btn-quiet { background: none; color: #6b7280; }
-body.live #view-app .btn-small { padding: 13px 18px; font-size: 15px; border-radius: 14px; }
+body.live #view-app .btn-small { padding: 8px 12px; font-size: 14px; border-radius: 10px; }
 body.live #view-app .btn { margin: 0 10px 10px 0; }
+/* Money inputs are sized to what is necessary (Nov 2 design rule):
+   a 4–6 digit figure never needs the full card width. */
+body.live input[type="number"] { max-width: 220px; }
+/* Sort row: the native select matches the grey direction button
+   (same background, padding, font, radius) instead of sitting
+   beside it in default browser styling. */
+body.live #txSortField { background: #f2f4f7; border: 0; border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 700; color: #0f172a; }
 body.live #view-app .card .btn + .btn { margin-left: 0; }
 body.live #view-app .tx-detail .btn { margin-right: 10px; }
 body.live .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }

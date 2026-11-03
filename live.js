@@ -168,8 +168,10 @@ let txWeekOnly = false; // spec B5: transactions filter by week (client-side, cu
 let txLimit = 100; // transactions load in pages of 100; Load more raises it
 let weekCloseRan = false; // week-close runs itself once per session (admin only)
 let lastRefreshAt = 0; // tab taps refresh in the background, throttled
+let txLoaded = false; // transactions have loaded at least once (gates the empty-week hint)
 let refreshInFlight = 0; // R1: overlapping refreshes share one Updating… state
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
+let lastSpentBreakdown = null; // { datedTotal, lateTotal } cents, for the Weekly sheet
 let currentFundData = null; // last fund aggregates, for the Extra Fund card sheet
 let currentCharityData = null; // last charity aggregates, for the Charity card sheet
 // R3 nicknames: keyed by stable Plaid account id, never by suffix alone.
@@ -186,6 +188,11 @@ async function show(view) {
   $('view-auth').classList.toggle('hidden', view !== 'auth');
   $('view-household').classList.toggle('hidden', view !== 'household');
   $('view-app').classList.toggle('hidden', view !== 'app');
+  // The header sits outside view-app, so the profile button would
+  // otherwise stay tappable on the signed-out screen (Nov 3 fix
+  // round): hide it — and close the menu — until signed in.
+  document.getElementById('profileBtn')?.classList.toggle('hidden', view !== 'app');
+  if (view !== 'app') document.getElementById('profileMenu')?.classList.add('hidden');
 }
 
 async function loadMembership() {
@@ -342,6 +349,7 @@ async function refresh() {
   const txReadFailed = !!txErr;
   if (txErr) console.warn('transactions read failed:', txErr.message);
   const all = txReadFailed ? [] : (txns ?? []);
+  txLoaded = true;
   const q = ($('txSearch')?.value ?? '').trim().toLowerCase();
   const byFilter = (t) => txFilter === 'all' ? true
     : txFilter === 'pending' ? t.state === 'provisional'
@@ -388,10 +396,10 @@ async function refresh() {
   if (sortFieldEl) sortFieldEl.value = txSort.startsWith('amount') ? 'amount' : 'date';
   const sortDirBtn = $('txSortDirBtn');
   if (sortDirBtn) {
-    const dirLabel = txSort === 'date-asc' ? '↑ Oldest first'
-      : txSort === 'amount-desc' ? '↓ Largest first'
-      : txSort === 'amount-asc' ? '↑ Smallest first'
-      : '↓ Newest first';
+    const dirLabel = txSort === 'date-asc' ? 'Oldest first'
+      : txSort === 'amount-desc' ? 'Largest first'
+      : txSort === 'amount-asc' ? 'Smallest first'
+      : 'Newest first';
     sortDirBtn.textContent = dirLabel;
     sortDirBtn.setAttribute('aria-label', `Sort direction: ${dirLabel}. Tap to reverse.`);
   }
@@ -423,12 +431,19 @@ async function refresh() {
   }
   const thisWeekTxns = all.filter((t) => inThisWeek(t) && !(t.excluded === true || t.state === 'excluded'));
   const emptyHintEl = document.getElementById('weekEmptyHint');
-  if (emptyHintEl) emptyHintEl.classList.toggle('hidden', thisWeekTxns.length > 0);
+  // Show the empty-week hint only once a load has actually returned
+  // empty — never while the first load is still in flight, and never
+  // on a failed load (Nov 3 fix round: it used to flash on every
+  // fresh open even in a household with data).
+  if (emptyHintEl) emptyHintEl.classList.toggle('hidden', !(txLoaded && !txReadFailed && thisWeekTxns.length === 0));
   const countEl = $('txCount');
   if (countEl) {
-    const shownTotal = shown.filter((t) => !(t.excluded === true || t.state === 'excluded')).reduce((s, t) => s + t.amount_cents, 0);
+    // Charity gifts are not spending: leave them out of the list
+    // total except on the Charity filter itself, where the total is
+    // the gifts total. (Week math already excludes them everywhere.)
+    const shownTotal = shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && (txFilter === 'charity' || t.kind !== 'charity')).reduce((s, t) => s + t.amount_cents, 0);
     const capped = all.length >= txLimit ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
-    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)} (excluded rows not counted)`;
+    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)} (${txFilter === 'charity' ? 'excluded rows not counted' : 'charity gifts and excluded rows not counted'})`;
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
@@ -490,7 +505,7 @@ async function refresh() {
         return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
         <div class="tx-line2">${statePill(t, excluded)}
         <span class="pill">${esc(sourceLabel(t.source))}</span>
-        <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span> <span class="muted small">Tap for detail ▾</span></div></div>
+        <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span> <span class="muted small">Tap for detail</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
           <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${kindLabel})</p>
           <p class="small muted">Date: ${fmtLong(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
@@ -546,6 +561,9 @@ async function refresh() {
     const refundTotal = counted.filter((t) => t.kind === 'refund').reduce((s, t) => s + t.amount_cents, 0);
     const verifiedRefundNet = counted.filter((t) => t.kind === 'refund' && t.state === 'verified').reduce((s, t) => s + t.amount_cents, 0);
     const lateTotal = (w.chargesCents ?? 0) - datedTotal - verifiedRefundNet;
+    // The Weekly Budget sheet (R6) surfaces these two lines too:
+    // the breakdown panel itself has no control that opens it.
+    lastSpentBreakdown = { datedTotal, lateTotal };
     const panels = {
       allowance: txReadFailed ? 'Could not load transactions for the breakdown.'
         : `<strong>Weekly allowance ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}</strong> plus ${formatCents(w.tempCents)} in temporary increases this week. Carried debt ${formatCents(w.carriedDebtCents)} comes off the top, leaving ${formatCents(w.baseAvailableCents)} of base spending room.`,
@@ -660,7 +678,7 @@ async function refresh() {
         const statusLabel = r.status === 'split'
           ? (r.remainder_cents != null ? `Split — ${formatCents(r.remainder_cents)} remaining` : 'Split')
           : r.status.toUpperCase();
-        return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(statusLabel)} · ${esc(r.note || '')} <span class="muted small">Tap for detail ▾</span></div>
+        return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(statusLabel)} · ${esc(r.note || '')} <span class="muted small">Tap for detail</span></div>
         <div class="tx-detail hidden" id="fund-detail-${r.id}">
           <p class="small muted">Amount: ${formatCents(r.amount_cents)} · Status: ${esc(statusLabel)}<br>
           Note: ${esc(r.note || '—')}<br>
@@ -724,11 +742,11 @@ async function refresh() {
     : savRows.length
     ? `<ul>${savRows.slice(0, 20).map((r) => `<li>${esc(r.kind)} ${formatCents(r.amount_cents ?? 0)}${r.actual_balance_cents != null ? ` · Recorded balance ${formatCents(r.actual_balance_cents)}` : ''} · ${fmtDateTime(r.created_at)} · ${esc(r.note || '')}</li>`).join('')}</ul>${savRows.length > 20 ? '<p class="muted small">Showing the latest 20 records.</p>' : ''}`
     : '<p class="muted small">No savings records yet.</p>';
-  // R11: legacy manual Savings forms are hidden (records and the
-  // summary above stay visible; backend history untouched). Do not
-  // re-enable this form without an owner decision on where savings
-  // recording lives on the Funds page.
-  $('savingsFormWrap').style.display = 'none';
+  // R11 hid this form, which left savings recording impossible with
+  // no replacement (Nov 3 audit P1). Nov 3 fix round: the form is
+  // back, admin-only, in the same Savings card — the RPCs already
+  // enforce admin server-side, so members never reach a save.
+  $('savingsFormWrap').style.display = household.role === 'admin' ? '' : 'none';
 
   // Bank accounts UI — SERVER TRUTH ONLY. Connected state derives from
   // plaid_items rows (status 'active' vs 'disconnected') and their
@@ -765,7 +783,7 @@ async function refresh() {
         if (n.card_suffix && suffixCounts.get(n.card_suffix) === 1) nicknameBySuffix.set(n.card_suffix, n.nickname);
       }
       nicknamesLoaded = true;
-    } catch (e) { console.warn('nicknames read failed (table may not be live yet):', e.message); }
+    } catch (e) { console.warn('nicknames read failed:', e.message); }
     const syncTimes = itemRows.map((i) => i.last_sync_at).filter(Boolean).sort();
     bankLastSyncAt = syncTimes.length ? syncTimes[syncTimes.length - 1] : null;
     const syncLine = $('bankSyncLine');
@@ -806,14 +824,13 @@ async function refresh() {
             line.textContent = `${nick ? `${nick} · ` : ''}${acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}${acct.type ? ` · ${acct.type}` : ''}${acct.subtype ? ` (${acct.subtype})` : ''}`;
             info.appendChild(line);
             // R3: nickname editing lives in Settings, admin-only, via
-            // the RPC (never a direct table write). Until the R3 SQL
-            // is applied, the button explains that instead of failing.
+            // the RPC (never a direct table write).
             if (household.role === 'admin') {
               const nickBtn = document.createElement('button'); nickBtn.className = 'btn btn-small'; nickBtn.type = 'button';
               nickBtn.textContent = nick ? 'Edit nickname' : 'Add nickname';
               nickBtn.setAttribute('aria-label', `Set a nickname for ${acct.name || 'this account'}`);
               nickBtn.addEventListener('click', async () => {
-                if (!nicknamesLoaded) { await showAlert('Nicknames not live yet', 'Nicknames need the R3 database step applied first. Until then, accounts show their bank names.'); return; }
+                if (!nicknamesLoaded) { await showAlert('Nicknames unavailable', 'Nicknames could not be loaded. Try again.'); return; }
                 const value = await showSheet({ title: 'Nickname', message: 'Give this account a short name (up to 40 characters). Leave it blank to remove the nickname. The nickname is only a label — it never changes bank links, matching, or week math.', inputLabel: 'Nickname', inputValue: nick ?? '', confirmLabel: 'Save', cancelLabel: 'Cancel' });
                 if (value === null) return;
                 const { error } = await supabase.rpc('set_account_nickname', { p_household_id: household.household_id, p_plaid_item_id: item.plaid_item_id, p_plaid_account_id: acct.plaid_account_id, p_card_suffix: acct.mask ?? null, p_nickname: value.trim() ? value.trim().slice(0, 40) : null });
@@ -939,14 +956,20 @@ async function refresh() {
     updateFundTopupPreview();
   } catch (e) {
     console.warn('fund summary read failed:', e);
+    // Clear the cached fund data (the charity block already does
+    // this): otherwise the Home fund card keeps showing old numbers
+    // with no stale label after a failed read.
+    currentFundData = null;
+    const fp = $('homeFundPrimary'); if (fp) fp.textContent = '—';
+    const fsec = $('homeFundSecondary'); if (fsec) fsec.textContent = 'Could not load fund balances.';
     const fs = $('fundSummary');
     if (fs) fs.innerHTML = '<p class="error">Could not load fund balances. Try again.</p>';
   }
   // R12 top-up history (admin only, READ-ONLY list). One row per
-  // top-up with the split it made, newest first. Until
-  // r12-add-money.sql is applied live this shows a load error,
-  // never an empty list. The preview split is informational only;
-  // the server split returned by add_fund_money is authoritative.
+  // top-up with the split it made, newest first. A load failure
+  // shows an error, never an empty list. The preview split is
+  // informational only; the server split returned by add_fund_money
+  // is authoritative.
   if (household.role === 'admin') {
     try {
       const { data: topRows, error: topErr } = await supabase.from('fund_topups')
@@ -974,8 +997,7 @@ async function refresh() {
   // R13 charity aggregates — November 2026 onward, all members read.
   // Committed is summed per active income row at that row's own rate
   // (half-up, engine helper); Given counts only verified, unexcluded
-  // charity rows. Until r13-charity.sql is applied live the tables
-  // do not exist, so a read failure is an error state on the cards,
+  // charity rows. A read failure is an error state on the cards,
   // never zeros presented as real numbers.
   try {
     const { data: incRows, error: incErr } = await supabase.from('charity_income')
@@ -1116,10 +1138,10 @@ async function refresh() {
     }
   }
   // Possible duplicates (admin only, Funds tab). Reads pending
-  // duplicate_candidates + both transactions per pair; Same purchase
-  // and Separate both go through resolve_duplicate_candidate, which
-  // never deletes a row. Until dedupe-review-queue.sql is applied
-  // live this shows a load error, never an empty list.
+  // duplicate_candidates + all their transactions in ONE query
+  // (Nov 3 fix round: it used to query one pair at a time, up to
+  // 100 queries). Same purchase and Separate both go through
+  // resolve_duplicate_candidate, which never deletes a row.
   const dedupeCard = $('section-dedupe');
   if (dedupeCard) dedupeCard.style.display = household.role === 'admin' ? '' : 'none';
   if (household.role === 'admin') {
@@ -1132,11 +1154,16 @@ async function refresh() {
       if (dl) {
         const frag = document.createDocumentFragment();
         if (!(candRows ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No possible duplicates waiting.'; frag.appendChild(p); }
-        for (const c of candRows ?? []) {
-          const { data: txRows } = await supabase.from('transactions')
+        const allIds = [...new Set((candRows ?? []).flatMap((c) => [c.canonical_transaction_id, c.duplicate_transaction_id]))];
+        const { data: txRows } = allIds.length
+          ? await supabase.from('transactions')
             .select('id, merchant, amount_cents, date, card_suffix, source, excluded')
-            .in('id', [c.canonical_transaction_id, c.duplicate_transaction_id]);
-          const byId = new Map((txRows ?? []).map((t) => [t.id, t]));
+            .in('id', allIds)
+          : { data: [] };
+        const byId = new Map((txRows ?? []).map((t) => [t.id, t]));
+        const shownCands = (candRows ?? []).slice(0, 20);
+        if ((candRows ?? []).length > shownCands.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = `Showing the first 20 of ${(candRows ?? []).length} possible duplicates.`; frag.appendChild(p); }
+        for (const c of shownCands) {
           const keep = byId.get(c.canonical_transaction_id);
           const dup = byId.get(c.duplicate_transaction_id);
           const wrap = document.createElement('div'); wrap.className = 'bank-row';
@@ -1170,7 +1197,7 @@ async function refresh() {
       }
     } catch (e) {
       console.warn('dedupe read failed:', e);
-      const dl = $('dedupeList'); if (dl) dl.innerHTML = '<p class="error">Could not load possible duplicates. The review tables may not be live yet — try again after the dedupe SQL is applied.</p>';
+      const dl = $('dedupeList'); if (dl) dl.innerHTML = '<p class="error">Could not load possible duplicates. Try again.</p>';
     }
   }
   // Week history display (History tab) — READ-ONLY, from week_closes +
@@ -1283,7 +1310,12 @@ $('signInBtn').addEventListener('click', async () => {
   });
   if (error) console.warn('sign-in failed:', error.message);
   $('authMsg').textContent = error ? 'Could not sign in. Check your email and password and try again.' : 'Signed in.';
-  if (!error) await // ---- Live CSV import (Transactions tab) ----
+
+boot();
+});
+// ---- Live CSV import (Transactions tab), registered at top level so
+// it works after a plain reload, not only after an in-page sign-in
+// (Nov 3 fix round: it used to live inside the sign-in handler).
 // Port of the demo parser. NOTHING is inserted on file pick: the file is
 // parsed, previewed with duplicate-skip counts, and inserted ONLY after
 // the user taps Confirm. Inserts are source='csv', state='provisional'
@@ -1355,9 +1387,6 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
   showToast(`Imported ${added} transaction(s) as provisional.`);
   await refresh();
 });
-
-boot();
-});
 $('signUpBtn').addEventListener('click', async () => {
   const { error } = await supabase.auth.signUp({
     email: $('authEmail').value.trim(), password: $('authPassword').value,
@@ -1367,7 +1396,11 @@ $('signUpBtn').addEventListener('click', async () => {
   if (!error) await boot();
 });
 $('signOutBtn').addEventListener('click', async () => {
-  await supabase.auth.signOut(); household = null; await show('auth');
+  await supabase.auth.signOut(); household = null;
+  // Do not leave credentials filled in on a shared device.
+  if ($('authEmail')) $('authEmail').value = '';
+  if ($('authPassword')) $('authPassword').value = '';
+  await show('auth');
 });
 // No header Refresh button anymore: tapping a tab refreshes.
 
@@ -1412,33 +1445,38 @@ $('joinHouseholdBtn').addEventListener('click', async () => {
   if (!error && data) { household = { household_id: data, role: 'member' }; await show('app'); await refresh(); }
 });
 
+let manualSubmitting = false;
 $('manualForm').addEventListener('submit', async (e) => {
   e.preventDefault();
+  // Double-tap guard (Nov 3 fix round): the duplicate check below
+  // awaits a network call, so disabling the button only after it
+  // cannot stop two rapid taps landing two rows. Disable first.
+  if (manualSubmitting) return;
+  manualSubmitting = true;
   const f = e.target;
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  const done = () => { manualSubmitting = false; if (submitBtn) submitBtn.disabled = false; };
   const amount = parseDollarsStrict(f.amount.value);
-  if (amount === null || amount <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
+  if (amount === null || amount <= 0) { done(); await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
   const suffix = f.suffix.value.trim();
-  if (!/^\d{4}$/.test(suffix)) { await showAlert('Card suffix', 'Card suffix must be exactly 4 digits. Never enter a full card number.'); return; }
+  if (!/^\d{4}$/.test(suffix)) { done(); await showAlert('Card suffix', 'Card suffix must be exactly 4 digits. Never enter a full card number.'); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
   // Smarter entry: warn on an apparent duplicate instead of silently
   // creating a second copy of the same transaction.
   const { data: dupes } = await supabase.from('transactions')
     .select('merchant, amount_cents, date').eq('household_id', household.household_id)
     .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
-  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add anyway'))) return;
-  // R1 busy control: block repeat submits while the insert is in
-  // flight, so a double tap cannot create the transaction twice.
-  const submitBtn = f.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.disabled = true;
+  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add anyway'))) { done(); return; }
   const hash = await sha(`${f.date.value}|${merchant}|${amount}|${suffix}`);
   const { error } = await supabase.from('transactions').insert({
     household_id: household.household_id, date: f.date.value, merchant,
     amount_cents: amount, card_suffix: suffix, source: 'manual',
     state: 'provisional', kind: 'charge', dedupe_hash: hash,
   });
-  if (error) { console.warn('manual insert failed:', error.message); await showAlert('Could not save', 'Could not save this transaction. Try again.'); if (submitBtn) submitBtn.disabled = false; return; }
+  if (error) { console.warn('manual insert failed:', error.message); await showAlert('Could not save', 'Could not save this transaction. Try again.'); done(); return; }
   await audit('Transaction added by hand', `${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)} (••${suffix}).`);
-  f.reset(); if (submitBtn) submitBtn.disabled = false; await refresh();
+  f.reset(); done(); await refresh();
 });
 
 async function callFn(name, body) {
@@ -1683,7 +1721,10 @@ async function deleteAccountFlow() {
   if (!(await showConfirm('Delete everything?', 'This permanently deletes your account and, if you are the last member, the whole household. Are you sure?', 'Yes, delete everything'))) return;
   const out = await callFn('delete-account', {});
   if (out.error || !out.deleted) { console.warn('delete-account failed:', out.error); await showAlert('Could not delete account', 'Could not delete your account. Try again.'); return; }
-  await supabase.auth.signOut(); household = null; await show('auth');
+  await supabase.auth.signOut(); household = null;
+  if ($('authEmail')) $('authEmail').value = '';
+  if ($('authPassword')) $('authPassword').value = '';
+  await show('auth');
   $('authMsg').textContent = 'Your account was deleted.';
 }
 async function changePasswordFlow() {
@@ -1713,7 +1754,10 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
   if (kind === 'weekly') {
     const w = currentWeekData;
     if (!w) { await showAlert('Weekly Budget', 'Weekly numbers are not loaded yet. Try again in a moment.'); return; }
-    await showSheet({ title: 'Weekly Budget', message: `Left: ${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}\nSpent: ${formatCents(w.chargesCents)}\nAllowance: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}\nCarried debt: ${formatCents(w.carriedDebtCents)}\nTemporary increase: ${formatCents(w.tempCents)}\nOutgoing debt: ${formatCents(w.outgoingDebtCents)}`, confirmLabel: 'Close' });
+    const bd = lastSpentBreakdown
+      ? `\nDated this week: ${formatCents(lastSpentBreakdown.datedTotal)}\nLate charges from earlier locked weeks: ${formatCents(lastSpentBreakdown.lateTotal)}`
+      : '';
+    await showSheet({ title: 'Weekly Budget', message: `Left: ${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}\nSpent: ${formatCents(w.chargesCents)}${bd}\nAllowance: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}\nCarried debt: ${formatCents(w.carriedDebtCents)}\nTemporary increase: ${formatCents(w.tempCents)}\nOutgoing debt: ${formatCents(w.outgoingDebtCents)}`, confirmLabel: 'Close' });
   } else if (kind === 'fund') {
     const f = currentFundData;
     if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
@@ -1870,22 +1914,28 @@ $('charityBackBtn')?.addEventListener('click', () => setAddForm(null));
 // R13 charity gift form: admin-only RPC, explicitly confirmed by
 // entry, so the gift posts as verified (Given) at once and never
 // enters weekly spending. Duplicate warning mirrors the manual form.
+let giftSubmitting = false;
 $('charityGiftForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
+  // Same double-tap guard as the manual form: the duplicate check
+  // below awaits a network call, so disable before it, not after.
+  if (giftSubmitting) return;
+  giftSubmitting = true;
   const f = e.target;
+  const submitBtn = f.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  const done = () => { giftSubmitting = false; if (submitBtn) submitBtn.disabled = false; };
   const amount = parseDollarsStrict(f.amount.value);
-  if (amount === null || amount <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
-  if (!f.date.value) { await showAlert('Date required', 'Pick the date of the gift.'); return; }
-  if (f.date.value < '2026-11-01') { await showAlert('Charity starts November 2026', 'Gifts before November 2026 are outside the charity period.'); return; }
+  if (amount === null || amount <= 0) { done(); await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
+  if (!f.date.value) { done(); await showAlert('Date required', 'Pick the date of the gift.'); return; }
+  if (f.date.value < '2026-11-01') { done(); await showAlert('Charity starts November 2026', 'Gifts before November 2026 are outside the charity period.'); return; }
   const suffix = f.suffix.value.trim();
-  if (suffix && !/^\d{4}$/.test(suffix)) { await showAlert('Card suffix', 'Card suffix must be exactly 4 digits, or left blank for a cash gift. Never enter a full card number.'); return; }
+  if (suffix && !/^\d{4}$/.test(suffix)) { done(); await showAlert('Card suffix', 'Card suffix must be exactly 4 digits, or left blank for a cash gift. Never enter a full card number.'); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
   const { data: dupes } = await supabase.from('transactions')
     .select('merchant, amount_cents, date').eq('household_id', household.household_id)
     .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
-  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Record this gift anyway?`, 'Record anyway'))) return;
-  const submitBtn = f.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.disabled = true;
+  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Record this gift anyway?`, 'Record anyway'))) { done(); return; }
   // The gift hash carries a per-submit nonce: two real identical
   // gifts on one day (the Nov 3 case: three $2 gifts to one org) must
   // not collide on the transactions unique hash, or the second gift
@@ -1894,14 +1944,14 @@ $('charityGiftForm')?.addEventListener('submit', async (e) => {
   const nonce = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
   const hash = await sha(`charity|${f.date.value}|${merchant}|${amount}|${suffix || '0000'}|${nonce}`);
   const { error } = await supabase.rpc('record_charity_gift', { p_household_id: household.household_id, p_merchant: merchant, p_amount_cents: amount, p_date: f.date.value, p_card_suffix: suffix || '0000', p_note: f.note.value.trim(), p_dedupe_hash: hash });
-  if (submitBtn) submitBtn.disabled = false;
   if (error) {
     console.warn('record_charity_gift failed:', error.message);
     const notLive = /could not find|does not exist|schema cache/i.test(error.message || '');
     showToast(notLive ? 'Charity isn\'t live yet — the database step still needs approval.' : error.message && /admin only/i.test(error.message) ? 'Only the admin can record charity gifts.' : 'Could not record this gift. Try again.', true);
+    done();
     return;
   }
-  f.reset(); setAddForm(null);
+  f.reset(); setAddForm(null); done();
   showToast(`Gift recorded: ${formatCents(amount)} to ${merchant}.`);
   await refresh();
 });
@@ -1982,7 +2032,7 @@ const closeTxFilters = () => {
   const f = document.getElementById('txFilters');
   if (f) f.classList.add('hidden');
   const t = document.getElementById('txFiltersToggle');
-  if (t) { t.textContent = 'Filters ▾'; t.setAttribute('aria-expanded', 'false'); }
+  if (t) { t.textContent = 'Filters'; t.setAttribute('aria-expanded', 'false'); }
 };
 $('txFiltersToggle')?.addEventListener('click', (e) => {
   const f = document.getElementById('txFilters');
@@ -1997,7 +2047,7 @@ $('txFiltersToggle')?.addEventListener('click', (e) => {
       sort: txSort,
     };
     f.classList.remove('hidden');
-    e.target.textContent = 'Filters ▴'; e.target.setAttribute('aria-expanded', 'true');
+    e.target.textContent = 'Filters'; e.target.setAttribute('aria-expanded', 'true');
   } else closeTxFilters();
 });
 $('txFiltersApplyBtn')?.addEventListener('click', () => closeTxFilters());

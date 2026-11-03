@@ -493,3 +493,34 @@ default because these were unset — that is fixed, not a standing bug.
   weekBreakdown panel) and the doc leftovers (R1 per-section
   loading/Error-Retry, R10 date/week filters + Clear, part-gift
   splits, locked-week reclassification).
+
+## Addendum — Nov 3, evening (external audit fix round)
+- An independent live audit (Round 2, v22, by the owner's other
+  agents) confirmed 7 bugs, 2 of them high. All are fixed on branch
+  fix-audit-round2: (1) CSV import moved out of the sign-in handler
+  to top level, so it works after a plain reload; (2) manual + gift
+  submits disable first and guard on an in-flight flag, closing the
+  double-tap race (the old code disabled only after the duplicate
+  check's network call); (3) error toasts stay white on blue via a
+  .toast.error override — the generic .error color was leaking red
+  text into the toast, which this session's own audit missed;
+  (4) the dated-vs-late breakdown now appears as lines in the
+  Weekly Budget sheet (the hidden weekBreakdown panel had no
+  control); (5) refund panels need a DB migration, not code — see
+  supabase/restoration-columns-migration.sql; (6) sign-out clears
+  the email/password fields; (7) the profile button hides until
+  signed in. Plus this session's audit P1s: fund card clears its
+  cached data on read failure; Transactions total excludes charity
+  gifts except on the Charity filter; all glyph controls replaced
+  (sync is an SVG icon, Back/Filters/sort are words); sort select
+  matches its button; number inputs capped at 220px; .btn-small is
+  actually small; dedupe loads all pairs in one query capped at 20;
+  stale "SQL not applied" messages reworded; Savings form back,
+  admin-only, in the same card; live-sw.js (network-first, shell
+  only) replaces the demo-era sw.js, which must never be registered
+  for the live app. NOT built here: server-side idempotency
+  constraint for manual rows (needs a deliberate scope decision —
+  identical real purchases are legitimate); hand-entered refunds
+  (manual form stays positive-only by design); R1 per-section
+  loading, R10 filters, fixed charity commitments (features, not
+  bugs — owner decision).

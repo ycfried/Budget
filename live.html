@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=14">
+<link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -62,7 +62,7 @@
     <div class="card hero" id="section-week">
       <div class="hero-head">
         <div class="kicker">Available this week · <span id="weekLabel">…</span></div>
-        <button class="btn hero-sync-btn" id="homeSyncBtn" type="button" aria-label="Sync bank">↻</button>
+        <button class="btn hero-sync-btn" id="homeSyncBtn" type="button" aria-label="Sync bank"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
       </div>
       <div id="weeklyAvailable" class="big">…</div>
       <p class="muted">Pending transactions are included and marked.
@@ -100,7 +100,7 @@
     </div>
 
     <div class="card" id="section-manual">
-      <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
+      <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add choices">Back</button></div>
       <h2>Add a transaction by hand</h2>
       <p class="muted small">Record a transaction by hand. It counts as pending until the bank confirms it.</p>
       <form id="manualForm">
@@ -116,7 +116,7 @@
     </div>
 
     <div class="card" id="section-csv">
-      <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
+      <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add choices">Back</button></div>
       <h2>Import transactions from a CSV file</h2>
       <p class="muted small">Expected columns: Date, Description, Amount, Card Ending. Nothing is added until you review the preview and tap Confirm. Duplicates are skipped. Imports are provisional until the bank confirms them.</p>
       <label>CSV file <input id="csvFile" type="file" accept=".csv,text/csv"></label>
@@ -127,7 +127,7 @@
     </div>
 
     <div class="card" id="section-charity-gift">
-      <div class="btn-row"><button class="btn" id="charityBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
+      <div class="btn-row"><button class="btn" id="charityBackBtn" type="button" aria-label="Back to Add choices">Back</button></div>
       <h2>Give to charity</h2>
       <p class="muted small">Record a gift you already gave. A gift entered here counts as given at once, and it never counts as weekly spending. Only the admin can record gifts.</p>
       <form id="charityGiftForm">
@@ -156,7 +156,7 @@
         <button class="tx-chip" id="txWeekToggle" type="button" aria-pressed="false" aria-label="Show only this week's transactions">This week</button>
       </div>
       <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
-      <button id="txFiltersToggle" class="btn" type="button" aria-expanded="false" aria-label="Show more filters">Filters ▾</button>
+      <button id="txFiltersToggle" class="btn" type="button" aria-expanded="false" aria-label="Show more filters">Filters</button>
       <div id="txFilters" class="hidden">
         <label class="muted small">Month
           <select id="txMonth" aria-label="Filter by month"><option value="all">All months</option></select>
@@ -181,7 +181,7 @@
         <label class="muted small">Sort by
           <select id="txSortField" aria-label="Sort transactions by"><option value="date">Date</option><option value="amount">Amount</option></select>
         </label>
-        <button id="txSortDirBtn" class="btn" type="button" aria-label="Sort direction">↓ Newest first</button>
+        <button id="txSortDirBtn" class="btn" type="button" aria-label="Sort direction">Newest first</button>
       </div>
       <p id="txCount" class="muted small tx-count"></p>
       <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
@@ -189,7 +189,7 @@
     </div>
 
     <div class="card" id="section-settings-head">
-      <div class="btn-row"><button class="btn" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
+      <div class="btn-row"><button class="btn" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">Back</button></div>
       <h2>Settings</h2>
       <p class="muted small">Connections, Budget, and Account &amp; household. Bank and email connections moved here from Funds.</p>
     </div>
@@ -399,11 +399,20 @@
 </main>
 
 <footer class="foot muted small">
-  OnBudget · Last updated <span id="lastSync">—</span> <span id="refreshState"></span>
+  OnBudget · Last bank sync <span id="lastSync">—</span> <span id="refreshState"></span>
 </footer>
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=22"></script>
+<script type="module" src="live.js?v=23"></script>
+<script>
+  // Live service worker (network-first app shell, offline fallback).
+  // Registered late so it never blocks the first paint.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('live-sw.js').catch(() => {});
+    });
+  }
+</script>
 </body>
 </html>
