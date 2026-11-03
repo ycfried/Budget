@@ -168,6 +168,7 @@ let txWeekOnly = false; // spec B5: transactions filter by week (client-side, cu
 let txLimit = 100; // purchases load in pages of 100; Load more raises it
 let weekCloseRan = false; // week-close runs itself once per session (admin only)
 let lastRefreshAt = 0; // tab taps refresh in the background, throttled
+let refreshInFlight = 0; // R1: overlapping refreshes share one Updating… state
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
 // Generic display labels for transaction sources. Database values are
 // unchanged (e.g. 'plaid'); only what the user sees is bank-agnostic.
@@ -214,6 +215,12 @@ async function refresh() {
   if (!household) return;
   const rb = document.getElementById('refreshBtn');
   if (rb) { rb.disabled = true; rb.textContent = 'Updating…'; }
+  // R1: while a refresh is in flight the on-screen numbers are the
+  // previous ones, so the footer says so instead of looking current.
+  // (There is no header Refresh button anymore, so the footer is the
+  // one place this state is always visible, on every tab.)
+  refreshInFlight++;
+  const rs = document.getElementById('refreshState'); if (rs) rs.textContent = 'Updating…';
   try {
   // Webhook-triggered auto-sync happens first, so the numbers and
   // list below already include any purchases Plaid just announced.
@@ -913,6 +920,8 @@ async function refresh() {
     : '<li>No audit entries yet.</li>';
   } finally {
     if (rb) { rb.disabled = false; rb.textContent = 'Refresh'; }
+    refreshInFlight = Math.max(0, refreshInFlight - 1);
+    if (!refreshInFlight) { const rs2 = document.getElementById('refreshState'); if (rs2) rs2.textContent = ''; }
   }
 }
 
