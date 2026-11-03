@@ -171,6 +171,12 @@ let lastRefreshAt = 0; // tab taps refresh in the background, throttled
 let refreshInFlight = 0; // R1: overlapping refreshes share one Updating… state
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
 let currentFundData = null; // last fund aggregates, for the Extra Fund card sheet
+// R3 nicknames: keyed by stable Plaid account id, never by suffix alone.
+// nicknameBySuffix is a display hint only, built from the same rows, and
+// drops any suffix claimed by two accounts.
+let nicknameByAccount = new Map();
+let nicknameBySuffix = new Map();
+let nicknamesLoaded = false;
 // Generic display labels for transaction sources. Database values are
 // unchanged (e.g. 'plaid'); only what the user sees is bank-agnostic.
 const sourceLabel = (s) => ({ plaid: 'Bank', manual: 'By hand', csv: 'File', amex_alert: 'Email alert' }[s] ?? String(s));
@@ -405,8 +411,13 @@ async function refresh() {
     const cards = [...new Set(all.map((t) => String(t.card_suffix)))].sort();
     const cur = cards.includes(txCard) ? txCard : 'all';
     if (cur !== txCard) { txCard = cur; localStorage.setItem('hb-tx-card', cur); }
-    cardSel.innerHTML = '<option value="all">All cards</option>' + cards.map((c) =>
-      `<option value="${esc(c)}"${c === txCard ? ' selected' : ''}>••${esc(c)}</option>`).join('');
+    // R3: a nickname shows in the filter only when it was loaded from
+    // the Settings bank list (keyed by Plaid account id) and maps to
+    // exactly one suffix; ambiguous suffixes stay suffix-only.
+    cardSel.innerHTML = '<option value="all">All cards</option>' + cards.map((c) => {
+      const nick = nicknameBySuffix.get(c);
+      return `<option value="${esc(c)}"${c === txCard ? ' selected' : ''}>••${esc(c)}${nick ? ` · ${esc(nick)}` : ''}</option>`;
+    }).join('');
   }
   const thisWeekTxns = all.filter((t) => inThisWeek(t) && !(t.excluded === true || t.state === 'excluded'));
   const emptyHintEl = document.getElementById('weekEmptyHint');
@@ -706,6 +717,23 @@ async function refresh() {
       if (acctsErr) { console.warn('plaid_accounts read failed (items still shown):', acctsErr.message); }
       else acctRows = accts ?? [];
     }
+    // R3: load nicknames (gracefully absent until r3-account-nicknames.sql
+    // is applied live — the bank list still renders, without nicknames).
+    nicknameByAccount = new Map(); nicknameBySuffix = new Map(); nicknamesLoaded = false;
+    try {
+      const { data: nicks, error: nickErr } = await supabase.from('account_nicknames')
+        .select('plaid_item_id, plaid_account_id, card_suffix, nickname').eq('household_id', household.household_id);
+      if (nickErr) throw nickErr;
+      const suffixCounts = new Map();
+      for (const n of nicks ?? []) {
+        nicknameByAccount.set(`${n.plaid_item_id}|${n.plaid_account_id}`, n.nickname);
+        if (n.card_suffix) suffixCounts.set(n.card_suffix, (suffixCounts.get(n.card_suffix) ?? 0) + 1);
+      }
+      for (const n of nicks ?? []) {
+        if (n.card_suffix && suffixCounts.get(n.card_suffix) === 1) nicknameBySuffix.set(n.card_suffix, n.nickname);
+      }
+      nicknamesLoaded = true;
+    } catch (e) { console.warn('nicknames read failed (table may not be live yet):', e.message); }
     const syncTimes = itemRows.map((i) => i.last_sync_at).filter(Boolean).sort();
     bankLastSyncAt = syncTimes.length ? syncTimes[syncTimes.length - 1] : null;
     const syncLine = $('bankSyncLine');
@@ -742,8 +770,25 @@ async function refresh() {
         if (accts.length) {
           for (const acct of accts) {
             const line = document.createElement('div'); line.className = 'muted small';
-            line.textContent = `${acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}${acct.type ? ` · ${acct.type}` : ''}${acct.subtype ? ` (${acct.subtype})` : ''}`;
+            const nick = nicknameByAccount.get(`${item.plaid_item_id}|${acct.plaid_account_id}`);
+            line.textContent = `${nick ? `${nick} · ` : ''}${acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}${acct.type ? ` · ${acct.type}` : ''}${acct.subtype ? ` (${acct.subtype})` : ''}`;
             info.appendChild(line);
+            // R3: nickname editing lives in Settings, admin-only, via
+            // the RPC (never a direct table write). Until the R3 SQL
+            // is applied, the button explains that instead of failing.
+            if (household.role === 'admin') {
+              const nickBtn = document.createElement('button'); nickBtn.className = 'btn btn-small'; nickBtn.type = 'button';
+              nickBtn.textContent = nick ? 'Edit nickname' : 'Add nickname';
+              nickBtn.setAttribute('aria-label', `Set a nickname for ${acct.name || 'this account'}`);
+              nickBtn.addEventListener('click', async () => {
+                if (!nicknamesLoaded) { await showAlert('Nicknames not live yet', 'Nicknames need the R3 database step applied first. Until then, accounts show their bank names.'); return; }
+                const value = await showSheet({ title: 'Nickname', message: 'Give this account a short name (up to 40 characters). Leave it blank to remove the nickname. The nickname is only a label — it never changes bank links, matching, or week math.', inputLabel: 'Nickname', inputValue: nick ?? '', confirmLabel: 'Save', cancelLabel: 'Cancel' });
+                if (value === null) return;
+                const { error } = await supabase.rpc('set_account_nickname', { p_household_id: household.household_id, p_plaid_item_id: item.plaid_item_id, p_plaid_account_id: acct.plaid_account_id, p_card_suffix: acct.mask ?? null, p_nickname: value.trim() ? value.trim().slice(0, 40) : null });
+                if (error) { console.warn('set_account_nickname failed:', error.message); await showAlert('Could not save nickname', 'Could not save this nickname. Try again.'); } else await refresh();
+              });
+              info.appendChild(nickBtn);
+            }
           }
         } else {
           const line = document.createElement('div'); line.className = 'muted small'; line.textContent = 'Account details unavailable.'; info.appendChild(line);
