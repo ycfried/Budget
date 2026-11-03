@@ -613,7 +613,9 @@ default because these were unset — that is fixed, not a standing bug.
   member-vs-admin Review visibility. Live-fetch proof at merge:
   v25/v16 served, "View history" + "Past savings records" present,
   3 bottom tabs.
-- UX audit fixes Nov 3, evening (branch ux-audit-fixes, NOT merged,
+- UX audit fixes Nov 3, evening (PR #12 merged to main, live
+  verified serving live.js v26 / styles v17; branch ux-audit-fixes
+  was 2ffb1dc):
   live.js v26 / styles v17; reconciled against v25, NOT a rebuild
   of the delta): 02 Weekly Budget sheet now shows the reconciliation
   (base room = allowance - carried debt floored at 0; Left = room +
@@ -652,4 +654,9 @@ default because these were unset — that is fixed, not a standing bug.
   tests). Still to prove live: the full checklist on a real phone
   at 320/390/desktop, incl. the stacked date fields, profile menu,
   week blocks, grouped activity, member Settings view, and the
-  member "Available to request" wording.
+  member "Available to request" wording. Live-fetch proof at merge:
+  v26/v17 served, "Available to request" + "total of the rows shown"
+  + week-block + manual Cancel markers present. Review also added
+  one label fix on top of the branch: payment/cashback detail lines
+  now state the kind exclusion instead of the generic "counts toward
+  its week" text.
