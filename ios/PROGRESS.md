@@ -186,3 +186,15 @@ product decisions remain command/envelope/idempotency/reconciliation contracts,
 source timestamp/state semantics, complete financial/provenance payloads,
 future-effective policy/reversals, refund links and admin departure/deletion policy.
 No production, staging, Supabase, bank, Gmail or Apple service was connected.
+
+## Integration readiness documentation review (November 3, 2026)
+
+Added docs/INTEGRATION_READINESS.md from FINAL/HANDOFF and checked-in server/web/native
+sources. It distinguishes verified source implementations from proposed/missing
+contracts and owner decisions, inventories exact RPC names/arguments and auth/RLS,
+records per-mutation retry risks, financial payload gaps, legacy state/null linkage,
+policy/deletion conflicts, and proposes isolated staging acceptance gates.
+Documentation only: no backend edits, service/data access, provisioning or build.
+Local verification: documentation relative-link check, diff scope/whitespace review
+and credential-pattern safety scan passed before push. No runtime tests rerun for
+this review; M2's 82 local core passes and historical simulator SHA remain unchanged.
