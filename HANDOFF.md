@@ -421,3 +421,50 @@ default because these were unset — that is fixed, not a standing bug.
   Quirk: the FINAL PDF still carries the v2 cover page (built by
   editing v2 in place) — filename + refund sections are what make
   it FINAL.
+
+## Addendum — Nov 3, evening (full build R12 + R13, then audit)
+- Branch full-build-2, tip 4e4ca78, pushed, NOT live, NOT merged.
+  Live main is still d616a29. R12 + R13 code is built and tested
+  (77/77: engine + gmail + dedupe + r12 + r13); their SQL files are
+  PREPARED ONLY and need owner dashboard approval before the features
+  work live. Nothing in this branch touches supabase/functions, ios/,
+  or compute-week, so merging it redeploys no functions.
+- R12 Add Money (owner rule: shortfall first): admin-only RPC
+  add_fund_money, serialized on the household row, idempotent on a
+  per-submit client key, one fund_topups row + one ledger row for
+  the spendable part only + audit row; never touches week math or
+  transactions; bank deposits never auto-credit. UI: Funds admin
+  card with unchecked "already put this money in checking" box,
+  live split preview, and a Money-added history list showing each
+  split. Doc cases verified in tests.
+- R13 Charity (owner basis: 10% of money received + manual entries,
+  from Nov 1, 2026): new transactions kind 'charity' (compute-week
+  counts only charge/fund_charge + refund, proven from
+  chargeContribution, so gifts sit outside weekly spending with no
+  server math change). Funds Charity summary + Home Charity card
+  show Committed / Given / Remaining ("Ahead by $X" when negative).
+  Income is recorded explicitly by the admin (default rate editable,
+  per-income overrides replace, corrections append-only reversed +
+  replacement, half-up per income). Manual gifts via Add > Give to
+  charity post as verified gifts at once. Posted charges can be
+  marked as gifts whole-row only (server guards: posted, unexcluded,
+  no fund part, Nov 2026 onward, unlocked week). NOT built, by
+  design, not by omission: part-gift splits, locked-week
+  reclassification (refused with a message), and any auto-
+  classification by name similarity. A gift entered by a member is
+  not possible yet: gift entry is admin-only; a member's donation
+  becomes a gift when the admin marks the posted charge.
+- Still pending, unchanged: DB approvals in order A1 grants, dedupe
+  tables/RPC, R3 nicknames, R12, R13, then the Amazon merge (needs
+  dedupe SQL first + the merge-now vs wait-until-posts decision).
+  Until those land, the new cards show their error states, never
+  zeros; the old live app is unaffected.
+- Post-build audit: AUDIT_2026-11-03_POST_BUILD_R12_R13.md. No money
+  or security break found in R12/R13. Open from the earlier audit
+  and still open: unicode glyph controls, sort-row shape mismatch,
+  full-width money inputs outside the new forms, .btn-small not
+  small in the live restyle, dedupe N+1 queries, savings recording
+  still impossible (R11 hid the forms, no replacement), fund card
+  stale on read failure, dead weekBreakdown panel. Also still
+  open from the doc: R1 per-section loading/Error-Retry, R10
+  date/week filters + Clear, R3 nickname ordering note.
