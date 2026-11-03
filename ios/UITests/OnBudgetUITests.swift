@@ -26,4 +26,15 @@ final class OnBudgetUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Approve or adjust split"].exists)
         XCTAssertTrue(app.buttons["Request fund use"].exists)
     }
+    func testLiveLoginRemainsLockedWithoutConfiguration() {
+        let app = XCUIApplication()
+        app.launch()
+        app.buttons["Read-only connection preparation"].tap()
+        XCTAssertTrue(app.staticTexts["Live connection locked"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.secureTextFields.count, 0)
+        XCTAssertEqual(app.textFields.count, 0)
+        XCTAssertFalse(app.buttons["Sign in"].exists)
+        XCTAssertFalse(app.buttons["Restore saved session"].exists)
+    }
+
 }

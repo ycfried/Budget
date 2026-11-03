@@ -240,3 +240,40 @@ consistent server aggregates, durable intent reconciliation and financial writes
 remain incomplete. Secure owner credential entry/build execution and the specific
 first-connection approval are needed next; never ask for a password/token in chat.
 No Supabase code/schema, web, workflow, deployment setting or main was changed.
+
+## Approved read window — prerequisite enforcement (November 3, 2026)
+
+Owner approved the FIRST_LIVE_CONNECTION.md Auth/read-only window; do not ask for
+that same approval again. Configuration verification, secure owner-controlled
+login and final network review are mandatory prerequisites. No live request was
+sent, no public project key/config copied, no actual credential requested/entered,
+and no build/signing/deployment/backend/provider action occurred.
+
+Reviewed current composition: no runtime project configuration or enabled client;
+login form stays locked. Exact project/public key is NOT verified and the secure
+login route is NOT READY. An interactive owner/trusted-friend Mac simulator or a
+separately approved native device route is needed. GitHub CI cannot provide secure
+interactive password entry on an iPhone; a compilation pass is not that route.
+See docs/LOGIN_ROUTE_STATUS.md for evidence, configuration method, execution-route
+options and a concrete optional one-run simulator validation proposal (not active).
+The owner has been asked which interactive route is available; no answer assumed.
+
+Added ReadValidationWindow to guarded dispatch: exact bodies/query fields, selected
+columns/household filters/order, initial 0–99 range, one password grant/refresh/week
+read/collection page, max 15 identity + 15 membership reads, total max 46 including
+optional refresh. Counts consumed atomically before dispatch; rejected/concurrent
+replays stop the window. Transport/HTTP/cancellation/decoder/store validation
+errors stop further live requests. No reset, retry or pagination loop. Collection
+selection now only clears local rows; extra-page buttons removed for this window.
+Added a locked-login UI test source; it has NOT been executed.
+
+Local verification: **116 core XCTest tests passed, zero failures** on Swift 6.1.2
+Linux (108 existing + 8 request-window tests). Tests exercise exact full window,
+per-resource/Auth limits, forbidden methods/paths/body fields, wildcard/duplicate
+query rejection, extra pages, explicit permanent stop and concurrent admission.
+No enabled network executor is executed by tests. Apple App/Widget/UI-test syntax
+parse, project graph checks, documentation links, whitespace/scope and credential
+pattern scan passed. These are not Xcode, Keychain, live Auth/RLS or device results.
+All runtime test data remain synthetic; no financial calculations or write APIs
+were added. All edits remain under ios/. Any new simulator build needs separate
+approval; the existing read-window approval does not authorize one.

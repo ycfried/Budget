@@ -120,11 +120,11 @@ struct NativeReadPreparationView: View {
                                     if case .value(.string(let date)) = row.field("date") { Text(date).font(.caption) }
                                 }.accessibilityElement(children: .combine)
                             }
-                            if let next = page.nextOffset {
-                                Button("Next page") { Task { await connection.load(relation, offset: next) } }.disabled(connection.loading)
+                            if page.nextOffset != nil {
+                                Text("Additional pages are outside the approved first validation window.").font(.caption)
                             }
                         }
-                    }.onChange(of: relation) { _, _ in Task { await connection.load(relation) } }
+                    }.onChange(of: relation) { _, _ in connection.clearDisplayedPage() }
                 }
                 Button("Clear local session") { password = ""; Task { await connection.signOut() } }
             }

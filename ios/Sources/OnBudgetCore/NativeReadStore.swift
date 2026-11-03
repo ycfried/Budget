@@ -34,6 +34,7 @@ public final class NativeReadStore {
             // Household selection is explicit, never a guess based on array order.
         } catch {
             guard generation == current else { return }
+            await client.stopValidation()
             try? await client.signOutLocally()
             self.error = Self.message(error)
         }
@@ -50,6 +51,7 @@ public final class NativeReadStore {
             memberships = rows; signedIn = true; error = nil
         } catch {
             guard generation == current else { return }
+            await client.stopValidation()
             try? await client.signOutLocally()
             self.error = Self.message(error)
         }
@@ -58,6 +60,7 @@ public final class NativeReadStore {
         guard !loading, memberships.contains(where: { $0.householdID == household && $0.knownRole != nil }) else { return }
         generation += 1; selectedHousehold = household; week = nil; page = nil; error = nil
     }
+    public func clearDisplayedPage() { page = nil }
     public func load(_ relation: ReadRelation, offset: Int = 0) async {
         guard !loading, let client, let household = selectedHousehold else { return }
         loading = true; page = nil
@@ -67,7 +70,10 @@ public final class NativeReadStore {
             let response = try await client.page(relation, household: household, offset: offset)
             guard generation == current else { return }
             page = response; error = nil
-        } catch { if generation == current { self.error = Self.message(error) } }
+        } catch {
+            await client.stopValidation()
+            if generation == current { self.error = Self.message(error) }
+        }
     }
     public func loadWeek() async {
         guard !loading, let client, let household = selectedHousehold else { return }
@@ -78,16 +84,22 @@ public final class NativeReadStore {
             let response = try await client.week(household: household)
             guard generation == current else { return }
             week = response; error = nil
-        } catch { if generation == current { self.error = Self.message(error) } }
+        } catch {
+            await client.stopValidation()
+            if generation == current { self.error = Self.message(error) }
+        }
     }
     public func signOut() async {
         generation += 1; memberships = []; selectedHousehold = nil; week = nil; page = nil
         loading = false; signedIn = false; error = nil
-        do { try await client?.signOutLocally() }
+        do {
+            await client?.stopValidation()
+            try await client?.signOutLocally()
+        }
         catch { self.error = Self.message(error) }
     }
     private static func message(_ error: any Error) -> String {
         // Never publish decoder descriptions, request URLs, body or provider errors.
-        (error as? ConnectionError)?.localizedDescription ?? "The response could not be loaded safely. Retry explicitly."
+        (error as? ConnectionError)?.localizedDescription ?? "Validation stopped. The response could not be verified; no further live request is permitted."
     }
 }

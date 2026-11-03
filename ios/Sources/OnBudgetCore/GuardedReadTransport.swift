@@ -17,6 +17,7 @@ public final class GuardedReadTransport: ReadHTTPTransport, @unchecked Sendable 
     private let origin: URL
     private let ownerApprovedConnection: Bool
     private let session: URLSession
+    private let window = ReadValidationWindow()
     public init(origin: URL, ownerApprovedConnection: Bool = false) throws {
         _ = try ReadBackendConfiguration(origin: origin, publicKey: "configuration-validation-only")
         self.origin = origin; self.ownerApprovedConnection = ownerApprovedConnection
@@ -44,12 +45,23 @@ public final class GuardedReadTransport: ReadHTTPTransport, @unchecked Sendable 
         }
         throw ConnectionError.forbidden
     }
+    public func stop() async { await window.stop() }
     public func execute(_ request: URLRequest) async throws -> ReadHTTPResponse {
-        try validate(request)
-        try Task.checkCancellation()
-        let (data, response) = try await session.data(for: request)
-        guard let response = response as? HTTPURLResponse, data.count <= 2_000_000 else { throw ConnectionError.invalidResponse }
-        try Task.checkCancellation()
-        return ReadHTTPResponse(status: response.statusCode, data: data, contentRange: response.value(forHTTPHeaderField: "Content-Range"))
+        do {
+            try validate(request)
+            try await window.admit(request)
+            try Task.checkCancellation()
+            let (data, response) = try await session.data(for: request)
+            guard let response = response as? HTTPURLResponse, data.count <= 2_000_000 else { throw ConnectionError.invalidResponse }
+            try Task.checkCancellation()
+            guard (200...299).contains(response.statusCode) else {
+                await window.stop()
+                return ReadHTTPResponse(status: response.statusCode, data: Data())
+            }
+            return ReadHTTPResponse(status: response.statusCode, data: data, contentRange: response.value(forHTTPHeaderField: "Content-Range"))
+        } catch {
+            await window.stop()
+            throw error
+        }
     }
 }

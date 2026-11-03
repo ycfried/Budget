@@ -4,10 +4,12 @@ import FoundationNetworking
 #endif
 
 public enum ConnectionError: Error, LocalizedError, Equatable, Sendable {
-    case approvalRequired, invalidConfiguration, invalidResponse, unauthorized, forbidden, failed(Int), incompletePage, identityChanged
+    case approvalRequired, invalidConfiguration, invalidResponse, unauthorized, forbidden, failed(Int), incompletePage, identityChanged, windowStopped, windowLimit
     public var errorDescription: String? {
         switch self {
-        case .approvalRequired: "The first live connection has not been approved."
+        case .approvalRequired: "Live access remains locked until configuration and secure login prerequisites are satisfied."
+        case .windowStopped: "The validation window has stopped. No further request can be sent."
+        case .windowLimit: "The approved validation request limit has been reached."
         case .invalidConfiguration: "The approved backend configuration is missing or invalid."
         case .invalidResponse: "The server response could not be verified."
         case .unauthorized: "Sign in again to continue."
@@ -49,6 +51,10 @@ public struct ReadHTTPResponse: Sendable {
 }
 public protocol ReadHTTPTransport: Sendable {
     func execute(_ request: URLRequest) async throws -> ReadHTTPResponse
+    func stop() async
+}
+public extension ReadHTTPTransport {
+    func stop() async {}
 }
 
 /// Default transport is closed. A later approval must explicitly change app
@@ -156,6 +162,11 @@ public actor NativeReadClient {
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         return request
     }
+    public func stopValidation() async { await transport.stop() }
+    private func decode<T: Decodable>(_ type: T.Type, from data: Data) async throws -> T {
+        do { return try JSONDecoder().decode(type, from: data) }
+        catch { await transport.stop(); throw ConnectionError.invalidResponse }
+    }
     private func execute(_ request: URLRequest) async throws -> ReadHTTPResponse {
         try Task.checkCancellation()
         let response = try await transport.execute(request)
@@ -176,7 +187,7 @@ public actor NativeReadClient {
         defer { if generation == current { authenticating = false } }
         let body = try JSONEncoder().encode(["email": email, "password": password])
         let response = try await execute(request("/auth/v1/token", method: "POST", query: [.init(name: "grant_type", value: "password")], body: body))
-        let value = try JSONDecoder().decode(NativeAuthSession.self, from: response.data)
+        let value = try await decode(NativeAuthSession.self, from: response.data)
         try accept(value, generation: current)
     }
     private func accept(_ value: NativeAuthSession, generation current: Int) throws {
@@ -209,7 +220,7 @@ public actor NativeReadClient {
         if let existing = refresh { task = existing }
         else {
             let request = try request("/auth/v1/token", method: "POST", query: [.init(name: "grant_type", value: "refresh_token")], body: JSONEncoder().encode(["refresh_token": value.refreshToken]))
-            task = Task { let response = try await self.execute(request); return try JSONDecoder().decode(NativeAuthSession.self, from: response.data) }
+            task = Task { let response = try await self.execute(request); return try await self.decode(NativeAuthSession.self, from: response.data) }
             refresh = task
         }
         do {
@@ -227,7 +238,7 @@ public actor NativeReadClient {
     public func validatedUser() async throws -> NativeUser {
         let current = generation
         let response = try await execute(request("/auth/v1/user", token: try await token()))
-        let user = try JSONDecoder().decode(NativeUser.self, from: response.data)
+        let user = try await decode(NativeUser.self, from: response.data)
         guard generation == current, user.id == session?.user.id else { throw ConnectionError.identityChanged }
         return user
     }
@@ -237,7 +248,7 @@ public actor NativeReadClient {
         let response = try await execute(request("/rest/v1/household_members", query: [
             .init(name: "select", value: "household_id,user_id,role,display_name"),
             .init(name: "user_id", value: "eq.\(user.id.uuidString)")], token: try await token()))
-        let rows = try JSONDecoder().decode([NativeMembership].self, from: response.data)
+        let rows = try await decode([NativeMembership].self, from: response.data)
         guard generation == current, rows.allSatisfy({ $0.userID == user.id }) else { throw ConnectionError.identityChanged }
         return rows
     }
@@ -251,7 +262,7 @@ public actor NativeReadClient {
         let body = try JSONEncoder().encode(BackendContracts.ComputeWeekRequest(householdID: household.uuidString, weekStart: starting?.rawValue))
         let response = try await execute(request("/functions/v1/compute-week", method: "POST", token: try await token(), body: body))
         guard generation == current else { throw ConnectionError.identityChanged }
-        return try JSONDecoder().decode(WeekSnapshotResponse.self, from: response.data)
+        return try await decode(WeekSnapshotResponse.self, from: response.data)
     }
     public func page(_ relation: ReadRelation, household: UUID, offset: Int = 0, limit: Int = 100) async throws -> NativeReadPage {
         guard offset >= 0, (1...500).contains(limit), offset <= Int.max - limit else { throw ConnectionError.invalidResponse }
@@ -266,7 +277,7 @@ public actor NativeReadClient {
         request.setValue("\(offset)-\(offset + limit - 1)", forHTTPHeaderField: "Range")
         let response = try await execute(request)
         guard generation == current else { throw ConnectionError.identityChanged }
-        let rows = try JSONDecoder().decode([APIRecord].self, from: response.data)
+        let rows = try await decode([APIRecord].self, from: response.data)
         guard let range = response.contentRange, let slash = range.lastIndex(of: "/"),
               let total = Int(range[range.index(after: slash)...]), total >= 0,
               rows.count <= limit, offset <= total, rows.count <= total - offset else { throw ConnectionError.incompletePage }

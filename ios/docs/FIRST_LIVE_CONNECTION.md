@@ -111,10 +111,12 @@ Only Auth grants and compute-week may use POST in the guarded transport. A user
 admin token remains powerful server-side, so the allowlist is defense in depth;
 request substitution/untrusted transport implementations must never be enabled.
 
-## Proposed first live validation window — approval pending
+## Approved first live validation window — prerequisites still pending
 
-1. Confirm origin/public key belongs to the existing owner-approved project and
-   approve the Auth side effects/read list above. No credential values in approval.
+1. The owner approved the Auth side effects/read list. Confirm the exact runtime
+   origin/public key and secure owner login route before any request; see
+   [LOGIN_ROUTE_STATUS.md](LOGIN_ROUTE_STATUS.md). Do not request the same window
+   approval again or include credential values in approval.
 2. Separately review/configure the native executor and Keychain namespace after
    approval, and establish an owner-controlled credential-entry/execution route.
    Do not auto-run a cloud build or change Apple/server redirect configuration.
@@ -179,10 +181,21 @@ They do not contact any origin. Guarded transport policy tests never execute an
 enabled network request. Keychain code is Apple-only and not runtime tested on
 Linux. Apple Swift syntax/static project checks are not Xcode compilation.
 
-Before actual owner-data validation: explicit first-connection approval, confirmed
-runtime config, reviewed guarded composition and secure owner credential entry.
+Before actual owner-data validation: the first-connection approval is now recorded;
+confirmed runtime config, reviewed guarded composition and secure owner credential
+entry are still required.
 Before calling this native build validated: separate approved Apple build/device
 execution. Before connected financial actions: separately approved exact write
 plan and supported reconciliation/recovery contracts. No approval already given
 is reopened: real-data direction is accepted; only the user's expressly required
-first-connection and specific-write gates remain.
+configuration/secure-login prerequisites and specific-write gates remain.
+
+
+## Subsequent enforcement review
+
+ReadValidationWindow now enforces the approved inspection counts/initial-page-only
+shape at the guarded dispatch boundary. Query columns/filters/order, request bodies
+and HTTP methods are constrained; a violation/error stops the instance. The UI
+no longer automatically loads on collection selection or offers additional pages.
+No app configuration or executor has been activated. Approval and prerequisite
+status are tracked in LOGIN_ROUTE_STATUS.md; live-route readiness is not claimed.
