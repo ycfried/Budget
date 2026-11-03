@@ -17,6 +17,13 @@ struct TransactionsView: View {
                 Picker("State", selection: $query.filter) {
                     ForEach(PurchaseFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
+                Picker("Classification", selection: $query.kind) {
+                    ForEach(["All", "charge", "refund", "fund_charge", "payment", "cashback"], id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ")).tag($0) }
+                }
+                Picker("Week", selection: $query.weekStart) {
+                    Text("All").tag("All")
+                    ForEach(knownWeeks, id: \.self) { Text("Week of \($0)").tag($0) }
+                }
                 Picker("Sort", selection: $query.sort) {
                     ForEach(PurchaseSort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
@@ -77,10 +84,15 @@ struct TransactionsView: View {
         .confirmationDialog("Record this sample import? No transactions or totals will change.", isPresented: $confirmImport) {
             Button("Record sample import") {
                 guard let preview else { return }
-                Task { await model.submit(.csv(preview.rows)); self.preview = nil }
+                Task { if await model.submit(.csv(preview.rows)) { self.preview = nil } }
             }
         }
         .refreshable { await model.refresh() }
+    }
+    private var knownWeeks: [String] {
+        var weeks = model.snapshot?.history.map(\.weekStart) ?? []
+        if let current = model.snapshot?.dashboard.week.weekStart { weeks.append(current) }
+        return Array(Set(weeks)).sorted().reversed()
     }
     @State private var confirmImport = false
 }

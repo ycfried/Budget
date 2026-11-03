@@ -25,7 +25,7 @@ struct AuthenticationView: View {
                         .accessibilityIdentifier("sampleAdmin")
                     Button("Continue as sample member") { Task { await model.openSample(.member) } }
                         .accessibilityIdentifier("sampleMember")
-                }.disabled(model.loading)
+                }.disabled(model.loading || model.opening)
                 Section {
                     Toggle("Preview authentication forms", isOn: $form)
                     if form {

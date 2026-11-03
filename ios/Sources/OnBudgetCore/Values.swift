@@ -62,6 +62,15 @@ public struct PurchaseDate: Codable, Hashable, Comparable, Sendable {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
+    /// Calendar-only filtering, not budgeting/week-close calculations.
+    public func isInWeek(startingAt start: PurchaseDate) -> Bool {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        let parts = start.rawValue.split(separator: "-").compactMap { Int($0) }
+        guard let first = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])),
+              let end = calendar.date(byAdding: .day, value: 7, to: first) else { return false }
+        return self >= start && self < PurchaseDate.today(at: end)
+    }
     public static func today(at date: Date = Date()) -> Self {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)

@@ -37,6 +37,19 @@ final class ContractAndDisplayTests: XCTestCase {
         query.card = "All"; query.month = "All"; query.sort = .amount
         XCTAssertEqual(query.apply(to: rows).first?.id, "sample-3")
     }
+    func testWeekAndClassificationFilters() throws {
+        var query = PurchaseQuery()
+        query.weekStart = "2026-11-01"
+        XCTAssertEqual(query.apply(to: Fixtures.snapshot().purchases).count, 3)
+        query.kind = "payment"
+        XCTAssertTrue(query.apply(to: Fixtures.snapshot().purchases).isEmpty)
+        query.weekStart = "2026-10-25"
+        XCTAssertEqual(query.apply(to: Fixtures.snapshot().purchases).map(\.id), ["sample-5"])
+        let start = try PurchaseDate("2026-11-01")
+        XCTAssertFalse(try PurchaseDate("2026-10-31").isInWeek(startingAt: start))
+        XCTAssertTrue(try PurchaseDate("2026-11-07").isInWeek(startingAt: start))
+        XCTAssertFalse(try PurchaseDate("2026-11-08").isInWeek(startingAt: start))
+    }
     func testReversedIsNeverPostedAndUnknownIsVisible() throws {
         let reversed = try XCTUnwrap(Fixtures.snapshot().purchases.last)
         XCTAssertEqual(reversed.stateLabel, "Reversed")

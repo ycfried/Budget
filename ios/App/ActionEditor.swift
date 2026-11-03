@@ -80,12 +80,13 @@ struct ActionEditor: View {
                     }.disabled(!model.canWrite)
                 }
             }
+            .modifier(ToastOverlay())
             .navigationTitle(mode.title).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
             .confirmationDialog("\(mode.title)\(amount.isEmpty ? "" : ": $" + amount)? Sample only; no account will change.", isPresented: $confirming, titleVisibility: .visible) {
                 Button("Record sample action") {
                     guard let prepared else { return }
-                    Task { await model.submit(prepared); dismiss() }
+                    Task { if await model.submit(prepared) { dismiss() } }
                 }
                 Button("Cancel", role: .cancel) { prepared = nil }
             }

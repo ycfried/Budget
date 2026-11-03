@@ -33,36 +33,37 @@ No package downloads are required. The package contains values, DTOs, fixtures,
 mock service, input parsing, display filtering, widget snapshot model, and tests.
 It deliberately excludes Apple UI targets so its tests can run on Linux.
 
-## Build the sample app on an existing Mac
+## Compile and simulator-test on an existing Mac
 
-Requires Xcode 16+ with iOS SDK/simulator and XcodeGen already installed. Installing
-paid tools or activating Apple/cloud services is not part of this change.
-
-```sh
-cd ios
-xcodegen generate --spec project.yml
-xcodebuild -list -project OnBudget.xcodeproj
-xcodebuild -showdestinations -project OnBudget.xcodeproj -scheme OnBudget
-```
-
-Choose an installed iOS 17+ simulator UUID from that output:
+The real Xcode project and shared scheme are now checked in. The first build needs
+Xcode 16.4 with the installed iOS 18.5 runtime; it does **not** need XcodeGen,
+Homebrew, third-party packages, signing or an Apple account.
 
 ```sh
-xcodebuild -project OnBudget.xcodeproj -scheme OnBudget \
-  -destination 'platform=iOS Simulator,id=REPLACE_WITH_INSTALLED_UUID' \
-  -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build-for-testing
-xcodebuild -project OnBudget.xcodeproj -scheme OnBudget \
-  -destination 'platform=iOS Simulator,id=REPLACE_WITH_INSTALLED_UUID' \
-  -derivedDataPath DerivedData -resultBundlePath /tmp/OnBudget-UI.xcresult \
-  CODE_SIGNING_ALLOWED=NO test-without-building
+# Repository root, branch ios-native-rebuild, on an existing authorized Mac:
+bash ios/scripts/macos_simulator_test.sh
 ```
 
-The checked-in `project.yml` creates separate app, widget, and UI-test targets,
-using the local OnBudgetCore package. Generated Xcode project/plists are ignored.
-Core unit tests run with `swift test`; the app scheme runs the UI tests separately.
-All identifiers are `example.onbudget.sample` placeholders, signing disabled.
-No Apple team or entitlements are provisioned. An App Store icon is still needed;
-the existing owner mark is copied unchanged for in-app branding.
+This validates the project, runs core tests, creates its own temporary iPhone 16
+simulator, builds app/widget/UI tests, executes UI tests, then removes only that
+simulator. Local reports remain in ignored ios/CloudResults/. It never downloads
+runtimes, signs, archives, uploads or connects to a provider. Preserve/remove old
+result bundles explicitly before another local run. The script fails on Linux.
+
+For interactive use, open `ios/OnBudget.xcodeproj`, choose OnBudget and an installed
+iOS simulator. All bundle IDs are sample placeholders. Signing and App Groups
+remain unconfigured. An App Store icon is still missing; in-app branding uses the
+unchanged owner mark. Actual Xcode compilation remains unverified here.
+
+`project.yml` remains the reproducible source for project metadata. If source
+membership or configuration changes, regenerate on an existing Mac with XcodeGen
+2.42.0 (`xcodegen generate --spec ios/project.yml` from root), then review the PBX
+and plist differences and run the project validator. No generator install is
+needed for ordinary builds. See docs/REVIEW_6b625b7.md for local generation evidence.
+
+The cloud build remains documentation only under docs/CLOUD_BUILD_DRAFT.md.
+Activation needs a specific owner-approved exception for one workflow file outside
+ios/ and one free standard-runner push-triggered build; main stays untouched.
 
 ## Widgets
 

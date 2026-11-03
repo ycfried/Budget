@@ -118,14 +118,19 @@ public struct PurchaseQuery: Sendable {
     public var filter: PurchaseFilter = .all
     public var card = "All"
     public var month = "All"
+    public var weekStart = "All"
+    public var kind = "All"
     public var sort: PurchaseSort = .newest
     public init() {}
     public func apply(to purchases: [Purchase]) -> [Purchase] {
         let needle = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        return purchases.filter {
-            filter.includes($0) && (card == "All" || $0.cardSuffix == card)
-            && (month == "All" || $0.date.rawValue.hasPrefix(month))
-            && (needle.isEmpty || "\($0.merchant) \($0.amount.formatted) \($0.date.rawValue)".localizedCaseInsensitiveContains(needle))
+        let week = try? PurchaseDate(weekStart)
+        return purchases.filter { purchase in
+            filter.includes(purchase) && (card == "All" || purchase.cardSuffix == card)
+            && (month == "All" || purchase.date.rawValue.hasPrefix(month))
+            && (kind == "All" || purchase.kind == kind)
+            && (weekStart == "All" || week.map { purchase.date.isInWeek(startingAt: $0) } == true)
+            && (needle.isEmpty || "\(purchase.merchant) \(purchase.amount.formatted) \(purchase.date.rawValue)".localizedCaseInsensitiveContains(needle))
         }.sorted {
             switch sort {
             case .newest: $0.date == $1.date ? $0.id < $1.id : $0.date > $1.date

@@ -88,14 +88,22 @@ struct RootView: View {
             guard url.scheme == "onbudget-sample", url.host == "home", url.query == nil else { return }
             selectedTab = 0
         }
-        .overlay(alignment: .bottom) {
+        .modifier(ToastOverlay())
+    }
+}
+struct ToastOverlay: ViewModifier {
+    @Environment(AppModel.self) private var model
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottom) {
             if let toast = model.toast {
-                Text(toast).font(.subheadline).foregroundStyle(.white).padding()
-                    .background(Brand.blue, in: RoundedRectangle(cornerRadius: 14))
-                    .padding(.horizontal).padding(.bottom, 120)
-                    .accessibilityLabel("Notification: \(toast)")
-                    .accessibilityAddTraits(.updatesFrequently)
-                    .onTapGesture { model.toast = nil }
+                Button { model.toast = nil } label: {
+                    Text(toast).font(.subheadline).foregroundStyle(.white).padding()
+                        .background(Brand.blue, in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal).padding(.bottom, 120)
+                .accessibilityLabel("Notification: \(toast). Tap to dismiss.")
+                .accessibilityAddTraits(.updatesFrequently)
             }
         }
     }

@@ -9,5 +9,5 @@ xcuserdata/
 *.mobileprovision
 .env*
 project.xcodeproj/
-OnBudget.xcodeproj/
 Generated/
+CloudResults/
