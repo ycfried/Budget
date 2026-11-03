@@ -278,12 +278,57 @@ All runtime test data remain synthetic; no financial calculations or write APIs
 were added. All edits remain under ios/. Any new simulator build needs separate
 approval; the existing read-window approval does not authorize one.
 
-## One authorized fixture-only simulator validation — execution pending
+## One authorized fixture-only simulator validation — trigger record
 
 Owner explicitly approved exactly one additional run of the existing restricted
 workflow, max 25 minutes, unsigned, fixtures only, no uploads/signing/live requests,
 workflow modifications or retries. Application baseline is 251be1b; this trigger
 changes this progress record only. Default live composition remains locked and
 has no runtime project configuration/credentials. This is not approval for a live
-connection or financial writes. Results will be appended after the run completes.
+connection or financial writes. Actual completed-run evidence is recorded below.
 No branch push will occur while the job is running, preserving the approved SHA.
+
+
+## Authorized simulator run 41689326270 — FAILED, no retry
+
+- Run: https://github.com/ycfried/Budget/actions/runs/41689326270
+- Job: https://github.com/ycfried/Budget/actions/runs/41689326270/job/126103436266
+- Exact approved trigger SHA: `c35910d8ba4e758a111700addd717c7ed020ed8c`.
+  Application code baseline: `251be1b73da166f11fc9308ee2f512afdd41d70f`;
+  trigger changes only this documentation. One prefix commit/push was issued.
+- Final GitHub conclusion: **FAILURE**. Public run duration: 27 seconds;
+  simulator job: 21 seconds, within the existing 25-minute maximum.
+- Set up job and checkout: **SUCCESS**. Combined “Validate, compile and test
+  synthetic app” step: **FAILURE**, started 2026-11-03 17:58:46 UTC and completed
+  17:58:47 UTC. Exact exposed annotation: **“Process completed with exit code 134.”**
+  Post-checkout and job cleanup: SUCCESS.
+- Compilation result: combined validation/build/test pipeline failed; **individual
+  Swift package and Xcode app/WidgetKit/test compilation outcomes NOT VERIFIED**.
+  The failing command/compiler diagnostic cannot be established from the annotation.
+- Test result: **no verified core or simulator/UI pass counts for this run**.
+  Do not infer successful execution, failed test assertions or a specific Swift
+  defect from exit code 134. Earlier 116 Linux test passes are separate evidence;
+  earlier successful simulator run 41648851937 applies only to its old SHA.
+- Additional warning: checkout targets deprecated Node.js 20 and GitHub forces
+  Node.js 24. Checkout itself passed; this warning is not a verified cause of the
+  validation failure. No workflow/action version changes were made.
+- Evidence access limitation: public run/job HTML exposes final conclusion,
+  step conclusions/timestamps and annotations, but says “Sign in to view logs”.
+  Official step/run log URLs returned 404 anonymously; `gh api` metadata access
+  was denied by this environment's network policy. Console logs/xcresult bundles
+  and exact failing subprocess were not available. No credentials were extracted,
+  authentication bypass attempted, or artifacts uploaded. Needed next evidence:
+  existing validation step's console output from an authorized GitHub session;
+  retrieving it does not require another build. No root-cause fix is claimed.
+- Safety: workflow unchanged, standard configured GitHub-hosted macOS runner,
+  unsigned fixture-only composition with no project credentials or live executor.
+  No live/backend/provider/financial operation, main/web/Supabase/settings edit,
+  signing, distribution, upload or paid-service activation was performed.
+- No retry/replacement run was requested or triggered. Authorization for this
+  execution is consumed. Any future build needs new approval. This follow-up
+  documentation commit uses a normal message and cannot pass the simulator job's
+  approved-prefix gate. First-live-connection prerequisites remain unresolved.
+
+Documentation follow-up verification: changed-file list limited to ios/PROGRESS.md,
+workflow diff unchanged, whitespace and credential-pattern safety scan passed.
+Local runtime tests were not rerun for this documentation-only follow-up.
