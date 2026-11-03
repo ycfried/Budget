@@ -363,8 +363,22 @@ async function refresh() {
     'amount-desc': (a, b) => (Math.abs(b.amount_cents) - Math.abs(a.amount_cents)) || b.date.localeCompare(a.date),
   };
   shown.sort(sorters[txSort] ?? sorters['date-desc']);
-  const sortEl = $('txSort');
-  if (sortEl) sortEl.value = txSort;
+  // R9: sort is separate from filtering — a field select plus a
+  // direction button showing both arrow AND words, synced from
+  // txSort on every refresh. Amount sort stays by size (absolute
+  // value), as fixed Nov 1; only its control changed, never the
+  // sorter itself.
+  const sortFieldEl = $('txSortField');
+  if (sortFieldEl) sortFieldEl.value = txSort.startsWith('amount') ? 'amount' : 'date';
+  const sortDirBtn = $('txSortDirBtn');
+  if (sortDirBtn) {
+    const dirLabel = txSort === 'date-asc' ? '↑ Oldest first'
+      : txSort === 'amount-desc' ? '↓ Largest first'
+      : txSort === 'amount-asc' ? '↑ Smallest first'
+      : '↓ Newest first';
+    sortDirBtn.textContent = dirLabel;
+    sortDirBtn.setAttribute('aria-label', `Sort direction: ${dirLabel}. Tap to reverse.`);
+  }
   // Month + card dropdowns are built from the months/cards actually
   // present in the loaded transactions, newest first.
   const monthSel = $('txMonth');
@@ -1481,10 +1495,17 @@ document.getElementById('txCard')?.addEventListener('change', (e) => {
   localStorage.setItem('hb-tx-card', txCard);
   refresh();
 });
-document.getElementById('txSort')?.addEventListener('change', (e) => {
-  txSort = e.target.value;
-  localStorage.setItem('hb-tx-sort', txSort);
-  refresh();
+const applyTxSort = () => { localStorage.setItem('hb-tx-sort', txSort); refresh(); };
+document.getElementById('txSortField')?.addEventListener('change', (e) => {
+  const dir = txSort.endsWith('asc') ? 'asc' : 'desc';
+  txSort = `${e.target.value}-${dir}`;
+  applyTxSort();
+});
+document.getElementById('txSortDirBtn')?.addEventListener('click', () => {
+  const field = txSort.startsWith('amount') ? 'amount' : 'date';
+  const dir = txSort.endsWith('asc') ? 'desc' : 'asc';
+  txSort = `${field}-${dir}`;
+  applyTxSort();
 });
 
 // Transaction filters: chips combine with the search box; refresh()
