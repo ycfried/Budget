@@ -959,7 +959,13 @@ $('csvFile')?.addEventListener('change', async (e) => {
   const preview = $('csvPreview'); const confirmBtn = $('csvConfirmBtn'); const msg = $('csvMsg');
   pendingCsvRows = [];
   if (confirmBtn) confirmBtn.disabled = true;
-  if (!file) { if (preview) preview.innerHTML = ''; return; }
+  if (msg) msg.textContent = '';
+  // Loud failure (Nov 2 import bug): the old handler died silently when
+  // the picker handed over no file or an unreadable file, leaving the
+  // user with a file name, no preview, and a disabled button. Every
+  // failure path now says so on screen.
+  if (!file) { if (preview) preview.innerHTML = ''; if (msg) msg.textContent = 'No file reached the app from the picker. Try saving the file to Files first, then picking it from Files.'; return; }
+  try {
   const text = await file.text();
   const parsed = parseCsvLive(text);
   // Existing rows for client-side preview dedupe (normalized key). The
@@ -982,6 +988,13 @@ $('csvFile')?.addEventListener('change', async (e) => {
     + `<ul class="plain">${previewRows.map((r) => `<li class="csv-row${r.isDupe ? ' csv-dupe' : ''}">${esc(r.date)} \u00b7 ${esc(r.merchant)} \u00b7 ${formatCents(r.amountCents)} \u00b7 \u2022\u2022${esc(r.suffix)} \u2014 ${r.isDupe ? 'Duplicate, will be skipped' : 'New'}</li>`).join('')}</ul>`;
   if (msg) msg.textContent = '';
   if (confirmBtn) confirmBtn.disabled = newCount === 0;
+  } catch (err) {
+    console.warn('csv import failed:', err);
+    pendingCsvRows = [];
+    if (preview) preview.innerHTML = '';
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (msg) msg.textContent = `Could not read this file (${err?.message || err}). Try saving the file to Files first, then picking it from Files.`;
+  }
 });
 $('csvConfirmBtn')?.addEventListener('click', async () => {
   const msg = $('csvMsg');
