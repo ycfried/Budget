@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=10">
+<link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -58,14 +58,14 @@
     <nav class="app-nav" aria-label="App sections">
       <button class="app-nav-link" data-view="week" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg><span>Home</span></button>
       <button class="app-nav-link" data-view="purchases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg><span>Transactions</span></button>
-      <button class="app-nav-link" data-view="money" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg><span>Bank &amp; Funds</span></button>
+      <button class="app-nav-link" data-view="money" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg><span>Funds</span></button>
       <button class="app-nav-link" data-view="activity" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>History</span></button>
     </nav>
     <div class="card hero" id="section-week">
-      <div class="btn-row">
-        <button class="btn" id="homeSyncBtn" type="button" aria-label="Sync bank transactions now">Sync bank</button>
+      <div class="hero-head">
+        <div class="kicker">Available this week · <span id="weekLabel">…</span></div>
+        <button class="btn hero-sync-btn" id="homeSyncBtn" type="button" aria-label="Sync bank">↻</button>
       </div>
-      <div class="kicker">Available this week · <span id="weekLabel">…</span></div>
       <div id="weeklyAvailable" class="big">…</div>
       <p class="muted">Pending transactions are included and marked.
       If the big number is negative, you're over this week's budget.</p>
@@ -73,14 +73,13 @@
       <p class="muted small" id="weekProgressText"></p>
       <div id="weekBreakdown" class="hidden"></div>
       <p id="weekError" class="result error hidden"></p>
-      <p id="weekEmptyHint" class="muted small hidden">No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account on the Money tab.</p>
+      <p id="weekEmptyHint" class="muted small hidden">No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account on the Funds tab.</p>
     </div>
-    <p class="muted small stat-hint" id="section-hint">Tap a number for details.</p>
+    <p class="muted small stat-hint" id="section-hint">Tap a card for its breakdown.</p>
     <div class="grid" id="section-stats">
-      <div class="card stat-card" data-stat="allowance" role="button" tabindex="0" aria-label="Show breakdown for Allowance"><div class="kicker">Allowance</div><div class="num" id="statAllowance">…</div></div>
-      <div class="card stat-card" data-stat="spent" role="button" tabindex="0" aria-label="Show breakdown for Spent"><div class="kicker">Spent</div><div class="num" id="statSpent">…</div></div>
-      <div class="card stat-card" data-stat="debt" role="button" tabindex="0" aria-label="Show breakdown for Carried over"><div class="kicker">Carried over</div><div class="num" id="statDebt">…</div></div>
-      <div class="card stat-card" data-stat="outgoing" role="button" tabindex="0" aria-label="Show breakdown for Outgoing debt"><div class="kicker">Outgoing debt</div><div class="num" id="statOutgoing">…</div></div>
+      <div class="card stat-card" data-home-card="weekly" role="button" tabindex="0" aria-label="Show Weekly Budget breakdown"><div class="kicker">Weekly Budget</div><div class="num" id="homeWeeklyPrimary">…</div><div class="muted small" id="homeWeeklySecondary">…</div></div>
+      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><div class="kicker">Charity · November 2026 onward</div><div class="num" id="homeCharityPrimary">—</div><div class="muted small" id="homeCharitySecondary">Charity tracking arrives with the next slice.</div></div>
+      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary">…</div><div class="muted small" id="homeFundSecondary">…</div></div>
     </div>
 
     <div class="card" id="section-recent">
@@ -92,7 +91,17 @@
       <p id="homeSyncMsg" class="result"></p>
     </div>
 
+    <div class="card" id="section-add-choice">
+      <h2>Add</h2>
+      <p class="muted small">Record a transaction you already made, or import a file of them.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="addManualBtn" type="button" aria-label="Add a transaction by hand">Add by hand</button>
+        <button class="btn" id="addCsvBtn" type="button" aria-label="Import transactions from a CSV file">Import CSV</button>
+      </div>
+    </div>
+
     <div class="card" id="section-manual">
+      <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Add a transaction by hand</h2>
       <p class="muted small">Record a transaction by hand. It counts as pending until the bank confirms it.</p>
       <form id="manualForm">
@@ -108,6 +117,7 @@
     </div>
 
     <div class="card" id="section-csv">
+      <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Import transactions from a CSV file</h2>
       <p class="muted small">Expected columns: Date, Description, Amount, Card Ending. Nothing is added until you review the preview and tap Confirm. Duplicates are skipped. Imports are provisional until the bank confirms them.</p>
       <label>CSV file <input id="csvFile" type="file" accept=".csv,text/csv"></label>
@@ -144,6 +154,11 @@
           <input id="txMaxAmount" type="number" step="0.01" inputmode="decimal" aria-label="Maximum transaction amount">
         </label>
         <p class="muted small">Amounts compare to the signed amount, and both bounds apply together with the month, card, and week filters. Leave either end blank for no limit there. A refund counts as a negative amount, so a $10 refund sits below a $0 minimum.</p>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="txFiltersApplyBtn" type="button" aria-label="Apply filters">Apply</button>
+          <button class="btn" id="txFiltersResetBtn" type="button" aria-label="Reset filters and sort to defaults">Reset</button>
+          <button class="btn" id="txFiltersCancelBtn" type="button" aria-label="Close filters without applying changes">Cancel</button>
+        </div>
       </div>
       <div class="btn-row">
         <label class="muted small">Sort by
@@ -273,6 +288,12 @@
       <div id="heldList"><p class="muted small">Loading…</p></div>
     </div>
 
+    <div class="card" id="section-dedupe" style="display:none">
+      <h2>Possible duplicates</h2>
+      <p class="muted small">Admin only. Pairs the bank and email feeds may have counted twice. Nothing here is deleted — Same purchase keeps one row and excludes the other from counts; Separate keeps both and never flags the pair again.</p>
+      <div id="dedupeList"><p class="muted small">Loading…</p></div>
+    </div>
+
     <div class="card" id="section-week-history">
       <h2>Week history</h2>
       <p class="muted small">Closed weeks, read-only — week start, surplus, debt carried, released amount, and release status. The app never recomputes a closed week here.</p>
@@ -294,6 +315,6 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=15"></script>
+<script type="module" src="live.js?v=17"></script>
 </body>
 </html>

@@ -170,6 +170,7 @@ let weekCloseRan = false; // week-close runs itself once per session (admin only
 let lastRefreshAt = 0; // tab taps refresh in the background, throttled
 let refreshInFlight = 0; // R1: overlapping refreshes share one Updating… state
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
+let currentFundData = null; // last fund aggregates, for the Extra Fund card sheet
 // Generic display labels for transaction sources. Database values are
 // unchanged (e.g. 'plaid'); only what the user sees is bank-agnostic.
 const sourceLabel = (s) => ({ plaid: 'Bank', manual: 'By hand', csv: 'File', amex_alert: 'Email alert' }[s] ?? String(s));
@@ -250,8 +251,8 @@ async function refresh() {
   const clearWeekNumbers = () => {
     $('weekLabel').textContent = 'Week numbers unavailable';
     $('weeklyAvailable').textContent = '—';
-    $('statAllowance').textContent = '—'; $('statSpent').textContent = '—';
-    $('statDebt').textContent = '—'; $('statOutgoing').textContent = '—';
+    $('homeWeeklyPrimary').textContent = '—'; $('homeWeeklySecondary').textContent = '—';
+    $('homeFundPrimary').textContent = '—'; $('homeFundSecondary').textContent = '—';
     const bar = document.getElementById('weekProgressBar');
     if (bar) { bar.style.width = '0%'; bar.parentElement?.classList.remove('over'); }
     const pt = document.getElementById('weekProgressText');
@@ -284,10 +285,17 @@ async function refresh() {
       if (weekStart) $('weekLabel').textContent = `Week of ${fmtLong(weekStart)} (Sun–Sat)`;
       $('weeklyAvailable').innerHTML = formatCentsHtml(avail);
       $('weeklyAvailable').classList.toggle('negative', avail < 0);
-      $('statAllowance').innerHTML = formatCentsHtml(baseAllowanceCents ?? baseAvailable);
-      $('statSpent').innerHTML = formatCentsHtml(charges);
-      $('statDebt').innerHTML = formatCentsHtml(carried);
-      $('statOutgoing').innerHTML = formatCentsHtml(outgoingDebt);
+      // R5: Weekly Budget card — amount left primary, spent underneath.
+      // Negative remaining reads "Over budget by $X", never a negative
+      // amount presented as money left. Allowance and carried debt
+      // stay inside the tap-to-open breakdown, not on the card.
+      const wp = $('homeWeeklyPrimary');
+      if (wp) {
+        if (avail < 0) { wp.textContent = `Over budget by ${formatCents(Math.abs(avail))}`; }
+        else wp.innerHTML = formatCentsHtml(avail);
+      }
+      const ws = $('homeWeeklySecondary');
+      if (ws) ws.textContent = `Spent ${formatCents(charges)}`;
       currentWeekData = { weekStart, baseAvailableCents: baseAvailable, tempCents: tempC,
         carriedDebtCents: carried, chargesCents: charges, availableCents: avail,
         outgoingDebtCents: outgoingDebt, weekLocked: !!r.week_locked,
@@ -673,7 +681,11 @@ async function refresh() {
     : savRows.length
     ? `<ul>${savRows.slice(0, 20).map((r) => `<li>${esc(r.kind)} ${formatCents(r.amount_cents ?? 0)}${r.actual_balance_cents != null ? ` · Recorded balance ${formatCents(r.actual_balance_cents)}` : ''} · ${fmtDateTime(r.created_at)} · ${esc(r.note || '')}</li>`).join('')}</ul>${savRows.length > 20 ? '<p class="muted small">Showing the latest 20 records.</p>' : ''}`
     : '<p class="muted small">No savings records yet.</p>';
-  $('savingsFormWrap').style.display = household.role === 'admin' ? '' : 'none';
+  // R11: legacy manual Savings forms are hidden (records and the
+  // summary above stay visible; backend history untouched). Do not
+  // re-enable this form without an owner decision on where savings
+  // recording lives on the Funds page.
+  $('savingsFormWrap').style.display = 'none';
 
   // Bank accounts UI — SERVER TRUTH ONLY. Connected state derives from
   // plaid_items rows (status 'active' vs 'disconnected') and their
@@ -837,6 +849,10 @@ async function refresh() {
     const heldRows = (releases ?? []).filter((r) => r.status === 'held');
     const heldTotal = heldRows.reduce((t, r) => t + (r.surplus_cents || 0), 0);
     const shortfall = hh?.fund_shortfall_cents ?? 0;
+    currentFundData = { available, pending, releasedTotal, spent, shortfall };
+    const fp = $('homeFundPrimary'); if (fp) fp.innerHTML = formatCentsHtml(available);
+    const fsec = $('homeFundSecondary');
+    if (fsec) fsec.textContent = pending > 0 ? `Pending ${formatCents(pending)}` : shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : 'Spendable now';
     const fs = $('fundSummary');
     if (fs) fs.innerHTML = `<p class="fund-balance">Available <strong>${formatCents(available)}</strong></p>
       <p class="muted small">Pending (not yet released): ${formatCents(pending)}</p>
@@ -909,6 +925,64 @@ async function refresh() {
       const hl = $('heldList'); if (hl) hl.innerHTML = '<p class="error">Could not load held refunds. Try again.</p>';
     }
   }
+  // Possible duplicates (admin only, Funds tab). Reads pending
+  // duplicate_candidates + both transactions per pair; Same purchase
+  // and Separate both go through resolve_duplicate_candidate, which
+  // never deletes a row. Until dedupe-review-queue.sql is applied
+  // live this shows a load error, never an empty list.
+  const dedupeCard = $('section-dedupe');
+  if (dedupeCard) dedupeCard.style.display = household.role === 'admin' ? '' : 'none';
+  if (household.role === 'admin') {
+    try {
+      const { data: candRows, error: candErr } = await supabase.from('duplicate_candidates')
+        .select('id, canonical_transaction_id, duplicate_transaction_id, reason, merchant_a, merchant_b')
+        .eq('household_id', household.household_id).eq('status', 'pending').order('created_at', { ascending: true }).limit(100);
+      if (candErr) throw candErr;
+      const dl = $('dedupeList');
+      if (dl) {
+        const frag = document.createDocumentFragment();
+        if (!(candRows ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No possible duplicates waiting.'; frag.appendChild(p); }
+        for (const c of candRows ?? []) {
+          const { data: txRows } = await supabase.from('transactions')
+            .select('id, merchant, amount_cents, date, card_suffix, source, excluded')
+            .in('id', [c.canonical_transaction_id, c.duplicate_transaction_id]);
+          const byId = new Map((txRows ?? []).map((t) => [t.id, t]));
+          const keep = byId.get(c.canonical_transaction_id);
+          const dup = byId.get(c.duplicate_transaction_id);
+          const wrap = document.createElement('div'); wrap.className = 'bank-row';
+          const info = document.createElement('div'); info.className = 'bank-info';
+          const k = document.createElement('div'); k.textContent = keep ? `Keep: ${keep.merchant} · ${formatCents(keep.amount_cents)} · ${keep.date} · ••${keep.card_suffix} (${keep.source})` : 'Keep: transaction not found'; info.appendChild(k);
+          const d = document.createElement('div'); d.textContent = dup ? `Possible duplicate: ${dup.merchant} · ${formatCents(dup.amount_cents)} · ${dup.date} · ••${dup.card_suffix} (${dup.source})` : 'Possible duplicate: transaction not found'; info.appendChild(d);
+          wrap.appendChild(info);
+          const aliasLabel = document.createElement('label'); aliasLabel.className = 'muted small';
+          const aliasBox = document.createElement('input'); aliasBox.type = 'checkbox'; aliasBox.setAttribute('aria-label', 'Remember these merchant names as the same merchant for future review');
+          aliasLabel.appendChild(aliasBox); aliasLabel.appendChild(document.createTextNode(' Remember as same merchant'));
+          wrap.appendChild(aliasLabel);
+          const sameBtn = document.createElement('button'); sameBtn.className = 'btn btn-small btn-primary'; sameBtn.type = 'button'; sameBtn.textContent = 'Same purchase';
+          sameBtn.addEventListener('click', async () => {
+            if (!(await showConfirm('Same purchase', 'Keep one transaction and exclude the other from counts? Neither row is deleted.', 'Same purchase'))) return;
+            sameBtn.disabled = true;
+            const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'merge', p_note: '', p_remember_alias: aliasBox.checked });
+            if (error) { console.warn('resolve_duplicate_candidate failed:', error.message); sameBtn.disabled = false; await showAlert('Could not resolve', 'Could not resolve this pair. Try again.'); } else await refresh();
+          });
+          wrap.appendChild(sameBtn);
+          const sepBtn = document.createElement('button'); sepBtn.className = 'btn btn-small'; sepBtn.type = 'button'; sepBtn.textContent = 'Separate';
+          sepBtn.addEventListener('click', async () => {
+            if (!(await showConfirm('Separate purchases', 'Keep both transactions and never flag this pair again?', 'Separate'))) return;
+            sepBtn.disabled = true;
+            const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'separate', p_note: '', p_remember_alias: false });
+            if (error) { console.warn('resolve_duplicate_candidate failed:', error.message); sepBtn.disabled = false; await showAlert('Could not resolve', 'Could not resolve this pair. Try again.'); } else await refresh();
+          });
+          wrap.appendChild(sepBtn);
+          frag.appendChild(wrap);
+        }
+        dl.replaceChildren(frag);
+      }
+    } catch (e) {
+      console.warn('dedupe read failed:', e);
+      const dl = $('dedupeList'); if (dl) dl.innerHTML = '<p class="error">Could not load possible duplicates. The review tables may not be live yet — try again after the dedupe SQL is applied.</p>';
+    }
+  }
   // Week history display (History tab) — READ-ONLY, from week_closes +
   // surplus_releases. The client never recomputes a week.
   try {
@@ -965,7 +1039,7 @@ async function boot() {
     if (g === 'connected' || g === 'failed') {
       showToast(g === 'connected'
         ? 'Email connected — the app will check it for Amex alerts.'
-        : 'Email connection didn\'t go through — try again from Bank & Funds.', g === 'failed');
+        : 'Email connection didn\'t go through — try again from Funds.', g === 'failed');
       const u = new URL(window.location.href); u.searchParams.delete('gmail');
       window.history.replaceState(null, '', u.pathname + u.search + u.hash);
     }
@@ -1266,13 +1340,16 @@ async function autoSyncIfWebhookPending() {
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
-  purchases: ['section-manual', 'section-csv', 'section-transactions'],
-  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration'],
+  purchases: ['section-add-choice', 'section-manual', 'section-csv', 'section-transactions'],
+  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
   activity: ['section-activity', 'section-week-history'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
 let currentView = localStorage.getItem('hb-view') || 'week';
 if (!VIEWS[currentView]) currentView = 'week';
+// R7: which Add form (if any) is open on the Transactions screen:
+// null = choice card, 'manual' = hand form, 'csv' = import form.
+let addFormOpen = null;
 // Bottom toast: in-app result messages float above the tab bar instead
 // of popping open inside cards and shoving everything below them down.
 // Function declarations hoist, so handlers below can call these freely.
@@ -1312,8 +1389,19 @@ function showView(name, opts = {}) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-restoration') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
+  }
+  // R7: the Add forms are never permanently expanded — the choice
+  // card shows on the Transactions screen, and only the chosen form
+  // shows. Opening or closing a form writes nothing.
+  if (name === 'purchases') {
+    const choice = document.getElementById('section-add-choice');
+    if (choice) choice.style.display = addFormOpen ? 'none' : 'block';
+    const man = document.getElementById('section-manual');
+    if (man) man.style.display = addFormOpen === 'manual' ? 'block' : 'none';
+    const csv = document.getElementById('section-csv');
+    if (csv) csv.style.display = addFormOpen === 'csv' ? 'block' : 'none';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
     b.classList.toggle('active', b.dataset.view === name);
@@ -1376,18 +1464,23 @@ document.getElementById('menuPasswordBtn')?.addEventListener('click', async () =
   if (error) console.warn('password change failed:', error.message);
   await showAlert(error ? 'Could not change password' : 'Password changed', error ? 'Could not change your password. Try again.' : 'Your password is updated.');
 });
-// Stat cards: tap a number to see that number's own breakdown.
-document.querySelectorAll('[data-stat]').forEach((el) => el.addEventListener('click', () => {
-  const bd = document.getElementById('weekBreakdown');
-  if (!bd) return;
-  const stat = el.dataset.stat;
-  if (!bd.classList.contains('hidden') && bd.dataset.stat === stat) { bd.classList.add('hidden'); return; }
-  bd.dataset.stat = stat;
-  try {
-    const panels = JSON.parse(bd.dataset.panels || '{}');
-    if (panels[stat]) bd.innerHTML = `<p class="small">${panels[stat]}</p>`;
-  } catch (e) { /* panel text refreshes on next data load */ }
-  bd.classList.remove('hidden');
+// R5 + R6: Home cards — tap a card for a focused titled bottom
+// sheet over the stationary Home screen. Opening or closing a sheet
+// writes nothing and triggers no sync; it only reads the numbers
+// already loaded by refresh().
+document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListener('click', async () => {
+  const kind = el.dataset.homeCard;
+  if (kind === 'weekly') {
+    const w = currentWeekData;
+    if (!w) { await showAlert('Weekly Budget', 'Weekly numbers are not loaded yet. Try again in a moment.'); return; }
+    await showSheet({ title: 'Weekly Budget', message: `Left: ${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}\nSpent: ${formatCents(w.chargesCents)}\nAllowance: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}\nCarried debt: ${formatCents(w.carriedDebtCents)}\nTemporary increase: ${formatCents(w.tempCents)}\nOutgoing debt: ${formatCents(w.outgoingDebtCents)}`, confirmLabel: 'Close' });
+  } else if (kind === 'fund') {
+    const f = currentFundData;
+    if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
+    await showSheet({ title: 'Extra Fund', message: `Spendable available: ${formatCents(f.available)}\nPending (not yet released): ${formatCents(f.pending)}\nReleased total: ${formatCents(f.releasedTotal)}\nSpent from fund: ${formatCents(f.spent)}\nOwed back (shortfall): ${formatCents(f.shortfall)}`, confirmLabel: 'Close' });
+  } else {
+    await showSheet({ title: 'Charity', message: 'Charity tracking (committed, given, remaining) arrives with the next slice. No charity numbers are shown until that slice is built — nothing here is estimated.', confirmLabel: 'Close' });
+  }
 }));
 // HTML form of an amount with smaller cents, for the hero and stat
 // numbers only (formatCents from the engine stays the plain-text form
@@ -1525,13 +1618,59 @@ $('txLoadMore')?.addEventListener('click', async () => {
   txLimit += 100;
   await refresh();
 });
+const setAddForm = (which) => { addFormOpen = which; showView('purchases'); };
+$('addManualBtn')?.addEventListener('click', () => setAddForm('manual'));
+$('addCsvBtn')?.addEventListener('click', () => setAddForm('csv'));
+$('manualBackBtn')?.addEventListener('click', () => setAddForm(null));
+$('csvBackBtn')?.addEventListener('click', () => setAddForm(null));
+// R8 filters sheet: Apply commits (closes the panel), Reset clears
+// the draft + sort to defaults, Cancel restores the values that were
+// there when the panel opened and leaves the list unchanged.
+let txFiltersSnapshot = null;
+const closeTxFilters = () => {
+  const f = document.getElementById('txFilters');
+  if (f) f.classList.add('hidden');
+  const t = document.getElementById('txFiltersToggle');
+  if (t) { t.textContent = 'Filters ▾'; t.setAttribute('aria-expanded', 'false'); }
+};
 $('txFiltersToggle')?.addEventListener('click', (e) => {
   const f = document.getElementById('txFilters');
   if (!f) return;
-  f.classList.toggle('hidden');
-  const open = !f.classList.contains('hidden');
-  e.target.textContent = open ? 'Filters ▴' : 'Filters ▾';
-  e.target.setAttribute('aria-expanded', open ? 'true' : 'false');
+  const willOpen = f.classList.contains('hidden');
+  if (willOpen) {
+    txFiltersSnapshot = {
+      month: txMonth,
+      card: txCard,
+      min: document.getElementById('txMinAmount')?.value ?? '',
+      max: document.getElementById('txMaxAmount')?.value ?? '',
+      sort: txSort,
+    };
+    f.classList.remove('hidden');
+    e.target.textContent = 'Filters ▴'; e.target.setAttribute('aria-expanded', 'true');
+  } else closeTxFilters();
+});
+$('txFiltersApplyBtn')?.addEventListener('click', () => closeTxFilters());
+$('txFiltersCancelBtn')?.addEventListener('click', () => {
+  if (txFiltersSnapshot) {
+    // Month/card are state variables refresh() renders from, so
+    // restoring the DOM alone would not restore the list — restore
+    // the variables (and their persisted values) too.
+    txMonth = txFiltersSnapshot.month; localStorage.setItem('hb-tx-month', txMonth);
+    txCard = txFiltersSnapshot.card; localStorage.setItem('hb-tx-card', txCard);
+    const mn = document.getElementById('txMinAmount'); if (mn) mn.value = txFiltersSnapshot.min;
+    const mx = document.getElementById('txMaxAmount'); if (mx) mx.value = txFiltersSnapshot.max;
+    txSort = txFiltersSnapshot.sort; localStorage.setItem('hb-tx-sort', txSort);
+    refresh();
+  }
+  closeTxFilters();
+});
+$('txFiltersResetBtn')?.addEventListener('click', () => {
+  txMonth = 'all'; localStorage.setItem('hb-tx-month', txMonth);
+  txCard = 'all'; localStorage.setItem('hb-tx-card', txCard);
+  const mn = document.getElementById('txMinAmount'); if (mn) mn.value = '';
+  const mx = document.getElementById('txMaxAmount'); if (mx) mx.value = '';
+  txSort = 'date-desc'; localStorage.setItem('hb-tx-sort', txSort);
+  refresh(); closeTxFilters();
 });
 let txSearchTimer = null;
 $('txSearch')?.addEventListener('input', () => {
