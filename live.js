@@ -55,7 +55,7 @@ const bankDomainFor = (name) => {
   for (const [k, d] of BANK_LOGO_DOMAINS) if (n.includes(k)) return d;
   return null;
 };
-// ONE shared merchant-icon helper, used by BOTH Purchases rows and Home
+// ONE shared merchant-icon helper, used by BOTH Transactions rows and Home
 // recent rows. Curated keyword -> domain; anything unmapped (or any logo
 // load failure) falls back to the existing merchant-initial tile.
 const MERCHANT_LOGO_DOMAINS = [
@@ -165,7 +165,7 @@ let txSort = localStorage.getItem('hb-tx-sort') || 'date-desc'; // date-desc | d
 let txMonth = localStorage.getItem('hb-tx-month') || 'all'; // 'all' or 'YYYY-MM'
 let txCard = localStorage.getItem('hb-tx-card') || 'all'; // 'all' or card suffix
 let txWeekOnly = false; // spec B5: transactions filter by week (client-side, current Sun–Sat week)
-let txLimit = 100; // purchases load in pages of 100; Load more raises it
+let txLimit = 100; // transactions load in pages of 100; Load more raises it
 let weekCloseRan = false; // week-close runs itself once per session (admin only)
 let lastRefreshAt = 0; // tab taps refresh in the background, throttled
 let refreshInFlight = 0; // R1: overlapping refreshes share one Updating… state
@@ -223,7 +223,7 @@ async function refresh() {
   const rs = document.getElementById('refreshState'); if (rs) rs.textContent = 'Updating…';
   try {
   // Webhook-triggered auto-sync happens first, so the numbers and
-  // list below already include any purchases Plaid just announced.
+  // list below already include any transactions Plaid just announced.
   await Promise.race([autoSyncIfWebhookPending(), new Promise((r) => setTimeout(r, 8000))]);
 
   const { data: { session: s } } = await supabase.auth.getSession();
@@ -382,8 +382,8 @@ async function refresh() {
   const countEl = $('txCount');
   if (countEl) {
     const shownTotal = shown.filter((t) => !(t.excluded === true || t.state === 'excluded')).reduce((s, t) => s + t.amount_cents, 0);
-    const capped = all.length >= txLimit ? ' of loaded purchases — tap Load more for older ones' : ' of loaded purchases';
-    countEl.textContent = txReadFailed ? 'Could not load purchases — try again.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)} (excluded rows not counted)`;
+    const capped = all.length >= txLimit ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
+    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total ${formatCents(shownTotal)} (excluded rows not counted)`;
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
@@ -397,18 +397,18 @@ async function refresh() {
     c.setAttribute('aria-pressed', c.dataset.txFilter === txFilter ? 'true' : 'false');
   });
   const emptyHint = txFilter === 'excluded'
-    ? 'No excluded transactions. Excluded purchases are hidden from the week math but kept here so you can restore them.'
+    ? 'No excluded transactions. Excluded transactions are hidden from the week math but kept here so you can restore them.'
     : txFilter === 'refunds'
     ? 'No refunds in this list yet.'
-    : 'No purchases here yet — add one by hand above, or connect a bank account and sync.';
+    : 'No transactions here yet — add one by hand above, or connect a bank account and sync.';
   $('txList').innerHTML = txReadFailed
-    ? `<li class="tx-empty error">Could not load purchases. Check your connection and try again — nothing here is a complete list.</li>`
+    ? `<li class="tx-empty error">Could not load transactions. Check your connection and try again — nothing here is a complete list.</li>`
     : shown.length
     ? shown.map((t) => {
         const excluded = t.excluded === true || t.state === 'excluded';
         const isAdmin = household.role === 'admin';
         // Delete is honest about what it can do: a hand-entered
-        // purchase can be truly deleted; a bank/email/file record
+        // transaction can be truly deleted; a bank/email/file record
         // cannot be erased (the bank would re-sync it), so for those
         // "Remove" excludes it from the week and keeps the record.
         const deleteBtn = !isAdmin ? ''
@@ -431,28 +431,28 @@ async function refresh() {
         <span class="pill">${esc(sourceLabel(t.source))}</span>
         <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span> <span class="muted small">Tap for detail ▾</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
-          <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${t.kind === 'refund' ? 'Refund' : 'Purchase'})</p>
+          <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${t.kind === 'refund' ? 'Refund' : 'Transaction'})</p>
           <p class="small muted">Date: ${fmtLong(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
           Card: ••${esc(t.card_suffix)} · Source: ${esc(sourceLabel(t.source))} · Status: ${stateWord(t, excluded)}<br>
-          ${excluded ? 'This purchase is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This purchase was reversed and does not count.' : 'This purchase counts toward its week unless excluded.'}</p>
+          ${excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : 'This transaction counts toward its week unless excluded.'}</p>
           <div>${action}</div>
         </div></li>`;
       }).join('')
     : `<li class="tx-empty">${emptyHint}</li>`;
-  // Home preview: the 4 newest purchases, tapping one jumps to Purchases.
+  // Home preview: the 4 newest transactions, tapping one jumps to Transactions.
   const recentEl = $('recentList');
   if (recentEl) {
     const recent = [...all].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
     recentEl.innerHTML = txReadFailed
-      ? '<li class="muted small error">Could not load recent purchases.</li>'
+      ? '<li class="muted small error">Could not load recent transactions.</li>'
       : recent.length
       ? recent.map((t) => {
           const excluded = t.excluded === true || t.state === 'excluded';
-          return `<li class="tx-row"><div class="tx-head" data-view="purchases" role="button" tabindex="0" aria-label="See ${esc(t.merchant)} in Purchases"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
+          return `<li class="tx-row"><div class="tx-head" data-view="purchases" role="button" tabindex="0" aria-label="See ${esc(t.merchant)} in Transactions"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
           <div class="tx-line2">${statePill(t, excluded)}
           <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span></div></div></li>`;
         }).join('')
-      : '<li class="muted small">No purchases yet.</li>';
+      : '<li class="muted small">No transactions yet.</li>';
     // Rows added after load need the same tab-switch handler as the nav.
     recentEl.querySelectorAll('[data-view]').forEach((el) => el.addEventListener('click', () => {
       showView(el.dataset.view, { clearMessages: true });
@@ -486,10 +486,10 @@ async function refresh() {
     const verifiedRefundNet = counted.filter((t) => t.kind === 'refund' && t.state === 'verified').reduce((s, t) => s + t.amount_cents, 0);
     const lateTotal = (w.chargesCents ?? 0) - datedTotal - verifiedRefundNet;
     const panels = {
-      allowance: txReadFailed ? 'Could not load purchases for the breakdown.'
+      allowance: txReadFailed ? 'Could not load transactions for the breakdown.'
         : `<strong>Weekly allowance ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}</strong> plus ${formatCents(w.tempCents)} in temporary increases this week. Carried debt ${formatCents(w.carriedDebtCents)} comes off the top, leaving ${formatCents(w.baseAvailableCents)} of base spending room.`,
-      spent: txReadFailed ? 'Could not load this week\'s purchases for the breakdown.'
-        : `<strong>Charges ${formatCents(w.chargesCents)} this week:</strong><br>Dated this week — ${Object.entries(bySrc).map(([s2, v]) => `${esc(sourceLabel(s2))}: ${formatCents(v)}`).join(' · ') || 'nothing yet'} (total ${formatCents(datedTotal)})<br>Late charges from earlier locked weeks: ${formatCents(lateTotal)}<br>Refunds in this week\'s list: ${formatCents(refundTotal)} · Excluded purchases kept out of the math: ${all.filter((t) => t.excluded === true || t.state === 'excluded').length}`,
+      spent: txReadFailed ? 'Could not load this week\'s transactions for the breakdown.'
+        : `<strong>Charges ${formatCents(w.chargesCents)} this week:</strong><br>Dated this week — ${Object.entries(bySrc).map(([s2, v]) => `${esc(sourceLabel(s2))}: ${formatCents(v)}`).join(' · ') || 'nothing yet'} (total ${formatCents(datedTotal)})<br>Late charges from earlier locked weeks: ${formatCents(lateTotal)}<br>Refunds in this week\'s list: ${formatCents(refundTotal)} · Excluded transactions kept out of the math: ${all.filter((t) => t.excluded === true || t.state === 'excluded').length}`,
       debt: w.carriedDebtCents > 0
         ? `<strong>${formatCents(w.carriedDebtCents)} carried over</strong> from earlier weeks — it comes off the top of this week's allowance before anything else.`
         : 'No carried-over overspending: this week starts with the full allowance.',
@@ -504,7 +504,7 @@ async function refresh() {
   }
   document.querySelectorAll('[data-use-fund]').forEach((b) => b.addEventListener('click', async () => {
     const row = all.find((t) => t.id === b.dataset.useFund);
-    const amountText = await showSheet({ title: 'Use Extra Fund', message: `Ask the admin to cover "${row?.merchant ?? 'this purchase'}" (${formatCents(row?.amount_cents ?? 0)}) from the Extra Fund?`, inputLabel: 'Amount ($)', inputValue: row ? (row.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Send request', cancelLabel: 'Cancel' });
+    const amountText = await showSheet({ title: 'Use Extra Fund', message: `Ask the admin to cover "${row?.merchant ?? 'this transaction'}" (${formatCents(row?.amount_cents ?? 0)}) from the Extra Fund?`, inputLabel: 'Amount ($)', inputValue: row ? (row.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Send request', cancelLabel: 'Cancel' });
     if (amountText === null) return;
     const cents = parseDollarsStrict(amountText);
     if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
@@ -514,19 +514,19 @@ async function refresh() {
       amount_cents: cents, note: '', status: 'pending', transaction_id: b.dataset.useFund,
     });
     if (error) { console.warn('fund request (use-fund) failed:', error.message); await showAlert('Could not send request', 'Could not send this request. Try again.'); return; }
-    await audit('Extra Fund request created', `Requested ${formatCents(cents)} for ${row?.merchant ?? 'a purchase'}.`);
+    await audit('Extra Fund request created', `Requested ${formatCents(cents)} for ${row?.merchant ?? 'a transaction'}.`);
     await refresh();
   }));
   document.querySelectorAll('[data-exclude]').forEach((b) => b.addEventListener('click', async () => {
     // Exclusion goes through exclude_transaction (never a direct .update),
     // and a reason is required — it is recorded in the audit log.
-    const reason = await showSheet({ title: 'Exclude purchase', message: 'Why exclude this purchase? It stays in the list but stops counting toward the week.', inputLabel: 'Reason (required)', confirmLabel: 'Exclude', cancelLabel: 'Keep it' });
+    const reason = await showSheet({ title: 'Exclude transaction', message: 'Why exclude this transaction? It stays in the list but stops counting toward the week.', inputLabel: 'Reason (required)', confirmLabel: 'Exclude', cancelLabel: 'Keep it' });
     if (reason === null) return;
-    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for excluding this purchase.'); return; }
+    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for excluding this transaction.'); return; }
     const row = all.find((t) => t.id === b.dataset.exclude);
     const { error } = await supabase.rpc('exclude_transaction', { txn_id: b.dataset.exclude, reason: reason.trim() });
-    if (error) { console.warn('exclude_transaction failed:', error.message); await showAlert('Could not exclude', 'Could not exclude this purchase. Try again.'); return; }
-    await audit('Transaction excluded', `${row ? row.merchant : 'Purchase'} ${row ? formatCents(row.amount_cents) : ''} — reason: ${reason.trim()}.`);
+    if (error) { console.warn('exclude_transaction failed:', error.message); await showAlert('Could not exclude', 'Could not exclude this transaction. Try again.'); return; }
+    await audit('Transaction excluded', `${row ? row.merchant : 'Transaction'} ${row ? formatCents(row.amount_cents) : ''} — reason: ${reason.trim()}.`);
     await refresh();
   }));
   document.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
@@ -534,27 +534,27 @@ async function refresh() {
     // stored pre-exclude state — the client never invents one.
     const row = all.find((t) => t.id === b.dataset.restore);
     const { error } = await supabase.rpc('restore_transaction', { txn_id: b.dataset.restore });
-    if (error) { console.warn('restore_transaction failed:', error.message); await showAlert('Could not restore', 'Could not restore this purchase. Try again.'); return; }
-    await audit('Transaction restored', `${row ? row.merchant : 'Purchase'} returned to the week.`);
+    if (error) { console.warn('restore_transaction failed:', error.message); await showAlert('Could not restore', 'Could not restore this transaction. Try again.'); return; }
+    await audit('Transaction restored', `${row ? row.merchant : 'Transaction'} returned to the week.`);
     await refresh();
   }));
   document.querySelectorAll('[data-reclassify]').forEach((b) => b.addEventListener('click', async () => {
-    const newKind = await showSheet({ title: 'Reclassify purchase', message: 'Change how this purchase counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+    const newKind = await showSheet({ title: 'Reclassify transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
     if (newKind === null) return;
-    const reason = await showSheet({ title: 'Reclassify purchase', message: 'Why reclassify this purchase?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
+    const reason = await showSheet({ title: 'Reclassify transaction', message: 'Why reclassify this transaction?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
     if (reason === null) return;
-    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for reclassifying this purchase.'); return; }
+    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for reclassifying this transaction.'); return; }
     const row = all.find((t) => t.id === b.dataset.reclassify);
     const { error } = await supabase.rpc('reclassify_transaction', { txn_id: b.dataset.reclassify, new_kind: newKind, reason: reason.trim() });
-    if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', 'Could not reclassify this purchase. Try again.'); return; }
-    await audit('Transaction reclassified', `${row ? row.merchant : 'Purchase'} reclassified to ${newKind} — reason: ${reason.trim()}.`);
+    if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', 'Could not reclassify this transaction. Try again.'); return; }
+    await audit('Transaction reclassified', `${row ? row.merchant : 'Transaction'} reclassified to ${newKind} — reason: ${reason.trim()}.`);
     await refresh();
   }));
   document.querySelectorAll('[data-delete-tx]').forEach((b) => b.addEventListener('click', async () => {
     const row = all.find((t) => t.id === b.dataset.deleteTx);
-    if (!row || !(await showConfirm('Delete purchase', `"${row.merchant}" ${formatCents(row.amount_cents)} — this removes the hand-entered purchase and cannot be undone.`, 'Delete'))) return;
+    if (!row || !(await showConfirm('Delete transaction', `"${row.merchant}" ${formatCents(row.amount_cents)} — this removes the hand-entered transaction and cannot be undone.`, 'Delete'))) return;
     const { error } = await supabase.rpc('delete_transaction', { p_transaction_id: b.dataset.deleteTx });
-    if (error) { console.warn('delete_transaction failed:', error.message); await showAlert('Could not delete', 'Could not delete this purchase. Try again.'); return; }
+    if (error) { console.warn('delete_transaction failed:', error.message); await showAlert('Could not delete', 'Could not delete this transaction. Try again.'); return; }
     await refresh();
   }));
   document.querySelectorAll('[data-remove-tx]').forEach((b) => b.addEventListener('click', async () => {
@@ -562,11 +562,11 @@ async function refresh() {
     // "Remove" for a bank/email/file record is an exclusion, not a delete:
     // the record stays with its source; it only stops counting here. It
     // goes through exclude_transaction with a required reason.
-    const reason = await showSheet({ title: 'Remove from budget', message: `"${row?.merchant ?? 'This purchase'}" ${formatCents(row?.amount_cents ?? 0)} — the record stays with its source; this only stops it counting here. Give a reason to continue.`, inputLabel: 'Reason (required)', confirmLabel: 'Remove', cancelLabel: 'Keep it' });
+    const reason = await showSheet({ title: 'Remove from budget', message: `"${row?.merchant ?? 'This transaction'}" ${formatCents(row?.amount_cents ?? 0)} — the record stays with its source; this only stops it counting here. Give a reason to continue.`, inputLabel: 'Reason (required)', confirmLabel: 'Remove', cancelLabel: 'Keep it' });
     if (reason === null) return;
-    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for removing this purchase.'); return; }
+    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for removing this transaction.'); return; }
     const { error } = await supabase.rpc('exclude_transaction', { txn_id: b.dataset.removeTx, reason: reason.trim() });
-    if (error) { console.warn('exclude_transaction (remove) failed:', error.message); await showAlert('Could not remove', 'Could not remove this purchase. Try again.'); return; }
+    if (error) { console.warn('exclude_transaction (remove) failed:', error.message); await showAlert('Could not remove', 'Could not remove this transaction. Try again.'); return; }
     await audit('Transaction removed from budget', `${row.merchant} ${formatCents(row.amount_cents)} excluded from week math — reason: ${reason.trim()}.`);
     await refresh();
   }));
@@ -718,7 +718,7 @@ async function refresh() {
           const btn = document.createElement('button'); btn.className = 'btn btn-small btn-danger'; btn.type = 'button';
           btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${item.institution_name || 'bank'}`);
           btn.addEventListener('click', async () => {
-            if (!(await showConfirm('Disconnect bank', `Disconnect ${item.institution_name || 'this bank'}? The app will stop syncing it. Past purchases stay in the list.`, 'Disconnect'))) return;
+            if (!(await showConfirm('Disconnect bank', `Disconnect ${item.institution_name || 'this bank'}? The app will stop syncing it. Past transactions stay in the list.`, 'Disconnect'))) return;
             // Sibling S3 plaid-disconnect requires BOTH household_id and plaid_item_id
             // (the S4 brief listed only plaid_item_id); sending both satisfies
             // the implemented function and is harmless if a stricter function
@@ -780,7 +780,7 @@ async function refresh() {
           const btn = document.createElement('button'); btn.className = 'btn btn-small btn-danger'; btn.type = 'button';
           btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${c.email_address || 'email'}`);
           btn.addEventListener('click', async () => {
-            if (!(await showConfirm('Disconnect email', `Disconnect ${c.email_address || 'this email'}? The app will stop checking it. Past purchases stay in the list.`, 'Disconnect'))) return;
+            if (!(await showConfirm('Disconnect email', `Disconnect ${c.email_address || 'this email'}? The app will stop checking it. Past transactions stay in the list.`, 'Disconnect'))) return;
             const out = await callFn('gmail-disconnect', { household_id: household.household_id, connection_id: c.id });
             if (!out.disconnected) { console.warn('gmail-disconnect failed:', out.error); await showAlert('Could not disconnect', 'Could not disconnect this email. Try again.'); return; }
             await refresh();
@@ -969,7 +969,7 @@ $('signInBtn').addEventListener('click', async () => {
   });
   if (error) console.warn('sign-in failed:', error.message);
   $('authMsg').textContent = error ? 'Could not sign in. Check your email and password and try again.' : 'Signed in.';
-  if (!error) await // ---- Live CSV import (Purchases tab) ----
+  if (!error) await // ---- Live CSV import (Transactions tab) ----
 // Port of the demo parser. NOTHING is inserted on file pick: the file is
 // parsed, previewed with duplicate-skip counts, and inserted ONLY after
 // the user taps Confirm. Inserts are source='csv', state='provisional'
@@ -1038,7 +1038,7 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
   const confirmBtn = $('csvConfirmBtn'); if (confirmBtn) confirmBtn.disabled = true;
   const preview = $('csvPreview'); if (preview) preview.innerHTML = '';
   if (msg) msg.textContent = '';
-  showToast(`Imported ${added} purchase(s) as provisional.`);
+  showToast(`Imported ${added} transaction(s) as provisional.`);
   await refresh();
 });
 
@@ -1107,13 +1107,13 @@ $('manualForm').addEventListener('submit', async (e) => {
   if (!/^\d{4}$/.test(suffix)) { await showAlert('Card suffix', 'Card suffix must be exactly 4 digits. Never enter a full card number.'); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
   // Smarter entry: warn on an apparent duplicate instead of silently
-  // creating a second copy of the same purchase.
+  // creating a second copy of the same transaction.
   const { data: dupes } = await supabase.from('transactions')
     .select('merchant, amount_cents, date').eq('household_id', household.household_id)
     .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
-  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A purchase already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add anyway'))) return;
+  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add anyway'))) return;
   // R1 busy control: block repeat submits while the insert is in
-  // flight, so a double tap cannot create the purchase twice.
+  // flight, so a double tap cannot create the transaction twice.
   const submitBtn = f.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
   const hash = await sha(`${f.date.value}|${merchant}|${amount}|${suffix}`);
@@ -1122,8 +1122,8 @@ $('manualForm').addEventListener('submit', async (e) => {
     amount_cents: amount, card_suffix: suffix, source: 'manual',
     state: 'provisional', kind: 'charge', dedupe_hash: hash,
   });
-  if (error) { console.warn('manual insert failed:', error.message); await showAlert('Could not save', 'Could not save this purchase. Try again.'); if (submitBtn) submitBtn.disabled = false; return; }
-  await audit('Purchase added by hand', `${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)} (••${suffix}).`);
+  if (error) { console.warn('manual insert failed:', error.message); await showAlert('Could not save', 'Could not save this transaction. Try again.'); if (submitBtn) submitBtn.disabled = false; return; }
+  await audit('Transaction added by hand', `${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)} (••${suffix}).`);
   f.reset(); if (submitBtn) submitBtn.disabled = false; await refresh();
 });
 
@@ -1193,7 +1193,7 @@ $('registerWebhookBtn')?.addEventListener('click', async () => {
   const failed = (out.results ?? []).filter((r) => !r.ok);
   showToast(failed.length
     ? `Automatic sync partly enabled — ${failed.length} connection(s) failed. Try again.`
-    : 'Automatic sync enabled. New purchases will be pulled in on your next refresh.', failed.length > 0);
+    : 'Automatic sync enabled. New transactions will be pulled in on your next refresh.', failed.length > 0);
   if (!failed.length) { await refresh(); }
 });
 
@@ -1392,7 +1392,9 @@ function formatAuditDetail(detail) {
   return d;
 }
 function formatAuditAction(action) {
-  return action === 'Manual provisional purchase added' ? 'Purchase added by hand' : action; // old rows
+  // Old rows carry the pre-rename wording; display them under the new name too.
+  return action === 'Manual provisional transaction added' || action === 'Purchase added by hand'
+    ? 'Transaction added by hand' : action; // old rows
 }
 function formatAuditActor(name) {
   if (name === 'admin') return 'Admin';

@@ -57,7 +57,7 @@
   <section id="view-app" class="hidden">
     <nav class="app-nav" aria-label="App sections">
       <button class="app-nav-link" data-view="week" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg><span>Home</span></button>
-      <button class="app-nav-link" data-view="purchases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg><span>Purchases</span></button>
+      <button class="app-nav-link" data-view="purchases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg><span>Transactions</span></button>
       <button class="app-nav-link" data-view="money" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg><span>Bank &amp; Funds</span></button>
       <button class="app-nav-link" data-view="activity" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>History</span></button>
     </nav>
@@ -67,13 +67,13 @@
       </div>
       <div class="kicker">Available this week · <span id="weekLabel">…</span></div>
       <div id="weeklyAvailable" class="big">…</div>
-      <p class="muted">Pending purchases are included and marked.
+      <p class="muted">Pending transactions are included and marked.
       If the big number is negative, you're over this week's budget.</p>
       <div class="hero-progress" aria-hidden="true"><div id="weekProgressBar"></div></div>
       <p class="muted small" id="weekProgressText"></p>
       <div id="weekBreakdown" class="hidden"></div>
       <p id="weekError" class="result error hidden"></p>
-      <p id="weekEmptyHint" class="muted small hidden">No purchases this week yet — the full allowance is still available. Add one by hand, or connect a bank account on the Money tab.</p>
+      <p id="weekEmptyHint" class="muted small hidden">No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account on the Money tab.</p>
     </div>
     <p class="muted small stat-hint" id="section-hint">Tap a number for details.</p>
     <div class="grid" id="section-stats">
@@ -84,17 +84,17 @@
     </div>
 
     <div class="card" id="section-recent">
-      <h2>Recent purchases</h2>
+      <h2>Recent transactions</h2>
       <ul id="recentList" class="plain"><li class="muted small">Loading…</li></ul>
       <div class="btn-row">
-        <button class="btn" data-view="purchases" type="button" aria-label="See all purchases">See all</button>
+        <button class="btn" data-view="purchases" type="button" aria-label="See all transactions">See all</button>
       </div>
       <p id="homeSyncMsg" class="result"></p>
     </div>
 
     <div class="card" id="section-manual">
-      <h2>Add a purchase by hand</h2>
-      <p class="muted small">Record a purchase by hand. It counts as pending until the bank confirms it.</p>
+      <h2>Add a transaction by hand</h2>
+      <p class="muted small">Record a transaction by hand. It counts as pending until the bank confirms it.</p>
       <form id="manualForm">
         <label>Merchant <input name="merchant" required maxlength="80"></label>
         <div class="form-row-3">
@@ -102,13 +102,13 @@
           <label>Date <input name="date" type="date" required></label>
           <label>Card suffix <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
         </div>
-        <button class="btn btn-primary" type="submit" aria-label="Add this purchase">Add purchase</button>
+        <button class="btn btn-primary" type="submit" aria-label="Add this transaction">Add transaction</button>
       </form>
       <p class="muted small">Never enter a full card number.</p>
     </div>
 
     <div class="card" id="section-csv">
-      <h2>Import purchases from a CSV file</h2>
+      <h2>Import transactions from a CSV file</h2>
       <p class="muted small">Expected columns: Date, Description, Amount, Card Ending. Nothing is added until you review the preview and tap Confirm. Duplicates are skipped. Imports are provisional until the bank confirms them.</p>
       <label>CSV file <input id="csvFile" type="file" accept=".csv,text/csv"></label>
       <div id="csvPreview"></div>
@@ -118,17 +118,17 @@
     </div>
 
     <div class="card" id="section-transactions">
-      <h2>Purchases</h2>
-      <p class="muted small">Everything spent on the household cards. Tap a purchase for detail and actions.</p>
-      <div class="tx-chips" role="group" aria-label="Filter purchases">
-        <button class="tx-chip active" data-tx-filter="all" type="button" aria-label="Show all purchases">All</button>
-        <button class="tx-chip" data-tx-filter="pending" type="button" aria-label="Show pending purchases only">Pending</button>
-        <button class="tx-chip" data-tx-filter="posted" type="button" aria-label="Show posted purchases only">Posted</button>
+      <h2>Transactions</h2>
+      <p class="muted small">Everything spent on the household cards. Tap a transaction for detail and actions.</p>
+      <div class="tx-chips" role="group" aria-label="Filter transactions">
+        <button class="tx-chip active" data-tx-filter="all" type="button" aria-label="Show all transactions">All</button>
+        <button class="tx-chip" data-tx-filter="pending" type="button" aria-label="Show pending transactions only">Pending</button>
+        <button class="tx-chip" data-tx-filter="posted" type="button" aria-label="Show posted transactions only">Posted</button>
         <button class="tx-chip" data-tx-filter="refunds" type="button" aria-label="Show refunds only">Refunds</button>
-        <button class="tx-chip" data-tx-filter="excluded" type="button" aria-label="Show excluded purchases only">Excluded</button>
-        <button class="tx-chip" id="txWeekToggle" type="button" aria-pressed="false" aria-label="Show only this week's purchases">This week</button>
+        <button class="tx-chip" data-tx-filter="excluded" type="button" aria-label="Show excluded transactions only">Excluded</button>
+        <button class="tx-chip" id="txWeekToggle" type="button" aria-pressed="false" aria-label="Show only this week's transactions">This week</button>
       </div>
-      <input id="txSearch" type="search" placeholder="Search purchases (merchant, amount, date)" aria-label="Search purchases">
+      <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
       <button id="txFiltersToggle" class="btn" type="button" aria-expanded="false" aria-label="Show more filters">Filters ▾</button>
       <div id="txFilters" class="hidden">
         <label class="muted small">Month
@@ -138,7 +138,7 @@
           <select id="txCard" aria-label="Filter by card"><option value="all">All cards</option></select>
         </label>
         <label class="muted small">Sort by
-          <select id="txSort" aria-label="Sort purchases">
+          <select id="txSort" aria-label="Sort transactions">
             <option value="date-desc">Date: newest first</option>
             <option value="date-asc">Date: oldest first</option>
             <option value="amount-asc">Amount: smallest first</option>
@@ -153,7 +153,7 @@
 
     <div class="card" id="section-bank">
       <h2>Bank connection (read-only)</h2>
-      <p class="muted small">Read-only — the app can see purchases, never move money.</p>
+      <p class="muted small">Read-only — the app can see transactions, never move money.</p>
       <div class="btn-row">
         <button id="connectBankBtn" class="btn btn-primary" type="button" aria-label="Connect a bank account">Connect a bank account</button>
         <button id="syncBankBtn" class="btn" type="button" aria-label="Sync bank transactions now">Sync bank transactions now</button>
@@ -171,7 +171,7 @@
 
     <div class="card" id="section-email" style="display:none">
       <h2>Email alerts (read-only)</h2>
-      <p class="muted small">Read-only — the app can read Amex purchase alerts, never your whole mailbox, and never sends or changes email. Purchases found here stay provisional until the bank confirms them. Connecting here does not change any existing email setup.</p>
+      <p class="muted small">Read-only — the app can read Amex transaction alerts, never your whole mailbox, and never sends or changes email. Transactions found here stay provisional until the bank confirms them. Connecting here does not change any existing email setup.</p>
       <div class="btn-row">
         <button id="connectEmailBtn" class="btn btn-primary" type="button" aria-label="Connect email">Connect email</button>
         <button id="pollEmailBtn" class="btn" type="button" aria-label="Check email now">Check email now</button>
@@ -289,6 +289,6 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=12"></script>
+<script type="module" src="live.js?v=13"></script>
 </body>
 </html>
