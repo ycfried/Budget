@@ -576,7 +576,7 @@ async function refresh() {
           <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${kindLabel})</p>
           <p class="small muted">Date: ${fmtLong(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
           Card: ${cardLabel} · Source: ${esc(sourceLabel(t.source))} · Status: ${stateWord(t, excluded)}<br>
-          ${t.kind === 'charity' ? 'This gift is outside weekly spending and counts toward charity given once posted.' : excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : 'This transaction counts toward its week unless excluded.'}</p>
+          ${t.kind === 'charity' ? 'This gift is outside weekly spending and counts toward charity given once posted.' : excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : t.kind === 'payment' ? 'This is a card payment. It does not count toward weekly spending.' : t.kind === 'cashback' ? 'This is a cash-back credit. It does not count toward weekly spending.' : 'This transaction counts toward its week unless excluded.'}</p>
           <div>${action}</div>
         </div></li>`;
       }).join('')
