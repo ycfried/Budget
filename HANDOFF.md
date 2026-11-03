@@ -538,3 +538,34 @@ default because these were unset — that is fixed, not a standing bug.
   while the columns were missing were loud 500s, not silent
   losses, but whether a past locked-week refund still needs a
   re-run after this migration is an open week-close question.
+
+## Addendum — Nov 3, evening (Round 3 fix round)
+- The owner's updated audit copy (Rounds 1–3, all on v22) was
+  reconciled against v23: bugs 1–7 in it are the ones PR #6
+  already fixed; Round 3 added two new bugs. Bug 8 (gift
+  double-submit, $25 recorded twice on a synthetic household):
+  v23 already had the client lock; this round adds the server
+  half — supabase/r13-gift-idempotency.sql gives
+  record_charity_gift a p_client_key (default null, old calls
+  unaffected) with a partial unique index on (household_id,
+  client_key); replays return the original row with no second
+  audit row, while fresh keys keep real identical gifts distinct.
+  The client reuses its key only for an identical retry
+  (merchant/amount/date/suffix match), like the top-up pattern.
+  Bug 9 (non-last member deletion failed partway, membership
+  gone, auth orphaned): root cause proven from source — eight
+  history columns reference auth.users with no ON DELETE action
+  (fund_requests x2, savings_ledger, audit_log, fund_ledger,
+  temp_increases, fund_topups, charity_income), so any user with
+  history blocks admin.deleteUser until the household cascades
+  away. Fix is supabase/delete-account-fk-migration.sql (all
+  eight re-pointed to ON DELETE SET NULL; the three NOT NULL
+  columns relaxed — nothing reads them for display) plus a
+  hardened delete-account function (household-cleanup errors no
+  longer swallowed; membership restored on any later failure;
+  failing step returned and shown). No real-household data was
+  touched by any round (synthetic households only, since
+  deleted). Still open: mark-as-charity end to end (needs a
+  synced posted row — synthetic households have no bank link);
+  a final pass on the confirmed-finished rollout; the TOIREMORG
+  $2 pair review.
