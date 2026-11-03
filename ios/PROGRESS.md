@@ -105,3 +105,11 @@ real sessions and backend persistence are not implemented. No mock pass proves R
 All new changes still reside under ios/. No existing web/backend/workflow/settings modified; no production calls, deploys,
 Apple submissions, paid activations or real account consents. Do not call this
 App Store ready or claim an iOS build until actual Xcode/device evidence exists.
+
+## Additional one-run approval — November 3, 2026
+
+Owner explicitly approved exactly one additional unsigned standard GitHub-hosted
+macOS simulator build including AppIcon fix 17601f5. The existing restricted
+workflow is unchanged. This documentation commit supplies its required path
+filter and approved message prefix. No retries, signing, deployment, production
+access, purchases or workflow changes are authorized. Results pending this run.
