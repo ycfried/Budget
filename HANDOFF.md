@@ -524,3 +524,17 @@ default because these were unset — that is fixed, not a standing bug.
   (manual form stays positive-only by design); R1 per-section
   loading, R10 filters, fixed charity commitments (features, not
   bugs — owner decision).
+
+## Addendum — Nov 3, evening (refund migration applied)
+- supabase/restoration-columns-migration.sql applied live via the
+  SQL editor and verified: all 7 expected columns now present
+  (restoration_entries: debt_reduction_cents, fund_credit_cents,
+  purchase_transaction_id, refund_transaction_id; held_refunds:
+  purchase_transaction_id, refund_transaction_id,
+  resolution_note), plus the unique-per-refund guards and both
+  indexes, no errors, no unique_violation. The refund panels
+  (restorations + held refunds) should now load, and week-close
+  restoration writes are unblocked. Note: restorations that failed
+  while the columns were missing were loud 500s, not silent
+  losses, but whether a past locked-week refund still needs a
+  re-run after this migration is an open week-close question.
