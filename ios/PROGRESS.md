@@ -302,13 +302,13 @@ No branch push will occur while the job is running, preserving the approved SHA.
   synthetic app” step: **FAILURE**, started 2026-11-03 17:58:46 UTC and completed
   17:58:47 UTC. Exact exposed annotation: **“Process completed with exit code 134.”**
   Post-checkout and job cleanup: SUCCESS.
-- Compilation result: combined validation/build/test pipeline failed; **individual
-  Swift package and Xcode app/WidgetKit/test compilation outcomes NOT VERIFIED**.
-  The failing command/compiler diagnostic cannot be established from the annotation.
-- Test result: **no verified core or simulator/UI pass counts for this run**.
-  Do not infer successful execution, failed test assertions or a specific Swift
-  defect from exit code 134. Earlier 116 Linux test passes are separate evidence;
-  earlier successful simulator run 41648851937 applies only to its old SHA.
+- Compilation result (updated from owner-retrieved full log): **NOT STARTED**.
+  The original report could not identify the failing command from its annotation;
+  the owner subsequently confirmed the version-check abort before Swift package
+  or Xcode app/WidgetKit/test compilation. See confirmed root cause below.
+- Test result (updated): **NOT STARTED**. No core or simulator/UI tests executed
+  in this run. Earlier 116 Linux test passes are separate evidence; earlier
+  successful simulator run 41648851937 applies only to its old SHA.
 - Additional warning: checkout targets deprecated Node.js 20 and GitHub forces
   Node.js 24. Checkout itself passed; this warning is not a verified cause of the
   validation failure. No workflow/action version changes were made.
@@ -317,9 +317,9 @@ No branch push will occur while the job is running, preserving the approved SHA.
   Official step/run log URLs returned 404 anonymously; `gh api` metadata access
   was denied by this environment's network policy. Console logs/xcresult bundles
   and exact failing subprocess were not available. No credentials were extracted,
-  authentication bypass attempted, or artifacts uploaded. Needed next evidence:
-  existing validation step's console output from an authorized GitHub session;
-  retrieving it does not require another build. No root-cause fix is claimed.
+  authentication bypass attempted, or artifacts uploaded. The owner subsequently
+  retrieved the existing full log and supplied the confirmed root cause below;
+  no additional build was needed to identify it.
 - Safety: workflow unchanged, standard configured GitHub-hosted macOS runner,
   unsigned fixture-only composition with no project credentials or live executor.
   No live/backend/provider/financial operation, main/web/Supabase/settings edit,
@@ -332,3 +332,39 @@ No branch push will occur while the job is running, preserving the approved SHA.
 Documentation follow-up verification: changed-file list limited to ios/PROGRESS.md,
 workflow diff unchanged, whitespace and credential-pattern safety scan passed.
 Local runtime tests were not rerun for this documentation-only follow-up.
+
+
+## Confirmed Xcode version-check abort and local script fix
+
+Owner retrieved the full log of run 41689326270 and confirmed the failing command
+at original ios/scripts/macos_simulator_test.sh line 21:
+`xcodebuild -version | head -n 1 | /usr/bin/grep -qx 'Xcode 16.4'`.
+`head` closes its pipe after the first line while Xcode is still writing; Xcode
+throws **NSFileHandleOperationException: Broken pipe** and aborts with exit 134.
+**App/core compilation and tests never started.** This supersedes the original
+annotation-only uncertainty; no application compile/test failure was established.
+The checkout Node.js deprecation warning was not this failure's cause.
+
+Fixed only the version validation: capture complete `xcodebuild -version` output
+once in a task-specific shell variable, print the captured output, and compare its
+first line exactly to Xcode 16.4 using Bash parameter expansion. No early-closing
+pipe, duplicate Xcode invocation, fallback version or download. Existing `set -e`
+still propagates a failed version command, instead of accepting its partial output.
+Workflow, build commands, financial/app code, live configuration and permissions
+are unchanged.
+
+Added scripts/test_macos_version_check.py. It extracts the actual script version
+block and substitutes a local synthetic xcodebuild executable. **4 regression
+tests passed**: over-1-MB multi-write output fully drained with final marker and
+one invocation; wrong version rejection; exact first-line matching including four
+invalid variants; nonzero producer status preserved despite valid-looking output.
+No Xcode, simulator, provider or live network request is executed by these tests.
+
+Other verified local checks: **116 Swift core XCTest tests passed, 0 failures**;
+`bash -n`, static PBX/project validation, `git diff --check`, branch/changed-file
+scope and credential-pattern safety scan passed. Swift tests are Linux/fixture
+results, not validation of the script on macOS or a new Apple compilation.
+No cloud build/retry/signing/deployment or financial-data access occurred.
+Only the simulator script, its regression check and this progress document changed,
+all under ios/ on ios-native-rebuild. Ordinary commit message only; any new
+simulator execution still requires separate explicit approval. Stopped after fix.

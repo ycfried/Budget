@@ -17,8 +17,13 @@ if [[ -n "${GITHUB_SHA:-}" && "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
 fi
 export DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer
 [[ -d "$DEVELOPER_DIR" ]] || { echo 'FAIL: reviewed Xcode 16.4 not installed; no fallback or download.' >&2; exit 1; }
-xcodebuild -version
-xcodebuild -version | head -n 1 | /usr/bin/grep -qx 'Xcode 16.4'
+# Capture the complete output before checking: head can close Xcode's pipe early.
+onbudget_xcode_version="$(xcodebuild -version)"
+printf '%s\n' "$onbudget_xcode_version"
+if [[ "${onbudget_xcode_version%%$'\n'*}" != 'Xcode 16.4' ]]; then
+  echo 'FAIL: expected Xcode 16.4; no fallback or download.' >&2
+  exit 1
+fi
 mkdir -p ios/CloudResults
 python3 ios/scripts/validate_project.py
 xcrun swift test --package-path ios --scratch-path ios/CloudResults/CoreBuild --jobs 4
