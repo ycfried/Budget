@@ -580,3 +580,33 @@ default because these were unset — that is fixed, not a standing bug.
   function redeployed on the merge; its deploy status and a
   bug-9 end-to-end retest on a new synthetic household remain
   unproven.
+- Delta package Nov 3, evening (branch delta-package, NOT merged,
+  live.js v25 / styles v16, owner-approved History + Funds gates):
+  A1 whole manual Savings section removed from everyday Funds
+  screens (card, figures, form, write handlers); records untouched
+  in the database, reachable read-only via a "Past savings records"
+  link at the bottom of Funds. A2 arrows restored on the sort
+  control (Date ↓ Newest / ↑ Oldest, Amount ↓ Largest / ↑ Smallest)
+  and on Back buttons (← Back); SVG sync icon kept. B1 History
+  moved to a Home button, off the bottom tab bar (Home /
+  Transactions / Funds); weekly summaries + day-grouped Activity
+  kept, date filter with visible Clear + stated active period,
+  honest full-set counts, Load more for activity. B2 Transactions:
+  chip row removed; search + one Filters button; filters in a
+  bottom sheet (status, dates incl. This week + from/to, Card /
+  Account, min/max, sorting, Apply/Reset/Cancel); applied filters
+  as individually removable labels; Add button top right of the
+  Transactions heading. B3 sync guard: repeat taps ignored while a
+  sync runs, buttons disabled, Home icon spins. C1 buttons
+  center content (inline-flex); C2 tertiary treatment #eef4ff /
+  #2f6bff on 3rd+ adjacent buttons. C3 Funds: two balance cards
+  on top (Available / Remaining prominent, pending-or-owed and
+  committed-or-given as one secondary line each), actions as
+  buttons opening one form at a time, activity behind per-fund
+  disclosures, refund + duplicate review in one collapsed
+  Review area hidden from members. Manual refunds deliberately
+  NOT built (owner decision Nov 3: manual form stays
+  purchases-only). Tests 89/89 (6 new delta helpers). Still to
+  prove live (doc section D): the full checklist on a real phone
+  at 320/390/desktop, incl. sheet behavior, sync progress, and
+  member-vs-admin Review visibility.

@@ -26,6 +26,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate } from './filterState.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
@@ -165,6 +166,13 @@ let txSort = localStorage.getItem('hb-tx-sort') || 'date-desc'; // date-desc | d
 let txMonth = localStorage.getItem('hb-tx-month') || 'all'; // 'all' or 'YYYY-MM'
 let txCard = localStorage.getItem('hb-tx-card') || 'all'; // 'all' or card suffix
 let txWeekOnly = false; // spec B5: transactions filter by week (client-side, current Sun–Sat week)
+let txFromDate = ''; // delta B2: optional date-range lower bound (YYYY-MM-DD, sheet-committed)
+let txToDate = ''; // delta B2: optional date-range upper bound (YYYY-MM-DD, sheet-committed)
+let historyFilter = { from: '', to: '' }; // delta B1: History date filter (YYYY-MM-DD, both lists)
+let lastWeekHistoryShown = { shown: 0, total: null }; // delta B1: week-history counts for the combined count line
+let auditLimit = 50; // delta B1: activity entries shown; Load more raises it
+let fundFormOpen = null; // delta C3: which Funds form is open (null = actions card)
+const syncGuard = createSyncGuard(); // delta B3: one bank sync at a time
 let txLimit = 100; // transactions load in pages of 100; Load more raises it
 let weekCloseRan = false; // week-close runs itself once per session (admin only)
 let lastRefreshAt = 0; // tab taps refresh in the background, throttled
@@ -376,7 +384,7 @@ async function refresh() {
   const minCents = parseDollarsStrict($('txMinAmount')?.value ?? '');
   const maxCents = parseDollarsStrict($('txMaxAmount')?.value ?? '');
   const amountRangeInvalid = minCents !== null && maxCents !== null && minCents > maxCents;
-  const shown = amountRangeInvalid ? [] : all.filter((t) => byFilter(t) && (txMonth === 'all' || String(t.date).startsWith(txMonth)) && (txCard === 'all' || String(t.card_suffix) === txCard) && (!txWeekOnly || inThisWeek(t)) && (minCents === null || t.amount_cents >= minCents) && (maxCents === null || t.amount_cents <= maxCents) && (!q
+  const shown = amountRangeInvalid ? [] : all.filter((t) => byFilter(t) && (txMonth === 'all' || String(t.date).startsWith(txMonth)) && (txCard === 'all' || String(t.card_suffix) === txCard) && (!txWeekOnly || inThisWeek(t)) && (!txFromDate || String(t.date) >= txFromDate) && (!txToDate || String(t.date) <= txToDate) && (minCents === null || t.amount_cents >= minCents) && (maxCents === null || t.amount_cents <= maxCents) && (!q
     || t.merchant.toLowerCase().includes(q)
     || String(t.date).includes(q)
     || formatCents(t.amount_cents).toLowerCase().includes(q)));
@@ -396,10 +404,11 @@ async function refresh() {
   if (sortFieldEl) sortFieldEl.value = txSort.startsWith('amount') ? 'amount' : 'date';
   const sortDirBtn = $('txSortDirBtn');
   if (sortDirBtn) {
-    const dirLabel = txSort === 'date-asc' ? 'Oldest first'
-      : txSort === 'amount-desc' ? 'Largest first'
-      : txSort === 'amount-asc' ? 'Smallest first'
-      : 'Newest first';
+    // Delta A2: the approved arrow design — arrow AND words together.
+    const dirLabel = txSort === 'date-asc' ? '↑ Oldest first'
+      : txSort === 'amount-desc' ? '↓ Largest first'
+      : txSort === 'amount-asc' ? '↑ Smallest first'
+      : '↓ Newest first';
     sortDirBtn.textContent = dirLabel;
     sortDirBtn.setAttribute('aria-label', `Sort direction: ${dirLabel}. Tap to reverse.`);
   }
@@ -447,15 +456,48 @@ async function refresh() {
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
-  const weekBtn = $('txWeekToggle');
-  if (weekBtn) {
-    weekBtn.classList.toggle('active', txWeekOnly);
-    weekBtn.setAttribute('aria-pressed', txWeekOnly ? 'true' : 'false');
+  // Delta B2: the sheet controls mirror the state variables (the
+  // month/card selects are rebuilt above; status, week, and dates
+  // are synced here so Apply/Cancel always show the true state).
+  const statusSel = $('txStatusSelect');
+  if (statusSel) statusSel.value = txFilter;
+  const weekCheck = $('txWeekCheck');
+  if (weekCheck) weekCheck.checked = txWeekOnly;
+  const fromInput = $('txFromDate');
+  if (fromInput && document.activeElement !== fromInput) fromInput.value = txFromDate;
+  const toInput = $('txToDate');
+  if (toInput && document.activeElement !== toInput) toInput.value = txToDate;
+  // Delta B2: applied filters as small individually removable labels
+  // above the list. Clearing one label clears only that filter.
+  const activeEl = $('txActiveFilters');
+  if (activeEl) {
+    const monthLabel = txMonth === 'all' ? null : (() => {
+      try { return new Date(`${txMonth}-02T12:00:00`).toLocaleString('en-US', { month: 'long', year: 'numeric' }); } catch (e) { return txMonth; }
+    })();
+    const labels = activeFilterLabels({
+      status: txFilter,
+      monthLabel,
+      cardLabel: txCard === 'all' ? null : `••${txCard}`,
+      minLabel: minCents === null ? null : formatCents(minCents),
+      maxLabel: maxCents === null ? null : formatCents(maxCents),
+      weekOnly: txWeekOnly,
+      fromDate: txFromDate,
+      toDate: txToDate,
+    });
+    activeEl.innerHTML = labels.map((l) => `<button class="tx-active-filter" data-clear-filter="${esc(l.key)}" type="button" aria-label="Remove filter ${esc(l.label)}">${esc(l.label)} ×</button>`).join('');
+    activeEl.querySelectorAll('[data-clear-filter]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.clearFilter;
+      if (key === 'status') txFilter = 'all';
+      else if (key === 'month') { txMonth = 'all'; localStorage.setItem('hb-tx-month', 'all'); }
+      else if (key === 'card') { txCard = 'all'; localStorage.setItem('hb-tx-card', 'all'); }
+      else if (key === 'min') { const mn = $('txMinAmount'); if (mn) mn.value = ''; }
+      else if (key === 'max') { const mx = $('txMaxAmount'); if (mx) mx.value = ''; }
+      else if (key === 'week') txWeekOnly = false;
+      else if (key === 'from') txFromDate = '';
+      else if (key === 'to') txToDate = '';
+      refresh();
+    }));
   }
-  document.querySelectorAll('[data-tx-filter]').forEach((c) => {
-    c.classList.toggle('active', c.dataset.txFilter === txFilter);
-    c.setAttribute('aria-pressed', c.dataset.txFilter === txFilter ? 'true' : 'false');
-  });
   const emptyHint = txFilter === 'excluded'
     ? 'No excluded transactions. Excluded transactions are hidden from the week math but kept here so you can restore them.'
     : txFilter === 'refunds'
@@ -478,11 +520,15 @@ async function refresh() {
           ? `<button class="btn btn-small btn-danger" data-delete-tx="${t.id}" type="button" aria-label="Delete ${esc(t.merchant)}">Delete</button>`
           : `<button class="btn btn-small btn-danger" data-remove-tx="${t.id}" type="button" aria-label="Remove ${esc(t.merchant)} from the budget">Remove</button>`;
         const fundBtn = `<button class="btn btn-small" data-use-fund="${t.id}" type="button" aria-label="Use Extra Fund for ${esc(t.merchant)}">Use Extra Fund</button>`;
+        // Delta C2: on an admin row this is the fifth action, so it
+        // takes the tertiary treatment; members see it alone, where
+        // it stays secondary.
+        const fundBtnAdmin = fundBtn.replace('class="btn btn-small"', 'class="btn btn-small btn-tertiary"');
         // Admin actions are hidden from non-admins in the UI; enforcement
         // is server-side in the RPCs (see header note). Reclassify is
         // admin-only and goes through reclassify_transaction.
         const reclassBtn = !isAdmin ? ''
-          : `<button class="btn btn-small" data-reclassify="${t.id}" type="button" aria-label="Reclassify ${esc(t.merchant)}">Reclassify</button>`;
+          : `<button class="btn btn-small btn-tertiary" data-reclassify="${t.id}" type="button" aria-label="Reclassify ${esc(t.merchant)}">Reclassify</button>`;
         // R13: a posted charge can be marked as a charity gift (whole
         // row only, server-guarded: posted, unexcluded, no fund part,
         // November 2026 onward, unlocked week). A gift row itself
@@ -491,7 +537,7 @@ async function refresh() {
         // (or Restore when excluded) still applies.
         const charityBtn = !isAdmin ? ''
           : (t.kind === 'charge' && t.state === 'verified' && !excluded)
-          ? `<button class="btn btn-small" data-mark-charity="${t.id}" type="button" aria-label="Mark ${esc(t.merchant)} as a charity gift">Mark as charity</button>`
+          ? `<button class="btn btn-small btn-tertiary" data-mark-charity="${t.id}" type="button" aria-label="Mark ${esc(t.merchant)} as a charity gift">Mark as charity</button>`
           : '';
         const cardLabel = (t.kind === 'charity' && String(t.card_suffix) === '0000') ? 'Cash / no card' : `••${esc(t.card_suffix)}`;
         const kindLabel = t.kind === 'refund' ? 'Refund' : t.kind === 'charity' ? 'Charity gift' : 'Transaction';
@@ -500,7 +546,7 @@ async function refresh() {
           ? `<div class="btn-row"><button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${deleteBtn} ${reclassBtn}</div>`
           : t.kind === 'charity'
           ? `<div class="btn-row">${deleteBtn}</div>`
-          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${reclassBtn} ${charityBtn} ${fundBtn}</div>`;
+          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${reclassBtn} ${charityBtn} ${fundBtnAdmin}</div>`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
         return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="Show detail for ${esc(t.merchant)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span></div>
         <div class="tx-line2">${statePill(t, excluded)}
@@ -742,11 +788,10 @@ async function refresh() {
     : savRows.length
     ? `<ul>${savRows.slice(0, 20).map((r) => `<li>${esc(r.kind)} ${formatCents(r.amount_cents ?? 0)}${r.actual_balance_cents != null ? ` · Recorded balance ${formatCents(r.actual_balance_cents)}` : ''} · ${fmtDateTime(r.created_at)} · ${esc(r.note || '')}</li>`).join('')}</ul>${savRows.length > 20 ? '<p class="muted small">Showing the latest 20 records.</p>' : ''}`
     : '<p class="muted small">No savings records yet.</p>';
-  // R11 hid this form, which left savings recording impossible with
-  // no replacement (Nov 3 audit P1). Nov 3 fix round: the form is
-  // back, admin-only, in the same Savings card — the RPCs already
-  // enforce admin server-side, so members never reach a save.
-  $('savingsFormWrap').style.display = household.role === 'admin' ? '' : 'none';
+  // Delta A1: the everyday Savings section is gone — the records
+  // above stay read-only behind the Funds page's "Past savings
+  // records" link. No form exists anymore, so nothing here writes
+  // savings; the database rows are untouched.
 
   // Bank accounts UI — SERVER TRUTH ONLY. Connected state derives from
   // plaid_items rows (status 'active' vs 'disconnected') and their
@@ -948,11 +993,11 @@ async function refresh() {
     const fsec = $('homeFundSecondary');
     if (fsec) fsec.textContent = pending > 0 ? `Pending ${formatCents(pending)}` : shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : 'Spendable now';
     const fs = $('fundSummary');
+    // Delta C3: Available prominent, pending/owed as ONE secondary
+    // line, released/spent as one more line — the card stays short.
     if (fs) fs.innerHTML = `<p class="fund-balance">Available <strong>${formatCents(available)}</strong></p>
-      <p class="muted small">Pending (not yet released): ${formatCents(pending)}</p>
-      <p class="muted small">Released total: ${formatCents(releasedTotal)}</p>
-      <p class="muted small">Spent from fund: ${formatCents(spent)}</p>
-      <p class="muted small">Owed back (shortfall): ${formatCents(shortfall)}</p>${heldRows.length ? `<p class="muted small">Held for review: ${formatCents(heldTotal)} across ${heldRows.length} week(s).</p>` : ''}`;
+      <p class="muted small">${[pending > 0 ? `Pending ${formatCents(pending)}` : null, shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : null].filter(Boolean).join(' · ') || 'Spendable now'}</p>
+      <p class="muted small">Released ${formatCents(releasedTotal)} · Spent ${formatCents(spent)}</p>${heldRows.length ? `<p class="muted small">Held for review: ${formatCents(heldTotal)} across ${heldRows.length} week(s).</p>` : ''}`;
     updateFundTopupPreview();
   } catch (e) {
     console.warn('fund summary read failed:', e);
@@ -1018,9 +1063,9 @@ async function refresh() {
     const cs = $('homeCharitySecondary');
     if (cs) cs.textContent = (committed === 0 && given === 0) ? 'No charity tracked yet.' : `Given ${formatCents(given)} · Committed ${formatCents(committed)}`;
     const ch = $('charitySummary');
+    // Delta C3: Remaining prominent, committed/given as ONE secondary line.
     if (ch) ch.innerHTML = `<p class="fund-balance">Remaining <strong>${remaining < 0 ? `Ahead by ${formatCents(Math.abs(remaining))}` : formatCents(remaining)}</strong></p>
-      <p class="muted small">Committed: ${formatCents(committed)}</p>
-      <p class="muted small">Given: ${formatCents(given)}</p>
+      <p class="muted small">Committed ${formatCents(committed)} · Given ${formatCents(given)}</p>
       <p class="muted small">Default rate: ${(defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}% · Period: November 2026 onward</p>`;
     const cr = $('charityRateCurrent');
     if (cr) cr.textContent = `Current default rate: ${(defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%.`;
@@ -1077,13 +1122,12 @@ async function refresh() {
     }
   }
   // Refund restorations + held refunds (admin only, READ-ONLY lists).
-  // Members never see this section (showView gates it) and no read
-  // is attempted for them, mirroring the email card. Pending held
-  // rows get a Release button calling the existing
+  // Delta C3: these live in the Funds Review area, which showView
+  // gates to admins and which starts collapsed; members never see
+  // the section and no read is attempted for them, mirroring the
+  // email card. Pending held rows get a Release button calling the
   // resolve_held_refund RPC with action 'release' (owner decision 2:
   // release goes to spendable surplus, shortfall first).
-  const restCard = $('section-restoration');
-  if (restCard) restCard.style.display = household.role === 'admin' ? '' : 'none';
   if (household.role === 'admin') {
     try {
       const { data: restRows, error: restErr } = await supabase.from('restoration_entries')
@@ -1137,13 +1181,11 @@ async function refresh() {
       const hl = $('heldList'); if (hl) hl.innerHTML = '<p class="error">Could not load held refunds. Try again.</p>';
     }
   }
-  // Possible duplicates (admin only, Funds tab). Reads pending
-  // duplicate_candidates + all their transactions in ONE query
+  // Possible duplicates (admin only, Funds tab, inside the Review
+  // area). Reads pending duplicate_candidates + all their transactions in ONE query
   // (Nov 3 fix round: it used to query one pair at a time, up to
   // 100 queries). Same purchase and Separate both go through
   // resolve_duplicate_candidate, which never deletes a row.
-  const dedupeCard = $('section-dedupe');
-  if (dedupeCard) dedupeCard.style.display = household.role === 'admin' ? '' : 'none';
   if (household.role === 'admin') {
     try {
       const { data: candRows, error: candErr } = await supabase.from('duplicate_candidates')
@@ -1210,6 +1252,14 @@ async function refresh() {
       .select('week_start, surplus_cents, released_cents, status').eq('household_id', household.household_id);
     if (closesErr || relsErr) throw (closesErr || relsErr);
     const relByWeek = new Map((rels ?? []).map((r) => [r.week_start, r]));
+    // Delta B1: the total count covers the full data set, not just
+    // the page — it is honesty garnish, so a failed count never
+    // blocks the list itself.
+    let closesTotal = null;
+    try {
+      const { count } = await supabase.from('week_closes').select('week_start', { count: 'exact', head: true }).eq('household_id', household.household_id);
+      if (Number.isInteger(count)) closesTotal = count;
+    } catch (e) { /* count unavailable; the list still renders */ }
     const wh = $('weekHistoryList');
     // R10: weekly summaries first, with carry-in explained. Carry-in
     // for a week is the previous closed week's outgoing debt (the
@@ -1219,33 +1269,62 @@ async function refresh() {
     const carryInByWeek = new Map();
     asc.forEach((c, i) => { carryInByWeek.set(c.week_start, i === 0 ? null : asc[i - 1].outgoing_debt_cents); });
     const fmtOrMissing = (v) => Number.isInteger(v) ? formatCents(v) : 'not recorded';
-    if (wh) wh.innerHTML = (closes ?? []).length
-      ? (closes ?? []).map((c) => {
+    // Delta B1: the date filter narrows what is shown (carry-in
+    // still comes from the full chain above, so it stays true).
+    const shownCloses = filterRowsByDate(closes ?? [], (c) => c.week_start, historyFilter.from, historyFilter.to);
+    lastWeekHistoryShown = { shown: shownCloses.length, total: closesTotal };
+    const periodEl = $('historyPeriodLine');
+    if (periodEl) periodEl.textContent = historyPeriodLabel(historyFilter.from, historyFilter.to);
+    if (wh) wh.innerHTML = shownCloses.length
+      ? shownCloses.map((c) => {
           const rel = relByWeek.get(c.week_start);
           const relText = !rel ? 'No release record' : rel.status === 'released' ? `Released ${formatCents(rel.released_cents ?? rel.surplus_cents ?? 0)}` : rel.status === 'pending' ? `Pending release ${formatCents(rel.surplus_cents ?? 0)}` : `Held ${formatCents(rel.surplus_cents ?? 0)}`;
           const carryIn = carryInByWeek.get(c.week_start);
           return `<li>Week of ${fmtLong(c.week_start)} · Carry-in ${carryIn === null ? 'not recorded' : fmtOrMissing(carryIn)} · Surplus ${fmtOrMissing(c.surplus_cents)} · Debt carried out ${fmtOrMissing(c.outgoing_debt_cents)} · ${relText}</li>`;
         }).join('')
-      : '<li class="muted small">No closed weeks yet.</li>';
+      : `<li class="muted small">${(historyFilter.from || historyFilter.to) ? 'No closed weeks in the selected period.' : 'No closed weeks yet.'}</li>`;
   } catch (e) {
     console.warn('week history read failed:', e);
     const wh = $('weekHistoryList'); if (wh) wh.innerHTML = '<li class="error">Could not load week history. Try again.</li>';
   }
 
   showView(currentView);
+  // Delta B1: unfiltered activity pages by auditLimit (Load more
+  // raises it); a filtered view fetches up to 1000 newest rows so
+  // the period is not silently cut off by the page size.
+  const auditFetchLimit = (historyFilter.from || historyFilter.to) ? 1000 : auditLimit;
   const { data: auditRows, error: auditErr } = await supabase.from('audit_log')
     .select('*').eq('household_id', household.household_id)
-    .order('created_at', { ascending: false }).limit(50);
+    .order('created_at', { ascending: false }).limit(auditFetchLimit);
   if (auditErr) console.warn('audit_log read failed:', auditErr.message);
+  let auditTotal = null;
+  try {
+    const { count } = await supabase.from('audit_log').select('created_at', { count: 'exact', head: true }).eq('household_id', household.household_id);
+    if (Number.isInteger(count)) auditTotal = count;
+  } catch (e) { /* count unavailable; the list still renders */ }
+  const filteredAudit = filterRowsByDate(auditRows ?? [], (a) => a.created_at, historyFilter.from, historyFilter.to);
+  // Delta B1: the count line covers the full data set (totals from
+  // the count queries), never just the page that was downloaded.
+  const countLine = $('historyCountLine');
+  if (countLine && !auditErr) {
+    const weekPart = `Closed weeks: ${lastWeekHistoryShown.shown} shown${lastWeekHistoryShown.total !== null ? ` of ${lastWeekHistoryShown.total} total` : ''}`;
+    const auditPart = `Activity: ${filteredAudit.length} shown${auditTotal !== null ? ` of ${auditTotal} total` : ''}`;
+    countLine.textContent = `${weekPart} · ${auditPart}`;
+  }
+  const loadMoreHistory = $('historyLoadMoreBtn');
+  if (loadMoreHistory) {
+    const moreRemains = auditTotal !== null ? filteredAudit.length < auditTotal : (auditRows ?? []).length >= auditFetchLimit;
+    loadMoreHistory.classList.toggle('hidden', !!auditErr || !(historyFilter.from || historyFilter.to ? false : moreRemains));
+  }
   // R10: Activity is the secondary view, grouped by day (newest day
   // first), instead of one flat list. Locked snapshots are never
   // recomputed here — this only re-presents the audit rows.
   $('auditList').innerHTML = auditErr
     ? '<li class="error">Could not load history. Try again.</li>'
-    : (auditRows ?? []).length
+    : filteredAudit.length
     ? (() => {
         const groups = new Map();
-        for (const a of auditRows ?? []) {
+        for (const a of filteredAudit) {
           const day = new Date(a.created_at);
           const key = isNaN(day) ? 'Unknown date' : day.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
           if (!groups.has(key)) groups.set(key, []);
@@ -1256,9 +1335,13 @@ async function refresh() {
           html += `<li class="muted small"><strong>${esc(day)}</strong></li>`;
           html += rows.map((a) => `<li><strong>${esc(formatAuditAction(a.action))}</strong> <span class="muted">(${esc(formatAuditActor(a.actor_name))} · ${fmtDateTime(a.created_at)})</span><br>${esc(formatAuditDetail(a.detail))}</li>`).join('');
         }
-        return html + ((auditRows ?? []).length >= 50 ? '<li class="muted small">Showing the latest 50 entries.</li>' : '');
+        return html + ((historyFilter.from || historyFilter.to)
+          ? '<li class="muted small">Showing entries in the selected period.</li>'
+          : (auditTotal !== null && filteredAudit.length < auditTotal)
+          ? '<li class="muted small">More entries exist — tap Load more below.</li>'
+          : '');
       })()
-    : '<li>No audit entries yet.</li>';
+    : `<li>${(historyFilter.from || historyFilter.to) ? 'No entries in the selected period.' : 'No audit entries yet.'}</li>`;
   } finally {
     if (rb) { rb.disabled = false; rb.textContent = 'Refresh'; }
     refreshInFlight = Math.max(0, refreshInFlight - 1);
@@ -1517,16 +1600,33 @@ $('connectBankBtn')?.addEventListener('click', async () => {
   handler.open();
 });
 
+// Delta B3: one bank sync at a time. A repeat tap while a sync runs
+// is ignored, and both sync buttons show progress (disabled, and the
+// Home icon spins) until the sync finishes — the toast alone is not
+// enough. The guard releases in finally, so a failed sync never
+// leaves the buttons stuck.
 async function runBankSync() {
-  showToast('Syncing bank transactions…');
-  const out = await callFn('plaid-sync', { household_id: household.household_id });
-  const text = out.error
-    ? `Sync failed: ${out.error}`
-    : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).`;
-  showToast(text, !!out.error);
-  // No localStorage sync/connection state: refresh() re-reads last_sync_at
-  // from plaid_items, which is the server truth.
-  return out;
+  if (!syncGuard.tryStart()) return { skipped: true };
+  const syncBtn = $('syncBankBtn');
+  const homeBtn = $('homeSyncBtn');
+  const savedSyncText = syncBtn ? syncBtn.textContent : '';
+  if (syncBtn) { syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; }
+  if (homeBtn) { homeBtn.disabled = true; homeBtn.classList.add('syncing'); homeBtn.setAttribute('aria-label', 'Syncing bank'); }
+  try {
+    showToast('Syncing bank transactions…');
+    const out = await callFn('plaid-sync', { household_id: household.household_id });
+    const text = out.error
+      ? `Sync failed: ${out.error}`
+      : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).`;
+    showToast(text, !!out.error);
+    // No localStorage sync/connection state: refresh() re-reads last_sync_at
+    // from plaid_items, which is the server truth.
+    return out;
+  } finally {
+    if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = savedSyncText; }
+    if (homeBtn) { homeBtn.disabled = false; homeBtn.classList.remove('syncing'); homeBtn.setAttribute('aria-label', 'Sync bank'); }
+    syncGuard.finish();
+  }
 }
 
 $('syncBankBtn')?.addEventListener('click', async () => {
@@ -1593,14 +1693,14 @@ async function autoSyncIfWebhookPending() {
 // only one section group is shown at a time, so the app is never
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
-  week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
+  week: ['section-week', 'section-stats', 'section-hint', 'section-recent', 'section-history-link'],
   purchases: ['section-add-choice', 'section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
-  money: ['section-savings', 'section-fund', 'section-fund-add', 'section-fund-topups', 'section-charity', 'section-charity-income', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
+  money: ['section-fund-balances', 'section-fund-actions', 'section-fund-add', 'section-charity-income', 'section-fund-use', 'section-fund-ask', 'section-fund-review', 'section-savings-past'],
   // R2: Settings is reached from the profile menu, not a nav tab.
   // Connections (bank + email), Budget (allowance + temp increase)
   // and Account & household live here; Funds no longer shows them.
   settings: ['section-settings-head', 'section-bank', 'section-email', 'settingsCard', 'section-settings-account'],
-  activity: ['section-activity', 'section-week-history'],
+  activity: ['section-history-filter', 'section-week-history', 'section-activity'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
 let currentView = localStorage.getItem('hb-view') || 'week';
@@ -1643,18 +1743,53 @@ function showView(name, opts = {}) {
     // Clear TRANSIENT messages only (by id) — never content lists such as
     // savingsList, savingsSummary, or the CSV preview, which refresh()
     // only repopulates on a timed refresh.
-    for (const id of ['bankMsg', 'homeSyncMsg', 'settingsMsg', 'tempMsg', 'savingsMsg', 'fundAllocateMsg', 'csvMsg']) {
+    for (const id of ['bankMsg', 'homeSyncMsg', 'settingsMsg', 'tempMsg', 'fundAllocateMsg', 'csvMsg']) {
       const el = document.getElementById(id); if (el) el.textContent = '';
     }
     hideToast();
     document.getElementById('weekError')?.classList.add('hidden');
+    // A tab tap also closes the Transactions filter sheet (a plain
+    // refresh does not, so editing filters survives live updates).
+    document.getElementById('txFiltersSheet')?.classList.add('hidden');
+    document.getElementById('txFiltersToggle')?.setAttribute('aria-expanded', 'false');
   }
   for (const id of ALL_VIEW_SECTIONS) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-add' || id === 'section-fund-topups' || id === 'section-charity-income' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-add' || id === 'section-charity-income' || id === 'section-fund-use' || id === 'section-fund-review') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
+  }
+  // Delta C3: Funds actions open one form at a time, like Add on
+  // Transactions. The actions card shows when no form is open;
+  // each form shows only when chosen. Admin gating stays: members
+  // see only Ask, and the admin-only activity disclosures hide.
+  if (name === 'money') {
+    const isAdmin = household && household.role === 'admin';
+    const actions = document.getElementById('section-fund-actions');
+    if (actions) actions.style.display = fundFormOpen ? 'none' : 'block';
+    const formShown = (id, which) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = fundFormOpen === which ? 'block' : 'none';
+    };
+    if (isAdmin) {
+      formShown('section-fund-add', 'add');
+      formShown('section-fund-use', 'use');
+      formShown('section-charity-income', 'income');
+    }
+    formShown('section-fund-ask', 'ask');
+    const setBtn = (id, visible) => {
+      const b = document.getElementById(id);
+      if (b) b.style.display = visible ? '' : 'none';
+    };
+    setBtn('fundActionAddBtn', !!isAdmin);
+    setBtn('fundActionUseBtn', !!isAdmin);
+    setBtn('fundActionAskBtn', true);
+    setBtn('fundActionIncomeBtn', !!isAdmin);
+    const topDisc = document.getElementById('fundTopupsDisclosure');
+    if (topDisc) topDisc.style.display = isAdmin ? '' : 'none';
+    const incDisc = document.getElementById('charityIncomeDisclosure');
+    if (incDisc) incDisc.style.display = isAdmin ? '' : 'none';
   }
   // R7: the Add forms are never permanently expanded — the choice
   // card shows on the Transactions screen, and only the chosen form
@@ -1894,19 +2029,7 @@ document.getElementById('txSortDirBtn')?.addEventListener('click', () => {
   applyTxSort();
 });
 
-// Transaction filters: chips combine with the search box; refresh()
-// re-renders the list with both applied.
-document.querySelectorAll('[data-tx-filter]').forEach((c) => c.addEventListener('click', async () => {
-  txFilter = c.dataset.txFilter;
-  // "All" means all: it also clears the This-week chip, which used to
-  // stay on silently and make All show only this week.
-  if (txFilter === 'all') txWeekOnly = false;
-  await refresh();
-}));
-$('txWeekToggle')?.addEventListener('click', async () => {
-  txWeekOnly = !txWeekOnly;
-  await refresh();
-});
+$('txAddBtn')?.addEventListener('click', () => setAddForm(null));
 $('txLoadMore')?.addEventListener('click', async () => {
   txLimit += 100;
   await refresh();
@@ -1918,6 +2041,41 @@ $('addCharityBtn')?.addEventListener('click', () => setAddForm('charity'));
 $('manualBackBtn')?.addEventListener('click', () => setAddForm(null));
 $('csvBackBtn')?.addEventListener('click', () => setAddForm(null));
 $('charityBackBtn')?.addEventListener('click', () => setAddForm(null));
+// Delta C3: Funds forms open from the actions card, one at a time.
+const setFundForm = (which) => { fundFormOpen = which; showView('money'); };
+$('fundActionAddBtn')?.addEventListener('click', () => setFundForm('add'));
+$('fundActionUseBtn')?.addEventListener('click', () => setFundForm('use'));
+$('fundActionAskBtn')?.addEventListener('click', () => setFundForm('ask'));
+$('fundActionIncomeBtn')?.addEventListener('click', () => setFundForm('income'));
+$('fundAddBackBtn')?.addEventListener('click', () => setFundForm(null));
+$('fundUseBackBtn')?.addEventListener('click', () => setFundForm(null));
+$('fundAskBackBtn')?.addEventListener('click', () => setFundForm(null));
+$('charityIncomeBackBtn')?.addEventListener('click', () => setFundForm(null));
+// Delta A1: past savings records open read-only, on request only.
+$('pastSavingsToggle')?.addEventListener('click', (e) => {
+  const wrap = document.getElementById('pastSavingsWrap');
+  if (!wrap) return;
+  const willOpen = wrap.classList.contains('hidden');
+  wrap.classList.toggle('hidden', !willOpen);
+  e.currentTarget.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+});
+// Delta B1: History date filter + Load more.
+$('historyFilterApplyBtn')?.addEventListener('click', async () => {
+  historyFilter = { from: $('historyFromInput')?.value ?? '', to: $('historyToInput')?.value ?? '' };
+  auditLimit = 50;
+  await refresh();
+});
+$('historyFilterClearBtn')?.addEventListener('click', async () => {
+  const fi = $('historyFromInput'); if (fi) fi.value = '';
+  const ti = $('historyToInput'); if (ti) ti.value = '';
+  historyFilter = { from: '', to: '' };
+  auditLimit = 50;
+  await refresh();
+});
+$('historyLoadMoreBtn')?.addEventListener('click', async () => {
+  auditLimit += 50;
+  await refresh();
+});
 // R13 charity gift form: admin-only RPC, explicitly confirmed by
 // entry, so the gift posts as verified (Given) at once and never
 // enters weekly spending. Duplicate warning mirrors the manual form.
@@ -2040,33 +2198,70 @@ $('charityIncomeForm')?.addEventListener('submit', async (e) => {
   showToast(wasCorrection ? `Income corrected — now commits ${formatCents(data?.committed_cents ?? 0)}. The old entry stays, marked reversed.` : `Income saved — commits ${formatCents(data?.committed_cents ?? 0)} to charity.`);
   await refresh();
 });
-// R8 filters sheet: Apply commits (closes the panel), Reset clears
-// the draft + sort to defaults, Cancel restores the values that were
-// there when the panel opened and leaves the list unchanged.
+// Delta B2: Transactions filters live in a bottom sheet. Opening
+// snapshots every filter (month, card, bounds, sort, status, week,
+// dates); Apply commits the sheet's status/week/date values (month,
+// card, bounds, and sort already apply live, as before) and closes;
+// Reset clears everything to defaults; Cancel restores the snapshot
+// and leaves the list unchanged.
 let txFiltersSnapshot = null;
 const closeTxFilters = () => {
-  const f = document.getElementById('txFilters');
+  const f = document.getElementById('txFiltersSheet');
   if (f) f.classList.add('hidden');
   const t = document.getElementById('txFiltersToggle');
-  if (t) { t.textContent = 'Filters'; t.setAttribute('aria-expanded', 'false'); }
+  if (t) t.setAttribute('aria-expanded', 'false');
 };
-$('txFiltersToggle')?.addEventListener('click', (e) => {
-  const f = document.getElementById('txFilters');
+const openTxFilters = () => {
+  const f = document.getElementById('txFiltersSheet');
   if (!f) return;
-  const willOpen = f.classList.contains('hidden');
-  if (willOpen) {
-    txFiltersSnapshot = {
-      month: txMonth,
-      card: txCard,
-      min: document.getElementById('txMinAmount')?.value ?? '',
-      max: document.getElementById('txMaxAmount')?.value ?? '',
-      sort: txSort,
-    };
-    f.classList.remove('hidden');
-    e.target.textContent = 'Filters'; e.target.setAttribute('aria-expanded', 'true');
-  } else closeTxFilters();
+  txFiltersSnapshot = {
+    month: txMonth,
+    card: txCard,
+    min: document.getElementById('txMinAmount')?.value ?? '',
+    max: document.getElementById('txMaxAmount')?.value ?? '',
+    sort: txSort,
+    status: txFilter,
+    week: txWeekOnly,
+    from: txFromDate,
+    to: txToDate,
+  };
+  // The sheet mirrors state on open, so a stale control never shows.
+  const statusSel = document.getElementById('txStatusSelect'); if (statusSel) statusSel.value = txFilter;
+  const weekCheck = document.getElementById('txWeekCheck'); if (weekCheck) weekCheck.checked = txWeekOnly;
+  const fromInput = document.getElementById('txFromDate'); if (fromInput) fromInput.value = txFromDate;
+  const toInput = document.getElementById('txToDate'); if (toInput) toInput.value = txToDate;
+  f.classList.remove('hidden');
+  const t = document.getElementById('txFiltersToggle');
+  if (t) t.setAttribute('aria-expanded', 'true');
+};
+$('txFiltersToggle')?.addEventListener('click', () => {
+  const f = document.getElementById('txFiltersSheet');
+  if (!f) return;
+  if (f.classList.contains('hidden')) openTxFilters();
+  else closeTxFilters();
 });
-$('txFiltersApplyBtn')?.addEventListener('click', () => closeTxFilters());
+$('txFiltersSheet')?.addEventListener('click', (e) => {
+  // Tapping the backdrop closes without applying (like Cancel).
+  if (e.target.id === 'txFiltersSheet') {
+    document.getElementById('txFiltersCancelBtn')?.click();
+  }
+});
+$('txFiltersApplyBtn')?.addEventListener('click', () => {
+  // Commit the sheet-held values, then re-render.
+  const statusSel = document.getElementById('txStatusSelect');
+  if (statusSel) txFilter = statusSel.value;
+  // "All" means all: it also clears This week, which used to stay
+  // on silently and make All show only this week.
+  if (txFilter === 'all') txWeekOnly = false;
+  else {
+    const weekCheck = document.getElementById('txWeekCheck');
+    if (weekCheck) txWeekOnly = weekCheck.checked;
+  }
+  txFromDate = document.getElementById('txFromDate')?.value ?? '';
+  txToDate = document.getElementById('txToDate')?.value ?? '';
+  closeTxFilters();
+  refresh();
+});
 $('txFiltersCancelBtn')?.addEventListener('click', () => {
   if (txFiltersSnapshot) {
     // Month/card are state variables refresh() renders from, so
@@ -2077,6 +2272,10 @@ $('txFiltersCancelBtn')?.addEventListener('click', () => {
     const mn = document.getElementById('txMinAmount'); if (mn) mn.value = txFiltersSnapshot.min;
     const mx = document.getElementById('txMaxAmount'); if (mx) mx.value = txFiltersSnapshot.max;
     txSort = txFiltersSnapshot.sort; localStorage.setItem('hb-tx-sort', txSort);
+    txFilter = txFiltersSnapshot.status;
+    txWeekOnly = txFiltersSnapshot.week;
+    txFromDate = txFiltersSnapshot.from;
+    txToDate = txFiltersSnapshot.to;
     refresh();
   }
   closeTxFilters();
@@ -2087,6 +2286,7 @@ $('txFiltersResetBtn')?.addEventListener('click', () => {
   const mn = document.getElementById('txMinAmount'); if (mn) mn.value = '';
   const mx = document.getElementById('txMaxAmount'); if (mx) mx.value = '';
   txSort = 'date-desc'; localStorage.setItem('hb-tx-sort', txSort);
+  txFilter = 'all'; txWeekOnly = false; txFromDate = ''; txToDate = '';
   refresh(); closeTxFilters();
 });
 let txSearchTimer = null;
@@ -2117,32 +2317,6 @@ $('addTempBtn')?.addEventListener('click', async (e) => {
   if (btn) btn.disabled = false;
   if (error) console.warn('add_temp_increase failed:', error.message);
   showToast(error ? 'Could not add the temporary increase. Try again.' : 'Temporary increase added — dashboard will reflect it on refresh.', !!error);
-  if (!error) await refresh();
-});
-
-$('attestSavingsBtn')?.addEventListener('click', async (e) => {
-  const btn = e.currentTarget;
-  const cents = parseDollarsStrict($('savingsBalanceInput').value);
-  if (cents === null || cents < 0) { showToast('Enter a valid balance (empty is not 0).', true); return; }
-  // R1 busy control: block repeat taps while the record is saving.
-  if (btn) btn.disabled = true;
-  const { error } = await supabase.rpc('attest_savings', { p_household_id: household.household_id, p_actual_balance_cents: cents, p_note: $('savingsNoteInput').value.trim() });
-  if (btn) btn.disabled = false;
-  if (error) console.warn('attest_savings failed:', error.message);
-  showToast(error ? 'Could not record the balance. Try again.' : 'Balance recorded.', !!error);
-  if (!error) await refresh();
-});
-
-$('recordSavingsMovementBtn')?.addEventListener('click', async (e) => {
-  const btn = e.currentTarget;
-  const cents = parseDollarsStrict($('savingsAmountInput').value);
-  if (cents === null || cents <= 0) { showToast('Enter a valid amount (must be more than 0).', true); return; }
-  // R1 busy control: block repeat taps while the movement is saving.
-  if (btn) btn.disabled = true;
-  const { error } = await supabase.rpc('record_savings_entry', { p_household_id: household.household_id, p_kind: $('savingsKindInput').value, p_amount_cents: cents, p_note: $('savingsMovementNoteInput').value.trim() });
-  if (btn) btn.disabled = false;
-  if (error) console.warn('record_savings_entry failed:', error.message);
-  showToast(error ? 'Could not record the movement. Try again.' : 'Movement recorded.', !!error);
   if (!error) await refresh();
 });
 

@@ -467,3 +467,52 @@ body.live .csv-row.csv-dupe { opacity: 0.55; }
 body.live #weekHistoryList li { line-height: 1.5; }
 body.live #bankAccountsList:empty, body.live #bankPreviouslyList:empty { display: none; }
 body.live .error { color: #dc2626; }
+
+/* ===== Delta package (Nov 3, 2026) — live app only ===== */
+/* C1: every button centers its content (icon + label on one line,
+   centered as a group). Icon-only buttons keep their 44px target. */
+body.live .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+body.live .btn svg { flex: 0 0 auto; }
+body.live .btn-block { display: flex; width: 100%; }
+/* C2: third-level action treatment, from the existing palette:
+   light blue tint background, brand blue text. Primary stays filled
+   brand blue, secondary stays light grey, destructive stays red. */
+body.live .btn-tertiary { background: #eef4ff; color: #2f6bff; }
+/* C3: Funds balance cards side by side (stacked only on very narrow
+   screens, so numbers never overflow at 320px). */
+body.live .fund-balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+body.live .fund-balance-panel { min-width: 0; }
+body.live .fund-balance-panel .fund-balance { overflow-wrap: break-word; }
+@media (max-width: 420px) {
+  body.live .fund-balance-grid { grid-template-columns: 1fr; }
+}
+/* B2: Transactions heading row (Add top right) and search row
+   (search box + ONE compact Filters button beside it). */
+body.live .tx-head-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+body.live .tx-head-row h2 { margin-bottom: 0; }
+body.live .tx-search-row { display: flex; gap: 10px; align-items: flex-start; }
+body.live .tx-search-row input { flex: 1 1 auto; min-width: 0; margin: 6px 0 14px; }
+body.live .tx-search-row .btn { flex: 0 0 auto; }
+/* B2: applied filters as small individually removable labels. */
+body.live .tx-active-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 10px; }
+body.live .tx-active-filters:empty { display: none; }
+body.live .tx-active-filter { background: #eef4ff; color: #2f6bff; border: 0; border-radius: 999px;
+  padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--sans); }
+/* B2: filters bottom sheet (backdrop + card). .hidden still wins
+   over display:flex because it is !important. */
+body.live .tx-sheet { position: fixed; inset: 0; z-index: 50; background: rgba(15,23,42,.45);
+  display: flex; align-items: flex-end; justify-content: center; padding: 16px; overflow-y: auto; }
+body.live .tx-sheet-card { background: #fff; border-radius: 16px; padding: 22px; width: 100%; max-width: 480px;
+  max-height: 85vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(16,24,40,.25); }
+body.live .tx-sheet-card h3 { margin: 0 0 8px; }
+body.live .tx-sheet-card h4 { margin: 16px 0 4px; font-size: 14px; font-weight: 700; }
+body.live .tx-sheet-card label { display: block; margin: 10px 0 4px; font-weight: 600; }
+body.live .tx-sheet-card label select { display: block; width: 100%; margin-top: 4px; }
+body.live .tx-sheet-card .check-label { display: flex; align-items: flex-start; gap: 8px; }
+body.live .tx-sheet-card .check-label input[type="checkbox"] { width: auto; margin: 2px 0 14px; accent-color: #2f6bff; }
+/* C3: activity disclosures (one per fund) and the collapsed Review area. */
+body.live .activity-disclosure { margin-top: 14px; }
+body.live .activity-disclosure summary { cursor: pointer; font-weight: 700; padding: 8px 0; }
+/* B3: the Home sync icon spins while a sync runs. */
+@keyframes delta-spin { to { transform: rotate(360deg); } }
+body.live .hero-sync-btn.syncing svg { animation: delta-spin 1s linear infinite; }
