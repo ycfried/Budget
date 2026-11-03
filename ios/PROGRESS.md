@@ -198,3 +198,45 @@ Documentation only: no backend edits, service/data access, provisioning or build
 Local verification: documentation relative-link check, diff scope/whitespace review
 and credential-pattern safety scan passed before push. No runtime tests rerun for
 this review; M2's 82 local core passes and historical simulator SHA remain unchanged.
+
+## Existing-household authentication/read preparation (November 3, 2026)
+
+Owner now authorizes real-data preparation but explicitly requires approval before
+first live connection and a separate specific plan before any financial write.
+This supersedes the older staging-only gate for the selected read path, not the
+production/backend/workflow/build safeguards. No live connection occurred.
+
+Implemented NativeReadClient with Auth password grant, validated user/membership,
+explicit household selection, session restore/coalesced refresh and local cleanup;
+Keychain vault source (WhenUnlockedThisDeviceOnly, nonsynchronizing); guarded
+URLSession executor with closed default, exact-origin/read-route allowlist and
+redirect denial; strict pagination/household response checks and partial server
+weekly DTOs; independent read-only store/native connection inspector. Runtime
+configuration is absent and app composition stays locked; no real credential
+entry is enabled. No real data can enter the writable sample service or widgets.
+
+Added docs/FIRST_LIVE_CONNECTION.md listing exact Auth/compute/table endpoints,
+columns, credential handling, privileges, Auth-session side effects, initial
+45-request read window, stop/recovery limits and the separate financial-write gate.
+No financial mutation/RPC/provider/deletion/week-close API is exposed. No Swift
+financial calculations were added. Existing missing server financial aggregates
+remain unavailable; row amounts and incoming debt never substitute for full totals.
+
+Verified locally: **108 XCTest core tests passed, 0 failed** using Swift 6.1.2 Linux
+(82 existing + 26 new). Tests use invented responses only: closed executor, request
+shape/permissions, privileged-key rejection, identity/household/unknown-role checks,
+null/unknown fields, range completeness, every read relation, sanitized HTTP errors,
+cancellation, concurrent refresh coalescing, corrupt-session cleanup, saved-session origin binding, failed refresh summary removal and late-login
+logout isolation. Enabled executor policy is tested without executing its requests.
+App/Widget/Keychain Swift syntax parse, project/PBX graph/static metadata validation,
+documentation link checks, diff whitespace/scope and credential-pattern scan passed.
+SwiftPM emitted non-writable user cache warnings; compilation/tests completed.
+
+These are not live Auth/RLS/API tests. Apple-only Keychain code and updated SwiftUI
+have not been compiled or run with Xcode; prior run 41648851937 still applies only
+to 1d66a0f. No cloud build/signing/deployment was triggered. All observed runtime
+records are synthetic. Signup/recovery/create/join, full connected dashboard,
+consistent server aggregates, durable intent reconciliation and financial writes
+remain incomplete. Secure owner credential entry/build execution and the specific
+first-connection approval are needed next; never ask for a password/token in chat.
+No Supabase code/schema, web, workflow, deployment setting or main was changed.

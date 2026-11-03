@@ -109,3 +109,15 @@ retry/cancellation states, per-unresolved-intent IDs, sample-control separation 
 source freshness are implemented. 82 local XCTest tests pass; no new Xcode run.
 See M2_CONTRACTS.md and PROGRESS.md for evidence and boundaries. Deployed API
 compatibility and durable/server reconciliation remain dependent M3–M5 work.
+
+## Owner-directed real-data preparation after M2
+
+Latest authorization selects existing-household Auth/read-only preparation, with
+first-connection approval still required. FIRST_LIVE_CONNECTION.md supersedes the
+staging-only prerequisite for that narrow path. A separate read client/store and
+closed-by-default guarded transport now prepare password sign-in/secure session
+storage/refresh, membership selection and server reads without reusing writable
+sample composition. Local fixture tests only; no live connection or new Xcode run.
+Complete server aggregates, real API validation, native recovery/signup/onboarding,
+secure owner execution route and separately approved financial write tests remain
+incomplete. No policy/server/provider/build change is authorized implicitly.

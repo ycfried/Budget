@@ -25,6 +25,19 @@ Readiness verdict: ready to design isolated staging, **not ready to enable conne
 financial writes**. M2's typed envelopes and mock UUID replay are client foundations;
 existing RPCs do not implement their general durable operation-ID contract.
 
+## Later owner authorization — preparation for existing household
+
+The owner subsequently authorized real-household authentication/read preparation,
+with an explicit stop before the first live connection and a separate specific
+plan/approval before any financial write test. That direction supersedes this
+review's staging-only prerequisite for the chosen existing-household read path;
+it does not authorize unrestricted production changes. See
+[FIRST_LIVE_CONNECTION.md](FIRST_LIVE_CONNECTION.md) for the exact pending
+connection plan. The source findings, missing server contracts and financial
+write safeguards below remain applicable. No staging project is required or
+created for this preparation, and none of the existing genuine records may be
+modified merely for testing.
+
 ## 1. Exact existing entry points and gaps
 
 Paths below are relative to a future explicitly approved project origin. No origin
