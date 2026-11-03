@@ -569,3 +569,14 @@ default because these were unset — that is fixed, not a standing bug.
   synced posted row — synthetic households have no bank link);
   a final pass on the confirmed-finished rollout; the TOIREMORG
   $2 pair review.
+- Round 3 landed Nov 3, evening: both SQL files applied live via
+  the dashboard and verified (gift idempotency: client_key column,
+  partial unique index, 8-parameter function; FK migration: all 8
+  references ON DELETE SET NULL), then PR #8 merged to main and
+  live verified serving live.js v24. Read-only probe: NO unique
+  constraint on (household_id, dedupe_hash) exists on live
+  transactions — the deferred manual-row idempotency backstop
+  still needs a deliberate scope decision. The delete-account
+  function redeployed on the merge; its deploy status and a
+  bug-9 end-to-end retest on a new synthetic household remain
+  unproven.
