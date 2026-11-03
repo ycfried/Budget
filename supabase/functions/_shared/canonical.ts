@@ -120,3 +120,111 @@ export async function hmacSha256Hex(secret: string, message: string): Promise<st
   const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
   return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+// --- Lookalike detection (Nov 3 Amazon case) ---
+// Exact-hash and provider-ID merges already ran before this is used.
+// A lookalike is same household + date + signed amount + card suffix
+// + merchant names that are related (one contains the other, or a
+// confirmed alias exists). Lookalikes NEVER auto-merge: they create
+// a duplicate_candidates row for admin review. A pair that already
+// has a candidate row (any status) is never flagged again.
+// deno-lint-ignore no-explicit-any
+type SupaAdmin = { from: (table: string) => any };
+
+export function merchantsRelated(a: string, b: string): boolean {
+  const na = normalizeMerchant(a);
+  const nb = normalizeMerchant(b);
+  if (!na || !nb || na === nb) return false;
+  if (na.length < 4 || nb.length < 4) return false;
+  return na.includes(nb) || nb.includes(na);
+}
+
+export type LookalikeRow = {
+  id: string;
+  merchant: string;
+  source: string;
+  created_at?: string;
+};
+
+// Prefer the Plaid row as canonical: it receives posted updates.
+// Otherwise the earlier-created row is canonical.
+export function pickCanonicalPair(
+  existing: LookalikeRow,
+  incoming: LookalikeRow,
+): [LookalikeRow, LookalikeRow] {
+  if (incoming.source === 'plaid' && existing.source !== 'plaid') return [incoming, existing];
+  if (existing.source === 'plaid' && incoming.source !== 'plaid') return [existing, incoming];
+  const e = existing.created_at ?? '';
+  const i = incoming.created_at ?? '';
+  return e <= i ? [existing, incoming] : [incoming, existing];
+}
+
+// Best-effort lookalike flagging. Never throws and never fails the
+// sync: if the review tables do not exist yet (SQL not applied),
+// the queries fail inside try/catch and the sync continues.
+export async function flagLookalikes(
+  supabaseAdmin: SupaAdmin,
+  householdId: string,
+  newRow: LookalikeRow & { date: string; amount_cents: number; card_suffix: string },
+): Promise<number> {
+  try {
+    const { data: rows } = await supabaseAdmin.from('transactions')
+      .select('id, merchant, source, created_at, excluded, state')
+      .eq('household_id', householdId)
+      .eq('date', newRow.date)
+      .eq('amount_cents', newRow.amount_cents)
+      .eq('card_suffix', newRow.card_suffix)
+      .neq('id', newRow.id)
+      .limit(20);
+    let aliases: Array<{ name_a: string; name_b: string }> = [];
+    try {
+      const { data } = await supabaseAdmin.from('merchant_aliases')
+        .select('name_a, name_b').eq('household_id', householdId);
+      aliases = data ?? [];
+    } catch {
+      aliases = [];
+    }
+    const aliasSet = new Set<string>();
+    for (const a of aliases) {
+      const x = normalizeMerchant(a.name_a);
+      const y = normalizeMerchant(a.name_b);
+      aliasSet.add(`${x}|${y}`);
+      aliasSet.add(`${y}|${x}`);
+    }
+    const related = (m1: string, m2: string): boolean => {
+      if (merchantsRelated(m1, m2)) return true;
+      return aliasSet.has(`${normalizeMerchant(m1)}|${normalizeMerchant(m2)}`);
+    };
+    let flagged = 0;
+    for (const r of rows ?? []) {
+      if (flagged >= 5) break;
+      if (r.excluded === true || r.state === 'excluded') continue;
+      if (!related(newRow.merchant, r.merchant)) continue;
+      const [canonical, duplicate] = pickCanonicalPair(
+        { id: r.id, merchant: r.merchant, source: r.source, created_at: r.created_at },
+        newRow,
+      );
+      try {
+        const { data: prior } = await supabaseAdmin.from('duplicate_candidates')
+          .select('id').eq('household_id', householdId)
+          .or(`and(canonical_transaction_id.eq.${canonical.id},duplicate_transaction_id.eq.${duplicate.id}),and(canonical_transaction_id.eq.${duplicate.id},duplicate_transaction_id.eq.${canonical.id})`)
+          .limit(1).maybeSingle();
+        if (prior) continue;
+        const { error } = await supabaseAdmin.from('duplicate_candidates').insert({
+          household_id: householdId,
+          canonical_transaction_id: canonical.id,
+          duplicate_transaction_id: duplicate.id,
+          reason: 'lookalike',
+          merchant_a: normalizeMerchant(canonical.merchant),
+          merchant_b: normalizeMerchant(duplicate.merchant),
+        });
+        if (!error) flagged += 1;
+      } catch {
+        continue;
+      }
+    }
+    return flagged;
+  } catch {
+    return 0;
+  }
+}

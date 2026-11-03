@@ -97,7 +97,7 @@
 // file; no new auth flow is invented.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { canonicalHash, classifyKind, normalizeMerchant } from './canonical.ts';
+import { canonicalHash, classifyKind, flagLookalikes, normalizeMerchant } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -418,8 +418,16 @@ async function upsertPlaidTx(
     }).eq('id', existing.id).eq('household_id', householdId);
     return error ? 'skipped' : 'updated';
   }
-  const { error } = await supabaseAdmin.from('transactions').insert(row);
-  return error ? 'skipped' : 'added';
+  const { data: inserted, error } = await supabaseAdmin.from('transactions').insert(row).select('id, created_at').single();
+  if (error || !inserted) return 'skipped';
+  // Lookalike review (Nov 3 Amazon case): a same-date/amount/suffix
+  // row with a related merchant name is flagged for admin review,
+  // never auto-merged. Best-effort: never fails the sync.
+  await flagLookalikes(supabaseAdmin, householdId, {
+    id: inserted.id, merchant, date, amount_cents: signed,
+    card_suffix: suffix, source: 'plaid', created_at: inserted.created_at,
+  });
+  return 'added';
 }
 
 function json(body: unknown, status = 200) {

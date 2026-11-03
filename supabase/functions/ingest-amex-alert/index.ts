@@ -51,6 +51,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   canonicalHash,
   classifyMerchantOnly,
+  flagLookalikes,
   hmacSha256Hex,
   normalizeMerchant,
   timingSafeEqualHex,
@@ -184,7 +185,7 @@ Deno.serve(async (req) => {
     }
 
     const kind = classifyMerchantOnly(merchantRaw, amountCents);
-    const { error } = await supabase.from('transactions').insert({
+    const { data: inserted, error } = await supabase.from('transactions').insert({
       household_id: householdId,
       date,
       merchant,
@@ -195,8 +196,16 @@ Deno.serve(async (req) => {
       kind,
       external_id: messageId || null,
       dedupe_hash: dedupeHash,
-    });
+    }).select('id, created_at').single();
     if (error) return json({ error: 'insert failed' }, 500);
+    if (inserted) {
+      // Lookalike review (Nov 3 Amazon case): flagged for admin
+      // review, never auto-merged. Best-effort: never fails ingest.
+      await flagLookalikes(supabase, householdId, {
+        id: inserted.id, merchant, date, amount_cents: amountCents,
+        card_suffix: cardSuffix, source: 'amex_alert', created_at: inserted.created_at,
+      });
+    }
     // stored:true ONLY after a successful insert (or a proven
     // duplicate above). Never on 401/202/500.
     return json({ stored: true, duplicate: false, state: 'provisional' });

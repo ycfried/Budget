@@ -67,7 +67,7 @@ import {
   headerValue,
   parseAmexAlertText,
 } from './gmail-parse.ts';
-import { canonicalHash, classifyMerchantOnly, normalizeMerchant } from './canonical.ts';
+import { canonicalHash, classifyMerchantOnly, flagLookalikes, normalizeMerchant } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -243,7 +243,7 @@ Deno.serve(async (req) => {
             const merchant = normalizeMerchant(parsed.merchant).slice(0, 80);
             const dedupeHash = await canonicalHash(merchant, parsed.date, parsed.amountCents, parsed.cardSuffix);
             const kind = classifyMerchantOnly(parsed.merchant, parsed.amountCents);
-            const { error: insertErr } = await supabaseAdmin.from('transactions').insert({
+            const { data: inserted, error: insertErr } = await supabaseAdmin.from('transactions').insert({
               household_id: householdId,
               date: parsed.date,
               merchant,
@@ -254,8 +254,16 @@ Deno.serve(async (req) => {
               kind,
               external_id: messageId,
               dedupe_hash: dedupeHash,
-            });
+            }).select('id, created_at').single();
             if (insertErr) continue; // transient: not marked processed, retried next poll
+            if (inserted) {
+              // Lookalike review (Nov 3 Amazon case): flagged for admin
+              // review, never auto-merged. Best-effort: never fails poll.
+              await flagLookalikes(supabaseAdmin, householdId, {
+                id: inserted.id, merchant, date: parsed.date, amount_cents: parsed.amountCents,
+                card_suffix: parsed.cardSuffix, source: 'amex_alert', created_at: inserted.created_at,
+              });
+            }
             await supabaseAdmin.from('processed_email_ids').insert({
               connection_id: conn.id, message_id: messageId, disposition: 'stored',
             });
