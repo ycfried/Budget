@@ -268,6 +268,12 @@
       <div id="heldList"><p class="muted small">Loading…</p></div>
     </div>
 
+    <div class="card" id="section-dedupe" style="display:none">
+      <h2>Possible duplicates</h2>
+      <p class="muted small">Admin only. When the email alert and the bank spell the same purchase differently, the pair shows up here instead of counting twice. Nothing is ever deleted: “Same purchase” keeps one row and excludes the other from the week math; “Separate” keeps both and never flags that pair again.</p>
+      <div id="dedupeList"><p class="muted small">Loading…</p></div>
+    </div>
+
     <div class="card" id="section-week-history">
       <h2>Week history</h2>
       <p class="muted small">Closed weeks, read-only — week start, surplus, debt carried, released amount, and release status. The app never recomputes a closed week here.</p>
@@ -289,6 +295,6 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=10"></script>
+<script type="module" src="live.js?v=11"></script>
 </body>
 </html>

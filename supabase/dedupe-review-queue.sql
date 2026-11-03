@@ -28,9 +28,10 @@
 --   * No detection hooks: plaid-sync / gmail-poll do not yet write
 --     candidates (follow-up change, with tests: confirmed
 --     duplicate, two real identical purchases, ambiguous pair).
---   * No UI: the review list and merge/separate actions are a
---     follow-up (admin attention area, same pattern as the
---     restoration panel).
+--   * UI (this branch): live.js/live.html add an admin-only
+--     "Possible duplicates" card on the Money tab, same pattern as
+--     the restoration panel. It stays inert (shows a load error,
+--     never an empty list) until this file is applied live.
 --   * No auto-merge: lookalikes always wait for an admin decision
 --     until an alias rule is separately approved.
 --   * No write access for members: reads are household-member

@@ -878,6 +878,81 @@ async function refresh() {
       const hl = $('heldList'); if (hl) hl.innerHTML = '<p class="error">Could not load held refunds. Try again.</p>';
     }
   }
+  // Possible duplicates (admin only, same pattern as the restoration
+  // panel). Reads pending duplicate_candidates plus both transactions
+  // in each pair. Until supabase/dedupe-review-queue.sql is applied
+  // live, this read fails and shows its error — never an empty list.
+  // Resolving goes through the admin-only resolve_duplicate_candidate
+  // RPC: merge excludes (never deletes) the duplicate row, separate
+  // keeps both. The alias checkbox only records the name pair as
+  // evidence for future reviews; it merges nothing by itself.
+  const dedupeCard = $('section-dedupe');
+  if (dedupeCard) dedupeCard.style.display = household.role === 'admin' ? '' : 'none';
+  if (household.role === 'admin') {
+    try {
+      const { data: candRows, error: candErr } = await supabase.from('duplicate_candidates')
+        .select('id, canonical_transaction_id, duplicate_transaction_id, merchant_a, merchant_b, created_at')
+        .eq('household_id', household.household_id).eq('status', 'pending')
+        .order('created_at', { ascending: true }).limit(100);
+      if (candErr) throw candErr;
+      const txIds = [...new Set((candRows ?? []).flatMap((c) => [c.canonical_transaction_id, c.duplicate_transaction_id]))];
+      let txById = new Map();
+      if (txIds.length) {
+        const { data: txRows, error: txErr } = await supabase.from('transactions')
+          .select('id, merchant, amount_cents, date, card_suffix, source, excluded')
+          .in('id', txIds);
+        if (txErr) throw txErr;
+        txById = new Map((txRows ?? []).map((t) => [t.id, t]));
+      }
+      const describe = (t, fallback) => t
+        ? `${t.merchant} — ${formatCents(t.amount_cents)} · ${fmtLong(t.date)} · ••${t.card_suffix} · ${sourceLabel(t.source)}`
+        : fallback;
+      const dl = $('dedupeList');
+      if (dl) {
+        const frag = document.createDocumentFragment();
+        if (!(candRows ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No possible duplicates waiting for review.'; frag.appendChild(p); }
+        for (const c of candRows ?? []) {
+          const canon = txById.get(c.canonical_transaction_id);
+          const dup = txById.get(c.duplicate_transaction_id);
+          const wrap = document.createElement('div');
+          const keep = document.createElement('p'); keep.className = 'muted small';
+          keep.textContent = `Keep: ${describe(canon, c.merchant_a)}`;
+          const other = document.createElement('p'); other.className = 'muted small';
+          other.textContent = `Possible duplicate: ${describe(dup, c.merchant_b)}`;
+          const aliasLabel = document.createElement('label'); aliasLabel.className = 'muted small';
+          const aliasBox = document.createElement('input'); aliasBox.type = 'checkbox';
+          aliasLabel.appendChild(aliasBox);
+          aliasLabel.appendChild(document.createTextNode(' Remember these two names as the same merchant for future reviews'));
+          const btnRow = document.createElement('div'); btnRow.className = 'btn-row';
+          const sameBtn = document.createElement('button'); sameBtn.className = 'btn btn-small btn-primary'; sameBtn.type = 'button';
+          sameBtn.textContent = 'Same purchase';
+          sameBtn.setAttribute('aria-label', `Mark ${describe(canon, c.merchant_a)} and ${describe(dup, c.merchant_b)} as the same purchase`);
+          sameBtn.addEventListener('click', async () => {
+            if (!(await showConfirm('Same purchase', `Keep ${describe(canon, c.merchant_a)} and exclude ${describe(dup, c.merchant_b)} from the week math? The duplicate row stays in the record — it is never deleted.`, 'Same purchase'))) return;
+            sameBtn.disabled = true;
+            const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'merge', p_note: '', p_remember_alias: aliasBox.checked });
+            if (error) { console.warn('resolve_duplicate_candidate (merge) failed:', error.message); sameBtn.disabled = false; await showAlert('Could not resolve', 'Could not mark this pair as the same purchase. Try again.'); } else await refresh();
+          });
+          const sepBtn = document.createElement('button'); sepBtn.className = 'btn btn-small'; sepBtn.type = 'button';
+          sepBtn.textContent = 'Separate';
+          sepBtn.setAttribute('aria-label', `Keep ${describe(canon, c.merchant_a)} and ${describe(dup, c.merchant_b)} as separate purchases`);
+          sepBtn.addEventListener('click', async () => {
+            if (!(await showConfirm('Separate purchases', `Keep both ${describe(canon, c.merchant_a)} and ${describe(dup, c.merchant_b)}? This pair will not be flagged again.`, 'Keep separate'))) return;
+            sepBtn.disabled = true;
+            const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'separate', p_note: '', p_remember_alias: false });
+            if (error) { console.warn('resolve_duplicate_candidate (separate) failed:', error.message); sepBtn.disabled = false; await showAlert('Could not resolve', 'Could not mark this pair as separate. Try again.'); } else await refresh();
+          });
+          btnRow.appendChild(sameBtn); btnRow.appendChild(sepBtn);
+          wrap.appendChild(keep); wrap.appendChild(other); wrap.appendChild(aliasLabel); wrap.appendChild(btnRow);
+          frag.appendChild(wrap);
+        }
+        dl.replaceChildren(frag);
+      }
+    } catch (e) {
+      console.warn('dedupe read failed:', e);
+      const dl = $('dedupeList'); if (dl) dl.innerHTML = '<p class="error">Could not load possible duplicates. Try again.</p>';
+    }
+  }
   // Week history display (History tab) — READ-ONLY, from week_closes +
   // surplus_releases. The client never recomputes a week.
   try {
@@ -1228,7 +1303,7 @@ async function autoSyncIfWebhookPending() {
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
   purchases: ['section-manual', 'section-csv', 'section-transactions'],
-  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration'],
+  money: ['section-bank', 'section-email', 'settingsCard', 'section-savings', 'section-fund', 'section-fund-use', 'section-fund-ask', 'section-restoration', 'section-dedupe'],
   activity: ['section-activity', 'section-week-history'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
@@ -1273,7 +1348,7 @@ function showView(name, opts = {}) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-restoration') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-use' || id === 'section-restoration' || id === 'section-dedupe') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
