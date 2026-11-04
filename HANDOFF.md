@@ -1859,3 +1859,42 @@ and state. Still to prove after merge: + button tap, options popup,
 and each form popup on a real phone at 390px (especially the CSV file
 picker inside the popup), member seeing Purchase only, and draft
 survival across a tab switch.
+## Weekly-sheet-simple (owner decision, Nov 3, 9:53 PM, item 7)
+Owner: tapping the card — now the hero number after PR #19 — still
+opens the Weekly popup as today, but it showed way too many
+numbers and calculations. Keep ONLY basic stuff visible, and below
+it put a button saying "Show transactions" that does that.
+VISIBLE on open, in order, same values and formatting as before:
+Left (including the "(over budget by $X)" note when negative),
+Spent, Allowance. Nothing else is visible on open.
+BEHIND the existing "Show how this adds up" disclosure, nothing
+deleted and no value changed: the disclosure's pre-existing rows
+(Base spending room, Left, Outgoing debt) first, then the moved
+rows in their old visible order — Dated this week, Late charges
+from earlier locked weeks (only when lastSpentBreakdown exists),
+Carried debt, Temporary increase, Week status (only when locked),
+Pending refunds excluded (only when present). Outgoing debt was
+already a disclosure row, so it appears there once, not twice.
+BUTTON: a primary "Show transactions" button in the sheet's button
+row, below the rows and below the disclosure. Tapping (or
+Enter/Space) closes the sheet and opens Transactions with the
+existing week filter turned on (txWeekOnly = true) via the existing
+showView('purchases') + refresh() path — no new filter mode, no
+change to what the week filter matches, other active filters left
+alone. The count line gains "· this week" and the removable "This
+week" pill makes the filter obvious. Focus lands on the Filters
+button at the top of the Transactions view (overriding the sheet's
+usual focus-return to the hero, since the user has moved views).
+IMPLEMENTATION: showSheet gains an optional extraAction
+{label, result}; when present the extra button renders primary
+and the confirm (Close) button drops to the plain treatment, so
+two adjacent buttons never share a color (the no-adjacent-
+duplicate button rule). Sheets without an extra action render
+exactly as before. Charity and Extra Fund sheets are untouched.
+The hero number remains the only Weekly entry point and stays
+numbers-only on its face, words only in its aria-label. live.js
+v33 (styles unchanged, v23). Tests: 176/176 (168 before + 8 new
+in test/weekly-sheet-simple.test.mjs). Still to prove after merge:
+the button's week-filtered Transactions view on a real phone at
+390px, and keyboard flow (hero number → sheet → Show
+transactions → Filters button focus).
