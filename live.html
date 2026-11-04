@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=23">
+<link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -113,17 +113,8 @@
       </div>
     </div>
 
-    <div class="card" id="section-add-choice">
-      <h2>Add / Import transaction</h2>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="addManualBtn" type="button" aria-label="Add a transaction by hand">Add by hand</button>
-        <button class="btn" id="addCsvBtn" type="button" aria-label="Import transactions from a CSV file">Import CSV</button>
-        <button class="btn btn-tertiary" id="addCharityBtn" type="button" aria-label="Record a charity gift">Give to charity</button>
-      </div>
-    </div>
-
     <div class="card" id="section-manual">
-      <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
+      <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
       <h2>Add a transaction by hand</h2>
       <p class="muted small">Record a transaction by hand. It counts as pending until the bank confirms it. Your draft stays here if you switch screens — Back keeps it, Cancel clears it.</p>
       <form id="manualForm" novalidate>
@@ -141,7 +132,7 @@
     </div>
 
     <div class="card" id="section-csv">
-      <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
+      <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
       <h2>Import transactions from a CSV file</h2>
       <p class="muted small">Expected columns: Date, Description, Amount, Card Ending.</p>
       <p class="muted small">Sample row: 2026-11-01, AMAZON, 12.99, 1005 — card endings only, never a full card number.</p>
@@ -162,7 +153,7 @@
     </div>
 
     <div class="card" id="section-charity-gift">
-      <div class="btn-row"><button class="btn" id="charityBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
+      <div class="btn-row"><button class="btn" id="charityBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
       <h2>Give to charity</h2>
       <p class="muted small">Record a gift you already gave. A gift entered here counts as given at once, and it never counts as weekly spending. Only the admin can record gifts.</p>
       <form id="charityGiftForm" novalidate>
@@ -182,7 +173,7 @@
     <div class="card" id="section-transactions">
       <div class="tx-head-row">
         <h2>Transactions</h2>
-        <button class="btn btn-primary" id="txAddBtn" type="button" aria-label="Add a transaction">Add</button>
+        <button class="btn btn-primary add-plus-btn" id="txAddBtn" type="button" aria-label="Add">+</button>
       </div>
       <div class="tx-search-row">
         <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
@@ -252,6 +243,27 @@
       <p id="txCount" class="muted small tx-count"></p>
       <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
       <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
+    </div>
+
+    <!-- Add popup (owner design Nov 3, 9:49 PM): the Transactions
+         header's blue + button opens this overlay. It first shows
+         the options list; choosing an option moves that form's
+         existing section into #addPopupFormSlot (the section is
+         moved, not copied, so its handlers, validation, draft, and
+         CSV preview stay exactly as they are). -->
+    <div id="addPopupOverlay" class="add-popup-overlay hidden" role="dialog" aria-modal="true" aria-label="Add">
+      <div class="add-popup-card">
+        <div class="card" id="addOptionsCard">
+          <h3>Add</h3>
+          <div class="add-options-list">
+            <button class="btn add-option-btn" id="addOptionPurchaseBtn" type="button" aria-label="Add a purchase by hand"><span class="add-option-title">Purchase</span><span class="muted small">Add a transaction by hand</span></button>
+            <button class="btn add-option-btn" id="addOptionDonationBtn" type="button" aria-label="Record a donation by hand"><span class="add-option-title">Donation</span><span class="muted small">Record a gift by hand</span></button>
+            <button class="btn add-option-btn" id="addOptionUploadBtn" type="button" aria-label="Upload transactions from a file"><span class="add-option-title">Upload</span><span class="muted small">Import transactions from a file</span></button>
+          </div>
+          <div class="btn-row"><button class="btn" id="addOptionsCloseBtn" type="button" aria-label="Close Add options">Cancel</button></div>
+        </div>
+        <div id="addPopupFormSlot" class="hidden"></div>
+      </div>
     </div>
 
     <div class="card" id="section-settings-head">
@@ -516,7 +528,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=32"></script>
+<script type="module" src="live.js?v=33"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

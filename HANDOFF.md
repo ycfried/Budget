@@ -1811,3 +1811,51 @@ step. Still to prove after merge: a real duplicate sync run
 (newer fully-duplicated item removed, older kept, different
 account at the same bank kept), and the pre-Link warning
 on a real phone.
+
+## Add-plus-button (owner design Nov 3, 9:49 PM; supersedes the pending Add picture — no picture is coming)
+
+The Transactions page header now has ONE entry point to Add: a brand-blue
+(#2f6bff, via btn-primary) round 44px "+" button (txAddBtn, aria-label
+"Add") in the same header position. The old inline choice card
+(section-add-choice, "Add / Import transaction") is DELETED — there is no
+second way to open Add, and the Transactions list is the page when no
+popup is open.
+
+Tapping + opens an options POPUP (#addPopupOverlay, dialog, aria-modal,
+Escape to close, Tab trapped inside, backdrop click closes; the handler
+stands aside when a generic sheet or the filter sheet is open on top).
+Options, one full-width row each with a plain sub-line: Purchase ("Add a
+transaction by hand"), Donation ("Record a gift by hand"), Upload
+("Import transactions from a file"). Role rule — the owner's "regular
+user just purchase, no?" is answered YES: ADMIN sees all three; MEMBER
+sees ONLY Purchase. The options list hides Donation/Upload unless admin,
+setAddForm refuses charity/csv for members (sends them back to options),
+and the CSV confirm path refuses members before any row is inserted
+("Only the admin can import transactions."). Note this narrows Upload
+for members: previously the choice card offered Import CSV to members;
+per the owner design, import is now admin-only. Manual purchase entry
+stays available to members, as today; charity gifts stay server
+admin-only as before.
+
+Choosing an option MOVES that form's existing section (section-manual,
+section-csv, section-charity-gift) into #addPopupFormSlot and restores
+it to its home position on close — the section is moved, not copied or
+rewritten, so fields, validation, inline errors, duplicate warnings,
+CSV preview/confirm, gift idempotency, and submit handlers behave
+exactly as they do inline. Back from a form returns to the options;
+Cancel returns to the list (manual Cancel still clears its draft; Back
+keeps the draft, including across a tab switch — returning to
+Transactions reopens the popup with the draft intact). A successful
+submit now closes the popup and returns to the list for all three
+forms: gift already did this; manual and CSV now call setAddForm(null)
+on success (previously they stayed open after saving) — this is the
+popup close behavior the design specifies, not a change to what a
+submit saves. Backdrop click closes the popup without clearing a draft
+(like Back, not like Cancel).
+
+No form-behavior compromise was needed: every form works inside the
+popup with no logic change, because the DOM move preserves handlers
+and state. Still to prove after merge: + button tap, options popup,
+and each form popup on a real phone at 390px (especially the CSV file
+picker inside the popup), member seeing Purchase only, and draft
+survival across a tab switch.

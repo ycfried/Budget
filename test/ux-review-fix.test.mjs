@@ -168,12 +168,22 @@ test('Home stat cards are Title + Amount only, words in aria-labels', () => {
   assert.match(css, /body\.live \.stat-card \.num\.negative \{ color: var\(--soft-red\); \}/);
 });
 
-// --- Add card ---------------------------------------------------------------
-test('Add card header is title-only and hidden by default', () => {
-  assert.ok(html.includes('<h2>Add / Import transaction</h2>'));
-  assert.doesNotMatch(html, /Record a transaction you already made/);
-  assert.match(js, /if \(choice\) choice\.style\.display = addFormOpen === 'choice' \? 'block' : 'none';/);
-  assert.match(js, /\$\('txAddBtn'\)\?\.addEventListener\('click', \(\) => setAddForm\('choice'\)\);/);
+// --- Add popup --------------------------------------------------------------
+// Add-plus-button (owner design Nov 3, 9:49 PM): the old inline
+// choice card is gone; the Transactions header has a blue + button
+// that opens an options popup, and each option moves its existing
+// form section into the popup. The list is still the page when no
+// popup is open.
+test('Add is a blue + button opening an options popup, no choice card', () => {
+  assert.doesNotMatch(html, /section-add-choice/);
+  assert.doesNotMatch(html, /Add \/ Import transaction/);
+  assert.match(html, /id="txAddBtn"[^>]*aria-label="Add">\+</);
+  assert.match(html, /id="addPopupOverlay"/);
+  assert.match(html, /id="addOptionPurchaseBtn"/);
+  assert.match(html, /id="addOptionDonationBtn"/);
+  assert.match(html, /id="addOptionUploadBtn"/);
+  assert.match(js, /\$\('txAddBtn'\)\?\.addEventListener\('click', \(\) => setAddForm\('options'\)\);/);
+  assert.match(js, /addFormOpen === 'options'/);
 });
 
 // --- Filters sheet: one label per group, pairs side-by-side ------------
