@@ -364,6 +364,7 @@ async function refresh() {
       const outgoingDebt = recon.outgoing;
       if (weekStart) $('weekLabel').textContent = `Week of ${fmtLong(weekStart)} (Sun–Sat)`;
       $('weeklyAvailable').innerHTML = formatCentsHtml(avail);
+      $('weeklyAvailable').removeAttribute('aria-busy');
       $('weeklyAvailable').classList.toggle('negative', avail < 0);
       // UX-review-fix, numbers-only stat cards (owner screenshot
       // Nov 3, 7:53 PM): the face is Title + signed number only.
@@ -709,6 +710,7 @@ async function refresh() {
   // Home preview: the 4 newest transactions, tapping one jumps to Transactions.
   const recentEl = $('recentList');
   if (recentEl) {
+    recentEl.removeAttribute('aria-busy');
     const recent = [...all].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
     recentEl.innerHTML = txReadFailed
       ? '<li class="muted small error">Could not load recent transactions.</li>'
@@ -1190,7 +1192,7 @@ async function refresh() {
     const heldTotal = heldRows.reduce((t, r) => t + (r.surplus_cents || 0), 0);
     const shortfall = hh?.fund_shortfall_cents ?? 0;
     currentFundData = { available, pending, releasedTotal, spent, shortfall, heldTotal, heldWeeks: heldRows.length };
-    const fp = $('homeFundPrimary'); if (fp) fp.innerHTML = formatCentsHtml(available);
+    const fp = $('homeFundPrimary'); if (fp) { fp.innerHTML = formatCentsHtml(available); fp.removeAttribute('aria-busy'); }
     // UX audit 07: a member cannot spend fund money, only request it
     // and wait for approval — so members read "Available to request".
     // Audit-merge fix (review B F2): admins read "Available to use"
@@ -1292,7 +1294,7 @@ async function refresh() {
     // remaining is a signed number (given more than committed).
     // "No charity tracked yet" and the Given/Committed words live in
     // the tap sheet and in the aria-label, not on the face.
-    if (cp) cp.textContent = formatCents(remaining);
+    if (cp) { cp.textContent = formatCents(remaining); cp.removeAttribute('aria-busy'); }
     document.querySelector('[data-home-card="charity"]')?.setAttribute('aria-label', (committed === 0 && given === 0)
       ? 'Charity, no charity tracked yet, show breakdown'
       : remaining < 0
