@@ -2123,3 +2123,11 @@ function executed from the shipped code). Still to prove on a
 real phone at 390px after merge: ink Record income, grey Ask
 beside it, top-aligned Disconnect, plain-language account lines,
 Settings with one Change password, Funds with no held button.
+
+## Funds-actions-three (owner, Nov 4, Option A) — branch funds-actions-three, NOT MERGED
+- Owner voice note Nov 4 (morning): four Funds actions buttons in a row are too heavy; chose Option A (of A/B/C): move Record income OUT of the Funds actions card into the Charity breakdown sheet.
+- Funds actions card now has exactly three buttons, in order: Add money (primary), Use fund money (secondary), Ask for fund money (tertiary grey). Record income button (fundActionIncomeBtn), its setBtn admin-gating line, and its click listener are all removed; no other Funds actions button, label, order, or handler changed.
+- New shared opener openCharitySheet() used by BOTH charity sheets (Home stat card and Funds balance panel): rows unchanged (Remaining, Committed, Given, Default rate, Period); admin-only extra action "Record income" (Weekly sheet extraAction precedent — primary button, Close second); choosing it closes the sheet and opens the existing Record income form via setFundForm('income'). Members get no extra action, so their sheet renders exactly as before. Extra Fund sheet untouched.
+- Income form itself unchanged (fields/validation, admin gating, Back button returns to the three-button actions card via setFundForm(null)). Member visibility elsewhere unchanged (Add/Use admin-only, Ask for everyone).
+- Secondary button treatment deliberately UNTOUCHED (light-blue deepening was NOT approved with Option A — still pending as a separate question). Detail-row five-button group also still pending.
+- Tests 233/233 (225 before + 8 new in test/funds-actions-three.test.mjs). live.js v40, styles v30 (styles unchanged). Still to prove on a real phone at 390px after merge: three-button Funds actions row, Charity sheet Record income button for admin (absent for member), choosing it opening the income form, Back returning to the actions card.

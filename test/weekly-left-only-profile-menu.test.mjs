@@ -209,10 +209,11 @@ test('no two adjacent buttons share a treatment after the tertiary change', () =
   const sheetBtns = [...sheet.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());
   assert.ok(sheetBtns.includes('btn-primary'));
   assert.ok(sheetBtns.includes('btn-tertiary'));
-  // Funds actions: primary, secondary, tertiary, btn-mid in order.
+  // Funds actions: primary, secondary, tertiary in order (Record
+  // income left the row for the Charity sheet, funds-actions-three).
   const funds = html.slice(html.indexOf('id="section-fund-actions"'), html.indexOf('id="fundTopupsDisclosure"'));
   const fundBtns = [...funds.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());
-  assert.deepEqual(fundBtns, ['btn-primary', '', 'btn-tertiary', 'btn-mid']);
+  assert.deepEqual(fundBtns, ['btn-primary', '', 'btn-tertiary']);
   // Settings Account card: Share only (audit-fixes-morning B2
   // deleted the duplicate Change password button).
   const acct = html.slice(html.indexOf('id="section-settings-account"'), html.indexOf('id="settingsDeleteBtn"'));

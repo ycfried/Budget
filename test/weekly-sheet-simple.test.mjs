@@ -73,11 +73,15 @@ test('generic sheet renders an extra primary action without duplicating button t
   assert.match(js, /class="btn\$\{extraAction \? '' : ' btn-primary'\}"/);
 });
 
-test('Charity and Extra Fund sheets are untouched by this change', () => {
+test('Extra Fund sheet is untouched; Charity sheet gains only the Record income extra action', () => {
   assert.match(js, /title: 'Extra Fund', rows: fundBreakdownRows\(f\), confirmLabel: 'Close'/);
-  assert.match(js, /title: 'Charity · November 2026 onward', rows: charityBreakdownRows\(c\), confirmLabel: 'Close'/);
-  // The extra action is used exactly once: the Weekly sheet.
-  assert.equal((js.match(/extraAction: \{/g) ?? []).length, 1);
+  // Funds-actions-three (owner choice, Nov 4, Option A): the Charity
+  // sheet keeps its title, rows, and Close label, and gains exactly
+  // the admin-gated Record income extra action — nothing else.
+  assert.match(js, /title: 'Charity · November 2026 onward', rows: charityBreakdownRows\(c\), extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null, confirmLabel: 'Close'/);
+  // The extra action is now used exactly twice: Weekly sheet
+  // (Show transactions) and Charity sheet (Record income).
+  assert.equal((js.match(/extraAction:/g) ?? []).length, 2);
 });
 
 test('hero number remains the only Weekly entry point, numbers-only face', () => {
