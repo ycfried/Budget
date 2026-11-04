@@ -781,3 +781,31 @@ body.live .add-options-list { display: grid; gap: 10px; margin: 12px 0; }
 body.live .add-option-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; }
 body.live .add-option-title { font-weight: 600; font-size: 16px; }
 body.live #addPopupFormSlot.hidden { display: none; }
+
+/* Type scale live (owner, Nov 3, 10:12 PM): the revised proposed Home
+   scale from the onbudget-mockups artifact, Part 1, put live. This is
+   typography, spacing, and color treatment ONLY — no figure, label,
+   button-level, or behavior change. Spacing uses 8/16/24 steps; cards
+   share one border and radius. Dashboard amounts are 34px and stay
+   ink; transaction amounts are brand blue ONLY when positive.
+   Negative amounts stay soft-green with their minus sign: the
+   negative rule below is more specific than the blue rule AND comes
+   after it, so it always wins — blue means money out, green plus a
+   minus means money back. Hero/stat negative figures stay soft-red
+   (over-budget warning), as before. */
+body.live { font-size: 16px; }
+body.live main { padding: 24px 16px 48px; }
+body.live .card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px; margin-bottom: 16px; }
+body.live .grid .card { margin-bottom: 0; }
+body.live .grid, body.live #section-stats { gap: 16px; }
+body.live #section-stats .stat-card { padding: 16px; }
+body.live .hero .big { font-size: 34px; color: #0f172a; }
+body.live .num, body.live #section-stats .num, body.live .fund-balance { font-size: 34px; color: #0f172a; }
+body.live .kicker, body.live #section-stats .kicker { font-size: 13px; }
+body.live .tx-row { padding: 16px 0; }
+body.live .hero-progress { margin: 16px 0 8px; }
+body.live .tx-line1 .tx-amount { color: #2f6bff; }
+body.live .tx-line1 .tx-amount.negative { color: #2e6b3e; }
+body.live .hero .big.negative { color: var(--soft-red); }
+body.live .stat-card .num.negative { color: var(--soft-red); }
+body.live #section-recent .btn { color: #2f6bff; }
