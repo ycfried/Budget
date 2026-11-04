@@ -834,3 +834,117 @@ built (owner decision Nov 3 stands). History relocation stays.
   sign-in report (cause not diagnosed; exact message/screen
   still needed — delta3 touches sign-in progress display only,
   not auth logic).
+
+  BUTTON-CARD FIX (branch button-card-fix, built Nov 3 evening, NOT
+  merged, NOT live): owner rule — nowhere may two adjacent buttons
+  share a treatment — plus Funds card tap work, three-blues palette,
+  and reference typography. Live.js v28 / styles v19 on the branch
+  (live still serves v27/v18 until this is merged).
+  1. BUTTON COLORS — root cause VERIFIED in code, not just assumed:
+  styles.css `body.live .btn-tertiary` (no id) lost to
+  `body.live #view-app .btn` (id specificity) for background/border/
+  color, so tertiary rendered as grey secondary with dark text and
+  the v27 border fix never showed. Fix: tertiary selector now
+  includes #view-app like primary. THREE BLUES (owner reference
+  screenshot, Nov 3 evening — strong bright blue, pale light blue,
+  very pale tint; no grey fill for a button level in a row):
+  primary = #2f6bff fill, white text; secondary (base .btn) =
+  #bfdbfe fill, #1e40af dark-blue text (readable at phone size,
+  distinct from both neighbours); tertiary = #eef4ff tint fill,
+  #2f6bff text + border. A fourth blue-bordered treatment, outline
+  (white fill, #2f6bff text + border, never grey), is used ONLY
+  where a row has four buttons, so no adjacent duplicate occurs.
+  Sort select, legacy chips, and the profile button were moved off
+  grey to the same family (sort/chips = secondary light blue;
+  profile button = tint with blue border, single button, not a row).
+  Grey remains only where it is NOT a button level (progress track,
+  logo tiles, status pill, menu-row active state). Bank buttons
+  fixed to stay primary (Connect) / secondary (Sync) / tertiary in
+  every state: the old code stripped primary from Connect and
+  toggled it onto Sync when active, leaving Connect + Sync as
+  adjacent secondaries with no active item.
+  Button-row audit (treatment sequence, DOM order, neighbours all
+  differ; P=primary, S=secondary light blue, T=tertiary tint,
+  O=outline, D=danger, Q=quiet text-only):
+  Auth: Sign in P, Create account S, Forgot password? Q.
+  Household: Create household P, Join S.
+  App nav tabs: intentional EXCEPTION — tabs share a base treatment
+  except the active tab (blue); different colours per tab would
+  break tab semantics. Home stat cards: same reasoning (tap cards
+  in a grid, uniform by design, different kickers/figures).
+  Add choices: Add by hand P, Import CSV S, Give to charity T.
+  Manual form: Add transaction P, Cancel S. CSV Confirm P alone;
+  Back S alone in its row. Charity gift Record gift P alone.
+  Transactions head/search rows: Add P vs Filters S (different
+  rows, differ anyway). Filter sheet: Apply P, Reset S, Cancel T.
+  Sort row: select S + direction button S — matched pair, one
+  control, not two buttons. Load more S alone. Settings Back S alone.
+  Bank connection: Connect P, Sync S, Enable/tertiary control T in
+  every state (see fix above). Email: Connect email P, Check email S.
+  Settings Budget: Save allowance P alone, Add temporary increase S
+  alone (different sections). Settings Account: Share invite code S,
+  Change password T (was S/S duplicate, fixed). Settings Delete: D alone.
+  Funds actions: Add money P, Use fund money S, Ask for fund money
+  T, Record income O (was P/S/T/T duplicate Ask/Record, fixed).
+  Fund forms: Save top-up P alone, Save default rate S alone,
+  Save income P + Cancel correction S (when visible), Record it S
+  alone, Send request P alone. History filter: Apply filter P, Clear
+  S. Past savings toggle: Q alone. Sheet overlay: Cancel S, Confirm P.
+  Transaction detail, admin, non-excluded: Exclude S, Mark as
+  charity T, Use Extra Fund O, Reclassify S (separated from Exclude
+  by T+O, so not adjacent), Remove D last. Admin, excluded: Restore
+  P, Reclassify S, Remove D (was S/S duplicate Restore/Reclassify,
+  fixed). Charity row: Remove D alone. Member rows: Use Extra Fund S
+  alone. Fund requests: Approve P, Decline Q. Bank list: nickname S
+  alone per account, Disconnect D alone per item. Email list:
+  Disconnect D alone. Charity income list: Correct S alone. Held
+  refunds: Release P alone. Duplicate review: Same purchase P,
+  Separate S.
+  2. FUNDS BALANCE CARDS — face is now Title + Amount only (big
+  32px bold figure, amount alone; negative charity remaining still
+  reads "Ahead by $X" as the figure). ALL secondary lines moved off
+  the face to the tap sheet, no information lost: Extra Fund —
+  Spendable/Available wording (member "Available to request" vs
+  admin "Spendable now" lives in the sheet), Pending, Owed back,
+  Released total, Spent, Held for review (added to the fund sheet,
+  which was missing it; shown only when heldWeeks > 0); Charity —
+  Remaining, Committed, Given, Default rate, Period (added to the
+  charity sheet, which was missing it, "November 2026 onward").
+  Both sheets are the single source shared with the Home stat-card
+  sheets (fundBreakdownRows / charityBreakdownRows). Cards look
+  tappable: blue chevron in the head row, whole card a tap target
+  (role="button", tabindex="0", aria-label "Show Extra Fund/Charity
+  breakdown", click + Enter/Space), opening that breakdown sheet.
+  Identical template (title, amount, chevron), equal height,
+  side-by-side above 420px, stacked below, no overflow. Figures and
+  values unchanged; presentation and tap affordance only.
+  3. TYPOGRAPHY (owner reference screenshot, Nov 3 evening) —
+  clean modern system sans throughout the LIVE app only (demo
+  untouched): stack -apple-system, BlinkMacSystemFont, "Segoe UI",
+  "Helvetica Neue", Helvetica, Arial, sans-serif. No paid/licensed
+  font, no web-font download, and NO exact font name claimed from
+  the screenshot (on iPhone this renders as the system sans).
+  Hierarchy as on the reference: headings 800 (was 600), large bold
+  figures (hero 42px/800, stat numbers 26px/800, fund face 32px/800),
+  smaller grey secondary labels (kicker 12px #6b7280, muted small
+  13px #6b7280). Applied in body.live, so Home, Transactions, Funds,
+  and sheets all share it — no page keeps the old weight.
+  4. BUG CAUGHT BY THIS PACKAGE'S OWN CHECKS: a stray `],` left in
+  the Charity Home-card sheet call would have broken live.js at
+  parse time; removed, and `node --check` is clean on all changed JS.
+  Tests 119/119 (110 before + 9 new static tests in
+  test/button-card-fix.test.mjs: three-blues rules, Funds actions /
+  detail / Settings sequences, panel tap attributes + sheet
+  completeness, face Title + Amount, typography). HTML ids: 168,
+  no duplicates (unchanged from delta3; no new ids added).
+  JS-referenced ids not in HTML are pre-existing and safe:
+  sheetOverlay/sheetInput are created dynamically by showSheet,
+  refreshBtn is a guarded legacy reference (if (rb)) on main.
+  Member-vs-admin visibility unchanged (presentation/tap only);
+  no money/week/kind/allowance/authorization change; no SQL; no
+  live-household writes; live app never loaded signed in as owner.
+  Still to prove live on a real phone after merge: button rows at
+  320/390/desktop (neighbours visibly different in daylight, esp.
+  light blue vs tint), Funds card tap (chevron, Enter/Space, sheet
+  completeness), fund face at 32px with long amounts, headings at
+  800 across Home/Transactions/Funds/sheets.

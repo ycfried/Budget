@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=18">
+<link rel="stylesheet" href="styles.css?v=19">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -309,7 +309,7 @@
       <p class="muted small">Invite code, password, and account deletion live here now — not in the profile menu.</p>
       <div class="btn-row">
         <button id="settingsShareIdBtn" class="btn" type="button" aria-label="Share the invite code">Share invite code</button>
-        <button id="settingsPasswordBtn" class="btn" type="button" aria-label="Change your password">Change password</button>
+        <button id="settingsPasswordBtn" class="btn btn-tertiary" type="button" aria-label="Change your password">Change password</button>
       </div>
       <div class="danger-area">
         <h3>Delete account</h3>
@@ -320,16 +320,18 @@
 
     <div class="card" id="section-fund-balances">
       <div class="fund-balance-grid">
-        <!-- Delta3 Funds parity: both panels share the identical
-             template — title, prominent figure, secondary lines —
-             with no explainer paragraphs and no button rows, so the
-             figures line up. Ask lives once, in Funds actions below. -->
-        <div class="fund-balance-panel">
-          <h2>Extra Fund</h2>
+        <!-- Button-card-fix: both panels share the identical
+             template — title, amount, chevron — and nothing else on
+             the face. Secondary lines live only in the tap sheet.
+             The whole panel is the tap target (see live.js
+             data-fund-card handlers, following the Home stat-card
+             tap pattern). Ask lives once, in Funds actions below. -->
+        <div class="fund-balance-panel" data-fund-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown">
+          <div class="fund-balance-head"><h2>Extra Fund</h2><span class="fund-balance-chevron" aria-hidden="true">›</span></div>
           <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
         </div>
-        <div class="fund-balance-panel">
-          <h2>Charity</h2>
+        <div class="fund-balance-panel" data-fund-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown">
+          <div class="fund-balance-head"><h2>Charity</h2><span class="fund-balance-chevron" aria-hidden="true">›</span></div>
           <div id="charitySummary"><p class="muted small">Loading charity…</p></div>
         </div>
       </div>
@@ -341,7 +343,7 @@
         <button class="btn btn-primary" id="fundActionAddBtn" type="button" aria-label="Add money to the Extra Fund">Add money</button>
         <button class="btn" id="fundActionUseBtn" type="button" aria-label="Use fund money">Use fund money</button>
         <button class="btn btn-tertiary" id="fundActionAskBtn" type="button" aria-label="Ask for fund money">Ask for fund money</button>
-        <button class="btn btn-tertiary" id="fundActionIncomeBtn" type="button" aria-label="Record charity income">Record income</button>
+        <button class="btn btn-outline" id="fundActionIncomeBtn" type="button" aria-label="Record charity income">Record income</button>
       </div>
       <details id="fundTopupsDisclosure" class="activity-disclosure">
         <summary>View activity · Money added</summary>
@@ -488,7 +490,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=27"></script>
+<script type="module" src="live.js?v=28"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

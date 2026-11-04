@@ -355,15 +355,26 @@ body.live {
   --green: #2f6bff; --green-deep: #0f172a; --brass: #2f6bff;
   --bg: #ffffff; --card: #ffffff; --text: #0f172a; --muted: #6b7280;
   --hairline: #ececf1; --input-border: #e5e7eb;
-  --serif: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* Typography: clean modern system sans throughout the live app,
+     matching the reference page's look. No paid/licensed font and no
+     web-font download: on iPhone this renders as the system sans,
+     on Android as Roboto, on desktop as Segoe UI / Helvetica / Arial.
+     No exact font name is claimed from the screenshot. */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --serif: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--sans);
   padding-bottom: 88px; /* room for the fixed bottom tab bar */
 }
 body.live .card { border-radius: 20px; box-shadow: 0 1px 2px rgba(16,24,40,.05); }
-body.live h1, body.live h2, body.live h3 { letter-spacing: -0.02em; }
+/* Reference hierarchy: bold headings, large bold figures, smaller
+   grey secondary labels. Headings are 800 (base was 600); figures
+   were already 800 and stay so; secondary labels stay 12-13px grey
+   (#6b7280) via .kicker / .muted.small. */
+body.live h1, body.live h2, body.live h3 { letter-spacing: -0.02em; font-weight: 800; }
 /* Header scrolls away; the tab bar is the persistent navigation now. */
 body.live #liveTopbar { position: relative; background: #fff; border-bottom: 1px solid #ececf1; }
 body.live #liveTopbar strong { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
-body.live .profile-btn { background: #eef1f6; border: 0; color: #0f172a; }
+body.live .profile-btn { background: #eef4ff; border: 1px solid #2f6bff; color: #2f6bff; }
 body.live .profile-menu { border-color: #ececf1; border-radius: 18px; box-shadow: 0 12px 32px rgba(16,24,40,.14); }
 /* Bottom tab bar with icons, like the reference apps. */
 body.live #view-app .app-nav { position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 30;
@@ -387,7 +398,14 @@ body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 120px; z-in
 body.live .toast.error { color: #fff; }
 /* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
    One gap system: rows use flex gap; standalone buttons use one margin. */
-body.live #view-app .btn, body.live .btn { background: #f2f4f7; border: 0; color: #0f172a;
+/* Button levels are the reference page's three blues, not grey:
+   primary = strong #2f6bff fill, white text;
+   secondary (base .btn) = pale light blue #bfdbfe fill, dark-blue
+   #1e40af text (readable at phone size, distinct from both neighbours);
+   tertiary = very pale tint #eef4ff fill, brand-blue text + border.
+   No grey fill is used for a button level in a row: grey #f2f4f7
+   blended with the tint and made tertiary invisible. */
+body.live #view-app .btn, body.live .btn { background: #bfdbfe; border: 0; color: #1e40af;
   border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 700; }
 body.live #view-app .btn-primary, body.live .btn-primary { background: #2f6bff; color: #fff; }
 body.live #view-app .btn-danger, body.live .btn-danger { background: #fef2f2; color: #dc2626; }
@@ -397,10 +415,10 @@ body.live #view-app .btn { margin: 0 10px 10px 0; }
 /* Money inputs are sized to what is necessary (Nov 2 design rule):
    a 4–6 digit figure never needs the full card width. */
 body.live input[type="number"] { max-width: 220px; }
-/* Sort row: the native select matches the grey direction button
-   (same background, padding, font, radius) instead of sitting
-   beside it in default browser styling. */
-body.live #txSortField { background: #f2f4f7; border: 0; border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 700; color: #0f172a; }
+/* Sort row: the native select matches the secondary (light-blue)
+   direction button (same background, padding, font, radius) instead
+   of sitting beside it in default browser styling. */
+body.live #txSortField { background: #bfdbfe; border: 0; border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 700; color: #1e40af; }
 body.live #view-app .card .btn + .btn { margin-left: 0; }
 body.live #view-app .tx-detail .btn { margin-right: 10px; }
 body.live .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -412,7 +430,7 @@ body.live .hero-head .hero-sync-btn { margin: 0; width: 44px; height: 44px; min-
 body.live .danger-area { border: 1px solid #fecaca; border-radius: 12px; padding: 12px; margin-top: 12px; }
 body.live .btn-row .btn { margin: 0; }
 /* Chips: grey pills, blue when active. */
-body.live #view-app .tx-chip { background: #f2f4f7; color: #0f172a; padding: 9px 15px; font-weight: 700; }
+body.live #view-app .tx-chip { background: #bfdbfe; color: #1e40af; padding: 9px 15px; font-weight: 700; }
 body.live #view-app .tx-chip.active { background: #2f6bff; color: #fff; }
 /* Hero + stats: big bold numbers, thin progress bar. */
 body.live .hero .big { font-size: 42px; font-weight: 800; letter-spacing: -0.02em; }
@@ -420,7 +438,7 @@ body.live .kicker { color: #6b7280; font-size: 12px; font-weight: 600; letter-sp
 body.live .num { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; }
 body.live .hero-progress { height: 6px; background: #eef1f6; border-radius: 999px; overflow: hidden; margin: 12px 0 6px; }
 body.live .hero-progress > div { height: 100%; background: #2f6bff; border-radius: 999px; width: 0%; }
-body.live .fund-balance { font-size: 28px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 4px; }
+body.live .fund-balance { font-size: 32px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0 0 4px; }
 /* Transaction rows: icon square + merchant, like the reference lists. */
 body.live .tx-line1 { display: flex; align-items: center; gap: 10px; }
 body.live .tx-icon { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 10px; background: #eef1f6;
@@ -474,10 +492,22 @@ body.live .error { color: #dc2626; }
 body.live .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 body.live .btn svg { flex: 0 0 auto; }
 body.live .btn-block { display: flex; width: 100%; }
-/* C2: third-level action treatment, from the existing palette:
-   light blue tint background, brand blue text. Primary stays filled
-   brand blue, secondary stays light grey, destructive stays red. */
-body.live .btn-tertiary { background: #eef4ff; color: #2f6bff; border: 1px solid #2f6bff; }
+/* C2: third-level action treatments, from the existing palette.
+   Primary stays filled brand blue, secondary is now the pale light
+   blue above, destructive stays red. Tertiary must include #view-app
+   like primary: the plain body.live .btn-tertiary selector LOST to
+   body.live #view-app .btn (id specificity) for background/border/
+   color, so tertiary rendered as grey secondary with dark text and
+   the v27 border fix never showed. Two blue-bordered variants, so a
+   row with four buttons never needs two adjacent buttons in the
+   same treatment:
+   - tint: very pale tint #eef4ff fill, brand-blue text, brand-blue border
+   - outline: white fill, brand-blue text, brand-blue border (used
+     only as the fourth treatment in a four-button row; it is blue-
+     bordered, never grey-filled)
+   Both rules sit after the base .btn rule, with #view-app scope. */
+body.live #view-app .btn-tertiary, body.live .btn-tertiary { background: #eef4ff; color: #2f6bff; border: 1px solid #2f6bff; }
+body.live #view-app .btn-outline, body.live .btn-outline { background: #fff; color: #2f6bff; border: 1px solid #2f6bff; }
 /* C3: Funds balance cards side by side (stacked only on very narrow
    screens, so numbers never overflow at 320px). */
 body.live .fund-balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
@@ -486,7 +516,15 @@ body.live .fund-balance-panel .fund-balance { overflow-wrap: break-word; }
 /* Delta3 Funds parity: both panels share title -> figure -> secondary
    lines, so the figures sit at the same height; secondary lines wrap
    inside the panel (the Period line used to run to the panel edge). */
+/* Button-card-fix: the face is Title + Amount only. Secondary lines
+   live only in the tap sheet. The whole panel is a tap target, so it
+   gets a pointer cursor, a blue chevron, and a visible focus ring. */
 body.live .fund-balance-panel p.muted { overflow-wrap: anywhere; }
+body.live .fund-balance-panel[role="button"] { cursor: pointer; }
+body.live .fund-balance-panel[role="button"]:focus-visible { outline: 2px solid #2f6bff; outline-offset: 2px; }
+body.live .fund-balance-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+body.live .fund-balance-head h2 { margin: 0; min-width: 0; }
+body.live .fund-balance-chevron { color: #2f6bff; font-weight: 800; font-size: 22px; line-height: 1; flex: 0 0 auto; }
 @media (max-width: 420px) {
   body.live .fund-balance-grid { grid-template-columns: 1fr; }
 }
