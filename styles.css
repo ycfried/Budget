@@ -436,10 +436,18 @@ body.live #txSortField { background: #bfdbfe; border: 0; border-radius: 14px; pa
 body.live #view-app .card .btn + .btn { margin-left: 0; }
 body.live #view-app .tx-detail .btn { margin-right: 10px; }
 body.live .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
-/* R4: compact sync icon in the weekly-summary heading row — no extra
-   card height, 44px touch target, same admin-only bank sync. */
-body.live .hero-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-body.live .hero-head .hero-sync-btn { margin: 0; width: 44px; height: 44px; min-width: 44px; padding: 0; font-size: 22px; line-height: 1; border-radius: 50%; }
+/* Home-hero-stat-alignment (owner feedback, Nov 4, morning): the
+   sync button used to sit in .hero-head beside the week kicker, high
+   above the number — it crowded and truncated the kicker text and
+   added card height. It now sits in its own number row, vertically
+   centered against the big figure; the kicker row is full width and
+   wraps freely. Button treatment, aria-label, handler, and the
+   number's own tap target are unchanged, and the button is a sibling
+   of the number target, never nested inside it. */
+body.live .hero-head { display: flex; align-items: center; gap: 10px; }
+body.live .hero-number-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+body.live .hero-number-row #weeklyAvailable { flex: 1; min-width: 0; }
+body.live .hero-number-row .hero-sync-btn { margin: 0; width: 44px; height: 44px; min-width: 44px; padding: 0; font-size: 22px; line-height: 1; border-radius: 50%; }
 /* Excluded-decisions: the hero number is the Weekly breakdown target
    (the small stat card is gone). Only the number is tappable — the
    Sync button beside it is a separate control. */
