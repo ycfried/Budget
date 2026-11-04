@@ -1536,3 +1536,194 @@ regression.
   height and tap targets at 390px, pill labels ("Min $10",
   "From Oct 1") reading clearly, and that date inputs still open
   the native picker at the compact height.
+
+## Addendum — Audit-merge fix (Nov 3, 2026; branch audit-merge-fix, NOT merged)
+
+Owner rule, applied throughout: only fix audit findings that make
+sense; findings judged wrong are listed here as excluded, not
+silently fixed or silently dropped. Merges audit A (the v29 audit,
+OnBudget-UX-Audit-2026-11-03-2c7d0c3a.docx, audited 7:36–8:15 PM on
+v29 across 4 synthetic households, real household never loaded,
+bank/email real connections untested) with review B (the original
+full UI/UX review, OnBudget-UX-Audit.docx, H1–H5/T1–T5/F1–F5/S1–S5/
+A1–A5, much of which v29 already fixed). Base: origin/main 89b2a36
+(PR #17, live.js v30 / styles v21). This branch: live.js v31 /
+styles v22. No money-math, week-math, or filter-match changes; no
+manual refunds; no writes to the owner's household; live app never
+loaded signed in as the owner.
+
+### Included fixes (each verified in current code before editing)
+
+1. Audit A finding 1 — Extra Fund Approve always failed (headline).
+   Root cause, verified in supabase/04-admin-rpcs.sql §1: the
+   function parameters were named request_id / amount_cents /
+   override_reason, and amount_cents collides with the amount_cents
+   column of fund_requests / fund_ledger inside the UPDATE and
+   INSERT statements, so Postgres reports "column reference
+   amount_cents is ambiguous". (The first ambiguous statement is
+   most plausibly the `sum(amount_cents)` over fund_ledger, where
+   the name can mean the parameter or the column.) Deliverable:
+   NEW file supabase/approve-ambiguity-fix.sql — DROP FUNCTION IF
+   EXISTS approve_and_allocate(uuid, integer, text), then CREATE
+   OR REPLACE as an exact copy of §1 with parameters renamed to
+   p_request_id / p_amount_cents / p_override_reason at every
+   parameter use, grants unchanged (revoke from public, grant to
+   authenticated). Column references are deliberately UNCHANGED:
+   v_req.amount_cents, sum(amount_cents) over fund_ledger, and
+   the INSERT column list (amount_cents, request_id) keep their
+   column names — only the VALUES side uses the p_ parameters.
+   A blanket rename would have broken both the sum and the column
+   list; both were caught and corrected during the build, and the
+   test proves reverse-renaming the file reproduces §1 exactly.
+   live.js approve RPC calls now pass p_request_id /
+   p_amount_cents / p_override_reason. approve_fund_request (§7)
+   calls this function positionally and is unaffected — verified
+   by grep. The OLD p_-prefixed version in supabase/fund-ledger.sql
+   is an earlier, weaker function (no household lock, no
+   over-approval guard, overwrites fund_allocation_cents); it was
+   NOT used as the source — §1 is the live behaviour to preserve.
+   NOT APPLIED BY THE BUILDER: the parent applies this SQL in the
+   Supabase dashboard after the code ships, then retests Approve
+   (full, split, member request, override) on a synthetic
+   household. User-facing failure message is now "Could not
+   approve this request. Please try again in a moment."; the
+   diagnostic stays in console.warn only, no raw DB text to users.
+2. Audit A finding 2 — "This week" wiped on Status=All. The apply
+   handler forced txWeekOnly=false when txFilter==='all', wiping a
+   box ticked in the same sheet. Fixed: the handler always reads
+   the txWeekCheck checkbox, whatever the status. Reset/Cancel
+   snapshot behaviour unchanged.
+3. Audit A finding 3 — Weekly breakdown amounts split on phones.
+   The .sheet-rows value span used overflow-wrap:anywhere, which
+   breaks "$0.00" mid-number. Changed to overflow-wrap:normal:
+   values still wrap at spaces (the long Left row needs that),
+   never mid-number. .week-metrics untouched.
+4. Audit A findings 4/5 — stale copy hints. Post-create hint
+   "from your profile menu" → "from Settings" (live.js); Home
+   weekEmptyHint "on the Funds tab" → "in Settings" (live.html).
+5. Audit A finding 6 — silent failures. Create-account now names
+   the missing field before calling Supabase (email present +
+   valid, password present + at least 8 characters — policy
+   unchanged, only surfaced). Manual entry: the form is now
+   novalidate so the handler runs when the native required date
+   is empty (previously only a browser bubble showed); an empty
+   date shows the inline #manualFormError pattern ("Date: pick
+   the date of this transaction.") with focus on the date field,
+   and a merchant check guards the field the native required
+   attribute used to cover. Charity gift form: same treatment —
+   novalidate, new #charityFormError inline element, empty date
+   (and amount/suffix) errors inline with focus; the pre-November
+   date rule still uses its dialog, as before.
+6. Review B T2 — search no-match state. The Transactions list had
+   one empty state for everything. Split: a typed search or any
+   active filter (month, card, week, dates, amount bounds) with
+   no matches shows "No matching transactions. Try a different
+   search, or clear the search and filters." with a working
+   "Clear search and filters" button that resets everything to
+   defaults. Status-only filters keep their specific hints
+   (excluded/refunds/charity). The new-household message only
+   appears with no search, no filter, and no loaded transactions.
+   Search matching itself unchanged.
+7. Review B S2 — profile email twice. When no name is set, the
+   profile header falls back to the email while profileEmail
+   shows it again. The email line is now hidden exactly when its
+   text equals the header text; with a name set, both lines show.
+8. Review B H3 — tap hints removed. live.html #section-hint ("Tap
+   a card for its breakdown.") deleted; the repeated "Tap for
+   detail" text removed from transaction rows (the chevron
+   disclosure cue already in the markup stays) and fund-request
+   rows. Accessible row names keep their words ("— show detail").
+   Home cards stay numbers-only with no chevron, per the owner's
+   decision — no new chevron system invented.
+9. Review B F2 — admin fund wording "Spendable now" → "Available
+   to use". Member wording "Available to request" unchanged. The
+   wording lives in tap sheets and aria-labels, never on card
+   faces.
+10. Review B A1 (High) — keyboard behaviour for all generic
+    sheets. #sheetOverlay dialogs (showSheet) now: Escape closes
+    (same result as Cancel/backdrop), Tab is trapped inside, and
+    focus returns to the opener on close when it is still on the
+    page. No-input sheets focus their confirm button on open.
+    The filter sheet is a separate element with its own handler:
+    when it is open, the sheet handler stands aside for
+    Escape/Tab rather than fighting it. Read-only breakdown
+    sheets get Close semantics via their confirm button; form
+    sheets keep Cancel.
+
+### Verify-then-decide items (checked, not invented)
+
+- H4 roles: NOT PRESENT — no checkbox roles exist in current
+  code; transaction rows, recent rows, and fund-request rows all
+  use role="button" with descriptive aria-labels. History's
+  stable entry is the Home "View history" button (owner-approved
+  relocation, no History tab by design). Nothing added.
+- S1 sighted identity: DONE in v29 — connections are grouped
+  with a "Connected <date>" line and Disconnect identifies the
+  connection by masked accounts in its aria-label and
+  confirmation. Nothing missing except the duplicate-connection
+  guard, which is excluded below as a separate decision.
+- S3 History Load more scope: TRIVIAL FIX INCLUDED — the button
+  sits inside the Activity card and only pages activity entries
+  (weeks are counted separately in the count line), but was
+  labelled just "Load more". Relabelled "Load more activity"
+  with a matching aria-label.
+- H5 sync status: LARGELY DONE — Syncing… button state, Sync
+  done/failed toasts, and the footer "Last bank sync" timestamp
+  from server truth all exist. TRIVIAL FIX INCLUDED: the footer
+  also showed ("Last bank sync —", empty) on the sign-in screen
+  because it sits outside view-app; it is now hidden off the app
+  screens, like the profile button.
+- T3 count-line density: DONE once item 8 lands — the count line
+  already says "total of the rows shown" and "search covers
+  loaded rows only", row names carry merchant/amount/date/
+  status, and the chevron is the disclosure cue.
+
+### Excluded as judged-not-sensible (owner rule — not built)
+
+- H1 hero merge with "Over budget by $X" wording: conflicts
+  with the owner's numbers-only card-face decision (Nov 3,
+  7:53 PM) — minus sign and colour do the talking on card faces.
+- Password-change requiring the current password: design
+  tradeoff, not a bug (a signed-in session authorises the
+  change); tightening it is a separate owner decision.
+- A2 blanket size/spacing rebuild: a full type/spacing system
+  rebuild is out of scope for a fix package; the sheet-specific
+  compaction in this package is the targeted change.
+- H4 filter/scroll restore: detail is inline — there is no
+  return navigation to restore from; tab switches scroll to top
+  by design.
+- T4 Add location change: Add's final home is still pending the
+  owner's picture; v29's hide-by-default stands until then.
+- S1 duplicate-connection guard design: separate queued
+  decision (warn / update-mode / banner) — presentation grouping
+  does not replace it, and it is not smuggled into this package.
+- A4/A5/T5/S5 sign-off and retests: testing, not code fixes —
+  still owed after this package settles, on synthetic households
+  and the owner's real phone for visual items.
+- H2 linking breakdown totals to transactions: navigation scope
+  creep — the rows reconcile, the link is a future feature, not
+  a fix for any failing behaviour.
+
+### Verification
+
+- Full suite: `node --test test/*.test.mjs` → 156/156 pass
+  (144 before + 12 new in test/audit-merge-fix.test.mjs: approve
+  RPC parameter names, SQL rename-only proof, week flag surviving
+  Status=All apply, sheet-rows wrap rule, Settings hints, field
+  errors + novalidate forms, search no-match vs new-household
+  states, profile-email-once rule, tap-hint removal with
+  accessible names kept, admin fund wording, generic-sheet
+  keyboard handling, history scope label + footer visibility).
+- `node --check` clean on live.js and filterState.mjs.
+  `git diff --check` clean. live.html ids: 179, zero duplicates
+  (one id removed: section-hint; one id added: charityFormError).
+  No secrets, no real-household UUID, no ios/ or workflow files.
+  supabase/ changes: exactly ONE new file
+  (supabase/approve-ambiguity-fix.sql); no existing SQL file
+  touched.
+- Still to prove after merge + SQL application: Approve end to
+  end (full, split, member request, override) on a synthetic
+  household; generic-sheet Escape/focus behaviour on a real
+  phone; sheet value wrapping at 390px; search no-match and
+  clear-filters action; profile email shown once with and
+  without a name set.

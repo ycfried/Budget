@@ -664,7 +664,10 @@ body.live #sheetOverlay .sheet-rows { display: grid; gap: 8px; margin: 0 0 14px;
 body.live #sheetOverlay .sheet-rows > div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #ececf1; padding-bottom: 8px; }
 body.live #sheetOverlay .sheet-rows > div:last-child { border-bottom: 0; padding-bottom: 0; }
 body.live #sheetOverlay .sheet-rows > div > span:first-child { color: var(--muted); }
-body.live #sheetOverlay .sheet-rows > div > span:last-child { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+body.live #sheetOverlay .sheet-rows > div > span:last-child { font-weight: 600; text-align: right; overflow-wrap: normal; }
+/* Audit-merge fix (audit A finding 3): the old overflow-wrap:anywhere
+   broke "$0.00" mid-number on phones. Normal wrapping still lets a
+   long value (e.g. the Left row's over-budget note) wrap at spaces. */
 
 /* ===== UX-review-fix (Nov 3, 2026) — live app only ===== */
 /* Sign-in password visibility: input + Show/Hide button on one row,

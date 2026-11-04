@@ -218,6 +218,11 @@ async function show(view) {
   // round): hide it — and close the menu — until signed in.
   document.getElementById('profileBtn')?.classList.toggle('hidden', view !== 'app');
   if (view !== 'app') document.getElementById('profileMenu')?.classList.add('hidden');
+  // Audit-merge fix (review B H5, trivial): the "Last bank sync"
+  // footer is an in-app status line — it showed "Last bank sync —"
+  // (empty) on the sign-in screen too. Hide it off the app screens,
+  // like the profile button above.
+  document.querySelector('footer.foot')?.classList.toggle('hidden', view !== 'app');
 }
 
 async function loadMembership() {
@@ -268,6 +273,16 @@ async function refresh() {
 
   const { data: { session: s } } = await supabase.auth.getSession();
   const pe = document.getElementById('profileEmail'); if (pe && s?.user?.email) pe.textContent = s.user.email;
+  // Audit-merge fix (review B S2): when no name is set, the header
+  // below falls back to the email, so showing this line too would
+  // print the email twice. Hide it exactly when it duplicates the
+  // header; with a name set, both lines show (name + email).
+  // Applied after the header is set, further down in refresh().
+  const hideDupEmail = () => {
+    const pn2 = document.getElementById('profileName');
+    const pe2 = document.getElementById('profileEmail');
+    if (pn2 && pe2) pe2.classList.toggle('hidden', pn2.textContent !== '—' && pn2.textContent === pe2.textContent);
+  };
   // UX-review-fix, profile name (owner screenshot Nov 3, 7:53 PM):
   // the header is the user's name from auth metadata (full_name,
   // then name), falling back to the email only when no name is set.
@@ -280,6 +295,7 @@ async function refresh() {
   // into audit actor names as the trigger's second preference.
   const displayName = s?.user?.user_metadata?.full_name || s?.user?.user_metadata?.name || '';
   const pn = document.getElementById('profileName'); if (pn) pn.textContent = displayName || s?.user?.email || '—';
+  hideDupEmail();
   const editBtn = document.getElementById('menuEditProfileBtn'); if (editBtn) editBtn.textContent = displayName ? 'Edit profile' : 'Add your name';
   const pni = document.getElementById('profileNameInput'); if (pni && document.activeElement !== pni) pni.value = displayName;
   const pei = document.getElementById('profileEmailInput'); if (pei && document.activeElement !== pei && s?.user?.email) pei.value = s.user.email;
@@ -571,13 +587,26 @@ async function refresh() {
       refresh();
     }));
   }
-  const emptyHint = txFilter === 'excluded'
+  // Audit-merge fix (review B T2): a search or an active filter that
+  // matches nothing used to show the new-household message ("No
+  // transactions here yet — add one…"), which is wrong for a populated
+  // ledger. Status-only hints stay specific; any search or other
+  // active filter gets the no-match state with a clear action. The
+  // new-household message only appears with no search, no filter,
+  // and genuinely no loaded transactions (all.length === 0).
+  const searchOrFilterActive = q !== '' || txMonth !== 'all' || txCard !== 'all' || txWeekOnly || !!txFromDate || !!txToDate || minCents !== null || maxCents !== null;
+  const emptyHint = searchOrFilterActive
+    ? 'No matching transactions. Try a different search, or clear the search and filters.'
+    : txFilter === 'excluded'
     ? 'No excluded transactions. Excluded transactions are hidden from the week math but kept here so you can restore them.'
     : txFilter === 'refunds'
     ? 'No refunds in this list yet.'
     : txFilter === 'charity'
     ? 'No charity gifts in this list yet — record one from Add, or mark a posted donation as a gift.'
     : 'No transactions here yet — add one by hand above, or connect a bank account and sync.';
+  const emptyLi = searchOrFilterActive
+    ? `<li class="tx-empty">${emptyHint} <button class="btn btn-small" data-clear-search-filters type="button" aria-label="Clear search and filters">Clear search and filters</button></li>`
+    : `<li class="tx-empty">${emptyHint}</li>`;
   $('txList').innerHTML = txReadFailed
     ? `<li class="tx-empty error">Could not load transactions. Check your connection and try again — nothing here is a complete list.</li>`
     : shown.length
@@ -644,13 +673,13 @@ async function refresh() {
         const neg = t.amount_cents < 0 ? ' negative' : '';
         // UX audit 05: the row's accessible name carries merchant,
         // amount, date, and status, so repeated merchants never share
-        // an identical "Tap for detail" name; the chevron marks the
+        // an identical row name; the chevron marks the
         // row as a disclosure (it rotates when the detail opens).
         const rowLabel = `${t.merchant} ${formatCents(t.amount_cents)} ${fmtShort(t.date)} ${stateWord(t, excluded)} — show detail`;
         return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="${esc(rowLabel)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span><span class="tx-chevron" aria-hidden="true"></span></div>
         <div class="tx-line2">${statePill(t, excluded)}
         <span class="pill">${esc(sourceLabel(t.source))}</span>
-        <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span> <span class="muted small">Tap for detail</span></div></div>
+        <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
           <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${kindLabel})</p>
           <p class="small muted">${t.kind === 'charity' ? 'This gift is outside weekly spending and counts toward charity given once posted.' : excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : t.kind === 'payment' ? 'This is a card payment. It does not count toward weekly spending.' : t.kind === 'cashback' ? 'This is a cash-back credit. It does not count toward weekly spending.' : t.kind === 'transfer' ? 'This is a transfer between your accounts. It does not count toward weekly spending.' : 'This transaction counts toward its week unless excluded.'}</p>
@@ -665,7 +694,18 @@ async function refresh() {
           <div>${action}</div>
         </div></li>`;
       }).join('')
-    : `<li class="tx-empty">${emptyHint}</li>`;
+    : emptyLi;
+  // T2 clear action: wipes the search box and every filter back to
+  // defaults, then re-renders. Status returns to All like Reset.
+  document.querySelectorAll('[data-clear-search-filters]').forEach((b) => b.addEventListener('click', () => {
+    const s = $('txSearch'); if (s) s.value = '';
+    txFilter = 'all'; txMonth = 'all'; localStorage.setItem('hb-tx-month', 'all');
+    txCard = 'all'; localStorage.setItem('hb-tx-card', 'all');
+    txWeekOnly = false; txFromDate = ''; txToDate = '';
+    const mn = $('txMinAmount'); if (mn) mn.value = '';
+    const mx = $('txMaxAmount'); if (mx) mx.value = '';
+    refresh();
+  }));
   // Home preview: the 4 newest transactions, tapping one jumps to Transactions.
   const recentEl = $('recentList');
   if (recentEl) {
@@ -859,7 +899,7 @@ async function refresh() {
         // remainder stays unapproved (it is not paid later on its
         // own — a new request is needed for it).
         const approvedCents = r.status === 'approved' ? r.amount_cents : (r.status === 'split' && r.remainder_cents != null ? r.amount_cents - r.remainder_cents : null);
-        return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(statusLabel)} · ${esc(r.note || '')} <span class="muted small">Tap for detail</span></div>
+        return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(statusLabel)} · ${esc(r.note || '')}</div>
         <div class="tx-detail hidden" id="fund-detail-${r.id}">
           <p class="small muted">Requested: ${formatCents(r.amount_cents)} · Status: ${esc(statusLabel)}<br>
           Fund available now: ${currentFundData ? formatCents(currentFundData.available) : 'not loaded'}<br>
@@ -883,13 +923,13 @@ async function refresh() {
     // The server rejects amount > requested; the client rejects it first
     // so no over-approval is ever sent.
     if (req && cents > req.amount_cents) { await showAlert('Too much', `You cannot approve more than the requested ${formatCents(req.amount_cents)}.`); return; }
-    let { error } = await supabase.rpc('approve_and_allocate', { request_id: b.dataset.approve, amount_cents: cents, override_reason: null });
+    let { error } = await supabase.rpc('approve_and_allocate', { p_request_id: b.dataset.approve, p_amount_cents: cents, p_override_reason: null });
     if (error && /insufficient fund/i.test(error.message)) {
       const reason = await showSheet({ title: 'Fund is short', message: `The fund does not cover ${formatCents(cents)}. You can still approve with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Approve anyway', cancelLabel: 'Cancel' });
       if (reason === null) return;
-      ({ error } = await supabase.rpc('approve_and_allocate', { request_id: b.dataset.approve, amount_cents: cents, override_reason: reason.trim() }));
+      ({ error } = await supabase.rpc('approve_and_allocate', { p_request_id: b.dataset.approve, p_amount_cents: cents, p_override_reason: reason.trim() }));
     }
-    if (error) { console.warn('approve_and_allocate failed:', error.message); await showAlert('Could not approve', 'Could not approve this request. Try again.'); } else await refresh();
+    if (error) { console.warn('approve_and_allocate failed:', error.message); await showAlert('Could not approve', 'Could not approve this request. Please try again in a moment.'); } else await refresh();
   }));
   document.querySelectorAll('[data-decline]').forEach((b) => b.addEventListener('click', async () => {
     const { error } = await supabase.rpc('decline_fund_request', { p_request_id: b.dataset.decline });
@@ -1152,11 +1192,12 @@ async function refresh() {
     currentFundData = { available, pending, releasedTotal, spent, shortfall, heldTotal, heldWeeks: heldRows.length };
     const fp = $('homeFundPrimary'); if (fp) fp.innerHTML = formatCentsHtml(available);
     // UX audit 07: a member cannot spend fund money, only request it
-    // and wait for approval — so members read "Available to request",
-    // never "Spendable now". Admin wording stays as-is. That wording
+    // and wait for approval — so members read "Available to request".
+    // Audit-merge fix (review B F2): admins read "Available to use"
+    // (was "Spendable now"). That wording
     // lives in the tap sheet and in the Home card's aria-label, not
     // on either card face (numbers-only faces, UX-review-fix).
-    const fundFreeWord = household.role === 'admin' ? 'Spendable now' : 'Available to request';
+    const fundFreeWord = household.role === 'admin' ? 'Available to use' : 'Available to request';
     // Numbers-only face: the secondary line is gone from the card.
     // Its wording lives in the tap sheet and in the aria-label.
     document.querySelector('[data-home-card="fund"]')?.setAttribute('aria-label', pending > 0
@@ -1763,8 +1804,17 @@ $('signUpBtn').addEventListener('click', async () => {
   // Delta3: same busy pattern as sign-in.
   const btn = $('signUpBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
+  // Audit-merge fix (audit A finding 6): name the missing field
+  // before calling Supabase, instead of the generic failure. The
+  // 8-character minimum is surfaced, not changed.
+  const fail = (msg, field) => { $('authMsg').textContent = msg; if (field) field.focus(); if (btn) { btn.disabled = false; btn.textContent = 'Create account'; } };
+  const signEmail = $('authEmail'); const signPw = $('authPassword');
+  if (!signEmail?.value.trim()) { fail('Enter an email address to create an account.', signEmail); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signEmail.value.trim())) { fail('Enter a valid email address.', signEmail); return; }
+  if (!signPw?.value) { fail('Enter a password of at least 8 characters.', signPw); return; }
+  if (signPw.value.length < 8) { fail('Password must be at least 8 characters.', signPw); return; }
   const { error } = await supabase.auth.signUp({
-    email: $('authEmail').value.trim(), password: $('authPassword').value,
+    email: signEmail.value.trim(), password: signPw.value,
   });
   if (error) console.warn('sign-up failed:', error.message);
   $('authMsg').textContent = error ? 'Could not create the account. Try again.' : 'Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.';
@@ -1796,7 +1846,7 @@ $('createHouseholdBtn').addEventListener('click', async () => {
   const { data, error } = await supabase.rpc('create_household');
   if (error) console.warn('create_household failed:', error.message);
   $('householdMsg').textContent = data
-    ? 'Household created. Share the invite code from your profile menu so the second account can join as member.'
+    ? 'Household created. Share the invite code from Settings so the second account can join as member.'
     : 'Could not create household. Try again.';
   // FIX (Nov 1, evening — reproduced by the beta test): do NOT re-read
   // the membership here. boot()'s loadMembership() returned null right
@@ -1851,6 +1901,13 @@ $('manualForm').addEventListener('submit', async (e) => {
   if (amount === null || amount <= 0) { done(); setFieldError('Amount: enter a positive amount.', f.amount); return; }
   const suffix = f.suffix.value.trim();
   if (!/^\d{4}$/.test(suffix)) { done(); setFieldError('Card suffix: enter exactly 4 digits. Never enter a full card number.', f.suffix); return; }
+  // Audit-merge fix (audit A finding 6): the date input is required,
+  // so without novalidate the browser's own bubble was the only
+  // feedback and this handler never ran for an empty date. The form
+  // is now novalidate, so the merchant check below is the guard the
+  // native required attribute used to provide for that field.
+  if (!f.merchant.value.trim()) { done(); setFieldError('Merchant: enter a name for this transaction.', f.merchant); return; }
+  if (!f.date.value) { done(); setFieldError('Date: pick the date of this transaction.', f.date); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
   // Smarter entry: warn on an apparent duplicate instead of silently
   // creating a second copy of the same transaction.
@@ -2437,6 +2494,9 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
   // No raw caller value reaches innerHTML through any showSheet path.
   // Messages are plain text (never HTML); the sheet CSS renders newlines.
   return new Promise((resolve) => {
+    // Audit-merge fix (review B A1): focus returns to the opener when
+    // the sheet closes. Captured before the overlay is built.
+    const sheetOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.getElementById('sheetOverlay')?.remove();
     const safeType = ['text', 'password', 'number', 'email'].includes(inputType) ? inputType : 'text';
     const overlay = document.createElement('div');
@@ -2482,13 +2542,42 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
       wrap.appendChild(tog);
     }
     let settled = false;
-    const done = (v) => { if (settled) return; settled = true; overlay.remove(); resolve(v); };
+    const done = (v) => {
+      if (settled) return; settled = true;
+      document.removeEventListener('keydown', sheetKeyHandler);
+      overlay.remove();
+      // A1 focus return: back to the opener when it is still on the
+      // page (a refresh may have replaced it — then this is a no-op).
+      if (sheetOpener && document.contains(sheetOpener)) sheetOpener.focus();
+      resolve(v);
+    };
+    // Audit-merge fix (review B A1): Escape closes the sheet (same
+    // result as Cancel/backdrop), Tab stays inside it. This handler
+    // owns #sheetOverlay only — the filter sheet is a separate
+    // element with its own handler, so when it is open it keeps
+    // Escape/Tab and this handler stands aside rather than fighting
+    // it. Read-only sheets get Close semantics via their confirm
+    // button; form sheets keep Cancel.
+    const sheetKeyHandler = (e) => {
+      if (document.getElementById('sheetOverlay') !== overlay) return;
+      const filtersOpen = (() => { const f = document.getElementById('txFiltersSheet'); return f && !f.classList.contains('hidden'); })();
+      if (filtersOpen) return;
+      if (e.key === 'Escape') { e.preventDefault(); done(inputLabel ? null : false); return; }
+      if (e.key !== 'Tab') return;
+      const focusables = [...overlay.querySelectorAll('button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')].filter((el) => !el.disabled && el.offsetParent !== null);
+      if (!focusables.length) return;
+      const first = focusables[0]; const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', sheetKeyHandler);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) done(inputLabel ? null : false); });
     overlay.querySelector('#sheetCancel')?.addEventListener('click', () => done(inputLabel ? null : false));
     overlay.querySelector('#sheetConfirm').addEventListener('click', () => {
       done(inputLabel ? document.getElementById('sheetInput').value : true);
     });
     if (inputLabel) document.getElementById('sheetInput').focus();
+    else overlay.querySelector('#sheetConfirm')?.focus();
   });
 }
 const showAlert = (title, message) => showSheet({ title, message, confirmLabel: 'OK' });
@@ -2545,7 +2634,7 @@ $('manualCancelBtn')?.addEventListener('click', () => {
   setAddForm(null);
 });
 $('csvBackBtn')?.addEventListener('click', () => setAddForm('choice'));
-$('charityBackBtn')?.addEventListener('click', () => setAddForm('choice'));
+$('charityBackBtn')?.addEventListener('click', () => { document.getElementById('charityFormError')?.classList.add('hidden'); setAddForm('choice'); });
 // Delta C3: Funds forms open from the actions card, one at a time.
 const setFundForm = (which) => { fundFormOpen = which; showView('money'); };
 $('fundActionAddBtn')?.addEventListener('click', () => setFundForm('add'));
@@ -2611,12 +2700,22 @@ $('charityGiftForm')?.addEventListener('submit', async (e) => {
   const submitBtn = f.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
   const done = () => { giftSubmitting = false; if (submitBtn) submitBtn.disabled = false; };
+  // Audit-merge fix (audit A finding 6): field errors sit inline
+  // beside the form, like the manual form's #manualFormError, instead
+  // of popups. The form is novalidate so this handler runs even when
+  // the native required date is empty (previously only a browser
+  // bubble showed); the merchant check below is the guard the native
+  // required attribute used to provide for that field.
+  const giftErr = document.getElementById('charityFormError');
+  const setGiftError = (msg, field) => { if (giftErr) { giftErr.textContent = msg; giftErr.classList.remove('hidden'); } if (field) field.focus(); };
+  if (giftErr) giftErr.classList.add('hidden');
   const amount = parseDollarsStrict(f.amount.value);
-  if (amount === null || amount <= 0) { done(); await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
-  if (!f.date.value) { done(); await showAlert('Date required', 'Pick the date of the gift.'); return; }
+  if (amount === null || amount <= 0) { done(); setGiftError('Amount: enter a positive amount.', f.amount); return; }
+  if (!f.merchant.value.trim()) { done(); setGiftError('Organization: enter a name for this gift.', f.merchant); return; }
+  if (!f.date.value) { done(); setGiftError('Date: pick the date of the gift.', f.date); return; }
   if (f.date.value < '2026-11-01') { done(); await showAlert('Charity starts November 2026', 'Gifts before November 2026 are outside the charity period.'); return; }
   const suffix = f.suffix.value.trim();
-  if (suffix && !/^\d{4}$/.test(suffix)) { done(); await showAlert('Card suffix', 'Card suffix must be exactly 4 digits, or left blank for a cash gift. Never enter a full card number.'); return; }
+  if (suffix && !/^\d{4}$/.test(suffix)) { done(); setGiftError('Card suffix: enter exactly 4 digits, or leave it blank for a cash gift. Never enter a full card number.', f.suffix); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
   const { data: dupes } = await supabase.from('transactions')
     .select('merchant, amount_cents, date').eq('household_id', household.household_id)
@@ -2645,7 +2744,7 @@ $('charityGiftForm')?.addEventListener('submit', async (e) => {
     done();
     return;
   }
-  f.reset(); setAddForm(null); lastGiftAttempt = null; done();
+  f.reset(); document.getElementById('charityFormError')?.classList.add('hidden'); setAddForm(null); lastGiftAttempt = null; done();
   showToast(`Gift recorded: ${formatCents(amount)} to ${merchant}.`);
   await refresh();
 });
@@ -2794,13 +2893,13 @@ $('txFiltersApplyBtn')?.addEventListener('click', () => {
   // Commit the sheet-held values, then re-render.
   const statusSel = document.getElementById('txStatusSelect');
   if (statusSel) txFilter = statusSel.value;
-  // "All" means all: it also clears This week, which used to stay
-  // on silently and make All show only this week.
-  if (txFilter === 'all') txWeekOnly = false;
-  else {
-    const weekCheck = document.getElementById('txWeekCheck');
-    if (weekCheck) txWeekOnly = weekCheck.checked;
-  }
+  // Audit-merge fix (audit A finding 2): always read the This week
+  // checkbox, whatever the status. The old code forced the flag off
+  // when Status was All, silently wiping a box the user had just
+  // ticked in the same sheet. Reset/Cancel still restore the
+  // snapshot, so a stale flag cannot linger that way.
+  const weekCheck = document.getElementById('txWeekCheck');
+  if (weekCheck) txWeekOnly = weekCheck.checked;
   txFromDate = document.getElementById('txFromDate')?.value ?? '';
   txToDate = document.getElementById('txToDate')?.value ?? '';
   closeTxFilters();
