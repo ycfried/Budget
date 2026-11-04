@@ -313,7 +313,7 @@ label { font-size: 14px; font-weight: 600; }
 #sheetOverlay .sheet p { margin: 0 0 14px; color: var(--muted); line-height: 1.5; }
 #sheetOverlay .sheet label { display: block; margin-bottom: 14px; font-weight: 600; }
 #sheetOverlay .sheet input { width: 100%; margin-top: 6px; }
-#sheetOverlay .sheet-btns { display: flex; gap: 10px; justify-content: flex-end; }
+#sheetOverlay .sheet-btns { display: flex; gap: 10px; justify-content: center; }
 /* Smaller cents, like a finance app: $372.25 with a smaller .25. */
 .cents { font-size: 1em; }
 /* Buttons + chips, live app only (demo untouched): filled, warm, clear. */

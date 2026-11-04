@@ -1970,3 +1970,25 @@ live.js unchanged at v36. Tests: new test/filters-header-tabbar.test.mjs
 v27, invariant unchanged. Still to prove on a real phone: Filters +
 header row at 320/390px, and the bar staying pinned through a fast
 scroll on Transactions.
+
+## Weekly-sheet-words-buttons (owner feedback, Nov 3, ~10:48 PM, Weekly Budget popup screenshot)
+(1) "The words don't belong, only number": the Left row read "-$X (over
+budget by $X)". The parenthetical is removed entirely — the Left row is
+now formatCents(w.availableCents) alone, the signed number, exactly as
+computed before. The hero's aria-label keeps its words for screen
+readers only (not visible text). Spent, Allowance, and the Show
+transactions button are unchanged, as are all other sheets.
+(2) "And the buttons should be centered": the shared sheet button row
+(#sheetOverlay .sheet-btns) moves from justify-content: flex-end to
+center, so the Weekly sheet's Show transactions + Close buttons sit
+centered; this is harmless for confirm/cancel dialogs, which is why it
+was done in the shared rule rather than scoped to one sheet. Button
+labels, colors, treatments, order (Show transactions primary first,
+Close second), Escape/focus-trap, and focus behavior are unchanged,
+and the two buttons still fit side by side on narrow screens.
+Versions: live.js v37, styles.css v28. Tests: new
+test/weekly-sheet-words-buttons.test.mjs (4 tests); the older
+type-scale version pin was moved to v28/v37 because this branch
+touches both files (invariant unchanged: pins match live.html).
+Still to prove on a real phone at 390px: trimmed Weekly sheet with the
+bare Left number and centered buttons.
