@@ -1207,9 +1207,10 @@ async function refresh() {
       const listEl = $('emailConnectionsList'); if (listEl) listEl.innerHTML = '<p class="error">Could not load email connections. Try again.</p>';
     }
   }
-  // Extra Fund summary — COMPLETE (spec A5): Available, Pending (not yet
-  // released), Released total, Spent from fund, and Owed back (shortfall),
-  // from fund_ledger / surplus_releases / week_closes aggregates. A read
+  // Extra Fund summary — aggregates from fund_ledger /
+  // surplus_releases / week_closes. The tap sheet shows only
+  // Available / Pending / Total (owner, Nov 4); the other aggregates
+  // stay computed in currentFundData for history and previews.
   // failure is an error state, not a soft "will appear later" note.
   try {
     const { data: ledger, error: ledgerErr } = await supabase.from('fund_ledger').select('kind, amount_cents').eq('household_id', household.household_id);
@@ -1235,17 +1236,19 @@ async function refresh() {
     const fundFreeWord = household.role === 'admin' ? 'Available to use' : 'Available to request';
     // Numbers-only face: the secondary line is gone from the card.
     // Its wording lives in the tap sheet and in the aria-label.
-    document.querySelector('[data-home-card="fund"]')?.setAttribute('aria-label', pending > 0
-      ? `Extra Fund, ${formatCents(available)} ${fundFreeWord.toLowerCase()}, ${formatCents(pending)} pending, show breakdown`
-      : shortfall > 0
-      ? `Extra Fund, ${formatCents(available)} ${fundFreeWord.toLowerCase()}, ${formatCents(shortfall)} owed back, show breakdown`
+    // Fund-sheet-button-rule (owner, Nov 4): the Home fund card's
+    // aria-label carries Available + the sheet's Pending (pending
+    // releases plus held weeks) — no owed-back mention, matching the
+    // three-row sheet (Available / Pending / Total).
+    const pendingAll = pending + heldTotal;
+    document.querySelector('[data-home-card="fund"]')?.setAttribute('aria-label', pendingAll > 0
+      ? `Extra Fund, ${formatCents(available)} ${fundFreeWord.toLowerCase()}, ${formatCents(pendingAll)} pending, show breakdown`
       : `Extra Fund, ${formatCents(available)} ${fundFreeWord.toLowerCase()}, show breakdown`);
     const fs = $('fundSummary');
     // Button-card-fix: the face is Title + Amount only. The title is
     // the h2 in live.html; this is the amount alone, no "Available"
-    // word, no secondary lines. Pending, Owed back, Released, Spent,
-    // and Held all live in the tap sheet (fundBreakdownRows), so no
-    // information is lost. Values are unchanged, only presentation.
+    // word, no secondary lines. Available, Pending, and Total live
+    // in the tap sheet (fundBreakdownRows).
     if (fs) fs.innerHTML = `<p class="fund-balance"><strong>${formatCents(available)}</strong></p>`;
     const heldWrap = document.getElementById('fundHeldLinkWrap');
     if (heldWrap) {
@@ -1325,8 +1328,9 @@ async function refresh() {
     // loading are now three distinct states.
     // Numbers-only face: a confirmed zero is $0.00, a negative
     // remaining is a signed number (given more than committed).
-    // "No charity tracked yet" and the Given/Committed words live in
-    // the tap sheet and in the aria-label, not on the face.
+    // "No charity tracked yet" lives in the aria-label, and the
+    // Given/Total words live in the tap sheet and the aria-label,
+    // not on the face.
     if (cp) { cp.textContent = formatCents(remaining); cp.removeAttribute('aria-busy'); }
     document.querySelector('[data-home-card="charity"]')?.setAttribute('aria-label', (committed === 0 && given === 0)
       ? 'Charity, no charity tracked yet, show breakdown'
@@ -1336,10 +1340,10 @@ async function refresh() {
     const ch = $('charitySummary');
     // Button-card-fix: the face is Title + Amount only. The title is
     // the h2 in live.html; this is the amount alone. A negative
-    // remaining still reads "Ahead by $X" as the figure, and the
-    // Remaining label lives in the tap sheet. Committed, Given,
-    // Default rate, and Period all live in the tap sheet
-    // (charityBreakdownRows). Values are unchanged, only presentation.
+    // remaining still reads as a signed number on the face, and the
+    // tap sheet shows Available (signed) / Given / Total
+    // (charityBreakdownRows); Default rate lives on the Funds
+    // income & rate card, the period in the sheet title.
     if (ch) ch.innerHTML = `<p class="fund-balance"><strong>${formatCents(remaining)}</strong></p>`;
     document.querySelector('[data-fund-card="charity"]')?.setAttribute('aria-label', remaining < 0
       ? `Show Charity breakdown, ahead by ${formatCents(Math.abs(remaining))}`
@@ -1539,7 +1543,7 @@ async function refresh() {
             if (error) { console.warn('resolve_duplicate_candidate failed:', error.message); sameBtn.disabled = false; await showAlert('Could not resolve', 'Could not resolve this pair. Try again.'); } else await refresh();
           });
           btnRow.appendChild(sameBtn);
-          const sepBtn = document.createElement('button'); sepBtn.className = 'btn btn-small'; sepBtn.type = 'button'; sepBtn.textContent = 'Separate';
+          const sepBtn = document.createElement('button'); sepBtn.className = 'btn btn-small btn-tertiary'; sepBtn.type = 'button'; sepBtn.textContent = 'Separate';
           sepBtn.addEventListener('click', async () => {
             if (!(await showConfirm('Separate purchases', 'Keep both transactions and never flag this pair again?', 'Separate'))) return;
             sepBtn.disabled = true;
@@ -2537,30 +2541,29 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
 // breakdown sheets. These are the SINGLE source for both the Home
 // stat-card sheets and the Funds balance-card sheets, so a line moved
 // off a Funds card face cannot go missing from either sheet.
-// Fund rows carry every line that used to sit on the face: the
-// member/admin available wording, Pending, Owed back, Released,
-// Spent, and Held for review (held only when any week is held —
-// heldTotal/heldWeeks are carried in currentFundData for this).
-// Charity rows carry Remaining, Committed, Given, Default rate, and
-// Period (Period was missing from the Home sheet before this fix).
+// Fund sheet (owner, Nov 4): exactly three rows — Available, Pending
+// (pending releases PLUS held weeks: everything not yet available),
+// Total (Available + Pending). Released total, Spent from fund,
+// Owed back, and the Held-for-review row were removed from this
+// sheet; Review queue access stays on the Funds page (Review card).
 function fundBreakdownRows(f) {
-  const rows = [
+  const pending = (f.pending ?? 0) + (f.heldTotal ?? 0);
+  return [
     [household.role === 'admin' ? 'Spendable available' : 'Available to request', formatCents(f.available)],
-    ['Pending (not yet released)', formatCents(f.pending)],
-    ['Released total', formatCents(f.releasedTotal)],
-    ['Spent from fund', formatCents(f.spent)],
-    ['Owed back (shortfall)', formatCents(f.shortfall)],
+    ['Pending', formatCents(pending)],
+    ['Total', formatCents(f.available + pending)],
   ];
-  if ((f.heldWeeks ?? 0) > 0) rows.push(['Held for review', `${formatCents(f.heldTotal ?? 0)} across ${f.heldWeeks} ${f.heldWeeks === 1 ? 'week' : 'weeks'} — open the Review queue under the Funds cards`]);
-  return rows;
 }
 function charityBreakdownRows(c) {
+  // Charity sheet (owner, Nov 4): exactly three rows — Available
+  // (remaining, signed, so the rows add up), Given, Total (Available
+  // + Given = the old Committed). Committed, Default rate, and Period
+  // rows were removed; the period stays in the sheet title and the
+  // default rate stays on the Funds "Charity income & rate" card.
   return [
-    ['Remaining', c.remaining < 0 ? `Ahead by ${formatCents(Math.abs(c.remaining))}` : formatCents(c.remaining)],
-    ['Committed', formatCents(c.committed)],
+    ['Available', formatCents(c.remaining)],
     ['Given', formatCents(c.given)],
-    ['Default rate', `${(c.defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%`],
-    ['Period', 'November 2026 onward'],
+    ['Total', formatCents(c.remaining + c.given)],
   ];
 }
 // Button-card-fix: Funds balance cards — tap the whole card (click,
@@ -2667,19 +2670,23 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     const disclosureHtml = disclosure ? `<details class="sheet-disclosure"><summary>${esc(disclosure.label)}</summary><div class="sheet-rows">${disclosure.rows.map(([label, value]) => `<div><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('')}</div></details>` : '';
     // Weekly-sheet-simple: an optional extra primary action rendered
     // in the button row, below the rows and below the disclosure
-    // (the button row already follows both). When present, the
-    // confirm button drops to the plain treatment so two adjacent
-    // buttons never share the same color — the no-adjacent-duplicate
-    // button rule. Sheets without an extra action render exactly
-    // as before.
+    // (the button row already follows both). Two-button rule
+    // (owner, Nov 4): in a two-button row the non-primary button is
+    // grey tertiary, never pale — so a sheet with an extra action
+    // renders its confirm as tertiary, and a confirm+cancel sheet
+    // renders its cancel as tertiary. Single-button sheets keep
+    // their primary confirm. The pale treatment is reserved for
+    // three-button rows; a three-button sheet (cancel + extra +
+    // confirm) therefore keeps its pale cancel, with primary and
+    // grey beside it, so no two adjacent buttons share a color.
     const extraHtml = extraAction ? `<button class="btn btn-primary" type="button" id="sheetExtra">${esc(extraAction.label)}</button>` : '';
     overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
       <h3>${esc(title)}</h3>${rowsHtml}${disclosureHtml}${message ? `<p>${esc(message)}</p>` : ''}
       ${inputHtml}
       <div class="sheet-btns">
-        ${cancelLabel ? `<button class="btn" type="button" id="sheetCancel">${esc(cancelLabel)}</button>` : ''}
+        ${cancelLabel ? `<button class="btn${extraAction ? '' : ' btn-tertiary'}" type="button" id="sheetCancel">${esc(cancelLabel)}</button>` : ''}
         ${extraHtml}
-        <button class="btn${extraAction ? '' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
+        <button class="btn${extraAction ? ' btn-tertiary' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
       </div></div>`;
     document.body.appendChild(overlay);
     // UX-review-fix, Show password (owner, Nov 3, 7:53 PM): every

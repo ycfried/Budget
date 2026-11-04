@@ -69,11 +69,13 @@ test('generic sheet renders an extra primary action without duplicating button t
   assert.match(js, /extraAction = null/);
   assert.match(js, /id="sheetExtra"/);
   assert.match(js, /querySelector\('#sheetExtra'\)\?\.addEventListener\('click', \(\) => done\(extraAction\.result/);
-  // With an extra action, confirm drops to the plain treatment.
-  assert.match(js, /class="btn\$\{extraAction \? '' : ' btn-primary'\}"/);
+  // With an extra action, confirm drops to the grey tertiary
+  // treatment (fund-sheet-button-rule, owner Nov 4: two-button rows
+  // are primary + grey, never pale).
+  assert.match(js, /class="btn\$\{extraAction \? ' btn-tertiary' : ' btn-primary'\}"/);
 });
 
-test('Extra Fund sheet is untouched; Charity sheet gains only the Record income extra action', () => {
+test('Extra Fund / Charity sheet openers keep their call shapes; rows changed by fund-sheet-button-rule', () => {
   assert.match(js, /title: 'Extra Fund', rows: fundBreakdownRows\(f\), confirmLabel: 'Close'/);
   // Funds-actions-three (owner choice, Nov 4, Option A): the Charity
   // sheet keeps its title, rows, and Close label, and gains exactly

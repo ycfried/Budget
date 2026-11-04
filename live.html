@@ -54,7 +54,7 @@
       <label>Password <span class="password-row"><input id="authPassword" type="password" autocomplete="current-password" required><button id="togglePasswordBtn" class="auth-eye-btn" type="button" aria-label="Show password" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
       <div class="btn-row auth-btn-row">
         <button id="signInBtn" class="btn btn-primary" type="button" aria-label="Sign in to the live app">Sign in</button>
-        <button id="signUpBtn" class="btn" type="button" aria-label="Create a new live account">Create account</button>
+        <button id="signUpBtn" class="btn btn-tertiary" type="button" aria-label="Create a new live account">Create account</button>
       </div>
       <button id="forgotPasswordBtn" class="btn btn-quiet btn-block" type="button" aria-label="Reset your password">Forgot password?</button>
       <div id="authMsg" class="result"></div>
@@ -63,7 +63,7 @@
       <h2>Choose your name</h2>
       <label>Name <input id="authName" type="text" autocomplete="name" maxlength="80"></label>
       <div class="btn-row auth-btn-row">
-        <button id="authNameBackBtn" class="btn" type="button" aria-label="Back to sign in">← Back</button>
+        <button id="authNameBackBtn" class="btn btn-tertiary" type="button" aria-label="Back to sign in">← Back</button>
         <button id="authNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create a new live account">Create account</button>
       </div>
       <div id="authNameMsg" class="result"></div>
@@ -84,7 +84,7 @@
       actions — pick only one.</p>
       <button id="createHouseholdBtn" class="btn btn-primary btn-block" type="button" aria-label="Create a household as owner and admin">Create household (I am the owner / admin)</button>
       <label>Or join a household <input id="joinId" placeholder="Invite code from the owner"></label>
-      <button id="joinHouseholdBtn" class="btn btn-block" type="button" aria-label="Join an existing household as a member">Join as member</button>
+      <button id="joinHouseholdBtn" class="btn btn-tertiary btn-block" type="button" aria-label="Join an existing household as a member">Join as member</button>
       <div id="householdMsg" class="result"></div>
     </div>
     <div id="householdNamePanel" class="hidden">
@@ -92,7 +92,7 @@
       <p class="muted small">Optional — leave it blank to keep the default.</p>
       <label>Household name <input id="householdNameInput" type="text" maxlength="80" placeholder="Household"></label>
       <div class="btn-row auth-btn-row">
-        <button id="householdNameBackBtn" class="btn" type="button" aria-label="Back to household choice">← Back</button>
+        <button id="householdNameBackBtn" class="btn btn-tertiary" type="button" aria-label="Back to household choice">← Back</button>
         <button id="householdNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create the household">Create household</button>
       </div>
       <div id="householdNameMsg" class="result"></div>
@@ -154,7 +154,7 @@
         </div>
         <p id="manualFormError" class="error hidden" role="alert"></p>
         <button class="btn btn-primary" type="submit" aria-label="Add this transaction">Add transaction</button>
-        <button class="btn" id="manualCancelBtn" type="button" aria-label="Cancel and clear this draft">Cancel</button>
+        <button class="btn btn-tertiary" id="manualCancelBtn" type="button" aria-label="Cancel and clear this draft">Cancel</button>
       </form>
       <p class="muted small">Never enter a full card number.</p>
     </div>
@@ -202,7 +202,7 @@
       <div class="tx-head-row">
         <h2>Transactions</h2>
         <div class="tx-head-actions">
-          <button id="txFiltersToggle" class="btn" type="button" aria-expanded="false" aria-label="Open filters">Filters</button>
+          <button id="txFiltersToggle" class="btn btn-tertiary" type="button" aria-expanded="false" aria-label="Open filters">Filters</button>
           <button class="btn btn-primary add-plus-btn" id="txAddBtn" type="button" aria-label="Add">+</button>
         </div>
       </div>
@@ -339,7 +339,7 @@
       <p class="muted small">Read-only — the app can read Amex transaction alerts, never your whole mailbox, and never sends or changes email. Transactions found here stay provisional until the bank confirms them. Connecting here does not change any existing email setup.</p>
       <div class="btn-row">
         <button id="connectEmailBtn" class="btn btn-primary" type="button" aria-label="Connect email">Connect email</button>
-        <button id="pollEmailBtn" class="btn" type="button" aria-label="Check email now">Check email now</button>
+        <button id="pollEmailBtn" class="btn btn-tertiary" type="button" aria-label="Check email now">Check email now</button>
       </div>
       <div id="emailMsg" class="result"></div>
       <p class="muted small" id="emailStatusLine"></p>
@@ -453,7 +453,7 @@
         <label>Note (optional) <input name="note" maxlength="120"></label>
         <p id="charityIncomePreview" class="muted small">Enter an amount to see what it commits.</p>
         <button class="btn btn-primary" type="submit" aria-label="Save this charity income">Save income</button>
-        <button class="btn" id="charityIncomeCancelBtn" type="button" style="display:none" aria-label="Stop correcting and add new income instead">Cancel correction</button>
+        <button class="btn btn-tertiary" id="charityIncomeCancelBtn" type="button" style="display:none" aria-label="Stop correcting and add new income instead">Cancel correction</button>
       </form>
     </div>
 
@@ -525,7 +525,7 @@
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="historyFilterApplyBtn" type="button" aria-label="Apply history date filter">Apply filter</button>
-        <button class="btn" id="historyFilterClearBtn" type="button" aria-label="Clear history date filter">Clear date filter</button>
+        <button class="btn btn-tertiary" id="historyFilterClearBtn" type="button" aria-label="Clear history date filter">Clear date filter</button>
       </div>
       <p id="historyPeriodLine" class="muted small">Showing all recorded history.</p>
       <p id="historyCountLine" class="muted small"></p>
@@ -553,7 +553,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=41"></script>
+<script type="module" src="live.js?v=42"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

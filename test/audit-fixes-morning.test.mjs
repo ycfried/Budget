@@ -21,8 +21,10 @@ test('B1: Funds Held-for-review button and wrap are gone; Review card stays the 
   // The Review card's own opener is untouched.
   assert.ok(html.includes('id="section-fund-review"'));
   assert.ok(html.includes('<summary id="reviewSummary">Open review</summary>'));
-  // The held amount still lives in the fund breakdown sheet row.
-  assert.match(js, /\['Held for review',/);
+  // The held amount still surfaces in the fund sheet: folded into
+  // its Pending row (pending releases + held weeks), not a Held row.
+  const fundRows = js.slice(js.indexOf('function fundBreakdownRows'), js.indexOf('function charityBreakdownRows'));
+  assert.ok(fundRows.includes('heldTotal'), 'fund sheet Pending must fold in held weeks');
   // Guarded JS references remain as no-ops, never unguarded throws.
   assert.match(js, /getElementById\('fundHeldLinkWrap'\)\?/);
   assert.match(js, /\$\('fundHeldLinkBtn'\)\?\.addEventListener/);

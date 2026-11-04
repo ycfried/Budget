@@ -53,11 +53,11 @@ test('hero/stat negative figures stay soft-red; progress and See all stay blue',
 });
 
 test('version pins match live.html', () => {
-  // Pinned versions move with later branches; home-hero-stat-
-  // alignment touches styles.css only, so styles moves past PR #30's
-  // v31 to v32 while live.js stays at v41 (two different files must
-  // never share one version number, or cached phones would never
+  // Pinned versions move with later branches; fund-sheet-button-
+  // rule touches live.js, so live.js moves past PR #31's v41 to v42
+  // while styles.css stays at v32 (two different files must never
+  // share one version number, or cached phones would never
   // refetch) — the invariant is the pins match live.html.
-  assert.match(html, /styles\.css\?v=32/, 'styles.css bumped to v32');
-  assert.match(html, /live\.js\?v=41/, 'live.js stays at v41');
+  assert.match(html, /styles\.css\?v=32/, 'styles.css stays at v32');
+  assert.match(html, /live\.js\?v=42/, 'live.js bumped to v42');
 });

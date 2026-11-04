@@ -24,7 +24,9 @@ test('Filters button is inside the header row, immediately before the + button',
     'Filters comes before + in the header row',
   );
   assert.ok(headRow.includes('class="tx-head-actions"'), 'header buttons are grouped at the right');
-  assert.ok(headRow.includes('class="btn"'), 'Filters keeps the secondary (pale-blue) treatment');
+  // Fund-sheet-button-rule (owner Nov 4): the header is a two-button
+  // row (Filters + Add), so Filters is grey tertiary, not pale.
+  assert.ok(headRow.includes('class="btn btn-tertiary"'), 'Filters uses the grey tertiary treatment');
   assert.ok(headRow.includes('btn-primary add-plus-btn'), '+ keeps the primary blue treatment');
   assert.ok(headRow.includes('aria-expanded="false"'), 'Filters keeps aria-expanded');
 });
