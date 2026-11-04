@@ -754,6 +754,21 @@ body.live #sheetOverlay .sheet-rows > div > span:last-child { font-weight: 600; 
 body.live .password-row { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
 body.live .password-row input { flex: 1 1 auto; min-width: 0; margin-top: 0; }
 body.live .password-row .btn { flex: 0 0 auto; margin: 0; }
+/* Auth-card-cleanup (owner, Nov 4, 2026): on the sign-in card ONLY,
+   the password eye sits INSIDE the field, so Email and Password end
+   up exactly the same width (base inputs are width:100%). Scoped to
+   #view-auth: the change-password sheet keeps the generic flex row
+   with its side-by-side Show/Hide text toggle above. */
+#view-auth .password-row { position: relative; display: block; margin-top: 6px; }
+#view-auth .password-row input { width: 100%; box-sizing: border-box; margin-top: 0; padding-right: 48px; }
+#view-auth .password-row .auth-eye-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: none; border: 0; color: #6b7280; cursor: pointer; padding: 0; margin: 0; font: inherit; }
+#view-auth .password-row .auth-eye-btn svg { display: block; }
+#view-auth .password-row .auth-eye-btn:focus-visible { outline: 2px solid #2f6bff; outline-offset: 2px; border-radius: 8px; }
+/* Auth-card-cleanup: Sign in + Create account share one row, equal
+   width, nothing between them. The household naming step reuses the
+   same two-button row (Back + Create household). */
+#view-auth .auth-btn-row, #view-household .auth-btn-row { display: flex; gap: 10px; flex-wrap: nowrap; }
+#view-auth .auth-btn-row .btn, #view-household .auth-btn-row .btn { flex: 1 1 0; min-width: 0; margin: 0; }
 /* Possible-duplicates comparison cards: vertical, NOT a horizontal
    bank-row. Merchant on its own bold line (full name, wraps at word
    boundaries, never mid-word), labeled Amount/Date/Card/Source rows

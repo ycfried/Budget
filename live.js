@@ -293,6 +293,15 @@ async function refresh() {
 
   const { data: { session: s } } = await supabase.auth.getSession();
   const pe = document.getElementById('profileEmail'); if (pe && s?.user?.email) pe.textContent = s.user.email;
+  // Household naming (owner, Nov 4, 2026): show the stored household
+  // name in the Settings Account card. Fail silent — the static
+  // "Household: Household" line already covers existing households
+  // and any read failure, so nothing here can break a refresh.
+  try {
+    const { data: hrow } = await supabase.from('households').select('name').eq('id', household.household_id).maybeSingle();
+    const hn = document.getElementById('householdNameLine');
+    if (hn && typeof hrow?.name === 'string' && hrow.name.trim()) hn.textContent = `Household: ${hrow.name.trim()}`;
+  } catch (e) { console.warn('household name read failed:', e); }
   // Audit-merge fix (review B S2): when no name is set, the header
   // below falls back to the email, so showing this line too would
   // print the email twice. Hide it exactly when it duplicates the
@@ -1823,39 +1832,72 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
   setAddForm(null);
   await refresh();
 });
+// Auth-card-cleanup (owner, Nov 4, 2026): the sign-in password toggle
+// is a standard eye icon sitting INSIDE the field (see #view-auth
+// .password-row in styles.css), not Show/Hide text beside it. The
+// icon swaps with the state; aria-label and aria-pressed carry the
+// meaning, exactly as the text toggle did. The change-password sheet
+// keeps its own text toggle — this handler is sign-in only.
+const eyeOpenSvg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const eyeSlashSvg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
 $('togglePasswordBtn')?.addEventListener('click', (e) => {
   const input = $('authPassword'); if (!input) return;
   const showing = input.type === 'password';
   input.type = showing ? 'text' : 'password';
-  e.currentTarget.textContent = showing ? 'Hide' : 'Show';
+  e.currentTarget.innerHTML = showing ? eyeSlashSvg : eyeOpenSvg;
   e.currentTarget.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
   e.currentTarget.setAttribute('aria-pressed', showing ? 'true' : 'false');
 });
+// Auth-card-cleanup, two-step sign-up (owner correction, Nov 4,
+// 2026): the Name field does NOT sit on the sign-in card. Create
+// account on the card only validates Email + Password, then moves
+// to a separate name step (authNamePanel) inside view-auth —
+// implemented as a panel toggle, not a new show() view, so boot()
+// routing is untouched and Email/Password values survive (same
+// DOM, nothing clears them). Only the name step calls signUp, and
+// only with a non-empty name, so abandoning the step creates no
+// account. Sign-in never shows the name step.
+const showAuthPanel = (which) => {
+  $('authSigninPanel')?.classList.toggle('hidden', which !== 'signin');
+  $('authNamePanel')?.classList.toggle('hidden', which !== 'name');
+};
 $('signUpBtn').addEventListener('click', async () => {
-  // Delta3: same busy pattern as sign-in.
-  const btn = $('signUpBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
   // Audit-merge fix (audit A finding 6): name the missing field
-  // before calling Supabase, instead of the generic failure. The
-  // 8-character minimum is surfaced, not changed.
-  const fail = (msg, field) => { $('authMsg').textContent = msg; if (field) field.focus(); if (btn) { btn.disabled = false; btn.textContent = 'Create account'; } };
-  const signEmail = $('authEmail'); const signPw = $('authPassword'); const signName = $('authName');
+  // before moving on, instead of a generic failure. The 8-character
+  // minimum is surfaced, not changed. No Supabase call happens here.
+  const fail = (msg, field) => { $('authMsg').textContent = msg; if (field) field.focus(); };
+  const signEmail = $('authEmail'); const signPw = $('authPassword');
   if (!signEmail?.value.trim()) { fail('Enter an email address to create an account.', signEmail); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signEmail.value.trim())) { fail('Enter a valid email address.', signEmail); return; }
-  // Sign-up name requirement (owner, Nov 3, ~11:22 PM): a new
-  // account must set a name at sign-up, so the profile header has
-  // a display name immediately. Empty name fails here, before any
-  // Supabase call, with a named error and focus on the Name field.
-  // Sign-in ignores the Name field entirely.
-  if (!signName?.value.trim()) { fail('Enter a name for your new account.', signName); return; }
   if (!signPw?.value) { fail('Enter a password of at least 8 characters.', signPw); return; }
   if (signPw.value.length < 8) { fail('Password must be at least 8 characters.', signPw); return; }
+  $('authNameMsg').textContent = '';
+  showAuthPanel('name');
+  $('authName')?.focus();
+});
+$('authNameBackBtn')?.addEventListener('click', () => {
+  // Back to the sign-in card with Email/Password intact (same DOM).
+  showAuthPanel('signin');
+  $('signUpBtn')?.focus();
+});
+$('authNameCreateBtn').addEventListener('click', async () => {
+  // Delta3: same busy pattern as sign-in.
+  const btn = $('authNameCreateBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
+  const fail = (msg, field) => { $('authNameMsg').textContent = msg; if (field) field.focus(); if (btn) { btn.disabled = false; btn.textContent = 'Create account'; } };
+  const signEmail = $('authEmail'); const signPw = $('authPassword'); const signName = $('authName');
+  // Sign-up name requirement (owner, Nov 3, ~11:22 PM): a new
+  // account must set a name, so the profile header has a display
+  // name immediately. Empty name fails here, before any Supabase
+  // call, with a named error and focus on the Name field. Sign-in
+  // ignores the Name field entirely.
+  if (!signName?.value.trim()) { fail('Enter a name for your new account.', signName); return; }
   const { error } = await supabase.auth.signUp({
     email: signEmail.value.trim(), password: signPw.value,
     options: { data: { full_name: signName.value.trim() } },
   });
   if (error) console.warn('sign-up failed:', error.message);
-  $('authMsg').textContent = error ? 'Could not create the account. Try again.' : 'Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.';
+  $('authNameMsg').textContent = error ? 'Could not create the account. Try again.' : 'Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.';
   if (!error) await show('loading');
   if (!error) await boot();
   if (btn) { btn.disabled = false; btn.textContent = 'Create account'; }
@@ -1865,12 +1907,36 @@ $('signOutBtn').addEventListener('click', async () => {
   // Do not leave credentials filled in on a shared device.
   if ($('authEmail')) $('authEmail').value = '';
   if ($('authPassword')) $('authPassword').value = '';
+  // Auth-card-cleanup: a sign-out always lands back on the sign-in
+  // panel, never stranded on the name step, with the name cleared.
+  if ($('authName')) $('authName').value = '';
+  showAuthPanel('signin');
+  // Household naming: same reset for the household choice page.
+  if ($('householdNameInput')) $('householdNameInput').value = '';
+  showHouseholdPanel('choice');
   await show('auth');
 });
 // No header Refresh button anymore: tapping a tab refreshes.
 
+// Household naming (owner, Nov 4, 2026): creating a household is
+// two panels — choice, then an optional naming step. The choice
+// button no longer calls the RPC; the naming step's button does.
+// The join path is untouched and never sees the naming step.
+const showHouseholdPanel = (which) => {
+  $('householdChoicePanel')?.classList.toggle('hidden', which !== 'choice');
+  $('householdNamePanel')?.classList.toggle('hidden', which !== 'name');
+};
 $('createHouseholdBtn').addEventListener('click', async () => {
-  const btn = $('createHouseholdBtn');
+  $('householdNameMsg').textContent = '';
+  showHouseholdPanel('name');
+  $('householdNameInput')?.focus();
+});
+$('householdNameBackBtn')?.addEventListener('click', () => {
+  showHouseholdPanel('choice');
+  $('createHouseholdBtn')?.focus();
+});
+$('householdNameCreateBtn').addEventListener('click', async () => {
+  const btn = $('householdNameCreateBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
   // Household creation is server-side only — but NOT via the Edge
   // Function anymore. The bootstrap-household function failed on Nov 1
@@ -1881,9 +1947,19 @@ $('createHouseholdBtn').addEventListener('click', async () => {
   // owner, acts only for auth.uid(), refuses if the caller already has
   // a household, and needs no secret key at all. The client must still
   // never grant itself admin directly — this RPC is the only path.
-  const { data, error } = await supabase.rpc('create_household');
+  // Naming: the name is OPTIONAL. A blank name passes NO p_name
+  // argument, so both the old no-arg RPC and the new
+  // create_household(p_name) (supabase/create-household-name.sql,
+  // NOT yet applied — owner review first) create the default
+  // 'Household'. A supplied name passes p_name, which requires the
+  // new SQL; on the old RPC that call fails and the existing error
+  // message shows — never a silent fallback through another path.
+  const rawName = $('householdNameInput')?.value.trim() ?? '';
+  const name = rawName.slice(0, 80);
+  const args = name ? { p_name: name } : {};
+  const { data, error } = await supabase.rpc('create_household', args);
   if (error) console.warn('create_household failed:', error.message);
-  $('householdMsg').textContent = data
+  $('householdNameMsg').textContent = data
     ? 'Household created. Share the invite code from Settings so the second account can join as member.'
     : 'Could not create household. Try again.';
   // FIX (Nov 1, evening — reproduced by the beta test): do NOT re-read
@@ -1892,8 +1968,15 @@ $('createHouseholdBtn').addEventListener('click', async () => {
   // the household screen until the user hit Refresh. The RPC already
   // proves the caller is the new household's admin, so set it directly
   // and go straight to the dashboard.
-  if (data) { household = { household_id: data, role: 'admin' }; await show('app'); await refresh(); }
-  if (btn) { btn.disabled = false; btn.textContent = 'Create household (I am the owner / admin)'; }
+  if (data) {
+    household = { household_id: data, role: 'admin' };
+    // Leave the choice panel showing for any later return to this
+    // page, with the name cleared.
+    if ($('householdNameInput')) $('householdNameInput').value = '';
+    showHouseholdPanel('choice');
+    await show('app'); await refresh();
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Create household'; }
 });
 $('joinHouseholdBtn').addEventListener('click', async () => {
   const btn = $('joinHouseholdBtn');

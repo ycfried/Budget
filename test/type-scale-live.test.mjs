@@ -52,10 +52,12 @@ test('hero/stat negative figures stay soft-red; progress and See all stay blue',
   assert.match(block, /#section-recent \.btn \{ color: #2f6bff; \}/, 'See all text is brand blue');
 });
 
-test('only styles.css is version-bumped', () => {
-  // Pinned versions move with later branches; funds-actions-three
-  // touches live.js only, so only the live.js pin moves (v40) while
-  // styles stays v30 — the invariant is the pins match live.html.
-  assert.match(html, /styles\.css\?v=30/, 'styles.css stays v30');
-  assert.match(html, /live\.js\?v=40/, 'live.js bumped to v40');
+test('version pins match live.html', () => {
+  // Pinned versions move with later branches; auth-card-cleanup
+  // touches both files, and live.js moves past PR #29's v40 to v41
+  // (two different live.js files must never share one version
+  // number, or cached phones would never refetch) — the invariant
+  // is the pins match live.html.
+  assert.match(html, /styles\.css\?v=31/, 'styles.css bumped to v31');
+  assert.match(html, /live\.js\?v=41/, 'live.js bumped to v41');
 });
