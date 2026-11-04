@@ -108,6 +108,25 @@ test('menu has no Edit-profile row and still has Settings + Sign out, in order',
   assert.match(js, /menuSettingsBtn.*addEventListener\('click'/s);
 });
 
+test('bank-row logo tile sits at the top of the block, row otherwise unchanged', () => {
+  // Scoped rule: only the logo tile inside .bank-row gets flex-start.
+  const tileRule = css.match(/body\.live \.bank-row \.bank-logo, body\.live \.bank-row \.bank-logo-tile \{[^}]*\}/);
+  assert.ok(tileRule, 'bank-row logo rule found');
+  assert.match(tileRule[0], /align-self: flex-start/);
+  // The row itself still centers its other children (Disconnect
+  // button stays where it is) — its alignment is not changed.
+  const rowRule = css.match(/body\.live \.bank-row \{[^}]*\}/);
+  assert.ok(rowRule, '.bank-row rule found');
+  assert.match(rowRule[0], /display: flex/);
+  assert.match(rowRule[0], /align-items: center/);
+  assert.match(rowRule[0], /gap: 12px/);
+  assert.match(rowRule[0], /padding: 12px 0/);
+  // Transaction merchant tiles are untouched: no align-self rule
+  // targets them.
+  assert.doesNotMatch(css, /\.tx-icon-logo[^{]*\{[^}]*align-self/);
+  assert.doesNotMatch(css, /\.tx-logo[^{]*\{[^}]*align-self/);
+});
+
 test('Settings Profile card itself is unchanged', () => {
   assert.ok(html.includes('id="section-profile"'));
   assert.ok(html.includes('id="profileNameInput"'));

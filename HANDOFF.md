@@ -2066,3 +2066,17 @@ tertiary collides with nothing. Versions unchanged by this addition
 (live.js v38, styles.css v29). Tests: tertiary grey/ink/solid-fill
 assertions plus adjacency assertions in
 test/weekly-left-only-profile-menu.test.mjs.
+
+## Bank-icon top alignment (owner, Nov 3, ~11:25 PM, Connected accounts screenshot) — same branch weekly-left-only-profile-menu
+The bank icon tile sat vertically centered against a tall
+multi-account institution block (institution name + account lines
++ nickname buttons + last-synced), because body.live .bank-row is
+display:flex with align-items:center. Narrow fix only: a scoped
+rule gives the logo tile inside .bank-row align-self:flex-start,
+so the icon sits at the top of the block, aligned with the
+institution name. The row's own alignment is unchanged (the
+Disconnect button stays where it is) and transaction merchant
+tiles are untouched. No version change (styles.css is already at
+v29 on this unmerged branch). Tests: bank-row logo flex-start
+assertion plus row-unchanged and merchant-tiles-untouched
+assertions in test/weekly-left-only-profile-menu.test.mjs.

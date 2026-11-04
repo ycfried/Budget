@@ -491,6 +491,14 @@ body.live .bank-row { display: flex; gap: 12px; align-items: center; padding: 12
 body.live .bank-row:last-child { border-bottom: 0; }
 body.live .bank-info { flex: 1; min-width: 0; }
 body.live .bank-logo, body.live .bank-logo-tile { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 10px; background: #eef1f6; color: #0f172a; font-weight: 700; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+/* Bank icon top-alignment (owner, Nov 3, ~11:25 PM, Connected
+   accounts screenshot): .bank-row centers its children, so the
+   40px logo tile sat mid-block against a tall multi-account
+   institution block. Only the logo tile inside .bank-row is
+   pinned to the top, aligned with the institution name; the row's
+   own alignment (and the Disconnect button's place in it) is
+   unchanged, and transaction merchant tiles are untouched. */
+body.live .bank-row .bank-logo, body.live .bank-row .bank-logo-tile { align-self: flex-start; }
 body.live .bank-logo-img { width: 100%; height: 100%; object-fit: contain; }
 body.live .sav-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 body.live .sav-grid > div { min-width: 0; }
