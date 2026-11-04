@@ -98,6 +98,9 @@ export function isExcludedFromMath(t) {
   // reclassifies via the reclassify_transaction RPC, after which the
   // row counts under its CURRENT kind).
   if (t.kind === 'payment' || t.kind === 'cashback') return true;
+  // delta3: transfers between the household's own accounts never count
+  // toward weekly spending, refunds, or restoration, either direction.
+  if (t.kind === 'transfer') return true;
   // Pending/provisional REFUNDS restore nothing and are excluded from
   // week math until they post (state 'verified'). Provisional CHARGES
   // still count — the distinction is by kind + state, not state alone.

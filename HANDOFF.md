@@ -660,3 +660,177 @@ default because these were unset — that is fixed, not a standing bug.
   one label fix on top of the branch: payment/cashback detail lines
   now state the kind exclusion instead of the generic "counts toward
   its week" text.
+
+## DELTA3 ADDENDUM (branch delta3, NOT merged — parent reviews and ships)
+Live at branch point: v26/v17 (PR #12). Delta3 bumps live.js to v27
+and styles.css to v18. NO SQL applied to production, NO rows written
+to the owner household, NO live-app loads on the owner household
+(code analysis only for real-household questions). No week-close
+math, allowance, or authorization change. Manual refunds still NOT
+built (owner decision Nov 3 stands). History relocation stays.
+  1. TRANSFER KIND (owner: "the transfer issue needs to be
+  resolved"). New kind 'transfer': TRANSFER_PATTERN
+  (/INTERNAL TRANSFER/i) checked FIRST in classifyKind in all four
+  canonical.ts copies (_shared, plaid-sync, ingest-amex-alert,
+  gmail-poll — verified byte-identical after the edit), so it
+  applies to both classifyKind and classifyMerchantOnly; TxKind
+  union extended in all four. engine.mjs isExcludedFromMath excludes
+  transfer in all four copies (root, _shared, compute-week,
+  week-close), so it contributes 0 to charges, refunds, and
+  restoration, either direction. reclassify_transaction RPC now
+  allows 'transfer' (supabase/05-transaction-mutation-rpcs.sql),
+  and the client reclassify sheet offers Transfer — this is the
+  path for NON-internal transfers (to another person), which stay
+  charge/refund on ingest by design. Detail label + impact line:
+  "This is a transfer between your accounts. It does not count
+  toward weekly spending." CSV import uses the same rule
+  (classifyCsvKind in filterState.mjs: transfer first, else sign).
+  PREPARED ONLY, NOT APPLIED: supabase/transfer-kind.sql (CHECK
+  constraint drop/re-add following payment-kind.sql, adding
+  'transfer' to the full list) and supabase/transfer-backfill.sql
+  (Part A read-only impact queries — rows by kind, by week,
+  locked-vs-open via week_closes, current-open-week delta,
+  restoration/held linkage — then Part B, the idempotent update
+  of merchant ILIKE '%INTERNAL TRANSFER%' charge/refund rows to
+  'transfer'). Live backfill is HELD for owner approval on the
+  measured Part A numbers. Locked weeks keep closed figures (the
+  locked-week guard); open weeks recompute on the next run. If
+  Part A query 5 returns linked restoration/held rows, STOP and
+  decide with the owner — the backfill never edits those links.
+  2. WEEK-CLOSE LOGGING + FIGURE CHECK. Server
+  (supabase/functions/week-close/index.ts) writes the "Weeks
+  processed" audit row ONLY when something actually happened
+  (weeksClosed > 0, releasesDone > 0, restorations > 0, or
+  heldCreated > 0); no-op runs return the summary silently.
+  heldLegacy deliberately excluded (counted, never changed).
+  Client (live.js refresh()): the close call moved to AFTER
+  compute-week loads, gated by a due-check (filterState.mjs
+  isWeekCloseCheckDue) against a localStorage fingerprint
+  (ob-weekclose-<household_id>) holding the last checked week
+  start — same week as the last check skips the call; a week
+  boundary since the check calls; unknown due-ness (compute-week
+  failed) falls back to calling, because the server no-op is
+  silent. The close path itself is NOT removed (admin loads are
+  what close weeks; no scheduled week-close). When a call actually
+  closed a week, figures reload once. Release inserts harden
+  against concurrent runs: a 23505 unique violation on
+  (household_id, week_start) is swallowed (the other run already
+  created that release); other errors still retry once without
+  closed_at, then fail loudly. IDEMPOTENCY (why repeats do not
+  move closed figures): locked + already-closed weeks are skipped
+  outright (walk loop, chain from recorded values); open-week
+  recomputes are deterministic upserts on (household_id,
+  week_start) with the late-adjustment freeze (unposted =
+  max(0, lockedAlreadyClosed - alreadyPosted), absorbed once);
+  releases are claimed by conditional status updates (pending ->
+  released; surplus-delta claim on status + old value);
+  restorations are guarded by the in-memory existingEntryByRefund
+  set plus the unique-per-refund constraint. New transactions
+  arriving between runs legitimately change open weeks — that is
+  new data, not run instability. Tests: shouldLogWeekClose /
+  isWeekCloseCheckDue / classifyCsvKind / transfer exclusion in
+  test/delta3.test.mjs.
+  3. LOADING SCREEN. view-loading is the HTML default (brand-blue
+  spinner, "OnBudget", "Loading your budget…"), so a signed-in
+  reload never flashes the sign-in form; boot() replaces it
+  directly with auth, household, or app. Signed-out visits go
+  loading -> sign-in, no app-shell flash. Figures keep "…"
+  placeholders while unresolved (never $0.00 or empty-state text
+  before the request finishes); refresh keeps the last successful
+  value while new figures load. Auth-flow buttons now show
+  progress + block repeats like the sync button (sign-in
+  "Signing in…", sign-up "Creating account…", create "Creating…",
+  join "Joining…", each restored after; sign-in/sign-up route
+  through the loading screen on success).
+  4. UI CLEANUP BATCH. (a) Add subtitle sits on the same line as
+  the "Add" header (inline header row); no other card has a
+  single short subtitle line left after declutter, so no other
+  card changed. (b) DECLUTTER — removed sentences (pure
+  describers only): Transactions "Everything spent on the
+  household cards. Tap a transaction for detail and actions.";
+  CSV "Never enter a full card number — the file should contain
+  card endings only."; History link "Closed weeks and a shared
+  record of every change in this household, grouped by day.";
+  Funds actions "Money moves open one at a time, so the page
+  stays short."; Extra Fund "Leftover money from weeks you spent
+  under budget — use it for extras."; Charity "November 2026
+  onward. Committed is 10% of income recorded here (or the rate
+  set for that income); given is confirmed gifts only. A negative
+  remaining means you are ahead." (the ahead-meaning survives in
+  the figure itself, which renders "Ahead by $X" when negative).
+  CSV expected-columns paragraph shortened to the columns list
+  plus one short line: "Preview first — nothing is added until
+  you confirm." (dropped clauses: "Nothing is added until you
+  review the preview and tap Confirm. Duplicates are skipped.
+  Imports are provisional until the bank confirms them." — the
+  preview itself shows new/duplicate counts). Settings intro
+  admin version trimmed of the stale "…moved here from Funds."
+  clause. KEPT + flagged (carry real rules/state, not bloat):
+  manual-form "Never enter a full card number.", gift-form
+  "Leave the card suffix blank for a cash gift. Never enter a
+  full card number.", filter-sheet amount explainer (refund
+  counts as a negative amount), History sections intro (carries
+  the date-filter instruction), fund/charity/review form
+  explainers (rules, not describers). (c) Pills squarish: .pill,
+  .role-pill, .badge, .tx-chip, .tx-active-filter 999px -> 8px
+  (colors unchanged; hero progress bar keeps 999px — not a
+  label). (d) Third-button coloring: Add choices verified as
+  primary (Add by hand) / secondary (Import CSV) / tertiary
+  (Give to charity); .btn-tertiary now has a 1px brand-blue
+  border (#eef4ff / #2f6bff unchanged; border-box sizing means
+  no size shift). Same tertiary border applies to every 3-level
+  row (Funds actions, filter sheet Cancel). (e) Transaction
+  detail: labeled metric rows (Date / Week / Card / Source /
+  Status) + one kind-specific impact line; button order Exclude,
+  Mark as charity, Use Extra Fund, Reclassify, Remove LAST
+  (Exclude/Reclassify secondary, charity/fund tertiary, Remove
+  destructive red; excluded rows: Restore, Reclassify, Remove;
+  the destructive button keeps its honest per-source label —
+  "Delete" for hand-entered rows, "Remove" for bank/email/file
+  rows). Buttons wrap via .btn-row flex. (f) CSV: styled file
+  control (label-as-button + file-name text; native input
+  visually hidden but accessible, same id/handler). (g) Charity
+  in regular filters: status control already first in the sheet;
+  options now in plain words in this order — All transactions,
+  Charity gifts, Pending, Posted, Refunds, Excluded. Filter logic
+  verified in code: byFilter maps 'charity' to kind === 'charity'
+  and the count line totals gifts on the Charity filter (excluded
+  rows not counted); the removable label stays "Charity".
+  (h) Home dashboard: Weekly/Charity/Fund breakdown sheets now
+  use labeled metric rows (showSheet rows param); the weekly
+  reconciliation equation stays below the rows, unchanged;
+  Weekly Home card secondary now reads "Spent $X of $Y room"
+  (same room figure as the hero). Presentation only; no figure
+  changes anywhere in item 4.
+  4b. FUNDS BALANCE PARITY (added owner screenshot, Nov 3
+  evening): both panels now share the identical template —
+  title, prominent figure, secondary lines — with no explainer
+  paragraphs and no button rows, so Available and Remaining sit
+  at the same height; grid stretch + flex-column panels keep
+  equal height; secondary lines wrap inside the panel
+  (overflow-wrap: anywhere on panel muted lines). Button parity
+  by REMOVAL: the Extra-only beside "Ask for fund money" button
+  (fundAskBesideBtn + handler) is gone — Ask already lives in
+  Funds actions below (fundActionAskBtn, all roles). This
+  SUPERSEDES the v26 HANDOFF line claiming Ask "sits beside the
+  Extra Fund balance as well as in the actions card". Figures and
+  values unchanged; side-by-side above 420px, stacked below
+  (breakpoint unchanged). Still to prove live: the parity at
+  320/390/desktop widths with real figures.
+  Tests 110/110 (98 before + 12 new delta3 tests). Still to prove
+  live on a real phone (synthetic households only for writes):
+  loading screen on signed-in reload / signed-out visit / slow
+  connection; 3 admin loads -> no new "Weeks processed" rows +
+  figures unchanged; closing a synthetic week -> exactly one
+  activity row with the correct summary; CSV import incl. an
+  INTERNAL TRANSFER row -> kind 'transfer', excluded from week
+  math; double-tap guards; delete-member end-to-end (bug 9);
+  mark-as-charity on a synced posted row; Funds parity at
+  320/390/desktop; transfer backfill Part A numbers on the real
+  household (read-only) before any Part B decision. Deliberately
+  NOT in delta3: the duplicate-Plaid-item guard (owner queued it
+  post-delta3: reconnecting must not silently create a second
+  item for the same bank account) and the new-browser admin
+  sign-in report (cause not diagnosed; exact message/screen
+  still needed — delta3 touches sign-in progress display only,
+  not auth logic).

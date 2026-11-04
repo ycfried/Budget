@@ -143,3 +143,39 @@ export function groupDayActivity(entries) {
   }
   return out;
 }
+
+// Delta3: week-close activity-log condition, mirrored from
+// supabase/functions/week-close/index.ts. The server writes a "Weeks
+// processed" row ONLY when the run actually changed something; this
+// helper is the client-side/testable copy of that condition. Legacy
+// held releases are deliberately NOT here: they are counted, never
+// changed, so observing one is not "something happened".
+export function shouldLogWeekClose({ weeksClosed = 0, releasesDone = 0, restorations = 0, heldCreated = 0 } = {}) {
+  return weeksClosed > 0 || releasesDone > 0 || restorations > 0 || heldCreated > 0;
+}
+
+// Delta3: client week-close due-check. The app stores the week start
+// of the last successful week-close check (localStorage, per
+// household). A new check is due when there is no stored check, or
+// when the calendar week has rolled over since the stored one — i.e.
+// a week may have completed since the last check. Within the same
+// week the call is skipped: the server would be a silent no-op
+// anyway, and skipping avoids the reload-spam call entirely. When
+// due-ness cannot be determined (no current week start loaded) the
+// caller falls back to calling, because the server no-op is silent.
+// Week starts are YYYY-MM-DD, so plain string comparison orders them.
+export function isWeekCloseCheckDue({ lastCheckedWeekStart = null, currentWeekStart = null } = {}) {
+  if (!currentWeekStart) return true;
+  if (!lastCheckedWeekStart) return true;
+  return lastCheckedWeekStart < currentWeekStart;
+}
+
+// Delta3: CSV import kind, kept consistent with the server
+// classifyKind transfer-first rule (canonical.ts). An INTERNAL
+// TRANSFER row in a CSV file imports as kind='transfer' (excluded
+// from week math), never as a charge or a refund by sign. Every other
+// row keeps the old sign rule.
+export function classifyCsvKind(merchant, amountCents) {
+  if (/INTERNAL TRANSFER/i.test(String(merchant ?? ''))) return 'transfer';
+  return amountCents < 0 ? 'refund' : 'charge';
+}

@@ -1,0 +1,141 @@
+-- Household Budget — delta3 backfill: reclassify internal transfers
+-- (PREPARED ONLY — DO NOT APPLY without owner approval on the impact).
+--
+-- This is a MONEY change with locked-week interplay, so it is split in
+-- two parts on purpose:
+--   PART A (read-only): the impact queries. Run these FIRST and show the
+--     owner the numbers before anything is written.
+--   PART B (the write): reclassifies existing rows whose merchant
+--     contains INTERNAL TRANSFER and whose kind is charge or refund to
+--     kind='transfer'. It must run only AFTER supabase/transfer-kind.sql
+--     is applied (otherwise the CHECK constraint rejects 'transfer'),
+--     and only after the owner approves the Part A numbers.
+--
+-- What the write changes, and what it does NOT change:
+--   - Rows move from charge/refund to transfer. The transfer kind is
+--     excluded from week math (engine.mjs isExcludedFromMath), so an
+--     OPEN week's charges/refunds drop by the reclassified amounts the
+--     next time that week is computed, and a transfer in stops netting
+--     as a refund.
+--   - LOCKED weeks are NOT recomputed by week-close (locked-week guard),
+--     so a reclassified row dated in a locked week changes no closed
+--     figure by itself. It DOES change what a future restoration
+--     simulation sees for that purchase week, and it changes the
+--     current-week figure only if the row is dated in the current open
+--     week (see Part A query 4).
+--   - Restoration entries and held refunds that reference a reclassified
+--     row are NOT edited by this file. Query 5 lists them; if any exist,
+--     resolve them with the owner before running Part B (a restoration
+--     built on a row that stops being a charge/refund needs a decision,
+--     not a silent edit).
+--   - Rows are never deleted. kind is the only column written, and the
+--     update is idempotent (re-running matches zero rows, because kind
+--     is no longer charge/refund).
+--   - Scope boundary: ONLY merchant ILIKE '%INTERNAL TRANSFER%' rows
+--     move. A transfer to another person (no INTERNAL TRANSFER text)
+--     stays charge/refund; the admin reclassify_transaction RPC (which
+--     now allows 'transfer') covers those one by one.
+--
+-- ============================ PART A (read-only) =====================
+-- Run every query below and record the results before deciding on B.
+-- Replace <household_id> with the real household UUID when running in
+-- the dashboard SQL editor (the value is never committed to the repo).
+
+-- A1. Candidate rows: how many, and how much money, would move?
+-- select kind, count(*) as rows, sum(amount_cents) as total_cents
+--   from transactions
+--  where household_id = '<household_id>'
+--    and merchant ilike '%INTERNAL TRANSFER%'
+--    and kind in ('charge', 'refund')
+--  group by kind
+--  order by kind;
+
+-- A2. Candidates by week (week_start = Monday of the row's week; the
+-- week containing the row's date). Shows which weeks' figures move.
+-- select date_trunc('week', date)::date as week_start, kind,
+--        count(*) as rows, sum(amount_cents) as total_cents
+--   from transactions
+--  where household_id = '<household_id>'
+--    and merchant ilike '%INTERNAL TRANSFER%'
+--    and kind in ('charge', 'refund')
+--  group by week_start, kind
+--  order by week_start, kind;
+
+-- A3. Locked vs open: which candidate weeks already have a close row?
+-- (A locked week keeps its closed figures; an open week recomputes.)
+-- select date_trunc('week', t.date)::date as week_start, t.kind,
+--        count(*) as rows, sum(t.amount_cents) as total_cents,
+--        bool_or(wc.week_start is not null) as week_already_closed
+--   from transactions t
+--   left join week_closes wc
+--     on wc.household_id = t.household_id
+--    and wc.week_start = date_trunc('week', t.date)::date
+--  where t.household_id = '<household_id>'
+--    and t.merchant ilike '%INTERNAL TRANSFER%'
+--    and t.kind in ('charge', 'refund')
+--  group by week_start, t.kind
+--  order by week_start, t.kind;
+
+-- A4. Current-open-week figure delta if applied: the charges total and
+-- refunds total the current week would lose (compare with the live
+-- Weekly card before and after; nothing else in the week changes).
+-- select
+--   sum(case when kind = 'charge' then amount_cents else 0 end) as charges_cents_removed,
+--   sum(case when kind = 'refund' then amount_cents else 0 end) as refunds_cents_removed,
+--   count(*) as rows
+--   from transactions
+--  where household_id = '<household_id>'
+--    and merchant ilike '%INTERNAL TRANSFER%'
+--    and kind in ('charge', 'refund')
+--    and date_trunc('week', date)::date = date_trunc('week', current_date)::date;
+
+-- A5. Restoration / held linkage: any restoration entry or held refund
+-- pointing at a candidate row? If this returns rows, STOP and decide
+-- with the owner before Part B — do not let the backfill silently
+-- orphan a restoration's purchase/refund link.
+-- select 'restoration' as link_type, re.id, re.purchase_transaction_id,
+--        re.refund_transaction_id,
+--        re.restored_surplus_cents + re.debt_reduction_cents + re.fund_credit_cents as restoration_cents
+--   from restoration_entries re
+--  where re.household_id = '<household_id>'
+--    and (re.purchase_transaction_id in (
+--          select id from transactions
+--           where household_id = '<household_id>'
+--             and merchant ilike '%INTERNAL TRANSFER%'
+--             and kind in ('charge', 'refund'))
+--      or re.refund_transaction_id in (
+--          select id from transactions
+--           where household_id = '<household_id>'
+--             and merchant ilike '%INTERNAL TRANSFER%'
+--             and kind in ('charge', 'refund')))
+-- union all
+-- select 'held' as link_type, h.id, h.purchase_transaction_id,
+--        h.refund_transaction_id, h.held_cents
+--   from held_refunds h
+--  where h.household_id = '<household_id>'
+--    and (h.purchase_transaction_id in (
+--          select id from transactions
+--           where household_id = '<household_id>'
+--             and merchant ilike '%INTERNAL TRANSFER%'
+--             and kind in ('charge', 'refund'))
+--      or h.refund_transaction_id in (
+--          select id from transactions
+--           where household_id = '<household_id>'
+--             and merchant ilike '%INTERNAL TRANSFER%'
+--             and kind in ('charge', 'refund')));
+
+-- ============================ PART B (the write) ======================
+-- Run ONLY after transfer-kind.sql is applied AND the owner approves
+-- the Part A numbers AND query A5 returns zero rows (or the linked
+-- rows have an explicit owner decision recorded in the audit note).
+-- Idempotent: re-running updates zero rows.
+
+-- update transactions
+--    set kind = 'transfer'
+--  where household_id = '<household_id>'
+--    and merchant ilike '%INTERNAL TRANSFER%'
+--    and kind in ('charge', 'refund');
+--
+-- Verify after: re-run A1 — it must return zero rows. Then reload the
+-- app: open weeks recompute on the next compute-week/week-close run;
+-- locked weeks keep their closed figures (see header note).
