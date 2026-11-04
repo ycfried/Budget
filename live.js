@@ -27,6 +27,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
 import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, isWeekCloseCheckDue, classifyCsvKind } from './filterState.mjs';
+import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
@@ -318,7 +319,7 @@ async function refresh() {
   const clearWeekNumbers = () => {
     $('weekLabel').textContent = 'Week numbers unavailable';
     $('weeklyAvailable').textContent = '—';
-    $('homeWeeklyPrimary').textContent = '—';
+    $('weeklyAvailable').setAttribute('aria-label', 'Show Weekly Budget breakdown');
     $('homeFundPrimary').textContent = '—';
     const bar = document.getElementById('weekProgressBar');
     if (bar) { bar.style.width = '0%'; bar.parentElement?.classList.remove('over'); }
@@ -372,14 +373,13 @@ async function refresh() {
       // the card's aria-label, so assistive technology still gets
       // them. Spent, room, carried debt, and outgoing debt all live
       // in the sheet, not on the face.
-      const wp = $('homeWeeklyPrimary');
-      if (wp) {
-        wp.innerHTML = formatCentsHtml(avail);
-        wp.classList.toggle('negative', avail < 0);
-        document.querySelector('[data-home-card="weekly"]')?.setAttribute('aria-label', avail < 0
-          ? `Weekly Budget, over budget by ${formatCents(Math.abs(avail))}, show breakdown`
-          : `Weekly Budget, ${formatCents(avail)} left this week, show breakdown`);
-      }
+      // Excluded-decisions (owner, Nov 3, 9:42 PM): the smaller Weekly
+      // Budget stat card is gone — the hero number IS the breakdown
+      // target. The face stays numbers-only; the words live in the
+      // hero number's aria-label, exactly as the card used to carry.
+      $('weeklyAvailable').setAttribute('aria-label', avail < 0
+        ? `Weekly Budget, over budget by ${formatCents(Math.abs(avail))}, show breakdown`
+        : `Weekly Budget, ${formatCents(avail)} left this week, show breakdown`);
       currentWeekData = { weekStart, baseAvailableCents: baseAvailable, tempCents: tempC,
         carriedDebtCents: carried, chargesCents: charges, availableCents: avail,
         outgoingDebtCents: outgoingDebt, weekLocked: !!r.week_locked,
@@ -1937,6 +1937,23 @@ async function callFn(name, body) {
 }
 
 $('connectBankBtn')?.addEventListener('click', async () => {
+  // Excluded-decisions (a) pre-Link warning: if the household already
+  // has an ACTIVE connection, list it and warn that connecting the
+  // same account again creates a duplicate. Cancel is the safe path
+  // (the sheet's Cancel button comes first); only an explicit
+  // "Connect anyway" proceeds. A failed read fails OPEN — it must
+  // never block a first or legitimate connection.
+  try {
+    const { data: activeItems } = await supabase.from('plaid_items_public')
+      .select('plaid_item_id, institution_name').eq('household_id', household.household_id).eq('status', 'active');
+    if (activeItems && activeItems.length) {
+      const { data: activeAccts } = await supabase.from('plaid_accounts')
+        .select('plaid_item_id, name, mask').in('plaid_item_id', activeItems.map((i) => i.plaid_item_id));
+      const lines = activeItems.map((item) => describeConnection(item, (activeAccts ?? []).filter((a) => a.plaid_item_id === item.plaid_item_id)));
+      const proceed = await showConfirm('Already connected?', `You already have ${activeItems.length === 1 ? 'this bank connection' : 'these bank connections'}:\n${lines.join('\n')}\n\nConnecting the same account again will create a duplicate. You do not need to reconnect an account that is already syncing — only continue if you are connecting a different account.`, 'Connect anyway');
+      if (!proceed) return;
+    }
+  } catch (e) { console.warn('duplicate-warning read failed, proceeding:', e); }
   showToast('Getting a secure bank connection…');
   const out = await callFn('plaid-link', { household_id: household.household_id });
   if (!out.link_token) {
@@ -1981,7 +1998,7 @@ async function runBankSync() {
     const out = await callFn('plaid-sync', { household_id: household.household_id });
     const text = out.error
       ? `Sync failed: ${out.error}`
-      : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).`;
+      : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).${(out.duplicate_removed ?? []).length ? ` A duplicate bank connection was removed because those accounts are already connected on another connection. Past transactions stay.` : ''}`;
     showToast(text, !!out.error);
     // No localStorage sync/connection state: refresh() re-reads last_sync_at
     // from plaid_items, which is the server truth.
@@ -2335,9 +2352,10 @@ document.getElementById('settingsBackBtn')?.addEventListener('click', () => show
 // sheet over the stationary Home screen. Opening or closing a sheet
 // writes nothing and triggers no sync; it only reads the numbers
 // already loaded by refresh().
-document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListener('click', async () => {
-  const kind = el.dataset.homeCard;
-  if (kind === 'weekly') {
+// Excluded-decisions: the Weekly sheet used to open from the small
+// stat card; it now opens from the hero number (see the hero target
+// handlers below). Same rows, same handler — no duplication.
+async function openWeeklySheet() {
     const w = currentWeekData;
     if (!w) { await showAlert('Weekly Budget', 'Weekly numbers are not loaded yet. Try again in a moment.'); return; }
     // Delta3: labeled metric rows instead of the paragraph of figures;
@@ -2369,7 +2387,19 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
       ['Left', formatCents(w.availableCents)],
       ['Outgoing debt', formatCents(w.outgoingDebtCents)],
     ] }, confirmLabel: 'Close' });
-  } else if (kind === 'fund') {
+}
+// Hero number as the Weekly breakdown target. The hero already has a
+// Sync button in its head row, so the number area — not the whole
+// hero card — is the target: no button nested inside a button, and
+// the Sync button keeps working on its own. Keyboard: Enter/Space.
+const heroWeeklyTarget = document.getElementById('weeklyAvailable');
+heroWeeklyTarget?.addEventListener('click', openWeeklySheet);
+heroWeeklyTarget?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWeeklySheet(); }
+});
+document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListener('click', async () => {
+  const kind = el.dataset.homeCard;
+  if (kind === 'fund') {
     const f = currentFundData;
     if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
     await showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), confirmLabel: 'Close' });

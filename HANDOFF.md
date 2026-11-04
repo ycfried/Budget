@@ -1727,3 +1727,87 @@ loaded signed in as the owner.
   phone; sheet value wrapping at 390px; search no-match and
   clear-filters action; profile email shown once with and
   without a name set.
+
+## Excluded-decisions (owner decisions, Nov 3, 9:42 PM) — NOT MERGED
+Branch excluded-decisions, base origin/main e60dbb2 (PR #18, live.js
+v31 / styles v22). Branch versions: live.js v32 / styles v23. Live
+still serves v31/v22 until merged. Tests 168/168 (156 before + 12
+new in test/excluded-decisions.test.mjs; one stale assertion in
+test/ux-review-fix.test.mjs updated for the removed card — intended
+removal, not a regression). `node --check` clean on live.js and
+duplicateConnection.mjs; `git diff --check` clean; live.html ids
+zero duplicates; homeWeeklyPrimary gone from HTML and JS; no
+secrets, no UUIDs, no ios/ or workflow files, no SQL file (code-only
+guard), no money/week math or filter-match changes, no manual
+refunds, no transactions ever deleted by the guard.
+
+### 1. HERO ONLY — smaller Weekly Budget card removed
+Home showed the same weekly figure twice: the hero card
+(#section-week, big number + progress bar) and a smaller Weekly
+Budget stat card (data-home-card="weekly", #homeWeeklyPrimary).
+Owner: they are basically the same thing, keep ONE, numbers-only.
+Implemented: the stat card is deleted (Charity and Extra Fund
+cards untouched); the Weekly sheet is unchanged and now opens
+from the hero number itself via a new openWeeklySheet() (same
+rows, same handler, no duplication). The hero already has a Sync
+button in its head row, so ONLY the number area is the target
+(role="button", tabindex="0", click + Enter/Space) — no button
+nested inside a button, and Sync keeps working on its own. The
+face stays numbers-only (signed number + red when negative);
+the words live in the hero number's aria-label, exactly as the
+card used to carry ("Weekly Budget, over budget by $X, show
+breakdown" / "Weekly Budget, $X left this week, show breakdown").
+All homeWeeklyPrimary references removed (clearWeekNumbers and
+loadWeekNumbers now update #weeklyAvailable only). Bonus: the
+stats grid was already 2 columns, so the two remaining cards
+now fill it exactly. Still to prove on a real phone: hero number
+tap + keyboard opening the Weekly sheet at 390px.
+
+### FUTURE RULE recorded from the same discussion (NOT code)
+When a detail/return navigation exists in future, filters and
+scroll position must be restored on return. The current detail
+is inline, so there is nothing to restore today — this rule is
+recorded here only, and was not built into this package.
+
+### 2. DUPLICATE-CONNECTION GUARD — same account cannot connect twice
+Owner: it should not be possible to connect the same bank
+account twice; a blanket block by institution name is wrong
+(genuinely different accounts at the same bank must still work).
+The owner's own case was two American Express items whose
+accounts overlapped. Constraints honoured: plaid-exchange
+fetches no accounts at exchange time (accounts arrive later
+via plaid-sync into plaid_accounts), so no guard is possible
+at exchange time; the guard therefore lives at pre-Link
+warning time and at sync time, when accounts are known.
+(a) CLIENT pre-Link warning — FULLY BUILT in live.js: before
+Plaid Link opens, if any ACTIVE connection exists, a
+confirmation lists the active connections by name + masked
+accounts and warns that connecting the same account again
+creates a duplicate; Cancel (rendered first) is the safe
+path and only an explicit "Connect anyway" proceeds. A
+failed read fails OPEN and never blocks a legitimate
+connection. (b) SERVER duplicate-account block — FULLY BUILT
+in supabase/functions/plaid-sync/index.ts (deploys with the
+branch on merge, via the repo GitHub integration — NOT live
+until then): after /accounts/get, if a newer item's accounts
+are entirely already carried by ONE older ACTIVE item at the
+SAME institution, matched on mask AND account name (mask
+alone is not identity — two cards can share a last-4), the
+newer item is removed at Plaid via /item/remove and marked
+disconnected (plaid-disconnect semantics: past transactions
+stay, plaid_accounts rows stay, item moves to Previously
+connected), its transactions are skipped for that run, and
+the sync response carries duplicate_removed, which the
+client surfaces in the sync toast. Disconnected items are
+excluded from keepers, so reconnecting after a disconnect
+still works. Any failure fails OPEN: unprovable duplicates
+(missing masks/names/institution/dates), a failed Plaid
+removal, or a failed status update all leave the item
+syncing normally instead of removing it on a guess. No
+transaction row is ever deleted by this guard. Shared rule:
+duplicateConnection.mjs (client, unit-tested) and the
+plaid-sync helper are the same algorithm and must stay in
+step. Still to prove after merge: a real duplicate sync run
+(newer fully-duplicated item removed, older kept, different
+account at the same bank kept), and the pre-Link warning
+on a real phone.

@@ -158,8 +158,11 @@ test('Weekly sheet calculation is behind one tap, never a paragraph', () => {
 
 test('Home stat cards are Title + Amount only, words in aria-labels', () => {
   assert.doesNotMatch(html, /homeWeeklySecondary|homeFundSecondary|homeCharitySecondary/);
-  assert.match(js, /wp\.innerHTML = formatCentsHtml\(avail\);/);
-  assert.match(js, /wp\.classList\.toggle\('negative', avail < 0\)/);
+  // Excluded-decisions: the small Weekly card is gone — the hero number
+  // carries the same figure and the same aria words (see
+  // test/excluded-decisions.test.mjs for the full hero-target tests).
+  assert.match(js, /\$\('weeklyAvailable'\)\.innerHTML = formatCentsHtml\(avail\);/);
+  assert.match(js, /\$\('weeklyAvailable'\)\.classList\.toggle\('negative', avail < 0\)/);
   assert.match(js, /Weekly Budget, over budget by/);
   assert.match(js, /Charity, no charity tracked yet, show breakdown/);
   assert.match(css, /body\.live \.stat-card \.num\.negative \{ color: var\(--soft-red\); \}/);
