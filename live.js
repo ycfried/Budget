@@ -571,10 +571,12 @@ async function refresh() {
           ? `<button class="btn btn-small btn-danger" data-delete-tx="${t.id}" type="button" aria-label="Delete ${esc(t.merchant)}">Delete</button>`
           : `<button class="btn btn-small btn-danger" data-remove-tx="${t.id}" type="button" aria-label="Remove ${esc(t.merchant)} from the budget">Remove</button>`;
         const fundBtn = `<button class="btn btn-small" data-use-fund="${t.id}" type="button" aria-label="Use Extra Fund for ${esc(t.merchant)}">Use Extra Fund</button>`;
-        // Delta C2: on an admin row this is the fifth action, so it
-        // takes the tertiary treatment; members see it alone, where
-        // it stays secondary.
-        const fundBtnAdmin = fundBtn.replace('class="btn btn-small"', 'class="btn btn-small btn-tertiary"');
+        // Button-card-fix: on an admin row this sits between two
+        // tertiary buttons (Mark as charity, tint) and Reclassify, so
+        // it takes the outline tertiary variant, not tint — otherwise
+        // Mark as charity and Use Extra Fund would be adjacent
+        // duplicates. Members see it alone, where it stays secondary.
+        const fundBtnAdmin = fundBtn.replace('class="btn btn-small"', 'class="btn btn-small btn-outline"');
         // Admin actions are hidden from non-admins in the UI; enforcement
         // is server-side in the RPCs (see header note). Reclassify is
         // admin-only and goes through reclassify_transaction.
@@ -601,7 +603,7 @@ async function refresh() {
         // for bank/email/file rows (excluded, record kept).
         const action = !isAdmin ? (t.kind === 'charity' ? '' : fundBtn)
           : excluded
-          ? `<div class="btn-row"><button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${reclassBtn} ${deleteBtn}</div>`
+          ? `<div class="btn-row"><button class="btn btn-small btn-primary" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${reclassBtn} ${deleteBtn}</div>`
           : t.kind === 'charity'
           ? `<div class="btn-row">${deleteBtn}</div>`
           : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${charityBtn} ${fundBtnAdmin} ${reclassBtn} ${deleteBtn}</div>`;
@@ -910,13 +912,19 @@ async function refresh() {
     if (syncLine) syncLine.textContent = bankLastSyncAt ? `Last synced ${fmtDateTime(bankLastSyncAt)}` : 'Not synced yet.';
     const ls = document.getElementById('lastSync'); if (ls) ls.textContent = bankLastSyncAt ? fmtDateTime(bankLastSyncAt) : 'Not synced yet';
     const cb = $('connectBankBtn');
-    if (cb) { cb.disabled = false; cb.classList.remove('btn-primary'); cb.textContent = itemRows.some((i) => i.status === 'active') ? 'Connect another bank account' : 'Connect a bank account'; }
+    // Button-card-fix: Connect stays primary and Sync stays secondary
+    // in every state. The old code stripped primary from Connect and
+    // toggled it onto Sync when an item was active, so with no active
+    // item Connect and Sync were adjacent secondary buttons — the
+    // exact duplicate the owner rule forbids. Sequence is now always
+    // primary, secondary, tertiary.
+    if (cb) { cb.disabled = false; cb.classList.add('btn-primary'); cb.textContent = itemRows.some((i) => i.status === 'active') ? 'Connect another bank account' : 'Connect a bank account'; }
     // Reaudit N1: bank linking is admin-only (plaid-link/plaid-exchange
     // enforce it server-side with a 403); hide the connect button for
     // non-admins so members never see a dead button.
     if (cb) cb.style.display = (household && household.role === 'admin') ? '' : 'none';
     const sb = $('syncBankBtn');
-    if (sb) sb.classList.toggle('btn-primary', itemRows.some((i) => i.status === 'active'));
+    if (sb) sb.classList.remove('btn-primary');
     // Decision 15: manual sync is admin-only once server sync is live
     // (plaid-sync enforces it server-side with a 403); hide the Bank &
     // Funds sync button for non-admins so members never see a dead
@@ -1070,20 +1078,22 @@ async function refresh() {
     const heldRows = (releases ?? []).filter((r) => r.status === 'held');
     const heldTotal = heldRows.reduce((t, r) => t + (r.surplus_cents || 0), 0);
     const shortfall = hh?.fund_shortfall_cents ?? 0;
-    currentFundData = { available, pending, releasedTotal, spent, shortfall };
+    currentFundData = { available, pending, releasedTotal, spent, shortfall, heldTotal, heldWeeks: heldRows.length };
     const fp = $('homeFundPrimary'); if (fp) fp.innerHTML = formatCentsHtml(available);
     // UX audit 07: a member cannot spend fund money, only request it
     // and wait for approval — so members read "Available to request",
-    // never "Spendable now". Admin wording stays as-is.
+    // never "Spendable now". Admin wording stays as-is. That wording
+    // lives in the tap sheet (and the Home card), not on this face.
     const fundFreeWord = household.role === 'admin' ? 'Spendable now' : 'Available to request';
     const fsec = $('homeFundSecondary');
     if (fsec) fsec.textContent = pending > 0 ? `Pending ${formatCents(pending)}` : shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : fundFreeWord;
     const fs = $('fundSummary');
-    // Delta C3: Available prominent, pending/owed as ONE secondary
-    // line, released/spent as one more line — the card stays short.
-    if (fs) fs.innerHTML = `<p class="fund-balance">${household.role === 'admin' ? 'Available' : 'Available to request'} <strong>${formatCents(available)}</strong></p>
-      <p class="muted small">${[pending > 0 ? `Pending ${formatCents(pending)}` : null, shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : null].filter(Boolean).join(' · ') || fundFreeWord}</p>
-      <p class="muted small">Released ${formatCents(releasedTotal)} · Spent ${formatCents(spent)}</p>${heldRows.length ? `<p class="muted small">Held for review: ${formatCents(heldTotal)} across ${heldRows.length} ${heldRows.length === 1 ? 'week' : 'weeks'}.</p>` : ''}`;
+    // Button-card-fix: the face is Title + Amount only. The title is
+    // the h2 in live.html; this is the amount alone, no "Available"
+    // word, no secondary lines. Pending, Owed back, Released, Spent,
+    // and Held all live in the tap sheet (fundBreakdownRows), so no
+    // information is lost. Values are unchanged, only presentation.
+    if (fs) fs.innerHTML = `<p class="fund-balance"><strong>${formatCents(available)}</strong></p>`;
     updateFundTopupPreview();
   } catch (e) {
     console.warn('fund summary read failed:', e);
@@ -1149,10 +1159,13 @@ async function refresh() {
     const cs = $('homeCharitySecondary');
     if (cs) cs.textContent = (committed === 0 && given === 0) ? 'No charity tracked yet.' : `Given ${formatCents(given)} · Committed ${formatCents(committed)}`;
     const ch = $('charitySummary');
-    // Delta C3: Remaining prominent, committed/given as ONE secondary line.
-    if (ch) ch.innerHTML = `<p class="fund-balance">Remaining <strong>${remaining < 0 ? `Ahead by ${formatCents(Math.abs(remaining))}` : formatCents(remaining)}</strong></p>
-      <p class="muted small">Committed ${formatCents(committed)} · Given ${formatCents(given)}</p>
-      <p class="muted small">Default rate: ${(defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}% · Period: November 2026 onward</p>`;
+    // Button-card-fix: the face is Title + Amount only. The title is
+    // the h2 in live.html; this is the amount alone. A negative
+    // remaining still reads "Ahead by $X" as the figure, and the
+    // Remaining label lives in the tap sheet. Committed, Given,
+    // Default rate, and Period all live in the tap sheet
+    // (charityBreakdownRows). Values are unchanged, only presentation.
+    if (ch) ch.innerHTML = `<p class="fund-balance"><strong>${remaining < 0 ? `Ahead by ${formatCents(Math.abs(remaining))}` : formatCents(remaining)}</strong></p>`;
     const cr = $('charityRateCurrent');
     if (cr) cr.textContent = `Current default rate: ${(defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%.`;
     updateCharityIncomePreview();
@@ -2054,24 +2067,64 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
   } else if (kind === 'fund') {
     const f = currentFundData;
     if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
-    await showSheet({ title: 'Extra Fund', rows: [
-      [household.role === 'admin' ? 'Spendable available' : 'Available to request', formatCents(f.available)],
-      ['Pending (not yet released)', formatCents(f.pending)],
-      ['Released total', formatCents(f.releasedTotal)],
-      ['Spent from fund', formatCents(f.spent)],
-      ['Owed back (shortfall)', formatCents(f.shortfall)],
-    ], confirmLabel: 'Close' });
+    await showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), confirmLabel: 'Close' });
   } else {
     const c = currentCharityData;
     if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
-    await showSheet({ title: 'Charity · November 2026 onward', rows: [
-      ['Remaining', c.remaining < 0 ? `Ahead by ${formatCents(Math.abs(c.remaining))}` : formatCents(c.remaining)],
-      ['Committed', formatCents(c.committed)],
-      ['Given', formatCents(c.given)],
-      ['Default rate', `${(c.defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%`],
-    ], confirmLabel: 'Close' });
+    await showSheet({ title: 'Charity · November 2026 onward', rows: charityBreakdownRows(c), confirmLabel: 'Close' });
   }
 }));
+// Button-card-fix: the labeled rows for the Extra Fund and Charity
+// breakdown sheets. These are the SINGLE source for both the Home
+// stat-card sheets and the Funds balance-card sheets, so a line moved
+// off a Funds card face cannot go missing from either sheet.
+// Fund rows carry every line that used to sit on the face: the
+// member/admin available wording, Pending, Owed back, Released,
+// Spent, and Held for review (held only when any week is held —
+// heldTotal/heldWeeks are carried in currentFundData for this).
+// Charity rows carry Remaining, Committed, Given, Default rate, and
+// Period (Period was missing from the Home sheet before this fix).
+function fundBreakdownRows(f) {
+  const rows = [
+    [household.role === 'admin' ? 'Spendable available' : 'Available to request', formatCents(f.available)],
+    ['Pending (not yet released)', formatCents(f.pending)],
+    ['Released total', formatCents(f.releasedTotal)],
+    ['Spent from fund', formatCents(f.spent)],
+    ['Owed back (shortfall)', formatCents(f.shortfall)],
+  ];
+  if ((f.heldWeeks ?? 0) > 0) rows.push(['Held for review', `${formatCents(f.heldTotal ?? 0)} across ${f.heldWeeks} ${f.heldWeeks === 1 ? 'week' : 'weeks'}`]);
+  return rows;
+}
+function charityBreakdownRows(c) {
+  return [
+    ['Remaining', c.remaining < 0 ? `Ahead by ${formatCents(Math.abs(c.remaining))}` : formatCents(c.remaining)],
+    ['Committed', formatCents(c.committed)],
+    ['Given', formatCents(c.given)],
+    ['Default rate', `${(c.defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%`],
+    ['Period', 'November 2026 onward'],
+  ];
+}
+// Button-card-fix: Funds balance cards — tap the whole card (click,
+// Enter, or Space) for the same breakdown sheet as the Home card.
+// The chevron in the card head marks it as tappable. Opening or
+// closing a sheet writes nothing and triggers no sync; it only reads
+// the numbers already loaded by refresh().
+document.querySelectorAll('[data-fund-card]').forEach((el) => {
+  const open = async () => {
+    const kind = el.dataset.fundCard;
+    if (kind === 'fund') {
+      const f = currentFundData;
+      if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
+      await showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), confirmLabel: 'Close' });
+    } else {
+      const c = currentCharityData;
+      if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
+      await showSheet({ title: 'Charity · November 2026 onward', rows: charityBreakdownRows(c), confirmLabel: 'Close' });
+    }
+  };
+  el.addEventListener('click', open);
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+});
 // HTML form of an amount with smaller cents, for the hero and stat
 // numbers only (formatCents from the engine stays the plain-text form
 // used in search, messages, and audit text).
@@ -2223,8 +2276,9 @@ const setFundForm = (which) => { fundFormOpen = which; showView('money'); };
 $('fundActionAddBtn')?.addEventListener('click', () => setFundForm('add'));
 $('fundActionUseBtn')?.addEventListener('click', () => setFundForm('use'));
 $('fundActionAskBtn')?.addEventListener('click', () => setFundForm('ask'));
-// UX audit 07: the same Ask action beside the Extra Fund balance
-// itself (not only in the actions card below it).
+// Ask lives once, in the Funds actions card (the delta3 beside-button
+// was removed for parity; the Funds balance card itself is a tap
+// target for its breakdown sheet, not a button row).
 $('fundActionIncomeBtn')?.addEventListener('click', () => setFundForm('income'));
 $('fundAddBackBtn')?.addEventListener('click', () => setFundForm(null));
 $('fundUseBackBtn')?.addEventListener('click', () => setFundForm(null));
