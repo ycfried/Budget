@@ -1449,3 +1449,90 @@ the solid-blues change above).
 - `test/button-card-fix.test.mjs` updated for the new design
   (tertiary deep, fourth btn-mid, chevron ⌄, headings 700, Funds
   charity face signed number) and passes standalone.
+
+## Filters-compact — branch filters-compact (NOT merged, NO PR)
+
+Branch point: origin/main ff59c44 (PR #16, live.js v29 / styles v20).
+Branch versions: live.js v30 / styles v21 in live.html. Live still
+serves v29/v20 until this is merged.
+
+Owner feedback (Nov 3, 8:09 PM): calendar and amount filters can be
+much smaller, and the app needs a simpler but clear way of
+referencing them — labeling is the issue. The old system collided:
+amount min was "From $X" while date from was "From YYYY-MM-DD", and
+both amount max and date to were "Up to …".
+
+### Label map — one consistent system (old → new)
+
+Sheet (live.html, Filters sheet only):
+- Dates group heading "Dates" → "When"
+- "This week only" → "This week"
+- "From date" → "From" (aria-label stays "Filter from date")
+- "To date" → "To" (aria-label stays "Filter to date")
+- "From ($)" → "Min" (placeholder "$0.00", aria-label stays
+  "Minimum transaction amount"; placeholder carries the $, so
+  number parsing is untouched)
+- "To ($)" → "Max" (placeholder "$0.00", aria-label stays
+  "Maximum transaction amount")
+- Amount explainer paragraph → one short line: "Blank = no limit.
+  Refunds count as negative amounts."
+- Unchanged: Status, Card / Account, Month, Sort by labels (v29
+  already removed their duplicate heading+label pairs; no
+  duplicates reintroduced — sheet test asserts Status, Card /
+  Account, and When each appear exactly once as a visible label).
+
+Pills (filterState.mjs activeFilterLabels, rendered by live.js):
+- amount min "From $10.00" → "Min $10.00"
+- amount max "Up to $50.00" → "Max $50.00"
+- date from "From 2026-11-01" → "From Oct 1" (short month-day)
+- date to "Up to 2026-11-07" → "To Oct 31"
+- week "This week" (unchanged), status/month/card labels unchanged.
+- Pill dates: new formatShortDate helper — "Oct 1" for current-year
+  dates, "Oct 1, 2025" only when the year is not the current year;
+  a non-YYYY-MM-DD value passes through unchanged, never dropped.
+- Count line in live.js: "· this week only" → "· this week", so
+  the count suffix matches the sheet checkbox and the pill.
+- Rule going forward: From/To always means dates, Min/Max always
+  means amounts. History period line (historyPeriodLabel) already
+  uses from/to wording and was left alone.
+
+### Compact sizing (Filters sheet only, not the whole app)
+
+Before: card padding 22px; group headings 16px above; labels 10px
+above; inputs 11px vertical padding at 16px font with 6px/14px
+margins — about a 43px-tall control box, about 63px per control
+row with margins. Sheet buttons 13px vertical padding (~48px).
+After (scoped to body.live .tx-sheet-card only): card padding
+14px; headings 10px above at 13px; labels 6px above; inputs/selects
+10px vertical padding at 15px font with 2px/6px margins — a
+40px-tall control box (10 + 10 + 18 line-height + 2 border);
+sheet buttons 11px vertical padding (~40px). Every control stays
+a full tap target at 390px. Pairs stay side-by-side (Min/Max on
+one line, From/To dates on one line) and Escape/focus-trap
+behaviour is untouched. App-wide input padding (11px 12px) is
+unchanged — other forms keep their roomier controls.
+
+### What did NOT change
+
+No filter logic, option values, ids, or match behaviour; no
+money/week math; no figure changes; no SQL; no supabase/ files;
+no ios/ or workflow files. Two existing tests were updated for
+the renamed labels (delta-package single-bound label, ux-review-fix
+Filters sheet labels) — the label change itself, not a behaviour
+regression.
+
+### Verification
+
+- Full suite: `node --test test/*.test.mjs` → 144/144 pass
+  (139 before + 5 new in test/filters-compact.test.mjs: pill
+  label system + no "Up to", short-date year rule, sheet labels
+  with no duplicates, one-line explainer, compact sheet-scoped
+  sizes with app-wide padding unchanged).
+- `node --check live.js` and `node --check filterState.mjs` clean.
+  `git diff --check` clean. live.html ids: zero duplicates (no
+  ids added or removed). No secrets, no real-household UUID, no
+  full card numbers in the diff.
+- Still to prove on a real phone after merge: Filters sheet
+  height and tap targets at 390px, pill labels ("Min $10",
+  "From Oct 1") reading clearly, and that date inputs still open
+  the native picker at the compact height.

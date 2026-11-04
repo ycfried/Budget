@@ -16,6 +16,25 @@ const STATUS_LABELS = {
   charity: 'Charity',
   excluded: 'Excluded',
 };
+// Filters-compact (Nov 3, 2026) — one consistent labeling system:
+// From/To always means dates, Min/Max always means amounts. The old
+// pills collided: amount min was "From $X" while date from was
+// "From YYYY-MM-DD", and both amount max and date to were "Up to …".
+// Pill dates use the app's short "Oct 1" style, not YYYY-MM-DD:
+// the year is added only when the date is not in the current year
+// (e.g. "Oct 1, 2025"), so current-year pills stay short and clear.
+// A non-YYYY-MM-DD value is returned unchanged, never dropped.
+export function formatShortDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ''));
+  if (!m) return String(iso ?? '');
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const monthName = new Date(Date.UTC(year, month - 1, 1))
+    .toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+  if (year === new Date().getFullYear()) return `${monthName} ${day}`;
+  return `${monthName} ${day}, ${year}`;
+}
 export function activeFilterLabels(f) {
   const labels = [];
   if (f.status && f.status !== 'all') {
@@ -23,11 +42,11 @@ export function activeFilterLabels(f) {
   }
   if (f.monthLabel) labels.push({ key: 'month', label: f.monthLabel });
   if (f.cardLabel) labels.push({ key: 'card', label: f.cardLabel });
-  if (f.minLabel != null) labels.push({ key: 'min', label: `From ${f.minLabel}` });
-  if (f.maxLabel != null) labels.push({ key: 'max', label: `Up to ${f.maxLabel}` });
+  if (f.minLabel != null) labels.push({ key: 'min', label: `Min ${f.minLabel}` });
+  if (f.maxLabel != null) labels.push({ key: 'max', label: `Max ${f.maxLabel}` });
   if (f.weekOnly) labels.push({ key: 'week', label: 'This week' });
-  if (f.fromDate) labels.push({ key: 'from', label: `From ${f.fromDate}` });
-  if (f.toDate) labels.push({ key: 'to', label: `Up to ${f.toDate}` });
+  if (f.fromDate) labels.push({ key: 'from', label: `From ${formatShortDate(f.fromDate)}` });
+  if (f.toDate) labels.push({ key: 'to', label: `To ${formatShortDate(f.toDate)}` });
   return labels;
 }
 

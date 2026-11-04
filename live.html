@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=20">
+<link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -206,16 +206,16 @@
             </label>
           </div>
           <div class="tx-sheet-group">
-            <h4>Dates</h4>
+            <h4>When</h4>
             <label>Month
               <select id="txMonth" aria-label="Filter by month"><option value="all">All months</option></select>
             </label>
-            <label class="check-label"><input id="txWeekCheck" type="checkbox"> This week only</label>
+            <label class="check-label"><input id="txWeekCheck" type="checkbox"> This week</label>
             <div class="tx-sheet-pair">
-              <label>From date
+              <label>From
                 <input id="txFromDate" type="date" aria-label="Filter from date">
               </label>
-              <label>To date
+              <label>To
                 <input id="txToDate" type="date" aria-label="Filter to date">
               </label>
             </div>
@@ -228,14 +228,14 @@
           <div class="tx-sheet-group">
             <h4>Amount</h4>
             <div class="tx-sheet-pair">
-              <label>From ($)
-                <input id="txMinAmount" type="number" step="0.01" inputmode="decimal" aria-label="Minimum transaction amount">
+              <label>Min
+                <input id="txMinAmount" type="number" step="0.01" inputmode="decimal" placeholder="$0.00" aria-label="Minimum transaction amount">
               </label>
-              <label>To ($)
-                <input id="txMaxAmount" type="number" step="0.01" inputmode="decimal" aria-label="Maximum transaction amount">
+              <label>Max
+                <input id="txMaxAmount" type="number" step="0.01" inputmode="decimal" placeholder="$0.00" aria-label="Maximum transaction amount">
               </label>
             </div>
-            <p class="muted small">Amounts compare to the signed amount, and both bounds apply together with the month, card, and week filters. Leave either end blank for no limit there. A refund counts as a negative amount, so a $10 refund sits below a $0 minimum.</p>
+            <p class="muted small">Blank = no limit. Refunds count as negative amounts.</p>
           </div>
           <div class="tx-sheet-group">
             <label>Sort by
@@ -517,7 +517,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=29"></script>
+<script type="module" src="live.js?v=30"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.
