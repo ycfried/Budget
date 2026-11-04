@@ -1,10 +1,11 @@
-// Weekly-sheet-simple (owner, Nov 3, 9:53 PM, item 7): the Weekly
-// popup opens with ONLY the basic stuff — Left, Spent, Allowance —
-// everything else moves behind the "Show how this adds up"
-// disclosure, and a "Show transactions" button below opens the
-// week's transactions. Static tests only — no live data, no network,
-// no money math. Values and formatting are unchanged; only which
-// rows are visible on open changes.
+// Weekly-sheet-trim (owner correction, Nov 3, ~9:59 PM, supersedes
+// the PR #21 disclosure design): the Weekly popup contains EXACTLY
+// Left, Spent, Allowance plus the "Show transactions" button. The
+// "Show how this adds up" disclosure and every detail row it held
+// are GONE from the Weekly sheet — not hidden behind a tap, not
+// moved elsewhere in the sheet. Static tests only — no live data,
+// no network, no money math. Values and formatting are unchanged;
+// only the sheet's contents change.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -24,20 +25,13 @@ const visible = sheetFn.slice(
   sheetFn.indexOf('const weeklyRows = ['),
   sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')),
 );
-// The disclosure rows: the showSheet disclosure block, plus the
-// weeklyDetailRows array that is spread into it.
-const disclosure = sheetFn.slice(sheetFn.indexOf('disclosure: {'));
-const detailRows = sheetFn.slice(
-  sheetFn.indexOf('const weeklyDetailRows = ['),
-  sheetFn.indexOf('];', sheetFn.indexOf('const weeklyDetailRows = [')),
-);
 
 test('Weekly sheet visible rows are exactly Left, Spent, Allowance, in order', () => {
   const labels = [...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]);
   assert.deepEqual(labels, ['Left', 'Spent', 'Allowance']);
 });
 
-test('no other figure row is visible on open', () => {
+test('no detail row appears anywhere in the Weekly sheet', () => {
   for (const label of [
     'Dated this week',
     'Late charges from earlier locked weeks',
@@ -48,36 +42,14 @@ test('no other figure row is visible on open', () => {
     'Pending refunds excluded',
     'Base spending room',
   ]) {
-    assert.equal(visible.includes(`'${label}'`), false, `${label} must not be visible`);
+    assert.equal(sheetFn.includes(`'${label}'`), false, `${label} must not be in the Weekly sheet`);
   }
 });
 
-test('every moved row exists only inside the disclosure', () => {
-  // Moved rows live in weeklyDetailRows, which is spread into the
-  // disclosure; Outgoing debt lives in the disclosure's pre-existing
-  // rows. None of them is in the visible rows (checked above).
-  assert.match(disclosure, /\.\.\.weeklyDetailRows/);
-  for (const label of [
-    'Dated this week',
-    'Late charges from earlier locked weeks',
-    'Carried debt',
-    'Temporary increase',
-    'Week status',
-    'Pending refunds excluded',
-  ]) {
-    assert.equal(detailRows.includes(`'${label}'`), true, `${label} must be in the disclosure rows`);
-  }
-  // Conditional rows keep their conditions.
-  assert.match(sheetFn, /w\.weekLocked \? \[\['Week status'/);
-  assert.match(sheetFn, /pendingRefundExcludedCents \?\? 0\) > 0 \? \[\['Pending refunds excluded'/);
-  assert.match(sheetFn, /lastSpentBreakdown \? \[\['Dated this week'/);
-});
-
-test('disclosure keeps its pre-existing rows, Outgoing debt not duplicated', () => {
-  for (const label of ['Base spending room', 'Left', 'Outgoing debt']) {
-    assert.equal(disclosure.includes(`'${label}'`), true, `${label} stays in the disclosure`);
-  }
-  assert.equal((disclosure.match(/'Outgoing debt'/g) ?? []).length, 1);
+test('no disclosure element exists in the Weekly sheet at all', () => {
+  assert.equal(sheetFn.includes('disclosure:'), false, 'no disclosure passed to showSheet');
+  assert.equal(sheetFn.includes('Show how this adds up'), false, 'no disclosure label');
+  assert.equal(sheetFn.includes('weeklyDetailRows'), false, 'no detail-rows array');
 });
 
 test('Show transactions button exists and opens the week-filtered Transactions view', () => {

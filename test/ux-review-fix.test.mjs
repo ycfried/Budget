@@ -149,11 +149,18 @@ test('weight rebalance: figures 800, headings 700, buttons 600', () => {
 });
 
 // --- Weekly sheet + stat cards --------------------------------------------
-test('Weekly sheet calculation is behind one tap, never a paragraph', () => {
+// Weekly-sheet-trim (owner correction, Nov 3, ~9:59 PM, supersedes
+// the PR #21 disclosure design): the Weekly sheet has no calculation
+// paragraph AND no disclosure — the equation rows are gone from the
+// sheet entirely, not hidden behind a tap.
+test('Weekly sheet calculation is gone from the sheet, never a paragraph', () => {
   assert.doesNotMatch(js, /How it fits together/);
-  assert.match(js, /disclosure: \{ label: 'Show how this adds up', rows: \[/);
-  assert.match(js, /'Base spending room', formatCents\(w\.baseRoomCents/);
-  assert.match(js, /sheet-disclosure/);
+  const sheetFn = js.slice(
+    js.indexOf('async function openWeeklySheet()'),
+    js.indexOf('const heroWeeklyTarget'),
+  );
+  assert.equal(sheetFn.includes('disclosure:'), false, 'no disclosure in the Weekly sheet');
+  assert.equal(sheetFn.includes(`'Base spending room'`), false, 'no Base spending room row in the Weekly sheet');
 });
 
 test('Home stat cards are Title + Amount only, words in aria-labels', () => {

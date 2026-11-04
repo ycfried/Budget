@@ -1898,3 +1898,28 @@ in test/weekly-sheet-simple.test.mjs). Still to prove after merge:
 the button's week-filtered Transactions view on a real phone at
 390px, and keyboard flow (hero number → sheet → Show
 transactions → Filters button focus).
+
+## Weekly-sheet-trim (owner correction, Nov 3, ~9:59 PM, supersedes the PR #21 disclosure design)
+
+Owner: the Weekly sheet still showed too much — remove the "Show me"
+part and all the bloating, trim it down. The "Show how this adds up"
+disclosure AND every detail row it held are REMOVED from the Weekly
+sheet entirely: no Base spending room, no dated/late split, no
+carried debt, no temporary increase, no outgoing debt, no week
+status, no pending-refunds line, no equation text, no disclosure
+control at all. They are not hidden behind a tap and not moved
+elsewhere in the sheet.
+
+Final Weekly sheet contents, exactly: Left, Spent, Allowance (same
+values and formatting as before, in that order) and, below them, the
+primary "Show transactions" button from PR #21, which closes the
+sheet and opens Transactions filtered to the current week. The
+generic showSheet disclosure parameter itself is untouched (no
+other sheet uses it); the Charity and Extra Fund sheets are
+untouched; the hero number remains the only Weekly entry point and
+stays numbers-only on its face. Branch weekly-sheet-trim, live.js
+v35 (styles unchanged, v24). Tests: weekly-sheet-simple test file
+updated to the trim (exactly three rows, no disclosure element in
+the Weekly sheet, Show transactions button still week-filtering).
+Still to prove after merge: the trimmed sheet and the button's
+week-filtered Transactions view on a real phone at 390px.
