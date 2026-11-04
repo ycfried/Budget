@@ -370,10 +370,10 @@ body.live .card { border-radius: 20px; box-shadow: 0 1px 2px rgba(16,24,40,.05);
    grey secondary labels. Headings are 800 (base was 600); figures
    were already 800 and stay so; secondary labels stay 12-13px grey
    (#6b7280) via .kicker / .muted.small. */
-body.live h1, body.live h2, body.live h3 { letter-spacing: -0.02em; font-weight: 800; }
+body.live h1, body.live h2, body.live h3 { letter-spacing: -0.02em; font-weight: 700; }
 /* Header scrolls away; the tab bar is the persistent navigation now. */
 body.live #liveTopbar { position: relative; background: #fff; border-bottom: 1px solid #ececf1; }
-body.live #liveTopbar strong { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+body.live #liveTopbar strong { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
 body.live .profile-btn { background: #eef4ff; border: 1px solid #2f6bff; color: #2f6bff; }
 body.live .profile-menu { border-color: #ececf1; border-radius: 18px; box-shadow: 0 12px 32px rgba(16,24,40,.14); }
 /* Bottom tab bar with icons, like the reference apps. */
@@ -381,7 +381,7 @@ body.live #view-app .app-nav { position: fixed; left: 0; right: 0; bottom: 0; to
   background: #fff; border-top: 1px solid #ececf1; border-bottom: 0; margin: 0;
   padding: 8px 4px calc(8px + env(safe-area-inset-bottom)); justify-content: space-around; }
 body.live #view-app .app-nav-link { flex: 1 1 0; display: flex; flex-direction: column; align-items: center;
-  gap: 2px; padding: 4px 2px; font-size: 11px; font-weight: 700; color: #6b7280; border-bottom: 0; }
+  gap: 2px; padding: 4px 2px; font-size: 11px; font-weight: 600; color: #6b7280; border-bottom: 0; }
 body.live #view-app .app-nav-link svg { width: 22px; height: 22px; display: block; }
 body.live #view-app .app-nav-link.active { color: #2f6bff; border-bottom: 0; }
 /* Bottom toast: in-app messages float above the tab bar instead of
@@ -398,15 +398,17 @@ body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 120px; z-in
 body.live .toast.error { color: #fff; }
 /* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
    One gap system: rows use flex gap; standalone buttons use one margin. */
-/* Button levels are the reference page's three blues, not grey:
+/* Button levels are four solid blues, not grey, not pale, not hollow:
    primary = strong #2f6bff fill, white text;
    secondary (base .btn) = pale light blue #bfdbfe fill, dark-blue
    #1e40af text (readable at phone size, distinct from both neighbours);
-   tertiary = very pale tint #eef4ff fill, brand-blue text + border.
-   No grey fill is used for a button level in a row: grey #f2f4f7
-   blended with the tint and made tertiary invisible. */
+   tertiary = solid deep #1d4ed8 fill, white text;
+   fourth (btn-mid) = solid mid #3b82f6 fill, white text.
+   No grey fill, pale tint, or white outline is used for a button
+   level: grey blended with the old tint, and the owner rejected the
+   pale tint and white outline as too pale/hollow (Nov 3, 7:50 PM). */
 body.live #view-app .btn, body.live .btn { background: #bfdbfe; border: 0; color: #1e40af;
-  border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 700; }
+  border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 600; }
 body.live #view-app .btn-primary, body.live .btn-primary { background: #2f6bff; color: #fff; }
 body.live #view-app .btn-danger, body.live .btn-danger { background: #fef2f2; color: #dc2626; }
 body.live #view-app .btn-quiet, body.live .btn-quiet { background: none; color: #6b7280; }
@@ -418,7 +420,7 @@ body.live input[type="number"] { max-width: 220px; }
 /* Sort row: the native select matches the secondary (light-blue)
    direction button (same background, padding, font, radius) instead
    of sitting beside it in default browser styling. */
-body.live #txSortField { background: #bfdbfe; border: 0; border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 700; color: #1e40af; }
+body.live #txSortField { background: #bfdbfe; border: 0; border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 600; color: #1e40af; }
 body.live #view-app .card .btn + .btn { margin-left: 0; }
 body.live #view-app .tx-detail .btn { margin-right: 10px; }
 body.live .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -430,7 +432,7 @@ body.live .hero-head .hero-sync-btn { margin: 0; width: 44px; height: 44px; min-
 body.live .danger-area { border: 1px solid #fecaca; border-radius: 12px; padding: 12px; margin-top: 12px; }
 body.live .btn-row .btn { margin: 0; }
 /* Chips: grey pills, blue when active. */
-body.live #view-app .tx-chip { background: #bfdbfe; color: #1e40af; padding: 9px 15px; font-weight: 700; }
+body.live #view-app .tx-chip { background: #bfdbfe; color: #1e40af; padding: 9px 15px; font-weight: 600; }
 body.live #view-app .tx-chip.active { background: #2f6bff; color: #fff; }
 /* Hero + stats: big bold numbers, thin progress bar. */
 body.live .hero .big { font-size: 42px; font-weight: 800; letter-spacing: -0.02em; }
@@ -442,7 +444,7 @@ body.live .fund-balance { font-size: 32px; font-weight: 800; letter-spacing: -0.
 /* Transaction rows: icon square + merchant, like the reference lists. */
 body.live .tx-line1 { display: flex; align-items: center; gap: 10px; }
 body.live .tx-icon { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 10px; background: #eef1f6;
-  color: #0f172a; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  color: #0f172a; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 body.live .tx-line1 .tx-name { flex: 1; }
 body.live #view-app #weekBreakdown { border-top: 1px solid #ececf1; }
 body.live input, body.live select { border-radius: 12px; }
@@ -472,7 +474,7 @@ body.live .tx-logo { width: 100%; height: 100%; object-fit: contain; border-radi
 body.live .bank-row { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid #ececf1; }
 body.live .bank-row:last-child { border-bottom: 0; }
 body.live .bank-info { flex: 1; min-width: 0; }
-body.live .bank-logo, body.live .bank-logo-tile { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 10px; background: #eef1f6; color: #0f172a; font-weight: 800; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+body.live .bank-logo, body.live .bank-logo-tile { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 10px; background: #eef1f6; color: #0f172a; font-weight: 700; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 body.live .bank-logo-img { width: 100%; height: 100%; object-fit: contain; }
 body.live .sav-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 body.live .sav-grid > div { min-width: 0; }
@@ -498,16 +500,23 @@ body.live .btn-block { display: flex; width: 100%; }
    like primary: the plain body.live .btn-tertiary selector LOST to
    body.live #view-app .btn (id specificity) for background/border/
    color, so tertiary rendered as grey secondary with dark text and
-   the v27 border fix never showed. Two blue-bordered variants, so a
-   row with four buttons never needs two adjacent buttons in the
-   same treatment:
-   - tint: very pale tint #eef4ff fill, brand-blue text, brand-blue border
-   - outline: white fill, brand-blue text, brand-blue border (used
-     only as the fourth treatment in a four-button row; it is blue-
-     bordered, never grey-filled)
-   Both rules sit after the base .btn rule, with #view-app scope. */
-body.live #view-app .btn-tertiary, body.live .btn-tertiary { background: #eef4ff; color: #2f6bff; border: 1px solid #2f6bff; }
-body.live #view-app .btn-outline, body.live .btn-outline { background: #fff; color: #2f6bff; border: 1px solid #2f6bff; }
+   the v27 border fix never showed.
+   UX-review-fix (Nov 3, 2026, owner screenshot 7:50 PM): the owner
+   REJECTED both pale/hollow treatments — tertiary tint #eef4ff and
+   outline white/blue border — as too pale and hollow. Both are now
+   solid branded blues from the logo palette, white text, no grey,
+   no pale tint, no white outline as a button level. Assignment is
+   SWAPPED from the first draft on purpose: mid #3b82f6 sits only one
+   step lighter than primary #2f6bff and would blur against it, so
+   tertiary (the widely used third level) takes deep #1d4ed8, which
+   is unmistakably darker than primary, and the fourth treatment
+   (class btn-mid, formerly btn-outline) takes mid #3b82f6. The
+   fourth treatment never sits next to primary in any row: in
+   detail rows it sits between tertiary-deep and secondary-pale, and
+   in Funds actions it sits after tertiary-deep. Both rules sit
+   after the base .btn rule, with #view-app scope. */
+body.live #view-app .btn-tertiary, body.live .btn-tertiary { background: #1d4ed8; color: #fff; border: 1px solid #1d4ed8; }
+body.live #view-app .btn-mid, body.live .btn-mid { background: #3b82f6; color: #fff; border: 1px solid #3b82f6; }
 /* C3: Funds balance cards side by side (stacked only on very narrow
    screens, so numbers never overflow at 320px). */
 body.live .fund-balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
@@ -524,7 +533,12 @@ body.live .fund-balance-panel[role="button"] { cursor: pointer; }
 body.live .fund-balance-panel[role="button"]:focus-visible { outline: 2px solid #2f6bff; outline-offset: 2px; }
 body.live .fund-balance-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 body.live .fund-balance-head h2 { margin: 0; min-width: 0; }
-body.live .fund-balance-chevron { color: #2f6bff; font-weight: 800; font-size: 22px; line-height: 1; flex: 0 0 auto; }
+/* UX-review-fix: the chevron sits at the BOTTOM-RIGHT of its panel
+   and faces DOWN (⌄ = more below), not top-right facing right
+   (› = go to another page). The panel is a flex column, so
+   margin-top:auto pushes it to the bottom; the whole panel stays
+   the tap target, with the same size and accessibility label. */
+body.live .fund-balance-chevron { color: #2f6bff; font-weight: 700; font-size: 22px; line-height: 1; align-self: flex-end; margin-top: auto; padding-top: 8px; }
 @media (max-width: 420px) {
   body.live .fund-balance-grid { grid-template-columns: 1fr; }
 }
@@ -539,7 +553,7 @@ body.live .tx-search-row .btn { flex: 0 0 auto; }
 body.live .tx-active-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 10px; }
 body.live .tx-active-filters:empty { display: none; }
 body.live .tx-active-filter { background: #eef4ff; color: #2f6bff; border: 0; border-radius: 8px;
-  padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--sans); }
+  padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--sans); }
 /* B2: filters bottom sheet (backdrop + card). .hidden still wins
    over display:flex because it is !important. */
 body.live .tx-sheet { position: fixed; inset: 0; z-index: 50; background: rgba(15,23,42,.45);
@@ -547,14 +561,14 @@ body.live .tx-sheet { position: fixed; inset: 0; z-index: 50; background: rgba(1
 body.live .tx-sheet-card { background: #fff; border-radius: 16px; padding: 22px; width: 100%; max-width: 480px;
   max-height: 85vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(16,24,40,.25); }
 body.live .tx-sheet-card h3 { margin: 0 0 8px; }
-body.live .tx-sheet-card h4 { margin: 16px 0 4px; font-size: 14px; font-weight: 700; }
+body.live .tx-sheet-card h4 { margin: 16px 0 4px; font-size: 14px; font-weight: 600; }
 body.live .tx-sheet-card label { display: block; margin: 10px 0 4px; font-weight: 600; }
 body.live .tx-sheet-card label select { display: block; width: 100%; margin-top: 4px; }
 body.live .tx-sheet-card .check-label { display: flex; align-items: flex-start; gap: 8px; }
 body.live .tx-sheet-card .check-label input[type="checkbox"] { width: auto; margin: 2px 0 14px; accent-color: #2f6bff; }
 /* C3: activity disclosures (one per fund) and the collapsed Review area. */
 body.live .activity-disclosure { margin-top: 14px; }
-body.live .activity-disclosure summary { cursor: pointer; font-weight: 700; padding: 8px 0; }
+body.live .activity-disclosure summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
 /* B3: the Home sync icon spins while a sync runs. */
 @keyframes delta-spin { to { transform: rotate(360deg); } }
 body.live .hero-sync-btn.syncing svg { animation: delta-spin 1s linear infinite; }
@@ -571,7 +585,7 @@ body.live .week-block { padding: 14px 0; }
 body.live .week-metrics { display: grid; gap: 4px; margin-top: 8px; }
 body.live .week-metrics > div { display: flex; justify-content: space-between; gap: 12px; }
 body.live .week-metrics > div > span:first-child { color: #6b7280; }
-body.live .week-metrics > div > span:last-child { font-weight: 700; white-space: nowrap; }
+body.live .week-metrics > div > span:last-child { font-weight: 600; white-space: nowrap; }
 /* Owner screenshot: profile menu as a proper menu card — header with
    email + role pill, menu rows with separation, Sign out in red.
    Width is capped to the viewport so it never runs off phone
@@ -579,12 +593,12 @@ body.live .week-metrics > div > span:last-child { font-weight: 700; white-space:
 body.live .profile-menu { width: min(280px, calc(100vw - 32px)); padding: 0; overflow: hidden; }
 body.live .profile-menu-head { padding: 16px 16px 12px; border-bottom: 1px solid #ececf1; }
 body.live .profile-menu-head p { margin: 4px 0; }
-body.live .profile-email { font-size: 16px; overflow-wrap: anywhere; }
-body.live .role-pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px;
+body.live .profile-email { font-size: 14px; overflow-wrap: anywhere; }
+body.live .role-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px;
   border-radius: 8px; background: #eef4ff; color: #2f6bff; text-transform: capitalize; }
 body.live .profile-menu-rows { padding: 8px; }
 body.live .profile-menu-row { display: block; width: 100%; text-align: left; background: none; border: 0;
-  border-radius: 10px; padding: 12px; font-size: 15px; font-weight: 700; color: #0f172a;
+  border-radius: 10px; padding: 12px; font-size: 15px; font-weight: 600; color: #0f172a;
   cursor: pointer; font-family: var(--sans); }
 body.live .profile-menu-row:active { background: #f2f4f7; }
 body.live .profile-menu-row-danger { color: #dc2626; }
@@ -617,7 +631,7 @@ body.live .card-head-inline p { margin: 0; }
 body.live .tx-detail-rows { display: grid; gap: 6px; margin: 10px 0; }
 body.live .tx-detail-rows > div { display: flex; justify-content: space-between; gap: 12px; }
 body.live .tx-detail-rows > div > span:first-child { color: var(--muted); }
-body.live .tx-detail-rows > div > span:last-child { font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+body.live .tx-detail-rows > div > span:last-child { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
 /* CSV import: styled file control. The native input stays the real
    control (keyboard + screen-reader accessible) but is visually
    hidden; the label looks like a button and the file name shows
@@ -631,4 +645,74 @@ body.live #sheetOverlay .sheet-rows { display: grid; gap: 8px; margin: 0 0 14px;
 body.live #sheetOverlay .sheet-rows > div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #ececf1; padding-bottom: 8px; }
 body.live #sheetOverlay .sheet-rows > div:last-child { border-bottom: 0; padding-bottom: 0; }
 body.live #sheetOverlay .sheet-rows > div > span:first-child { color: var(--muted); }
-body.live #sheetOverlay .sheet-rows > div > span:last-child { font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+body.live #sheetOverlay .sheet-rows > div > span:last-child { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+
+/* ===== UX-review-fix (Nov 3, 2026) — live app only ===== */
+/* Sign-in password visibility: input + Show/Hide button on one row,
+   so the toggle never pushes the form down. */
+body.live .password-row { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+body.live .password-row input { flex: 1 1 auto; min-width: 0; margin-top: 0; }
+body.live .password-row .btn { flex: 0 0 auto; margin: 0; }
+/* Held-fund link under the Funds balance cards: shown only when a
+   held week exists; one button, no row adjacency to worry about. */
+body.live #fundHeldLinkWrap { margin-top: 12px; }
+body.live #fundHeldLinkWrap p { margin: 8px 0 0; }
+/* Possible-duplicates comparison cards: vertical, NOT a horizontal
+   bank-row. Merchant on its own bold line (full name, wraps at word
+   boundaries, never mid-word), labeled Amount/Date/Card/Source rows
+   like the transaction detail, Keep and Possible stacked on phone
+   and side-by-side only at wide widths, buttons below the comparison,
+   checkbox with its explanation below the buttons. */
+body.live .dedupe-card { border: 1px solid #ececf1; border-radius: 12px; padding: 14px; margin: 12px 0; }
+body.live .dedupe-match { font-weight: 600; color: #1d4ed8; margin: 0 0 10px; }
+body.live .dedupe-pair { display: grid; gap: 12px; }
+@media (min-width: 640px) {
+  body.live .dedupe-pair { grid-template-columns: 1fr 1fr; }
+}
+body.live .dedupe-side { min-width: 0; }
+body.live .dedupe-side h4 { margin: 0 0 8px; font-size: 15px; overflow-wrap: break-word; }
+body.live .dedupe-side .dedupe-merchant { font-size: 16px; font-weight: 600; overflow-wrap: break-word; word-break: normal; margin: 0 0 8px; }
+body.live .dedupe-rows { display: grid; gap: 6px; }
+body.live .dedupe-rows > div { display: flex; justify-content: space-between; gap: 12px; }
+body.live .dedupe-rows > div > span:first-child { color: #6b7280; }
+body.live .dedupe-rows > div > span:last-child { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+body.live .dedupe-card .btn-row { margin-top: 12px; }
+body.live .dedupe-alias { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 13px; color: #6b7280; }
+body.live .dedupe-alias input { width: auto; margin: 2px 0 0; accent-color: #2f6bff; }
+/* UX-review-fix weight map (owner: too much bold looked cheap and
+   heavy, Nov 3, 7:51 PM). Bold only where it earns it, one dominant
+   element per card:
+   - Figures (hero .big, stat .num, fund .fund-balance): 800, kept —
+     the dominant element of their card.
+   - Headings (h1/h2/h3, topbar): 800 → 700.
+   - Buttons, nav labels, chips, filter labels, menu rows, pills:
+     700 → 600.
+   - Detail/sheet/week/dedupe values, merchant names, row amounts,
+     bank names: 700/800 → 600 (names and amounts stand out by size
+     and position, not by weight).
+   - Body text, labels (600 already), secondary lines, kickers:
+     unchanged (regular/600 small labels).
+   Sizes, colors, and layout are unchanged by this pass. */
+body.live .tx-line1 .tx-name { font-weight: 600; }
+body.live .tx-line1 .tx-amount { font-weight: 600; }
+body.live .bank-info strong { font-weight: 600; }
+/* Weekly sheet calculation, behind one tap: label + amount rows
+   only, never a paragraph. Collapsed by default. */
+body.live .sheet-disclosure { margin: 0 0 14px; }
+body.live .sheet-disclosure summary { cursor: pointer; font-weight: 600; padding: 8px 0; color: #2f6bff; }
+body.live .sheet-disclosure .sheet-rows { margin: 8px 0 0; }
+/* Numbers-only stat cards: a negative weekly figure is red, matching
+   the hero big figure. Positive figures stay ink. */
+body.live .stat-card .num.negative { color: var(--soft-red); }
+/* Profile menu header: the user's name is the large header, email
+   below it in smaller muted text. */
+body.live .profile-name { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+body.live .profile-email { font-size: 14px; overflow-wrap: anywhere; }
+/* Filters sheet pairs (owner screenshot Nov 3, 7:55 PM): paired
+   fields share one line at half width, so the sheet gets shorter and
+   Apply/Reset/Cancel sit closer. At 390px each half is ~200px wide —
+   still a full-size tap target, not a squeezed control. Single
+   fields (Status, Month, Card selects) stay full-width. */
+body.live .tx-sheet-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+body.live .tx-sheet-pair label { min-width: 0; }
+body.live .tx-sheet-pair input { width: 100%; box-sizing: border-box; min-width: 0; }

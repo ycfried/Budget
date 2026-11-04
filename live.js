@@ -4,7 +4,7 @@
 //   * Transactions, fund requests, and audit log read/write the shared DB.
 //   * Week numbers come from the server (compute-week Edge Function),
 //     never from client-side math alone.
-//   * Admin-only settings and savings attestation run through RPCs with
+//   * Admin-only settings and savings records run through RPCs with
 //     explicit role checks. Fund allocations against the fund balance
 //     are still missing (approve/decline is a decision record only).
 //   * User-facing labels are bank-agnostic by design: internal function
@@ -268,7 +268,26 @@ async function refresh() {
 
   const { data: { session: s } } = await supabase.auth.getSession();
   const pe = document.getElementById('profileEmail'); if (pe && s?.user?.email) pe.textContent = s.user.email;
+  // UX-review-fix, profile name (owner screenshot Nov 3, 7:53 PM):
+  // the header is the user's name from auth metadata (full_name,
+  // then name), falling back to the email only when no name is set.
+  // No name is ever hardcoded: until the user saves one, the header
+  // is their email and the menu row reads "Add your name". Saving a
+  // name uses updateUser metadata only — no SQL, no new column. The
+  // backend already supports this: household_members.display_name
+  // exists, and the audit trigger prefers it, then user_metadata
+  // full_name / name, then email — so a metadata name already flows
+  // into audit actor names as the trigger's second preference.
+  const displayName = s?.user?.user_metadata?.full_name || s?.user?.user_metadata?.name || '';
+  const pn = document.getElementById('profileName'); if (pn) pn.textContent = displayName || s?.user?.email || '—';
+  const editBtn = document.getElementById('menuEditProfileBtn'); if (editBtn) editBtn.textContent = displayName ? 'Edit profile' : 'Add your name';
+  const pni = document.getElementById('profileNameInput'); if (pni && document.activeElement !== pni) pni.value = displayName;
+  const pei = document.getElementById('profileEmailInput'); if (pei && document.activeElement !== pei && s?.user?.email) pei.value = s.user.email;
   const pr = document.getElementById('profileRole'); if (pr) pr.textContent = household.role;
+  const ph = document.getElementById('profileHousehold');
+  if (ph) ph.textContent = household.role === 'admin'
+    ? 'Admin — you manage this household\'s settings and money.'
+    : 'Member — you can view the budget and ask for fund money. Ask the admin for changes.';
   const token = s?.access_token ?? '';
   // Week numbers from the server (FINAL-spec contract). The client sends
   // ONLY household_id — never D, T, or R_in — and never chains any credit:
@@ -283,8 +302,8 @@ async function refresh() {
   const clearWeekNumbers = () => {
     $('weekLabel').textContent = 'Week numbers unavailable';
     $('weeklyAvailable').textContent = '—';
-    $('homeWeeklyPrimary').textContent = '—'; $('homeWeeklySecondary').textContent = '—';
-    $('homeFundPrimary').textContent = '—'; $('homeFundSecondary').textContent = '—';
+    $('homeWeeklyPrimary').textContent = '—';
+    $('homeFundPrimary').textContent = '—';
     const bar = document.getElementById('weekProgressBar');
     if (bar) { bar.style.width = '0%'; bar.parentElement?.classList.remove('over'); }
     const pt = document.getElementById('weekProgressText');
@@ -329,17 +348,22 @@ async function refresh() {
       if (weekStart) $('weekLabel').textContent = `Week of ${fmtLong(weekStart)} (Sun–Sat)`;
       $('weeklyAvailable').innerHTML = formatCentsHtml(avail);
       $('weeklyAvailable').classList.toggle('negative', avail < 0);
-      // R5: Weekly Budget card — amount left primary, spent underneath.
-      // Negative remaining reads "Over budget by $X", never a negative
-      // amount presented as money left. Allowance and carried debt
-      // stay inside the tap-to-open breakdown, not on the card.
+      // UX-review-fix, numbers-only stat cards (owner screenshot
+      // Nov 3, 7:53 PM): the face is Title + signed number only.
+      // A negative figure in red does the talking — no "Over budget
+      // by $X" sentence and no "Spent $X of $Y room" line on the
+      // face. Those words live in the tap sheet (rows below) and in
+      // the card's aria-label, so assistive technology still gets
+      // them. Spent, room, carried debt, and outgoing debt all live
+      // in the sheet, not on the face.
       const wp = $('homeWeeklyPrimary');
       if (wp) {
-        if (avail < 0) { wp.textContent = `Over budget by ${formatCents(Math.abs(avail))}`; }
-        else wp.innerHTML = formatCentsHtml(avail);
+        wp.innerHTML = formatCentsHtml(avail);
+        wp.classList.toggle('negative', avail < 0);
+        document.querySelector('[data-home-card="weekly"]')?.setAttribute('aria-label', avail < 0
+          ? `Weekly Budget, over budget by ${formatCents(Math.abs(avail))}, show breakdown`
+          : `Weekly Budget, ${formatCents(avail)} left this week, show breakdown`);
       }
-      const ws = $('homeWeeklySecondary');
-      if (ws) ws.textContent = `Spent ${formatCents(charges)} of ${formatCents(baseAvailable + tempC)} room`;
       currentWeekData = { weekStart, baseAvailableCents: baseAvailable, tempCents: tempC,
         carriedDebtCents: carried, chargesCents: charges, availableCents: avail,
         outgoingDebtCents: outgoingDebt, weekLocked: !!r.week_locked,
@@ -353,15 +377,13 @@ async function refresh() {
       const pct = capacity > 0 ? (charges / capacity) * 100 : (charges > 0 ? 100 : 0);
       const bar = document.getElementById('weekProgressBar');
       if (bar) { bar.style.width = `${Math.min(100, Math.round(pct))}%`; bar.parentElement?.classList.toggle('over', charges > capacity); }
+      // UX-review-fix: the hero keeps its bar and its signed big
+      // figure only. The progress sentence ("Spent $X of $Y room",
+      // carried debt, over-by) duplicated the Weekly sheet rows, so
+      // it is no longer written on the face; locked and pending-
+      // refund status are sheet rows instead (see weeklyRows).
       const pt = document.getElementById('weekProgressText');
-      if (pt) {
-        let t = `Spent ${formatCents(charges)} of ${formatCents(capacity)} spending room`;
-        if (carried > 0) t += ` · ${formatCents(carried)} carried debt already came off the top`;
-        if (charges > capacity) t += ` · Over by ${formatCents(charges - capacity)}`;
-        if (r.week_locked) t += ' · This week is locked';
-        if ((r.pending_refund_excluded_cents ?? 0) > 0) t += ` · ${formatCents(r.pending_refund_excluded_cents)} in pending refunds excluded from this week`;
-        pt.textContent = t;
-      }
+      if (pt) pt.textContent = '';
       lastRefreshAt = Date.now();
       const allowInput = document.getElementById('baseAllowanceInput');
       if (allowInput && document.activeElement !== allowInput && baseAllowanceCents !== null) allowInput.value = (baseAllowanceCents / 100).toFixed(2);
@@ -503,7 +525,7 @@ async function refresh() {
     // the gifts total. (Week math already excludes them everywhere.)
     const shownTotal = shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && (txFilter === 'charity' || t.kind !== 'charity')).reduce((s, t) => s + t.amount_cents, 0);
     const capped = all.length >= txLimit ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
-    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total of the rows shown ${formatCents(shownTotal)} (${txFilter === 'charity' ? 'excluded rows not counted' : 'charity gifts and excluded rows not counted'})`;
+    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week only' : ''} · total of the rows shown ${formatCents(shownTotal)} (${txFilter === 'charity' ? 'excluded rows not counted' : 'charity gifts and excluded rows not counted'}) · search covers loaded rows only`;
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
@@ -570,13 +592,25 @@ async function refresh() {
           : t.source === 'manual'
           ? `<button class="btn btn-small btn-danger" data-delete-tx="${t.id}" type="button" aria-label="Delete ${esc(t.merchant)}">Delete</button>`
           : `<button class="btn btn-small btn-danger" data-remove-tx="${t.id}" type="button" aria-label="Remove ${esc(t.merchant)} from the budget">Remove</button>`;
+        // UX-review-fix P1: Use Extra Fund is offered ONLY for a
+        // charge. A transfer, payment, cash-back credit, or refund
+        // does not count toward weekly spending, so there is nothing
+        // for the fund to cover — offering it there was the review's
+        // highest-priority transfer bug. Server note: the
+        // validate_fund_request_txn trigger checks only that the
+        // linked transaction belongs to the household and the request
+        // is pending; it does NOT check kind, so this client gating
+        // is currently the only kind check. A server-side kind guard
+        // would need a SQL change and is deferred out of this
+        // presentation package (see HANDOFF).
+        const qualifiesForFund = t.kind === 'charge';
         const fundBtn = `<button class="btn btn-small" data-use-fund="${t.id}" type="button" aria-label="Use Extra Fund for ${esc(t.merchant)}">Use Extra Fund</button>`;
-        // Button-card-fix: on an admin row this sits between two
-        // tertiary buttons (Mark as charity, tint) and Reclassify, so
-        // it takes the outline tertiary variant, not tint — otherwise
-        // Mark as charity and Use Extra Fund would be adjacent
-        // duplicates. Members see it alone, where it stays secondary.
-        const fundBtnAdmin = fundBtn.replace('class="btn btn-small"', 'class="btn btn-small btn-outline"');
+        // On an admin row this sits between tertiary-deep (Mark as
+        // charity) and Reclassify, so it takes the solid-mid fourth
+        // treatment — otherwise Mark as charity and Use Extra Fund
+        // would be adjacent duplicates. Members see it alone, where
+        // it stays secondary.
+        const fundBtnAdmin = fundBtn.replace('class="btn btn-small"', 'class="btn btn-small btn-mid"');
         // Admin actions are hidden from non-admins in the UI; enforcement
         // is server-side in the RPCs (see header note). Reclassify is
         // admin-only and goes through reclassify_transaction.
@@ -601,12 +635,12 @@ async function refresh() {
         // destructive button keeps its honest label per source:
         // "Delete" for hand-entered rows (truly deleted), "Remove"
         // for bank/email/file rows (excluded, record kept).
-        const action = !isAdmin ? (t.kind === 'charity' ? '' : fundBtn)
+        const action = !isAdmin ? (qualifiesForFund ? fundBtn : '')
           : excluded
           ? `<div class="btn-row"><button class="btn btn-small btn-primary" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${reclassBtn} ${deleteBtn}</div>`
           : t.kind === 'charity'
           ? `<div class="btn-row">${deleteBtn}</div>`
-          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${charityBtn} ${fundBtnAdmin} ${reclassBtn} ${deleteBtn}</div>`;
+          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${charityBtn} ${qualifiesForFund ? fundBtnAdmin : ''} ${reclassBtn} ${deleteBtn}</div>`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
         // UX audit 05: the row's accessible name carries merchant,
         // amount, date, and status, so repeated merchants never share
@@ -619,14 +653,15 @@ async function refresh() {
         <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span> <span class="muted small">Tap for detail</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
           <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${kindLabel})</p>
+          <p class="small muted">${t.kind === 'charity' ? 'This gift is outside weekly spending and counts toward charity given once posted.' : excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : t.kind === 'payment' ? 'This is a card payment. It does not count toward weekly spending.' : t.kind === 'cashback' ? 'This is a cash-back credit. It does not count toward weekly spending.' : t.kind === 'transfer' ? 'This is a transfer between your accounts. It does not count toward weekly spending.' : 'This transaction counts toward its week unless excluded.'}</p>
           <div class="tx-detail-rows">
-            <div><span>Date</span><span>${fmtLong(t.date)}</span></div>
             <div><span>Week</span><span>${esc(weekRangeOf(t.date))} (Sun–Sat)</span></div>
+            <div><span>Date</span><span>${fmtLong(t.date)}</span></div>
+            <div><span>Status</span><span>${esc(stateWord(t, excluded))}</span></div>
             <div><span>Card</span><span>${cardLabel}</span></div>
             <div><span>Source</span><span>${esc(sourceLabel(t.source))}</span></div>
-            <div><span>Status</span><span>${esc(stateWord(t, excluded))}</span></div>
           </div>
-          <p class="small muted">${t.kind === 'charity' ? 'This gift is outside weekly spending and counts toward charity given once posted.' : excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : t.kind === 'payment' ? 'This is a card payment. It does not count toward weekly spending.' : t.kind === 'cashback' ? 'This is a cash-back credit. It does not count toward weekly spending.' : t.kind === 'transfer' ? 'This is a transfer between your accounts. It does not count toward weekly spending.' : 'This transaction counts toward its week unless excluded.'}</p>
+          ${t.source === 'amex_alert' ? `<p class="small muted">${t.state === 'provisional' ? 'This came from an email alert and is provisional — it becomes confirmed when the bank sync shows the same transaction.' : 'This came from an email alert and was confirmed by the bank.'}</p>` : ''}
           <div>${action}</div>
         </div></li>`;
       }).join('')
@@ -640,16 +675,29 @@ async function refresh() {
       : recent.length
       ? recent.map((t) => {
           const excluded = t.excluded === true || t.state === 'excluded';
-          return `<li class="tx-row"><div class="tx-head" data-view="purchases" role="button" tabindex="0" aria-label="See ${esc(t.merchant)} in Transactions"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
+          return `<li class="tx-row"><div class="tx-head" data-view="purchases" data-recent-tx="${t.id}" role="button" tabindex="0" aria-label="See ${esc(t.merchant)} in Transactions"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
           <div class="tx-line2">${statePill(t, excluded)}
           <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span></div></div></li>`;
         }).join('')
       : '<li class="muted small">No transactions yet.</li>';
     // Rows added after load need the same tab-switch handler as the nav.
-    recentEl.querySelectorAll('[data-view]').forEach((el) => el.addEventListener('click', () => {
+    // UX-review-fix: opening a recent item jumps to Transactions AND
+    // expands that row's detail, with the row scrolled into view; the
+    // detail itself is the way back (tap the row header to collapse).
+    const openRecent = async (el) => {
       showView(el.dataset.view, { clearMessages: true });
-      if (Date.now() - lastRefreshAt > 30000) refresh();
-    }));
+      // Refresh first when stale, so the re-render does not collapse
+      // the detail we are about to open.
+      if (Date.now() - lastRefreshAt > 30000) await refresh();
+      const detail = document.getElementById(`tx-detail-${el.dataset.recentTx}`);
+      const head = document.querySelector(`[data-tx-head="${el.dataset.recentTx}"]`);
+      if (detail) detail.classList.remove('hidden');
+      if (head) { head.classList.add('open'); head.scrollIntoView({ block: 'start' }); }
+    };
+    recentEl.querySelectorAll('[data-view]').forEach((el) => {
+      el.addEventListener('click', () => openRecent(el));
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRecent(el); } });
+    });
   }
   // Tap a row header to expand / collapse its detail panel.
   document.querySelectorAll('[data-tx-head]').forEach((el) => el.addEventListener('click', () => {
@@ -706,6 +754,10 @@ async function refresh() {
   }
   document.querySelectorAll('[data-use-fund]').forEach((b) => b.addEventListener('click', async () => {
     const row = all.find((t) => t.id === b.dataset.useFund);
+    // Defensive second gate (stale DOM / direct click): only a charge
+    // can be covered by the fund. The button itself is now hidden for
+    // every other kind, so this should never fire on a live row.
+    if (row && row.kind !== 'charge') { await showAlert('Does not qualify', 'Only a charge can be covered by the Extra Fund. This row does not count toward weekly spending, so there is nothing for the fund to cover.'); return; }
     const amountText = await showSheet({ title: 'Use Extra Fund', message: `Ask the admin to cover "${row?.merchant ?? 'this transaction'}" (${formatCents(row?.amount_cents ?? 0)}) from the Extra Fund?`, inputLabel: 'Amount ($)', inputValue: row ? (row.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Send request', cancelLabel: 'Cancel' });
     if (amountText === null) return;
     const cents = parseDollarsStrict(amountText);
@@ -801,12 +853,20 @@ async function refresh() {
         const statusLabel = r.status === 'split'
           ? (r.remainder_cents != null ? `Split — ${formatCents(r.remainder_cents)} remaining` : 'Split')
           : r.status.toUpperCase();
+        // UX-review-fix: the detail shows requested, available,
+        // approved, and remainder together, so a partial approval is
+        // not ambiguous: approved = requested − remainder, and the
+        // remainder stays unapproved (it is not paid later on its
+        // own — a new request is needed for it).
+        const approvedCents = r.status === 'approved' ? r.amount_cents : (r.status === 'split' && r.remainder_cents != null ? r.amount_cents - r.remainder_cents : null);
         return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(statusLabel)} · ${esc(r.note || '')} <span class="muted small">Tap for detail</span></div>
         <div class="tx-detail hidden" id="fund-detail-${r.id}">
-          <p class="small muted">Amount: ${formatCents(r.amount_cents)} · Status: ${esc(statusLabel)}<br>
+          <p class="small muted">Requested: ${formatCents(r.amount_cents)} · Status: ${esc(statusLabel)}<br>
+          Fund available now: ${currentFundData ? formatCents(currentFundData.available) : 'not loaded'}<br>
+          ${approvedCents !== null ? `Approved: ${formatCents(approvedCents)}${r.status === 'split' ? ` of ${formatCents(r.amount_cents)} requested — ${formatCents(r.remainder_cents)} is still unapproved and needs a new request.` : ' (in full).'}` : ''}<br>
           Note: ${esc(r.note || '—')}<br>
           Requested: ${fmtDateTime(r.created_at)}<br>
-          ${r.status === 'pending' ? 'Waiting on the admin decision.' : r.status === 'approved' ? 'Approved — the fund balance above already reflects it.' : r.status === 'split' ? (r.remainder_cents != null ? `Split approval — ${formatCents(r.remainder_cents)} of this request is still unapproved.` : 'Split approval — part of this request was approved.') : 'Declined by the admin.'}</p>
+          ${r.status === 'pending' ? 'Waiting on the admin decision. You can track it here — its status changes when the admin approves or declines it.' : r.status === 'approved' ? 'Approved — the fund balance above already reflects it.' : r.status === 'split' ? 'Split approval — see the approved and remaining amounts above.' : 'Declined by the admin.'}</p>
           <div>${btns}</div>
         </div></li>`;
       }).join('')
@@ -858,13 +918,13 @@ async function refresh() {
   if (savSumEl) {
     savSumEl.innerHTML = savErr
       ? '<p class="error">Could not load savings. Try again.</p>'
-      : `<div class="sav-grid"><div><div class="kicker">Balance</div><div class="num">${savBalance !== null ? formatCents(savBalance) : 'Not recorded yet'}</div></div><div><div class="kicker">Transferred in</div><div class="num">${formatCents(savIn)}</div></div><div><div class="kicker">Withdrawn</div><div class="num">${formatCents(savOut)}</div></div><div><div class="kicker">Interest / adjustments</div><div class="num">${formatCents(savInterestAdj)}</div></div></div>${savBalance === null ? '<p class="muted small">No savings attestation with a recorded balance was found.</p>' : ''}${!savRows.some((r) => ['transfer_in', 'withdrawal', 'interest'].includes(r.kind)) ? '<p class="muted small">No transfers, withdrawals, or interest have been recorded in the savings ledger yet.</p>' : ''}`;
+      : `<div class="sav-grid"><div><div class="kicker">Balance</div><div class="num">${savBalance !== null ? formatCents(savBalance) : 'Not recorded yet'}</div></div><div><div class="kicker">Transferred in</div><div class="num">${formatCents(savIn)}</div></div><div><div class="kicker">Withdrawn</div><div class="num">${formatCents(savOut)}</div></div><div><div class="kicker">Interest / adjustments</div><div class="num">${formatCents(savInterestAdj)}</div></div></div>${savBalance === null && !savRows.length ? '<p class="muted small">No past savings records yet — these old records are separate from the Extra Fund, which is the savings story now.</p>' : savBalance === null ? '<p class="muted small">Past savings records exist, but no balance was ever recorded for them — that is a missing balance, not $0.</p>' : ''}`;
   }
   $('savingsList').innerHTML = savErr
     ? '<p class="error">Could not load savings records. Try again.</p>'
     : savRows.length
     ? `<ul>${savRows.slice(0, 20).map((r) => `<li>${esc(r.kind)} ${formatCents(r.amount_cents ?? 0)}${r.actual_balance_cents != null ? ` · Recorded balance ${formatCents(r.actual_balance_cents)}` : ''} · ${fmtDateTime(r.created_at)} · ${esc(r.note || '')}</li>`).join('')}</ul>${savRows.length > 20 ? '<p class="muted small">Showing the latest 20 records.</p>' : ''}`
-    : '<p class="muted small">No savings records yet.</p>';
+    : ''; // UX-review-fix: one empty message only, in the summary above — not repeated here.
   // Delta A1: the everyday Savings section is gone — the records
   // above stay read-only behind the Funds page's "Past savings
   // records" link. No form exists anymore, so nothing here writes
@@ -877,7 +937,7 @@ async function refresh() {
   let bankLastSyncAt = null;
   try {
     const { data: items, error: itemsErr } = await supabase.from('plaid_items_public')
-      .select('id, plaid_item_id, institution_name, institution_id, status, last_sync_at')
+      .select('id, plaid_item_id, institution_name, institution_id, status, last_sync_at, created_at')
       .eq('household_id', household.household_id).order('created_at', { ascending: false });
     if (itemsErr) throw itemsErr;
     const itemRows = items ?? [];
@@ -944,6 +1004,7 @@ async function refresh() {
         const logo = document.createElement('span'); logo.innerHTML = bankLogoHtml(item.institution_name || 'Bank'); wrap.appendChild(logo);
         const info = document.createElement('div'); info.className = 'bank-info';
         const name = document.createElement('strong'); name.textContent = item.institution_name || 'Bank'; info.appendChild(name);
+        if (item.created_at) { const cl = document.createElement('div'); cl.className = 'muted small'; cl.textContent = `Connected ${fmtLong(String(item.created_at).slice(0, 10))}`; info.appendChild(cl); }
         const accts = acctRows.filter((x) => x.plaid_item_id === item.plaid_item_id);
         if (accts.length) {
           for (const acct of accts) {
@@ -974,9 +1035,19 @@ async function refresh() {
         wrap.appendChild(info);
         if (item.status === 'active' && household.role === 'admin') {
           const btn = document.createElement('button'); btn.className = 'btn btn-small btn-danger'; btn.type = 'button';
-          btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${item.institution_name || 'bank'}`);
+          // UX-review-fix: two connections can share one institution
+          // name, so Disconnect must identify THIS connection — by
+          // its masked accounts (and connection date when known), in
+          // both the button label and the confirmation. Accounts are
+          // already grouped under their connection above; this is the
+          // disambiguation the duplicate-Disconnect report asked for.
+          // It does not change disconnect behavior: past transactions
+          // stay, only syncing stops (see the confirmation copy).
+          const connMasks = acctRows.filter((x) => x.plaid_item_id === item.plaid_item_id).map((x) => x.mask ? `••${x.mask}` : 'account').join(', ');
+          const connId = connMasks ? `${item.institution_name || 'Bank'} (${connMasks})` : (item.institution_name || 'bank');
+          btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${connId}`);
           btn.addEventListener('click', async () => {
-            if (!(await showConfirm('Disconnect bank', `Disconnect ${item.institution_name || 'this bank'}? The app will stop syncing it. Past transactions stay in the list.`, 'Disconnect'))) return;
+            if (!(await showConfirm('Disconnect bank', `Disconnect ${connId}? The app will stop syncing this connection only. Past transactions stay in the list, and other connections are untouched.`, 'Disconnect'))) return;
             // Sibling S3 plaid-disconnect requires BOTH household_id and plaid_item_id
             // (the S4 brief listed only plaid_item_id); sending both satisfies
             // the implemented function and is harmless if a stricter function
@@ -1083,10 +1154,16 @@ async function refresh() {
     // UX audit 07: a member cannot spend fund money, only request it
     // and wait for approval — so members read "Available to request",
     // never "Spendable now". Admin wording stays as-is. That wording
-    // lives in the tap sheet (and the Home card), not on this face.
+    // lives in the tap sheet and in the Home card's aria-label, not
+    // on either card face (numbers-only faces, UX-review-fix).
     const fundFreeWord = household.role === 'admin' ? 'Spendable now' : 'Available to request';
-    const fsec = $('homeFundSecondary');
-    if (fsec) fsec.textContent = pending > 0 ? `Pending ${formatCents(pending)}` : shortfall > 0 ? `Owed back ${formatCents(shortfall)}` : fundFreeWord;
+    // Numbers-only face: the secondary line is gone from the card.
+    // Its wording lives in the tap sheet and in the aria-label.
+    document.querySelector('[data-home-card="fund"]')?.setAttribute('aria-label', pending > 0
+      ? `Extra Fund, ${formatCents(available)} ${fundFreeWord.toLowerCase()}, ${formatCents(pending)} pending, show breakdown`
+      : shortfall > 0
+      ? `Extra Fund, ${formatCents(available)} ${fundFreeWord.toLowerCase()}, ${formatCents(shortfall)} owed back, show breakdown`
+      : `Extra Fund, ${formatCents(available)} ${fundFreeWord.toLowerCase()}, show breakdown`);
     const fs = $('fundSummary');
     // Button-card-fix: the face is Title + Amount only. The title is
     // the h2 in live.html; this is the amount alone, no "Available"
@@ -1094,6 +1171,12 @@ async function refresh() {
     // and Held all live in the tap sheet (fundBreakdownRows), so no
     // information is lost. Values are unchanged, only presentation.
     if (fs) fs.innerHTML = `<p class="fund-balance"><strong>${formatCents(available)}</strong></p>`;
+    const heldWrap = document.getElementById('fundHeldLinkWrap');
+    if (heldWrap) {
+      heldWrap.classList.toggle('hidden', !(heldRows.length > 0));
+      const heldBtn = document.getElementById('fundHeldLinkBtn');
+      if (heldBtn && heldRows.length > 0) heldBtn.textContent = `Held for review: ${formatCents(heldTotal)} across ${heldRows.length} ${heldRows.length === 1 ? 'week' : 'weeks'} — Open Review queue`;
+    }
     updateFundTopupPreview();
   } catch (e) {
     console.warn('fund summary read failed:', e);
@@ -1102,9 +1185,10 @@ async function refresh() {
     // with no stale label after a failed read.
     currentFundData = null;
     const fp = $('homeFundPrimary'); if (fp) fp.textContent = '—';
-    const fsec = $('homeFundSecondary'); if (fsec) fsec.textContent = 'Could not load fund balances.';
+    document.querySelector('[data-home-card="fund"]')?.setAttribute('aria-label', 'Extra Fund, could not load balances, show breakdown');
     const fs = $('fundSummary');
     if (fs) fs.innerHTML = '<p class="error">Could not load fund balances. Try again.</p>';
+    document.getElementById('fundHeldLinkWrap')?.classList.add('hidden');
   }
   // R12 top-up history (admin only, READ-ONLY list). One row per
   // top-up with the split it made, newest first. A load failure
@@ -1155,9 +1239,24 @@ async function refresh() {
     const defaultRateBp = setRow?.default_rate_bp ?? 1000;
     currentCharityData = { committed, given, remaining, defaultRateBp };
     const cp = $('homeCharityPrimary');
-    if (cp) cp.textContent = (committed === 0 && given === 0) ? '—' : remaining < 0 ? `Ahead by ${formatCents(Math.abs(remaining))}` : formatCents(remaining);
-    const cs = $('homeCharitySecondary');
-    if (cs) cs.textContent = (committed === 0 && given === 0) ? 'No charity tracked yet.' : `Given ${formatCents(given)} · Committed ${formatCents(committed)}`;
+    // UX-review-fix: a dash is the LOADING / FAILED state only (the
+    // initial HTML says "Loading charity…" and the catch block sets
+    // '—'). A successfully loaded zero is a confirmed $0.00, not a
+    // dash — the popup and Funds already showed $0.00, so Home
+    // showing '—' for the same state was the inconsistency. The
+    // secondary line still says "No charity tracked yet." for the
+    // no-activity case, so no-activity vs confirmed-zero vs
+    // loading are now three distinct states.
+    // Numbers-only face: a confirmed zero is $0.00, a negative
+    // remaining is a signed number (given more than committed).
+    // "No charity tracked yet" and the Given/Committed words live in
+    // the tap sheet and in the aria-label, not on the face.
+    if (cp) cp.textContent = formatCents(remaining);
+    document.querySelector('[data-home-card="charity"]')?.setAttribute('aria-label', (committed === 0 && given === 0)
+      ? 'Charity, no charity tracked yet, show breakdown'
+      : remaining < 0
+      ? `Charity, ahead by ${formatCents(Math.abs(remaining))}, show breakdown`
+      : `Charity, ${formatCents(remaining)} remaining, ${formatCents(given)} given, ${formatCents(committed)} committed, show breakdown`);
     const ch = $('charitySummary');
     // Button-card-fix: the face is Title + Amount only. The title is
     // the h2 in live.html; this is the amount alone. A negative
@@ -1165,7 +1264,10 @@ async function refresh() {
     // Remaining label lives in the tap sheet. Committed, Given,
     // Default rate, and Period all live in the tap sheet
     // (charityBreakdownRows). Values are unchanged, only presentation.
-    if (ch) ch.innerHTML = `<p class="fund-balance"><strong>${remaining < 0 ? `Ahead by ${formatCents(Math.abs(remaining))}` : formatCents(remaining)}</strong></p>`;
+    if (ch) ch.innerHTML = `<p class="fund-balance"><strong>${formatCents(remaining)}</strong></p>`;
+    document.querySelector('[data-fund-card="charity"]')?.setAttribute('aria-label', remaining < 0
+      ? `Show Charity breakdown, ahead by ${formatCents(Math.abs(remaining))}`
+      : `Show Charity breakdown, ${formatCents(remaining)} remaining`);
     const cr = $('charityRateCurrent');
     if (cr) cr.textContent = `Current default rate: ${(defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%.`;
     updateCharityIncomePreview();
@@ -1173,7 +1275,7 @@ async function refresh() {
     console.warn('charity read failed:', e);
     currentCharityData = null;
     const cp = $('homeCharityPrimary'); if (cp) cp.textContent = '—';
-    const cs = $('homeCharitySecondary'); if (cs) cs.textContent = 'Could not load charity yet.';
+    document.querySelector('[data-home-card="charity"]')?.setAttribute('aria-label', 'Charity, could not load, show breakdown');
     const ch = $('charitySummary'); if (ch) ch.innerHTML = '<p class="error">Could not load charity. Try again.</p>';
   }
   // R13 charity income list (admin only, READ-ONLY except Correct,
@@ -1307,15 +1409,52 @@ async function refresh() {
         for (const c of shownCands) {
           const keep = byId.get(c.canonical_transaction_id);
           const dup = byId.get(c.duplicate_transaction_id);
-          const wrap = document.createElement('div'); wrap.className = 'bank-row';
-          const info = document.createElement('div'); info.className = 'bank-info';
-          const k = document.createElement('div'); k.textContent = keep ? `Keep: ${keep.merchant} · ${formatCents(keep.amount_cents)} · ${keep.date} · ••${keep.card_suffix} (${keep.source})` : 'Keep: transaction not found'; info.appendChild(k);
-          const d = document.createElement('div'); d.textContent = dup ? `Possible duplicate: ${dup.merchant} · ${formatCents(dup.amount_cents)} · ${dup.date} · ••${dup.card_suffix} (${dup.source})` : 'Possible duplicate: transaction not found'; info.appendChild(d);
-          wrap.appendChild(info);
-          const aliasLabel = document.createElement('label'); aliasLabel.className = 'muted small';
+          // UX-review-fix, duplicates readability (owner screenshot
+          // Nov 3, 7:49 PM): the old .bank-row flex row squeezed the
+          // pair into ~180px, broke merchant names mid-word, and
+          // rendered both records as one long dot-joined paragraph.
+          // Each pair is now a vertical comparison card: merchant on
+          // its own bold line, labeled Amount/Date/Card/Source rows
+          // (like the transaction detail), Keep and Possible stacked
+          // on phone and side-by-side only at wide widths, a match
+          // summary up top, buttons BELOW the comparison, and the
+          // remember-alias checkbox with its explanation below the
+          // buttons. Resolution logic, RPCs, and flagging are
+          // untouched — presentation only.
+          const card = document.createElement('div'); card.className = 'dedupe-card';
+          const matchParts = [];
+          if (keep && dup) {
+            if (keep.amount_cents === dup.amount_cents) matchParts.push('same amount');
+            if (keep.date === dup.date) matchParts.push('same date');
+            if (keep.card_suffix === dup.card_suffix) matchParts.push('same card');
+            if (keep.source === dup.source) matchParts.push('same source');
+          }
+          const match = document.createElement('p'); match.className = 'dedupe-match';
+          match.textContent = matchParts.length ? `Match: ${matchParts.join(', ')}.` : 'Compare the two records below.';
+          card.appendChild(match);
+          const pair = document.createElement('div'); pair.className = 'dedupe-pair';
+          const side = (label, tx, fallback) => {
+            const sEl = document.createElement('div'); sEl.className = 'dedupe-side';
+            const h = document.createElement('h4'); h.textContent = label; sEl.appendChild(h);
+            if (!tx) { const pp = document.createElement('p'); pp.className = 'muted small'; pp.textContent = fallback; sEl.appendChild(pp); return sEl; }
+            const m = document.createElement('p'); m.className = 'dedupe-merchant'; m.textContent = tx.merchant; sEl.appendChild(m);
+            const rows = document.createElement('div'); rows.className = 'dedupe-rows';
+            const row = (k, v) => { const d = document.createElement('div'); const a = document.createElement('span'); a.textContent = k; const b = document.createElement('span'); b.textContent = v; d.appendChild(a); d.appendChild(b); rows.appendChild(d); };
+            row('Amount', formatCents(tx.amount_cents));
+            row('Date', fmtLong(tx.date));
+            row('Card', tx.card_suffix ? `\u2022\u2022${tx.card_suffix}` : '—');
+            row('Source', sourceLabel(tx.source));
+            row('Counts', tx.excluded ? 'Excluded' : 'Counted');
+            sEl.appendChild(rows);
+            return sEl;
+          };
+          pair.appendChild(side('Keep', keep, 'Keep: transaction not found'));
+          pair.appendChild(side('Possible duplicate', dup, 'Possible duplicate: transaction not found'));
+          card.appendChild(pair);
+          const btnRow = document.createElement('div'); btnRow.className = 'btn-row';
+          const aliasLabel = document.createElement('label'); aliasLabel.className = 'dedupe-alias';
           const aliasBox = document.createElement('input'); aliasBox.type = 'checkbox'; aliasBox.setAttribute('aria-label', 'Remember these merchant names as the same merchant for future review');
-          aliasLabel.appendChild(aliasBox); aliasLabel.appendChild(document.createTextNode(' Remember as same merchant'));
-          wrap.appendChild(aliasLabel);
+          aliasLabel.appendChild(aliasBox); aliasLabel.appendChild(document.createTextNode(' Remember as same merchant — remembers these two merchant names as the same for future review, so similar pairs are treated as the same merchant next time.'));
           const sameBtn = document.createElement('button'); sameBtn.className = 'btn btn-small btn-primary'; sameBtn.type = 'button'; sameBtn.textContent = 'Same purchase';
           sameBtn.addEventListener('click', async () => {
             if (!(await showConfirm('Same purchase', 'Keep one transaction and exclude the other from counts? Neither row is deleted.', 'Same purchase'))) return;
@@ -1323,7 +1462,7 @@ async function refresh() {
             const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'merge', p_note: '', p_remember_alias: aliasBox.checked });
             if (error) { console.warn('resolve_duplicate_candidate failed:', error.message); sameBtn.disabled = false; await showAlert('Could not resolve', 'Could not resolve this pair. Try again.'); } else await refresh();
           });
-          wrap.appendChild(sameBtn);
+          btnRow.appendChild(sameBtn);
           const sepBtn = document.createElement('button'); sepBtn.className = 'btn btn-small'; sepBtn.type = 'button'; sepBtn.textContent = 'Separate';
           sepBtn.addEventListener('click', async () => {
             if (!(await showConfirm('Separate purchases', 'Keep both transactions and never flag this pair again?', 'Separate'))) return;
@@ -1331,8 +1470,10 @@ async function refresh() {
             const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'separate', p_note: '', p_remember_alias: false });
             if (error) { console.warn('resolve_duplicate_candidate failed:', error.message); sepBtn.disabled = false; await showAlert('Could not resolve', 'Could not resolve this pair. Try again.'); } else await refresh();
           });
-          wrap.appendChild(sepBtn);
-          frag.appendChild(wrap);
+          btnRow.appendChild(sepBtn);
+          card.appendChild(btnRow);
+          card.appendChild(aliasLabel);
+          frag.appendChild(card);
         }
         dl.replaceChildren(frag);
       }
@@ -1459,6 +1600,11 @@ async function refresh() {
       })()
     : `<li>${(historyFilter.from || historyFilter.to) ? 'No entries in the selected period.' : 'No audit entries yet.'}</li>`;
   } finally {
+    // A failed read must not blank the page: showView already ran in
+    // boot(), and re-running it here guarantees the sections stay
+    // visible with their own inline errors, even if a read threw
+    // before the in-try showView call. No data logic changes here.
+    try { if (household) showView(currentView); } catch (e) { /* sections stay as boot left them */ }
     if (rb) { rb.disabled = false; rb.textContent = 'Refresh'; }
     refreshInFlight = Math.max(0, refreshInFlight - 1);
     if (!refreshInFlight) { const rs2 = document.getElementById('refreshState'); if (rs2) rs2.textContent = ''; }
@@ -1472,6 +1618,16 @@ async function boot() {
   household = await loadMembership();
   if (!household) { await show('household'); return; }
   await show('app');
+  // UX-review-fix, blank shell (owner screenshot Nov 3, 7:48 PM):
+  // #view-app > .card starts display:none in CSS and showView() is
+  // what turns sections on. It used to run only late inside
+  // refresh(), after every read, so a slow or hanging boot showed
+  // the bare shell — topbar, nav, footer, empty white main — and a
+  // throw before it left the page blank with only console warnings.
+  // Show the current view NOW, so the cards with their existing
+  // "Loading…" placeholders appear instantly; refresh() then fills
+  // them in, and its finally block re-runs showView even on failure.
+  showView(currentView);
   // Gmail OAuth return: the callback redirects back here with
   // ?gmail=connected or ?gmail=failed. The param only picks the
   // message (server truth on refresh decides what the card shows);
@@ -1492,7 +1648,7 @@ async function boot() {
 $('forgotPasswordBtn')?.addEventListener('click', async () => {
   let email = ($('authEmail')?.value ?? '').trim();
   if (!email) {
-    const typed = await showSheet({ title: 'Forgot password?', message: 'Enter the email for your account. A reset link will be sent to it.', inputLabel: 'Email', inputType: 'email', confirmLabel: 'Send reset link', cancelLabel: 'Cancel' });
+    const typed = await showSheet({ title: 'Forgot password?', message: 'Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.', inputLabel: 'Email', inputType: 'email', confirmLabel: 'Send reset link', cancelLabel: 'Cancel' });
     if (typed === null) return;
     email = typed.trim();
   }
@@ -1513,7 +1669,9 @@ $('signInBtn').addEventListener('click', async () => {
     email: $('authEmail').value.trim(), password: $('authPassword').value,
   });
   if (error) console.warn('sign-in failed:', error.message);
-  $('authMsg').textContent = error ? 'Could not sign in. Check your email and password and try again.' : 'Signed in.';
+  // Privacy-safe generic error, plus a direct recovery action: the
+  // Forgot password? button sits below this message on the form.
+  $('authMsg').textContent = error ? 'Could not sign in. Check your email and password and try again. If you forgot the password, use Forgot password? below to reset it.' : 'Signed in.';
   if (!error) await show('loading');
   await boot();
   if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
@@ -1557,7 +1715,7 @@ $('csvFile')?.addEventListener('change', async (e) => {
   const newCount = pendingCsvRows.length;
   if (preview) preview.innerHTML = `<p class="muted small">${newCount} new, ${dupes} duplicate(s) skipped, ${parsed.errors.length} unparseable row(s).</p>`
     + (parsed.errors.length ? `<p class="muted small">${parsed.errors.map((er) => esc(er)).join('<br>')}</p>` : '')
-    + `<ul class="plain">${previewRows.map((r) => `<li class="csv-row${r.isDupe ? ' csv-dupe' : ''}">${esc(r.date)} \u00b7 ${esc(r.merchant)} \u00b7 ${formatCents(r.amountCents)} \u00b7 \u2022\u2022${esc(r.suffix)} \u2014 ${r.isDupe ? 'Duplicate, will be skipped' : 'New'}</li>`).join('')}</ul>`;
+    + `<ul class="plain">${previewRows.map((r, i) => `<li class="csv-row${r.isDupe ? ' csv-dupe' : ''}">${i + 1}. ${esc(r.date)} \u00b7 ${esc(r.merchant)} \u00b7 ${formatCents(r.amountCents)} \u00b7 \u2022\u2022${esc(r.suffix)} \u2014 ${r.isDupe ? 'Duplicate, will be skipped' : 'New'}</li>`).join('')}</ul>`;
   if (msg) msg.textContent = '';
   if (confirmBtn) confirmBtn.disabled = newCount === 0;
   } catch (err) {
@@ -1592,6 +1750,14 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
   if (msg) msg.textContent = '';
   showToast(`Imported ${added} transaction(s) as provisional.`);
   await refresh();
+});
+$('togglePasswordBtn')?.addEventListener('click', (e) => {
+  const input = $('authPassword'); if (!input) return;
+  const showing = input.type === 'password';
+  input.type = showing ? 'text' : 'password';
+  e.currentTarget.textContent = showing ? 'Hide' : 'Show';
+  e.currentTarget.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
+  e.currentTarget.setAttribute('aria-pressed', showing ? 'true' : 'false');
 });
 $('signUpBtn').addEventListener('click', async () => {
   // Delta3: same busy pattern as sign-in.
@@ -1657,7 +1823,7 @@ $('joinHouseholdBtn').addEventListener('click', async () => {
   // failed attempt and returns NULL instead of raising, so the log
   // survives — see supabase/n13-invite-rate-limit.sql). Treat it
   // exactly like the old exception: same generic message, no join.
-  $('householdMsg').textContent = (error || !data) ? 'Join failed. Check the invite code and try again.' : 'Joined. Loading shared budget…';
+  $('householdMsg').textContent = (error || !data) ? 'Join failed. Check the invite code and try again, or ask the household owner to share it again from Settings.' : 'Joined. Loading shared budget…';
   if (!error && data) { household = { household_id: data, role: 'member' }; await show('app'); await refresh(); }
   if (btn) { btn.disabled = false; btn.textContent = 'Join as member'; }
 });
@@ -1674,10 +1840,17 @@ $('manualForm').addEventListener('submit', async (e) => {
   const submitBtn = f.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
   const done = () => { manualSubmitting = false; if (submitBtn) submitBtn.disabled = false; };
+  // UX-review-fix: field errors sit beside the form (inline, above
+  // the buttons), not in a popup — so the user sees which field to
+  // fix without losing the draft. The duplicate warning stays a
+  // dialog because it is a decision, not a field error.
+  const fieldErr = document.getElementById('manualFormError');
+  const setFieldError = (msg, field) => { if (fieldErr) { fieldErr.textContent = msg; fieldErr.classList.remove('hidden'); } if (field) field.focus(); };
+  if (fieldErr) fieldErr.classList.add('hidden');
   const amount = parseDollarsStrict(f.amount.value);
-  if (amount === null || amount <= 0) { done(); await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
+  if (amount === null || amount <= 0) { done(); setFieldError('Amount: enter a positive amount.', f.amount); return; }
   const suffix = f.suffix.value.trim();
-  if (!/^\d{4}$/.test(suffix)) { done(); await showAlert('Card suffix', 'Card suffix must be exactly 4 digits. Never enter a full card number.'); return; }
+  if (!/^\d{4}$/.test(suffix)) { done(); setFieldError('Card suffix: enter exactly 4 digits. Never enter a full card number.', f.suffix); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
   // Smarter entry: warn on an apparent duplicate instead of silently
   // creating a second copy of the same transaction.
@@ -1833,7 +2006,7 @@ const VIEWS = {
   // R2: Settings is reached from the profile menu, not a nav tab.
   // Connections (bank + email), Budget (allowance + temp increase)
   // and Account & household live here; Funds no longer shows them.
-  settings: ['section-settings-head', 'section-bank', 'section-email', 'settingsCard', 'section-settings-account'],
+  settings: ['section-settings-head', 'section-profile', 'section-bank', 'section-email', 'settingsCard', 'section-settings-account'],
   activity: ['section-history-filter', 'section-week-history', 'section-activity'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
@@ -1842,8 +2015,9 @@ if (!VIEWS[currentView]) currentView = 'week';
 // R2: the view Settings returns to (Back button). Settings is not a
 // nav tab, so it is never persisted as hb-view.
 let previousView = 'week';
-// R7: which Add form (if any) is open on the Transactions screen:
-// null = choice card, 'manual' = hand form, 'csv' = import form.
+// R7: which Add state is open on the Transactions screen:
+// null = list only (choice card hidden by default, UX-review-fix),
+// 'choice' = choice card, 'manual' = hand form, 'csv' = import form.
 let addFormOpen = null;
 // Bottom toast: in-app result messages float above the tab bar instead
 // of popping open inside cards and shoving everything below them down.
@@ -1947,12 +2121,19 @@ function showView(name, opts = {}) {
       ? 'Connections, Budget, and Account & household.'
       : 'Connections and Account & household. Only the admin can change bank and email connections.';
   }
-  // R7: the Add forms are never permanently expanded — the choice
-  // card shows on the Transactions screen, and only the chosen form
-  // shows. Opening or closing a form writes nothing.
+  // R7 + UX-review-fix (owner screenshot Nov 3, 7:54 PM): the Add
+  // choice card is HIDDEN by default on the Transactions page — the
+  // list is the page. addFormOpen is now: null = list only,
+  // 'choice' = choice card, 'manual'/'csv'/'charity' = that form.
+  // The Transactions card header's top-right Add button is the entry
+  // point that reveals the choices; Back from a form returns to the
+  // choices, Cancel/submit return to the list. This hide-by-default
+  // is a working assumption, flagged pending the owner's next
+  // picture showing where Add should live instead — changing it
+  // back is one state value, no form or handler rework.
   if (name === 'purchases') {
     const choice = document.getElementById('section-add-choice');
-    if (choice) choice.style.display = addFormOpen ? 'none' : 'block';
+    if (choice) choice.style.display = addFormOpen === 'choice' ? 'block' : 'none';
     const man = document.getElementById('section-manual');
     if (man) man.style.display = addFormOpen === 'manual' ? 'block' : 'none';
     const csv = document.getElementById('section-csv');
@@ -1988,7 +2169,20 @@ document.getElementById('profileBtn')?.addEventListener('click', (e) => {
 });
 document.addEventListener('click', (e) => {
   const menu = document.getElementById('profileMenu');
-  if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target) && e.target.id !== 'profileBtn' && !document.getElementById('profileBtn')?.contains(e.target)) menu.classList.add('hidden');
+  if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target) && e.target.id !== 'profileBtn' && !document.getElementById('profileBtn')?.contains(e.target)) {
+    menu.classList.add('hidden');
+    document.getElementById('profileBtn')?.setAttribute('aria-expanded', 'false');
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const menu = document.getElementById('profileMenu');
+  if (menu && !menu.classList.contains('hidden')) {
+    menu.classList.add('hidden');
+    const btn = document.getElementById('profileBtn');
+    btn?.setAttribute('aria-expanded', 'false');
+    btn?.focus();
+  }
 });
 async function shareInviteCode() {
   document.getElementById('profileMenu')?.classList.add('hidden');
@@ -2028,7 +2222,7 @@ async function deleteAccountFlow() {
 async function changePasswordFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
-  const pw = await showSheet({ title: 'Change password', message: 'Enter a new password for this account.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change password', cancelLabel: 'Cancel' });
+  const pw = await showSheet({ title: 'Change password', message: 'Enter a new password for this account. Password requirement: at least 8 characters.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change password', cancelLabel: 'Cancel' });
   if (!pw) return;
   if (pw.length < 8) { await showAlert('Password too short', 'Enter a password of at least 8 characters.'); return; }
   const { error } = await supabase.auth.updateUser({ password: pw });
@@ -2039,6 +2233,43 @@ document.getElementById('menuSettingsBtn')?.addEventListener('click', () => {
   document.getElementById('profileMenu')?.classList.add('hidden');
   showView('settings');
 });
+// UX-review-fix, Edit profile: the menu row opens Settings and
+// scrolls to the Profile card (chosen over a separate sheet so the
+// name, email, and password controls live in one place, next to the
+// account controls they relate to). Membership, roles, invite, and
+// deletion logic are untouched.
+document.getElementById('menuEditProfileBtn')?.addEventListener('click', () => {
+  document.getElementById('profileMenu')?.classList.add('hidden');
+  document.getElementById('profileBtn')?.setAttribute('aria-expanded', 'false');
+  showView('settings');
+  document.getElementById('section-profile')?.scrollIntoView({ block: 'start' });
+  document.getElementById('profileNameInput')?.focus();
+});
+document.getElementById('saveProfileNameBtn')?.addEventListener('click', async () => {
+  const input = document.getElementById('profileNameInput');
+  const name = input?.value.trim() ?? '';
+  if (!name) { showToast('Enter a name to save.', true); input?.focus(); return; }
+  const { error } = await supabase.auth.updateUser({ data: { full_name: name } });
+  if (error) { console.warn('profile name save failed:', error.message); showToast('Could not save your name. Try again.', true); return; }
+  const pn = document.getElementById('profileName'); if (pn) pn.textContent = name;
+  const editBtn = document.getElementById('menuEditProfileBtn'); if (editBtn) editBtn.textContent = 'Edit profile';
+  showToast('Name saved — it now shows in your profile.');
+});
+document.getElementById('saveProfileEmailBtn')?.addEventListener('click', async () => {
+  const input = document.getElementById('profileEmailInput');
+  const email = input?.value.trim() ?? '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('Enter a valid email address.', true); input?.focus(); return; }
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user?.email && email === user.email) { showToast('That is already your sign-in email.'); return; }
+  // The confirmation copy sits on the Profile card before this
+  // button: a confirmation goes to the NEW address, and the sign-in
+  // email does not change until it is confirmed. The displayed email
+  // is deliberately NOT changed here.
+  const { error } = await supabase.auth.updateUser({ email });
+  if (error) { console.warn('profile email save failed:', error.message); showToast('Could not change your email. Try again.', true); return; }
+  showToast(`Confirmation sent to ${email} — your sign-in email stays as it is until you confirm it.`);
+});
+document.getElementById('profilePasswordBtn')?.addEventListener('click', changePasswordFlow);
 document.getElementById('settingsShareIdBtn')?.addEventListener('click', shareInviteCode);
 document.getElementById('settingsPasswordBtn')?.addEventListener('click', changePasswordFlow);
 document.getElementById('settingsDeleteBtn')?.addEventListener('click', deleteAccountFlow);
@@ -2053,7 +2284,8 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
     const w = currentWeekData;
     if (!w) { await showAlert('Weekly Budget', 'Weekly numbers are not loaded yet. Try again in a moment.'); return; }
     // Delta3: labeled metric rows instead of the paragraph of figures;
-    // the reconciliation equation stays below them, unchanged.
+    // UX-review-fix: the reconciliation paragraph below them is now
+    // behind the "Show how this adds up" disclosure (see below).
     const weeklyRows = [
       ['Left', `${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}`],
       ['Spent', formatCents(w.chargesCents)],
@@ -2062,8 +2294,24 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
       ['Carried debt', formatCents(w.carriedDebtCents)],
       ['Temporary increase', formatCents(w.tempCents)],
       ['Outgoing debt', formatCents(w.outgoingDebtCents)],
+      ...(w.weekLocked ? [['Week status', 'Locked']] : []),
+      ...((w.pendingRefundExcludedCents ?? 0) > 0 ? [['Pending refunds excluded', formatCents(w.pendingRefundExcludedCents)]] : []),
     ];
-    await showSheet({ title: 'Weekly Budget', rows: weeklyRows, message: `How it fits together:\nBase spending room: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)} allowance - ${formatCents(w.carriedDebtCents)} carried debt = ${formatCents(w.baseRoomCents ?? w.baseAvailableCents)} (never below $0)\nLeft: ${formatCents(w.baseRoomCents ?? w.baseAvailableCents)} room + ${formatCents(w.tempCents)} temporary - ${formatCents(w.chargesCents)} spent = ${formatCents(w.availableCents)}\nOutgoing debt: ${formatCents(w.unabsorbedDebtCents ?? 0)} debt the allowance did not cover + ${formatCents(w.newDebtCents ?? 0)} new debt from spending above room = ${formatCents(w.outgoingDebtCents)}`, confirmLabel: 'Close' });
+    // UX-review-fix (owner screenshot Nov 3, 7:52 PM): the "How it
+    // fits together" paragraph is GONE from the default view — it
+    // repeated the labeled rows above it in long sentence form and
+    // wrapped badly, adding no new figure. The three computed lines
+    // survive only behind a single tap, as label + amount rows, never
+    // a paragraph. No figure changes: Base room, Left, and Outgoing
+    // debt are the same values the paragraph computed (baseRoom,
+    // available, outgoing), and the rows above them are unchanged.
+    // The hero kicker fix in this package is separate (live.html
+    // kicker text) and does not touch this sheet code.
+    await showSheet({ title: 'Weekly Budget', rows: weeklyRows, disclosure: { label: 'Show how this adds up', rows: [
+      ['Base spending room', formatCents(w.baseRoomCents ?? w.baseAvailableCents)],
+      ['Left', formatCents(w.availableCents)],
+      ['Outgoing debt', formatCents(w.outgoingDebtCents)],
+    ] }, confirmLabel: 'Close' });
   } else if (kind === 'fund') {
     const f = currentFundData;
     if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
@@ -2092,7 +2340,7 @@ function fundBreakdownRows(f) {
     ['Spent from fund', formatCents(f.spent)],
     ['Owed back (shortfall)', formatCents(f.shortfall)],
   ];
-  if ((f.heldWeeks ?? 0) > 0) rows.push(['Held for review', `${formatCents(f.heldTotal ?? 0)} across ${f.heldWeeks} ${f.heldWeeks === 1 ? 'week' : 'weeks'}`]);
+  if ((f.heldWeeks ?? 0) > 0) rows.push(['Held for review', `${formatCents(f.heldTotal ?? 0)} across ${f.heldWeeks} ${f.heldWeeks === 1 ? 'week' : 'weeks'} — open the Review queue under the Funds cards`]);
   return rows;
 }
 function charityBreakdownRows(c) {
@@ -2106,7 +2354,8 @@ function charityBreakdownRows(c) {
 }
 // Button-card-fix: Funds balance cards — tap the whole card (click,
 // Enter, or Space) for the same breakdown sheet as the Home card.
-// The chevron in the card head marks it as tappable. Opening or
+// The chevron at the bottom-right of the card, facing down, marks
+// it as tappable (more below, not a link to another page). Opening or
 // closing a sheet writes nothing and triggers no sync; it only reads
 // the numbers already loaded by refresh().
 document.querySelectorAll('[data-fund-card]').forEach((el) => {
@@ -2182,7 +2431,7 @@ function fmtShort(dateStr) {
 
 // In-app sheet (replaces the browser's grey prompt/confirm/alert
 // boxes, which looked cheap and blocked the whole page).
-function showSheet({ title, message, rows = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null }) {
+function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null }) {
   // SECURITY: EVERY interpolated value is escaped with esc() — title,
   // message, input label/value, option labels/values, and button labels.
   // No raw caller value reaches innerHTML through any showSheet path.
@@ -2199,14 +2448,39 @@ function showSheet({ title, message, rows = null, inputLabel, inputValue = '', i
     // the message paragraph; the paragraph is omitted when empty so a
     // rows-only sheet has no blank line. Rows are [label, value] pairs.
     const rowsHtml = rows ? `<div class="sheet-rows">${rows.map(([label, value]) => `<div><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('')}</div>` : '';
+    // UX-review-fix: an optional collapsed calculation, as a
+    // <details> block — label + amount rows only, never a paragraph.
+    // Used by the Weekly Budget sheet for its "how this adds up"
+    // lines, which used to sit below the rows as a long sentence.
+    const disclosureHtml = disclosure ? `<details class="sheet-disclosure"><summary>${esc(disclosure.label)}</summary><div class="sheet-rows">${disclosure.rows.map(([label, value]) => `<div><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('')}</div></details>` : '';
     overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-      <h3>${esc(title)}</h3>${rowsHtml}${message ? `<p>${esc(message)}</p>` : ''}
+      <h3>${esc(title)}</h3>${rowsHtml}${disclosureHtml}${message ? `<p>${esc(message)}</p>` : ''}
       ${inputHtml}
       <div class="sheet-btns">
         ${cancelLabel ? `<button class="btn" type="button" id="sheetCancel">${esc(cancelLabel)}</button>` : ''}
         <button class="btn btn-primary" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
       </div></div>`;
     document.body.appendChild(overlay);
+    // UX-review-fix, Show password (owner, Nov 3, 7:53 PM): every
+    // password input gets a Show/Hide toggle. The sheet's only
+    // password field is Change password; the toggle switches the
+    // input type only, never logs or displays the value elsewhere,
+    // and changes no auth logic or password policy.
+    const sheetInputEl = document.getElementById('sheetInput');
+    if (sheetInputEl && safeType === 'password') {
+      const wrap = document.createElement('span'); wrap.className = 'password-row';
+      sheetInputEl.replaceWith(wrap); wrap.appendChild(sheetInputEl);
+      const tog = document.createElement('button'); tog.type = 'button'; tog.className = 'btn btn-quiet';
+      tog.textContent = 'Show'; tog.setAttribute('aria-label', 'Show password'); tog.setAttribute('aria-pressed', 'false');
+      tog.addEventListener('click', () => {
+        const showing = sheetInputEl.type === 'password';
+        sheetInputEl.type = showing ? 'text' : 'password';
+        tog.textContent = showing ? 'Hide' : 'Show';
+        tog.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
+        tog.setAttribute('aria-pressed', showing ? 'true' : 'false');
+      });
+      wrap.appendChild(tog);
+    }
     let settled = false;
     const done = (v) => { if (settled) return; settled = true; overlay.remove(); resolve(v); };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) done(inputLabel ? null : false); });
@@ -2251,7 +2525,7 @@ document.getElementById('txSortDirBtn')?.addEventListener('click', () => {
   applyTxSort();
 });
 
-$('txAddBtn')?.addEventListener('click', () => setAddForm(null));
+$('txAddBtn')?.addEventListener('click', () => setAddForm('choice'));
 $('txLoadMore')?.addEventListener('click', async () => {
   txLimit += 100;
   await refresh();
@@ -2260,17 +2534,18 @@ const setAddForm = (which) => { addFormOpen = which; showView('purchases'); };
 $('addManualBtn')?.addEventListener('click', () => setAddForm('manual'));
 $('addCsvBtn')?.addEventListener('click', () => setAddForm('csv'));
 $('addCharityBtn')?.addEventListener('click', () => setAddForm('charity'));
-$('manualBackBtn')?.addEventListener('click', () => setAddForm(null));
+$('manualBackBtn')?.addEventListener('click', () => setAddForm('choice'));
 // UX audit 06: an explicit Cancel closes the form AND clears the
 // draft. Back only returns to the Add choices — the draft stays,
 // as the form hint now states. Purchases-only: no refund option
 // here (owner decision Nov 3).
 $('manualCancelBtn')?.addEventListener('click', () => {
   document.getElementById('manualForm')?.reset();
+  document.getElementById('manualFormError')?.classList.add('hidden');
   setAddForm(null);
 });
-$('csvBackBtn')?.addEventListener('click', () => setAddForm(null));
-$('charityBackBtn')?.addEventListener('click', () => setAddForm(null));
+$('csvBackBtn')?.addEventListener('click', () => setAddForm('choice'));
+$('charityBackBtn')?.addEventListener('click', () => setAddForm('choice'));
 // Delta C3: Funds forms open from the actions card, one at a time.
 const setFundForm = (which) => { fundFormOpen = which; showView('money'); };
 $('fundActionAddBtn')?.addEventListener('click', () => setFundForm('add'));
@@ -2280,6 +2555,18 @@ $('fundActionAskBtn')?.addEventListener('click', () => setFundForm('ask'));
 // was removed for parity; the Funds balance card itself is a tap
 // target for its breakdown sheet, not a button row).
 $('fundActionIncomeBtn')?.addEventListener('click', () => setFundForm('income'));
+// UX-review-fix P2: the held balance links straight to the Review
+// queue. The button lives under the Funds balance cards and only
+// shows when a held week exists; tapping it opens Funds, expands
+// the Review section, and scrolls to it, so the held amount is never
+// separated from the queue that explains it.
+$('fundHeldLinkBtn')?.addEventListener('click', () => {
+  fundFormOpen = null;
+  showView('money');
+  const details = document.getElementById('reviewDetails');
+  if (details) details.open = true;
+  document.getElementById('section-fund-review')?.scrollIntoView({ block: 'start' });
+});
 $('fundAddBackBtn')?.addEventListener('click', () => setFundForm(null));
 $('fundUseBackBtn')?.addEventListener('click', () => setFundForm(null));
 $('fundAskBackBtn')?.addEventListener('click', () => setFundForm(null));
@@ -2373,7 +2660,7 @@ function updateCharityIncomePreview() {
   if (!currentCharityData) { pv.textContent = 'Rate preview is unavailable until charity loads — the server still applies the saved default when you save.'; return; }
   const overrideBp = parseDollarsStrict(f.rate.value);
   const rateBp = overrideBp !== null ? overrideBp : currentCharityData.defaultRateBp;
-  pv.textContent = `This commits ${formatCents(charityCommittedCents(cents, rateBp))} at ${(rateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%.`;
+  pv.textContent = `This commits ${formatCents(charityCommittedCents(cents, rateBp))} at ${(rateBp / 100).toFixed(2).replace(/\.?0+$/, '')}% — ${overrideBp !== null ? 'this entry only (the default rate for future incomes is unchanged).' : 'the default rate, applied to this entry.'}`;
 }
 document.querySelector('#charityIncomeForm input[name="amount"]')?.addEventListener('input', updateCharityIncomePreview);
 document.querySelector('#charityIncomeForm input[name="rate"]')?.addEventListener('input', updateCharityIncomePreview);
@@ -2444,9 +2731,33 @@ const closeTxFilters = () => {
   const t = document.getElementById('txFiltersToggle');
   if (t) t.setAttribute('aria-expanded', 'false');
 };
+// UX-review-fix: the filter sheet is a dialog, so Escape closes it
+// (like Cancel, preserving applied filters), Enter on Cancel closes
+// it without submitting (Cancel is a plain button, never a submit),
+// and Tab stays inside while it is open. Focus returns to Filters
+// on close, so keyboard users do not lose their place. Scope is the
+// filter sheet only: the generic showSheet dialogs are single-action
+// popups that already close on backdrop/confirm/cancel, and changing
+// their key handling in the same pass would risk the sheet-input
+// forms (manual, charity, fund) that share showSheet.
+document.addEventListener('keydown', (e) => {
+  const f = document.getElementById('txFiltersSheet');
+  if (!f || f.classList.contains('hidden')) return;
+  if (e.key === 'Escape') { e.preventDefault(); document.getElementById('txFiltersCancelBtn')?.click(); document.getElementById('txFiltersToggle')?.focus(); return; }
+  if (e.key !== 'Tab') return;
+  const focusables = [...f.querySelectorAll('select, input, button')].filter((el) => !el.disabled && el.offsetParent !== null);
+  if (!focusables.length) return;
+  const first = focusables[0]; const last = focusables[focusables.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
 const openTxFilters = () => {
   const f = document.getElementById('txFiltersSheet');
   if (!f) return;
+  // UX-review-fix: focus moves inside on open, and returns to the
+  // Filters button when the sheet closes (see closeTxFilters).
+  const first = f.querySelector('select, input, button');
+  if (first) setTimeout(() => first.focus(), 0);
   txFiltersSnapshot = {
     month: txMonth,
     card: txCard,
@@ -2549,7 +2860,7 @@ $('addTempBtn')?.addEventListener('click', async (e) => {
   const { error } = await supabase.rpc('add_temp_increase', { p_household_id: household.household_id, p_week_start: weekStart, p_amount_cents: cents, p_note: '' });
   if (btn) btn.disabled = false;
   if (error) console.warn('add_temp_increase failed:', error.message);
-  showToast(error ? 'Could not add the temporary increase. Try again.' : 'Temporary increase added — dashboard will reflect it on refresh.', !!error);
+  showToast(error ? 'Could not add the temporary increase. Try again.' : `Temporary increase added for this week only (week of ${fmtLong(weekStart)}).`, !!error);
   if (!error) await refresh();
 });
 
@@ -2566,8 +2877,8 @@ $('saveAllowanceBtn')?.addEventListener('click', async (e) => {
     } catch (e) { /* old value stays unknown; the sheet says so */ }
   }
   const confirmed = await showSheet({ title: 'Change allowance', message: oldCents === null
-    ? `Set the weekly allowance to ${formatCents(cents)}? (The current allowance could not be read, so no old value is shown.)`
-    : `Change the weekly allowance from ${formatCents(oldCents)} to ${formatCents(cents)}?`, confirmLabel: 'Change allowance', cancelLabel: 'Keep current' });
+    ? `Set the weekly allowance to ${formatCents(cents)}? (The current allowance could not be read, so no old value is shown.)\nThis applies from the current week onward (${currentWeekData?.weekStart ? `week of ${fmtLong(currentWeekData.weekStart)}` : 'this week'}). It does not rewrite closed weeks.`
+    : `Change the weekly allowance from ${formatCents(oldCents)} to ${formatCents(cents)}?\nThis applies from the current week onward (${currentWeekData?.weekStart ? `week of ${fmtLong(currentWeekData.weekStart)}` : 'this week'}). It does not rewrite closed weeks.`, confirmLabel: 'Change allowance', cancelLabel: 'Keep current' });
   if (!confirmed) return;
   // R1 busy control: block repeat taps while the allowance is saving.
   if (btn) btn.disabled = true;

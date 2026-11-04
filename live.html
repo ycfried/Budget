@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=19">
+<link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -20,11 +20,13 @@
     </button>
     <div id="profileMenu" class="profile-menu hidden">
       <div class="profile-menu-head">
-        <p class="small muted">Signed in as</p>
-        <p class="profile-email"><strong id="profileEmail">—</strong></p>
+        <p class="profile-name"><strong id="profileName">—</strong></p>
+        <p class="small muted" id="profileEmail">—</p>
         <p><span class="role-pill" id="profileRole">—</span></p>
+        <p class="small muted" id="profileHousehold">—</p>
       </div>
       <div class="profile-menu-rows">
+        <button id="menuEditProfileBtn" class="profile-menu-row" type="button" aria-label="Edit your profile">Edit profile</button>
         <button id="menuSettingsBtn" class="profile-menu-row" type="button" aria-label="Open Settings">Settings</button>
         <button id="signOutBtn" class="profile-menu-row profile-menu-row-danger" type="button" aria-label="Sign out of the live app">Sign out</button>
       </div>
@@ -48,8 +50,9 @@
     <h1>OnBudget</h1>
     <p class="muted">Sign in to your household budget.</p>
     <label>Email <input id="authEmail" type="email" autocomplete="email" required></label>
-    <label>Password <input id="authPassword" type="password" autocomplete="current-password" required></label>
+    <label>Password <span class="password-row"><input id="authPassword" type="password" autocomplete="current-password" required><button id="togglePasswordBtn" class="btn btn-quiet" type="button" aria-label="Show password" aria-pressed="false">Show</button></span></label>
     <button id="signInBtn" class="btn btn-primary btn-block" type="button" aria-label="Sign in to the live app">Sign in</button>
+    <p class="muted small">New to OnBudget?</p>
     <button id="signUpBtn" class="btn btn-block" type="button" aria-label="Create a new live account">Create account</button>
     <button id="forgotPasswordBtn" class="btn btn-quiet btn-block" type="button" aria-label="Reset your password">Forgot password?</button>
     <div id="authMsg" class="result"></div>
@@ -60,7 +63,10 @@
     <h1>Your household</h1>
     <p class="muted">The first account creates the household (as admin). The second
     account joins with the invite code the owner shares — ask the owner to
-    share it from their profile menu.</p>
+    share it from Settings. Joining gives you member access: you can view
+    the budget and ask for fund money; only the admin can change settings
+    or move money. Creating a household and joining one are separate
+    actions — pick only one.</p>
     <button id="createHouseholdBtn" class="btn btn-primary btn-block" type="button" aria-label="Create a household as owner and admin">Create household (I am the owner / admin)</button>
     <label>Or join a household <input id="joinId" placeholder="Invite code from the owner"></label>
     <button id="joinHouseholdBtn" class="btn btn-block" type="button" aria-label="Join an existing household as a member">Join as member</button>
@@ -75,12 +81,11 @@
     </nav>
     <div class="card hero" id="section-week">
       <div class="hero-head">
-        <div class="kicker">Available this week · <span id="weekLabel">…</span></div>
+        <div class="kicker">This week · <span id="weekLabel">…</span></div>
         <button class="btn hero-sync-btn" id="homeSyncBtn" type="button" aria-label="Sync bank"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
       </div>
       <div id="weeklyAvailable" class="big">…</div>
-      <p class="muted">Pending transactions are included and marked.
-      If the big number is negative, you're over this week's budget.</p>
+      <p class="muted">Pending transactions are included and marked.</p>
       <div class="hero-progress" aria-hidden="true"><div id="weekProgressBar"></div></div>
       <p class="muted small" id="weekProgressText"></p>
       <div id="weekBreakdown" class="hidden"></div>
@@ -89,9 +94,9 @@
     </div>
     <p class="muted small stat-hint" id="section-hint">Tap a card for its breakdown.</p>
     <div class="grid" id="section-stats">
-      <div class="card stat-card" data-home-card="weekly" role="button" tabindex="0" aria-label="Show Weekly Budget breakdown"><div class="kicker">Weekly Budget</div><div class="num" id="homeWeeklyPrimary">…</div><div class="muted small" id="homeWeeklySecondary">…</div></div>
-      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><div class="kicker">Charity · November 2026 onward</div><div class="num" id="homeCharityPrimary">—</div><div class="muted small" id="homeCharitySecondary">Loading charity…</div></div>
-      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary">…</div><div class="muted small" id="homeFundSecondary">…</div></div>
+      <div class="card stat-card" data-home-card="weekly" role="button" tabindex="0" aria-label="Show Weekly Budget breakdown"><div class="kicker">Weekly Budget</div><div class="num" id="homeWeeklyPrimary">…</div></div>
+      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><div class="kicker">Charity · November 2026 onward</div><div class="num" id="homeCharityPrimary">—</div></div>
+      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary">…</div></div>
     </div>
 
     <div class="card" id="section-recent">
@@ -111,10 +116,7 @@
     </div>
 
     <div class="card" id="section-add-choice">
-      <div class="card-head-inline">
-        <h2>Add</h2>
-        <p class="muted small">Record a transaction you already made, or import a file of them.</p>
-      </div>
+      <h2>Add / Import transaction</h2>
       <div class="btn-row">
         <button class="btn btn-primary" id="addManualBtn" type="button" aria-label="Add a transaction by hand">Add by hand</button>
         <button class="btn" id="addCsvBtn" type="button" aria-label="Import transactions from a CSV file">Import CSV</button>
@@ -133,6 +135,7 @@
           <label>Date <input name="date" type="date" required></label>
           <label>Card suffix <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
         </div>
+        <p id="manualFormError" class="error hidden" role="alert"></p>
         <button class="btn btn-primary" type="submit" aria-label="Add this transaction">Add transaction</button>
         <button class="btn" id="manualCancelBtn" type="button" aria-label="Cancel and clear this draft">Cancel</button>
       </form>
@@ -143,7 +146,8 @@
       <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Import transactions from a CSV file</h2>
       <p class="muted small">Expected columns: Date, Description, Amount, Card Ending.</p>
-      <p class="muted small">Preview first — nothing is added until you confirm.</p>
+      <p class="muted small">Sample row: 2026-11-01, AMAZON, 12.99, 1005 — card endings only, never a full card number.</p>
+      <p class="muted small">Preview first — nothing is added until you confirm. The preview numbers each row, flags duplicates, and shows any row it could not read.</p>
       <!-- Delta3: styled file control — the native input stays the
            real control (keyboard + screen-reader accessible) but is
            visually hidden; the label looks like a button and the
@@ -190,7 +194,6 @@
         <div class="tx-sheet-card">
           <h3>Filters</h3>
           <div class="tx-sheet-group">
-            <h4>Status</h4>
             <label>Status
               <select id="txStatusSelect" aria-label="Filter by status">
                 <option value="all">All transactions</option>
@@ -208,31 +211,33 @@
               <select id="txMonth" aria-label="Filter by month"><option value="all">All months</option></select>
             </label>
             <label class="check-label"><input id="txWeekCheck" type="checkbox"> This week only</label>
-            <label>From date
-              <input id="txFromDate" type="date" aria-label="Filter from date">
-            </label>
-            <label>To date
-              <input id="txToDate" type="date" aria-label="Filter to date">
-            </label>
+            <div class="tx-sheet-pair">
+              <label>From date
+                <input id="txFromDate" type="date" aria-label="Filter from date">
+              </label>
+              <label>To date
+                <input id="txToDate" type="date" aria-label="Filter to date">
+              </label>
+            </div>
           </div>
           <div class="tx-sheet-group">
-            <h4>Card / Account</h4>
             <label>Card / Account
               <select id="txCard" aria-label="Filter by card or account"><option value="all">All cards</option></select>
             </label>
           </div>
           <div class="tx-sheet-group">
             <h4>Amount</h4>
-            <label>Amount from ($)
-              <input id="txMinAmount" type="number" step="0.01" inputmode="decimal" aria-label="Minimum transaction amount">
-            </label>
-            <label>Amount to ($)
-              <input id="txMaxAmount" type="number" step="0.01" inputmode="decimal" aria-label="Maximum transaction amount">
-            </label>
+            <div class="tx-sheet-pair">
+              <label>From ($)
+                <input id="txMinAmount" type="number" step="0.01" inputmode="decimal" aria-label="Minimum transaction amount">
+              </label>
+              <label>To ($)
+                <input id="txMaxAmount" type="number" step="0.01" inputmode="decimal" aria-label="Maximum transaction amount">
+              </label>
+            </div>
             <p class="muted small">Amounts compare to the signed amount, and both bounds apply together with the month, card, and week filters. Leave either end blank for no limit there. A refund counts as a negative amount, so a $10 refund sits below a $0 minimum.</p>
           </div>
           <div class="tx-sheet-group">
-            <h4>Sorting</h4>
             <label>Sort by
               <select id="txSortField" aria-label="Sort transactions by"><option value="date">Date</option><option value="amount">Amount</option></select>
             </label>
@@ -254,6 +259,20 @@
       <div class="btn-row"><button class="btn" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
       <h2>Settings</h2>
       <p class="muted small" id="settingsIntro">Connections, Budget, and Account &amp; household. Bank and email connections moved here from Funds.</p>
+    </div>
+
+    <div class="card" id="section-profile">
+      <h2>Profile</h2>
+      <p class="muted small">Your name shows at the top of the profile menu. Changing your name, email, or password here changes only your own account — never the household, roles, or invite code.</p>
+      <label>Name <input id="profileNameInput" type="text" maxlength="80" autocomplete="name"></label>
+      <button id="saveProfileNameBtn" class="btn btn-primary" type="button" aria-label="Save your profile name">Save name</button>
+      <h3>Email</h3>
+      <p class="muted small">Changing your email sends a confirmation to the new address. Your sign-in email does not change until you confirm it.</p>
+      <label>Email <input id="profileEmailInput" type="email" autocomplete="email"></label>
+      <button id="saveProfileEmailBtn" class="btn" type="button" aria-label="Save your new email address">Save email</button>
+      <h3>Password</h3>
+      <p class="muted small">Password must be at least 8 characters.</p>
+      <button id="profilePasswordBtn" class="btn btn-tertiary" type="button" aria-label="Change your password">Change password</button>
     </div>
 
     <div class="card" id="section-bank">
@@ -306,7 +325,7 @@
 
     <div class="card" id="section-settings-account">
       <h2>Account &amp; household</h2>
-      <p class="muted small">Invite code, password, and account deletion live here now — not in the profile menu.</p>
+      <p class="muted small">Invite code, password, and account deletion live here now — not in the profile menu. Only the admin can share the invite code; members who need an admin-only change should ask the admin.</p>
       <div class="btn-row">
         <button id="settingsShareIdBtn" class="btn" type="button" aria-label="Share the invite code">Share invite code</button>
         <button id="settingsPasswordBtn" class="btn btn-tertiary" type="button" aria-label="Change your password">Change password</button>
@@ -321,19 +340,26 @@
     <div class="card" id="section-fund-balances">
       <div class="fund-balance-grid">
         <!-- Button-card-fix: both panels share the identical
-             template — title, amount, chevron — and nothing else on
-             the face. Secondary lines live only in the tap sheet.
+             template — title, amount, chevron at the bottom-right
+             facing down — and nothing else on the face. Secondary
+             lines live only in the tap sheet.
              The whole panel is the tap target (see live.js
              data-fund-card handlers, following the Home stat-card
              tap pattern). Ask lives once, in Funds actions below. -->
         <div class="fund-balance-panel" data-fund-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown">
-          <div class="fund-balance-head"><h2>Extra Fund</h2><span class="fund-balance-chevron" aria-hidden="true">›</span></div>
+          <div class="fund-balance-head"><h2>Extra Fund</h2></div>
           <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
+          <span class="fund-balance-chevron" aria-hidden="true">⌄</span>
         </div>
         <div class="fund-balance-panel" data-fund-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown">
-          <div class="fund-balance-head"><h2>Charity</h2><span class="fund-balance-chevron" aria-hidden="true">›</span></div>
+          <div class="fund-balance-head"><h2>Charity</h2></div>
           <div id="charitySummary"><p class="muted small">Loading charity…</p></div>
+          <span class="fund-balance-chevron" aria-hidden="true">⌄</span>
         </div>
+      </div>
+      <div id="fundHeldLinkWrap" class="hidden">
+        <button id="fundHeldLinkBtn" class="btn btn-tertiary" type="button" aria-label="Open the Review queue for held money">Open Review queue</button>
+        <p class="muted small">Held money is waiting for the admin's review. Opening Review shows why each item is held and what releasing it would change.</p>
       </div>
     </div>
 
@@ -343,7 +369,7 @@
         <button class="btn btn-primary" id="fundActionAddBtn" type="button" aria-label="Add money to the Extra Fund">Add money</button>
         <button class="btn" id="fundActionUseBtn" type="button" aria-label="Use fund money">Use fund money</button>
         <button class="btn btn-tertiary" id="fundActionAskBtn" type="button" aria-label="Ask for fund money">Ask for fund money</button>
-        <button class="btn btn-outline" id="fundActionIncomeBtn" type="button" aria-label="Record charity income">Record income</button>
+        <button class="btn btn-mid" id="fundActionIncomeBtn" type="button" aria-label="Record charity income">Record income</button>
       </div>
       <details id="fundTopupsDisclosure" class="activity-disclosure">
         <summary>View activity · Money added</summary>
@@ -398,6 +424,7 @@
     <div class="card" id="section-fund-use" style="display:none">
       <div class="btn-row"><button class="btn" id="fundUseBackBtn" type="button" aria-label="Back to Funds actions">← Back</button></div>
       <h2>Use fund money</h2>
+      <p class="muted small">This records spending from the Extra Fund itself — it lowers the fund balance, never your weekly allowance or debt. The note is for the record.</p>
       <form id="fundAllocateForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
         <label>Note (optional) <input name="note" maxlength="120"></label>
@@ -409,7 +436,7 @@
     <div class="card" id="section-fund-ask">
       <div class="btn-row"><button class="btn" id="fundAskBackBtn" type="button" aria-label="Back to Funds actions">← Back</button></div>
       <h2>Ask for fund money</h2>
-      <p class="muted small">Ask for money from the Extra Fund. The admin approves or declines each request.</p>
+      <p class="muted small">Ask for money from the Extra Fund. The admin approves or declines each request, and you can track its decision in the Fund requests list below — pending, approved, split, or declined.</p>
       <form id="fundRequestForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
         <label>Note (optional) <input name="note" maxlength="120"></label>
@@ -425,7 +452,7 @@
       <h2>Review</h2>
       <p class="muted small">Admin only. Refund restorations, held refunds, and possible duplicates — nothing here deletes a row.</p>
       <details id="reviewDetails" class="activity-disclosure">
-        <summary>Open review</summary>
+        <summary id="reviewSummary">Open review</summary>
         <h3>Refund restorations &amp; held refunds</h3>
         <p class="muted small">Restorations the refund rules posted, and refunds held for review because they exceeded the original charge.</p>
         <h4>Restorations</h4>
@@ -462,7 +489,7 @@
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="historyFilterApplyBtn" type="button" aria-label="Apply history date filter">Apply filter</button>
-        <button class="btn" id="historyFilterClearBtn" type="button" aria-label="Clear history date filter">Clear</button>
+        <button class="btn" id="historyFilterClearBtn" type="button" aria-label="Clear history date filter">Clear date filter</button>
       </div>
       <p id="historyPeriodLine" class="muted small">Showing all recorded history.</p>
       <p id="historyCountLine" class="muted small"></p>
@@ -490,7 +517,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=28"></script>
+<script type="module" src="live.js?v=29"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

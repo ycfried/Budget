@@ -14,6 +14,9 @@
   label { display: block; font-size: 14px; font-weight: 700; margin-top: 16px; }
   input { width: 100%; box-sizing: border-box; padding: 12px; margin-top: 6px; border: 1px solid #e5e7eb; border-radius: 12px; font-size: 16px; }
   button { width: 100%; margin-top: 20px; padding: 14px; border: 0; border-radius: 14px; background: #2f6bff; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .password-row { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+  .password-row input { flex: 1; margin-top: 0; }
+  .password-row button { width: auto; margin-top: 0; padding: 12px 14px; background: #eef4ff; color: #2f6bff; }
   a { color: #2f6bff; }
   #msg { margin-top: 16px; padding: 12px; border-radius: 12px; background: #eef4ff; }
   #msg:empty { display: none; }
@@ -23,9 +26,10 @@
 <body>
 <main>
   <h1>Choose a new password</h1>
-  <p>Use the link from your reset email to reach this page, then enter a new password below.</p>
-  <label>New password <input id="newPassword" type="password" autocomplete="new-password"></label>
-  <label>Confirm new password <input id="confirmPassword" type="password" autocomplete="new-password"></label>
+  <p>Step 3 of the reset: you asked for a link, checked your inbox, and opened it here. Now choose a new password, then return to sign-in with it. If this link has expired, go back to sign-in and use Forgot password? again for a fresh link.</p>
+  <label>New password <span class="password-row"><input id="newPassword" type="password" autocomplete="new-password"><button id="toggleNewPasswordBtn" type="button" aria-label="Show password" aria-pressed="false">Show</button></span></label>
+  <p>Password requirements: at least 8 characters. Both fields must match.</p>
+  <label>Confirm new password <span class="password-row"><input id="confirmPassword" type="password" autocomplete="new-password"><button id="toggleConfirmPasswordBtn" type="button" aria-label="Show password" aria-pressed="false">Show</button></span></label>
   <button id="saveBtn" type="button">Save new password</button>
   <p id="msg"></p>
   <p><a href="live.html">Back to sign in</a></p>
@@ -44,6 +48,18 @@ if (code) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) { msg.textContent = 'This reset link could not be used. Request a new one from the sign-in screen.'; msg.classList.add('error'); }
 }
+const wireToggle = (btnId, inputId) => {
+  $(btnId)?.addEventListener('click', (e) => {
+    const input = $(inputId); if (!input) return;
+    const showing = input.type === 'password';
+    input.type = showing ? 'text' : 'password';
+    e.currentTarget.textContent = showing ? 'Hide' : 'Show';
+    e.currentTarget.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
+    e.currentTarget.setAttribute('aria-pressed', showing ? 'true' : 'false');
+  });
+};
+wireToggle('toggleNewPasswordBtn', 'newPassword');
+wireToggle('toggleConfirmPasswordBtn', 'confirmPassword');
 $('saveBtn').addEventListener('click', async () => {
   const pw = $('newPassword').value;
   const confirm = $('confirmPassword').value;
