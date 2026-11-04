@@ -17,6 +17,10 @@
 //   from temp_increases for the requested week, unless the week already
 //   has a close with a stored snapshot, in which case the snapshot's
 //   B/T win (a later allowance change never rewrites a closed week).
+// - Weekly allowance override (send-live-bundle): if a
+//   weekly_allowance_overrides row exists for the requested week,
+//   B is that override and T is 0 (debt still comes off the top).
+//   A stored close snapshot still wins over a later override.
 // - Week math counts: charges (including provisional charges) net of
 //   fund allocations; posted refunds linked to a purchase in this week
 //   (open weeks only — a locked week's refunds go through restoration,
@@ -144,6 +148,22 @@ Deno.serve(async (req) => {
       .filter((t: any) => t.week_start === weekStart)
       .reduce((s: number, t: any) => s + (t.amount_cents ?? 0), 0);
 
+    // Weekly allowance overrides (send-live-bundle; SQL in
+    // supabase/weekly-allowance-override.sql, owner review only).
+    // A row for the requested week replaces base + temp with
+    // B = override, T = 0. If the table does not exist yet (the
+    // SQL has not been applied), the read fails and the override
+    // is treated as absent — old behaviour, no error.
+    let overrideCents: number | null = null;
+    const ovRes = await supabase
+      .from('weekly_allowance_overrides')
+      .select('week_start, allowance_cents')
+      .eq('household_id', householdId);
+    if (!ovRes.error) {
+      const row = (ovRes.data ?? []).find((o: any) => o.week_start === weekStart);
+      if (row && row.allowance_cents != null) overrideCents = row.allowance_cents;
+    }
+
     // Restoration debt cuts posted after the latest close (FALLBACK:
     // no table yet -> no cuts). These reduce the debt carried into
     // later weeks; cuts are never subtracted twice because only
@@ -266,11 +286,20 @@ Deno.serve(async (req) => {
     void pendingRefundExcludedCents;
     void isExcludedFromMath;
 
+    // Snapshot precedence: a closed week's stored B/T win over any
+    // later override (a later change never rewrites a closed week).
+    // An override set after a week closed therefore does not change
+    // that week; it applies to open and future weeks, and week-close
+    // stores the override as the snapshot when it closes the week.
     const B = thisClose && thisClose.base_allowance_cents != null
       ? thisClose.base_allowance_cents
+      : overrideCents != null
+      ? overrideCents
       : household.base_allowance_cents;
     const T = thisClose && thisClose.temp_increase_cents != null
       ? thisClose.temp_increase_cents
+      : overrideCents != null
+      ? 0
       : tempSum;
     const D = latestCloseBefore
       ? Math.max(0, (latestCloseBefore.outgoing_debt_cents ?? 0) - restorationCuts)

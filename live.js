@@ -26,7 +26,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, isWeekCloseCheckDue, classifyCsvKind } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -481,13 +481,18 @@ async function refresh() {
   const all = txReadFailed ? [] : (txns ?? []);
   txLoaded = true;
   const q = ($('txSearch')?.value ?? '').trim().toLowerCase();
-  const byFilter = (t) => txFilter === 'all' ? true
-    : txFilter === 'pending' ? t.state === 'provisional'
+  // Send-live-bundle, Trash: the main Transactions list never shows
+  // excluded rows — they live only in the Trash bin below the list.
+  // The old 'excluded' status filter is gone (its select option was
+  // removed); a legacy 'excluded' value falls back to 'all', which
+  // also hides excluded rows.
+  if (txFilter === 'excluded') txFilter = 'all';
+  const isExcludedRow = (t) => t.excluded === true || t.state === 'excluded';
+  const byFilter = (t) => txFilter === 'pending' ? t.state === 'provisional'
     : txFilter === 'posted' ? t.state === 'verified'
     : txFilter === 'refunds' ? t.kind === 'refund'
     : txFilter === 'charity' ? t.kind === 'charity'
-    : txFilter === 'excluded' ? (t.excluded === true || t.state === 'excluded')
-    : true;
+    : !isExcludedRow(t);
   // This-week filter: current Sunday–Saturday in America/New_York.
   const todayNy = nyTodayString();
   const todayD = new Date(`${todayNy}T12:00:00`);
@@ -628,10 +633,11 @@ async function refresh() {
   // new-household message only appears with no search, no filter,
   // and genuinely no loaded transactions (all.length === 0).
   const searchOrFilterActive = q !== '' || txMonth !== 'all' || txCard !== 'all' || txWeekOnly || !!txFromDate || !!txToDate || minCents !== null || maxCents !== null;
+  const trashRowCount = all.filter((t) => t.excluded === true || t.state === 'excluded').length;
   const emptyHint = searchOrFilterActive
     ? 'No matching transactions. Try a different search, or clear the search and filters.'
-    : txFilter === 'excluded'
-    ? 'No excluded transactions. Excluded transactions are hidden from the week math but kept here so you can restore them.'
+    : trashRowCount > 0 && shown.length === 0
+    ? 'No transactions here — deleted bank rows live in the Trash below.'
     : txFilter === 'refunds'
     ? 'No refunds in this list yet.'
     : txFilter === 'charity'
@@ -646,63 +652,22 @@ async function refresh() {
     ? shown.map((t) => {
         const excluded = t.excluded === true || t.state === 'excluded';
         const isAdmin = household.role === 'admin';
-        // Delete is honest about what it can do: a hand-entered
-        // transaction can be truly deleted; a bank/email/file record
-        // cannot be erased (the bank would re-sync it), so for those
-        // "Remove" excludes it from the week and keeps the record.
-        const deleteBtn = !isAdmin ? ''
-          : t.source === 'manual'
-          ? `<button class="btn btn-small btn-danger" data-delete-tx="${t.id}" type="button" aria-label="Delete ${esc(t.merchant)}">Delete</button>`
-          : `<button class="btn btn-small btn-danger" data-remove-tx="${t.id}" type="button" aria-label="Remove ${esc(t.merchant)} from the budget">Remove</button>`;
-        // UX-review-fix P1: Use Extra Fund is offered ONLY for a
-        // charge. A transfer, payment, cash-back credit, or refund
-        // does not count toward weekly spending, so there is nothing
-        // for the fund to cover — offering it there was the review's
-        // highest-priority transfer bug. Server note: the
-        // validate_fund_request_txn trigger checks only that the
-        // linked transaction belongs to the household and the request
-        // is pending; it does NOT check kind, so this client gating
-        // is currently the only kind check. A server-side kind guard
-        // would need a SQL change and is deferred out of this
-        // presentation package (see HANDOFF).
-        const qualifiesForFund = t.kind === 'charge';
-        const fundBtn = `<button class="btn btn-small" data-use-fund="${t.id}" type="button" aria-label="Use Extra Fund for ${esc(t.merchant)}">Use Extra Fund</button>`;
-        // On an admin row this sits between tertiary-deep (Mark as
-        // charity) and Reclassify, so it takes the solid-mid fourth
-        // treatment — otherwise Mark as charity and Use Extra Fund
-        // would be adjacent duplicates. Members see it alone, where
-        // it stays secondary.
-        const fundBtnAdmin = fundBtn.replace('class="btn btn-small"', 'class="btn btn-small btn-mid"');
-        // Admin actions are hidden from non-admins in the UI; enforcement
-        // is server-side in the RPCs (see header note). Reclassify is
-        // admin-only and goes through reclassify_transaction.
-        // Delta3: Reclassify reads as a secondary action, not tertiary.
-        const reclassBtn = !isAdmin ? ''
-          : `<button class="btn btn-small" data-reclassify="${t.id}" type="button" aria-label="Reclassify ${esc(t.merchant)}">Reclassify</button>`;
-        // R13: a posted charge can be marked as a charity gift (whole
-        // row only, server-guarded: posted, unexcluded, no fund part,
-        // November 2026 onward, unlocked week). A gift row itself
-        // gets no Exclude / Reclassify / Use Fund buttons — it is
-        // already outside weekly spending, and only Delete/Remove
-        // (or Restore when excluded) still applies.
-        const charityBtn = !isAdmin ? ''
-          : (t.kind === 'charge' && t.state === 'verified' && !excluded)
-          ? `<button class="btn btn-small btn-tertiary" data-mark-charity="${t.id}" type="button" aria-label="Mark ${esc(t.merchant)} as a charity gift">Mark as charity</button>`
-          : '';
+        // Send-live-bundle, detail Actions sheet: the old five-button
+        // row (Exclude, Mark as charity, Use Extra Fund, Reclassify,
+        // Remove/Delete) is replaced by one Actions line. Tapping it
+        // opens openTxActionsSheet (below, after the list render),
+        // which lists exactly Charity, Extra Fund, Other, Delete.
+        // Charity rows show Delete only; members see Extra Fund only
+        // on charges and no Actions line on any other row. Excluded
+        // rows never reach this render — they live only in Trash.
         const cardLabel = (t.kind === 'charity' && String(t.card_suffix) === '0000') ? 'Cash / no card' : `••${esc(t.card_suffix)}`;
         const kindLabel = t.kind === 'refund' ? 'Refund' : t.kind === 'charity' ? 'Charity gift' : t.kind === 'transfer' ? 'Transfer' : 'Transaction';
-        // Delta3 button order: Exclude, Mark as charity, Use Extra
-        // Fund, Reclassify, Remove last (destructive). Excluded rows
-        // keep Restore first, then Reclassify, then Remove last. The
-        // destructive button keeps its honest label per source:
-        // "Delete" for hand-entered rows (truly deleted), "Remove"
-        // for bank/email/file rows (excluded, record kept).
-        const action = !isAdmin ? (qualifiesForFund ? fundBtn : '')
-          : excluded
-          ? `<div class="btn-row"><button class="btn btn-small btn-primary" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${reclassBtn} ${deleteBtn}</div>`
-          : t.kind === 'charity'
-          ? `<div class="btn-row">${deleteBtn}</div>`
-          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${charityBtn} ${qualifiesForFund ? fundBtnAdmin : ''} ${reclassBtn} ${deleteBtn}</div>`;
+        const qualifiesForFund = t.kind === 'charge';
+        const hasActions = isAdmin
+          ? true
+          : (qualifiesForFund && !excluded);
+        const action = !hasActions ? ''
+          : `<div class="btn-row"><button class="btn btn-small btn-tertiary" data-tx-actions="${t.id}" type="button" aria-label="Actions for ${esc(t.merchant)}">Actions</button></div>`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
         // UX audit 05: the row's accessible name carries merchant,
         // amount, date, and status, so repeated merchants never share
@@ -826,92 +791,49 @@ async function refresh() {
       bd.innerHTML = `<p class="small">${panels[bd.dataset.stat]}</p>`;
     }
   }
-  document.querySelectorAll('[data-use-fund]').forEach((b) => b.addEventListener('click', async () => {
-    const row = all.find((t) => t.id === b.dataset.useFund);
-    // Defensive second gate (stale DOM / direct click): only a charge
-    // can be covered by the fund. The button itself is now hidden for
-    // every other kind, so this should never fire on a live row.
-    if (row && row.kind !== 'charge') { await showAlert('Does not qualify', 'Only a charge can be covered by the Extra Fund. This row does not count toward weekly spending, so there is nothing for the fund to cover.'); return; }
-    const amountText = await showSheet({ title: 'Use Extra Fund', message: `Ask the admin to cover "${row?.merchant ?? 'this transaction'}" (${formatCents(row?.amount_cents ?? 0)}) from the Extra Fund?`, inputLabel: 'Amount ($)', inputValue: row ? (row.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Send request', cancelLabel: 'Cancel' });
-    if (amountText === null) return;
-    const cents = parseDollarsStrict(amountText);
-    if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase.from('fund_requests').insert({
-      household_id: household.household_id, requested_by: user.id,
-      amount_cents: cents, note: '', status: 'pending', transaction_id: b.dataset.useFund,
-    });
-    if (error) { console.warn('fund request (use-fund) failed:', error.message); await showAlert('Could not send request', 'Could not send this request. Try again.'); return; }
-    await audit('Extra Fund request created', `Requested ${formatCents(cents)} for ${row?.merchant ?? 'a transaction'}.`);
-    await refresh();
+  // Send-live-bundle, detail Actions sheet + Trash. The Actions
+  // line in each detail opens openTxActionsSheet (defined just
+  // below, outside refresh so it can be called from the Trash list
+  // too if needed). It lists exactly Charity, Extra Fund, Other,
+  // Delete — the same pattern as the Add popup list. Charity rows
+  // show Delete only; members see Extra Fund only, on charges.
+  // Charity automatically excludes Extra Fund: a charity row gets
+  // no Extra Fund action, and the Extra Fund action itself refuses
+  // charity rows (the server already guards this; this is the UI
+  // making it explicit). Delete: hand-written rows are permanently
+  // deleted (delete_transaction, cannot be undone); bank/email/file
+  // rows are moved to Trash via exclude_transaction with a reason,
+  // with the exact toast 'Moved to trash bin.', and leave the main
+  // list. Trash is rendered below from `all` (excluded rows only).
+  document.querySelectorAll('[data-tx-actions]').forEach((b) => b.addEventListener('click', async () => {
+    const row = all.find((t) => t.id === b.dataset.txActions);
+    if (row) await openTxActionsSheet(row);
   }));
-  document.querySelectorAll('[data-exclude]').forEach((b) => b.addEventListener('click', async () => {
-    // Exclusion goes through exclude_transaction (never a direct .update),
-    // and a reason is required — it is recorded in the audit log.
-    const reason = await showSheet({ title: 'Exclude transaction', message: 'Why exclude this transaction? It stays in the list but stops counting toward the week.', inputLabel: 'Reason (required)', confirmLabel: 'Exclude', cancelLabel: 'Keep it' });
-    if (reason === null) return;
-    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for excluding this transaction.'); return; }
-    const row = all.find((t) => t.id === b.dataset.exclude);
-    const { error } = await supabase.rpc('exclude_transaction', { txn_id: b.dataset.exclude, reason: reason.trim() });
-    if (error) { console.warn('exclude_transaction failed:', error.message); await showAlert('Could not exclude', 'Could not exclude this transaction. Try again.'); return; }
-    await audit('Transaction excluded', `${row ? row.merchant : 'Transaction'} ${row ? formatCents(row.amount_cents) : ''} — reason: ${reason.trim()}.`);
-    await refresh();
-  }));
-  document.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
-    // Restore goes through restore_transaction; the server restores the
-    // stored pre-exclude state — the client never invents one.
-    const row = all.find((t) => t.id === b.dataset.restore);
-    const { error } = await supabase.rpc('restore_transaction', { txn_id: b.dataset.restore });
-    if (error) { console.warn('restore_transaction failed:', error.message); await showAlert('Could not restore', 'Could not restore this transaction. Try again.'); return; }
-    await audit('Transaction restored', `${row ? row.merchant : 'Transaction'} returned to the week.`);
-    await refresh();
-  }));
-  document.querySelectorAll('[data-reclassify]').forEach((b) => b.addEventListener('click', async () => {
-    const newKind = await showSheet({ title: 'Reclassify transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
-    if (newKind === null) return;
-    const reason = await showSheet({ title: 'Reclassify transaction', message: 'Why reclassify this transaction?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
-    if (reason === null) return;
-    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for reclassifying this transaction.'); return; }
-    const row = all.find((t) => t.id === b.dataset.reclassify);
-    const { error } = await supabase.rpc('reclassify_transaction', { txn_id: b.dataset.reclassify, new_kind: newKind, reason: reason.trim() });
-    if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', 'Could not reclassify this transaction. Try again.'); return; }
-    await audit('Transaction reclassified', `${row ? row.merchant : 'Transaction'} reclassified to ${newKind} — reason: ${reason.trim()}.`);
-    await refresh();
-  }));
-  document.querySelectorAll('[data-mark-charity]').forEach((b) => b.addEventListener('click', async () => {
-    const row = all.find((t) => t.id === b.dataset.markCharity);
-    if (!row || !(await showConfirm('Mark as charity gift', `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`, 'Mark as charity'))) return;
-    const { error } = await supabase.rpc('mark_transaction_charity', { p_transaction_id: b.dataset.markCharity });
-    if (error) {
-      console.warn('mark_transaction_charity failed:', error.message);
-      const refusal = /locked|fund|posted|charge|November 2026|excluded/i.test(error.message || '');
-      if (refusal) await showAlert('Cannot mark as charity', error.message);
-      else showToast(/could not find|does not exist|schema cache/i.test(error.message || '') ? 'Charity isn\'t live yet — the database step still needs approval.' : 'Could not mark this as charity. Try again.', true);
-      return;
+  const trashBtn = $('txTrashBtn');
+  if (trashBtn) {
+    trashBtn.style.display = (household && household.role === 'admin') ? '' : 'none';
+    if (!trashBtn.dataset.bound) {
+      trashBtn.dataset.bound = '1';
+      trashBtn.addEventListener('click', () => { $('txTrashList')?.classList.toggle('hidden'); });
+      $('txTrashCloseBtn')?.addEventListener('click', () => { $('txTrashList')?.classList.add('hidden'); });
     }
-    showToast(`Marked as charity gift: ${formatCents(row.amount_cents)} to ${row.merchant}.`);
-    await refresh();
-  }));
-  document.querySelectorAll('[data-delete-tx]').forEach((b) => b.addEventListener('click', async () => {
-    const row = all.find((t) => t.id === b.dataset.deleteTx);
-    if (!row || !(await showConfirm('Delete transaction', `"${row.merchant}" ${formatCents(row.amount_cents)} — this removes the hand-entered transaction and cannot be undone.`, 'Delete'))) return;
-    const { error } = await supabase.rpc('delete_transaction', { p_transaction_id: b.dataset.deleteTx });
-    if (error) { console.warn('delete_transaction failed:', error.message); await showAlert('Could not delete', 'Could not delete this transaction. Try again.'); return; }
-    await refresh();
-  }));
-  document.querySelectorAll('[data-remove-tx]').forEach((b) => b.addEventListener('click', async () => {
-    const row = all.find((t) => t.id === b.dataset.removeTx);
-    // "Remove" for a bank/email/file record is an exclusion, not a delete:
-    // the record stays with its source; it only stops counting here. It
-    // goes through exclude_transaction with a required reason.
-    const reason = await showSheet({ title: 'Remove from budget', message: `"${row?.merchant ?? 'This transaction'}" ${formatCents(row?.amount_cents ?? 0)} — the record stays with its source; this only stops it counting here. Give a reason to continue.`, inputLabel: 'Reason (required)', confirmLabel: 'Remove', cancelLabel: 'Keep it' });
-    if (reason === null) return;
-    if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for removing this transaction.'); return; }
-    const { error } = await supabase.rpc('exclude_transaction', { txn_id: b.dataset.removeTx, reason: reason.trim() });
-    if (error) { console.warn('exclude_transaction (remove) failed:', error.message); await showAlert('Could not remove', 'Could not remove this transaction. Try again.'); return; }
-    await audit('Transaction removed from budget', `${row.merchant} ${formatCents(row.amount_cents)} excluded from week math — reason: ${reason.trim()}.`);
-    await refresh();
-  }));
+  }
+  const trashEl = $('trashList');
+  if (trashEl) {
+    const trash = all.filter((t) => t.excluded === true || t.state === 'excluded');
+    trashEl.innerHTML = trash.length
+      ? trash.map((t) => `<li class="tx-row"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name">${esc(t.merchant)}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
+        <div class="tx-line2"><span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span></div>
+        <div class="btn-row"><button class="btn btn-small btn-primary" data-trash-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} from trash">Restore</button></div></li>`).join('')
+      : '<li class="muted small">Trash is empty.</li>';
+    trashEl.querySelectorAll('[data-trash-restore]').forEach((b) => b.addEventListener('click', async () => {
+      const row = all.find((t) => t.id === b.dataset.trashRestore);
+      const { error } = await supabase.rpc('restore_transaction', { txn_id: b.dataset.trashRestore });
+      if (error) { console.warn('restore_transaction failed:', error.message); await showAlert('Could not restore', 'Could not restore this transaction. Try again.'); return; }
+      await audit('Transaction restored', `${row ? row.merchant : 'Transaction'} returned to the week.`);
+      await refresh();
+    }));
+  }
 
   const { data: reqs, error: reqsErr } = await supabase.from('fund_requests')
     .select('*').eq('household_id', household.household_id)
@@ -1670,7 +1592,16 @@ async function refresh() {
             actor: formatAuditActor(a.actor_name),
             time: fmtDateTime(a.created_at),
           })));
-          html += grouped.map((g) => `<li><strong>${esc(g.action)}${g.count > 1 ? ` ×${g.count}` : ''}</strong> <span class="muted">(${esc(g.actor)} · ${esc(g.time)})</span><br>${esc(g.detail)}</li>`).join('');
+          // Send-live-bundle, activity timeline: a small coloured
+          // dot per type, short bold title, one plain line, muted
+          // time + Admin/Member (formatAuditActor, never raw
+          // usernames). A collapsed "Weeks processed ×N" group
+          // reads as "N weeks closed" via activityTitle.
+          html += grouped.map((g) => {
+            const title = activityTitle(g.action, g.count);
+            const dot = activityDotClass(g.action, g.detail);
+            return `<li class="activity-item"><span class="activity-dot activity-dot-${dot}" aria-hidden="true"></span><span><strong>${esc(title)}</strong><br>${esc(g.detail)}<br><span class="muted">${esc(g.actor)} · ${esc(g.time)}</span></span></li>`;
+          }).join('');
         }
         return html + ((historyFilter.from || historyFilter.to)
           ? '<li class="muted small">Showing entries in the selected period.</li>'
@@ -2199,7 +2130,7 @@ async function autoSyncIfWebhookPending() {
 // only one section group is shown at a time, so the app is never
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
-  week: ['section-week', 'section-stats', 'section-hint', 'section-recent', 'section-history-link'],
+  week: ['section-week', 'section-stats', 'section-hint', 'section-recent', 'section-history-row'],
   purchases: ['section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
   money: ['section-fund-balances', 'section-fund-actions', 'section-fund-add', 'section-charity-income', 'section-fund-use', 'section-fund-ask', 'section-fund-review', 'section-savings-past'],
   // R2: Settings is reached from the profile menu, not a nav tab.
@@ -2315,10 +2246,8 @@ function showView(name, opts = {}) {
     setBtn('connectEmailBtn', isAdmin);
     setBtn('pollEmailBtn', isAdmin);
     setBtn('settingsShareIdBtn', isAdmin);
-    const intro = document.getElementById('settingsIntro');
-    if (intro) intro.textContent = isAdmin
-      ? 'Connections, Budget, and Account & household.'
-      : 'Connections and Account & household. Only the admin can change bank and email connections.';
+    // Send-live-bundle: the Settings subtitle is deleted (see
+    // live.html); there is no settingsIntro element left to update.
   }
   // R7 + UX-review-fix (owner screenshot Nov 3, 7:54 PM): Add is
   // HIDDEN by default on the Transactions page — the list is the
@@ -2350,7 +2279,8 @@ function showView(name, opts = {}) {
   if (homeSync) homeSync.style.display = (household && household.role === 'admin') ? '' : 'none';
   window.scrollTo(0, 0);
 }
-document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', (e) => {
+  if (b.tagName === 'A') e.preventDefault();
   showView(b.dataset.view, { clearMessages: true });
   // Cached content shows instantly; data refreshes in the background,
   // at most once every 30s, so tab taps never stare at empty cards.
@@ -2466,6 +2396,7 @@ document.getElementById('settingsShareIdBtn')?.addEventListener('click', shareIn
 document.getElementById('settingsPasswordBtn')?.addEventListener('click', changePasswordFlow);
 document.getElementById('settingsDeleteBtn')?.addEventListener('click', deleteAccountFlow);
 document.getElementById('settingsBackBtn')?.addEventListener('click', () => showView(previousView || 'week'));
+document.querySelector('.history-row')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showView('activity', { clearMessages: true }); } });
 // R5 + R6: Home cards — tap a card for a focused titled bottom
 // sheet over the stationary Home screen. Opening or closing a sheet
 // writes nothing and triggers no sync; it only reads the numbers
@@ -2476,15 +2407,18 @@ document.getElementById('settingsBackBtn')?.addEventListener('click', () => show
 async function openWeeklySheet() {
     const w = currentWeekData;
     if (!w) { await showAlert('Weekly Budget', 'Weekly numbers are not loaded yet. Try again in a moment.'); return; }
-    // Weekly-left-only (owner approval, Nov 3, ~11:20 PM):
-    // the sheet contains exactly ONE row — Left, same value and
-    // formatting as before — plus the "Show transactions" button
-    // below. Spent and Allowance are REMOVED from the popup:
-    // balances, not spent totals, are what shows, and allowance
-    // lives in Settings for the admin. No figure change: the Left
-    // value is computed exactly as before.
+    // Weekly-custom (owner approval, Nov 4): the sheet contains
+    // exactly three rows, in order — Allowance, Spent, Balance.
+    // Allowance is the total spending room left after previous
+    // weeks' debt: baseAvailable (base room) + temp, so Allowance
+    // − Spent = Balance always, including a temp week (base room
+    // + temp − spent = availableCents, the engine's Left). Spent is
+    // the week's spent total; Balance is availableCents (old Left).
+    const weeklyAllowanceCents = (w.baseAvailableCents ?? w.baseRoomCents ?? 0) + (w.tempCents ?? 0);
     const weeklyRows = [
-      ['Left', formatCents(w.availableCents)],
+      ['Allowance', formatCents(weeklyAllowanceCents)],
+      ['Spent', formatCents(w.chargesCents)],
+      ['Balance', formatCents(w.availableCents)],
     ];
     const weeklyResult = await showSheet({ title: 'Weekly Budget', rows: weeklyRows, extraAction: { label: 'Show transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
     // Weekly-sheet-simple: "Show transactions" closes the sheet and
@@ -2609,6 +2543,10 @@ function formatAuditDetail(detail) {
   d = d.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '');
   d = d.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (_, y, m, dd) => fmtLong(`${y}-${m}-${dd}`));
   d = d.replace(/\b(\d+) cents\b/g, (_, n) => formatCents(Number(n)));
+  // Send-live-bundle, jargon display-side only: "2000 basis points"
+  // becomes "20%", "1000 basis points" becomes "10%". Stored rows
+  // are untouched.
+  d = d.replace(/(\d+) basis points/gi, (_, n) => `${(Number(n) / 100).toFixed(2).replace(/\.?0+$/, '')}%`);
   d = d.replace(/as provisional/g, 'as pending');
   // UX audit 09: household wording for the week-close summary and
   // dedupe wording (display only — stored rows are untouched).
@@ -2679,6 +2617,119 @@ function syncScrollLock() {
     document.body.style.overflow = '';
     window.scrollTo(0, scrollLockY);
   }
+}
+// Send-live-bundle, transaction Actions sheet: one Actions line in
+// a detail opens this list sheet (same pattern as the Add popup).
+// Exactly four actions: Charity, Extra Fund, Other, Delete.
+// Charity = old Mark as charity (whole only, admin only, posted
+// charge only). Extra Fund = old Use Extra Fund (charges only, a
+// pending fund request, never instant cover). Other = old
+// Reclassify (admin only, pick a type + reason). Delete:
+// hand-written rows are permanently deleted; bank/email/file rows
+// are moved to Trash (exclude_transaction + reason, toast exactly
+// 'Moved to trash bin.'). Charity automatically excludes Extra
+// Fund: charity rows list Delete only, and Extra Fund refuses
+// charity rows outright. Members list Extra Fund only, on charges.
+async function openTxActionsSheet(row) {
+  const isAdmin = household && household.role === 'admin';
+  const excluded = row.excluded === true || row.state === 'excluded';
+  if (excluded) return;
+  const actions = [];
+  if (isAdmin && row.kind === 'charity') {
+    actions.push({ id: 'delete', label: 'Delete', sub: row.source === 'manual' ? 'Permanently deletes this hand-entered row' : 'Moves this row to the Trash' });
+  } else {
+    if (isAdmin && row.kind === 'charge' && row.state === 'verified') actions.push({ id: 'charity', label: 'Charity', sub: 'Counts it as a charity gift, out of weekly spending' });
+    if (row.kind === 'charge') actions.push({ id: 'extraFund', label: 'Extra Fund', sub: 'Ask for this charge to be covered from the fund' });
+    if (isAdmin) actions.push({ id: 'other', label: 'Other', sub: 'Change how this transaction counts' });
+    if (isAdmin) actions.push({ id: 'delete', label: 'Delete', sub: row.source === 'manual' ? 'Permanently deletes this hand-entered row' : 'Moves this row to the Trash' });
+  }
+  if (!actions.length) return;
+  document.getElementById('sheetOverlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'sheetOverlay';
+  overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Actions for ${esc(row.merchant)}">
+    <h3>Actions</h3><p class="muted small">${esc(row.merchant)} — ${formatCents(row.amount_cents)}</p>
+    ${actions.map((a) => `<button class="tx-action-row" data-tx-action="${a.id}" type="button"><span><strong>${a.label}</strong><br><span class="muted small">${esc(a.sub)}</span></span><span aria-hidden="true">›</span></button>`).join('')}
+    <div class="sheet-btns"><button class="btn btn-tertiary" type="button" id="txActionsCancel">Cancel</button></div></div>`;
+  document.body.appendChild(overlay);
+  syncScrollLock();
+  const close = () => { document.removeEventListener('keydown', escHandler); overlay.remove(); syncScrollLock(); };
+  const escHandler = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+  document.addEventListener('keydown', escHandler);
+  overlay.querySelector('#txActionsCancel')?.addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelectorAll('[data-tx-action]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.dataset.txAction;
+    close();
+    if (id === 'charity') await doTxCharity(row);
+    else if (id === 'extraFund') await doTxExtraFund(row);
+    else if (id === 'other') await doTxReclassify(row);
+    else if (id === 'delete') await doTxDelete(row);
+  }));
+}
+async function doTxCharity(row) {
+  if (!row || !(await showConfirm('Mark as charity gift', `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`, 'Mark as charity'))) return;
+  const { error } = await supabase.rpc('mark_transaction_charity', { p_transaction_id: row.id });
+  if (error) {
+    console.warn('mark_transaction_charity failed:', error.message);
+    const refusal = /locked|fund|posted|charge|November 2026|excluded/i.test(error.message || '');
+    if (refusal) await showAlert('Cannot mark as charity', error.message);
+    else showToast(/could not find|does not exist|schema cache/i.test(error.message || '') ? 'Charity isn\'t live yet — the database step still needs approval.' : 'Could not mark this as charity. Try again.', true);
+    return;
+  }
+  showToast(`Marked as charity gift: ${formatCents(row.amount_cents)} to ${row.merchant}.`);
+  await refresh();
+}
+async function doTxExtraFund(row) {
+  // Charity automatically excludes Extra Fund, made explicit here
+  // (the server already guards it): a charity row never reaches
+  // this action from its sheet, and a stale call is refused.
+  if (row.kind === 'charity') { await showAlert('Does not qualify', 'Charity gifts cannot be covered by the Extra Fund.'); return; }
+  if (row.kind !== 'charge') { await showAlert('Does not qualify', 'Only a charge can be covered by the Extra Fund. This row does not count toward weekly spending, so there is nothing for the fund to cover.'); return; }
+  const amountText = await showSheet({ title: 'Use Extra Fund', message: `Ask the admin to cover "${row?.merchant ?? 'this transaction'}" (${formatCents(row?.amount_cents ?? 0)}) from the Extra Fund?`, inputLabel: 'Amount ($)', inputValue: row ? (row.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Send request', cancelLabel: 'Cancel' });
+  if (amountText === null) return;
+  const cents = parseDollarsStrict(amountText);
+  if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
+  const { data: { user } } = await supabase.auth.getUser();
+  const { error } = await supabase.from('fund_requests').insert({
+    household_id: household.household_id, requested_by: user.id,
+    amount_cents: cents, note: '', status: 'pending', transaction_id: row.id,
+  });
+  if (error) { console.warn('fund request (use-fund) failed:', error.message); await showAlert('Could not send request', 'Could not send this request. Try again.'); return; }
+  await audit('Extra Fund request created', `Requested ${formatCents(cents)} for ${row?.merchant ?? 'a transaction'}.`);
+  await refresh();
+}
+async function doTxReclassify(row) {
+  const newKind = await showSheet({ title: 'Reclassify transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+  if (newKind === null) return;
+  const reason = await showSheet({ title: 'Reclassify transaction', message: 'Why reclassify this transaction?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
+  if (reason === null) return;
+  if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for reclassifying this transaction.'); return; }
+  const { error } = await supabase.rpc('reclassify_transaction', { txn_id: row.id, new_kind: newKind, reason: reason.trim() });
+  if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', 'Could not reclassify this transaction. Try again.'); return; }
+  await audit('Transaction reclassified', `${row ? row.merchant : 'Transaction'} reclassified to ${newKind} — reason: ${reason.trim()}.`);
+  await refresh();
+}
+async function doTxDelete(row) {
+  if (row.source === 'manual') {
+    if (!(await showConfirm('Delete transaction', `"${row.merchant}" ${formatCents(row.amount_cents)} — this removes the hand-entered transaction and cannot be undone.`, 'Delete'))) return;
+    const { error } = await supabase.rpc('delete_transaction', { p_transaction_id: row.id });
+    if (error) { console.warn('delete_transaction failed:', error.message); await showAlert('Could not delete', 'Could not delete this transaction. Try again.'); return; }
+    await refresh();
+    return;
+  }
+  // Bank/email/file rows: Delete moves the row to Trash (an
+  // exclusion with a reason, never a true erase — the bank would
+  // re-sync it). The row leaves the main list and is restored from
+  // the Trash bin below the list.
+  const reason = await showSheet({ title: 'Move to trash', message: `"${row?.merchant ?? 'This transaction'}" ${formatCents(row?.amount_cents ?? 0)} — this moves it to the Trash. The admin can bring it back from the Trash. Give a reason to continue.`, inputLabel: 'Reason (required)', confirmLabel: 'Delete', cancelLabel: 'Keep it' });
+  if (reason === null) return;
+  if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for moving this transaction to the Trash.'); return; }
+  const { error } = await supabase.rpc('exclude_transaction', { txn_id: row.id, reason: reason.trim() });
+  if (error) { console.warn('exclude_transaction (trash) failed:', error.message); await showAlert('Could not delete', 'Could not delete this transaction. Try again.'); return; }
+  await audit('Transaction moved to trash', `${row.merchant} ${formatCents(row.amount_cents)} moved to trash — reason: ${reason.trim()}.`);
+  showToast('Moved to trash bin.');
+  await refresh();
 }
 function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null }) {
   // SECURITY: EVERY interpolated value is escaped with esc() — title,
@@ -3232,17 +3283,32 @@ for (const id of ['txMinAmount', 'txMaxAmount']) {
 
 $('addTempBtn')?.addEventListener('click', async (e) => {
   const btn = e.currentTarget;
+  // Send-live-bundle, weekly allowance override (owner, Nov 4):
+  // the amount entered is a NEW TOTAL weekly allowance, not an
+  // extra on top of the base, and it repeats for the chosen number
+  // of weeks (1-4, default 1). Each week gets its own override row
+  // via set_weekly_allowance_override — never add_temp_increase,
+  // which cannot represent a lower total and must not be used as a
+  // fallback. If the RPC is missing (SQL not yet applied), the
+  // error toast below is shown and nothing is written.
   const cents = parseDollarsStrict($('tempIncreaseInput').value);
-  if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
+  if (cents === null || cents < 0) { showToast('Enter a valid amount.', true); return; }
+  const weeksRaw = parseInt($('tempIncreaseWeeks')?.value ?? '1', 10);
+  const weeks = Number.isFinite(weeksRaw) ? Math.min(4, Math.max(1, weeksRaw)) : 1;
   const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
   const sunday = new Date(ny); sunday.setDate(ny.getDate() - ny.getDay());
-  const weekStart = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
-  // R1 busy control: a double tap must not add the increase twice.
+  // R1 busy control: a double tap must not set the override twice.
   if (btn) btn.disabled = true;
-  const { error } = await supabase.rpc('add_temp_increase', { p_household_id: household.household_id, p_week_start: weekStart, p_amount_cents: cents, p_note: '' });
+  let error = null;
+  for (let i = 0; i < weeks; i += 1) {
+    const d = new Date(Date.UTC(sunday.getFullYear(), sunday.getMonth(), sunday.getDate() + 7 * i));
+    const weekStart = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    const res = await supabase.rpc('set_weekly_allowance_override', { p_household_id: household.household_id, p_week_start: weekStart, p_allowance_cents: cents });
+    if (res.error) { error = res.error; break; }
+  }
   if (btn) btn.disabled = false;
-  if (error) console.warn('add_temp_increase failed:', error.message);
-  showToast(error ? 'Could not add the temporary increase. Try again.' : `Temporary increase added for this week only (week of ${fmtLong(weekStart)}).`, !!error);
+  if (error) console.warn('set_weekly_allowance_override failed:', error.message);
+  showToast(error ? 'Could not set the weekly allowance. Try again.' : `Weekly allowance set to ${formatCents(cents)} for ${weeks} week${weeks === 1 ? '' : 's'}.`, !!error);
   if (!error) await refresh();
 });
 

@@ -917,6 +917,7 @@ body.live .activity-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radi
 body.live .activity-dot-money { background: #2f6bff; }
 body.live .activity-dot-charity { background: #2e6b3e; }
 body.live .activity-dot-system { background: #94a3b8; }
+body.live .tx-action-row { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #e5e7eb; padding: 14px 4px; font-size: 15px; color: #0f172a; cursor: pointer; font-family: inherit; }
 body.live .trash-bin-row { margin-top: 16px; text-align: center; }
 body.live .trash-bin-btn { font-size: 20px; }
 body.live .grid .card { margin-bottom: 0; }
