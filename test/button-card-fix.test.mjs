@@ -31,13 +31,18 @@ test('button levels are three distinct blues plus grey tertiary, no grey seconda
   assert.match(css, /body\.live #txSortField \{ background: #bfdbfe;[^}]*color: #1e40af; \}/);
 });
 
-test('Funds actions row: four buttons, four different treatments', () => {
-  // DOM order in live.html: Add money (primary), Use fund money
-  // (secondary), Ask for fund money (tertiary), Record income (outline).
+test('Funds actions row: exactly three buttons, three different treatments', () => {
+  // Funds-actions-three (owner choice, Nov 4, Option A): Record
+  // income moved out of the actions card into the Charity sheet, so
+  // the row is Add money (primary), Use fund money (secondary),
+  // Ask for fund money (tertiary grey) — in that DOM order, and
+  // nothing else in the row.
   assert.ok(html.includes('<button class="btn btn-primary" id="fundActionAddBtn"'));
   assert.ok(html.includes('<button class="btn" id="fundActionUseBtn"'));
   assert.ok(html.includes('<button class="btn btn-tertiary" id="fundActionAskBtn"'));
-  assert.ok(html.includes('<button class="btn btn-mid" id="fundActionIncomeBtn"'));
+  assert.equal(html.includes('fundActionIncomeBtn'), false);
+  const row = html.slice(html.indexOf('id="section-fund-actions"'), html.indexOf('id="fundTopupsDisclosure"'));
+  assert.deepEqual([...row.matchAll(/id="(fundAction\w+)"/g)].map((m) => m[1]), ['fundActionAddBtn', 'fundActionUseBtn', 'fundActionAskBtn']);
 });
 
 test('transaction detail rows: no adjacent duplicate treatment', () => {

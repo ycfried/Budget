@@ -62,11 +62,12 @@ test('button levels are solid colors, no pale tint or white outline', () => {
   assert.doesNotMatch(css, /btn-outline\s*\{/);
   assert.doesNotMatch(html, /btn-outline/);
   assert.doesNotMatch(js, /btn-outline/);
-  // Funds actions: primary, pale, grey, mid — all different.
+  // Funds actions: primary, pale, grey — three buttons, three
+  // treatments (Record income left the row for the Charity sheet).
   assert.ok(html.includes('<button class="btn btn-primary" id="fundActionAddBtn"'));
   assert.ok(html.includes('<button class="btn" id="fundActionUseBtn"'));
   assert.ok(html.includes('<button class="btn btn-tertiary" id="fundActionAskBtn"'));
-  assert.ok(html.includes('<button class="btn btn-mid" id="fundActionIncomeBtn"'));
+  assert.equal(html.includes('fundActionIncomeBtn'), false);
   // Detail: Mark (tertiary grey) vs Use Fund (mid) are different.
   assert.ok(js.includes('class="btn btn-small btn-tertiary" data-mark-charity='));
   assert.ok(js.includes("class=\"btn btn-small btn-mid\""));

@@ -53,9 +53,9 @@ test('hero/stat negative figures stay soft-red; progress and See all stay blue',
 });
 
 test('only styles.css is version-bumped', () => {
-  // Pinned versions move with later branches; weekly-left-only-
-  // audit-fixes-morning touches both files, so both pins move (styles v30,
-  // live.js v39) — the invariant is the pins match live.html.
-  assert.match(html, /styles\.css\?v=30/, 'styles.css bumped to v30');
-  assert.match(html, /live\.js\?v=39/, 'live.js bumped to v39');
+  // Pinned versions move with later branches; funds-actions-three
+  // touches live.js only, so only the live.js pin moves (v40) while
+  // styles stays v30 — the invariant is the pins match live.html.
+  assert.match(html, /styles\.css\?v=30/, 'styles.css stays v30');
+  assert.match(html, /live\.js\?v=40/, 'live.js bumped to v40');
 });

@@ -2205,7 +2205,6 @@ function showView(name, opts = {}) {
     setBtn('fundActionAddBtn', !!isAdmin);
     setBtn('fundActionUseBtn', !!isAdmin);
     setBtn('fundActionAskBtn', true);
-    setBtn('fundActionIncomeBtn', !!isAdmin);
     const topDisc = document.getElementById('fundTopupsDisclosure');
     if (topDisc) topDisc.style.display = isAdmin ? '' : 'none';
     const incDisc = document.getElementById('charityIncomeDisclosure');
@@ -2425,6 +2424,22 @@ heroWeeklyTarget?.addEventListener('click', openWeeklySheet);
 heroWeeklyTarget?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWeeklySheet(); }
 });
+// Funds-actions-three (owner choice, Nov 4, Option A): Record income
+// moved out of the Funds actions card into the Charity breakdown
+// sheet, admin-only. It is a charity action, not a fund action, so
+// the actions card drops to exactly three buttons (Add / Use / Ask).
+// Both charity sheets (Home card and Funds panel) share this opener.
+// The Weekly sheet's extraAction precedent is reused: Record income
+// renders primary, Close second; choosing it closes the sheet and
+// then opens the existing Record income form via setFundForm('income').
+// Members get no extra action, so the sheet renders exactly as before.
+async function openCharitySheet() {
+  const c = currentCharityData;
+  if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
+  const isAdmin = household && household.role === 'admin';
+  const result = await showSheet({ title: 'Charity · November 2026 onward', rows: charityBreakdownRows(c), extraAction: isAdmin ? { label: 'Record income', result: 'record-income' } : null, confirmLabel: 'Close' });
+  if (result === 'record-income') setFundForm('income');
+}
 document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListener('click', async () => {
   const kind = el.dataset.homeCard;
   if (kind === 'fund') {
@@ -2432,9 +2447,7 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
     if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
     await showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), confirmLabel: 'Close' });
   } else {
-    const c = currentCharityData;
-    if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
-    await showSheet({ title: 'Charity · November 2026 onward', rows: charityBreakdownRows(c), confirmLabel: 'Close' });
+    await openCharitySheet();
   }
 }));
 // Button-card-fix: the labeled rows for the Extra Fund and Charity
@@ -2481,9 +2494,7 @@ document.querySelectorAll('[data-fund-card]').forEach((el) => {
       if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
       await showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), confirmLabel: 'Close' });
     } else {
-      const c = currentCharityData;
-      if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
-      await showSheet({ title: 'Charity · November 2026 onward', rows: charityBreakdownRows(c), confirmLabel: 'Close' });
+      await openCharitySheet();
     }
   };
   el.addEventListener('click', open);
@@ -2784,7 +2795,6 @@ $('fundActionAskBtn')?.addEventListener('click', () => setFundForm('ask'));
 // Ask lives once, in the Funds actions card (the delta3 beside-button
 // was removed for parity; the Funds balance card itself is a tap
 // target for its breakdown sheet, not a button row).
-$('fundActionIncomeBtn')?.addEventListener('click', () => setFundForm('income'));
 // UX-review-fix P2: the held balance links straight to the Review
 // queue. The button lives under the Funds balance cards and only
 // shows when a held week exists; tapping it opens Funds, expands
