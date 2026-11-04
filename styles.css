@@ -62,7 +62,7 @@ h3 { font-size: 17px; }
   font-weight: 700;
   letter-spacing: 0.04em;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: 8px;
   margin-left: 8px;
   vertical-align: middle;
 }
@@ -270,7 +270,7 @@ label { font-size: 14px; font-weight: 600; }
   font-size: 11px;
   font-weight: 700;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: 8px;
   background: var(--soft-green-bg);
   color: var(--soft-green);
   margin-left: 6px;
@@ -321,7 +321,7 @@ label { font-size: 14px; font-weight: 600; }
 #view-app .btn-primary { background: var(--green); border-color: var(--green); color: #fff; }
 #view-app .btn:active, #liveTopbar .btn:active { opacity: .75; }
 #liveTopbar .btn:disabled { opacity: .6; }
-#view-app .tx-chip { background: #f3efe8; color: var(--green); border: 0; border-radius: 999px;
+#view-app .tx-chip { background: #f3efe8; color: var(--green); border: 0; border-radius: 8px;
   padding: 8px 14px; font-weight: 700; }
 #view-app .tx-chip.active { background: var(--green); color: #fff; border: 0; }
 #view-app .app-nav-link.active { border-bottom-width: 3px; }
@@ -477,12 +477,16 @@ body.live .btn-block { display: flex; width: 100%; }
 /* C2: third-level action treatment, from the existing palette:
    light blue tint background, brand blue text. Primary stays filled
    brand blue, secondary stays light grey, destructive stays red. */
-body.live .btn-tertiary { background: #eef4ff; color: #2f6bff; }
+body.live .btn-tertiary { background: #eef4ff; color: #2f6bff; border: 1px solid #2f6bff; }
 /* C3: Funds balance cards side by side (stacked only on very narrow
    screens, so numbers never overflow at 320px). */
-body.live .fund-balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-body.live .fund-balance-panel { min-width: 0; }
+body.live .fund-balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
+body.live .fund-balance-panel { min-width: 0; display: flex; flex-direction: column; }
 body.live .fund-balance-panel .fund-balance { overflow-wrap: break-word; }
+/* Delta3 Funds parity: both panels share title -> figure -> secondary
+   lines, so the figures sit at the same height; secondary lines wrap
+   inside the panel (the Period line used to run to the panel edge). */
+body.live .fund-balance-panel p.muted { overflow-wrap: anywhere; }
 @media (max-width: 420px) {
   body.live .fund-balance-grid { grid-template-columns: 1fr; }
 }
@@ -496,7 +500,7 @@ body.live .tx-search-row .btn { flex: 0 0 auto; }
 /* B2: applied filters as small individually removable labels. */
 body.live .tx-active-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 10px; }
 body.live .tx-active-filters:empty { display: none; }
-body.live .tx-active-filter { background: #eef4ff; color: #2f6bff; border: 0; border-radius: 999px;
+body.live .tx-active-filter { background: #eef4ff; color: #2f6bff; border: 0; border-radius: 8px;
   padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--sans); }
 /* B2: filters bottom sheet (backdrop + card). .hidden still wins
    over display:flex because it is !important. */
@@ -539,7 +543,7 @@ body.live .profile-menu-head { padding: 16px 16px 12px; border-bottom: 1px solid
 body.live .profile-menu-head p { margin: 4px 0; }
 body.live .profile-email { font-size: 16px; overflow-wrap: anywhere; }
 body.live .role-pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px;
-  border-radius: 999px; background: #eef4ff; color: #2f6bff; text-transform: capitalize; }
+  border-radius: 8px; background: #eef4ff; color: #2f6bff; text-transform: capitalize; }
 body.live .profile-menu-rows { padding: 8px; }
 body.live .profile-menu-row { display: block; width: 100%; text-align: left; background: none; border: 0;
   border-radius: 10px; padding: 12px; font-size: 15px; font-weight: 700; color: #0f172a;
@@ -556,3 +560,37 @@ body.live .profile-menu-row-danger { color: #dc2626; }
   .form-row-2 { grid-template-columns: 1fr; }
   #section-manual .form-row-3 { grid-template-columns: 1fr; }
 }
+
+/* ===== Delta3 additions ===== */
+/* Loading screen: brand-blue spinner + app name, stable until boot()
+   replaces it directly with auth, household, or app. Reuses the
+   delta-spin keyframes the sync button already uses. */
+body.live .loading-screen { text-align: center; padding: 48px 22px; }
+body.live .loading-mark { font-family: var(--serif); font-size: 28px; font-weight: 700; margin-bottom: 20px; }
+body.live .loading-spinner { width: 36px; height: 36px; margin: 0 auto 16px; border: 3px solid #eef4ff; border-top-color: #2f6bff; border-radius: 50%; animation: delta-spin 1s linear infinite; }
+/* Inline card header: subtitle sits on the same line as the heading
+   (Add card), so the card gets smaller. Wraps gracefully on very
+   narrow screens instead of colliding. */
+body.live .card-head-inline { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+body.live .card-head-inline h2 { margin: 0; }
+body.live .card-head-inline p { margin: 0; }
+/* Transaction detail: labeled metric rows instead of dense run-on
+   lines. Values wrap so long merchant/card text never overflows. */
+body.live .tx-detail-rows { display: grid; gap: 6px; margin: 10px 0; }
+body.live .tx-detail-rows > div { display: flex; justify-content: space-between; gap: 12px; }
+body.live .tx-detail-rows > div > span:first-child { color: var(--muted); }
+body.live .tx-detail-rows > div > span:last-child { font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+/* CSV import: styled file control. The native input stays the real
+   control (keyboard + screen-reader accessible) but is visually
+   hidden; the label looks like a button and the file name shows
+   beside it. */
+body.live .csv-file-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+body.live .csv-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+body.live .csv-file-btn { cursor: pointer; margin: 0; }
+body.live .csv-file-name { overflow-wrap: anywhere; min-width: 0; }
+/* Home breakdown sheets: labeled metric rows above the message. */
+body.live #sheetOverlay .sheet-rows { display: grid; gap: 8px; margin: 0 0 14px; }
+body.live #sheetOverlay .sheet-rows > div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #ececf1; padding-bottom: 8px; }
+body.live #sheetOverlay .sheet-rows > div:last-child { border-bottom: 0; padding-bottom: 0; }
+body.live #sheetOverlay .sheet-rows > div > span:first-child { color: var(--muted); }
+body.live #sheetOverlay .sheet-rows > div > span:last-child { font-weight: 700; text-align: right; overflow-wrap: anywhere; }

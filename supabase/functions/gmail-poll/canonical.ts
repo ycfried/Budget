@@ -45,6 +45,15 @@ export async function canonicalHash(
 // or the alert supplies it (matching is case-insensitive).
 //
 // EXACT PATTERNS (do not widen silently — widening reclassifies money):
+// Transfers between the household's own accounts are NOT spending and
+// NOT refunds (delta3): an internal transfer out to savings must not
+// count toward weekly spending, and one in must not net as a refund.
+// The signal is the merchant text; it is checked FIRST, before the
+// payment/cashback/category rules, so it applies to both classifyKind
+// and classifyMerchantOnly. Only INTERNAL transfers match — a transfer
+// to another person keeps its charge/refund kind (admin reclassify
+// covers those cases individually).
+export const TRANSFER_PATTERN = /INTERNAL TRANSFER/i;
 export const PAYMENT_PATTERN = /MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT/i;
 export const CASHBACK_PATTERN = /CASH BACK|CASHBACK|REWARD/i;
 
@@ -70,18 +79,20 @@ function plaidCategoryIndicatesCardPayment(tx: Record<string, unknown>): boolean
   return false;
 }
 
-export type TxKind = 'charge' | 'refund' | 'payment' | 'cashback' | 'fund_charge';
+export type TxKind = 'charge' | 'refund' | 'payment' | 'cashback' | 'fund_charge' | 'transfer';
 
-// Classification order matters: payment and cashback are checked BEFORE
-// the sign-based refund fallback, because both surface as negative
-// Plaid amounts. A real refund (e.g. an Amazon return) matches neither
-// pattern and keeps kind='refund'.
+// Classification order matters: the internal-transfer check comes FIRST,
+// then payment and cashback are checked BEFORE the sign-based refund
+// fallback, because both surface as negative Plaid amounts. A real
+// refund (e.g. an Amazon return) matches none of these patterns and
+// keeps kind='refund'.
 export function classifyKind(
   tx: Record<string, unknown>,
   merchantName: string,
   signedAmountCents: number,
 ): TxKind {
   const name = String(merchantName ?? '');
+  if (TRANSFER_PATTERN.test(name)) return 'transfer';
   if (plaidCategoryIndicatesCardPayment(tx)) return 'payment';
   if (PAYMENT_PATTERN.test(name)) return 'payment';
   if (CASHBACK_PATTERN.test(name)) return 'cashback';

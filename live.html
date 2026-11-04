@@ -8,14 +8,14 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=17">
+<link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
   <div class="topbar-left"></div>
   <div class="topbar-title"><strong>OnBudget</strong></div>
   <div class="topbar-right">
-    <button id="profileBtn" class="profile-btn" type="button" aria-label="Open profile menu" aria-expanded="false">
+    <button id="profileBtn" class="profile-btn hidden" type="button" aria-label="Open profile menu" aria-expanded="false">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
     </button>
     <div id="profileMenu" class="profile-menu hidden">
@@ -33,7 +33,18 @@
 </header>
 
 <main>
-  <section id="view-auth" class="card">
+  <!-- Delta3 loading screen: the first thing painted, so a signed-in
+       reload never flashes the sign-in form. boot() replaces this
+       directly with the auth, household, or app view once the session
+       is known; a signed-out visit goes loading -> sign-in, with no
+       app-shell flash in between. -->
+  <section id="view-loading" class="card loading-screen" aria-label="Loading">
+    <div class="loading-mark">OnBudget</div>
+    <div class="loading-spinner" aria-hidden="true"></div>
+    <p class="muted">Loading your budget…</p>
+  </section>
+
+  <section id="view-auth" class="card hidden">
     <h1>OnBudget</h1>
     <p class="muted">Sign in to your household budget.</p>
     <label>Email <input id="authEmail" type="email" autocomplete="email" required></label>
@@ -94,15 +105,16 @@
 
     <div class="card" id="section-history-link">
       <h2>History</h2>
-      <p class="muted small">Closed weeks and a shared record of every change in this household, grouped by day.</p>
       <div class="btn-row">
         <button class="btn" data-view="activity" type="button" aria-label="Open History">View history</button>
       </div>
     </div>
 
     <div class="card" id="section-add-choice">
-      <h2>Add</h2>
-      <p class="muted small">Record a transaction you already made, or import a file of them.</p>
+      <div class="card-head-inline">
+        <h2>Add</h2>
+        <p class="muted small">Record a transaction you already made, or import a file of them.</p>
+      </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="addManualBtn" type="button" aria-label="Add a transaction by hand">Add by hand</button>
         <button class="btn" id="addCsvBtn" type="button" aria-label="Import transactions from a CSV file">Import CSV</button>
@@ -130,12 +142,21 @@
     <div class="card" id="section-csv">
       <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Import transactions from a CSV file</h2>
-      <p class="muted small">Expected columns: Date, Description, Amount, Card Ending. Nothing is added until you review the preview and tap Confirm. Duplicates are skipped. Imports are provisional until the bank confirms them.</p>
-      <label>CSV file <input id="csvFile" type="file" accept=".csv,text/csv"></label>
+      <p class="muted small">Expected columns: Date, Description, Amount, Card Ending.</p>
+      <p class="muted small">Preview first — nothing is added until you confirm.</p>
+      <!-- Delta3: styled file control — the native input stays the
+           real control (keyboard + screen-reader accessible) but is
+           visually hidden; the label looks like a button and the
+           chosen file name shows beside it. The change handler reads
+           e.target.files, so the label's "for" must match the input. -->
+      <div class="csv-file-row">
+        <label class="btn csv-file-btn" for="csvFile">Choose file</label>
+        <span class="muted small csv-file-name" id="csvFileName">No file selected</span>
+        <input id="csvFile" class="csv-file-input" type="file" accept=".csv,text/csv" aria-label="CSV file to import">
+      </div>
       <div id="csvPreview"></div>
       <button id="csvConfirmBtn" class="btn btn-primary" type="button" disabled aria-label="Confirm CSV import">Confirm import</button>
       <p id="csvMsg" class="result"></p>
-      <p class="muted small">Never enter a full card number — the file should contain card endings only.</p>
     </div>
 
     <div class="card" id="section-charity-gift">
@@ -160,7 +181,6 @@
         <h2>Transactions</h2>
         <button class="btn btn-primary" id="txAddBtn" type="button" aria-label="Add a transaction">Add</button>
       </div>
-      <p class="muted small">Everything spent on the household cards. Tap a transaction for detail and actions.</p>
       <div class="tx-search-row">
         <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
         <button id="txFiltersToggle" class="btn" type="button" aria-expanded="false" aria-label="Open filters">Filters</button>
@@ -173,11 +193,11 @@
             <h4>Status</h4>
             <label>Status
               <select id="txStatusSelect" aria-label="Filter by status">
-                <option value="all">All</option>
+                <option value="all">All transactions</option>
+                <option value="charity">Charity gifts</option>
                 <option value="pending">Pending</option>
                 <option value="posted">Posted</option>
                 <option value="refunds">Refunds</option>
-                <option value="charity">Charity</option>
                 <option value="excluded">Excluded</option>
               </select>
             </label>
@@ -300,17 +320,16 @@
 
     <div class="card" id="section-fund-balances">
       <div class="fund-balance-grid">
+        <!-- Delta3 Funds parity: both panels share the identical
+             template — title, prominent figure, secondary lines —
+             with no explainer paragraphs and no button rows, so the
+             figures line up. Ask lives once, in Funds actions below. -->
         <div class="fund-balance-panel">
           <h2>Extra Fund</h2>
-          <p class="muted small">Leftover money from weeks you spent under budget — use it for extras.</p>
           <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
-          <div class="btn-row">
-            <button class="btn btn-tertiary" id="fundAskBesideBtn" type="button" aria-label="Ask for fund money">Ask for fund money</button>
-          </div>
         </div>
         <div class="fund-balance-panel">
           <h2>Charity</h2>
-          <p class="muted small">November 2026 onward. Committed is 10% of income recorded here (or the rate set for that income); given is confirmed gifts only. A negative remaining means you are ahead.</p>
           <div id="charitySummary"><p class="muted small">Loading charity…</p></div>
         </div>
       </div>
@@ -318,7 +337,6 @@
 
     <div class="card" id="section-fund-actions">
       <h2>Funds actions</h2>
-      <p class="muted small">Money moves open one at a time, so the page stays short.</p>
       <div class="btn-row">
         <button class="btn btn-primary" id="fundActionAddBtn" type="button" aria-label="Add money to the Extra Fund">Add money</button>
         <button class="btn" id="fundActionUseBtn" type="button" aria-label="Use fund money">Use fund money</button>
@@ -470,7 +488,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=26"></script>
+<script type="module" src="live.js?v=27"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

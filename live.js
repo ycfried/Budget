@@ -26,7 +26,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, isWeekCloseCheckDue, classifyCsvKind } from './filterState.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
@@ -179,6 +179,14 @@ let fundFormOpen = null; // delta C3: which Funds form is open (null = actions c
 const syncGuard = createSyncGuard(); // delta B3: one bank sync at a time
 let txLimit = 100; // transactions load in pages of 100; Load more raises it
 let weekCloseRan = false; // week-close runs itself once per session (admin only)
+// Delta3 week-close fingerprint: the week start of the last successful
+// week-close check, in localStorage per household, so a reload in the
+// same week skips the call (the server would be a silent no-op). A
+// missing or unreadable value means "unknown" — the caller falls back
+// to calling, because the server no-op is silent when nothing is due.
+const weekCloseCheckKey = () => `ob-weekclose-${household?.household_id ?? 'none'}`;
+const readWeekCloseCheck = () => { try { return localStorage.getItem(weekCloseCheckKey()); } catch (e) { return null; } };
+const writeWeekCloseCheck = (weekStart) => { try { if (weekStart) localStorage.setItem(weekCloseCheckKey(), weekStart); } catch (e) { /* private mode: next load just calls again */ } };
 let lastRefreshAt = 0; // tab taps refresh in the background, throttled
 let txLoaded = false; // transactions have loaded at least once (gates the empty-week hint)
 let refreshInFlight = 0; // R1: overlapping refreshes share one Updating… state
@@ -197,6 +205,11 @@ let nicknamesLoaded = false;
 const sourceLabel = (s) => ({ plaid: 'Bank', manual: 'By hand', csv: 'File', amex_alert: 'Email alert' }[s] ?? String(s));
 
 async function show(view) {
+  // Delta3 loading screen: view-loading is the HTML default (visible
+  // on first paint), so a signed-in reload never flashes the sign-in
+  // form — boot() replaces the loader directly with auth, household,
+  // or app once the session is known.
+  $('view-loading')?.classList.toggle('hidden', view !== 'loading');
   $('view-auth').classList.toggle('hidden', view !== 'auth');
   $('view-household').classList.toggle('hidden', view !== 'household');
   $('view-app').classList.toggle('hidden', view !== 'app');
@@ -266,13 +279,6 @@ async function refresh() {
       .select('base_allowance_cents').eq('id', household.household_id).maybeSingle();
     if (hhRow && Number.isInteger(hhRow.base_allowance_cents)) baseAllowanceCents = hhRow.base_allowance_cents;
   } catch (e) { console.warn('base allowance read failed:', e); }
-  // Weeks close themselves (admin only, once per session) — unchanged.
-  if (household.role === 'admin' && !weekCloseRan) {
-    try {
-      const out = await callFn('week-close', { household_id: household.household_id });
-      if (!out.error) weekCloseRan = true;
-    } catch (e) { /* retry next refresh */ }
-  }
   const weekErrEl = document.getElementById('weekError');
   const clearWeekNumbers = () => {
     $('weekLabel').textContent = 'Week numbers unavailable';
@@ -285,7 +291,9 @@ async function refresh() {
     if (pt) pt.textContent = '';
     currentWeekData = null;
   };
-  try {
+  // Delta3: week figures load through this helper so a week-close that
+  // actually closed a week can reload them once, right after closing.
+  const loadWeekNumbers = async () => { try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/compute-week`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
@@ -331,7 +339,7 @@ async function refresh() {
         else wp.innerHTML = formatCentsHtml(avail);
       }
       const ws = $('homeWeeklySecondary');
-      if (ws) ws.textContent = `Spent ${formatCents(charges)}`;
+      if (ws) ws.textContent = `Spent ${formatCents(charges)} of ${formatCents(baseAvailable + tempC)} room`;
       currentWeekData = { weekStart, baseAvailableCents: baseAvailable, tempCents: tempC,
         carriedDebtCents: carried, chargesCents: charges, availableCents: avail,
         outgoingDebtCents: outgoingDebt, weekLocked: !!r.week_locked,
@@ -362,6 +370,34 @@ async function refresh() {
     console.warn('compute-week failed:', e);
     if (weekErrEl) { weekErrEl.textContent = "Couldn't update this week's numbers — check your connection and try again."; weekErrEl.classList.remove('hidden'); }
     clearWeekNumbers();
+  } };
+  await loadWeekNumbers();
+
+  // Delta3: weeks still close themselves (admin only, once per
+  // session) — but only when a close can be due. The due-check reads
+  // the week start compute-week just loaded and the stored
+  // fingerprint: same week as the last successful check means no
+  // close can be due, so the call is skipped. When due-ness cannot
+  // be determined (compute-week failed, no week start) the call still
+  // runs — the server no-op is silent, so that fallback costs one
+  // quiet call and never a spurious activity row. The close path
+  // itself is NOT removed: admin loads are what close weeks (there
+  // is no scheduled week-close). When the call actually closed a
+  // week, figures reload once so the close is reflected immediately.
+  if (household.role === 'admin' && !weekCloseRan) {
+    const currentWeekStart = currentWeekData?.weekStart ?? null;
+    if (!isWeekCloseCheckDue({ lastCheckedWeekStart: readWeekCloseCheck(), currentWeekStart })) {
+      weekCloseRan = true;
+    } else {
+      try {
+        const out = await callFn('week-close', { household_id: household.household_id });
+        if (!out.error) {
+          weekCloseRan = true;
+          writeWeekCloseCheck(currentWeekStart);
+          if (out.weeks_closed > 0) await loadWeekNumbers();
+        }
+      } catch (e) { /* retry next refresh */ }
+    }
   }
 
   const { data: txns, error: txErr } = await supabase.from('transactions')
@@ -542,8 +578,9 @@ async function refresh() {
         // Admin actions are hidden from non-admins in the UI; enforcement
         // is server-side in the RPCs (see header note). Reclassify is
         // admin-only and goes through reclassify_transaction.
+        // Delta3: Reclassify reads as a secondary action, not tertiary.
         const reclassBtn = !isAdmin ? ''
-          : `<button class="btn btn-small btn-tertiary" data-reclassify="${t.id}" type="button" aria-label="Reclassify ${esc(t.merchant)}">Reclassify</button>`;
+          : `<button class="btn btn-small" data-reclassify="${t.id}" type="button" aria-label="Reclassify ${esc(t.merchant)}">Reclassify</button>`;
         // R13: a posted charge can be marked as a charity gift (whole
         // row only, server-guarded: posted, unexcluded, no fund part,
         // November 2026 onward, unlocked week). A gift row itself
@@ -555,13 +592,19 @@ async function refresh() {
           ? `<button class="btn btn-small btn-tertiary" data-mark-charity="${t.id}" type="button" aria-label="Mark ${esc(t.merchant)} as a charity gift">Mark as charity</button>`
           : '';
         const cardLabel = (t.kind === 'charity' && String(t.card_suffix) === '0000') ? 'Cash / no card' : `••${esc(t.card_suffix)}`;
-        const kindLabel = t.kind === 'refund' ? 'Refund' : t.kind === 'charity' ? 'Charity gift' : 'Transaction';
+        const kindLabel = t.kind === 'refund' ? 'Refund' : t.kind === 'charity' ? 'Charity gift' : t.kind === 'transfer' ? 'Transfer' : 'Transaction';
+        // Delta3 button order: Exclude, Mark as charity, Use Extra
+        // Fund, Reclassify, Remove last (destructive). Excluded rows
+        // keep Restore first, then Reclassify, then Remove last. The
+        // destructive button keeps its honest label per source:
+        // "Delete" for hand-entered rows (truly deleted), "Remove"
+        // for bank/email/file rows (excluded, record kept).
         const action = !isAdmin ? (t.kind === 'charity' ? '' : fundBtn)
           : excluded
-          ? `<div class="btn-row"><button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${deleteBtn} ${reclassBtn}</div>`
+          ? `<div class="btn-row"><button class="btn btn-small" data-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} to the week">Restore</button> ${reclassBtn} ${deleteBtn}</div>`
           : t.kind === 'charity'
           ? `<div class="btn-row">${deleteBtn}</div>`
-          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${deleteBtn} ${reclassBtn} ${charityBtn} ${fundBtnAdmin}</div>`;
+          : `<div class="btn-row"><button class="btn btn-small" data-exclude="${t.id}" type="button" aria-label="Exclude ${esc(t.merchant)} from the week">Exclude</button> ${charityBtn} ${fundBtnAdmin} ${reclassBtn} ${deleteBtn}</div>`;
         const neg = t.amount_cents < 0 ? ' negative' : '';
         // UX audit 05: the row's accessible name carries merchant,
         // amount, date, and status, so repeated merchants never share
@@ -574,9 +617,14 @@ async function refresh() {
         <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span> <span class="muted small">Tap for detail</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
           <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${kindLabel})</p>
-          <p class="small muted">Date: ${fmtLong(t.date)} · Counts in week: ${weekRangeOf(t.date)} (Sun–Sat)<br>
-          Card: ${cardLabel} · Source: ${esc(sourceLabel(t.source))} · Status: ${stateWord(t, excluded)}<br>
-          ${t.kind === 'charity' ? 'This gift is outside weekly spending and counts toward charity given once posted.' : excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : t.kind === 'payment' ? 'This is a card payment. It does not count toward weekly spending.' : t.kind === 'cashback' ? 'This is a cash-back credit. It does not count toward weekly spending.' : 'This transaction counts toward its week unless excluded.'}</p>
+          <div class="tx-detail-rows">
+            <div><span>Date</span><span>${fmtLong(t.date)}</span></div>
+            <div><span>Week</span><span>${esc(weekRangeOf(t.date))} (Sun–Sat)</span></div>
+            <div><span>Card</span><span>${cardLabel}</span></div>
+            <div><span>Source</span><span>${esc(sourceLabel(t.source))}</span></div>
+            <div><span>Status</span><span>${esc(stateWord(t, excluded))}</span></div>
+          </div>
+          <p class="small muted">${t.kind === 'charity' ? 'This gift is outside weekly spending and counts toward charity given once posted.' : excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : t.kind === 'payment' ? 'This is a card payment. It does not count toward weekly spending.' : t.kind === 'cashback' ? 'This is a cash-back credit. It does not count toward weekly spending.' : t.kind === 'transfer' ? 'This is a transfer between your accounts. It does not count toward weekly spending.' : 'This transaction counts toward its week unless excluded.'}</p>
           <div>${action}</div>
         </div></li>`;
       }).join('')
@@ -691,7 +739,7 @@ async function refresh() {
     await refresh();
   }));
   document.querySelectorAll('[data-reclassify]').forEach((b) => b.addEventListener('click', async () => {
-    const newKind = await showSheet({ title: 'Reclassify transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+    const newKind = await showSheet({ title: 'Reclassify transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
     if (newKind === null) return;
     const reason = await showSheet({ title: 'Reclassify transaction', message: 'Why reclassify this transaction?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
     if (reason === null) return;
@@ -1443,13 +1491,19 @@ $('forgotPasswordBtn')?.addEventListener('click', async () => {
   $('authMsg').textContent = 'If an account exists for that email, a password-reset link was sent to it.';
 });
 $('signInBtn').addEventListener('click', async () => {
+  // Delta3: the sync-button busy pattern, extended to sign-in —
+  // disable + progress label while signing in, then the loading
+  // screen (never the app shell) while boot() restores the session.
+  const btn = $('signInBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
   const { error } = await supabase.auth.signInWithPassword({
     email: $('authEmail').value.trim(), password: $('authPassword').value,
   });
   if (error) console.warn('sign-in failed:', error.message);
   $('authMsg').textContent = error ? 'Could not sign in. Check your email and password and try again.' : 'Signed in.';
-
-boot();
+  if (!error) await show('loading');
+  await boot();
+  if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
 });
 // ---- Live CSV import (Transactions tab), registered at top level so
 // it works after a plain reload, not only after an in-page sign-in
@@ -1460,6 +1514,7 @@ boot();
 // (member inserts are constrained to manual/csv + provisional by S1 SQL).
 $('csvFile')?.addEventListener('change', async (e) => {
   const file = e.target.files[0];
+  const fileNameEl = $('csvFileName'); if (fileNameEl) fileNameEl.textContent = file ? file.name : 'No file selected';
   const preview = $('csvPreview'); const confirmBtn = $('csvConfirmBtn'); const msg = $('csvMsg');
   pendingCsvRows = [];
   if (confirmBtn) confirmBtn.disabled = true;
@@ -1511,7 +1566,7 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
     const hash = await sha(`${r.date}|${normalizeMerchant(r.merchant)}|${r.amountCents}|${r.suffix}`);
     inserts.push({ household_id: household.household_id, date: r.date, merchant: r.merchant,
       amount_cents: r.amountCents, card_suffix: r.suffix, source: 'csv', state: 'provisional',
-      kind: r.amountCents < 0 ? 'refund' : 'charge', dedupe_hash: hash });
+      kind: classifyCsvKind(r.merchant, r.amountCents), dedupe_hash: hash });
   }
   const { data, error } = await supabase.from('transactions').insert(inserts).select('id');
   if (error) { console.warn('csv insert failed:', error.message); showToast('Could not import. Nothing was claimed as imported — try again.', true); if (confirmBtnTop) confirmBtnTop.disabled = false; return; }
@@ -1526,12 +1581,17 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
   await refresh();
 });
 $('signUpBtn').addEventListener('click', async () => {
+  // Delta3: same busy pattern as sign-in.
+  const btn = $('signUpBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
   const { error } = await supabase.auth.signUp({
     email: $('authEmail').value.trim(), password: $('authPassword').value,
   });
   if (error) console.warn('sign-up failed:', error.message);
   $('authMsg').textContent = error ? 'Could not create the account. Try again.' : 'Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.';
+  if (!error) await show('loading');
   if (!error) await boot();
+  if (btn) { btn.disabled = false; btn.textContent = 'Create account'; }
 });
 $('signOutBtn').addEventListener('click', async () => {
   await supabase.auth.signOut(); household = null;
@@ -1543,6 +1603,8 @@ $('signOutBtn').addEventListener('click', async () => {
 // No header Refresh button anymore: tapping a tab refreshes.
 
 $('createHouseholdBtn').addEventListener('click', async () => {
+  const btn = $('createHouseholdBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
   // Household creation is server-side only — but NOT via the Edge
   // Function anymore. The bootstrap-household function failed on Nov 1
   // (HTTP 500, valid JWT, service-role insert failed) because it reads
@@ -1564,12 +1626,15 @@ $('createHouseholdBtn').addEventListener('click', async () => {
   // proves the caller is the new household's admin, so set it directly
   // and go straight to the dashboard.
   if (data) { household = { household_id: data, role: 'admin' }; await show('app'); await refresh(); }
+  if (btn) { btn.disabled = false; btn.textContent = 'Create household (I am the owner / admin)'; }
 });
 $('joinHouseholdBtn').addEventListener('click', async () => {
+  const btn = $('joinHouseholdBtn');
   const { data: { user } } = await supabase.auth.getUser();
   const code = $('joinId').value.trim();
   if (!user) { $('householdMsg').textContent = 'Sign in first.'; return; }
   if (!code) { $('householdMsg').textContent = 'Enter the invite code from the household owner.'; return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Joining…'; }
   // Join takes an invite CODE, not a UUID. join_household_by_code returns
   // the household UUID, which the client stores for its own queries but
   // never displays or shares.
@@ -1581,6 +1646,7 @@ $('joinHouseholdBtn').addEventListener('click', async () => {
   // exactly like the old exception: same generic message, no join.
   $('householdMsg').textContent = (error || !data) ? 'Join failed. Check the invite code and try again.' : 'Joined. Loading shared budget…';
   if (!error && data) { household = { household_id: data, role: 'member' }; await show('app'); await refresh(); }
+  if (btn) { btn.disabled = false; btn.textContent = 'Join as member'; }
 });
 
 let manualSubmitting = false;
@@ -1865,7 +1931,7 @@ function showView(name, opts = {}) {
     setBtn('settingsShareIdBtn', isAdmin);
     const intro = document.getElementById('settingsIntro');
     if (intro) intro.textContent = isAdmin
-      ? 'Connections, Budget, and Account & household. Bank and email connections moved here from Funds.'
+      ? 'Connections, Budget, and Account & household.'
       : 'Connections and Account & household. Only the admin can change bank and email connections.';
   }
   // R7: the Add forms are never permanently expanded — the choice
@@ -1973,18 +2039,37 @@ document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListene
   if (kind === 'weekly') {
     const w = currentWeekData;
     if (!w) { await showAlert('Weekly Budget', 'Weekly numbers are not loaded yet. Try again in a moment.'); return; }
-    const bd = lastSpentBreakdown
-      ? `\nDated this week: ${formatCents(lastSpentBreakdown.datedTotal)}\nLate charges from earlier locked weeks: ${formatCents(lastSpentBreakdown.lateTotal)}`
-      : '';
-    await showSheet({ title: 'Weekly Budget', message: `Left: ${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}\nSpent: ${formatCents(w.chargesCents)}${bd}\nAllowance: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)}\nCarried debt: ${formatCents(w.carriedDebtCents)}\nTemporary increase: ${formatCents(w.tempCents)}\nOutgoing debt: ${formatCents(w.outgoingDebtCents)}\nHow it fits together:\nBase spending room: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)} allowance - ${formatCents(w.carriedDebtCents)} carried debt = ${formatCents(w.baseRoomCents ?? w.baseAvailableCents)} (never below $0)\nLeft: ${formatCents(w.baseRoomCents ?? w.baseAvailableCents)} room + ${formatCents(w.tempCents)} temporary - ${formatCents(w.chargesCents)} spent = ${formatCents(w.availableCents)}\nOutgoing debt: ${formatCents(w.unabsorbedDebtCents ?? 0)} debt the allowance did not cover + ${formatCents(w.newDebtCents ?? 0)} new debt from spending above room = ${formatCents(w.outgoingDebtCents)}`, confirmLabel: 'Close' });
+    // Delta3: labeled metric rows instead of the paragraph of figures;
+    // the reconciliation equation stays below them, unchanged.
+    const weeklyRows = [
+      ['Left', `${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}`],
+      ['Spent', formatCents(w.chargesCents)],
+      ...(lastSpentBreakdown ? [['Dated this week', formatCents(lastSpentBreakdown.datedTotal)], ['Late charges from earlier locked weeks', formatCents(lastSpentBreakdown.lateTotal)]] : []),
+      ['Allowance', formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)],
+      ['Carried debt', formatCents(w.carriedDebtCents)],
+      ['Temporary increase', formatCents(w.tempCents)],
+      ['Outgoing debt', formatCents(w.outgoingDebtCents)],
+    ];
+    await showSheet({ title: 'Weekly Budget', rows: weeklyRows, message: `How it fits together:\nBase spending room: ${formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)} allowance - ${formatCents(w.carriedDebtCents)} carried debt = ${formatCents(w.baseRoomCents ?? w.baseAvailableCents)} (never below $0)\nLeft: ${formatCents(w.baseRoomCents ?? w.baseAvailableCents)} room + ${formatCents(w.tempCents)} temporary - ${formatCents(w.chargesCents)} spent = ${formatCents(w.availableCents)}\nOutgoing debt: ${formatCents(w.unabsorbedDebtCents ?? 0)} debt the allowance did not cover + ${formatCents(w.newDebtCents ?? 0)} new debt from spending above room = ${formatCents(w.outgoingDebtCents)}`, confirmLabel: 'Close' });
   } else if (kind === 'fund') {
     const f = currentFundData;
     if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
-    await showSheet({ title: 'Extra Fund', message: `${household.role === 'admin' ? 'Spendable available' : 'Available to request'}: ${formatCents(f.available)}\nPending (not yet released): ${formatCents(f.pending)}\nReleased total: ${formatCents(f.releasedTotal)}\nSpent from fund: ${formatCents(f.spent)}\nOwed back (shortfall): ${formatCents(f.shortfall)}`, confirmLabel: 'Close' });
+    await showSheet({ title: 'Extra Fund', rows: [
+      [household.role === 'admin' ? 'Spendable available' : 'Available to request', formatCents(f.available)],
+      ['Pending (not yet released)', formatCents(f.pending)],
+      ['Released total', formatCents(f.releasedTotal)],
+      ['Spent from fund', formatCents(f.spent)],
+      ['Owed back (shortfall)', formatCents(f.shortfall)],
+    ], confirmLabel: 'Close' });
   } else {
     const c = currentCharityData;
     if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
-    await showSheet({ title: 'Charity · November 2026 onward', message: `Remaining: ${c.remaining < 0 ? `Ahead by ${formatCents(Math.abs(c.remaining))}` : formatCents(c.remaining)}\nCommitted: ${formatCents(c.committed)}\nGiven: ${formatCents(c.given)}\nDefault rate: ${(c.defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%`, confirmLabel: 'Close' });
+    await showSheet({ title: 'Charity · November 2026 onward', rows: [
+      ['Remaining', c.remaining < 0 ? `Ahead by ${formatCents(Math.abs(c.remaining))}` : formatCents(c.remaining)],
+      ['Committed', formatCents(c.committed)],
+      ['Given', formatCents(c.given)],
+      ['Default rate', `${(c.defaultRateBp / 100).toFixed(2).replace(/\.?0+$/, '')}%`],
+    ], confirmLabel: 'Close' });
   }
 }));
 // HTML form of an amount with smaller cents, for the hero and stat
@@ -2044,7 +2129,7 @@ function fmtShort(dateStr) {
 
 // In-app sheet (replaces the browser's grey prompt/confirm/alert
 // boxes, which looked cheap and blocked the whole page).
-function showSheet({ title, message, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null }) {
+function showSheet({ title, message, rows = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null }) {
   // SECURITY: EVERY interpolated value is escaped with esc() — title,
   // message, input label/value, option labels/values, and button labels.
   // No raw caller value reaches innerHTML through any showSheet path.
@@ -2057,8 +2142,12 @@ function showSheet({ title, message, inputLabel, inputValue = '', inputType = 't
     const inputHtml = !inputLabel ? '' : inputOptions
       ? `<label>${esc(inputLabel)}<select id="sheetInput">${inputOptions.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}</select></label>`
       : `<label>${esc(inputLabel)}<input id="sheetInput" type="${safeType}" value="${esc(inputValue)}"></label>`;
+    // Delta3: labeled metric rows (Home breakdown sheets) render above
+    // the message paragraph; the paragraph is omitted when empty so a
+    // rows-only sheet has no blank line. Rows are [label, value] pairs.
+    const rowsHtml = rows ? `<div class="sheet-rows">${rows.map(([label, value]) => `<div><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('')}</div>` : '';
     overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-      <h3>${esc(title)}</h3><p>${esc(message)}</p>
+      <h3>${esc(title)}</h3>${rowsHtml}${message ? `<p>${esc(message)}</p>` : ''}
       ${inputHtml}
       <div class="sheet-btns">
         ${cancelLabel ? `<button class="btn" type="button" id="sheetCancel">${esc(cancelLabel)}</button>` : ''}
@@ -2136,7 +2225,6 @@ $('fundActionUseBtn')?.addEventListener('click', () => setFundForm('use'));
 $('fundActionAskBtn')?.addEventListener('click', () => setFundForm('ask'));
 // UX audit 07: the same Ask action beside the Extra Fund balance
 // itself (not only in the actions card below it).
-$('fundAskBesideBtn')?.addEventListener('click', () => setFundForm('ask'));
 $('fundActionIncomeBtn')?.addEventListener('click', () => setFundForm('income'));
 $('fundAddBackBtn')?.addEventListener('click', () => setFundForm(null));
 $('fundUseBackBtn')?.addEventListener('click', () => setFundForm(null));

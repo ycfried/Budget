@@ -137,7 +137,10 @@ grant execute on function public.restore_transaction(uuid) to authenticated;
 -- ---------------------------------------------------------------------
 -- reclassify_transaction(txn_id uuid, new_kind text, reason text)
 -- returns void
---   Changes kind (charge / refund / fund_charge — the values the
+--   Changes kind (charge / refund / fund_charge / payment / cashback /
+--   transfer — delta3 adds transfer so a non-internal transfer to
+--   another person can be moved out of week math one row at a time;
+--   INTERNAL TRANSFER rows are classified as transfer on ingest)
 --   transactions CHECK constraint already allows; anything else
 --   raises here with a clear message before the constraint fires).
 --   Writes an audit row with old -> new kind and the reason.
@@ -157,8 +160,8 @@ declare
   v_row transactions%rowtype;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
-  if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge', 'payment', 'cashback') then
-    raise exception 'invalid kind: must be charge, refund, fund_charge, payment, or cashback';
+  if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'transfer') then
+    raise exception 'invalid kind: must be charge, refund, fund_charge, payment, cashback, or transfer';
   end if;
   select * into v_row from transactions where id = txn_id;
   if not found then raise exception 'transaction not found'; end if;

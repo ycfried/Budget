@@ -330,10 +330,21 @@ Deno.serve(async (req) => {
       throw new Error(`surplus_releases upsert failed: ${lastErr?.message ?? lastErr}`);
     };
     const insertRelease = async (row: any) => {
+      // delta3 concurrent-run hardening: two runs that both loaded "no
+      // release row" for the same week can both reach this insert, and
+      // the second hits the (household_id, week_start) unique key (the
+      // Nov 2 concurrent-run 500 mode). A unique violation means the
+      // other run already created this release, so it is swallowed —
+      // the caller's in-memory copy is a fresh pending row (release_date
+      // 7 days out), which the due-check below correctly leaves alone.
+      // Any other error still retries once without closed_at, then fails.
+      const isUniqueViolation = (e: any) => e?.code === '23505';
       const res = await supabaseAdmin.from('surplus_releases').insert(row);
       if (res.error) {
+        if (isUniqueViolation(res.error)) return;
         const { closed_at: _c, ...rest } = row;
         const retry = await supabaseAdmin.from('surplus_releases').insert(rest);
+        if (retry.error && isUniqueViolation(retry.error)) return;
         check(retry, 'surplus_releases insert');
       }
     };
@@ -749,11 +760,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    check(await supabaseAdmin.from('audit_log').insert({
-      household_id: householdId, actor: user.id, actor_name: 'admin',
-      action: 'Weeks processed',
-      detail: `${weeksClosed} week(s) closed, ${releasesDone} release(s), ${restorations} restoration(s), ${heldCreated} held refund(s).`,
-    }), 'audit_log insert');
+    // delta3: log an activity row ONLY when this run actually changed
+    // something (a week closed, a release posted, a restoration posted,
+    // or a held refund created). A no-op run — the common case on every
+    // admin app load — returns its summary silently instead of writing
+    // another "Weeks processed" row. heldLegacy is deliberately NOT in
+    // this condition: legacy held releases are counted, never changed.
+    if (weeksClosed > 0 || releasesDone > 0 || restorations > 0 || heldCreated > 0) {
+      check(await supabaseAdmin.from('audit_log').insert({
+        household_id: householdId, actor: user.id, actor_name: 'admin',
+        action: 'Weeks processed',
+        detail: `${weeksClosed} week(s) closed, ${releasesDone} release(s), ${restorations} restoration(s), ${heldCreated} held refund(s).`,
+      }), 'audit_log insert');
+    }
 
     const payload = {
       weeks_closed: weeksClosed, releases: releasesDone, held_legacy: heldLegacy,
