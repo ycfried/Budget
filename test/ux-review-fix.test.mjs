@@ -180,10 +180,13 @@ test('filters sheet has no repeated heading+label and pairs share a line', () =>
   assert.doesNotMatch(sheet, /<h4>Card \/ Account<\/h4>/);
   assert.doesNotMatch(sheet, /<h4>Sorting<\/h4>/);
   assert.doesNotMatch(sheet, /Amount from|Amount to/);
-  assert.ok(sheet.includes('From ($)'));
-  assert.ok(sheet.includes('To ($)'));
+  // Filters-compact (Nov 3, 2026): amounts are Min/Max, dates live
+  // under a "When" heading — the v29 From ($)/To ($) and Dates labels
+  // were replaced by the simpler system, not removed by accident.
+  assert.ok(sheet.includes('<label>Min'));
+  assert.ok(sheet.includes('<label>Max'));
   assert.ok(sheet.includes('<h4>Amount</h4>'));
-  assert.ok(sheet.includes('<h4>Dates</h4>')); // Dates has several distinct fields, so its heading stays.
+  assert.ok(sheet.includes('<h4>When</h4>')); // When groups several distinct fields, so its heading stays.
   assert.equal((sheet.match(/tx-sheet-pair/g) || []).length, 2, 'exactly the date pair and the amount pair');
   assert.match(css, /body\.live \.tx-sheet-pair \{ display: grid; grid-template-columns: 1fr 1fr;/);
   // No filter logic touched: ids and option values unchanged.

@@ -35,7 +35,8 @@ test('activeFilterLabels: each active filter gets its own removable label', () =
 });
 
 test('activeFilterLabels: a single bound alone still labels', () => {
-  assert.deepEqual(activeFilterLabels({ minLabel: '$5.00' }), [{ key: 'min', label: 'From $5.00' }]);
+  // Filters-compact (Nov 3, 2026): amounts use Min/Max, never "From".
+  assert.deepEqual(activeFilterLabels({ minLabel: '$5.00' }), [{ key: 'min', label: 'Min $5.00' }]);
 });
 
 test('historyPeriodLabel: states the period, or that there is no filter', () => {

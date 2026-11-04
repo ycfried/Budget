@@ -566,6 +566,25 @@ body.live .tx-sheet-card label { display: block; margin: 10px 0 4px; font-weight
 body.live .tx-sheet-card label select { display: block; width: 100%; margin-top: 4px; }
 body.live .tx-sheet-card .check-label { display: flex; align-items: flex-start; gap: 8px; }
 body.live .tx-sheet-card .check-label input[type="checkbox"] { width: auto; margin: 2px 0 14px; accent-color: #2f6bff; }
+/* Filters-compact (Nov 3, 2026) — the Filters sheet only, not the
+   whole app, so other forms keep their roomier controls. Before:
+   card padding 22px, group headings 16px above, labels 10px above,
+   inputs 11px vertical padding at 16px font with 6px/14px margins
+   (about a 43px-tall control box, about 63px per control row with
+   margins). After: card padding 14px, headings 10px above, labels
+   6px above, inputs/selects 10px vertical padding at 15px font with
+   2px/6px margins — a 40px-tall control box (10 + 10 + 18 line-height
+   + 2 border), still a full tap target at 390px, with about 48px per
+   control row. Sheet buttons compact the same way (13px → 10px
+   vertical padding). Pairs stay side-by-side; Escape/focus-trap
+   behaviour is untouched. */
+body.live .tx-sheet-card { padding: 14px; }
+body.live .tx-sheet-card h3 { margin: 0 0 4px; }
+body.live .tx-sheet-card h4 { margin: 10px 0 2px; font-size: 13px; }
+body.live .tx-sheet-card label { margin: 6px 0 2px; }
+body.live .tx-sheet-card input, body.live .tx-sheet-card select { padding: 10px; margin: 2px 0 6px; font-size: 15px; }
+body.live .tx-sheet-card .check-label input[type="checkbox"] { margin: 2px 0 6px; }
+body.live .tx-sheet-card .btn { padding: 11px 14px; }
 /* C3: activity disclosures (one per fund) and the collapsed Review area. */
 body.live .activity-disclosure { margin-top: 14px; }
 body.live .activity-disclosure summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
