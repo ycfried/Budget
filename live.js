@@ -26,7 +26,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, resolveRestoredView, resolveRestoredSubView, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -195,7 +195,15 @@ let txToDate = ''; // delta B2: optional date-range upper bound (YYYY-MM-DD, she
 let historyFilter = { from: '', to: '' }; // delta B1: History date filter (YYYY-MM-DD, both lists)
 let lastWeekHistoryShown = { shown: 0, total: null }; // delta B1: week-history counts for the combined count line
 let auditLimit = 50; // delta B1: activity entries shown; Load more raises it
-let fundFormOpen = null; // delta C3: which Funds form is open (null = actions card)
+let fundFormOpen = null; // delta C3: which Funds form is open (null = More card)
+let moreFundActivityOpen = false; // Task 7: More sections, toggled by their › rows
+let moreReviewOpen = false;
+let moreSavingsOpen = false;
+let reviewNeedsCount = 0; // Task 7: pending held refunds + pending duplicates (things needing review)
+function updateMoreReviewLabel() {
+  const lbl = document.getElementById('moreReviewLabel');
+  if (lbl) lbl.textContent = reviewNeedsCount > 0 ? `Review (${reviewNeedsCount})` : 'Review';
+}
 const syncGuard = createSyncGuard(); // delta B3: one bank sync at a time
 let txLimit = 100; // transactions load in pages of 100; Load more raises it
 let weekCloseRan = false; // week-close runs itself once per session (admin only)
@@ -209,7 +217,7 @@ const readWeekCloseCheck = () => { try { return localStorage.getItem(weekCloseCh
 const writeWeekCloseCheck = (weekStart) => { try { if (weekStart) localStorage.setItem(weekCloseCheckKey(), weekStart); } catch (e) { /* private mode: next load just calls again */ } };
 let lastRefreshAt = 0; // tab taps refresh in the background, throttled
 let txLoaded = false; // transactions have loaded at least once (gates the empty-week hint)
-let refreshInFlight = 0; // R1: overlapping refreshes share one Updating… state
+let refreshInFlight = 0; // Task 6: overlap counter only; it drives no UI text (the footer is last-sync only).
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
 let lastSpentBreakdown = null; // { datedTotal, lateTotal } cents, for the Weekly sheet
 let currentFundData = null; // last fund aggregates, for the Extra Fund card sheet
@@ -278,14 +286,26 @@ async function audit(action, detail) {
 
 async function refresh() {
   if (!household) return;
-  const rb = document.getElementById('refreshBtn');
-  if (rb) { rb.disabled = true; rb.textContent = 'Updating…'; }
-  // R1: while a refresh is in flight the on-screen numbers are the
-  // previous ones, so the footer says so instead of looking current.
-  // (There is no header Refresh button anymore, so the footer is the
-  // one place this state is always visible, on every tab.)
+  // Task 4: the page must not jump to the top after an action
+  // (dedupe Same/Separate, transaction Actions, fund actions,
+  // saves, disconnects — every one of them ends in refresh()).
+  // Root cause was showView(currentView) inside refresh(), which
+  // always scrolled to (0, 0). The fix is central, so every
+  // refresh() call site is covered: capture the position up front,
+  // keep the internal re-renders from scrolling, and restore in
+  // the finally below after the last re-render.
+  const savedScrollY = window.scrollY || 0;
+  // Task 6: the footer NEVER shows an app-refresh "Updating…"
+  // state. It used to sit on the same line as "Last bank sync",
+  // so the owner read it as a bank sync in progress (bank sync
+  // last ran at 5:09 PM, separately), and a hung refresh left it
+  // stuck. The footer is now the last-sync line only; a bank sync
+  // in progress already shows on its own buttons (Sync button
+  // "Syncing…", Home sync icon spins, toast) with a finally that
+  // restores them on success AND failure. refreshInFlight is kept
+  // only as an overlap counter; it drives no UI text, so there is
+  // nothing that can stick, hang, or need a timeout clear.
   refreshInFlight++;
-  const rs = document.getElementById('refreshState'); if (rs) rs.textContent = 'Updating…';
   try {
   // Webhook-triggered auto-sync happens first, so the numbers and
   // list below already include any transactions Plaid just announced.
@@ -680,7 +700,7 @@ async function refresh() {
         <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
           <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${kindLabel})</p>
-          <p class="small muted">${t.kind === 'charity' ? 'This gift is outside weekly spending and counts toward charity given once posted.' : excluded ? 'This transaction is kept for the record but does not count toward any week.' : t.state === 'reversed' ? 'This transaction was reversed and does not count.' : t.kind === 'payment' ? 'This is a card payment. It does not count toward weekly spending.' : t.kind === 'cashback' ? 'This is a cash-back credit. It does not count toward weekly spending.' : t.kind === 'transfer' ? 'This is a transfer between your accounts. It does not count toward weekly spending.' : 'This transaction counts toward its week unless excluded.'}</p>
+          <p class="small muted">${t.kind === 'charity' ? 'Outside weekly spending.' : excluded ? 'Kept for the record; does not count toward any week.' : t.state === 'reversed' ? 'Reversed; does not count.' : t.kind === 'payment' ? 'Card payment; does not count toward weekly spending.' : t.kind === 'cashback' ? 'Cash-back credit; does not count toward weekly spending.' : t.kind === 'transfer' ? 'Transfer; does not count toward weekly spending.' : 'Counts toward its week unless excluded.'}</p>
           <div class="tx-detail-rows">
             <div><span>Week</span><span>${esc(weekRangeOf(t.date))} (Sun–Sat)</span></div>
             <div><span>Date</span><span>${fmtLong(t.date)}</span></div>
@@ -688,7 +708,7 @@ async function refresh() {
             <div><span>Card</span><span>${cardLabel}</span></div>
             <div><span>Source</span><span>${esc(sourceLabel(t.source))}</span></div>
           </div>
-          ${t.source === 'amex_alert' ? `<p class="small muted">${t.state === 'provisional' ? 'This came from an email alert and is provisional — it becomes confirmed when the bank sync shows the same transaction.' : 'This came from an email alert and was confirmed by the bank.'}</p>` : ''}
+          ${t.source === 'amex_alert' ? `<p class="small muted">${t.state === 'provisional' ? 'From an email alert — pending until the bank confirms it.' : 'From an email alert, confirmed by the bank.'}</p>` : ''}
           <div>${action}</div>
         </div></li>`;
       }).join('')
@@ -814,9 +834,22 @@ async function refresh() {
     trashBtn.style.display = (household && household.role === 'admin') ? '' : 'none';
     if (!trashBtn.dataset.bound) {
       trashBtn.dataset.bound = '1';
-      trashBtn.addEventListener('click', () => { $('txTrashList')?.classList.toggle('hidden'); });
-      $('txTrashCloseBtn')?.addEventListener('click', () => { $('txTrashList')?.classList.add('hidden'); });
+      trashBtn.addEventListener('click', () => {
+        const el = $('txTrashList'); if (!el) return;
+        const nowHidden = el.classList.toggle('hidden');
+        // Task 5: Trash is a sub-view of Transactions, admin-only.
+        // Persist it so a reload returns to the open Trash, not
+        // just the Transactions list; a member never restores it
+        // (resolveRestoredSubView returns null for members).
+        try { localStorage.setItem('hb-view-sub', nowHidden ? '' : 'trash'); } catch (e) { /* private mode */ }
+      });
+      $('txTrashCloseBtn')?.addEventListener('click', () => { $('txTrashList')?.classList.add('hidden'); try { localStorage.setItem('hb-view-sub', ''); } catch (e) { /* private mode */ } });
     }
+  }
+  // Task 5: reopen the Trash list when the saved sub-view says so
+  // (admin only; members get null from resolveRestoredSubView).
+  if (resolveRestoredSubView(currentView, localStorage.getItem('hb-view-sub'), household?.role) === 'trash') {
+    $('txTrashList')?.classList.remove('hidden');
   }
   const trashEl = $('trashList');
   if (trashEl) {
@@ -1351,6 +1384,8 @@ async function refresh() {
         }
         rl.replaceChildren(frag);
       }
+      reviewNeedsCount = (heldRows2 ?? []).filter((h) => h.status === 'pending').length;
+      updateMoreReviewLabel();
       const hl = $('heldList');
       if (hl) {
         const frag = document.createDocumentFragment();
@@ -1395,6 +1430,8 @@ async function refresh() {
         .select('id, canonical_transaction_id, duplicate_transaction_id, reason, merchant_a, merchant_b')
         .eq('household_id', household.household_id).eq('status', 'pending').order('created_at', { ascending: true }).limit(100);
       if (candErr) throw candErr;
+      reviewNeedsCount += (candRows ?? []).length;
+      updateMoreReviewLabel();
       const dl = $('dedupeList');
       if (dl) {
         const frag = document.createDocumentFragment();
@@ -1537,7 +1574,7 @@ async function refresh() {
     const wh = $('weekHistoryList'); if (wh) wh.innerHTML = '<li class="error">Could not load week history. Try again.</li>';
   }
 
-  showView(currentView);
+  showView(currentView, { preserveScroll: true });
   // Delta B1: unfiltered activity pages by auditLimit (Load more
   // raises it); a filtered view fetches up to 1000 newest rows so
   // the period is not silently cut off by the page size.
@@ -1554,11 +1591,20 @@ async function refresh() {
   const filteredAudit = filterRowsByDate(auditRows ?? [], (a) => a.created_at, historyFilter.from, historyFilter.to);
   // Delta B1: the count line covers the full data set (totals from
   // the count queries), never just the page that was downloaded.
+  // Task 1: the count line only changes meaning when a filter is
+  // active or a list is empty; unfiltered and non-empty it is
+  // redundant ("0 shown of 0 total" style noise) and stays blank.
   const countLine = $('historyCountLine');
   if (countLine && !auditErr) {
-    const weekPart = `Closed weeks: ${lastWeekHistoryShown.shown} shown${lastWeekHistoryShown.total !== null ? ` of ${lastWeekHistoryShown.total} total` : ''}`;
-    const auditPart = `Activity: ${filteredAudit.length} shown${auditTotal !== null ? ` of ${auditTotal} total` : ''}`;
-    countLine.textContent = `${weekPart} · ${auditPart}`;
+    const filterActive = !!(historyFilter.from || historyFilter.to);
+    const listsEmpty = lastWeekHistoryShown.shown === 0 && filteredAudit.length === 0;
+    if (filterActive || listsEmpty) {
+      const weekPart = `Closed weeks: ${lastWeekHistoryShown.shown} shown${lastWeekHistoryShown.total !== null ? ` of ${lastWeekHistoryShown.total} total` : ''}`;
+      const auditPart = `Activity: ${filteredAudit.length} shown${auditTotal !== null ? ` of ${auditTotal} total` : ''}`;
+      countLine.textContent = `${weekPart} · ${auditPart}`;
+    } else {
+      countLine.textContent = '';
+    }
   }
   const loadMoreHistory = $('historyLoadMoreBtn');
   if (loadMoreHistory) {
@@ -1603,8 +1649,10 @@ async function refresh() {
             return `<li class="activity-item"><span class="activity-dot activity-dot-${dot}" aria-hidden="true"></span><span><strong>${esc(title)}</strong><br>${esc(g.detail)}<br><span class="muted">${esc(g.actor)} · ${esc(g.time)}</span></span></li>`;
           }).join('');
         }
+        // Task 1: with a filter active the period line above already
+        // states the period, so no trailing "Showing entries…" line.
         return html + ((historyFilter.from || historyFilter.to)
-          ? '<li class="muted small">Showing entries in the selected period.</li>'
+          ? ''
           : (auditTotal !== null && filteredAudit.length < auditTotal)
           ? '<li class="muted small">More entries exist — tap Load more below.</li>'
           : '');
@@ -1615,10 +1663,17 @@ async function refresh() {
     // boot(), and re-running it here guarantees the sections stay
     // visible with their own inline errors, even if a read threw
     // before the in-try showView call. No data logic changes here.
-    try { if (household) showView(currentView); } catch (e) { /* sections stay as boot left them */ }
-    if (rb) { rb.disabled = false; rb.textContent = 'Refresh'; }
+    try { if (household) showView(currentView, { preserveScroll: true }); } catch (e) { /* sections stay as boot left them */ }
+    // Task 4 fallback: if anything during the refresh did scroll
+    // (e.g. a list that shrank below the old position), put the
+    // page back. The browser clamps to the new page height when
+    // the list got shorter, which lands the user as close as
+    // possible to where they were.
+    try { window.scrollTo(0, savedScrollY); requestAnimationFrame(() => window.scrollTo(0, savedScrollY)); } catch (e) { /* scroll restore is best-effort */ }
     refreshInFlight = Math.max(0, refreshInFlight - 1);
-    if (!refreshInFlight) { const rs2 = document.getElementById('refreshState'); if (rs2) rs2.textContent = ''; }
+    // Task 6: no footer state to clear here — the footer shows the
+    // last bank sync time only, on success, on failure, and on a
+    // hung refresh alike.
   }
 }
 
@@ -1654,6 +1709,15 @@ async function boot() {
     }
   } catch (e) { /* ignore malformed URLs */ }
   await refresh();
+  // Task 5: on a fresh load the refresh above starts at scroll 0,
+  // so Task 4's in-refresh restore cannot know where the user was.
+  // Restore the saved position for this page now, once, after the
+  // first render. On a first-ever load there is no saved position
+  // and the page stays at the top, as before.
+  try {
+    const saved = Number(localStorage.getItem(scrollStorageKey(currentView)));
+    if (Number.isFinite(saved) && saved > 0) requestAnimationFrame(() => window.scrollTo(0, saved));
+  } catch (e) { /* scroll restore is best-effort */ }
 }
 
 $('forgotPasswordBtn')?.addEventListener('click', async () => {
@@ -2132,7 +2196,7 @@ async function autoSyncIfWebhookPending() {
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent', 'section-history-row'],
   purchases: ['section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
-  money: ['section-fund-balances', 'section-fund-actions', 'section-fund-add', 'section-charity-income', 'section-fund-use', 'section-fund-ask', 'section-fund-review', 'section-savings-past'],
+  money: ['section-fund-balances', 'section-fund-more', 'section-fund-activity-more', 'section-fund-review-more', 'section-savings-more', 'section-fund-add', 'section-charity-income', 'section-fund-use', 'section-fund-ask'],
   // R2: Settings is reached from the profile menu, not a nav tab.
   // Connections (bank + email), Budget (allowance + temp increase)
   // and Account & household live here; Funds no longer shows them.
@@ -2140,11 +2204,12 @@ const VIEWS = {
   activity: ['section-history-filter', 'section-week-history', 'section-activity'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
-let currentView = localStorage.getItem('hb-view') || 'week';
-if (!VIEWS[currentView]) currentView = 'week';
-// R2: the view Settings returns to (Back button). Settings is not a
-// nav tab, so it is never persisted as hb-view.
-let previousView = 'week';
+let currentView = resolveRestoredView(localStorage.getItem('hb-view'), null);
+// Task 5: Settings IS persisted now (hb-view), so a reload from
+// Settings restores Settings instead of Home. previousView (the
+// page Settings Back returns to) persists separately in hb-prev-view;
+// without it, Back after a reload falls back to Home.
+let previousView = resolveRestoredView(localStorage.getItem(PREV_VIEW_STORAGE_KEY), null);
 // R7: which Add state is open on the Transactions screen:
 // null = list only (choice card hidden by default, UX-review-fix),
 // 'choice' = choice card, 'manual' = hand form, 'csv' = import form.
@@ -2169,11 +2234,20 @@ function hideToast() {
 document.getElementById('toast')?.addEventListener('click', hideToast);
 function showView(name, opts = {}) {
   if (!VIEWS[name]) name = 'week';
+  // Task 5: save the outgoing page's scroll position before leaving
+  // it, so a later reload can restore it (see boot()). Task 4: a
+  // refresh never changes the page, so it must never scroll it.
+  if (name !== currentView) {
+    try { localStorage.setItem(scrollStorageKey(currentView), String(window.scrollY || 0)); } catch (e) { /* private mode */ }
+  }
   // Record only the view left when entering Settings, so Back
   // returns there even after tab taps in between.
-  if (name === 'settings' && currentView !== 'settings') previousView = currentView;
+  if (name === 'settings' && currentView !== 'settings') {
+    previousView = currentView;
+    try { localStorage.setItem(PREV_VIEW_STORAGE_KEY, previousView); } catch (e) { /* private mode */ }
+  }
   currentView = name;
-  if (name !== 'settings') localStorage.setItem('hb-view', name);
+  try { localStorage.setItem(VIEW_STORAGE_KEY, name); } catch (e) { /* private mode */ }
   // Success/error messages do NOT persist across tabs: a user-initiated
   // tab switch clears every in-app result message (refresh() calls
   // showView without opts, so messages set during a refresh survive).
@@ -2196,17 +2270,30 @@ function showView(name, opts = {}) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!VIEWS[name].includes(id)) { el.style.display = 'none'; continue; }
-    if (id === 'settingsCard' || id === 'section-fund-add' || id === 'section-charity-income' || id === 'section-fund-use' || id === 'section-fund-review') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
+    if (id === 'settingsCard' || id === 'section-fund-add' || id === 'section-charity-income' || id === 'section-fund-use' || id === 'section-fund-review-more') { el.style.display = (household && household.role === 'admin') ? 'block' : 'none'; continue; }
     el.style.display = id === 'section-stats' ? 'grid' : 'block';
   }
-  // Delta C3: Funds actions open one form at a time, like Add on
-  // Transactions. The actions card shows when no form is open;
-  // each form shows only when chosen. Admin gating stays: members
-  // see only Ask, and the admin-only activity disclosures hide.
+  // Task 7 (owner, Nov 4, Option A): the Funds actions card, Review
+  // card, and Past savings card are gone as cards. Their functions
+  // live on: the three fund actions moved into the Extra Fund sheet
+  // (see openFundSheet), and Review / Fund activity / Past savings
+  // are quiet › rows on one More card, each toggling its section
+  // below (no ▶ triangles, no explainer sentences). The More card
+  // shows when no form is open, like the old actions card; each
+  // form shows only when chosen. Admin gating stays: members see
+  // only the Ask action in the sheet and only the Past savings row
+  // here (Fund activity and Review content are admin-only reads).
   if (name === 'money') {
     const isAdmin = household && household.role === 'admin';
-    const actions = document.getElementById('section-fund-actions');
-    if (actions) actions.style.display = fundFormOpen ? 'none' : 'block';
+    const more = document.getElementById('section-fund-more');
+    if (more) more.style.display = fundFormOpen ? 'none' : 'block';
+    const moreShown = (id, open, allowed) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = (fundFormOpen || !open || !allowed) ? 'none' : 'block';
+    };
+    moreShown('section-fund-activity-more', moreFundActivityOpen, isAdmin);
+    moreShown('section-fund-review-more', moreReviewOpen, isAdmin);
+    moreShown('section-savings-more', moreSavingsOpen, true);
     const formShown = (id, which) => {
       const el = document.getElementById(id);
       if (el) el.style.display = fundFormOpen === which ? 'block' : 'none';
@@ -2221,13 +2308,12 @@ function showView(name, opts = {}) {
       const b = document.getElementById(id);
       if (b) b.style.display = visible ? '' : 'none';
     };
-    setBtn('fundActionAddBtn', !!isAdmin);
-    setBtn('fundActionUseBtn', !!isAdmin);
-    setBtn('fundActionAskBtn', true);
-    const topDisc = document.getElementById('fundTopupsDisclosure');
-    if (topDisc) topDisc.style.display = isAdmin ? '' : 'none';
-    const incDisc = document.getElementById('charityIncomeDisclosure');
-    if (incDisc) incDisc.style.display = isAdmin ? '' : 'none';
+    setBtn('moreFundActivityBtn', !!isAdmin);
+    setBtn('moreReviewBtn', !!isAdmin);
+    setBtn('moreSavingsBtn', true);
+    document.getElementById('moreFundActivityBtn')?.setAttribute('aria-expanded', moreFundActivityOpen ? 'true' : 'false');
+    document.getElementById('moreReviewBtn')?.setAttribute('aria-expanded', moreReviewOpen ? 'true' : 'false');
+    document.getElementById('moreSavingsBtn')?.setAttribute('aria-expanded', moreSavingsOpen ? 'true' : 'false');
   }
   // UX audit 10: Settings must not promise members a Budget section
   // they never see, and admin-only action buttons must not appear
@@ -2277,7 +2363,11 @@ function showView(name, opts = {}) {
   // section above it): gate the button itself, admin-only.
   const homeSync = document.getElementById('homeSyncBtn');
   if (homeSync) homeSync.style.display = (household && household.role === 'admin') ? '' : 'none';
-  window.scrollTo(0, 0);
+  // Task 4: refresh() re-renders the same page, so it passes
+  // preserveScroll and must not jump to the top. A real page change
+  // (tab tap, Settings Back, sheet "Show transactions") still
+  // scrolls to the top, as before.
+  if (!opts.preserveScroll) window.scrollTo(0, 0);
 }
 document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', (e) => {
   if (b.tagName === 'A') e.preventDefault();
@@ -2462,12 +2552,31 @@ async function openCharitySheet() {
   const result = await showSheet({ title: 'Charity · November 2026 onward', rows: charityBreakdownRows(c), extraAction: isAdmin ? { label: 'Record income', result: 'record-income' } : null, confirmLabel: 'Close' });
   if (result === 'record-income') setFundForm('income');
 }
+// Task 7: the Extra Fund sheet. From the Funds panel (withActions)
+// it carries the three fund actions in their original order and
+// treatments (Add primary, Use pale, Ask grey; members see Ask
+// only) and opens the chosen form after the sheet closes. From the
+// Home stat card it stays the read-only breakdown, as before.
+async function openFundSheet(withActions) {
+  const f = currentFundData;
+  if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
+  const isAdmin = household && household.role === 'admin';
+  const actions = !withActions ? null : isAdmin
+    ? [
+        { label: 'Add money', result: 'add', btnClass: 'btn btn-primary' },
+        { label: 'Use fund money', result: 'use', btnClass: 'btn' },
+        { label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary' },
+      ]
+    : [{ label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary' }];
+  const result = await showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), actions, confirmLabel: 'Close' });
+  if (result === 'add') setFundForm('add');
+  else if (result === 'use') setFundForm('use');
+  else if (result === 'ask') setFundForm('ask');
+}
 document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListener('click', async () => {
   const kind = el.dataset.homeCard;
   if (kind === 'fund') {
-    const f = currentFundData;
-    if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
-    await showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), confirmLabel: 'Close' });
+    await openFundSheet(false);
   } else {
     await openCharitySheet();
   }
@@ -2511,9 +2620,7 @@ document.querySelectorAll('[data-fund-card]').forEach((el) => {
   const open = async () => {
     const kind = el.dataset.fundCard;
     if (kind === 'fund') {
-      const f = currentFundData;
-      if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
-      await showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), confirmLabel: 'Close' });
+      await openFundSheet(true);
     } else {
       await openCharitySheet();
     }
@@ -2552,7 +2659,9 @@ function formatAuditDetail(detail) {
   // dedupe wording (display only — stored rows are untouched).
   d = householdActivityText(d);
   d = d.replace(/\s{2,}/g, ' ').replace(/\.{2,}/g, '.').trim();
-  return d;
+  // Declutter-cross-app, Task 3: plain-language detail, display
+  // only — stored audit_log rows are untouched (see filterState).
+  return simplifyActivityDetail(d);
 }
 function formatAuditAction(action) {
   // Old rows carry the pre-rename wording; display them under the new name too.
@@ -2731,7 +2840,7 @@ async function doTxDelete(row) {
   showToast('Moved to trash bin.');
   await refresh();
 }
-function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null }) {
+function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null, actions = null }) {
   // SECURITY: EVERY interpolated value is escaped with esc() — title,
   // message, input label/value, option labels/values, and button labels.
   // No raw caller value reaches innerHTML through any showSheet path.
@@ -2768,13 +2877,18 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     // confirm) therefore keeps its pale cancel, with primary and
     // grey beside it, so no two adjacent buttons share a color.
     const extraHtml = extraAction ? `<button class="btn btn-primary" type="button" id="sheetExtra">${esc(extraAction.label)}</button>` : '';
+    // Task 7: Extra Fund sheet actions (Add / Use / Ask) — each keeps
+    // its own treatment (primary / pale / grey) and returns its
+    // result; Close is quiet so it cannot read as a money action.
+    const actionsHtml = actions ? actions.map((a) => `<button class="${esc(a.btnClass)}" type="button" data-sheet-action="${esc(a.result)}">${esc(a.label)}</button>`).join('') : '';
     overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
       <h3>${esc(title)}</h3>${rowsHtml}${disclosureHtml}${message ? `<p>${esc(message)}</p>` : ''}
       ${inputHtml}
       <div class="sheet-btns">
         ${cancelLabel ? `<button class="btn${extraAction ? '' : ' btn-tertiary'}" type="button" id="sheetCancel">${esc(cancelLabel)}</button>` : ''}
         ${extraHtml}
-        <button class="btn${extraAction ? ' btn-tertiary' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
+        ${actionsHtml}
+        <button class="btn${actions ? ' btn-quiet' : extraAction ? ' btn-tertiary' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
       </div></div>`;
     document.body.appendChild(overlay);
     syncScrollLock();
@@ -2832,6 +2946,7 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     overlay.addEventListener('click', (e) => { if (e.target === overlay) done(inputLabel ? null : false); });
     overlay.querySelector('#sheetCancel')?.addEventListener('click', () => done(inputLabel ? null : false));
     overlay.querySelector('#sheetExtra')?.addEventListener('click', () => done(extraAction.result ?? 'extra'));
+    overlay.querySelectorAll('[data-sheet-action]').forEach((b) => b.addEventListener('click', () => done(b.dataset.sheetAction)));
     overlay.querySelector('#sheetConfirm').addEventListener('click', () => {
       done(inputLabel ? document.getElementById('sheetInput').value : true);
     });
@@ -2968,11 +3083,19 @@ $('manualCancelBtn')?.addEventListener('click', () => {
 });
 $('csvBackBtn')?.addEventListener('click', () => setAddForm('options'));
 $('charityBackBtn')?.addEventListener('click', () => { document.getElementById('charityFormError')?.classList.add('hidden'); setAddForm('options'); });
-// Delta C3: Funds forms open from the actions card, one at a time.
+// Task 7: Funds forms open from the Extra Fund sheet (see
+// openFundSheet), one at a time. The More › rows toggle their
+// sections in place without scrolling the page to the top.
 const setFundForm = (which) => { fundFormOpen = which; showView('money'); };
-$('fundActionAddBtn')?.addEventListener('click', () => setFundForm('add'));
-$('fundActionUseBtn')?.addEventListener('click', () => setFundForm('use'));
-$('fundActionAskBtn')?.addEventListener('click', () => setFundForm('ask'));
+const toggleMore = (which) => {
+  if (which === 'activity') moreFundActivityOpen = !moreFundActivityOpen;
+  else if (which === 'review') moreReviewOpen = !moreReviewOpen;
+  else if (which === 'savings') moreSavingsOpen = !moreSavingsOpen;
+  showView('money', { preserveScroll: true });
+};
+$('moreFundActivityBtn')?.addEventListener('click', () => toggleMore('activity'));
+$('moreReviewBtn')?.addEventListener('click', () => toggleMore('review'));
+$('moreSavingsBtn')?.addEventListener('click', () => toggleMore('savings'));
 // Ask lives once, in the Funds actions card (the delta3 beside-button
 // was removed for parity; the Funds balance card itself is a tap
 // target for its breakdown sheet, not a button row).
@@ -2983,23 +3106,17 @@ $('fundActionAskBtn')?.addEventListener('click', () => setFundForm('ask'));
 // separated from the queue that explains it.
 $('fundHeldLinkBtn')?.addEventListener('click', () => {
   fundFormOpen = null;
+  moreReviewOpen = true;
   showView('money');
-  const details = document.getElementById('reviewDetails');
-  if (details) details.open = true;
-  document.getElementById('section-fund-review')?.scrollIntoView({ block: 'start' });
+  document.getElementById('section-fund-review-more')?.scrollIntoView({ block: 'start' });
 });
 $('fundAddBackBtn')?.addEventListener('click', () => setFundForm(null));
 $('fundUseBackBtn')?.addEventListener('click', () => setFundForm(null));
 $('fundAskBackBtn')?.addEventListener('click', () => setFundForm(null));
 $('charityIncomeBackBtn')?.addEventListener('click', () => setFundForm(null));
-// Delta A1: past savings records open read-only, on request only.
-$('pastSavingsToggle')?.addEventListener('click', (e) => {
-  const wrap = document.getElementById('pastSavingsWrap');
-  if (!wrap) return;
-  const willOpen = wrap.classList.contains('hidden');
-  wrap.classList.toggle('hidden', !willOpen);
-  e.currentTarget.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-});
+// Task 7: past savings records are the More › row above (toggleMore
+// 'savings'); the old Past savings toggle button is gone with its
+// card. Records stay read-only; the database rows are untouched.
 // Delta B1: History date filter + Load more.
 $('historyFilterApplyBtn')?.addEventListener('click', async () => {
   historyFilter = { from: $('historyFromInput')?.value ?? '', to: $('historyToInput')?.value ?? '' };
@@ -3422,6 +3539,13 @@ $('fundRequestForm').addEventListener('submit', async (e) => {
   if (error) { console.warn('fund request insert failed:', error.message); await showAlert('Could not save request', 'Could not save this request. Try again.'); if (submitBtn) submitBtn.disabled = false; return; }
   await audit('Extra Fund request created', `Requested ${formatCents(cents)}.`);
   f.reset(); if (submitBtn) submitBtn.disabled = false; await refresh();
+});
+
+
+// Task 5: save the current page's scroll position when the app is
+// closed or refreshed, so the next load can restore it (see boot()).
+window.addEventListener('beforeunload', () => {
+  try { localStorage.setItem(scrollStorageKey(currentView), String(window.scrollY || 0)); } catch (e) { /* private mode */ }
 });
 
 boot();

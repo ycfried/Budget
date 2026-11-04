@@ -57,6 +57,6 @@ test('version pins match live.html', () => {
   // Pinned versions move with later branches; after the PR #32 merge
   // (live.js v42) and this branch (styles v33), live.js moves to v44
   // so two different files never share one version number.
-  assert.match(html, /styles\.css\?v=34/, 'styles.css bumped to v34');
-  assert.match(html, /live\.js\?v=44/, 'live.js bumped to v43');
+  assert.match(html, /styles\.css\?v=35/, 'styles.css bumped to v35');
+  assert.match(html, /live\.js\?v=45/, 'live.js bumped to v45');
 });

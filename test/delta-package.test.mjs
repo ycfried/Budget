@@ -40,7 +40,7 @@ test('activeFilterLabels: a single bound alone still labels', () => {
 });
 
 test('historyPeriodLabel: states the period, or that there is no filter', () => {
-  assert.equal(historyPeriodLabel('', ''), 'Showing all recorded history.');
+  assert.equal(historyPeriodLabel('', ''), ''); // declutter: no filter -> empty period line, not 'Showing all…'
   assert.equal(historyPeriodLabel('2026-11-01', '2026-11-07'), 'Showing 2026-11-01 to 2026-11-07.');
   assert.equal(historyPeriodLabel('2026-11-01', ''), 'Showing from 2026-11-01 onward.');
   assert.equal(historyPeriodLabel('', '2026-11-07'), 'Showing up to 2026-11-07.');

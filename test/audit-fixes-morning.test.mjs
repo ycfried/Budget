@@ -18,9 +18,11 @@ test('B1: Funds Held-for-review button and wrap are gone; Review card stays the 
   assert.equal(html.includes('id="fundHeldLinkBtn"'), false);
   assert.equal(html.includes('Held money is waiting for the admin'), false);
   assert.equal(css.includes('#fundHeldLinkWrap'), false);
-  // The Review card's own opener is untouched.
-  assert.ok(html.includes('id="section-fund-review"'));
-  assert.ok(html.includes('<summary id="reviewSummary">Open review</summary>'));
+  // Task 7: the Review card is gone; its queue is the More › row.
+  assert.ok(html.includes('id="section-fund-review-more"'));
+  assert.ok(html.includes('id="moreReviewBtn"'));
+  assert.equal(html.includes('id="section-fund-review"'), false);
+  assert.equal(html.includes('id="reviewSummary"'), false);
   // The held amount still surfaces in the fund sheet: folded into
   // its Pending row (pending releases + held weeks), not a Held row.
   const fundRows = js.slice(js.indexOf('function fundBreakdownRows'), js.indexOf('function charityBreakdownRows'));
@@ -85,7 +87,7 @@ test('B2: duplicate Change password deleted from the Account card; Profile card 
   assert.equal(html.includes('id="settingsPasswordBtn"'), false);
   assert.ok(html.includes('id="profilePasswordBtn"'));
   const acct = html.slice(html.indexOf('id="section-settings-account"'), html.indexOf('id="settingsDeleteBtn"'));
-  assert.match(acct, /Invite code and account deletion live here now/);
+  assert.match(acct, /Only the admin can share the invite code./);
   assert.doesNotMatch(acct, /password/);
   // Profile card handler untouched.
   assert.match(js, /getElementById\('profilePasswordBtn'\)\?\.addEventListener\('click', changePasswordFlow\)/);

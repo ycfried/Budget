@@ -113,17 +113,18 @@ test('B: sheet buttons follow the two-button rule; single-button sheets keep pri
   // (Weekly / Charity sheets: primary action + grey Close); the
   // no-extra path keeps the primary confirm, so single-button
   // sheets (alerts, fund sheet) still close on a primary button.
-  assert.match(js, /<button class="btn\$\{extraAction \? ' btn-tertiary' : ' btn-primary'\}" type="button" id="sheetConfirm">/);
+  assert.match(js, /<button class="btn\$\{actions \? ' btn-quiet' : extraAction \? ' btn-tertiary' : ' btn-primary'\}" type="button" id="sheetConfirm">/);
   // Cancel is tertiary exactly when there is no extra action
   // (confirm dialogs and form sheets: primary + grey Cancel).
   assert.match(js, /<button class="btn\$\{extraAction \? '' : ' btn-tertiary'\}" type="button" id="sheetCancel">/);
 });
 
 test('B: three-button middles still pale; pale definition untouched', () => {
-  // Funds actions: Add primary, Use plain (pale middle), Ask tertiary.
-  assert.match(html, /class="btn btn-primary" id="fundActionAddBtn"/);
-  assert.match(html, /class="btn" id="fundActionUseBtn"/);
-  assert.match(html, /class="btn btn-tertiary" id="fundActionAskBtn"/);
+  // Task 7: Funds actions (Add primary, Use plain pale middle, Ask
+  // tertiary) live in the Extra Fund sheet, not a card.
+  assert.match(js, /label: 'Add money', result: 'add', btnClass: 'btn btn-primary'/);
+  assert.match(js, /label: 'Use fund money', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary'/);
   // Filters: Apply primary, Reset plain (pale middle), Cancel tertiary.
   assert.match(html, /class="btn btn-primary" id="txFiltersApplyBtn"/);
   assert.match(html, /class="btn" id="txFiltersResetBtn"/);

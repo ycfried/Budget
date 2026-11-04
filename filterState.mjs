@@ -53,7 +53,10 @@ export function activeFilterLabels(f) {
 // History period line (B1). States the active period so a filter can
 // never silently make records disappear; with no filter it says so.
 export function historyPeriodLabel(from, to) {
-  if (!from && !to) return 'Showing all recorded history.';
+  // Declutter-cross-app, Task 1: with no filter there is nothing to
+  // state — the period line stays empty instead of repeating
+  // "Showing all recorded history." on every History visit.
+  if (!from && !to) return '';
   if (from && to) return `Showing ${from} to ${to}.`;
   if (from) return `Showing from ${from} onward.`;
   return `Showing up to ${to}.`;
@@ -155,6 +158,123 @@ export function activityDotClass(action, detail) {
 export function activityTitle(action, count) {
   if (action === 'Weeks processed') return `${count} ${count === 1 ? 'week' : 'weeks'} closed`;
   return action;
+}
+
+
+// Declutter-cross-app, Task 3 (owner, Nov 4): plain-language activity
+// detail, display only — stored audit_log rows are never edited.
+// Input is the already-formatted detail (cents -> $, dates -> long
+// form, basis points -> %, "canonical" -> "original"). Output is one
+// short line: the merchant/amount appears once, never twice; no
+// "excluded, not deleted", no "Note: merge/separate", no internal
+// split labels (surplus / debt reduction / fund / held become plain
+// words), and zero-amount parts are dropped.
+const KIND_WORDS = {
+  charge: 'a charge', refund: 'a refund', fund_charge: 'Extra Fund spending',
+  transfer: 'a transfer', payment: 'a card payment', cashback: 'cash back',
+};
+function isZeroAmount(a) {
+  return /^-?\$0\.00$/.test(String(a ?? '').trim());
+}
+export function simplifyActivityDetail(detail) {
+  let d = String(detail ?? '').trim();
+  if (!d) return d;
+  // Duplicate merged (the owner's screenshot case): "Merged duplicate
+  // (TOIREMORG CHARITY $1.00) into the original bank row (TOIREMORG
+  // $1.00). Duplicate excluded, not deleted. Note: merge" -> one
+  // merchant/amount, counted once. The trailing note is always the
+  // default 'merge'/'separate' (the app never prompts for a note
+  // here), so dropping it loses nothing a user typed.
+  let m = d.match(/^Merged duplicate \(([^)]+)\) into (?:the original bank row|original) \([^)]+\)[^.]*\.?/i);
+  if (m) return `Counted once: ${m[1].trim()}.`;
+  // Duplicate kept separate: "Kept <id> and <id> as separate
+  // purchases. Note: separate" (ids already stripped upstream) ->
+  // plain, no ids, no note.
+  if (/^Kept .*as separate purchases/i.test(d)) return 'Kept as two separate purchases.';
+  // Weeks processed summary: drop zero parts, join the rest plainly.
+  // "2 weeks closed, 1 surplus released, 0 refunds restored, 0 refunds
+  // held for review." -> "2 weeks closed · 1 surplus released."
+  if (/week(s)? closed/i.test(d) && /release/i.test(d)) {
+    const parts = d.replace(/\.$/, '').split(',').map((x) => x.trim()).filter((x) => !/^0\b/.test(x));
+    if (parts.length) return `${parts.join(' · ')}.`;
+  }
+  // Surplus released: "Surplus $X for week Oct 25, 2026 released to
+  // the Extra Fund." -> "$X to the Extra Fund · Week of Oct 25, 2026."
+  m = d.match(/^Surplus (\$[\d,]+\.\d{2}) for week (.+?) released to the Extra Fund\.?$/i);
+  if (m) return `${m[1]} to the Extra Fund · Week of ${m[2].trim()}.`;
+  // Refund restoration: "Refund ... for purchase week Oct 25, 2026:
+  // surplus $X, debt reduction $Y, fund $Z, held $W." -> plain parts,
+  // zero parts dropped, internal labels translated.
+  m = d.match(/^Refund .*for purchase week (.+?): surplus (\$[\d,]+\.\d{2}), debt reduction (\$[\d,]+\.\d{2}), fund (\$[\d,]+\.\d{2}), held (\$[\d,]+\.\d{2})\.?$/i);
+  if (m) {
+    const plain = [
+      [m[2], 'left to spend'], [m[3], 'paid off debt'],
+      [m[4], 'to the Extra Fund'], [m[5], 'held for review'],
+    ].filter(([amt]) => !isZeroAmount(amt)).map(([amt, word]) => `${amt.trim()} ${word}`);
+    return plain.length
+      ? `Refund for the week of ${m[1].trim()}: ${plain.join(' · ')}.`
+      : `Refund for the week of ${m[1].trim()}.`;
+  }
+  // Transaction excluded / restored / reclassified / deleted / trash.
+  m = d.match(/^(.+?) excluded(?: — reason: (.+?)| — no reason given)?\.?$/i);
+  if (m) {
+    const reason = (m[2] ?? '').trim();
+    return reason && !/no reason given/i.test(reason)
+      ? `Removed from the week: ${m[1].trim()} (${reason}).`
+      : `Removed from the week: ${m[1].trim()}.`;
+  }
+  m = d.match(/^(.+?) restored to the week as (?:posted|pending)\.?$/i);
+  if (m) return `Back in the week: ${m[1].trim()}.`;
+  m = d.match(/^(.+?) reclassified from (\w+) to (\w+)(?: — reason: (.+?)| — no reason given)?\.?$/i);
+  if (m) {
+    const to = KIND_WORDS[m[3]] ?? m[3];
+    return (m[4] && !/no reason given/i.test(m[4]))
+      ? `Now counts as ${to}: ${m[1].trim()} (${m[4].trim()}).`
+      : `Now counts as ${to}: ${m[1].trim()}.`;
+  }
+  m = d.match(/^(.+?) \(manual entry\) deleted by admin\.?$/i);
+  if (m) return `Deleted for good: ${m[1].trim()}.`;
+  m = d.match(/^(.+?) moved to trash(?: — reason: (.+?))?\.?$/i);
+  if (m) return `Moved to the Trash: ${m[1].trim()}.`;
+  // Charity / fund / household / allowance: strip internal wording,
+  // keep the fact in one short line.
+  d = d.replace(/^Default charity rate set to ([^ ]+)( \(applies to future incomes only\))?\.?$/i, 'Charity rate: $1 for future income.');
+  d = d.replace(/^Income (.+?) at ([^ ]+) commits (.+?) to charity\.?$/i, 'Income $1 — $3 to charity.');
+  d = d.replace(/^Gift (.+?) on (.+?)\.?$/i, 'Gift given: $1 on $2.');
+  d = d.replace(/^Fund spending (.+?)( \(override: .+?\))?\.?$/i, 'Spent from the Extra Fund: $1.');
+  d = d.replace(/^Request.*approved for (.+?)( \(split; remainder .+?\))?( \(override: .+?\))?\.?$/i, 'Extra Fund request approved: $1.');
+  d = d.replace(/^Request.*approved\.?$/i, 'Extra Fund request approved.');
+  d = d.replace(/^Request.*declined\.?$/i, 'Extra Fund request declined.');
+  d = d.replace(/^Base allowance set to (.+?)\.?$/i, 'Weekly allowance: $1.');
+  d = d.replace(/^Weekly allowance set to (.+?) for week (.+?)\.?$/i, 'Weekly allowance: $1 for the week of $2.');
+  d = d.replace(/^Temporary increase (.+?) for week (.+?)\.?$/i, 'Weekly allowance raised by $1 for the week of $2.');
+  d = d.replace(/^Fund shortfall changed from (.+?) to (.+?)\.?$/i, 'Extra Fund shortfall: $2.');
+  d = d.replace(/^Created via create_household RPC.*$/i, 'Household created.');
+  d = d.replace(/^Joined via invite code\.?$/i, 'Joined the household.');
+  d = d.replace(/\s{2,}/g, ' ').replace(/\.{2,}/g, '.').trim();
+  return d;
+}
+
+// Declutter-cross-app, Task 5 (owner, Nov 4): last-view restore.
+// MAIN_VIEWS are the pages a reload may open. Settings is included
+// now (it was previously never persisted, so a reload from Settings
+// landed on Home). A sheet/popup is never a restored view: callers
+// pass the underlying page, never the popup. Trash is a sub-view of
+// Transactions and is admin-only: a member restoring it falls back
+// to the Transactions list, not the Trash.
+export const MAIN_VIEWS = ['week', 'purchases', 'money', 'activity', 'settings'];
+export const VIEW_STORAGE_KEY = 'hb-view';
+export const PREV_VIEW_STORAGE_KEY = 'hb-prev-view';
+export function scrollStorageKey(view) {
+  return `hb-scroll-${view}`;
+}
+export function resolveRestoredView(saved, role) {
+  if (!MAIN_VIEWS.includes(saved)) return 'week';
+  return saved;
+}
+export function resolveRestoredSubView(view, sub, role) {
+  if (view === 'purchases' && sub === 'trash' && role === 'admin') return 'trash';
+  return null;
 }
 
 // Group repeated weekly-processing events inside one day's activity

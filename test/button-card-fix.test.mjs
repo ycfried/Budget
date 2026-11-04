@@ -37,12 +37,14 @@ test('Funds actions row: exactly three buttons, three different treatments', () 
   // the row is Add money (primary), Use fund money (secondary),
   // Ask for fund money (tertiary grey) — in that DOM order, and
   // nothing else in the row.
-  assert.ok(html.includes('<button class="btn btn-primary" id="fundActionAddBtn"'));
-  assert.ok(html.includes('<button class="btn" id="fundActionUseBtn"'));
-  assert.ok(html.includes('<button class="btn btn-tertiary" id="fundActionAskBtn"'));
+  // Task 7: the Funds actions card is gone; the same three actions
+  // live in the Extra Fund sheet (openFundSheet), same order and
+  // treatments, and Record income is still not among them.
+  assert.equal(html.includes('id="section-fund-actions"'), false);
   assert.equal(html.includes('fundActionIncomeBtn'), false);
-  const row = html.slice(html.indexOf('id="section-fund-actions"'), html.indexOf('id="fundTopupsDisclosure"'));
-  assert.deepEqual([...row.matchAll(/id="(fundAction\w+)"/g)].map((m) => m[1]), ['fundActionAddBtn', 'fundActionUseBtn', 'fundActionAskBtn']);
+  const sheet = js.slice(js.indexOf('async function openFundSheet'), js.indexOf(": [{ label: 'Ask for fund money'"));
+  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Use fund money', 'Ask for fund money']);
+  assert.deepEqual([...sheet.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
 });
 
 test('transaction detail rows: one Actions line, no five-button row', () => {

@@ -61,13 +61,13 @@ test('overlay cards scroll internally and do not chain-scroll the page', () => {
 });
 
 test('filters From/To pair cannot overlap: minmax tracks, not bare 1fr', () => {
-  assert.match(css, /body\.live \.tx-sheet-pair \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 10px; \}/);
+  assert.match(css, /body\.live \.tx-sheet-pair \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 12px; \}/);
   assert.match(css, /body\.live \.tx-sheet-pair label \{ min-width: 0; \}/);
   assert.match(css, /body\.live \.tx-sheet-pair input \{ width: 100%; box-sizing: border-box; min-width: 0; \}/);
 });
 
 test('history From/To sit side by side with short labels', () => {
-  assert.match(css, /#section-history-filter \.form-row-2 \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); \}/, 'history pair exempt from phone stacking');
+  assert.match(css, /#section-history-filter \.form-row-2 \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 16px; \}/, 'history pair exempt from phone stacking');
   const pair = historyFilter.slice(historyFilter.indexOf('form-row-2'), historyFilter.indexOf('btn-row'));
   assert.ok(pair.includes('id="historyFromInput"') && pair.includes('id="historyToInput"'), 'both date inputs share the one pair row');
   assert.ok(historyFilter.includes('<label>From'), 'visible label is From, not From date');
@@ -126,7 +126,7 @@ test('bank card heading and sentence are the short versions, nothing else retitl
   assert.equal(html.includes('id="section-history-link"'), false, 'separate History card gone');
 });
 
-test('version pins: styles v34, live.js v44', () => {
-  assert.match(html, /styles\.css\?v=34/);
-  assert.match(html, /live\.js\?v=44/);
+test('version pins: styles v35, live.js v45', () => {
+  assert.match(html, /styles\.css\?v=35/);
+  assert.match(html, /live\.js\?v=45/);
 });
