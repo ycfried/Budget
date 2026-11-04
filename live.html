@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=26">
+<link rel="stylesheet" href="styles.css?v=27">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -173,11 +173,13 @@
     <div class="card" id="section-transactions">
       <div class="tx-head-row">
         <h2>Transactions</h2>
-        <button class="btn btn-primary add-plus-btn" id="txAddBtn" type="button" aria-label="Add">+</button>
+        <div class="tx-head-actions">
+          <button id="txFiltersToggle" class="btn" type="button" aria-expanded="false" aria-label="Open filters">Filters</button>
+          <button class="btn btn-primary add-plus-btn" id="txAddBtn" type="button" aria-label="Add">+</button>
+        </div>
       </div>
       <div class="tx-search-row">
         <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
-        <button id="txFiltersToggle" class="btn" type="button" aria-expanded="false" aria-label="Open filters">Filters</button>
       </div>
       <div id="txActiveFilters" class="tx-active-filters" aria-label="Active filters"></div>
       <div id="txFiltersSheet" class="tx-sheet hidden" role="dialog" aria-modal="true" aria-label="Transaction filters">

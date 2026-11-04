@@ -1933,3 +1933,40 @@ Owner: the loading symbols are ugly/horrible — wants classier, on-brand indica
 
 ## Type-scale-live (owner approval, Nov 3, ~10:12 PM) — branch type-scale-live, NOT MERGED
 Owner: "just make it live, it looks much nicer than what's going on now" — the revised Part 1 proposed Home scale from the onbudget-mockups artifact goes to the live app. Typography/spacing/color only; no figure, label, button-level, or behavior change. Body 16px; supporting/secondary text 13–14px (kicker 13px, .small 13px, labels/toast 14px as before); dashboard amounts 34px in ink #0f172a (hero .big, stat .num incl. the section-stats override, fund-balance); shared card treatment (1px #e5e7eb border, 16px radius, 24px padding, 16px stat-card padding, 16px grid gaps, 8/16/24 spacing steps). Transaction amounts are brand blue #2f6bff ONLY when positive — the negative rule (body.live .tx-line1 .tx-amount.negative, soft-green #2e6b3e) is more specific than the blue rule and comes after it, so a negative amount still renders green with its minus sign under the new blue rule; hero/stat negative figures stay soft-red. Progress bar fill blue (already was), "See all" text blue (treatment unchanged), Sync bank stays the blue primary action. Styles only: styles.css v26, live.js unchanged at v36. Tests: new test/type-scale-live.test.mjs. Still to prove after merge: the scale at 390px on a real phone, and a negative (refund) row rendering green beside blue positive rows.
+
+## Filters-header-tabbar (owner, Nov 3, ~10:37–10:38 PM, two screenshots) — branch filters-header-tabbar, NOT MERGED
+Fix 1 — Filters on the header line: the Filters button moved out of
+the search row and into .tx-head-row, inside a .tx-head-actions
+group immediately left of the + button, so the header reads
+Transactions … Filters (+). The search input now spans its row
+alone. Filters keeps its id, secondary pale-blue treatment,
+aria-expanded, sheet-open behavior, Escape/focus-trap, and its role
+as the focus-return target after "Show transactions" jumps to
+Transactions; + keeps primary blue, so the adjacent buttons still
+differ in color/treatment. Active-filter pills stay below the search
+row. At ≤380px the header gap shrinks and Filters pads down, while +
+stays 44px, so the row cannot push + off-screen at 320px.
+Fix 2 — Tab-bar audit and hardening: the bug report showed the
+bottom tab bar floating mid-list, overlapping a transaction row,
+in one screenshot while a second screenshot the same minute showed
+it correctly pinned at the bottom. Audit found NO static root cause:
+no ancestor of .app-nav carries transform/filter/perspective/
+will-change (transforms exist only on descendants — chevrons,
+skeleton pseudo-elements, keyframes), no JS moves the nav or
+toggles body.live (body class="live" is static in HTML), and the
+live override is fixed bottom with safe-area padding. The pattern
+matches iOS Safari leaving a fixed element painted at a stale scroll
+position during scrolling. Hardening, not a redesign: the nav itself
+is promoted to its own composited layer (-webkit-transform /
+transform: translateZ(0), will-change: transform — a transform on
+the nav does not re-anchor the nav itself), and body bottom
+clearance is raised from a flat 88px to calc(72px +
+env(safe-area-inset-bottom)), which exceeds the bar's full height
+(~62px plus the safe-area inset) on every view, so no row hides
+behind the bar. Bar design, labels, order, and active color are
+unchanged; it is not moved to the top. Versions: styles.css v27,
+live.js unchanged at v36. Tests: new test/filters-header-tabbar.test.mjs
+(7 tests); the older type-scale version-pinning test was updated to
+v27, invariant unchanged. Still to prove on a real phone: Filters +
+header row at 320/390px, and the bar staying pinned through a fast
+scroll on Transactions.

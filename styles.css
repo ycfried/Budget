@@ -363,7 +363,10 @@ body.live {
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --serif: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-family: var(--sans);
-  padding-bottom: 88px; /* room for the fixed bottom tab bar */
+  /* Room for the fixed bottom tab bar on every view, so no row ever
+     hides behind it: the bar itself is ~62px plus the safe-area
+     inset, so 72px plus the inset clears it with room to spare. */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
 }
 body.live .card { border-radius: 20px; box-shadow: 0 1px 2px rgba(16,24,40,.05); }
 /* Reference hierarchy: bold headings, large bold figures, smaller
@@ -379,7 +382,16 @@ body.live .profile-menu { border-color: #ececf1; border-radius: 18px; box-shadow
 /* Bottom tab bar with icons, like the reference apps. */
 body.live #view-app .app-nav { position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 30;
   background: #fff; border-top: 1px solid #ececf1; border-bottom: 0; margin: 0;
-  padding: 8px 4px calc(8px + env(safe-area-inset-bottom)); justify-content: space-around; }
+  padding: 8px 4px calc(8px + env(safe-area-inset-bottom)); justify-content: space-around;
+  /* Tab-bar hardening (owner bug report, Nov 3, ~10:37 PM: bar seen
+     floating mid-list on iOS). Audit found no ancestor transform /
+     filter / perspective / will-change and no JS that moves the nav,
+     and body.live is static in HTML, so no static rule re-anchors it;
+     the float matches iOS Safari leaving a fixed element painted at a
+     stale scroll position. Promoting the nav itself to its own
+     composited layer (a transform on the nav does NOT re-anchor the
+     nav itself) keeps Safari repainting it at the viewport bottom. */
+  -webkit-transform: translateZ(0); transform: translateZ(0); will-change: transform; }
 body.live #view-app .app-nav-link { flex: 1 1 0; display: flex; flex-direction: column; align-items: center;
   gap: 2px; padding: 4px 2px; font-size: 11px; font-weight: 600; color: #6b7280; border-bottom: 0; }
 body.live #view-app .app-nav-link svg { width: 22px; height: 22px; display: block; }
@@ -550,6 +562,18 @@ body.live .fund-balance-chevron { color: #2f6bff; font-weight: 700; font-size: 2
    (search box + ONE compact Filters button beside it). */
 body.live .tx-head-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 body.live .tx-head-row h2 { margin-bottom: 0; }
+/* Filters on the header line (owner, Nov 3, ~10:38 PM): Filters sits
+   immediately left of the + button, grouped at the right so the
+   title stays left. Filters keeps its secondary pale-blue treatment
+   and + keeps primary blue — adjacent buttons never share a color.
+   The search input now spans its row alone. */
+body.live .tx-head-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; flex: 0 0 auto; }
+body.live .tx-head-actions #txFiltersToggle { flex: 0 0 auto; }
+@media (max-width: 380px) {
+  body.live .tx-head-row { gap: 6px; }
+  body.live .tx-head-actions { gap: 6px; }
+  body.live .tx-head-actions #txFiltersToggle { padding: 11px 10px; font-size: 14px; }
+}
 body.live .tx-search-row { display: flex; gap: 10px; align-items: flex-start; }
 body.live .tx-search-row input { flex: 1 1 auto; min-width: 0; margin: 6px 0 14px; }
 body.live .tx-search-row .btn { flex: 0 0 auto; }

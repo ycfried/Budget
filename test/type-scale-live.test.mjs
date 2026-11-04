@@ -53,6 +53,8 @@ test('hero/stat negative figures stay soft-red; progress and See all stay blue',
 });
 
 test('only styles.css is version-bumped', () => {
-  assert.match(html, /styles\.css\?v=26/, 'styles.css bumped to v26');
+  // Pinned versions move with later styles-only branches; the
+  // invariant is styles bumped, live.js untouched (filters-header-tabbar).
+  assert.match(html, /styles\.css\?v=27/, 'styles.css bumped to v27');
   assert.match(html, /live\.js\?v=36/, 'live.js unchanged at v36');
 });
