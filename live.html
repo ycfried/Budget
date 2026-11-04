@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=24">
+<link rel="stylesheet" href="styles.css?v=25">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -41,8 +41,8 @@
        is known; a signed-out visit goes loading -> sign-in, with no
        app-shell flash in between. -->
   <section id="view-loading" class="card loading-screen" aria-label="Loading">
+    <div class="loading-brand" aria-hidden="true"><span class="loading-brand-ring"></span><span class="loading-brand-s">S</span></div>
     <div class="loading-mark">OnBudget</div>
-    <div class="loading-spinner" aria-hidden="true"></div>
     <p class="muted">Loading your budget…</p>
   </section>
 
@@ -81,10 +81,10 @@
     </nav>
     <div class="card hero" id="section-week">
       <div class="hero-head">
-        <div class="kicker">This week · <span id="weekLabel">…</span></div>
+        <div class="kicker">This week · <span id="weekLabel"><span class="skel skel-kicker" aria-hidden="true"></span><span class="sr-only">Loading</span></span></div>
         <button class="btn hero-sync-btn" id="homeSyncBtn" type="button" aria-label="Sync bank"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
       </div>
-      <div id="weeklyAvailable" class="big" role="button" tabindex="0" aria-label="Show Weekly Budget breakdown">…</div>
+      <div id="weeklyAvailable" class="big" role="button" tabindex="0" aria-label="Show Weekly Budget breakdown" aria-busy="true"><span class="skel skel-figure" aria-hidden="true"></span><span class="sr-only">Loading</span></div>
       <p class="muted">Pending transactions are included and marked.</p>
       <div class="hero-progress" aria-hidden="true"><div id="weekProgressBar"></div></div>
       <p class="muted small" id="weekProgressText"></p>
@@ -93,13 +93,13 @@
       <p id="weekEmptyHint" class="muted small hidden">No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account in Settings.</p>
     </div>
     <div class="grid" id="section-stats">
-      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><div class="kicker">Charity · November 2026 onward</div><div class="num" id="homeCharityPrimary">—</div></div>
-      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary">…</div></div>
+      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><div class="kicker">Charity · November 2026 onward</div><div class="num" id="homeCharityPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
+      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
     </div>
 
     <div class="card" id="section-recent">
       <h2>Recent transactions</h2>
-      <ul id="recentList" class="plain"><li class="muted small">Loading…</li></ul>
+      <ul id="recentList" class="plain" aria-busy="true" aria-label="Loading recent transactions"><li class="sr-only">Loading recent transactions</li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li></ul>
       <div class="btn-row">
         <button class="btn" data-view="purchases" type="button" aria-label="See all transactions">See all</button>
       </div>
@@ -528,7 +528,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=35"></script>
+<script type="module" src="live.js?v=36"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

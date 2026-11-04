@@ -27,8 +27,10 @@ test('Use Extra Fund is offered only for charges', () => {
 
 test('charity Home figure is a confirmed number, never a dash on success', () => {
   // Success path assigns the signed number; the catch block still
-  // assigns the dash for the failed-load state.
-  assert.match(js, /if \(cp\) cp\.textContent = formatCents\(remaining\);/);
+  // assigns the dash for the failed-load state. (Loading-indicators:
+  // the success line also clears the skeleton aria-busy flag, so the
+  // match allows the braced form.)
+  assert.match(js, /if \(cp\) \{ cp\.textContent = formatCents\(remaining\); cp\.removeAttribute\('aria-busy'\); \}/);
   assert.doesNotMatch(js, /committed === 0 && given === 0\) \? '—'/);
 });
 

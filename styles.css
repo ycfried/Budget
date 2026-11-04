@@ -637,12 +637,39 @@ body.live .profile-menu-row-danger { color: #dc2626; }
 }
 
 /* ===== Delta3 additions ===== */
-/* Loading screen: brand-blue spinner + app name, stable until boot()
-   replaces it directly with auth, household, or app. Reuses the
-   delta-spin keyframes the sync button already uses. */
+/* Loading screen: on-brand S-mark treatment + app name, stable until
+   boot() replaces it directly with auth, household, or app. A thin
+   brand-blue ring turns slowly around a gently pulsing S — calm and
+   classy, never flashy. */
+/* Loading-indicators (owner, Nov 3, 10:01 PM): the old dots, dashes,
+   "Loading…" text and plain spinner are gone from the loading
+   surfaces. Figures and recent rows load behind brand-palette
+   skeleton shimmer bars, sized like the content they stand in for,
+   so nothing jumps when the real number arrives. */
 body.live .loading-screen { text-align: center; padding: 48px 22px; }
 body.live .loading-mark { font-family: var(--serif); font-size: 28px; font-weight: 700; margin-bottom: 20px; }
-body.live .loading-spinner { width: 36px; height: 36px; margin: 0 auto 16px; border: 3px solid #eef4ff; border-top-color: #2f6bff; border-radius: 50%; animation: delta-spin 1s linear infinite; }
+body.live .loading-brand { position: relative; width: 72px; height: 72px; margin: 0 auto 20px; }
+body.live .loading-brand-ring { position: absolute; inset: 0; border: 2px solid #dbeafe; border-top-color: #2f6bff; border-radius: 50%; animation: loading-ring 2.4s linear infinite; }
+body.live .loading-brand-s { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: 700; color: #2f6bff; animation: loading-pulse 2.4s ease-in-out infinite; }
+@keyframes loading-ring { to { transform: rotate(360deg); } }
+@keyframes loading-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.75; transform: scale(0.96); } }
+/* Screen-reader-only text for skeleton loading states. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+/* Skeleton shimmer: pale-blue bar with a slow brand-blue-tinted sweep. */
+body.live .skel { display: inline-block; background: #dbeafe; border-radius: 8px; position: relative; overflow: hidden; vertical-align: middle; }
+body.live .skel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(47, 107, 255, 0.18), transparent); transform: translateX(-100%); animation: skel-sweep 2.2s ease-in-out infinite; }
+@keyframes skel-sweep { 60%, 100% { transform: translateX(100%); } }
+body.live .skel-figure { width: 180px; height: 40px; }
+body.live .skel-num { width: 110px; height: 28px; }
+body.live .skel-kicker { width: 90px; height: 12px; border-radius: 6px; }
+body.live .skel-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+body.live .skel-tile { width: 36px; height: 36px; border-radius: 50%; flex: none; }
+body.live .skel-lines { display: flex; flex-direction: column; gap: 8px; }
+body.live .skel-line { width: 140px; height: 12px; }
+body.live .skel-line.short { width: 88px; }
+@media (prefers-reduced-motion: reduce) {
+  body.live .skel::after, body.live .loading-brand-ring, body.live .loading-brand-s { animation: none; }
+}
 /* Inline card header: subtitle sits on the same line as the heading
    (Add card), so the card gets smaller. Wraps gracefully on very
    narrow screens instead of colliding. */
