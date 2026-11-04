@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=33">
+<link rel="stylesheet" href="styles.css?v=34">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -128,17 +128,12 @@
     <div class="card" id="section-recent">
       <h2>Recent transactions</h2>
       <ul id="recentList" class="plain" aria-busy="true" aria-label="Loading recent transactions"><li class="sr-only">Loading recent transactions</li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li></ul>
-      <div class="btn-row">
-        <button class="btn" data-view="purchases" type="button" aria-label="See all transactions">See all</button>
-      </div>
+      <p><a class="quiet-link" data-view="purchases" href="#" role="button" aria-label="See all transactions">See all</a></p>
       <p id="homeSyncMsg" class="result"></p>
     </div>
 
-    <div class="card" id="section-history-link">
-      <h2>History</h2>
-      <div class="btn-row">
-        <button class="btn" data-view="activity" type="button" aria-label="Open History">View history</button>
-      </div>
+    <div class="card history-row-card" id="section-history-row">
+      <div class="history-row" data-view="activity" role="button" tabindex="0" aria-label="Open History"><strong>History</strong><span aria-hidden="true">›</span></div>
     </div>
 
     <div class="card" id="section-manual">
@@ -273,6 +268,8 @@
       <p id="txCount" class="muted small tx-count"></p>
       <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
       <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
+      <div class="trash-bin-row"><button id="txTrashBtn" class="btn btn-tertiary trash-bin-btn" type="button" aria-label="Open trash bin">🗑 <span>Trash</span></button></div>
+      <div id="txTrashList" class="hidden"><h3>Trash</h3><p class="muted small">Bank rows you deleted live here. The admin can bring them back.</p><ul id="trashList" class="plain"></ul><button id="txTrashCloseBtn" class="btn btn-tertiary" type="button" aria-label="Close trash bin">Close trash</button></div>
     </div>
 
     <!-- Add popup (owner design Nov 3, 9:49 PM): the Transactions
@@ -284,22 +281,19 @@
     <div id="addPopupOverlay" class="add-popup-overlay hidden" role="dialog" aria-modal="true" aria-label="Add">
       <div class="add-popup-card">
         <div class="card" id="addOptionsCard">
-          <h3>Add</h3>
           <div class="add-options-list">
             <button class="btn add-option-btn" id="addOptionPurchaseBtn" type="button" aria-label="Add a purchase by hand"><span class="add-option-title">Purchase</span><span class="muted small">Add a transaction by hand</span></button>
             <button class="btn add-option-btn" id="addOptionDonationBtn" type="button" aria-label="Record a donation by hand"><span class="add-option-title">Donation</span><span class="muted small">Record a gift by hand</span></button>
             <button class="btn add-option-btn" id="addOptionUploadBtn" type="button" aria-label="Upload transactions from a file"><span class="add-option-title">Upload</span><span class="muted small">Import transactions from a file</span></button>
           </div>
-          <div class="btn-row"><button class="btn" id="addOptionsCloseBtn" type="button" aria-label="Close Add options">Cancel</button></div>
+          <div class="btn-row"><button class="btn btn-tertiary" id="addOptionsCloseBtn" type="button" aria-label="Close Add options">Cancel</button></div>
         </div>
         <div id="addPopupFormSlot" class="hidden"></div>
       </div>
     </div>
 
     <div class="card" id="section-settings-head">
-      <div class="btn-row"><button class="btn" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
-      <h2>Settings</h2>
-      <p class="muted small" id="settingsIntro">Connections, Budget, and Account &amp; household.</p>
+      <div class="settings-head-line"><h2>Settings</h2><button class="settings-back-link" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
     </div>
 
     <div class="card" id="section-profile">
@@ -314,7 +308,7 @@
 
     <div class="card" id="section-bank">
       <h2>Bank Connection</h2>
-      <p class="muted small">The app can see transactions.</p>
+      <p class="muted small">Look only — it never moves, sends, or changes anything.</p>
       <div class="btn-row">
         <button id="connectBankBtn" class="btn btn-primary" type="button" aria-label="Connect a bank account">Connect a bank account</button>
         <button id="syncBankBtn" class="btn" type="button" aria-label="Sync bank transactions now">Sync bank transactions now</button>
@@ -331,8 +325,8 @@
 
 
     <div class="card" id="section-email" style="display:none">
-      <h2>Email alerts (read-only)</h2>
-      <p class="muted small">Read-only — the app can read Amex transaction alerts, never your whole mailbox, and never sends or changes email. Transactions found here stay provisional until the bank confirms them. Connecting here does not change any existing email setup.</p>
+      <h2>Email Alerts</h2>
+      <p class="muted small">Look only — it never moves, sends, or changes anything.</p>
       <div class="btn-row">
         <button id="connectEmailBtn" class="btn btn-primary" type="button" aria-label="Connect email">Connect email</button>
         <button id="pollEmailBtn" class="btn btn-tertiary" type="button" aria-label="Check email now">Check email now</button>
@@ -344,19 +338,20 @@
     </div>
 
     <div class="card" id="settingsCard" style="display:none">
-      <h2>Budget (admin only)</h2>
+      <h2>Budget <span class="role-pill" id="budgetRolePill">Admin</span></h2>
       <p class="muted small">Only the admin can change these.</p>
-      <h3>Weekly allowance</h3>
-      <label>Amount ($)
-        <input id="baseAllowanceInput" type="number" step="0.01" min="0" inputmode="decimal">
-      </label>
+      <h3>Weekly Allowance</h3>
+      <div class="money-input-row"><span class="money-prefix" aria-hidden="true">$</span><input id="baseAllowanceInput" type="number" step="0.01" min="0" inputmode="decimal" aria-label="Weekly allowance amount in dollars"></div>
       <button id="saveAllowanceBtn" class="btn btn-primary" type="button" aria-label="Save the weekly allowance">Save allowance</button>
       <div id="settingsMsg" class="result"></div>
-      <h3>Temporary increase</h3>
-      <label>Amount for this week ($)
-        <input id="tempIncreaseInput" type="number" step="0.01" min="0" inputmode="decimal">
-      </label>
-      <button id="addTempBtn" class="btn" type="button" aria-label="Add a temporary increase for this week">Add temporary increase</button>
+      <h3 class="temp-increase-heading">Temporary Increase</h3>
+      <div class="temp-increase-row">
+        <div class="money-input-row"><span class="money-prefix" aria-hidden="true">$</span><input id="tempIncreaseInput" type="number" step="0.01" min="0" inputmode="decimal" aria-label="New total allowance amount in dollars"></div>
+        <label class="weeks-label">Weeks
+          <select id="tempIncreaseWeeks" aria-label="Number of weeks the new total lasts"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+        </label>
+      </div>
+      <button id="addTempBtn" class="btn" type="button" aria-label="Set the new total allowance for the chosen weeks">Set new total</button>
       <div id="tempMsg" class="result"></div>
     </div>
 
@@ -549,7 +544,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=43"></script>
+<script type="module" src="live.js?v=44"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.
