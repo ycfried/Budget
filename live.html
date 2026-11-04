@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=21">
+<link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -90,9 +90,8 @@
       <p class="muted small" id="weekProgressText"></p>
       <div id="weekBreakdown" class="hidden"></div>
       <p id="weekError" class="result error hidden"></p>
-      <p id="weekEmptyHint" class="muted small hidden">No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account on the Funds tab.</p>
+      <p id="weekEmptyHint" class="muted small hidden">No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account in Settings.</p>
     </div>
-    <p class="muted small stat-hint" id="section-hint">Tap a card for its breakdown.</p>
     <div class="grid" id="section-stats">
       <div class="card stat-card" data-home-card="weekly" role="button" tabindex="0" aria-label="Show Weekly Budget breakdown"><div class="kicker">Weekly Budget</div><div class="num" id="homeWeeklyPrimary">…</div></div>
       <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><div class="kicker">Charity · November 2026 onward</div><div class="num" id="homeCharityPrimary">—</div></div>
@@ -128,7 +127,7 @@
       <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Add a transaction by hand</h2>
       <p class="muted small">Record a transaction by hand. It counts as pending until the bank confirms it. Your draft stays here if you switch screens — Back keeps it, Cancel clears it.</p>
-      <form id="manualForm">
+      <form id="manualForm" novalidate>
         <label>Merchant <input name="merchant" required maxlength="80"></label>
         <div class="form-row-3">
           <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
@@ -167,7 +166,7 @@
       <div class="btn-row"><button class="btn" id="charityBackBtn" type="button" aria-label="Back to Add choices">← Back</button></div>
       <h2>Give to charity</h2>
       <p class="muted small">Record a gift you already gave. A gift entered here counts as given at once, and it never counts as weekly spending. Only the admin can record gifts.</p>
-      <form id="charityGiftForm">
+      <form id="charityGiftForm" novalidate>
         <label>Organization <input name="merchant" required maxlength="80"></label>
         <div class="form-row-3">
           <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
@@ -175,6 +174,7 @@
           <label>Card suffix <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="only if paid by card"></label>
         </div>
         <label>Note (optional) <input name="note" maxlength="120"></label>
+        <p id="charityFormError" class="error hidden" role="alert"></p>
         <button class="btn btn-primary" type="submit" aria-label="Record this charity gift">Record gift</button>
       </form>
       <p class="muted small">Leave the card suffix blank for a cash gift. Never enter a full card number.</p>
@@ -505,7 +505,7 @@
       <h2>Activity</h2>
       <p class="muted small">Weekly summaries are above. Below, a shared record of every change in this household — who did what, and when — grouped by day, newest first.</p>
       <ul id="auditList" class="plain"><li class="muted small">Loading…</li></ul>
-      <button id="historyLoadMoreBtn" class="btn hidden" type="button">Load more</button>
+      <button id="historyLoadMoreBtn" class="btn hidden" type="button" aria-label="Load more activity entries">Load more activity</button>
     </div>
 
   </section>
@@ -517,7 +517,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=30"></script>
+<script type="module" src="live.js?v=31"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.
