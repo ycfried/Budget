@@ -2373,7 +2373,7 @@ async function openWeeklySheet() {
     // elsewhere in the sheet. No figure changes: the three rows
     // above are computed exactly as before.
     const weeklyRows = [
-      ['Left', `${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}`],
+      ['Left', formatCents(w.availableCents)],
       ['Spent', formatCents(w.chargesCents)],
       ['Allowance', formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)],
     ];
