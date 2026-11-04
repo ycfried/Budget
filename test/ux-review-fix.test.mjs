@@ -119,7 +119,11 @@ test('profile menu shows a name header; profile editing lives in Settings, not t
   assert.match(js, /user_metadata\?\.full_name \|\| s\?\.user\?\.user_metadata\?\.name/);
   assert.match(js, /supabase\.auth\.updateUser\(\{ data: \{ full_name: name \} \}\)/);
   assert.match(js, /supabase\.auth\.updateUser\(\{ email \}\)/);
-  assert.ok(html.includes('does not change until you confirm it'));
+  // Popup-padding-labels-fix (owner, Nov 4): the static email
+  // explainer paragraph is deleted from the Profile card; the
+  // confirmation wording now appears only at save time, in the
+  // email-change toast (see the js assertion below).
+  assert.equal(html.includes('does not change until you confirm it'), false);
   assert.match(js, /until you confirm it/);
   // No SQL for this item: the profile save paths are auth only.
   assert.doesNotMatch(js, /display_name.*update|UPDATE household_members/);
@@ -229,7 +233,11 @@ test('filters sheet has no repeated heading+label and pairs share a line', () =>
   assert.ok(sheet.includes('<h4>Amount</h4>'));
   assert.ok(sheet.includes('<h4>When</h4>')); // When groups several distinct fields, so its heading stays.
   assert.equal((sheet.match(/tx-sheet-pair/g) || []).length, 2, 'exactly the date pair and the amount pair');
-  assert.match(css, /body\.live \.tx-sheet-pair \{ display: grid; grid-template-columns: 1fr 1fr;/);
+  // Popup-padding-labels-fix (owner, Nov 4): pairs still share one
+  // line at half width, but the tracks are minmax(0, 1fr) — a bare
+  // 1fr track's minimum is its content minimum, and a date input's
+  // intrinsic width overflowed the track and overlapped its pair.
+  assert.match(css, /body\.live \.tx-sheet-pair \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/);
   // No filter logic touched: ids and option values unchanged.
   assert.ok(sheet.includes('id="txStatusSelect"'));
   assert.ok(sheet.includes('id="txMinAmount"'));

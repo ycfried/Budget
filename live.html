@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=32">
+<link rel="stylesheet" href="styles.css?v=33">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -304,21 +304,17 @@
 
     <div class="card" id="section-profile">
       <h2>Profile</h2>
-      <p class="muted small">Your name shows at the top of the profile menu. Changing your name, email, or password here changes only your own account — never the household, roles, or invite code.</p>
       <label>Name <input id="profileNameInput" type="text" maxlength="80" autocomplete="name"></label>
       <button id="saveProfileNameBtn" class="btn btn-primary" type="button" aria-label="Save your profile name">Save name</button>
-      <h3>Email</h3>
-      <p class="muted small">Changing your email sends a confirmation to the new address. Your sign-in email does not change until you confirm it.</p>
-      <label>Email <input id="profileEmailInput" type="email" autocomplete="email"></label>
+      <label class="profile-email-label">Email <input id="profileEmailInput" type="email" autocomplete="email"></label>
       <button id="saveProfileEmailBtn" class="btn" type="button" aria-label="Save your new email address">Save email</button>
       <h3>Password</h3>
-      <p class="muted small">Password must be at least 8 characters.</p>
       <button id="profilePasswordBtn" class="btn btn-tertiary" type="button" aria-label="Change your password">Change password</button>
     </div>
 
     <div class="card" id="section-bank">
-      <h2>Bank connection (read-only)</h2>
-      <p class="muted small">Read-only — the app can see transactions, never move money.</p>
+      <h2>Bank Connection</h2>
+      <p class="muted small">The app can see transactions.</p>
       <div class="btn-row">
         <button id="connectBankBtn" class="btn btn-primary" type="button" aria-label="Connect a bank account">Connect a bank account</button>
         <button id="syncBankBtn" class="btn" type="button" aria-label="Sync bank transactions now">Sync bank transactions now</button>
@@ -516,11 +512,11 @@
       <h2>History</h2>
       <p class="muted small">Weekly summaries below are the financial record; the day-grouped activity after them is the shared record of account changes. Filter by date to narrow both, or clear it to see everything.</p>
       <div class="form-row-2">
-        <label>From date
-          <input id="historyFromInput" type="date" aria-label="History from date">
+        <label>From
+          <input id="historyFromInput" type="date" aria-label="From">
         </label>
-        <label>To date
-          <input id="historyToInput" type="date" aria-label="History to date">
+        <label>To
+          <input id="historyToInput" type="date" aria-label="To">
         </label>
       </div>
       <div class="btn-row">
@@ -553,7 +549,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=42"></script>
+<script type="module" src="live.js?v=43"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

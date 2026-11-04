@@ -394,7 +394,7 @@ async function refresh() {
         carried, temp: tempC, spent: charges,
       });
       const outgoingDebt = recon.outgoing;
-      if (weekStart) $('weekLabel').textContent = `Week of ${fmtLong(weekStart)} (Sun–Sat)`;
+      if (weekStart) $('weekLabel').textContent = `${fmtLong(weekStart)} (Sun–Sat)`;
       $('weeklyAvailable').innerHTML = formatCentsHtml(avail);
       $('weeklyAvailable').removeAttribute('aria-busy');
       $('weeklyAvailable').classList.toggle('negative', avail < 0);
@@ -1607,7 +1607,7 @@ async function refresh() {
           const relCents = !rel ? null : rel.status === 'released' ? (rel.released_cents ?? rel.surplus_cents) : rel.surplus_cents;
           const relValue = (relCents === null || relCents === undefined) ? 'not recorded' : formatCents(relCents);
           const carryIn = carryInByWeek.get(c.week_start);
-          return `<li class="week-block"><strong>Week of ${fmtLong(c.week_start)}</strong><div class="week-metrics"><div><span>Carry-in</span><span>${carryIn === null ? 'not recorded' : fmtOrMissing(carryIn)}</span></div><div><span>Surplus</span><span>${fmtOrMissing(c.surplus_cents)}</span></div><div><span>Debt carried out</span><span>${fmtOrMissing(c.outgoing_debt_cents)}</span></div><div><span>${relLabel}</span><span>${relValue}</span></div></div></li>`;
+          return `<li class="week-block"><strong>${fmtLong(c.week_start)}</strong><div class="week-metrics"><div><span>Carry-in</span><span>${carryIn === null ? 'not recorded' : fmtOrMissing(carryIn)}</span></div><div><span>Surplus</span><span>${fmtOrMissing(c.surplus_cents)}</span></div><div><span>Debt carried out</span><span>${fmtOrMissing(c.outgoing_debt_cents)}</span></div><div><span>${relLabel}</span><span>${relValue}</span></div></div></li>`;
         }).join('')
       : `<li class="muted small">${(historyFilter.from || historyFilter.to) ? 'No closed weeks in the selected period.' : 'No closed weeks yet.'}</li>`;
   } catch (e) {
@@ -2259,6 +2259,7 @@ function showView(name, opts = {}) {
     // refresh does not, so editing filters survives live updates).
     document.getElementById('txFiltersSheet')?.classList.add('hidden');
     document.getElementById('txFiltersToggle')?.setAttribute('aria-expanded', 'false');
+    syncScrollLock();
   }
   for (const id of ALL_VIEW_SECTIONS) {
     const el = document.getElementById(id);
@@ -2643,6 +2644,42 @@ function fmtShort(dateStr) {
 
 // In-app sheet (replaces the browser's grey prompt/confirm/alert
 // boxes, which looked cheap and blocked the whole page).
+// Popup-padding-labels-fix (owner, Nov 4): popup scroll lock. While
+// ANY scroll-blocking overlay is open, the page behind must not
+// scroll — a scroll gesture inside a popup scrolls the popup only.
+// The state is derived from the DOM on every open/close (not a
+// counter), so every close path is covered, including tab-tap closes
+// and sheets stacked over filters: as long as one overlay remains,
+// the lock stays. Locking sets overflow hidden on both html and body
+// (iOS Safari needs both); unlocking restores the page's scroll
+// position, which the lock preserved. The profile menu is a small
+// dropdown, not a scroll-blocking overlay, so it is deliberately not
+// part of this lock; Escape/focus-trap/backdrop-close behavior is
+// untouched — the lock only ever follows visibility.
+let scrollLockApplied = false;
+let scrollLockY = 0;
+function anyOverlayOpen() {
+  if (document.getElementById('sheetOverlay')) return true;
+  const f = document.getElementById('txFiltersSheet');
+  if (f && !f.classList.contains('hidden')) return true;
+  const a = document.getElementById('addPopupOverlay');
+  if (a && !a.classList.contains('hidden')) return true;
+  return false;
+}
+function syncScrollLock() {
+  const want = anyOverlayOpen();
+  if (want === scrollLockApplied) return;
+  scrollLockApplied = want;
+  if (want) {
+    scrollLockY = window.scrollY || 0;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+  } else {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+    window.scrollTo(0, scrollLockY);
+  }
+}
 function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null }) {
   // SECURITY: EVERY interpolated value is escaped with esc() — title,
   // message, input label/value, option labels/values, and button labels.
@@ -2689,6 +2726,7 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
         <button class="btn${extraAction ? ' btn-tertiary' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
       </div></div>`;
     document.body.appendChild(overlay);
+    syncScrollLock();
     // UX-review-fix, Show password (owner, Nov 3, 7:53 PM): every
     // password input gets a Show/Hide toggle. The sheet's only
     // password field is Change password; the toggle switches the
@@ -2714,6 +2752,7 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
       if (settled) return; settled = true;
       document.removeEventListener('keydown', sheetKeyHandler);
       overlay.remove();
+      syncScrollLock();
       // A1 focus return: back to the opener when it is still on the
       // page (a refresh may have replaced it — then this is a no-op).
       if (sheetOpener && document.contains(sheetOpener)) sheetOpener.focus();
@@ -2819,6 +2858,7 @@ function syncAddPopup(viewName) {
   if (!overlay || !optionsCard || !slot) return;
   const open = viewName === 'purchases' && addFormOpen !== null;
   overlay.classList.toggle('hidden', !open);
+  syncScrollLock();
   if (!open) { addPopupRestoreAll(); return; }
   // Role gating for the options list itself: members see Purchase only.
   const isAdmin = household && household.role === 'admin';
@@ -3070,6 +3110,7 @@ const closeTxFilters = () => {
   if (f) f.classList.add('hidden');
   const t = document.getElementById('txFiltersToggle');
   if (t) t.setAttribute('aria-expanded', 'false');
+  syncScrollLock();
 };
 // UX-review-fix: the filter sheet is a dialog, so Escape closes it
 // (like Cancel, preserving applied filters), Enter on Cancel closes
@@ -3117,6 +3158,7 @@ const openTxFilters = () => {
   f.classList.remove('hidden');
   const t = document.getElementById('txFiltersToggle');
   if (t) t.setAttribute('aria-expanded', 'true');
+  syncScrollLock();
 };
 $('txFiltersToggle')?.addEventListener('click', () => {
   const f = document.getElementById('txFiltersSheet');
