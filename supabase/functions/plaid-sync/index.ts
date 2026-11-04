@@ -123,6 +123,48 @@ async function decryptToken(keyB64: string, b64: string): Promise<string> {
   return new TextDecoder().decode(pt);
 }
 
+// Duplicate-connection guard (excluded-decisions, owner Nov 3, 9:42 PM).
+// Mirrors duplicateConnection.mjs on the client: a connection is a
+// duplicate ONLY when every account it carries is already carried by
+// ONE older, still-active connection at the SAME institution, matched
+// on mask AND account name. Mask alone is not identity (two cards
+// can share a last-4); anything unprovable fails OPEN (returns null)
+// so a legitimate connection is never removed on a guess. The two
+// implementations must stay in step — see duplicateConnection.mjs.
+function normDup(v: unknown): string {
+  return String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+type DupAcct = { mask?: string | null; name?: string | null };
+type DupItem = {
+  plaid_item_id: string; institution_name?: string | null;
+  created_at?: string | null; accounts: DupAcct[];
+};
+function findDuplicateKeeper(
+  candidate: DupItem,
+  keepers: DupItem[],
+): string | null {
+  if (!candidate.accounts || candidate.accounts.length === 0) return null;
+  const candInst = normDup(candidate.institution_name);
+  if (!candInst) return null;
+  for (const acct of candidate.accounts) {
+    if (!normDup(acct.mask) || !normDup(acct.name)) return null;
+  }
+  for (const keeper of keepers) {
+    if (keeper.plaid_item_id === candidate.plaid_item_id) continue;
+    if (normDup(keeper.institution_name) !== candInst) continue;
+    if (!keeper.created_at || !candidate.created_at) continue;
+    if (!(String(keeper.created_at) < String(candidate.created_at))) continue;
+    const covered = candidate.accounts.every((acct) =>
+      keeper.accounts.some((k) =>
+        normDup(k.mask) === normDup(acct.mask) &&
+        normDup(k.name) === normDup(acct.name)
+      )
+    );
+    if (covered) return keeper.plaid_item_id;
+  }
+  return null;
+}
+
 function plaidBase(env: string): string {
   return `https://${env === 'production' ? 'production' : env}.plaid.com`;
 }
@@ -197,10 +239,29 @@ Deno.serve(async (req) => {
     const base = plaidBase(env);
 
     const { data: items } = await supabaseAdmin.from('plaid_items')
-      .select('plaid_item_id, institution_name, institution_id, sync_cursor, status')
+      .select('plaid_item_id, institution_name, institution_id, sync_cursor, status, created_at')
       .eq('household_id', householdId);
     const allItems = items ?? [];
-    const activeItems = allItems.filter((i) => (i.status ?? 'active') !== 'disconnected');
+    // Oldest first: the duplicate guard keeps the oldest connection
+    // and removes a newer one that fully duplicates it.
+    const activeItems = allItems
+      .filter((i) => (i.status ?? 'active') !== 'disconnected')
+      .sort((a, b) => String(a.created_at ?? '9999') < String(b.created_at ?? '9999') ? -1 : 1);
+    // Keeper account map for the duplicate guard: plaid_accounts rows
+    // grouped by item, for active items only. Disconnected items are
+    // excluded, so reconnecting after a disconnect still works.
+    const keeperAccounts = new Map<string, DupAcct[]>();
+    try {
+      const { data: keeperRows } = await supabaseAdmin.from('plaid_accounts')
+        .select('plaid_item_id, name, mask').eq('household_id', householdId);
+      for (const row of keeperRows ?? []) {
+        if (!activeItems.some((i) => i.plaid_item_id === row.plaid_item_id)) continue;
+        const list = keeperAccounts.get(row.plaid_item_id) ?? [];
+        list.push({ mask: row.mask, name: row.name });
+        keeperAccounts.set(row.plaid_item_id, list);
+      }
+    } catch { /* guard data unavailable: the guard below fails open */ }
+    const duplicateRemoved: string[] = [];
     const skippedDisconnected = allItems.length - activeItems.length;
 
     let added = 0, updated = 0, reversed = 0, skipped = 0;
@@ -246,6 +307,76 @@ Deno.serve(async (req) => {
           }
         }
       } catch { /* best-effort; sync still proceeds */ }
+
+      // --- Duplicate-connection guard (b): if this item's accounts
+      // are entirely already carried by an older active connection
+      // at the same institution (mask + name, see helper above),
+      // remove this item at Plaid and mark it disconnected — the
+      // same semantics as plaid-disconnect: past transactions stay,
+      // the item moves to Previously connected. Any failure fails
+      // OPEN: the item syncs normally instead of being removed on
+      // a guess, and a removal failure never blocks the sync.
+      {
+        const candidateAccts: DupAcct[] = [];
+        try {
+          const { ok: dupOk, data: dupData } = await plaidPost(base, '/accounts/get', clientId, secret, {
+access_token: <redacted>
+          });
+          if (dupOk) {
+            for (const acc of dupData.accounts ?? []) {
+              if (acc.account_id && acc.mask) candidateAccts.push({ mask: String(acc.mask), name: acc.name ? String(acc.name) : null });
+            }
+          }
+        } catch { /* accounts unavailable: cannot prove a duplicate */ }
+        const keepers: DupItem[] = activeItems
+          .filter((o) => o.plaid_item_id !== item.plaid_item_id)
+          .map((o) => ({
+            plaid_item_id: o.plaid_item_id,
+            institution_name: o.institution_name,
+            created_at: o.created_at,
+            accounts: keeperAccounts.get(o.plaid_item_id) ?? [],
+          }));
+        const keeperId = findDuplicateKeeper(
+          { plaid_item_id: item.plaid_item_id, institution_name: item.institution_name, created_at: item.created_at, accounts: candidateAccts },
+          keepers,
+        );
+        if (keeperId) {
+          let removeOk = false;
+          let removeAttempted = false;
+          try {
+            const { data: dupCt } = await supabaseAdmin.rpc('get_plaid_ciphertext', {
+              p_household_id: householdId, p_item_id: item.plaid_item_id,
+            });
+            if (dupCt) {
+              removeAttempted = true;
+              let dupToken: string | null = null;
+              try { dupToken = await decryptToken(tokenKey, dupCt); } catch { dupToken = null; }
+              if (dupToken) {
+                const rm = await plaidPost(base, '/item/remove', clientId, secret, { access_token: dupToken });
+                removeOk = rm.ok || String(rm.data?.error_code ?? '') === 'ITEM_NOT_FOUND';
+              } else {
+                // Disconnect fallback: no retrievable token, but the
+                // local row can still be marked disconnected so sync
+                // stops (the Plaid-side item may linger).
+                removeOk = true;
+              }
+            } else {
+              removeOk = true;
+            }
+          } catch { removeOk = false; }
+          if (removeOk || !removeAttempted) {
+            const { error: markErr } = await supabaseAdmin.from('plaid_items')
+              .update({ status: 'disconnected', disconnected_at: new Date().toISOString() })
+              .eq('household_id', householdId).eq('plaid_item_id', item.plaid_item_id);
+            if (!markErr) {
+              console.warn(`plaid-sync: removed duplicate item ${item.plaid_item_id} (accounts already on ${keeperId}); past transactions kept`);
+              duplicateRemoved.push(item.plaid_item_id);
+              continue;
+            }
+          }
+          console.warn(`plaid-sync: duplicate check for ${item.plaid_item_id} could not remove it safely; syncing normally`);
+        }
+      }
 
       // --- Institution backfill (only when institution_name is null) ---
       if (!item.institution_name) {
@@ -339,6 +470,7 @@ Deno.serve(async (req) => {
 
     return json({
       added, updated, reversed, skipped,
+      duplicate_removed: duplicateRemoved,
       items: allItems.length,
       connected_items: activeItems.length,
       skipped_disconnected: skippedDisconnected,
