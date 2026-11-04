@@ -44,7 +44,7 @@ test('weekly hero kicker is neutral and the sign-instruction sentence is gone', 
 test('boot shows the current view before refresh, and refresh re-shows on failure', () => {
   const boot = js.slice(js.indexOf('async function boot()'), js.indexOf('async function boot()') + 1200);
   assert.match(boot, /await show\('app'\);\s*\/\/ UX-review-fix, blank shell[\s\S]*?showView\(currentView\);/);
-  assert.match(js, /try \{ if \(household\) showView\(currentView\); \} catch/);
+  assert.match(js, /try \{ if \(household\) showView\(currentView, \{ preserveScroll: true \}\); \} catch/);
 });
 
 // --- Buttons: solid colors, no adjacent duplicates ---------------------
@@ -64,9 +64,11 @@ test('button levels are solid colors, no pale tint or white outline', () => {
   assert.doesNotMatch(js, /btn-outline/);
   // Funds actions: primary, pale, grey — three buttons, three
   // treatments (Record income left the row for the Charity sheet).
-  assert.ok(html.includes('<button class="btn btn-primary" id="fundActionAddBtn"'));
-  assert.ok(html.includes('<button class="btn" id="fundActionUseBtn"'));
-  assert.ok(html.includes('<button class="btn btn-tertiary" id="fundActionAskBtn"'));
+  // Task 7: fund actions live in the Extra Fund sheet, not a card.
+  assert.equal(html.includes('id="section-fund-actions"'), false);
+  assert.match(js, /label: 'Add money', result: 'add', btnClass: 'btn btn-primary'/);
+  assert.match(js, /label: 'Use fund money', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary'/);
   assert.equal(html.includes('fundActionIncomeBtn'), false);
   // Detail: send-live-bundle replaced the button row with one
   // Actions line (see send-live-bundle tests); the old Mark/Use
@@ -86,8 +88,8 @@ test('held button removed; held amount folds into the fund sheet Pending', () =>
   assert.equal(html.includes('id="fundHeldLinkBtn"'), false);
   assert.equal(css.includes('#fundHeldLinkWrap'), false);
   assert.match(js, /fundHeldLinkBtn.*addEventListener\('click'/);
-  assert.match(js, /getElementById\('reviewDetails'\)/);
-  assert.match(js, /details\.open = true/);
+  assert.match(js, /moreReviewOpen = true/);
+  assert.match(js, /getElementById\('section-fund-review-more'\)\?\.scrollIntoView/);
   const fundRows = js.slice(js.indexOf('function fundBreakdownRows'), js.indexOf('function charityBreakdownRows'));
   assert.ok(fundRows.includes('heldTotal'), 'fund sheet Pending must fold in held weeks');
   assert.doesNotMatch(fundRows, /\['Held for review',/);

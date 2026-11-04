@@ -73,11 +73,11 @@ test('generic sheet renders an extra primary action without duplicating button t
   // With an extra action, confirm drops to the grey tertiary
   // treatment (fund-sheet-button-rule, owner Nov 4: two-button rows
   // are primary + grey, never pale).
-  assert.match(js, /class="btn\$\{extraAction \? ' btn-tertiary' : ' btn-primary'\}"/);
+  assert.match(js, /class="btn\$\{actions \? ' btn-quiet' : extraAction \? ' btn-tertiary' : ' btn-primary'\}"/);
 });
 
 test('Extra Fund / Charity sheet openers keep their call shapes; rows changed by fund-sheet-button-rule', () => {
-  assert.match(js, /title: 'Extra Fund', rows: fundBreakdownRows\(f\), confirmLabel: 'Close'/);
+  assert.match(js, /showSheet\(\{ title: 'Extra Fund', rows: fundBreakdownRows\(f\), actions, confirmLabel: 'Close' \}\)/);
   // Funds-actions-three (owner choice, Nov 4, Option A): the Charity
   // sheet keeps its title, rows, and Close label, and gains exactly
   // the admin-gated Record income extra action — nothing else.

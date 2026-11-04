@@ -17,15 +17,11 @@ const opener = js.slice(js.indexOf('async function openCharitySheet()'));
 assert.ok(opener.length > 0, 'openCharitySheet exists');
 const openerBody = opener.slice(0, opener.indexOf('\n}\n') + 3);
 
-test('Funds actions row is exactly Add / Use / Ask, in order', () => {
-  const row = html.slice(html.indexOf('id="section-fund-actions"'), html.indexOf('id="fundTopupsDisclosure"'));
-  assert.deepEqual(
-    [...row.matchAll(/id="(fundAction\w+)"/g)].map((m) => m[1]),
-    ['fundActionAddBtn', 'fundActionUseBtn', 'fundActionAskBtn'],
-  );
-  assert.ok(row.includes('<button class="btn btn-primary" id="fundActionAddBtn"'));
-  assert.ok(row.includes('<button class="btn" id="fundActionUseBtn"'));
-  assert.ok(row.includes('<button class="btn btn-tertiary" id="fundActionAskBtn"'));
+test('Funds actions row is exactly Add / Use / Ask, in order (now in the Extra Fund sheet)', () => {
+  assert.equal(html.includes('id="section-fund-actions"'), false);
+  const sheet = js.slice(js.indexOf('async function openFundSheet'), js.indexOf(": [{ label: 'Ask for fund money'"));
+  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Use fund money', 'Ask for fund money']);
+  assert.deepEqual([...sheet.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
 });
 
 test('Record income button is fully gone from the actions card', () => {
@@ -64,15 +60,21 @@ test('Income form Back returns to the three-button actions card', () => {
 });
 
 test('Member visibility in Funds actions is unchanged', () => {
-  // Add/Use stay admin-only, Ask stays for everyone; no income button
-  // exists for either role to see.
-  assert.ok(js.includes("setBtn('fundActionAddBtn', !!isAdmin)"));
-  assert.ok(js.includes("setBtn('fundActionUseBtn', !!isAdmin)"));
-  assert.ok(js.includes("setBtn('fundActionAskBtn', true)"));
+  // Task 7: Add/Use stay admin-only, Ask stays for everyone — now
+  // as the sheet's member branch (Ask only, tertiary); no income
+  // button exists for either role to see.
+  assert.ok(js.includes(": [{ label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary' }]"));
+  assert.ok(js.includes("setBtn('moreFundActivityBtn', !!isAdmin)"));
+  assert.ok(js.includes("setBtn('moreReviewBtn', !!isAdmin)"));
+  assert.ok(js.includes("setBtn('moreSavingsBtn', true)"));
 });
 
-test('Extra Fund sheet is untouched', () => {
-  assert.equal((js.match(/title: 'Extra Fund', rows: fundBreakdownRows\(f\), confirmLabel: 'Close'/g) ?? []).length, 2);
+test('Extra Fund sheet rows and Close are untouched; only actions were added', () => {
+  // Task 7: one sheet function now serves both openers (Home
+  // read-only, Funds with actions); rows and Close are unchanged.
+  assert.ok(js.includes('await openFundSheet(false)'));
+  assert.ok(js.includes('await openFundSheet(true)'));
+  assert.ok(js.includes("showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), actions, confirmLabel: 'Close' })"));
 });
 
 test('Secondary button treatment is untouched', () => {

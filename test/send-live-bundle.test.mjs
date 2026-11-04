@@ -20,9 +20,9 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v34, live.js v44', () => {
-  assert.match(html, /styles\.css\?v=34/);
-  assert.match(html, /live\.js\?v=44/);
+test('version pins: styles v35, live.js v45', () => {
+  assert.match(html, /styles\.css\?v=35/);
+  assert.match(html, /live\.js\?v=45/);
 });
 
 test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
@@ -46,9 +46,9 @@ test('2. Pale option B: fill stays #bfdbfe, wording is ink #0f172a', () => {
   assert.match(css, /body\.live #view-app \.btn-primary, body\.live \.btn-primary \{ background: #2f6bff; color: #fff; \}/);
   assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{ background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; \}/);
   assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #0f172a; color: #fff; border: 1px solid #0f172a; \}/);
-  // Three-button middles are still plain .btn (pale): Funds Use,
-  // Filters Reset, Bank Sync.
-  assert.ok(html.includes('<button class="btn" id="fundActionUseBtn"'));
+  // Three-button middles are still plain .btn (pale): Funds Use
+  // (now in the Extra Fund sheet, Task 7), Filters Reset, Bank Sync.
+  assert.match(js, /label: 'Use fund money', result: 'use', btnClass: 'btn'/);
   assert.ok(html.includes('<button class="btn" id="txFiltersResetBtn"'));
   assert.ok(html.includes('<button id="syncBankBtn" class="btn"'));
 });
