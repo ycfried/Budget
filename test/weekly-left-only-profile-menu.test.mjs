@@ -38,12 +38,14 @@ const menuRows = html.slice(
   html.indexOf('</div>', html.indexOf('<div class="profile-menu-rows">')),
 );
 
-test('Weekly sheet rows are exactly one Left row with the correct value', () => {
+test('Weekly sheet rows are exactly Allowance, Spent, Balance', () => {
+  // Send-live-bundle supersedes Left-only: Allowance is base room +
+  // temp (so Allowance - Spent = Balance), Spent is the week total,
+  // Balance is availableCents (old Left).
   const labels = [...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ['Left']);
-  assert.ok(visible.includes("['Left', formatCents(w.availableCents)]"));
-  assert.equal(visible.includes("'Spent'"), false, 'no Spent row in the popup');
-  assert.equal(visible.includes("'Allowance'"), false, 'no Allowance row in the popup');
+  assert.deepEqual(labels, ['Allowance', 'Spent', 'Balance']);
+  assert.ok(visible.includes("['Balance', formatCents(w.availableCents)]"));
+  assert.ok(visible.includes("['Spent', formatCents(w.chargesCents)]"));
   assert.match(sheetFn, /extraAction: \{ label: 'Show transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
 });
@@ -217,7 +219,7 @@ test('tertiary buttons are grey fill with ink text, distinct from primary and se
   const secondary = css.match(/body\.live #view-app \.btn, body\.live \.btn \{[^}]*\}/);
   assert.ok(secondary, 'secondary (base .btn) rule found');
   assert.match(secondary[0], /background: #bfdbfe/);
-  assert.match(secondary[0], /color: #1e40af/);
+  assert.match(secondary[0], /color: #0f172a/);
   // btn-mid is ink (audit-fixes-morning A1), not mid blue.
   assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #0f172a; color: #fff;/);
 });

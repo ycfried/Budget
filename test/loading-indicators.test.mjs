@@ -32,7 +32,7 @@ test('figure placeholders are skeleton bars, not dots or dashes', () => {
 });
 
 test('recent transactions load behind skeleton rows, not "Loading…" text', () => {
-  const list = html.slice(html.indexOf('id="recentList"'), html.indexOf('id="section-history-link"'));
+  const list = html.slice(html.indexOf('id="recentList"'), html.indexOf('id="section-history-row"'));
   assert.match(list, /aria-busy="true"/, 'recent list is marked busy');
   assert.match(list, /aria-label="Loading recent transactions"/, 'recent list has an accessible loading label');
   assert.equal((list.match(/skel-row/g) || []).length, 4, 'exactly 4 skeleton rows');

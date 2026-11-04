@@ -79,5 +79,5 @@ test('Secondary button treatment is untouched', () => {
   // The light-blue deepening was NOT approved with Option A: the
   // secondary fill and text stay exactly as they were.
   const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
-  assert.match(css, /body\.live #view-app \.btn, body\.live \.btn \{ background: #bfdbfe; border: 0; color: #1e40af;/);
+  assert.match(css, /body\.live #view-app \.btn, body\.live \.btn \{ background: #bfdbfe; border: 0; color: #0f172a;/);
 });

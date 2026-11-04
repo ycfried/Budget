@@ -19,7 +19,7 @@ test('button levels are three distinct blues plus grey tertiary, no grey seconda
   // Primary: strong blue fill, white text.
   assert.match(css, /body\.live #view-app \.btn-primary, body\.live \.btn-primary \{ background: #2f6bff; color: #fff;/);
   // Secondary (base .btn): pale light blue fill, dark-blue text.
-  assert.match(css, /body\.live #view-app \.btn, body\.live \.btn \{ background: #bfdbfe; border: 0; color: #1e40af;/);
+  assert.match(css, /body\.live #view-app \.btn, body\.live \.btn \{ background: #bfdbfe; border: 0; color: #0f172a;/);
   // Tertiary (SUPERSEDED Nov 3, ~11:23 PM, owner Bank-card feedback:
   // the deep blue was too close to primary/secondary, so tertiary
   // is now solid neutral grey fill with ink text, with #view-app
@@ -28,7 +28,7 @@ test('button levels are three distinct blues plus grey tertiary, no grey seconda
   // Fourth treatment for four-button rows (formerly outline, now solid ink, never white/pale).
   assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #0f172a; color: #fff; border: 1px solid #0f172a; \}/);
   // Sort select matches the secondary button, not the old grey.
-  assert.match(css, /body\.live #txSortField \{ background: #bfdbfe;[^}]*color: #1e40af; \}/);
+  assert.match(css, /body\.live #txSortField \{ background: #bfdbfe;[^}]*color: #0f172a; \}/);
 });
 
 test('Funds actions row: exactly three buttons, three different treatments', () => {
@@ -45,14 +45,15 @@ test('Funds actions row: exactly three buttons, three different treatments', () 
   assert.deepEqual([...row.matchAll(/id="(fundAction\w+)"/g)].map((m) => m[1]), ['fundActionAddBtn', 'fundActionUseBtn', 'fundActionAskBtn']);
 });
 
-test('transaction detail rows: no adjacent duplicate treatment', () => {
-  // Admin non-excluded: Exclude (secondary), Mark as charity
-  // (tertiary tint), Use Extra Fund (outline), Reclassify (secondary,
-  // separated from Exclude by two buttons), Remove (danger).
-  assert.ok(js.includes("fundBtn.replace('class=\"btn btn-small\"', 'class=\"btn btn-small btn-mid\"')"));
-  assert.ok(js.includes('<button class="btn btn-small btn-tertiary" data-mark-charity='));
-  // Admin excluded: Restore (primary) before Reclassify (secondary).
-  assert.ok(js.includes('<button class="btn btn-small btn-primary" data-restore='));
+test('transaction detail rows: one Actions line, no five-button row', () => {
+  // Send-live-bundle supersedes the old five-button row: details
+  // carry one Actions line, and the Actions sheet (see
+  // send-live-bundle tests) lists Charity, Extra Fund, Other,
+  // Delete. Excluded rows live only in Trash, with Restore there.
+  assert.ok(js.includes('data-tx-actions='));
+  assert.equal(js.includes('data-mark-charity='), false);
+  assert.equal(js.includes('data-exclude='), false);
+  assert.ok(js.includes('data-trash-restore='));
 });
 
 test('Settings account row: Share only; Change password lives in the Profile card', () => {

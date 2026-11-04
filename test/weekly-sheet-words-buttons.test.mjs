@@ -23,11 +23,12 @@ const sheetFn = js.slice(
 );
 assert.ok(sheetFn.length > 0, 'openWeeklySheet body found');
 
-test('Weekly Left row is the signed number alone, no over-budget words', () => {
+test('Weekly Balance row is the signed number alone, no over-budget words', () => {
+  // Send-live-bundle: old Left row is renamed Balance, same value.
   assert.equal(
-    sheetFn.includes("['Left', formatCents(w.availableCents)]"),
+    sheetFn.includes("['Balance', formatCents(w.availableCents)]"),
     true,
-    'Left row must be exactly formatCents(w.availableCents)',
+    'Balance row must be exactly formatCents(w.availableCents)',
   );
   assert.equal(
     sheetFn.includes('over budget by'),
@@ -54,11 +55,12 @@ test('hero aria-label keeps its words for screen readers only', () => {
 });
 
 test('Weekly sheet rows and buttons are otherwise unchanged', () => {
-  // Weekly-left-only (owner approval, Nov 3, ~11:20 PM): Spent and
-  // Allowance are gone from the popup; only Left remains, plus the
-  // Show transactions button and Close.
-  assert.doesNotMatch(sheetFn, /\['Spent', formatCents\(w\.chargesCents\)\]/);
-  assert.doesNotMatch(sheetFn, /\['Allowance', formatCents\(w\.baseAllowanceCents/);
+  // Send-live-bundle: Allowance, Spent, Balance in order, plus the
+  // Show transactions button and Close (Close stays grey via the
+  // extra-action rule in showSheet).
+  assert.match(sheetFn, /\['Allowance', formatCents\(weeklyAllowanceCents\)\]/);
+  assert.match(sheetFn, /\['Spent', formatCents\(w\.chargesCents\)\]/);
+  assert.match(sheetFn, /\['Balance', formatCents\(w\.availableCents\)\]/);
   assert.match(sheetFn, /extraAction: \{ label: 'Show transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
 });
