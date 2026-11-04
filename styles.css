@@ -491,6 +491,14 @@ body.live .bank-row { display: flex; gap: 12px; align-items: center; padding: 12
 body.live .bank-row:last-child { border-bottom: 0; }
 body.live .bank-info { flex: 1; min-width: 0; }
 body.live .bank-logo, body.live .bank-logo-tile { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 10px; background: #eef1f6; color: #0f172a; font-weight: 700; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+/* Bank icon top-alignment (owner, Nov 3, ~11:25 PM, Connected
+   accounts screenshot): .bank-row centers its children, so the
+   40px logo tile sat mid-block against a tall multi-account
+   institution block. Only the logo tile inside .bank-row is
+   pinned to the top, aligned with the institution name; the row's
+   own alignment (and the Disconnect button's place in it) is
+   unchanged, and transaction merchant tiles are untouched. */
+body.live .bank-row .bank-logo, body.live .bank-row .bank-logo-tile { align-self: flex-start; }
 body.live .bank-logo-img { width: 100%; height: 100%; object-fit: contain; }
 body.live .sav-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 body.live .sav-grid > div { min-width: 0; }
@@ -519,19 +527,22 @@ body.live .btn-block { display: flex; width: 100%; }
    the v27 border fix never showed.
    UX-review-fix (Nov 3, 2026, owner screenshot 7:50 PM): the owner
    REJECTED both pale/hollow treatments — tertiary tint #eef4ff and
-   outline white/blue border — as too pale and hollow. Both are now
-   solid branded blues from the logo palette, white text, no grey,
-   no pale tint, no white outline as a button level. Assignment is
-   SWAPPED from the first draft on purpose: mid #3b82f6 sits only one
-   step lighter than primary #2f6bff and would blur against it, so
-   tertiary (the widely used third level) takes deep #1d4ed8, which
-   is unmistakably darker than primary, and the fourth treatment
-   (class btn-mid, formerly btn-outline) takes mid #3b82f6. The
-   fourth treatment never sits next to primary in any row: in
-   detail rows it sits between tertiary-deep and secondary-pale, and
-   in Funds actions it sits after tertiary-deep. Both rules sit
-   after the base .btn rule, with #view-app scope. */
-body.live #view-app .btn-tertiary, body.live .btn-tertiary { background: #1d4ed8; color: #fff; border: 1px solid #1d4ed8; }
+   outline white/blue border — as too pale and hollow. Tertiary
+   therefore took deep #1d4ed8, unmistakably darker than primary,
+   and the fourth treatment (class btn-mid, formerly btn-outline)
+   took mid #3b82f6. The fourth treatment never sits next to
+   primary in any row: in detail rows it sits between tertiary and
+   secondary-pale, and in Funds actions it sits after tertiary.
+   SUPERSEDED for tertiary only (owner, Nov 3, ~11:23 PM, Settings
+   Bank card screenshot): Connect (primary #2f6bff), Sync
+   (secondary pale #bfdbfe), and Enable automatic sync (tertiary
+   deep #1d4ed8) were too close in color. Tertiary is now a neutral
+   grey — solid light-grey fill #e5e7eb with ink #0f172a text, from
+   the grey family already used for card borders — clearly not blue,
+   clearly readable, solid fill, not an outline. Primary, secondary,
+   and btn-mid are unchanged. Both rules sit after the base .btn
+   rule, with #view-app scope. */
+body.live #view-app .btn-tertiary, body.live .btn-tertiary { background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; }
 body.live #view-app .btn-mid, body.live .btn-mid { background: #3b82f6; color: #fff; border: 1px solid #3b82f6; }
 /* C3: Funds balance cards side by side (stacked only on very narrow
    screens, so numbers never overflow at 320px). */
@@ -781,9 +792,10 @@ body.live .sheet-disclosure .sheet-rows { margin: 8px 0 0; }
 /* Numbers-only stat cards: a negative weekly figure is red, matching
    the hero big figure. Positive figures stay ink. */
 body.live .stat-card .num.negative { color: var(--soft-red); }
-/* Profile menu header: the user's name is the large header, email
-   below it in smaller muted text. */
-body.live .profile-name { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+/* Profile menu header (owner, Nov 3, ~11:20 PM): first name plus
+   the role pill on one line, email below it in smaller muted
+   (non-bold) text. */
+body.live .profile-name { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 body.live .profile-email { font-size: 14px; overflow-wrap: anywhere; }
 /* Filters sheet pairs (owner screenshot Nov 3, 7:55 PM): paired
    fields share one line at half width, so the sheet gets shorter and

@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=28">
+<link rel="stylesheet" href="styles.css?v=29">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -20,13 +20,10 @@
     </button>
     <div id="profileMenu" class="profile-menu hidden">
       <div class="profile-menu-head">
-        <p class="profile-name"><strong id="profileName">—</strong></p>
+        <p class="profile-name"><strong id="profileName">—</strong> <span class="role-pill" id="profileRole">—</span></p>
         <p class="small muted" id="profileEmail">—</p>
-        <p><span class="role-pill" id="profileRole">—</span></p>
-        <p class="small muted" id="profileHousehold">—</p>
       </div>
       <div class="profile-menu-rows">
-        <button id="menuEditProfileBtn" class="profile-menu-row" type="button" aria-label="Edit your profile">Edit profile</button>
         <button id="menuSettingsBtn" class="profile-menu-row" type="button" aria-label="Open Settings">Settings</button>
         <button id="signOutBtn" class="profile-menu-row profile-menu-row-danger" type="button" aria-label="Sign out of the live app">Sign out</button>
       </div>
@@ -53,6 +50,7 @@
     <label>Password <span class="password-row"><input id="authPassword" type="password" autocomplete="current-password" required><button id="togglePasswordBtn" class="btn btn-quiet" type="button" aria-label="Show password" aria-pressed="false">Show</button></span></label>
     <button id="signInBtn" class="btn btn-primary btn-block" type="button" aria-label="Sign in to the live app">Sign in</button>
     <p class="muted small">New to OnBudget?</p>
+    <label>Name for a new account <input id="authName" type="text" autocomplete="name" maxlength="80"></label>
     <button id="signUpBtn" class="btn btn-block" type="button" aria-label="Create a new live account">Create account</button>
     <button id="forgotPasswordBtn" class="btn btn-quiet btn-block" type="button" aria-label="Reset your password">Forgot password?</button>
     <div id="authMsg" class="result"></div>
@@ -530,7 +528,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=37"></script>
+<script type="module" src="live.js?v=38"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

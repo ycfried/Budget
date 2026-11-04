@@ -1992,3 +1992,91 @@ type-scale version pin was moved to v28/v37 because this branch
 touches both files (invariant unchanged: pins match live.html).
 Still to prove on a real phone at 390px: trimmed Weekly sheet with the
 bare Left number and centered buttons.
+
+## Weekly-left-only + profile-menu rework (owner, Nov 3, ~11:20–11:22 PM) — branch weekly-left-only-profile-menu, NOT MERGED
+Change A (approved "Yeah let's try"): the Weekly popup is Left only.
+openWeeklySheet now builds exactly one row, ['Left',
+formatCents(w.availableCents)] — same value and formatting as
+before — plus the existing Show transactions button and centered
+Close button. The Spent and Allowance rows are removed from the
+popup: balances, not spent totals, are what shows, and allowance
+lives in Settings for the admin (the Settings allowInput is
+untouched). The hero figure is unchanged (same Left value). Home
+stays balances-only: no spent section was added. Charity and Extra
+Fund sheets are untouched.
+Change B (profile-menu screenshot): the avatar menu header is
+first name + role pill on one line (flex row, 8px gap), with the
+user's email below in small muted (non-bold) text. First name =
+first whitespace token of the display name; a string with no space
+(e.g. the email fallback) is shown unchanged. The existing
+no-duplication rule is kept: when no name is set and the header
+itself falls back to the email, the email line below is hidden
+(hideDupEmail); saving a name unhides it. The role pill is
+capitalized Admin/Member from the household role. The role wording
+paragraph ("Admin — you manage this household's settings and
+money." / member equivalent, profileHousehold) is deleted entirely
+— element and rendering, no empty gap left. The Edit-profile row
+is deleted from the menu (button, listener, and all JS references);
+profile editing lives only in the Settings Profile card, which is
+unchanged. Menu order is now: header, Settings, Sign out. Full name
+appears only in the Settings name field, where it is edited.
+Change C (sign-up name requirement, owner ~11:22 PM): the auth card
+gains a "Name for a new account" input (id authName, autocomplete
+name, maxlength 80, grouped with Create account under "New to
+OnBudget?"). Create account requires it: an empty name fails before
+any Supabase call via the existing fail() pattern (named error in
+authMsg, focus on the Name field). A supplied name is passed as
+signUp options.data { full_name }, so the existing profileName read
+(user_metadata.full_name) picks it up immediately. Sign-in ignores
+the Name field entirely — it never reads it and never requires it.
+Existing users and Settings name editing are otherwise untouched.
+Versions: live.js v38, styles.css v29. Tests: new
+test/weekly-left-only-profile-menu.test.mjs (Weekly one-row shape,
+header first-name + pill line, email line + no-duplication, pill
+capitalization, wording paragraph gone, no Edit-profile row,
+Settings card unchanged, sign-up Name input + empty-name refusal
+before signUp + full_name metadata + sign-in ignores Name); older
+weekly-sheet tests updated to the one-row shape and the stale
+profile-menu test updated (no Edit-profile row); type-scale version
+pin moved to v29/v38 (invariant unchanged: pins match live.html).
+Still to prove on a real phone at 390px: Left-only Weekly popup,
+menu header (first name + pill + email), and the sign-up Name field
+with its empty-name error.
+
+## Tertiary-grey (owner, Nov 3, ~11:23 PM, Settings Bank card screenshot) — same branch weekly-left-only-profile-menu
+The three bank buttons were too close in color (Connect primary
+#2f6bff, Sync secondary pale #bfdbfe, Enable automatic sync
+tertiary deep #1d4ed8). ONLY the tertiary treatment changed, in
+both live selectors (body.live #view-app .btn-tertiary and
+body.live .btn-tertiary): solid light-grey fill #e5e7eb with ink
+#0f172a text (grey family already used for card borders), not an
+outline. Primary, secondary, and btn-mid (#3b82f6) are unchanged.
+This supersedes the Nov 3, 7:50 PM deep-blue tertiary decision for
+the tertiary level only; the comment above the rule was updated so
+it no longer claims "no grey" for tertiary. Adjacency audit after
+the change (no two adjacent buttons share a treatment): Bank card
+primary / secondary / tertiary-grey; Filters sheet Apply primary /
+Reset secondary / Cancel tertiary-grey; Funds actions primary /
+secondary / tertiary-grey / btn-mid; Settings Share secondary /
+Change password tertiary-grey; transaction detail rows Exclude
+secondary / Mark as charity tertiary-grey / Use Fund btn-mid /
+Reclassify secondary / Remove danger. No other button uses #e5e7eb
+as a fill (it appears only as card/input border), so the grey
+tertiary collides with nothing. Versions unchanged by this addition
+(live.js v38, styles.css v29). Tests: tertiary grey/ink/solid-fill
+assertions plus adjacency assertions in
+test/weekly-left-only-profile-menu.test.mjs.
+
+## Bank-icon top alignment (owner, Nov 3, ~11:25 PM, Connected accounts screenshot) — same branch weekly-left-only-profile-menu
+The bank icon tile sat vertically centered against a tall
+multi-account institution block (institution name + account lines
++ nickname buttons + last-synced), because body.live .bank-row is
+display:flex with align-items:center. Narrow fix only: a scoped
+rule gives the logo tile inside .bank-row align-self:flex-start,
+so the icon sits at the top of the block, aligned with the
+institution name. The row's own alignment is unchanged (the
+Disconnect button stays where it is) and transaction merchant
+tiles are untouched. No version change (styles.css is already at
+v29 on this unmerged branch). Tests: bank-row logo flex-start
+assertion plus row-unchanged and merchant-tiles-untouched
+assertions in test/weekly-left-only-profile-menu.test.mjs.
