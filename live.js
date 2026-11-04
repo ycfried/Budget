@@ -2362,14 +2362,21 @@ async function openWeeklySheet() {
     // Delta3: labeled metric rows instead of the paragraph of figures;
     // UX-review-fix: the reconciliation paragraph below them is now
     // behind the "Show how this adds up" disclosure (see below).
+    // Weekly-sheet-simple (owner, Nov 3, 9:53 PM): the sheet opens
+    // with ONLY the basic stuff — Left, Spent, Allowance, in that
+    // order, same values and formatting as before. Every other
+    // figure that used to sit visible moves behind the disclosure
+    // below (nothing deleted, no value changed); Outgoing debt was
+    // already a disclosure row, so it appears there once, not twice.
     const weeklyRows = [
       ['Left', `${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}`],
       ['Spent', formatCents(w.chargesCents)],
-      ...(lastSpentBreakdown ? [['Dated this week', formatCents(lastSpentBreakdown.datedTotal)], ['Late charges from earlier locked weeks', formatCents(lastSpentBreakdown.lateTotal)]] : []),
       ['Allowance', formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)],
+    ];
+    const weeklyDetailRows = [
+      ...(lastSpentBreakdown ? [['Dated this week', formatCents(lastSpentBreakdown.datedTotal)], ['Late charges from earlier locked weeks', formatCents(lastSpentBreakdown.lateTotal)]] : []),
       ['Carried debt', formatCents(w.carriedDebtCents)],
       ['Temporary increase', formatCents(w.tempCents)],
-      ['Outgoing debt', formatCents(w.outgoingDebtCents)],
       ...(w.weekLocked ? [['Week status', 'Locked']] : []),
       ...((w.pendingRefundExcludedCents ?? 0) > 0 ? [['Pending refunds excluded', formatCents(w.pendingRefundExcludedCents)]] : []),
     ];
@@ -2383,11 +2390,27 @@ async function openWeeklySheet() {
     // available, outgoing), and the rows above them are unchanged.
     // The hero kicker fix in this package is separate (live.html
     // kicker text) and does not touch this sheet code.
-    await showSheet({ title: 'Weekly Budget', rows: weeklyRows, disclosure: { label: 'Show how this adds up', rows: [
+    const weeklyResult = await showSheet({ title: 'Weekly Budget', rows: weeklyRows, disclosure: { label: 'Show how this adds up', rows: [
       ['Base spending room', formatCents(w.baseRoomCents ?? w.baseAvailableCents)],
       ['Left', formatCents(w.availableCents)],
       ['Outgoing debt', formatCents(w.outgoingDebtCents)],
-    ] }, confirmLabel: 'Close' });
+      ...weeklyDetailRows,
+    ] }, extraAction: { label: 'Show transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
+    // Weekly-sheet-simple: "Show transactions" closes the sheet and
+    // opens Transactions filtered to the current week, reusing the
+    // existing week-filter state (txWeekOnly) and render path — the
+    // count line gains "· this week" and the removable "This week"
+    // pill makes the filter obvious. Other active filters are left
+    // alone; the week filter combines with them as it always has.
+    // Focus lands on the Filters button at the top of the
+    // Transactions view (the sheet's own focus-return to the hero
+    // is overridden here, since the user has moved views).
+    if (weeklyResult === 'show-transactions') {
+      txWeekOnly = true;
+      showView('purchases');
+      await refresh();
+      document.getElementById('txFiltersToggle')?.focus();
+    }
 }
 // Hero number as the Weekly breakdown target. The hero already has a
 // Sync button in its head row, so the number area — not the whole
@@ -2519,7 +2542,7 @@ function fmtShort(dateStr) {
 
 // In-app sheet (replaces the browser's grey prompt/confirm/alert
 // boxes, which looked cheap and blocked the whole page).
-function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null }) {
+function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null }) {
   // SECURITY: EVERY interpolated value is escaped with esc() — title,
   // message, input label/value, option labels/values, and button labels.
   // No raw caller value reaches innerHTML through any showSheet path.
@@ -2544,12 +2567,21 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     // Used by the Weekly Budget sheet for its "how this adds up"
     // lines, which used to sit below the rows as a long sentence.
     const disclosureHtml = disclosure ? `<details class="sheet-disclosure"><summary>${esc(disclosure.label)}</summary><div class="sheet-rows">${disclosure.rows.map(([label, value]) => `<div><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('')}</div></details>` : '';
+    // Weekly-sheet-simple: an optional extra primary action rendered
+    // in the button row, below the rows and below the disclosure
+    // (the button row already follows both). When present, the
+    // confirm button drops to the plain treatment so two adjacent
+    // buttons never share the same color — the no-adjacent-duplicate
+    // button rule. Sheets without an extra action render exactly
+    // as before.
+    const extraHtml = extraAction ? `<button class="btn btn-primary" type="button" id="sheetExtra">${esc(extraAction.label)}</button>` : '';
     overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
       <h3>${esc(title)}</h3>${rowsHtml}${disclosureHtml}${message ? `<p>${esc(message)}</p>` : ''}
       ${inputHtml}
       <div class="sheet-btns">
         ${cancelLabel ? `<button class="btn" type="button" id="sheetCancel">${esc(cancelLabel)}</button>` : ''}
-        <button class="btn btn-primary" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
+        ${extraHtml}
+        <button class="btn${extraAction ? '' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
       </div></div>`;
     document.body.appendChild(overlay);
     // UX-review-fix, Show password (owner, Nov 3, 7:53 PM): every
@@ -2604,6 +2636,7 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     document.addEventListener('keydown', sheetKeyHandler);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) done(inputLabel ? null : false); });
     overlay.querySelector('#sheetCancel')?.addEventListener('click', () => done(inputLabel ? null : false));
+    overlay.querySelector('#sheetExtra')?.addEventListener('click', () => done(extraAction.result ?? 'extra'));
     overlay.querySelector('#sheetConfirm').addEventListener('click', () => {
       done(inputLabel ? document.getElementById('sheetInput').value : true);
     });
