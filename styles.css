@@ -496,9 +496,16 @@ body.live .bank-logo, body.live .bank-logo-tile { flex: 0 0 40px; width: 40px; h
    40px logo tile sat mid-block against a tall multi-account
    institution block. Only the logo tile inside .bank-row is
    pinned to the top, aligned with the institution name; the row's
-   own alignment (and the Disconnect button's place in it) is
-   unchanged, and transaction merchant tiles are untouched. */
+   own alignment is unchanged, and transaction merchant tiles are
+   untouched. */
 body.live .bank-row .bank-logo, body.live .bank-row .bank-logo-tile { align-self: flex-start; }
+/* Disconnect top-alignment (overnight audit C3, owner approved
+   Nov 4, 2026): the Disconnect button is the same story — it
+   floated mid-block against tall multi-account items, reading as
+   if it acted on whichever account line sat beside it. Scoped to
+   the danger button inside .bank-row only; the info column and
+   the row's own alignment are untouched. */
+body.live .bank-row .btn-danger { align-self: flex-start; }
 body.live .bank-logo-img { width: 100%; height: 100%; object-fit: contain; }
 body.live .sav-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 body.live .sav-grid > div { min-width: 0; }
@@ -539,11 +546,17 @@ body.live .btn-block { display: flex; width: 100%; }
    deep #1d4ed8) were too close in color. Tertiary is now a neutral
    grey — solid light-grey fill #e5e7eb with ink #0f172a text, from
    the grey family already used for card borders — clearly not blue,
-   clearly readable, solid fill, not an outline. Primary, secondary,
-   and btn-mid are unchanged. Both rules sit after the base .btn
-   rule, with #view-app scope. */
+   clearly readable, solid fill, not an outline. Primary and secondary
+   are unchanged. Both rules sit after the base .btn
+   rule, with #view-app scope.
+   AUDIT-FIXES-MORNING (owner, Nov 4, 2026, overnight audit A1):
+   btn-mid moves from mid blue #3b82f6 to dark ink fill #0f172a
+   with white text — distinct from primary blue, secondary pale
+   blue, and tertiary grey. NOT grey: in Funds actions it would sit
+   adjacent to the grey tertiary Ask button and create a true
+   duplicate pair. */
 body.live #view-app .btn-tertiary, body.live .btn-tertiary { background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; }
-body.live #view-app .btn-mid, body.live .btn-mid { background: #3b82f6; color: #fff; border: 1px solid #3b82f6; }
+body.live #view-app .btn-mid, body.live .btn-mid { background: #0f172a; color: #fff; border: 1px solid #0f172a; }
 /* C3: Funds balance cards side by side (stacked only on very narrow
    screens, so numbers never overflow at 320px). */
 body.live .fund-balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
@@ -741,10 +754,6 @@ body.live #sheetOverlay .sheet-rows > div > span:last-child { font-weight: 600; 
 body.live .password-row { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
 body.live .password-row input { flex: 1 1 auto; min-width: 0; margin-top: 0; }
 body.live .password-row .btn { flex: 0 0 auto; margin: 0; }
-/* Held-fund link under the Funds balance cards: shown only when a
-   held week exists; one button, no row adjacency to worry about. */
-body.live #fundHeldLinkWrap { margin-top: 12px; }
-body.live #fundHeldLinkWrap p { margin: 8px 0 0; }
 /* Possible-duplicates comparison cards: vertical, NOT a horizontal
    bank-row. Merchant on its own bold line (full name, wraps at word
    boundaries, never mid-word), labeled Amount/Date/Card/Source rows

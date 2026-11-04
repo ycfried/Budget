@@ -194,8 +194,8 @@ test('tertiary buttons are grey fill with ink text, distinct from primary and se
   assert.ok(secondary, 'secondary (base .btn) rule found');
   assert.match(secondary[0], /background: #bfdbfe/);
   assert.match(secondary[0], /color: #1e40af/);
-  // btn-mid is untouched.
-  assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #3b82f6; color: #fff;/);
+  // btn-mid is ink (audit-fixes-morning A1), not mid blue.
+  assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #0f172a; color: #fff;/);
 });
 
 test('no two adjacent buttons share a treatment after the tertiary change', () => {
@@ -213,8 +213,9 @@ test('no two adjacent buttons share a treatment after the tertiary change', () =
   const funds = html.slice(html.indexOf('id="section-fund-actions"'), html.indexOf('id="fundTopupsDisclosure"'));
   const fundBtns = [...funds.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());
   assert.deepEqual(fundBtns, ['btn-primary', '', 'btn-tertiary', 'btn-mid']);
-  // Settings Share/Change-password row: secondary, tertiary.
+  // Settings Account card: Share only (audit-fixes-morning B2
+  // deleted the duplicate Change password button).
   const acct = html.slice(html.indexOf('id="section-settings-account"'), html.indexOf('id="settingsDeleteBtn"'));
   const acctBtns = [...acct.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());
-  assert.deepEqual(acctBtns, ['', 'btn-tertiary']);
+  assert.deepEqual(acctBtns, ['']);
 });

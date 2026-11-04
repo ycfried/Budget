@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=29">
+<link rel="stylesheet" href="styles.css?v=30">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -269,7 +269,7 @@
     <div class="card" id="section-settings-head">
       <div class="btn-row"><button class="btn" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
       <h2>Settings</h2>
-      <p class="muted small" id="settingsIntro">Connections, Budget, and Account &amp; household. Bank and email connections moved here from Funds.</p>
+      <p class="muted small" id="settingsIntro">Connections, Budget, and Account &amp; household.</p>
     </div>
 
     <div class="card" id="section-profile">
@@ -336,10 +336,9 @@
 
     <div class="card" id="section-settings-account">
       <h2>Account &amp; household</h2>
-      <p class="muted small">Invite code, password, and account deletion live here now — not in the profile menu. Only the admin can share the invite code; members who need an admin-only change should ask the admin.</p>
+      <p class="muted small">Invite code and account deletion live here now — not in the profile menu. Only the admin can share the invite code; members who need an admin-only change should ask the admin.</p>
       <div class="btn-row">
         <button id="settingsShareIdBtn" class="btn" type="button" aria-label="Share the invite code">Share invite code</button>
-        <button id="settingsPasswordBtn" class="btn btn-tertiary" type="button" aria-label="Change your password">Change password</button>
       </div>
       <div class="danger-area">
         <h3>Delete account</h3>
@@ -367,10 +366,6 @@
           <div id="charitySummary"><p class="muted small">Loading charity…</p></div>
           <span class="fund-balance-chevron" aria-hidden="true">⌄</span>
         </div>
-      </div>
-      <div id="fundHeldLinkWrap" class="hidden">
-        <button id="fundHeldLinkBtn" class="btn btn-tertiary" type="button" aria-label="Open the Review queue for held money">Open Review queue</button>
-        <p class="muted small">Held money is waiting for the admin's review. Opening Review shows why each item is held and what releasing it would change.</p>
       </div>
     </div>
 
@@ -528,7 +523,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=38"></script>
+<script type="module" src="live.js?v=39"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

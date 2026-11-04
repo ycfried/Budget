@@ -88,6 +88,25 @@ function bankLogoHtml(name) {
   if (!domain) return `<span class="bank-logo-tile" aria-hidden="true">${initial}</span>`;
   return `<span class="bank-logo" aria-hidden="true"><img class="bank-logo-img" src="https://logo.clearbit.com/${domain}" alt="" loading="lazy" onerror="var p=this.parentNode;this.remove();p.textContent='${initial}';p.classList.add('bank-logo-tile');"></span>`;
 }
+// Plain-language account type for the Connected accounts list, DISPLAY
+// ONLY (overnight audit C2, owner approved Nov 4, 2026): Plaid's raw
+// type/subtype strings ("credit (credit card)", "depository
+// (checking)") are never rendered verbatim. Unknown types render
+// nothing at all, never a raw Plaid word. Nothing here is stored and
+// nothing touches classification, matching, or week math.
+function plainAccountType(type, subtype) {
+  const t = String(type || '').trim().toLowerCase();
+  const s = String(subtype || '').trim().toLowerCase();
+  if (t === 'credit') return 'Credit card';
+  if (t === 'depository') {
+    if (s === 'checking') return 'Checking';
+    if (s === 'savings') return 'Savings';
+    return 'Bank account';
+  }
+  if (t === 'loan') return 'Loan';
+  if (t === 'investment') return 'Investment';
+  return '';
+}
 // Transaction state pill: 'reversed' renders as Reversed, never Posted.
 function statePill(t, excluded) {
   if (excluded) return '<span class="pill warn">Excluded</span>';
@@ -1056,7 +1075,8 @@ async function refresh() {
           for (const acct of accts) {
             const line = document.createElement('div'); line.className = 'muted small';
             const nick = nicknameByAccount.get(`${item.plaid_item_id}|${acct.plaid_account_id}`);
-            line.textContent = `${nick ? `${nick} · ` : ''}${acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}${acct.type ? ` · ${acct.type}` : ''}${acct.subtype ? ` (${acct.subtype})` : ''}`;
+            const typeLabel = plainAccountType(acct.type, acct.subtype);
+            line.textContent = `${nick ? `${nick} · ` : ''}${acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}${typeLabel ? ` · ${typeLabel}` : ''}`;
             info.appendChild(line);
             // R3: nickname editing lives in Settings, admin-only, via
             // the RPC (never a direct table write).

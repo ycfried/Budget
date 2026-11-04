@@ -25,8 +25,8 @@ test('button levels are three distinct blues plus grey tertiary, no grey seconda
   // is now solid neutral grey fill with ink text, with #view-app
   // scope. The secondary fill above is still pale blue, not grey.)
   assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{ background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; \}/);
-  // Fourth treatment for four-button rows (formerly outline, now solid mid, never white/pale).
-  assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #3b82f6; color: #fff; border: 1px solid #3b82f6; \}/);
+  // Fourth treatment for four-button rows (formerly outline, now solid ink, never white/pale).
+  assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #0f172a; color: #fff; border: 1px solid #0f172a; \}/);
   // Sort select matches the secondary button, not the old grey.
   assert.match(css, /body\.live #txSortField \{ background: #bfdbfe;[^}]*color: #1e40af; \}/);
 });
@@ -50,9 +50,12 @@ test('transaction detail rows: no adjacent duplicate treatment', () => {
   assert.ok(js.includes('<button class="btn btn-small btn-primary" data-restore='));
 });
 
-test('Settings account row: Share (secondary) vs Change password (tertiary)', () => {
+test('Settings account row: Share only; Change password lives in the Profile card', () => {
   assert.ok(html.includes('<button id="settingsShareIdBtn" class="btn"'));
-  assert.ok(html.includes('<button id="settingsPasswordBtn" class="btn btn-tertiary"'));
+  // Audit-fixes-morning B2: the Account card's duplicate Change
+  // password button is deleted; the Profile card's is the only one.
+  assert.equal(html.includes('id="settingsPasswordBtn"'), false);
+  assert.ok(html.includes('id="profilePasswordBtn"'));
 });
 
 // --- Funds balance cards: tap + face -----------------------------------
