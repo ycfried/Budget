@@ -295,16 +295,20 @@ async function refresh() {
   // full_name / name, then email — so a metadata name already flows
   // into audit actor names as the trigger's second preference.
   const displayName = s?.user?.user_metadata?.full_name || s?.user?.user_metadata?.name || '';
-  const pn = document.getElementById('profileName'); if (pn) pn.textContent = displayName || s?.user?.email || '—';
+  // Profile-menu rework (owner, Nov 3, ~11:20 PM): the menu header
+  // shows the FIRST NAME only (first whitespace token; a string with
+  // no space, e.g. the email fallback, is shown unchanged) with the
+  // role pill inline beside it, and the user's email below in small
+  // muted text. hideDupEmail() keeps the email from printing twice
+  // when the header itself fell back to the email. The role-wording
+  // paragraph is gone entirely, and there is no Edit-profile row:
+  // profile editing lives in the Settings Profile card.
+  const headerName = (displayName || s?.user?.email || '—').split(/\s+/)[0] || '—';
+  const pn = document.getElementById('profileName'); if (pn) pn.textContent = headerName;
   hideDupEmail();
-  const editBtn = document.getElementById('menuEditProfileBtn'); if (editBtn) editBtn.textContent = displayName ? 'Edit profile' : 'Add your name';
   const pni = document.getElementById('profileNameInput'); if (pni && document.activeElement !== pni) pni.value = displayName;
   const pei = document.getElementById('profileEmailInput'); if (pei && document.activeElement !== pei && s?.user?.email) pei.value = s.user.email;
-  const pr = document.getElementById('profileRole'); if (pr) pr.textContent = household.role;
-  const ph = document.getElementById('profileHousehold');
-  if (ph) ph.textContent = household.role === 'admin'
-    ? 'Admin — you manage this household\'s settings and money.'
-    : 'Member — you can view the budget and ask for fund money. Ask the admin for changes.';
+  const pr = document.getElementById('profileRole'); if (pr) pr.textContent = household.role ? household.role.charAt(0).toUpperCase() + household.role.slice(1) : '—';
   const token = s?.access_token ?? '';
   // Week numbers from the server (FINAL-spec contract). The client sends
   // ONLY household_id — never D, T, or R_in — and never chains any credit:
@@ -1815,13 +1819,20 @@ $('signUpBtn').addEventListener('click', async () => {
   // before calling Supabase, instead of the generic failure. The
   // 8-character minimum is surfaced, not changed.
   const fail = (msg, field) => { $('authMsg').textContent = msg; if (field) field.focus(); if (btn) { btn.disabled = false; btn.textContent = 'Create account'; } };
-  const signEmail = $('authEmail'); const signPw = $('authPassword');
+  const signEmail = $('authEmail'); const signPw = $('authPassword'); const signName = $('authName');
   if (!signEmail?.value.trim()) { fail('Enter an email address to create an account.', signEmail); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signEmail.value.trim())) { fail('Enter a valid email address.', signEmail); return; }
+  // Sign-up name requirement (owner, Nov 3, ~11:22 PM): a new
+  // account must set a name at sign-up, so the profile header has
+  // a display name immediately. Empty name fails here, before any
+  // Supabase call, with a named error and focus on the Name field.
+  // Sign-in ignores the Name field entirely.
+  if (!signName?.value.trim()) { fail('Enter a name for your new account.', signName); return; }
   if (!signPw?.value) { fail('Enter a password of at least 8 characters.', signPw); return; }
   if (signPw.value.length < 8) { fail('Password must be at least 8 characters.', signPw); return; }
   const { error } = await supabase.auth.signUp({
     email: signEmail.value.trim(), password: signPw.value,
+    options: { data: { full_name: signName.value.trim() } },
   });
   if (error) console.warn('sign-up failed:', error.message);
   $('authMsg').textContent = error ? 'Could not create the account. Try again.' : 'Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.';
@@ -2310,26 +2321,23 @@ document.getElementById('menuSettingsBtn')?.addEventListener('click', () => {
   document.getElementById('profileMenu')?.classList.add('hidden');
   showView('settings');
 });
-// UX-review-fix, Edit profile: the menu row opens Settings and
-// scrolls to the Profile card (chosen over a separate sheet so the
-// name, email, and password controls live in one place, next to the
-// account controls they relate to). Membership, roles, invite, and
-// deletion logic are untouched.
-document.getElementById('menuEditProfileBtn')?.addEventListener('click', () => {
-  document.getElementById('profileMenu')?.classList.add('hidden');
-  document.getElementById('profileBtn')?.setAttribute('aria-expanded', 'false');
-  showView('settings');
-  document.getElementById('section-profile')?.scrollIntoView({ block: 'start' });
-  document.getElementById('profileNameInput')?.focus();
-});
+// Profile editing lives only in the Settings Profile card
+// (owner, Nov 3, ~11:20 PM): the avatar menu has no Edit-profile
+// row. The Settings row opens the Settings view, where the
+// Profile card sits. Membership, roles, invite, and deletion logic
+// are untouched.
 document.getElementById('saveProfileNameBtn')?.addEventListener('click', async () => {
   const input = document.getElementById('profileNameInput');
   const name = input?.value.trim() ?? '';
   if (!name) { showToast('Enter a name to save.', true); input?.focus(); return; }
   const { error } = await supabase.auth.updateUser({ data: { full_name: name } });
   if (error) { console.warn('profile name save failed:', error.message); showToast('Could not save your name. Try again.', true); return; }
-  const pn = document.getElementById('profileName'); if (pn) pn.textContent = name;
-  const editBtn = document.getElementById('menuEditProfileBtn'); if (editBtn) editBtn.textContent = 'Edit profile';
+  // Menu header shows the first name only (see refresh()).
+  const pn = document.getElementById('profileName'); if (pn) pn.textContent = name.split(/\s+/)[0] || name;
+  // A name is now set, so the header no longer falls back to the
+  // email — the email line below it must show (it was hidden by
+  // the no-duplication rule while no name was set).
+  document.getElementById('profileEmail')?.classList.remove('hidden');
   showToast('Name saved — it now shows in your profile.');
 });
 document.getElementById('saveProfileEmailBtn')?.addEventListener('click', async () => {
@@ -2361,21 +2369,15 @@ document.getElementById('settingsBackBtn')?.addEventListener('click', () => show
 async function openWeeklySheet() {
     const w = currentWeekData;
     if (!w) { await showAlert('Weekly Budget', 'Weekly numbers are not loaded yet. Try again in a moment.'); return; }
-    // Weekly-sheet-trim (owner correction, Nov 3, ~9:59 PM,
-    // supersedes the PR #21 disclosure design): the sheet contains
-    // ONLY the basic stuff — Left, Spent, Allowance, in that order,
-    // same values and formatting as before — plus the "Show
-    // transactions" button below. The disclosure and every detail
-    // row it held (Base spending room,
-    // dated/late split, carried debt, temporary increase, outgoing
-    // debt, week status, pending refunds) are REMOVED from the
-    // Weekly sheet entirely, not hidden behind a tap and not moved
-    // elsewhere in the sheet. No figure changes: the three rows
-    // above are computed exactly as before.
+    // Weekly-left-only (owner approval, Nov 3, ~11:20 PM):
+    // the sheet contains exactly ONE row — Left, same value and
+    // formatting as before — plus the "Show transactions" button
+    // below. Spent and Allowance are REMOVED from the popup:
+    // balances, not spent totals, are what shows, and allowance
+    // lives in Settings for the admin. No figure change: the Left
+    // value is computed exactly as before.
     const weeklyRows = [
       ['Left', formatCents(w.availableCents)],
-      ['Spent', formatCents(w.chargesCents)],
-      ['Allowance', formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)],
     ];
     const weeklyResult = await showSheet({ title: 'Weekly Budget', rows: weeklyRows, extraAction: { label: 'Show transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
     // Weekly-sheet-simple: "Show transactions" closes the sheet and

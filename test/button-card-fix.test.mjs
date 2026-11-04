@@ -15,13 +15,16 @@ const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
 // --- Three blues -------------------------------------------------------
 
-test('button levels are three distinct blues, no grey secondary fill', () => {
+test('button levels are three distinct blues plus grey tertiary, no grey secondary fill', () => {
   // Primary: strong blue fill, white text.
   assert.match(css, /body\.live #view-app \.btn-primary, body\.live \.btn-primary \{ background: #2f6bff; color: #fff;/);
   // Secondary (base .btn): pale light blue fill, dark-blue text.
   assert.match(css, /body\.live #view-app \.btn, body\.live \.btn \{ background: #bfdbfe; border: 0; color: #1e40af;/);
-  // Tertiary (UX-review-fix: owner rejected the pale tint): solid deep fill, white text, with #view-app scope.
-  assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{ background: #1d4ed8; color: #fff; border: 1px solid #1d4ed8; \}/);
+  // Tertiary (SUPERSEDED Nov 3, ~11:23 PM, owner Bank-card feedback:
+  // the deep blue was too close to primary/secondary, so tertiary
+  // is now solid neutral grey fill with ink text, with #view-app
+  // scope. The secondary fill above is still pale blue, not grey.)
+  assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{ background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; \}/);
   // Fourth treatment for four-button rows (formerly outline, now solid mid, never white/pale).
   assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #3b82f6; color: #fff; border: 1px solid #3b82f6; \}/);
   // Sort select matches the secondary button, not the old grey.

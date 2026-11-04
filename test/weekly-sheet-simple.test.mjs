@@ -1,11 +1,14 @@
 // Weekly-sheet-trim (owner correction, Nov 3, ~9:59 PM, supersedes
-// the PR #21 disclosure design): the Weekly popup contains EXACTLY
-// Left, Spent, Allowance plus the "Show transactions" button. The
-// "Show how this adds up" disclosure and every detail row it held
-// are GONE from the Weekly sheet — not hidden behind a tap, not
-// moved elsewhere in the sheet. Static tests only — no live data,
-// no network, no money math. Values and formatting are unchanged;
-// only the sheet's contents change.
+// the PR #21 disclosure design), as narrowed by weekly-left-only
+// (owner approval, Nov 3, ~11:20 PM): the Weekly popup contains
+// EXACTLY one row — Left — plus the "Show transactions" button.
+// Spent and Allowance were removed from the popup: balances, not
+// spent totals, are what shows, and allowance lives in Settings
+// for the admin. The "Show how this adds up" disclosure and every
+// detail row it held are GONE from the Weekly sheet — not hidden
+// behind a tap, not moved elsewhere in the sheet. Static tests only
+// — no live data, no network, no money math. Values and formatting
+// are unchanged; only the sheet's contents change.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -26,9 +29,9 @@ const visible = sheetFn.slice(
   sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')),
 );
 
-test('Weekly sheet visible rows are exactly Left, Spent, Allowance, in order', () => {
+test('Weekly sheet visible rows are exactly Left, alone', () => {
   const labels = [...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ['Left', 'Spent', 'Allowance']);
+  assert.deepEqual(labels, ['Left']);
 });
 
 test('no detail row appears anywhere in the Weekly sheet', () => {

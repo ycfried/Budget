@@ -54,8 +54,11 @@ test('hero aria-label keeps its words for screen readers only', () => {
 });
 
 test('Weekly sheet rows and buttons are otherwise unchanged', () => {
-  assert.match(sheetFn, /\['Spent', formatCents\(w\.chargesCents\)\]/);
-  assert.match(sheetFn, /\['Allowance', formatCents\(w\.baseAllowanceCents/);
+  // Weekly-left-only (owner approval, Nov 3, ~11:20 PM): Spent and
+  // Allowance are gone from the popup; only Left remains, plus the
+  // Show transactions button and Close.
+  assert.doesNotMatch(sheetFn, /\['Spent', formatCents\(w\.chargesCents\)\]/);
+  assert.doesNotMatch(sheetFn, /\['Allowance', formatCents\(w\.baseAllowanceCents/);
   assert.match(sheetFn, /extraAction: \{ label: 'Show transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
 });

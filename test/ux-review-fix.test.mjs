@@ -48,23 +48,26 @@ test('boot shows the current view before refresh, and refresh re-shows on failur
 });
 
 // --- Buttons: solid colors, no adjacent duplicates ---------------------
-test('button levels are four solid blues, no pale tint or white outline', () => {
-  assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{ background: #1d4ed8; color: #fff; border: 1px solid #1d4ed8; \}/);
+test('button levels are solid colors, no pale tint or white outline', () => {
+  // Tertiary (SUPERSEDED Nov 3, ~11:23 PM, owner Bank-card feedback):
+  // solid neutral grey, not the former deep blue, never the rejected
+  // pale tint or a white outline.
+  assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{ background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; \}/);
   assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #3b82f6; color: #fff; border: 1px solid #3b82f6; \}/);
-  // The btn-tertiary RULE itself (not comments elsewhere) is deep blue, never the rejected tint.
+  // The btn-tertiary RULE itself (not comments elsewhere) is grey, never the rejected tint.
   const tertiaryRule = css.split('\n').find((l) => l.includes('.btn-tertiary {'));
-  assert.ok(tertiaryRule && tertiaryRule.includes('#1d4ed8') && !tertiaryRule.includes('#eef4ff'), tertiaryRule);
+  assert.ok(tertiaryRule && tertiaryRule.includes('#e5e7eb') && !tertiaryRule.includes('#eef4ff'), tertiaryRule);
   // No btn-outline RULE or usage remains (the name survives only in
   // CSS comments explaining the rename to btn-mid).
   assert.doesNotMatch(css, /btn-outline\s*\{/);
   assert.doesNotMatch(html, /btn-outline/);
   assert.doesNotMatch(js, /btn-outline/);
-  // Funds actions: primary, pale, deep, mid — all different.
+  // Funds actions: primary, pale, grey, mid — all different.
   assert.ok(html.includes('<button class="btn btn-primary" id="fundActionAddBtn"'));
   assert.ok(html.includes('<button class="btn" id="fundActionUseBtn"'));
   assert.ok(html.includes('<button class="btn btn-tertiary" id="fundActionAskBtn"'));
   assert.ok(html.includes('<button class="btn btn-mid" id="fundActionIncomeBtn"'));
-  // Detail: Mark (tertiary deep) vs Use Fund (mid) are different.
+  // Detail: Mark (tertiary grey) vs Use Fund (mid) are different.
   assert.ok(js.includes('class="btn btn-small btn-tertiary" data-mark-charity='));
   assert.ok(js.includes("class=\"btn btn-small btn-mid\""));
 });
@@ -93,9 +96,14 @@ test('sign-in: primary Sign in, password toggle, recovery copy on failure', () =
   assert.ok(html.includes('New to OnBudget?'));
 });
 
-test('profile menu shows a name header with an Edit profile row', () => {
+test('profile menu shows a name header; profile editing lives in Settings, not the menu', () => {
   assert.ok(html.includes('id="profileName"'));
-  assert.ok(html.includes('id="menuEditProfileBtn"'));
+  // Weekly-left-only-profile-menu (owner, Nov 3, ~11:20 PM): the
+  // Edit-profile row is gone from the avatar menu; the Settings
+  // Profile card itself is unchanged.
+  assert.equal(html.includes('id="menuEditProfileBtn"'), false);
+  assert.ok(html.includes('id="menuSettingsBtn"'));
+  assert.ok(html.includes('id="signOutBtn"'));
   assert.ok(html.includes('id="section-profile"'));
   assert.match(js, /user_metadata\?\.full_name \|\| s\?\.user\?\.user_metadata\?\.name/);
   assert.match(js, /supabase\.auth\.updateUser\(\{ data: \{ full_name: name \} \}\)/);
