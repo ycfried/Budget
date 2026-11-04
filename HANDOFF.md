@@ -948,3 +948,504 @@ built (owner decision Nov 3 stands). History relocation stays.
   light blue vs tint), Funds card tap (chevron, Enter/Space, sheet
   completeness), fund face at 32px with long amounts, headings at
   800 across Home/Transactions/Funds/sheets.
+
+## Addendum — ux-review-fix (Nov 3, 2026, evening; UNMERGED branch, NOT live)
+
+Branch `ux-review-fix`, from origin/main 86557cf (PR #15, live.js v28 /
+styles v19). This package is live.js v29 / styles v20 in live.html.
+Owner approved the package by 👍 to the triage message; every owner
+update below was folded into the same branch before finishing. HARD
+STOPS HONOURED: no merge, no PR, no SQL applied to production, no
+writes to the owner's real household, the live app was never loaded
+signed in as the owner, no ios/ or workflow files, no secrets or
+real-household UUIDs in the diff, no money/week/allowance/
+authorization changes, no figure changes — only displayed labels,
+states, layout, and action gating where the review explicitly
+corrects them.
+
+### Fixed in this package
+
+P1 — transfer gating: Use Extra Fund is offered only when
+`qualifiesForFund = t.kind === 'charge'` (admin detail row, member
+detail row, plus a defensive handler gate that shows "Does not
+qualify" and returns). Mark as charity was already gated to charges.
+Reclassify stays on every row (it corrects misclassification).
+Payment and cashback rows: same gating applies — they are not
+charges, so they no longer offer Use Extra Fund either. SERVER
+FINDING (report, not changed): `supabase/02-rls-hardening.sql`
+`validate_fund_request_txn()` + trigger only check the linked
+transaction belongs to the household and the request is pending; it
+does NOT check kind. Client gating is currently the only kind check;
+a server-side kind guard needs a SQL change and is deferred.
+P1 — charity Home card: success path now sets the signed number
+(`formatCents(remaining)` — a confirmed $0.00, never "—"). The dash
+remains only for loading and for failed loads. Period/rate stay in
+the detail sheet.
+P1 — weekly kicker: hero kicker is now "This week · <weekLabel>"
+(neutral; the weekLabel itself is the date range), and the sentence
+"If the big number is negative, you're over this week's budget." was
+removed from the hero paragraph.
+P2 — held money: new `#fundHeldLinkWrap` / `#fundHeldLinkBtn` under
+the Funds balance cards, hidden unless a held week exists, reading
+e.g. "Held for review: $X across N weeks — Open Review queue".
+Tapping opens Funds, expands the Review section, and scrolls to it.
+The Fund breakdown sheet Held row ends with "— open the Review queue
+under the Funds cards". Held/restoration logic untouched.
+P2 — bank connections: accounts were already grouped under each
+connection. Added "Connected <date>" per block and Disconnect
+identification by masked accounts in the button aria-label and the
+confirmation ("Disconnect American Express (••1005, ••1636)? The app
+will stop syncing this connection only. Past transactions stay in
+the list, and other connections are untouched."). Disconnect server
+behaviour unchanged.
+P3 — sign-in: Sign in primary, Create account secondary-pale and
+stacked with a "New to OnBudget?" line above it; password visibility
+toggle added (see Show password); failure message now ends with
+"If you forgot the password, use Forgot password? below to reset it."
+(generic, privacy-safe, direct recovery action). Pending/retry
+states already present, kept.
+P3 — forgot/reset: forgot sheet now gives the clear sequence (enter
+email, check inbox, choose password, return to sign-in, fresh link
+if expired). reset.html now has step-3 sequence copy and password
+requirements beside the field before submission. Change-password
+sheet message now includes "Password requirement: at least 8
+characters."
+P3 — profile menu: household line in plain language (admin /
+member wording), Settings and Sign out rows, menu closes on
+destination open, outside-click resets aria-expanded, Escape closes
+the menu and returns focus to the profile button. Focus return on
+destination-open is not separately implemented (the destination
+takes focus).
+P3 — history: location kept (View history on Home, same for both
+roles; no History tab by design). Settings Back returns to
+`previousView`. Scroll-position/filters restore on return from a
+detail view is NOT implemented as new state machinery — transaction
+detail is inline (expand/collapse in place), so there is no return
+navigation to restore; tab switches intentionally scroll to top via
+showView. Reported as a limitation, not claimed.
+P3 — transactions: entry is one Add action with three choices (Add
+by hand / Import CSV / Give to charity) plus the Transactions-header
+Add button, which opens the same choice card (not a duplicate
+form). Recent items on Home now jump to Transactions AND expand
+that row's detail (`data-recent-tx`, `openRecent`, awaits refresh
+if stale, then unhides the detail, adds .open, scrolls into view;
+keyboard Enter/Space works). Detail is the way back (tap the row
+header to collapse). Count line now ends with "· search covers
+loaded rows only" (in addition to "total of the rows shown" and
+Load-more guidance).
+P3 — filter sheet keyboard: Escape closes it (like Cancel,
+preserving applied filters via the existing snapshot restore),
+Enter on Cancel closes it without submitting (Cancel is a plain
+button, never a submit — verified), focus moves inside on open,
+Tab stays inside (new keydown trap), Cancel preserves applied
+filters (existing snapshot restore, verified), focus returns to the
+Filters button on Escape close. Scope is the filter sheet ONLY.
+P3 — transaction detail: reordered to What it is / What week /
+Whether it counts first (title, impact paragraph, then Week, Date,
+Status, Card, Source rows; source metadata below). Email-alert rows
+get a provisional/confirmed line.
+P3 — manual entry: form boundary already exists (choice card vs
+form, one form at a time); Back keeps draft, Cancel clears
+(existing rule, verified, plus Cancel now also hides the new inline
+error). Field errors now sit beside the form
+(`#manualFormError`, role=alert, above the buttons): amount failure
+→ "Amount: enter a positive amount." + focus amount; suffix failure
+→ "Card suffix: enter exactly 4 digits. Never enter a full card
+number." + focus suffix. Duplicate warning stays a dialog (it is a
+decision, not a field error). Gift-form field errors remain dialogs
+— deferred, same pattern, not yet done.
+P3 — CSV import: preview rows now numbered; sample row added to
+the card; preview copy now says it numbers each row, flags
+duplicates, and shows any row it could not read. Sequence
+(choose → preview → confirm → receipt toast) already existed.
+P3 — charity entry/reclassification: Record a gift (form) vs Mark
+as charity (row button) already separate; mark-as-charity
+confirmation already previews the effect and warns part-gifts are
+not supported. No change beyond fund gating and detail wording.
+P3 — Exclude/Restore/Remove/Delete/Reclassify: distinct labels and
+placement already existed (Restore primary first on excluded rows,
+Reclassify secondary, Delete for hand-entered / Remove for
+bank/email/file last and destructive red; Exclude/Remove sheets
+state the record stays and stops counting, with a required reason;
+Delete confirmation shows merchant + amount + "cannot be undone").
+No change except fund gating.
+P3 — funds forms and request detail: Add money preview (split,
+owed-back first) and success toast already existed; Use fund money
+card now has an intro (spending from the Extra Fund itself — lowers
+the fund balance, never allowance or debt); Ask card now says
+requests can be tracked in the Fund requests list. Request detail
+now shows Requested, Fund available now, Approved (requested −
+remainder for splits, in full for approvals), remainder + "needs a
+new request", Note, Requested date, and a pending tracking
+sentence. Success states already say what changed.
+P3 — charity income and rate: preview now says whether the rate is
+this-entry-only or the default applied to this entry. Rate-form
+success toast already says "for future incomes." Income save toast
+already states the commit amount and, for corrections, that the old
+entry stays marked reversed.
+P3 — history/settings: week blocks already have date headings and
+consistent Carry-in / Surplus / Debt carried out / Release labels,
+with "not recorded" never $0. History period line already near
+results; Clear button relabeled "Clear date filter". Email card
+already separates status, last checked, and last error, and its
+intro already says alert-derived transactions stay provisional
+until the bank confirms them. Allowance change sheet now previews
+old → new PLUS effective scope ("This applies from the current
+week onward (week of …). It does not rewrite closed weeks.");
+temp-increase toast now says "Temporary increase added for this
+week only (week of …)." Member Settings intro already role-aware;
+Settings Account card intro now adds "Only the admin can share the
+invite code; members who need an admin-only change should ask the
+admin." Invite copy success state already existed. Password
+requirements beside fields: change-password sheet + reset page.
+Deletion already in a visually separate danger area with two-step
+confirmation stating it removes only the member or, if last
+member, the entire household, and "cannot be undone."
+P3 — past savings: "attestation" wording removed from user-facing
+copy. `savingsSummary` now renders: no rows → one plain message
+("No past savings records yet — these old records are separate
+from the Extra Fund, which is the savings story now."); rows but
+no recorded balance → "Past savings records exist, but no balance
+was ever recorded for them — that is a missing balance, not $0."
+The `savingsList` empty branch now renders empty — ONE empty
+message only, in the summary. No SQL change; savings_ledger rows
+untouched.
+P3 — visual polish: consistent headings/cards/dividers/chevrons/
+badges already existed; button treatments are the four solid blues
+below; tabular figures / currency grouping already existed;
+zero/missing/pending/over-budget labels already distinct. No new
+colors outside the existing palette.
+
+ITEM A — blank app shell (owner, Nov 3, 7:48 PM, live v28): root
+cause verified in code — `#view-app > .card { display: none; }`
+until showView runs, and showView only ran late inside refresh()
+after the transactions/fund/charity/bank/email reads. Fix: boot()
+now calls showView(currentView) immediately after show('app'),
+BEFORE refresh(), so cards with their existing "Loading…"
+placeholders appear instantly; the loading screen is kept until
+that point, never a blank shell. refresh()'s finally block now
+also re-runs showView(currentView) (guarded, household present),
+so a single failed read cannot blank the page — a failed section
+shows its own inline error + the placeholders, not a hidden page.
+No refresh data logic, week math, or sync behaviour changed.
+STILL DEPENDS ON NETWORK SPEED: placeholders are instant, figures
+are not. Create/join handlers were NOT changed (boot is the
+reported fix).
+
+ITEM B — possible duplicates list (owner, Nov 3, 7:49 PM): each
+pair is now a vertical comparison card (`.dedupe-card`), NOT a
+horizontal bank-row. Structure: merchant on its own bold line
+(full name, `overflow-wrap: break-word`, `word-break: normal`,
+never mid-word truncation, no "·" paragraph), then labeled rows
+Amount / Date / Card / Source / Counts (like transaction detail
+rows), Keep and Possible duplicate stacked on phone and
+side-by-side only at ≥640px (`.dedupe-pair` grid), a one-line
+match summary on top when fields match (e.g. "Match: same amount,
+same date, same card.", otherwise "Compare the two records
+below."), Same purchase / Separate in a button row BELOW the
+comparison (primary vs secondary, no adjacent duplicates, as
+before), and the "Remember as same merchant" checkbox BELOW the
+buttons with a plain explanation ("remembers these two merchant
+names as the same for future review, so similar pairs are treated
+as the same merchant next time."). No duplicate resolution logic,
+RPCs, or flagging changed — presentation only.
+
+BUTTON COLORS (owner, Nov 3, 7:50 PM, live v28): the two circled
+styles are replaced APP-WIDE, not just Funds actions. Tertiary
+tint #eef4ff and outline white/blue are gone as button levels.
+New treatments, drawn from the existing brand palette, no new
+colours: primary #2f6bff fill (kept, looks good), secondary pale
+#bfdbfe fill / #1e40af text (kept, looks good), tertiary = solid
+deep #1d4ed8 fill, white text, fourth treatment = solid mid
+#3b82f6 fill, white text, class renamed `btn-outline` →
+`btn-mid` (old name survives only in CSS comments explaining the
+rename). Assignment is SWAPPED from the first draft on purpose:
+mid #3b82f6 sits only one step lighter than primary #2f6bff and
+would blur against it, so tertiary (the widely used third level)
+takes deep #1d4ed8, which is unmistakably darker than primary,
+and the fourth treatment takes mid. The fourth treatment never
+sits next to primary in any row. Tertiary selector still includes
+#view-app (the v27 border fix's root cause — the unscoped selector
+lost to `#view-app .btn` — stays fixed). No grey, pale tint, or
+white outline remains as a button level. Button-row audit (DOM
+order, all neighbours differ): Funds actions Add primary / Use
+secondary-pale / Ask tertiary-deep / Record btn-mid; Add choices
+Add primary / Import secondary-pale / Give tertiary-deep;
+transaction detail admin (charge) Exclude secondary-pale / Mark
+tertiary-deep / Use fund btn-mid / Reclassify secondary-pale
+(separated from Exclude by two buttons) / Remove danger;
+transaction detail excluded Restore primary / Reclassify
+secondary-pale / Remove danger; filter sheet Apply primary /
+Reset secondary-pale / Cancel tertiary-deep; Settings bank row
+Connect primary / Sync secondary-pale / Enable automatic sync
+tertiary-deep; Settings account row Share secondary-pale / Change
+password tertiary-deep; dedupe cards Same primary / Separate
+secondary-pale; held link button single, no row adjacency;
+profile card buttons stacked vertically, primary / secondary-pale
+/ tertiary-deep in order; sheet password toggle alone beside its
+input; reset toggles alone beside their inputs; auth toggle alone
+beside the sign-in password field.
+
+ITEM C — Funds card chevrons (owner, Nov 3, 7:51 PM): chevron spans
+moved out of `.fund-balance-head` (head is now just the `<h2>`)
+to the bottom of each panel, after the summary div:
+`<span class="fund-balance-chevron" aria-hidden="true">⌄</span>`.
+CSS: `align-self: flex-end; margin-top: auto; padding-top: 8px;`
+(panel is a flex column, so margin-top:auto pushes it to the
+bottom), colour #2f6bff, weight 700, size 22px. Tap behaviour
+unchanged (whole panel is the tap target, same size and aria-label
+"Show Extra Fund breakdown" / "Show Charity breakdown"). Home stat
+cards have NO chevron pattern (kicker + num only) — left alone,
+as instructed.
+
+ITEM D — too much bold (owner, Nov 3, 7:51 PM): audit was under
+`body.live` only (demo/global styles at the top of styles.css
+untouched). Weight map applied (sizes, colours, layout unchanged,
+except weight): figures (hero `.big`, stat `.num`, fund
+`.fund-balance`) 800, kept — the dominant element of their card;
+headings (h1/h2/h3, topbar strong) 800 → 700; buttons (base
+`.btn`), nav labels, chips, sort select, filter labels, sheet
+subheads, disclosure summaries, menu rows, role pill 700 → 600;
+detail/sheet/week/dedupe values, merchant names, row amounts, bank
+names 700/800 → 600 (plus new overrides `.tx-line1.tx-name`,
+`.tx-line1.tx-amount`, `.bank-info strong` at 600); icon/letter
+tiles 800 → 700; fund chevron 800 → 700; body text, labels (already
+600), secondary lines, kickers (600, 12px grey) unchanged. After
+the pass, the only `font-weight: 800` rules under `body.live` are
+the three figure rules — verified by grep. Residual: `<strong>`
+elements rendered by live.js templates still render at the browser
+default (~700) unless a specific override exists; the pass did not
+chase every `<strong>`.
+
+WEEKLY SHEET paragraph (owner, Nov 3, 7:52 PM): put BEHIND A TAP,
+not removed outright — because Base spending room is not itself a
+labeled row above (Allowance, Carried debt, Temp, Spent, Left,
+Outgoing are rows, but Base room = Allowance − Carried floored at
+$0 is computed), so outright removal would lose that computed
+figure from the sheet. `showSheet` now accepts an optional
+`disclosure` param `{ label, rows }`, rendered as a
+`<details class="sheet-disclosure">` (label + amount rows only,
+never a paragraph; collapsed by default). The Weekly Budget sheet
+call now passes `disclosure: { label: 'Show how this adds up',
+rows: [['Base spending room', …], ['Left', …], ['Outgoing debt',
+…]] }` and NO message paragraph. No new figure, no row value
+change, no week math change. The hero "Available this week" kicker
+in the same screenshot is already covered by the weekly-kicker
+item — no duplicate work was done in the sheet code for it.
+
+HOME STAT CARDS numbers-only (owner, Nov 3, 7:53 PM): applied to
+ALL Home stat cards (Weekly Budget, Charity, Extra Fund),
+matching the Funds-card face rule: at first glance a stat card
+shows Title + Amount only, no sentence figure and no secondary
+sentence on the face. Weekly: figure is the signed number alone
+via `formatCentsHtml(avail)` — "-$4,058.42" in red when over
+budget (`.stat-card.num.negative { color: var(--soft-red); }`,
+same soft red as the hero big figure), plain number in ink/black
+when under budget. Charity: figure is the signed number via
+`formatCents(remaining)` — $0.00 when confirmed zero, signed
+negative when given exceeds committed. Extra Fund: figure was
+already amount-only; the secondary line is now removed from the
+face. Secondary divs were REMOVED from the three stat cards in
+live.html (`homeWeeklySecondary`, `homeFundSecondary`,
+`homeCharitySecondary` no longer exist; zero references in
+live.js/live.html). All JS assignments to those elements were
+removed or replaced; `clearWeekNumbers` secondary assignments were
+removed (primary dash assignments kept). Words and secondary
+lines moved to the tap sheets, which already carry the breakdowns
+(Weekly rows, Charity rows, Fund rows), PLUS the hero progress
+sentence: `weekProgressText` is now always set to empty (bar
+itself remains, no words); locked status and pending-refund
+status moved into the Weekly sheet as conditional rows
+(`['Week status', 'Locked']` when `weekLocked`,
+`['Pending refunds excluded', …]` when >0). Spent/room/carried/
+over figures were already Weekly sheet rows. Accessibility
+guardrail: each card's `aria-label` still says the words, set
+dynamically in JS (e.g. Weekly: "Weekly Budget, over budget by
+$4,058.42, show breakdown"; Charity: "Charity, no charity tracked
+yet, show breakdown" / "Charity, ahead by $X, show breakdown" /
+"Charity, $X remaining, $Y given, $Z committed, show breakdown";
+Fund: "Extra Fund, $X spendable now / available to request, [$Y
+pending / $Z owed back], show breakdown"; failure states:
+"could not load" variants). Visual face is numbers-only,
+accessible name keeps the words. Funds charity face consistency:
+Funds charity panel figure was also changed from "Ahead by $X" to
+the signed number `formatCents(remaining)`, with its panel
+aria-label updated to "Show Charity breakdown, ahead by $X" /
+"Show Charity breakdown, $X remaining". No figure or math change
+anywhere in this item.
+
+ITEM E — profile name (owner, Nov 3, 7:53 PM): profile menu head
+is now the user's name as the large header
+(`#profileName`, 18px/700), email below in smaller muted text
+(14px), then role pill and household line as now. Name source:
+session `user_metadata.full_name`, falling back to
+`user_metadata.name`, falling back to email only if no name is
+set, with the menu row reading "Add your name" in that fallback
+case. NO name is ever hardcoded — a name appears only after that
+user sets it. Edit profile: a new "Edit profile" / "Add your name"
+row in the menu opens Settings and scrolls to a NEW Profile card
+(`#section-profile`, after `#section-settings-head`, before
+`#section-bank`; chosen over a separate sheet so name, email, and
+password live in one place next to the account controls they
+relate to) with three editable fields: (1) Name — saved via
+`supabase.auth.updateUser({ data: { full_name: <name> } })`,
+shown in the header immediately after save (blank name refused
+with "Enter a name to save." — clearing a name is NOT offered in
+this pass); (2) Email — via `supabase.auth.updateUser({ email:
+<new> })`, with plain copy BEFORE saving that a confirmation email
+will be sent to the new address and the sign-in email does not
+change until it is confirmed; on success the displayed email is
+deliberately NOT changed and the toast repeats the confirmation
+copy; same-as-current refused with "That is already your sign-in
+email."; (3) Password — reuses the existing `changePasswordFlow`
+in Settings, no second password flow built. Profile editing is
+per-user, NOT admin-only — both roles can edit their own
+name/email/password (section-profile is NOT in the admin-gated
+special-case list in showView). Household membership, roles,
+invite, and deletion logic untouched. SAVE PATHS: auth metadata
+only. NO SQL file was added or changed for this item (verified by
+`git status`: no changes under `supabase/`). Backend context, as
+verified: `household_members.display_name` already exists and the
+audit trigger in `supabase/04-admin-rpcs.sql` already prefers it,
+then auth `user_metadata` full_name / name, then email — so a
+metadata name already flows into audit actor names as the
+trigger's second preference.
+
+ITEM F — Show password (owner, Nov 3, 7:53 PM): a Show/Hide toggle
+on EVERY password input in the live app, with accessible label
+("Show password" / "Hide password") and aria-pressed, switching
+input type between password and text, never logging or displaying
+the value anywhere else. No auth logic change, no password policy
+change (still at least 8 characters where already required).
+Fields covered: (1) sign-in password field (live.html
+`authPassword` + `#togglePasswordBtn`, `span.password-row`,
+btn-quiet); (2) change-password sheet (live.js `changePasswordFlow`
+via the generic `showSheet`: when `safeType === 'password'`, the
+input is wrapped in a `span.password-row` reusing the existing
+`body.live .password-row` CSS, with a type=button btn-quiet toggle
+— this covers the Settings password button AND the new
+profile-card password button, since both reuse
+`changePasswordFlow`; (3) reset.html New password
+(`newPassword` + `toggleNewPasswordBtn`) and Confirm new password
+(`confirmPassword` + `toggleConfirmPasswordBtn`), with
+`.password-row` flex rules in reset.html's inline `<style>` and
+listeners switching only their sibling input. No other password
+inputs were found in live.html/live.js/reset.html.
+
+ADD CARD (owner, Nov 3, 7:54 PM): the inline subtitle "Record a
+transaction you already made, or import a file of them." is
+REMOVED entirely; if the card is shown at all, its header is
+simply "Add / Import transaction" (title only, no subtitle, no
+explainer sentence). DIRECTIONAL, WORKING ASSUMPTION — FLAGGED,
+NOT CONFIRMED: the Add choice card is hidden from the
+Transactions page by default — the Transactions list is the page,
+and the existing top-right "Add" button in the Transactions card
+header is the entry point that reveals the Add choices
+(manual / CSV / charity). Implementation: `addFormOpen` is now
+null = list only, 'choice' = choice card, 'manual'/'csv'/'charity'
+= that form; `txAddBtn` sets 'choice'; Back from a form returns to
+'choice'; Cancel/submit return to the list. The Add choices and
+forms are NOT deleted, only their default visibility changed. The
+owner said a next picture will show where Add should live instead
+— this hide-by-default is pending confirmation against that next
+picture and can be adjusted without rework (one state value, no
+form or handler rework).
+
+FILTERS SHEET (owner, Nov 3, 7:55 PM): one label per group only,
+audited across the whole sheet. New label set: Status — single
+"Status" label above its select, section heading removed; Card /
+Account — single "Card / Account" label, section heading removed;
+Amount — "Amount" heading kept once, fields renamed "From ($)" /
+"To ($)"; Dates — "Dates" heading kept (it groups several
+distinct fields — Month, This week only, From date, To date —
+and no field repeats "Dates", so it is not a duplicate); Sorting —
+section heading removed, single "Sort by" label above the select
+(the direction button keeps its own aria-label). Pairs put
+side-by-side on one line (`.tx-sheet-pair`, 1fr 1fr grid, 10px
+gap): Amount From + To, and From date + To date. At 390px each
+half is ~200px wide — still a full-size tap target, not squeezed.
+Full-width kept where a field genuinely needs it: Status, Month,
+and Card selects. The sheet is shorter overall (three headings
+removed, two stacked full-width pairs collapsed to two lines),
+with Apply/Reset/Cancel reachable with less scrolling. NO filter
+logic, option values, or match behaviour changed — labels and
+layout only.
+
+### Already-done (verified, not rebuilt)
+
+Over-budget primary wording; Weekly breakdown labeled rows +
+equation; History separation/grouping; Funds duplicate Ask
+removed; "total of the rows shown"; Transactions total excludes
+charity except on Charity filter; manual Cancel (Back keeps draft,
+Cancel clears); Settings intro role-aware, admin buttons hidden
+from members, email card read-only to members; activity grouping
+("Weeks processed ×3") + plain wording; thousands separators; row
+accessible names + chevron; week-history labeled blocks ("not
+recorded", never $0); profile menu restyle; History From/To stack
+≤520px; payment/cashback detail exclusion labels; declutter
+removals (delta3); pills 8px; Funds parity (delta3, confirmed live
+by the owner's 7:31 PM screenshot); CSV styled file control;
+charity prominent in filters; Home sheets labeled metric rows;
+button levels three-blues system (button-card-fix, superseded by
+the solid-blues change above).
+
+### Deferred, with reason
+
+- Server-side fund-request kind guard (needs SQL; client gating is
+  the only kind check today — see P1 server finding above).
+- Duplicate-Plaid-item guard design (warn / update-mode /
+  duplicate banner) — separate queued decision, explicitly out of
+  scope; presentation grouping/disambiguation above does NOT
+  replace it.
+- Scroll-position/filters restore on return from detail (inline
+  detail, no return navigation; tab switches scroll to top by
+  design — see P3 history above).
+- Generic showSheet Escape/focus-trap (filter sheet only; other
+  sheets are single-action popups closing on backdrop/confirm/
+  cancel).
+- Gift-form field errors beside the field (manual form only; gift
+  remains dialog — same pattern, not yet done).
+- Fund-request detail available balance on first load (may read
+  "not loaded" until the next refresh, because fundQueue renders
+  before the fund summary in the same refresh).
+- Review summary count (the held link itself carries the count
+  instead).
+- Clearing a profile name (not offered — a name can be changed,
+  not removed, in this pass).
+- Add card final home (hide-by-default is a working assumption
+  pending the owner's next picture — see Add card above).
+- Mobile layout / assistive-technology / save-flow verification
+  (the review itself says these remain unverified; proving here
+  is code/static + synthetic only).
+- Real-phone proving still owed (320/390/desktop, daylight):
+  button rows, Funds card tap + sheet completeness, stat-card
+  faces, profile edit, password toggles, blank-shell behaviour on
+  slow load, duplicates card readability, filters sheet at 390px.
+
+### Verification
+
+- Full suite: `node --test test/*.test.mjs` → 139/139 pass
+  (includes new `test/ux-review-fix.test.mjs`: transfer gating,
+  charity $0.00, neutral kicker, blank-shell showView in boot +
+  finally, solid button colours + no adjacent duplicates for new
+  buttons, held link, bank disconnect identification, filter
+  Escape/focus, savings wording, dedupe card structure, chevron
+  bottom-right/down, weight map, weekly disclosure, stat-card
+  numbers-only + aria-labels, profile name elements + save paths,
+  show-password toggles, Add card header + hide-by-default,
+  filters one-label + side-by-side pairs).
+- `node --check live.js` clean. `git diff --check` clean.
+- Duplicate/missing id check: live.html 179 ids, zero duplicates;
+  reset.html 6 ids, zero duplicates. New ids: `profileName`,
+  `menuEditProfileBtn`, `section-profile`, `profileNameInput`,
+  `profileEmailInput`, `saveProfileNameBtn`, `saveProfileEmailBtn`,
+  `profilePasswordBtn`, `fundHeldLinkBtn`, `manualFormError`,
+  `togglePasswordBtn`, `toggleNewPasswordBtn`,
+  `toggleConfirmPasswordBtn`. Removed ids: `homeWeeklySecondary`,
+  `homeFundSecondary`, `homeCharitySecondary`.
+- No secrets, no real-household UUID, no full card numbers in the
+  diff. No ios/ or workflow files in the diff. No changes under
+  `supabase/`.
+- `test/button-card-fix.test.mjs` updated for the new design
+  (tertiary deep, fourth btn-mid, chevron ⌄, headings 700, Funds
+  charity face signed number) and passes standalone.
