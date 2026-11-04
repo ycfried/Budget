@@ -134,28 +134,48 @@ test('Settings Profile card itself is unchanged', () => {
   assert.ok(html.includes('id="saveProfileEmailBtn"'));
 });
 
-// --- Sign-up Name requirement (owner, Nov 3, ~11:22 PM) --------------
-const signUpFn = js.slice(
+// --- Sign-up Name requirement (owner, Nov 3, ~11:22 PM), two-step
+// form (owner correction, Nov 4, 2026): the card's Create account
+// button only validates Email + Password and shows the name step;
+// the name step's button is the one that calls signUp. --------------
+const cardSignUpFn = js.slice(
   js.indexOf("$('signUpBtn').addEventListener('click'"),
+  js.indexOf("$('authNameBackBtn')"),
+);
+assert.ok(cardSignUpFn.length > 0, 'card Create account handler found');
+const signUpFn = js.slice(
+  js.indexOf("$('authNameCreateBtn').addEventListener('click'"),
   js.indexOf("$('signOutBtn').addEventListener('click'"),
 );
-assert.ok(signUpFn.length > 0, 'signUp handler found');
+assert.ok(signUpFn.length > 0, 'name-step Create account handler found');
 const signInFn = js.slice(
   js.indexOf("$('signInBtn').addEventListener('click'"),
   js.indexOf("$('signUpBtn').addEventListener('click'"),
 );
 assert.ok(signInFn.length > 0, 'signIn handler found');
 
-test('auth card has a Name input for new accounts', () => {
+test('name step (not the sign-in card) has the Name input', () => {
   const input = html.match(/<input id="authName"[^>]*>/);
   assert.ok(input, 'authName input present');
   assert.match(input[0], /autocomplete="name"/);
   assert.match(input[0], /maxlength="80"/);
-  // Clearly labeled for a new account, grouped with Create account.
-  const authCard = html.slice(html.indexOf('id="view-auth"'), html.indexOf('id="view-household"'));
-  assert.ok(authCard.includes('Name for a new account'));
-  assert.ok(authCard.indexOf('id="authName"') < authCard.indexOf('id="signUpBtn"'));
-  assert.ok(authCard.indexOf('New to OnBudget?') < authCard.indexOf('id="authName"'));
+  // Auth-card-cleanup: the Name input lives in the separate name
+  // step panel, never in the sign-in panel.
+  const signinPanel = html.slice(html.indexOf('id="authSigninPanel"'), html.indexOf('id="authNamePanel"'));
+  assert.equal(signinPanel.includes('id="authName"'), false, 'no Name input on the sign-in panel');
+  const namePanel = html.slice(html.indexOf('id="authNamePanel"'), html.indexOf('id="view-household"'));
+  assert.ok(namePanel.includes('id="authName"'), 'Name input is in the name step');
+  assert.ok(namePanel.includes('Choose your name'), 'name step is titled');
+  assert.ok(namePanel.includes('id="authNameBackBtn"'), 'name step has a Back button');
+});
+
+test('card Create account shows the name step without calling signUp', () => {
+  // Email + Password validated first (named errors), then the panel
+  // toggle — and no Supabase call in the card handler at all.
+  assert.match(cardSignUpFn, /Enter an email address to create an account/);
+  assert.match(cardSignUpFn, /Password must be at least 8 characters/);
+  assert.match(cardSignUpFn, /showAuthPanel\('name'\)/);
+  assert.equal(cardSignUpFn.includes('supabase.auth.signUp('), false, 'card handler never calls signUp');
 });
 
 test('sign-up with an empty name is refused before signUp is called', () => {
@@ -163,8 +183,8 @@ test('sign-up with an empty name is refused before signUp is called', () => {
   // fail() pattern, and it must precede the Supabase call.
   assert.match(signUpFn, /if \(!signName\?\.value\.trim\(\)\) \{ fail\('Enter a name for your new account\.', signName\); return; \}/);
   assert.ok(signUpFn.indexOf("fail('Enter a name for your new account.'") < signUpFn.indexOf('supabase.auth.signUp('));
-  // fail() writes authMsg and focuses the field.
-  assert.match(signUpFn, /const fail = \(msg, field\) => \{ \$\('authMsg'\)\.textContent = msg; if \(field\) field\.focus\(\)/);
+  // fail() writes the name step's message area and focuses the field.
+  assert.match(signUpFn, /const fail = \(msg, field\) => \{ \$\('authNameMsg'\)\.textContent = msg; if \(field\) field\.focus\(\)/);
 });
 
 test('sign-up with a name passes full_name in metadata', () => {
@@ -172,7 +192,11 @@ test('sign-up with a name passes full_name in metadata', () => {
 });
 
 test('sign-in ignores the Name field entirely', () => {
-  assert.equal(signInFn.includes('authName'), false, 'sign-in handler never reads the Name field');
+  // Precise check: the handler never READS the field. (The slice
+  // also covers the auth-panel helper defined just before the
+  // sign-up handler, whose name mentions the panel — that is not
+  // a field read.)
+  assert.equal(signInFn.includes("$('authName')"), false, 'sign-in handler never reads the Name field');
   assert.match(signInFn, /supabase\.auth\.signInWithPassword\(\{\s*email: \$\('authEmail'\)\.value\.trim\(\), password: \$\('authPassword'\)\.value,/);
 });
 

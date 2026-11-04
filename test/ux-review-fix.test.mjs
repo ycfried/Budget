@@ -99,7 +99,9 @@ test('sign-in: primary Sign in, password toggle, recovery copy on failure', () =
   assert.ok(html.includes('id="togglePasswordBtn"'));
   assert.match(js, /togglePasswordBtn.*addEventListener\('click'/);
   assert.match(js, /Forgot password\? below to reset it/);
-  assert.ok(html.includes('New to OnBudget?'));
+  // Auth-card-cleanup: the "New to OnBudget?" lead-in is gone (the
+  // side-by-side buttons make the choice self-evident).
+  assert.equal(html.includes('New to OnBudget?'), false);
 });
 
 test('profile menu shows a name header; profile editing lives in Settings, not the menu', () => {
