@@ -1768,6 +1768,10 @@ $('csvFile')?.addEventListener('change', async (e) => {
   }
 });
 $('csvConfirmBtn')?.addEventListener('click', async () => {
+  // Add popup member gate (owner design Nov 3, 9:49 PM: members get
+  // Purchase only): a member reaching the import form any other way
+  // is refused here, before any row is inserted.
+  if (!(household && household.role === 'admin')) { showToast('Only the admin can import transactions.'); return; }
   const msg = $('csvMsg');
   if (!pendingCsvRows.length) { showToast('Nothing new to import.'); return; }
   // R1 busy control: block repeat taps while the import is inserting.
@@ -1790,6 +1794,7 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
   const preview = $('csvPreview'); if (preview) preview.innerHTML = '';
   if (msg) msg.textContent = '';
   showToast(`Imported ${added} transaction(s) as provisional.`);
+  setAddForm(null);
   await refresh();
 });
 $('togglePasswordBtn')?.addEventListener('click', (e) => {
@@ -1923,7 +1928,7 @@ $('manualForm').addEventListener('submit', async (e) => {
   });
   if (error) { console.warn('manual insert failed:', error.message); await showAlert('Could not save', 'Could not save this transaction. Try again.'); done(); return; }
   await audit('Transaction added by hand', `${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)} (••${suffix}).`);
-  f.reset(); done(); await refresh();
+  f.reset(); setAddForm(null); done(); await refresh();
 });
 
 async function callFn(name, body) {
@@ -2075,7 +2080,7 @@ async function autoSyncIfWebhookPending() {
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent', 'section-history-link'],
-  purchases: ['section-add-choice', 'section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
+  purchases: ['section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
   money: ['section-fund-balances', 'section-fund-actions', 'section-fund-add', 'section-charity-income', 'section-fund-use', 'section-fund-ask', 'section-fund-review', 'section-savings-past'],
   // R2: Settings is reached from the profile menu, not a nav tab.
   // Connections (bank + email), Budget (allowance + temp increase)
@@ -2195,19 +2200,17 @@ function showView(name, opts = {}) {
       ? 'Connections, Budget, and Account & household.'
       : 'Connections and Account & household. Only the admin can change bank and email connections.';
   }
-  // R7 + UX-review-fix (owner screenshot Nov 3, 7:54 PM): the Add
-  // choice card is HIDDEN by default on the Transactions page — the
-  // list is the page. addFormOpen is now: null = list only,
-  // 'choice' = choice card, 'manual'/'csv'/'charity' = that form.
-  // The Transactions card header's top-right Add button is the entry
-  // point that reveals the choices; Back from a form returns to the
-  // choices, Cancel/submit return to the list. This hide-by-default
-  // is a working assumption, flagged pending the owner's next
-  // picture showing where Add should live instead — changing it
-  // back is one state value, no form or handler rework.
+  // R7 + UX-review-fix (owner screenshot Nov 3, 7:54 PM): Add is
+  // HIDDEN by default on the Transactions page — the list is the
+  // page. addFormOpen is now: null = list only, 'options' = the
+  // Add options popup, 'manual'/'csv'/'charity' = that form in the
+  // popup. The Transactions header's blue + button is the only
+  // entry point (owner design Nov 3, 9:49 PM); Back from a form
+  // returns to the options, Cancel/submit returns to the list.
+// (addFormOpen states are documented here; the popup sync lives
+  // with setAddForm below.)
   if (name === 'purchases') {
-    const choice = document.getElementById('section-add-choice');
-    if (choice) choice.style.display = addFormOpen === 'choice' ? 'block' : 'none';
+    syncAddPopup(name);
     const man = document.getElementById('section-manual');
     if (man) man.style.display = addFormOpen === 'manual' ? 'block' : 'none';
     const csv = document.getElementById('section-csv');
@@ -2216,8 +2219,6 @@ function showView(name, opts = {}) {
     // hidden from members here so it never promises what it refuses.
     const gift = document.getElementById('section-charity-gift');
     if (gift) gift.style.display = addFormOpen === 'charity' ? 'block' : 'none';
-    const giftBtn = document.getElementById('addCharityBtn');
-    if (giftBtn) giftBtn.style.display = (household && household.role === 'admin') ? '' : 'none';
   }
   document.querySelectorAll('[data-view]').forEach((b) => {
     b.classList.toggle('active', b.dataset.view === name);
@@ -2644,16 +2645,89 @@ document.getElementById('txSortDirBtn')?.addEventListener('click', () => {
   applyTxSort();
 });
 
-$('txAddBtn')?.addEventListener('click', () => setAddForm('choice'));
-$('txLoadMore')?.addEventListener('click', async () => {
-  txLimit += 100;
-  await refresh();
+// Add popup (owner design Nov 3, 9:49 PM): the Transactions header
+// has one blue + button; tapping it opens an options popup —
+// Purchase / Donation / Upload for admins, Purchase only for
+// members (the owner's "regular user just purchase, no?" is YES:
+// charity gifts are admin-only on the server, and Upload is gated
+// admin-only here and at the CSV confirm path). Choosing an option
+// MOVES that form's existing section into the popup slot — the
+// section is moved, not copied, so its handlers, validation, draft,
+// and CSV preview work exactly as they do inline. Back returns to
+// the options; Cancel or a successful submit returns to the list.
+// A tab switch hides the popup (the form section is display:none
+// like any other off-view section) and returning to Transactions
+// reopens it with its draft intact, as before.
+const ADD_FORM_SECTIONS = { manual: 'section-manual', csv: 'section-csv', charity: 'section-charity-gift' };
+const addPopupHomes = new Map();
+function addPopupRestoreSection(id) {
+  const el = document.getElementById(id); const home = addPopupHomes.get(id);
+  if (!el || !home) return;
+  if (home.next && document.contains(home.next)) home.parent.insertBefore(el, home.next);
+  else home.parent.appendChild(el);
+  addPopupHomes.delete(id);
+}
+function addPopupRestoreAll() { for (const id of Object.values(ADD_FORM_SECTIONS)) addPopupRestoreSection(id); }
+function addPopupPlace(id) {
+  const el = document.getElementById(id); const slot = document.getElementById('addPopupFormSlot');
+  if (!el || !slot) return;
+  if (!addPopupHomes.has(id)) addPopupHomes.set(id, { parent: el.parentNode, next: el.nextSibling });
+  slot.appendChild(el);
+}
+function syncAddPopup(viewName) {
+  const overlay = document.getElementById('addPopupOverlay');
+  const optionsCard = document.getElementById('addOptionsCard');
+  const slot = document.getElementById('addPopupFormSlot');
+  if (!overlay || !optionsCard || !slot) return;
+  const open = viewName === 'purchases' && addFormOpen !== null;
+  overlay.classList.toggle('hidden', !open);
+  if (!open) { addPopupRestoreAll(); return; }
+  // Role gating for the options list itself: members see Purchase only.
+  const isAdmin = household && household.role === 'admin';
+  const don = document.getElementById('addOptionDonationBtn'); if (don) don.style.display = isAdmin ? '' : 'none';
+  const up = document.getElementById('addOptionUploadBtn'); if (up) up.style.display = isAdmin ? '' : 'none';
+  if (addFormOpen === 'options') {
+    addPopupRestoreAll();
+    optionsCard.classList.remove('hidden'); slot.classList.add('hidden');
+    document.getElementById('addOptionPurchaseBtn')?.focus();
+  } else {
+    const sectionId = ADD_FORM_SECTIONS[addFormOpen];
+    if (sectionId) addPopupPlace(sectionId);
+    optionsCard.classList.add('hidden'); slot.classList.remove('hidden');
+  }
+}
+// Escape closes the popup the way Back/Cancel does (form → options,
+// options → list), and Tab stays inside it. This handler owns
+// #addPopupOverlay only: when a generic sheet (#sheetOverlay) or the
+// filter sheet is open on top of it, it stands aside for them.
+document.addEventListener('keydown', (e) => {
+  const overlay = document.getElementById('addPopupOverlay');
+  if (!overlay || overlay.classList.contains('hidden')) return;
+  if (document.getElementById('sheetOverlay')) return;
+  const filtersOpen = (() => { const f = document.getElementById('txFiltersSheet'); return f && !f.classList.contains('hidden'); })();
+  if (filtersOpen) return;
+  if (e.key === 'Escape') { e.preventDefault(); if (addFormOpen === 'options') setAddForm(null); else setAddForm('options'); return; }
+  if (e.key !== 'Tab') return;
+  const focusables = [...overlay.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((el) => !el.disabled && el.offsetParent !== null);
+  if (!focusables.length) return;
+  const first = focusables[0]; const last = focusables[focusables.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 });
-const setAddForm = (which) => { addFormOpen = which; showView('purchases'); };
-$('addManualBtn')?.addEventListener('click', () => setAddForm('manual'));
-$('addCsvBtn')?.addEventListener('click', () => setAddForm('csv'));
-$('addCharityBtn')?.addEventListener('click', () => setAddForm('charity'));
-$('manualBackBtn')?.addEventListener('click', () => setAddForm('choice'));
+document.getElementById('addPopupOverlay')?.addEventListener('click', (e) => { if (e.target.id === 'addPopupOverlay') setAddForm(null); });
+$('txAddBtn')?.addEventListener('click', () => setAddForm('options'));
+const setAddForm = (which) => {
+  // Member gate at the entry point: only Purchase is offered to
+  // members, and a member reaching a gated form any other way is
+  // sent back to the options instead of into the form.
+  if ((which === 'charity' || which === 'csv') && !(household && household.role === 'admin')) which = 'options';
+  addFormOpen = which; showView('purchases');
+};
+$('addOptionPurchaseBtn')?.addEventListener('click', () => setAddForm('manual'));
+$('addOptionDonationBtn')?.addEventListener('click', () => setAddForm('charity'));
+$('addOptionUploadBtn')?.addEventListener('click', () => setAddForm('csv'));
+$('addOptionsCloseBtn')?.addEventListener('click', () => setAddForm(null));
+$('manualBackBtn')?.addEventListener('click', () => setAddForm('options'));
 // UX audit 06: an explicit Cancel closes the form AND clears the
 // draft. Back only returns to the Add choices — the draft stays,
 // as the form hint now states. Purchases-only: no refund option
@@ -2663,8 +2737,8 @@ $('manualCancelBtn')?.addEventListener('click', () => {
   document.getElementById('manualFormError')?.classList.add('hidden');
   setAddForm(null);
 });
-$('csvBackBtn')?.addEventListener('click', () => setAddForm('choice'));
-$('charityBackBtn')?.addEventListener('click', () => { document.getElementById('charityFormError')?.classList.add('hidden'); setAddForm('choice'); });
+$('csvBackBtn')?.addEventListener('click', () => setAddForm('options'));
+$('charityBackBtn')?.addEventListener('click', () => { document.getElementById('charityFormError')?.classList.add('hidden'); setAddForm('options'); });
 // Delta C3: Funds forms open from the actions card, one at a time.
 const setFundForm = (which) => { fundFormOpen = which; showView('money'); };
 $('fundActionAddBtn')?.addEventListener('click', () => setFundForm('add'));

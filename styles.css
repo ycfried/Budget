@@ -742,3 +742,15 @@ body.live .profile-email { font-size: 14px; overflow-wrap: anywhere; }
 body.live .tx-sheet-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 body.live .tx-sheet-pair label { min-width: 0; }
 body.live .tx-sheet-pair input { width: 100%; box-sizing: border-box; min-width: 0; }
+/* Add popup (owner design Nov 3, 9:49 PM): the Transactions header's
+   blue + button opens this overlay. Options are one full-width row
+   each; a chosen form's existing section is moved into the slot, so
+   it keeps its own card styling and handlers. */
+body.live .add-plus-btn { width: 44px; height: 44px; border-radius: 50%; font-size: 26px; line-height: 1; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+body.live .add-popup-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto; z-index: 60; }
+body.live .add-popup-overlay.hidden { display: none; }
+body.live .add-popup-card { width: 100%; max-width: 480px; }
+body.live .add-options-list { display: grid; gap: 10px; margin: 12px 0; }
+body.live .add-option-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; }
+body.live .add-option-title { font-weight: 600; font-size: 16px; }
+body.live #addPopupFormSlot.hidden { display: none; }
