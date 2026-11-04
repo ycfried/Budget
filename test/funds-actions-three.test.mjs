@@ -44,12 +44,13 @@ test('Charity sheet offers Record income for admin, via one shared opener', () =
   assert.match(openerBody, /household\.role === 'admin'/);
   assert.match(openerBody, /extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null/);
   assert.match(openerBody, /confirmLabel: 'Close'/);
-  // Rows unchanged: Remaining, Committed, Given, Default rate, Period.
-  assert.match(js, /\['Remaining',/);
-  assert.match(js, /\['Committed', formatCents\(c\.committed\)\]/);
+  // Rows (fund-sheet-button-rule, owner Nov 4): Available / Given / Total.
+  assert.match(js, /\['Available', formatCents\(c\.remaining\)\]/);
   assert.match(js, /\['Given', formatCents\(c\.given\)\]/);
-  assert.match(js, /\['Default rate',/);
-  assert.match(js, /\['Period', 'November 2026 onward'\]/);
+  assert.match(js, /\['Total', formatCents\(c\.remaining \+ c\.given\)\]/);
+  assert.doesNotMatch(js, /\['Committed',/);
+  assert.doesNotMatch(js, /\['Default rate',/);
+  assert.doesNotMatch(js, /\['Period',/);
 });
 
 test('Choosing Record income opens the existing income form', () => {

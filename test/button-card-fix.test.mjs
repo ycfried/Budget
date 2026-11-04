@@ -82,29 +82,43 @@ test('Funds card face is Title + Amount only (no secondary-line strings)', () =>
   // The face renderers assign the amount alone (fund) or the signed
   // number (charity, negative remaining) — no "Available"/"Remaining"
   // word, no secondary lines on the face itself. "Ahead by $X" lives
-  // only in the charity card's aria-label and tap sheet.
+  // "Ahead by $X" lives only in the charity card's aria-label, not
+  // in the tap sheet (the sheet's Available row is the signed number,
+  // so its rows add up).
   const fundFaceLine = js.split('\n').find((l) => l.includes("fs.innerHTML = `<p class=\"fund-balance\">"));
   assert.match(fundFaceLine, /<p class="fund-balance"><strong>\$\{formatCents\(available\)\}<\/strong><\/p>/);
   assert.doesNotMatch(fundFaceLine, /Available/);
   const charityFace = js.slice(js.indexOf("const ch = $('charitySummary')"), js.indexOf("const ch = $('charitySummary')") + 1200);
   assert.match(charityFace, /formatCents\(remaining\)/);
   assert.match(charityFace, /ahead by/);
-  // Every moved line lives in a breakdown sheet: Held (fund) and Period (charity).
-  assert.match(js, /Held for review/);
-  assert.match(js, /Period/);
+  // Held still surfaces in the fund summary (Review link text) and
+  // folded into the fund sheet's Pending; the charity period lives
+  // in the sheet title, not a Period row.
+  assert.match(js, /Held for review:/);
+  assert.match(js, /title: 'Charity · November 2026 onward'/);
 });
 
-test('fund breakdown rows contain every moved Extra Fund line', () => {
-  const rows = js.slice(js.indexOf('function fundBreakdownRows'), js.indexOf('function fundBreakdownRows') + 1500);
-  for (const label of ['Spendable', 'Pending', 'Owed back', 'Released total', 'Spent', 'Held for review']) {
+test('fund breakdown rows are exactly Available / Pending / Total', () => {
+  const rows = js.slice(js.indexOf('function fundBreakdownRows'), js.indexOf('function charityBreakdownRows'));
+  for (const label of ['Spendable', 'Pending', 'Total']) {
     assert.ok(rows.includes(label), `fund sheet missing ${label}`);
+  }
+  // Old rows are gone from the sheet (Released, Spent, Owed back,
+  // and the Held row itself — held is folded into Pending).
+  for (const pattern of [/\['Released total',/, /\['Spent from fund',/, /\['Owed back/, /\['Held for review',/]) {
+    assert.doesNotMatch(rows, pattern);
   }
 });
 
-test('charity breakdown rows contain every moved Charity line', () => {
+test('charity breakdown rows are exactly Available / Given / Total', () => {
   const rows = js.slice(js.indexOf('function charityBreakdownRows'), js.indexOf('function charityBreakdownRows') + 1200);
-  for (const label of ['Remaining', 'Committed', 'Given', 'Default rate', 'Period']) {
+  for (const label of ['Available', 'Given', 'Total']) {
     assert.ok(rows.includes(label), `charity sheet missing ${label}`);
+  }
+  // Old rows are gone (Remaining label, Committed, Default rate,
+  // Period — the period stays in the sheet title, not a row).
+  for (const pattern of [/\['Remaining',/, /\['Committed',/, /\['Default rate',/, /\['Period',/]) {
+    assert.doesNotMatch(rows, pattern);
   }
 });
 

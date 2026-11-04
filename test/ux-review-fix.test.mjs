@@ -73,19 +73,22 @@ test('button levels are solid colors, no pale tint or white outline', () => {
   assert.ok(js.includes("class=\"btn btn-small btn-mid\""));
 });
 
-// --- Held button removed; Review card is the single opener ----------
-test('held button removed; held amount still lives in the fund sheet', () => {
+// --- Held button removed; held amount folds into fund Pending -----
+test('held button removed; held amount folds into the fund sheet Pending', () => {
   // Audit-fixes-morning B1: the Funds "Held for review" button and
   // its wrap are gone from the HTML (it duplicated the Review
   // card's opener on the same page). The guarded JS references
-  // remain as no-ops, and the fund sheet Held row is untouched.
+  // remain as no-ops, and the fund sheet's Pending row folds held
+  // weeks in (fund-sheet-button-rule, owner Nov 4) — no Held row.
   assert.equal(html.includes('id="fundHeldLinkWrap"'), false);
   assert.equal(html.includes('id="fundHeldLinkBtn"'), false);
   assert.equal(css.includes('#fundHeldLinkWrap'), false);
   assert.match(js, /fundHeldLinkBtn.*addEventListener\('click'/);
   assert.match(js, /getElementById\('reviewDetails'\)/);
   assert.match(js, /details\.open = true/);
-  assert.match(js, /\['Held for review',/);
+  const fundRows = js.slice(js.indexOf('function fundBreakdownRows'), js.indexOf('function charityBreakdownRows'));
+  assert.ok(fundRows.includes('heldTotal'), 'fund sheet Pending must fold in held weeks');
+  assert.doesNotMatch(fundRows, /\['Held for review',/);
 });
 
 test('bank Disconnect identifies the exact connection by masked accounts', () => {

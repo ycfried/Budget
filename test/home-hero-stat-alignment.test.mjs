@@ -63,16 +63,17 @@ test('Home stat kickers are one line each: Charity and Extra Fund', () => {
   assert.equal(html.includes('data-home-card="charity"'), true);
 });
 
-test('period is not lost: Charity sheet title and Period row still carry it', () => {
+test('period is not lost: Charity sheet title still carries it (Period row removed by fund-sheet-button-rule)', () => {
   assert.match(js, /title: 'Charity · November 2026 onward'/);
-  assert.match(js, /\['Period', 'November 2026 onward'\]/);
+  assert.doesNotMatch(js, /\['Period', 'November 2026 onward'\]/);
 });
 
 test('Funds Charity panel heading is untouched (already just Charity)', () => {
   assert.match(html, /data-fund-card="charity"[^>]*>\s*<div class="fund-balance-head"><h2>Charity<\/h2><\/div>/);
 });
 
-test('version pins: styles bumped, live.js untouched so its pin stays', () => {
+test('version pins: styles at v32; live.js moves to v42 with fund-sheet-button-rule', () => {
   assert.match(html, /styles\.css\?v=32/);
-  assert.match(html, /live\.js\?v=41/);
+  // Fund-sheet-button-rule touches live.js, so its pin moves to v42.
+  assert.match(html, /live\.js\?v=42/);
 });
