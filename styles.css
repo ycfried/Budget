@@ -306,8 +306,9 @@ label { font-size: 14px; font-weight: 600; }
 
 /* In-app sheet (replaces browser prompt/confirm/alert boxes). */
 #sheetOverlay { position: fixed; inset: 0; z-index: 50; background: rgba(32,57,47,.45);
-  display: flex; align-items: flex-end; justify-content: center; padding: 16px; }
+  display: flex; align-items: flex-end; justify-content: center; padding: 16px; overscroll-behavior: contain; }
 #sheetOverlay .sheet { background: #fff; border-radius: 16px; padding: 22px; width: 100%; max-width: 480px;
+  max-height: 85vh; max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   box-shadow: 0 12px 40px rgba(0,0,0,.25); }
 #sheetOverlay .sheet h3 { margin: 0 0 8px; font-family: var(--serif); }
 #sheetOverlay .sheet p { margin: 0 0 14px; color: var(--muted); line-height: 1.5; }
@@ -617,9 +618,9 @@ body.live .tx-active-filter { background: #eef4ff; color: #2f6bff; border: 0; bo
 /* B2: filters bottom sheet (backdrop + card). .hidden still wins
    over display:flex because it is !important. */
 body.live .tx-sheet { position: fixed; inset: 0; z-index: 50; background: rgba(15,23,42,.45);
-  display: flex; align-items: flex-end; justify-content: center; padding: 16px; overflow-y: auto; }
+  display: flex; align-items: flex-end; justify-content: center; padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
 body.live .tx-sheet-card { background: #fff; border-radius: 16px; padding: 22px; width: 100%; max-width: 480px;
-  max-height: 85vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(16,24,40,.25); }
+  max-height: 85vh; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; box-shadow: 0 12px 40px rgba(16,24,40,.25); }
 body.live .tx-sheet-card h3 { margin: 0 0 8px; }
 body.live .tx-sheet-card h4 { margin: 16px 0 4px; font-size: 14px; font-weight: 600; }
 body.live .tx-sheet-card label { display: block; margin: 10px 0 4px; font-weight: 600; }
@@ -691,6 +692,25 @@ body.live .profile-menu-row-danger { color: #dc2626; }
   .form-row-2 { grid-template-columns: 1fr; }
   #section-manual .form-row-3 { grid-template-columns: 1fr; }
 }
+
+/* Popup-padding-labels-fix (owner, Nov 4): the History From/To date
+   pair stays side by side at every width — a date is short with a
+   day picker, so full-width stacked fields waste the card. This
+   ID-scoped rule outranks the ≤520px .form-row-2 stacking rule
+   above. */
+/* Popup-padding-labels-fix (owner, Nov 4): with the Email h3 and
+   explainer deleted from #section-profile, the Email label sits
+   directly under the Save name button; this margin keeps it from
+   looking cramped. Email stays on the same card, not a new one.
+   Same 20px section spacing above the Password h3, which sits
+   directly under the Save email button — Name → Email → Password
+   blocks evenly spaced within the one Profile card. The "at least
+   8 characters" note itself moved out of this card entirely: the
+   change-password sheet already states the requirement where the
+   new password is entered, so it is not duplicated here. */
+#section-history-filter .form-row-2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+#section-profile .profile-email-label { display: block; margin-top: 20px; }
+#section-profile h3 { margin-top: 20px; }
 
 /* ===== Delta3 additions ===== */
 /* Loading screen: on-brand S-mark treatment + app name, stable until
@@ -834,7 +854,14 @@ body.live .profile-email { font-size: 14px; overflow-wrap: anywhere; }
    Apply/Reset/Cancel sit closer. At 390px each half is ~200px wide —
    still a full-size tap target, not a squeezed control. Single
    fields (Status, Month, Card selects) stay full-width. */
-body.live .tx-sheet-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* Popup-padding-labels-fix (owner, Nov 4): the Filters pair overlap
+   was a grid-track bug, not a width bug — a bare 1fr track's minimum
+   is its content minimum, and a date input's intrinsic width is
+   wider than half a phone card, so the two tracks overflowed into
+   each other. minmax(0, 1fr) lets both inputs shrink below their
+   intrinsic width; the label/input min-width: 0 rules below do the
+   rest. At 390px each half is ~160px, still a full tap target. */
+body.live .tx-sheet-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 body.live .tx-sheet-pair label { min-width: 0; }
 body.live .tx-sheet-pair input { width: 100%; box-sizing: border-box; min-width: 0; }
 /* Add popup (owner design Nov 3, 9:49 PM): the Transactions header's
@@ -842,7 +869,7 @@ body.live .tx-sheet-pair input { width: 100%; box-sizing: border-box; min-width:
    each; a chosen form's existing section is moved into the slot, so
    it keeps its own card styling and handlers. */
 body.live .add-plus-btn { width: 44px; height: 44px; border-radius: 50%; font-size: 26px; line-height: 1; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-body.live .add-popup-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto; z-index: 60; }
+body.live .add-popup-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; z-index: 60; }
 body.live .add-popup-overlay.hidden { display: none; }
 body.live .add-popup-card { width: 100%; max-width: 480px; }
 body.live .add-options-list { display: grid; gap: 10px; margin: 12px 0; }
@@ -862,7 +889,14 @@ body.live #addPopupFormSlot.hidden { display: none; }
    minus means money back. Hero/stat negative figures stay soft-red
    (over-budget warning), as before. */
 body.live { font-size: 16px; }
-body.live main { padding: 24px 16px 48px; }
+/* Popup-padding-labels-fix (owner, Nov 4): the footer sentence sits
+   right after main, so the card-to-footer gap was card margin 16px +
+   main bottom padding 48px + footer top padding 16px = 80px of dead
+   scroll. Main bottom padding is now 0, so the gap is 16 + 0 + 16 =
+   32px of breathing room — no more, no less. Tab-bar clearance is
+   NOT touched: body padding-bottom (72px + safe-area) below the
+   footer still keeps the footer clear of the fixed tab bar. */
+body.live main { padding: 24px 16px 0; }
 body.live .card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px; margin-bottom: 16px; }
 body.live .grid .card { margin-bottom: 0; }
 body.live .grid, body.live #section-stats { gap: 16px; }
