@@ -53,7 +53,7 @@ test('button levels are solid colors, no pale tint or white outline', () => {
   // solid neutral grey, not the former deep blue, never the rejected
   // pale tint or a white outline.
   assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{ background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; \}/);
-  assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #3b82f6; color: #fff; border: 1px solid #3b82f6; \}/);
+  assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #0f172a; color: #fff; border: 1px solid #0f172a; \}/);
   // The btn-tertiary RULE itself (not comments elsewhere) is grey, never the rejected tint.
   const tertiaryRule = css.split('\n').find((l) => l.includes('.btn-tertiary {'));
   assert.ok(tertiaryRule && tertiaryRule.includes('#e5e7eb') && !tertiaryRule.includes('#eef4ff'), tertiaryRule);
@@ -72,14 +72,19 @@ test('button levels are solid colors, no pale tint or white outline', () => {
   assert.ok(js.includes("class=\"btn btn-small btn-mid\""));
 });
 
-// --- Held link + bank identification ------------------------------------
-test('held balance links to the Review queue with a count', () => {
-  assert.ok(html.includes('id="fundHeldLinkWrap"'));
-  assert.ok(html.includes('id="fundHeldLinkBtn"'));
+// --- Held button removed; Review card is the single opener ----------
+test('held button removed; held amount still lives in the fund sheet', () => {
+  // Audit-fixes-morning B1: the Funds "Held for review" button and
+  // its wrap are gone from the HTML (it duplicated the Review
+  // card's opener on the same page). The guarded JS references
+  // remain as no-ops, and the fund sheet Held row is untouched.
+  assert.equal(html.includes('id="fundHeldLinkWrap"'), false);
+  assert.equal(html.includes('id="fundHeldLinkBtn"'), false);
+  assert.equal(css.includes('#fundHeldLinkWrap'), false);
   assert.match(js, /fundHeldLinkBtn.*addEventListener\('click'/);
   assert.match(js, /getElementById\('reviewDetails'\)/);
   assert.match(js, /details\.open = true/);
-  assert.match(js, /Held for review: \$\{formatCents\(heldTotal\)\}[\s\S]*?Open Review queue/);
+  assert.match(js, /\['Held for review',/);
 });
 
 test('bank Disconnect identifies the exact connection by masked accounts', () => {

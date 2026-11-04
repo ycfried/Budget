@@ -2080,3 +2080,46 @@ tiles are untouched. No version change (styles.css is already at
 v29 on this unmerged branch). Tests: bank-row logo flex-start
 assertion plus row-unchanged and merchant-tiles-untouched
 assertions in test/weekly-left-only-profile-menu.test.mjs.
+
+## Audit-fixes-morning (owner approval, Nov 4, 2026, to the overnight audit's decision list) — branch audit-fixes-morning, NOT merged
+Five overnight-audit recommendations, all approved by the owner
+("Yes yes ye" to the morning report's decision list). No SQL, no
+money/week math, no classification/matching changes.
+1. B1 — Funds "Held for review" button REMOVED: the
+fundHeldLinkWrap block (button fundHeldLinkBtn + explainer
+paragraph) deleted from live.html, plus its dead CSS rules. The
+Review card's "Open review" is now the single way to open the
+queue; the fund sheet Held row is untouched, so the held amount
+is not lost. Every remaining JS reference to the deleted elements
+is ?.-guarded (null-checked or optional-chained), so nothing
+throws.
+2. A1 — btn-mid to dark ink fill #0f172a with white text, in both
+live selectors (was mid blue #3b82f6). NOT grey: in Funds actions
+it would sit adjacent to the grey tertiary Ask button. Detail-row
+Use Extra Fund (ink) sits between grey Mark as charity and
+secondary Reclassify — both distinct from ink.
+3. C3 — Disconnect button top-aligned in Connected accounts:
+scoped body.live .bank-row .btn-danger { align-self: flex-start; }
+only. Row-level alignment unchanged; info column untouched; the
+PR #27 logo top-align stays.
+4. C2 — Plain-language account types, DISPLAY ONLY: new
+plainAccountType() in live.js maps credit -> "Credit card",
+depository -> "Checking" (checking) / "Savings" (savings) /
+"Bank account" (otherwise), loan -> "Loan", investment ->
+"Investment", unknown -> omitted entirely (never a raw Plaid
+word); type/subtype duplicates render the label once. Expected:
+"Blue Cash Everyday® ••1005 · Credit card", "Rewards Checking
+••1636 · Checking". Nothing stored, nothing touches
+classification, matching, or week math.
+5. B2 — Duplicate Change password removed: the Account &
+household card's settingsPasswordBtn deleted and that card's
+intro now reads invite code + account deletion (no "password").
+The Profile card's profilePasswordBtn and handler are untouched.
+Bundled trivial declutter: the stale Settings intro sentence
+"Bank and email connections moved here from Funds" deleted.
+Versions: live.js v39 / styles.css v30. Tests: 225/225 (219 + 6
+new in test/audit-fixes-morning.test.mjs, incl. the mapping
+function executed from the shipped code). Still to prove on a
+real phone at 390px after merge: ink Record income, grey Ask
+beside it, top-aligned Disconnect, plain-language account lines,
+Settings with one Change password, Funds with no held button.
