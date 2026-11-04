@@ -116,13 +116,17 @@ test('settings header and back button untouched', () => {
 test('bank card heading and sentence are the short versions, nothing else retitled', () => {
   assert.ok(bank.includes('<h2>Bank Connection</h2>'), 'heading is exactly Bank Connection');
   assert.equal(bank.includes('(read-only)'), false, 'no (read-only) in the bank heading');
-  assert.ok(bank.includes('<p class="muted small">The app can see transactions.</p>'), 'sentence is exactly the shortened text');
+  // Send-live-bundle: the unified sentence replaces the shortened text.
+  assert.ok(bank.includes('<p class="muted small">Look only — it never moves, sends, or changes anything.</p>'), 'sentence is exactly the unified text');
   assert.equal(bank.includes('never move money'), false, 'old sentence gone');
   assert.ok(html.includes('<h2>Profile</h2>'), 'Profile heading untouched');
-  assert.ok(html.includes('<h2>History</h2>'), 'History heading untouched');
+  // Send-live-bundle: the separate History card is gone; History
+  // is one tappable row on Home instead.
+  assert.ok(html.includes('id="section-history-row"'), 'History row present');
+  assert.equal(html.includes('id="section-history-link"'), false, 'separate History card gone');
 });
 
-test('version pins: styles v33, live.js v43', () => {
-  assert.match(html, /styles\.css\?v=33/);
-  assert.match(html, /live\.js\?v=43/);
+test('version pins: styles v34, live.js v44', () => {
+  assert.match(html, /styles\.css\?v=34/);
+  assert.match(html, /live\.js\?v=44/);
 });

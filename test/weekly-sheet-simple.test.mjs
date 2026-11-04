@@ -29,9 +29,10 @@ const visible = sheetFn.slice(
   sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')),
 );
 
-test('Weekly sheet visible rows are exactly Left, alone', () => {
+test('Weekly sheet visible rows are exactly Allowance, Spent, Balance', () => {
+  // Send-live-bundle supersedes Left-only.
   const labels = [...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ['Left']);
+  assert.deepEqual(labels, ['Allowance', 'Spent', 'Balance']);
 });
 
 test('no detail row appears anywhere in the Weekly sheet', () => {

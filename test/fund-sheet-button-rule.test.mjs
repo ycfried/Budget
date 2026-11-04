@@ -138,8 +138,10 @@ test('B: three-button middles still pale; pale definition untouched', () => {
 
 test('B: deliberately untouched rows — hero sync, detail rows, quiet Decline, + popup', () => {
   assert.match(html, /class="btn hero-sync-btn" id="homeSyncBtn"/);
-  assert.ok(js.includes('class="btn btn-small" data-exclude='), 'detail Exclude stays plain');
-  assert.ok(js.includes('class="btn btn-small btn-mid"'), 'detail Use Fund stays ink mid');
+  // Send-live-bundle: detail rows are one Actions line now; the
+  // old Exclude/Use Fund buttons are gone (see send-live-bundle).
+  assert.ok(js.includes('data-tx-actions='), 'detail Actions line present');
+  assert.equal(js.includes('data-exclude='), false, 'detail Exclude gone');
   assert.ok(js.includes('class="btn btn-small btn-quiet" data-decline='), 'request Decline stays quiet, not pale');
   assert.ok(html.includes('id="addOptionPurchaseBtn"'), '+ popup options untouched');
 });

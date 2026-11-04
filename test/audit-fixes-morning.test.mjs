@@ -42,10 +42,10 @@ test('A1: btn-mid is dark ink, distinct from primary, secondary, and tertiary gr
   assert.match(css, /body\.live #view-app \.btn-primary, body\.live \.btn-primary \{[^}]*background: #2f6bff/);
   assert.match(css, /body\.live #view-app \.btn, body\.live \.btn \{[^}]*background: #bfdbfe/);
   assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{[^}]*background: #e5e7eb/);
-  // Detail-row Use Extra Fund (btn-mid/ink) still sits between grey
-  // Mark as charity and secondary Reclassify in the row builder.
-  assert.ok(js.includes('class="btn btn-small btn-tertiary" data-mark-charity='));
-  assert.ok(js.includes('class="btn btn-small btn-mid"'));
+  // Send-live-bundle: detail rows are one Actions line now (see
+  // send-live-bundle tests); the old per-button row is gone.
+  assert.ok(js.includes('data-tx-actions='));
+  assert.equal(js.includes('data-mark-charity='), false);
 });
 
 test('C3: Disconnect button inside .bank-row is top-aligned; row and logo rules unchanged', () => {
@@ -93,5 +93,7 @@ test('B2: duplicate Change password deleted from the Account card; Profile card 
 
 test('Stale Settings intro sentence deleted', () => {
   assert.equal(html.includes('Bank and email connections moved here from Funds'), false);
-  assert.ok(html.includes('id="settingsIntro"'));
+  // Send-live-bundle: the Settings subtitle itself is deleted, so
+  // settingsIntro no longer exists at all.
+  assert.equal(html.includes('id="settingsIntro"'), false);
 });

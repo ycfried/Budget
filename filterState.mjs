@@ -139,6 +139,24 @@ export function householdActivityText(detail) {
   return d;
 }
 
+// Send-live-bundle, activity timeline dots (display only): charity
+// rows get green, system rows (week closes, household creation) get
+// grey, everything else money-related gets brand blue.
+export function activityDotClass(action, detail) {
+  const text = `${action ?? ''} ${detail ?? ''}`;
+  if (/charity/i.test(text)) return 'charity';
+  if (/weeks processed|week.*closed|household created/i.test(text)) return 'system';
+  return 'money';
+}
+
+// Send-live-bundle, activity title (display only): a collapsed
+// "Weeks processed ×N" group reads as "N weeks closed", never with
+// the internal "processed" wording or the × count suffix.
+export function activityTitle(action, count) {
+  if (action === 'Weeks processed') return `${count} ${count === 1 ? 'week' : 'weeks'} closed`;
+  return action;
+}
+
 // Group repeated weekly-processing events inside one day's activity
 // (audit 09). Only the weekly-processing action collapses — user
 // actions never collapse, even when two look identical, because they

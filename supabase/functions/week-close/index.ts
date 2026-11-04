@@ -165,6 +165,23 @@ Deno.serve(async (req) => {
       .eq('household_id', householdId);
     if (tempErr) return json({ error: 'temp increase read failed' }, 500);
 
+    // Weekly allowance overrides (send-live-bundle; SQL in
+    // supabase/weekly-allowance-override.sql, owner review only).
+    // A row for a week replaces base + temp with B = override,
+    // T = 0 when that week is closed, so the snapshot stores the
+    // override base. If the table does not exist yet, the read
+    // fails and overrides are treated as absent — old behaviour.
+    const overrideByWeek = new Map<string, number>();
+    const ovRes = await supabase
+      .from('weekly_allowance_overrides')
+      .select('week_start, allowance_cents')
+      .eq('household_id', householdId);
+    if (!ovRes.error) {
+      for (const o of (ovRes.data ?? [])) {
+        if (o.allowance_cents != null) overrideByWeek.set(o.week_start, o.allowance_cents);
+      }
+    }
+
     let closes: any[] = [];
     const closesRes = await supabase
       .from('week_closes')
@@ -261,10 +278,14 @@ Deno.serve(async (req) => {
         + storedLate;
     };
     const weekPolicy = (ws: string) => {
+      // Snapshot precedence, as in compute-week: a stored snapshot
+      // wins over any later override, so closing a week freezes the
+      // override that was in force when it closed, and a later
+      // override does not rewrite a closed week.
       const snap = closeByWeek.get(ws);
       return {
-        B: snap && snap.base_allowance_cents != null ? snap.base_allowance_cents : household.base_allowance_cents,
-        T: snap && snap.temp_increase_cents != null ? snap.temp_increase_cents : tempSum(ws),
+        B: snap && snap.base_allowance_cents != null ? snap.base_allowance_cents : overrideByWeek.has(ws) ? overrideByWeek.get(ws)! : household.base_allowance_cents,
+        T: snap && snap.temp_increase_cents != null ? snap.temp_increase_cents : overrideByWeek.has(ws) ? 0 : tempSum(ws),
       };
     };
 

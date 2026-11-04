@@ -411,16 +411,13 @@ body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 120px; z-in
 body.live .toast.error { color: #fff; }
 /* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
    One gap system: rows use flex gap; standalone buttons use one margin. */
-/* Button levels are four solid blues, not grey, not pale, not hollow:
-   primary = strong #2f6bff fill, white text;
-   secondary (base .btn) = pale light blue #bfdbfe fill, dark-blue
-   #1e40af text (readable at phone size, distinct from both neighbours);
-   tertiary = solid deep #1d4ed8 fill, white text;
-   fourth (btn-mid) = solid mid #3b82f6 fill, white text.
-   No grey fill, pale tint, or white outline is used for a button
-   level: grey blended with the old tint, and the owner rejected the
-   pale tint and white outline as too pale/hollow (Nov 3, 7:50 PM). */
-body.live #view-app .btn, body.live .btn { background: #bfdbfe; border: 0; color: #1e40af;
+/* Button levels (Nov 4, pale option B): primary = strong #2f6bff
+   fill, white text; secondary (base .btn) = pale light blue #bfdbfe
+   fill, ink #0f172a text (option B: fill stays pale, wording goes
+   ink — distinct from primary blue and from grey tertiary, and
+   readable at phone size); tertiary = solid grey #e5e7eb fill, ink
+   text; fourth (btn-mid) = solid ink #0f172a fill, white text. */
+body.live #view-app .btn, body.live .btn { background: #bfdbfe; border: 0; color: #0f172a;
   border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 600; }
 body.live #view-app .btn-primary, body.live .btn-primary { background: #2f6bff; color: #fff; }
 body.live #view-app .btn-danger, body.live .btn-danger { background: #fef2f2; color: #dc2626; }
@@ -433,7 +430,7 @@ body.live input[type="number"] { max-width: 220px; }
 /* Sort row: the native select matches the secondary (light-blue)
    direction button (same background, padding, font, radius) instead
    of sitting beside it in default browser styling. */
-body.live #txSortField { background: #bfdbfe; border: 0; border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 600; color: #1e40af; }
+body.live #txSortField { background: #bfdbfe; border: 0; border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 600; color: #0f172a; }
 body.live #view-app .card .btn + .btn { margin-left: 0; }
 body.live #view-app .tx-detail .btn { margin-right: 10px; }
 body.live .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -897,7 +894,32 @@ body.live { font-size: 16px; }
    NOT touched: body padding-bottom (72px + safe-area) below the
    footer still keeps the footer clear of the fixed tab bar. */
 body.live main { padding: 24px 16px 0; }
-body.live .card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px; margin-bottom: 16px; }
+body.live .card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px; margin-bottom: 16px; box-shadow: 0 4px 16px rgba(15, 23, 42, .06); }
+/* Send-live-bundle, card colour subtle (owner, Nov 4): the hero gets
+   a faint blue wash plus a soft shadow; every other card stays white
+   with the same soft shadow. No new hues, numbers untouched. */
+body.live .hero { background: linear-gradient(#ffffff, #eef4ff); box-shadow: 0 8px 24px rgba(47, 107, 255, .12); }
+body.live .quiet-link { color: #2f6bff; font-weight: 600; font-size: 15px; text-decoration: none; }
+body.live .history-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; cursor: pointer; font-size: 16px; }
+body.live .history-row-card { cursor: pointer; }
+body.live .settings-head-line { display: flex; justify-content: space-between; align-items: center; }
+body.live .settings-head-line h2 { margin: 0; }
+body.live .settings-back-link { background: none; border: 0; color: #475569; font-weight: 600; font-size: 14px; cursor: pointer; padding: 4px 0; }
+body.live .money-input-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+body.live .money-prefix { font-size: 16px; font-weight: 600; color: #0f172a; }
+body.live .temp-increase-heading { margin-top: 28px; }
+body.live .temp-increase-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+body.live .temp-increase-row .money-input-row { margin-bottom: 12px; }
+body.live .weeks-label { font-size: 14px; font-weight: 600; color: #0f172a; }
+body.live .weeks-label select { display: block; margin-top: 4px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; font-size: 15px; }
+body.live .activity-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; }
+body.live .activity-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; }
+body.live .activity-dot-money { background: #2f6bff; }
+body.live .activity-dot-charity { background: #2e6b3e; }
+body.live .activity-dot-system { background: #94a3b8; }
+body.live .tx-action-row { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #e5e7eb; padding: 14px 4px; font-size: 15px; color: #0f172a; cursor: pointer; font-family: inherit; }
+body.live .trash-bin-row { margin-top: 16px; text-align: center; }
+body.live .trash-bin-btn { font-size: 20px; }
 body.live .grid .card { margin-bottom: 0; }
 body.live .grid, body.live #section-stats { gap: 16px; }
 body.live #section-stats .stat-card { padding: 16px; }
@@ -910,4 +932,4 @@ body.live .tx-line1 .tx-amount { color: #2f6bff; }
 body.live .tx-line1 .tx-amount.negative { color: #2e6b3e; }
 body.live .hero .big.negative { color: var(--soft-red); }
 body.live .stat-card .num.negative { color: var(--soft-red); }
-body.live #section-recent .btn { color: #2f6bff; }
+body.live #section-recent .quiet-link { color: #2f6bff; }

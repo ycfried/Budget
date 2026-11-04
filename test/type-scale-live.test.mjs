@@ -49,13 +49,14 @@ test('hero/stat negative figures stay soft-red; progress and See all stay blue',
   assert.match(block, /body\.live \.hero \.big\.negative \{ color: var\(--soft-red\); \}/, 'hero negative stays soft-red');
   assert.match(block, /body\.live \.stat-card \.num\.negative \{ color: var\(--soft-red\); \}/, 'stat negative stays soft-red');
   assert.match(css, /\.hero-progress > div \{ height: 100%; background: #2f6bff;/, 'progress bar fill is brand blue');
-  assert.match(block, /#section-recent \.btn \{ color: #2f6bff; \}/, 'See all text is brand blue');
+  // Send-live-bundle: See all is a quiet text link, not a button.
+  assert.match(block, /#section-recent \.quiet-link \{ color: #2f6bff; \}/, 'See all text is brand blue');
 });
 
 test('version pins match live.html', () => {
   // Pinned versions move with later branches; after the PR #32 merge
-  // (live.js v42) and this branch (styles v33), live.js moves to v43
+  // (live.js v42) and this branch (styles v33), live.js moves to v44
   // so two different files never share one version number.
-  assert.match(html, /styles\.css\?v=33/, 'styles.css bumped to v33');
-  assert.match(html, /live\.js\?v=43/, 'live.js bumped to v43');
+  assert.match(html, /styles\.css\?v=34/, 'styles.css bumped to v34');
+  assert.match(html, /live\.js\?v=44/, 'live.js bumped to v43');
 });

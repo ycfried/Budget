@@ -18,11 +18,11 @@ const reset = readFileSync(new URL('../reset.html', import.meta.url), 'utf8');
 
 // --- P1: transfer gating + charity dash + weekly kicker ---------------
 test('Use Extra Fund is offered only for charges', () => {
+  // Send-live-bundle: the fund action lives in the Actions sheet
+  // (Extra Fund, charges only); the old fundBtn variables are gone.
   assert.match(js, /const qualifiesForFund = t\.kind === 'charge';/);
-  assert.match(js, /!isAdmin \? \(qualifiesForFund \? fundBtn : ''\)/);
-  assert.match(js, /qualifiesForFund \? fundBtnAdmin : ''/);
-  // Defensive handler gate for stale DOM.
-  assert.match(js, /if \(row && row\.kind !== 'charge'\) \{ await showAlert\('Does not qualify'/);
+  assert.match(js, /if \(row\.kind === 'charity'\) \{ await showAlert\('Does not qualify', 'Charity gifts cannot be covered by the Extra Fund\.'\); return; \}/);
+  assert.match(js, /if \(row\.kind !== 'charge'\) \{ await showAlert\('Does not qualify'/);
 });
 
 test('charity Home figure is a confirmed number, never a dash on success', () => {
@@ -68,9 +68,11 @@ test('button levels are solid colors, no pale tint or white outline', () => {
   assert.ok(html.includes('<button class="btn" id="fundActionUseBtn"'));
   assert.ok(html.includes('<button class="btn btn-tertiary" id="fundActionAskBtn"'));
   assert.equal(html.includes('fundActionIncomeBtn'), false);
-  // Detail: Mark (tertiary grey) vs Use Fund (mid) are different.
-  assert.ok(js.includes('class="btn btn-small btn-tertiary" data-mark-charity='));
-  assert.ok(js.includes("class=\"btn btn-small btn-mid\""));
+  // Detail: send-live-bundle replaced the button row with one
+  // Actions line (see send-live-bundle tests); the old Mark/Use
+  // buttons are gone.
+  assert.ok(js.includes('data-tx-actions='));
+  assert.equal(js.includes('data-mark-charity='), false);
 });
 
 // --- Held button removed; held amount folds into fund Pending -----
