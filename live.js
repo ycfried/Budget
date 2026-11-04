@@ -2359,43 +2359,23 @@ document.getElementById('settingsBackBtn')?.addEventListener('click', () => show
 async function openWeeklySheet() {
     const w = currentWeekData;
     if (!w) { await showAlert('Weekly Budget', 'Weekly numbers are not loaded yet. Try again in a moment.'); return; }
-    // Delta3: labeled metric rows instead of the paragraph of figures;
-    // UX-review-fix: the reconciliation paragraph below them is now
-    // behind the "Show how this adds up" disclosure (see below).
-    // Weekly-sheet-simple (owner, Nov 3, 9:53 PM): the sheet opens
-    // with ONLY the basic stuff — Left, Spent, Allowance, in that
-    // order, same values and formatting as before. Every other
-    // figure that used to sit visible moves behind the disclosure
-    // below (nothing deleted, no value changed); Outgoing debt was
-    // already a disclosure row, so it appears there once, not twice.
+    // Weekly-sheet-trim (owner correction, Nov 3, ~9:59 PM,
+    // supersedes the PR #21 disclosure design): the sheet contains
+    // ONLY the basic stuff — Left, Spent, Allowance, in that order,
+    // same values and formatting as before — plus the "Show
+    // transactions" button below. The disclosure and every detail
+    // row it held (Base spending room,
+    // dated/late split, carried debt, temporary increase, outgoing
+    // debt, week status, pending refunds) are REMOVED from the
+    // Weekly sheet entirely, not hidden behind a tap and not moved
+    // elsewhere in the sheet. No figure changes: the three rows
+    // above are computed exactly as before.
     const weeklyRows = [
       ['Left', `${formatCents(w.availableCents)}${w.availableCents < 0 ? ` (over budget by ${formatCents(Math.abs(w.availableCents))})` : ''}`],
       ['Spent', formatCents(w.chargesCents)],
       ['Allowance', formatCents(w.baseAllowanceCents ?? w.baseAvailableCents)],
     ];
-    const weeklyDetailRows = [
-      ...(lastSpentBreakdown ? [['Dated this week', formatCents(lastSpentBreakdown.datedTotal)], ['Late charges from earlier locked weeks', formatCents(lastSpentBreakdown.lateTotal)]] : []),
-      ['Carried debt', formatCents(w.carriedDebtCents)],
-      ['Temporary increase', formatCents(w.tempCents)],
-      ...(w.weekLocked ? [['Week status', 'Locked']] : []),
-      ...((w.pendingRefundExcludedCents ?? 0) > 0 ? [['Pending refunds excluded', formatCents(w.pendingRefundExcludedCents)]] : []),
-    ];
-    // UX-review-fix (owner screenshot Nov 3, 7:52 PM): the "How it
-    // fits together" paragraph is GONE from the default view — it
-    // repeated the labeled rows above it in long sentence form and
-    // wrapped badly, adding no new figure. The three computed lines
-    // survive only behind a single tap, as label + amount rows, never
-    // a paragraph. No figure changes: Base room, Left, and Outgoing
-    // debt are the same values the paragraph computed (baseRoom,
-    // available, outgoing), and the rows above them are unchanged.
-    // The hero kicker fix in this package is separate (live.html
-    // kicker text) and does not touch this sheet code.
-    const weeklyResult = await showSheet({ title: 'Weekly Budget', rows: weeklyRows, disclosure: { label: 'Show how this adds up', rows: [
-      ['Base spending room', formatCents(w.baseRoomCents ?? w.baseAvailableCents)],
-      ['Left', formatCents(w.availableCents)],
-      ['Outgoing debt', formatCents(w.outgoingDebtCents)],
-      ...weeklyDetailRows,
-    ] }, extraAction: { label: 'Show transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
+    const weeklyResult = await showSheet({ title: 'Weekly Budget', rows: weeklyRows, extraAction: { label: 'Show transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
     // Weekly-sheet-simple: "Show transactions" closes the sheet and
     // opens Transactions filtered to the current week, reusing the
     // existing week-filter state (txWeekOnly) and render path — the
