@@ -49,7 +49,7 @@ test('number row is vertically centered and kicker row is full width', () => {
 test('sync button keeps its identity, treatment hook, and the number keeps its target', () => {
   assert.match(hero, /id="homeSyncBtn"[^>]*aria-label="Sync bank"/);
   assert.match(hero, /id="weeklyAvailable"[^>]*role="button"[^>]*tabindex="0"/);
-  assert.match(hero, /id="weeklyAvailable"[^>]*aria-label="Show Weekly Budget breakdown"/);
+  assert.match(hero, /id="weeklyAvailable"[^>]*aria-label="Show Weekly Budget Breakdown"/);
   assert.match(css, /\.hero-number-row \.hero-sync-btn \{[^}]*width: 44px; height: 44px/);
 });
 
@@ -64,14 +64,14 @@ test('Home stat kickers are one line each: Charity and Extra Fund', () => {
 });
 
 test('period is not lost: Charity sheet title still carries it (Period row removed by fund-sheet-button-rule)', () => {
-  assert.match(js, /title: 'Charity · November 2026 onward'/);
-  assert.doesNotMatch(js, /\['Period', 'November 2026 onward'\]/);
+  assert.match(js, /title: 'Charity · November 2026 Onward'/);
+  assert.doesNotMatch(js, /\['Period', 'November 2026 Onward'\]/);
 });
 
 test('Funds Charity panel heading is untouched (already just Charity)', () => {
   assert.match(html, /data-fund-card="charity"[^>]*>\s*<div class="fund-balance-head"><h2>Charity<\/h2><\/div>/);
 });
 
-test('version pins: styles v44, live.js v54 after the PR #32 merge', () => {
-  assert.match(html, /styles\.css\?v=44/);
-  assert.match(html, /live\.js\?v=54/);});
+test('version pins: styles v45, live.js v55 after the PR #32 merge', () => {
+  assert.match(html, /styles\.css\?v=45/);
+  assert.match(html, /live\.js\?v=55/);});

@@ -16,9 +16,9 @@ const itemDisconnect = readFileSync(new URL('../supabase/functions/plaid-disconn
 const config = readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8');
 const acctSql = readFileSync(new URL('../supabase/plaid-account-disconnect.sql', import.meta.url), 'utf8');
 
-test('pins bumped to v44/v54', () => {
-  assert.match(html, /styles\.css\?v=44/);
-  assert.match(html, /live\.js\?v=54/);
+test('pins bumped to v45/v55', () => {
+  assert.match(html, /styles\.css\?v=45/);
+  assert.match(html, /live\.js\?v=55/);
 });
 
 test('Previously connected is gone from the UI, no rows deleted', () => {
@@ -55,7 +55,7 @@ test('Connected accounts renders one row per account', () => {
 
 test('per-account Disconnect: own button, own confirmation, own function', () => {
   assert.match(js, /callFn\('plaid-account-disconnect', \{ household_id: household\.household_id, plaid_item_id: item\.plaid_item_id, plaid_account_id: acct\.plaid_account_id \}\)/);
-  assert.match(js, /Disconnect account/);
+  assert.match(js, /Disconnect Account/);
   assert.match(js, /This stops syncing this account only/);
   assert.match(js, /Other accounts on the same bank connection keep syncing/);
   assert.match(js, /Past transactions stay in the list/);

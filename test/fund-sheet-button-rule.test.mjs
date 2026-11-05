@@ -83,7 +83,7 @@ test('C: charity negative remaining stays a signed number and still adds up', ()
 });
 
 test('C: charity sheet title keeps the period; Record income action stays; rate card stays', () => {
-  assert.match(js, /title: 'Charity · November 2026 onward', rows: charityBreakdownRows\(c\), extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null/);
+  assert.match(js, /title: 'Charity · November 2026 Onward', rows: charityBreakdownRows\(c\), extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null/);
   assert.ok(html.includes('id="charityRateCurrent"'), 'Funds Charity income & rate card keeps the default rate line');
 });
 

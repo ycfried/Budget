@@ -54,13 +54,13 @@ test('switch toggles for real: enable and disable via the edge function, state s
   assert.equal(js.includes("setBtn('registerWebhookBtn'"), false, 'old button gating gone');
 });
 
-test('pins bumped to v44/v54', () => {
-  assert.ok(html.includes('styles.css?v=44'));
-  assert.ok(html.includes('live.js?v=54'));
+test('pins bumped to v45/v55', () => {
+  assert.ok(html.includes('styles.css?v=45'));
+  assert.ok(html.includes('live.js?v=55'));
 });
 
 test('untouched copy: look-only sentence, last synced line, connected list', () => {
   assert.ok(html.includes('Look only — it never moves, sends, or changes anything.'));
   assert.ok(html.includes('id="bankSyncLine"'));
-  assert.ok(html.includes('Connected accounts'));
+  assert.ok(html.includes('Connected Accounts'));
 });

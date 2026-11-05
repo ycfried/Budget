@@ -55,7 +55,7 @@ test('hero/stat negative figures stay soft-red; progress and See all stay blue',
 
 test('version pins match live.html', () => {
   // Pinned versions move with later branches; after the PR #32 merge
-  // (live.js v42) and this branch (styles v33), live.js moves to v44
+  // (live.js v42) and this branch (styles v33), live.js moves to v45
   // so two different files never share one version number.
-  assert.match(html, /styles\.css\?v=44/, 'styles.css bumped to v36');
-  assert.match(html, /live\.js\?v=54/, 'live.js bumped to v46');});
+  assert.match(html, /styles\.css\?v=45/, 'styles.css bumped to v36');
+  assert.match(html, /live\.js\?v=55/, 'live.js bumped to v46');});
