@@ -27,9 +27,9 @@ test('B1: Funds Held-for-review button and wrap are gone; Review card stays the 
   // its Pending row (pending releases + held weeks), not a Held row.
   const fundRows = js.slice(js.indexOf('function fundBreakdownRows'), js.indexOf('function charityBreakdownRows'));
   assert.ok(fundRows.includes('heldTotal'), 'fund sheet Pending must fold in held weeks');
-  // Guarded JS references remain as no-ops, never unguarded throws.
-  assert.match(js, /getElementById\('fundHeldLinkWrap'\)\?/);
-  assert.match(js, /\$\('fundHeldLinkBtn'\)\?\.addEventListener/);
+  // Merged-audit A18: the dead JS references are removed entirely
+  // (not just guarded) — no held-link identifier remains in live.js.
+  assert.equal(js.includes('fundHeldLink'), false);
 });
 
 test('A1: btn-mid is dark ink, distinct from primary, secondary, and tertiary grey', () => {

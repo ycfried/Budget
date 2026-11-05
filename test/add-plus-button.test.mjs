@@ -14,7 +14,11 @@ const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 
 test('Transactions header has one blue + button, the only Add entry point', () => {
-  assert.match(html, /id="txAddBtn"[^>]*aria-label="Add">\+</);
+  // Merged-audit B4: desktop label 'Add transaction' next to +; phone keeps + only (label hidden by CSS below 768px).
+  assert.match(html, /id="txAddBtn"[^>]*aria-label="Add transaction"/);
+  assert.ok(html.includes('<span class="add-label-desktop">Add transaction</span>'));
+  assert.match(css, /body\.live \.add-label-desktop \{ display: none; \}/);
+  assert.match(css, /@media \(min-width: 768px\)[\s\S]*?\.add-label-desktop \{ display: inline; \}/);
   assert.ok(html.includes('class="btn btn-primary add-plus-btn" id="txAddBtn"'));
   assert.match(css, /body\.live \.add-plus-btn \{[^}]*width: 44px;[^}]*height: 44px;/);
   // The old inline choice card and its buttons are gone — no second way in.
@@ -26,7 +30,11 @@ test('Transactions header has one blue + button, the only Add entry point', () =
 });
 
 test('options popup lists Purchase, Donation, Upload with plain sub-lines', () => {
-  assert.match(html, /id="addPopupOverlay"[^>]*role="dialog" aria-modal="true" aria-label="Add"/);
+  // Merged-audit B4: desktop label 'Add transaction' next to +; phone keeps + only (label hidden by CSS below 768px).
+  assert.match(html, /id="txAddBtn"[^>]*aria-label="Add transaction"/);
+  assert.ok(html.includes('<span class="add-label-desktop">Add transaction</span>'));
+  assert.match(css, /body\.live \.add-label-desktop \{ display: none; \}/);
+  assert.match(css, /@media \(min-width: 768px\)[\s\S]*?\.add-label-desktop \{ display: inline; \}/);
   assert.match(html, /id="addOptionsCard"/);
   assert.match(html, /id="addOptionPurchaseBtn"[^>]*>.*Purchase.*Add a transaction by hand/s);
   assert.match(html, /id="addOptionDonationBtn"[^>]*>.*Donation.*Record a gift by hand/s);

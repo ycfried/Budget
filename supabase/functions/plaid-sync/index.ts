@@ -60,8 +60,15 @@
 //      plaid_pending_transaction_id = tx.pending_transaction_id, else
 //   3. canonical-hash MATCH (same household + dedupe_hash) — used only
 //      to update an existing cross-source row (e.g. an earlier Gmail
-//      alert row), never as a uniqueness constraint, else
+//      alert row, source='amex_alert'), never as a uniqueness constraint,
+//      never to overwrite an unrelated identical purchase, else
 //   4. insert a new row.
+// Merged-audit A14/A15/B6: a re-delivery never overwrites a trashed
+// row's state/excluded, never overwrites an admin-set kind (kind is
+// set at insert only; posting changes state, not kind), a hash match
+// only ever claims a Gmail-alert row, and a full pull (cursor NULL)
+// drops pre-2026-11-01 rows for the household afterwards, so a
+// cursor reset cannot re-import September/October history.
 //   A posted version therefore UPDATES its pending row (amount/state
 //   corrected, e.g. $40 authorization -> $48 with tip) instead of
 //   inserting a second row. Two identical real purchases coexist
@@ -266,8 +273,14 @@ Deno.serve(async (req) => {
 
     let added = 0, updated = 0, reversed = 0, skipped = 0;
     let truncated = false;
+    // Merged-audit B6: set when any item started with a NULL cursor
+    // (a full pull). The pre-Nov drop runs once, after all items,
+    // so a second item's pull cannot re-add rows the first item's
+    // drop removed.
+    let fullPullSeen = false;
 
     for (const item of activeItems) {
+      if (!item.sync_cursor) fullPullSeen = true;
       const { data: ct } = await supabaseAdmin.rpc('get_plaid_ciphertext', {
         p_household_id: householdId, p_item_id: item.plaid_item_id,
       });
@@ -468,6 +481,16 @@ access_token: <redacted>
         .eq('processed', false);
     }
 
+    // Merged-audit B6 date guard, second layer (the first is the
+    // Nov 1 filter the app start implies): after a full pull, drop
+    // any row dated before 2026-11-01 for this household. This is
+    // a delete of re-pulled bank history only; manually entered rows
+    // are never dated before November 2026 by the app's own rules.
+    if (fullPullSeen) {
+      await supabaseAdmin.from('transactions')
+        .delete().eq('household_id', householdId).lt('date', '2026-11-01');
+    }
+
     return json({
       added, updated, reversed, skipped,
       duplicate_removed: duplicateRemoved,
@@ -517,37 +540,50 @@ async function upsertPlaidTx(
   };
 
   // 1. external_id (this transaction's own id).
-  let existing: { id: string } | null = null;
+  let existing: { id: string; state?: string | null; excluded?: boolean | null; source?: string | null } | null = null;
   if (txId) {
-    const { data } = await supabaseAdmin.from('transactions').select('id')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
       .eq('household_id', householdId).eq('external_id', txId).maybeSingle();
     existing = data;
   }
   // 2. pending_transaction_id linkage (pending -> posted transition).
   if (!existing && pendingTxId) {
-    const { data } = await supabaseAdmin.from('transactions').select('id')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
       .eq('household_id', householdId)
       .or(`external_id.eq.${pendingTxId},plaid_pending_transaction_id.eq.${pendingTxId}`)
       .maybeSingle();
     existing = data;
   }
   // 3. canonical-hash MATCH ONLY (cross-source, e.g. Gmail alert row).
-  //    Never a uniqueness constraint; if several rows share the hash
-  //    (identical real purchases), take the earliest provisional one
-  //    and leave the others alone.
+  //    Merged-audit A15: never a uniqueness constraint, and never a
+  //    claim on an unrelated identical purchase — only a row whose
+  //    source is 'amex_alert' (the Gmail alert the hash was built to
+  //    link) may be claimed here. Two identical real purchases keep
+  //    coexisting, and the earliest matching alert row is the claim.
   if (!existing) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
       .eq('household_id', householdId).eq('dedupe_hash', hash)
+      .eq('source', 'amex_alert')
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
     existing = data;
   }
 
   if (existing) {
-    const { error } = await supabaseAdmin.from('transactions').update({
+    // Merged-audit A14: a re-delivery never overwrites Trash state
+    // (state='excluded', excluded=true) and never overwrites kind —
+    // kind is set at insert only, so an admin reclassification
+    // survives the next sync. A trashed row gets only the bank
+    // facts refreshed (date/merchant/amount/suffix/ids); a live row
+    // also gets its pending->posted state transition.
+    const trashed = existing.excluded === true || existing.state === 'excluded';
+    const update: Record<string, unknown> = {
       date, merchant, amount_cents: signed, card_suffix: suffix,
-      state, kind, external_id: txId, dedupe_hash: hash,
+      external_id: txId, dedupe_hash: hash,
       plaid_transaction_id: txId, plaid_pending_transaction_id: pendingTxId,
-    }).eq('id', existing.id).eq('household_id', householdId);
+    };
+    if (!trashed) update.state = state;
+    const { error } = await supabaseAdmin.from('transactions').update(update)
+      .eq('id', existing.id).eq('household_id', householdId);
     return error ? 'skipped' : 'updated';
   }
   const { data: inserted, error } = await supabaseAdmin.from('transactions').insert(row).select('id, created_at').single();

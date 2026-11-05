@@ -30,7 +30,8 @@ test('charity Home figure is a confirmed number, never a dash on success', () =>
   // assigns the dash for the failed-load state. (Loading-indicators:
   // the success line also clears the skeleton aria-busy flag, so the
   // match allows the braced form.)
-  assert.match(js, /if \(cp\) \{ cp\.textContent = formatCents\(remaining\); cp\.removeAttribute\('aria-busy'\); \}/);
+  // Merged-audit A12: success also toggles the negative class.
+  assert.match(js, /if \(cp\) \{ cp\.textContent = formatCents\(remaining\); cp\.classList\.toggle\('negative', remaining < 0\); cp\.removeAttribute\('aria-busy'\); \}/);
   assert.doesNotMatch(js, /committed === 0 && given === 0\) \? '—'/);
 });
 
@@ -87,9 +88,11 @@ test('held button removed; held amount folds into the fund sheet Pending', () =>
   assert.equal(html.includes('id="fundHeldLinkWrap"'), false);
   assert.equal(html.includes('id="fundHeldLinkBtn"'), false);
   assert.equal(css.includes('#fundHeldLinkWrap'), false);
-  assert.match(js, /fundHeldLinkBtn.*addEventListener\('click'/);
-  assert.match(js, /moreReviewOpen = true/);
-  assert.match(js, /getElementById\('section-fund-review-more'\)\?\.scrollIntoView/);
+  // Merged-audit A18: the dead held-link handler is removed; the
+  // Review row label (Review (N)) is now the held queue's opener.
+  assert.equal(js.includes('fundHeldLink'), false);
+  assert.match(js, /Review \(\$\{reviewNeedsCount\}\)/);
+  assert.match(js, /moreReviewOpen/);
   const fundRows = js.slice(js.indexOf('function fundBreakdownRows'), js.indexOf('function charityBreakdownRows'));
   assert.ok(fundRows.includes('heldTotal'), 'fund sheet Pending must fold in held weeks');
   assert.doesNotMatch(fundRows, /\['Held for review',/);
@@ -213,7 +216,7 @@ test('Home stat cards are Title + Amount only, words in aria-labels', () => {
 test('Add is a blue + button opening an options popup, no choice card', () => {
   assert.doesNotMatch(html, /section-add-choice/);
   assert.doesNotMatch(html, /Add \/ Import transaction/);
-  assert.match(html, /id="txAddBtn"[^>]*aria-label="Add">\+</);
+  assert.match(html, /id="txAddBtn"[^>]*aria-label="Add transaction">/);
   assert.match(html, /id="addPopupOverlay"/);
   assert.match(html, /id="addOptionPurchaseBtn"/);
   assert.match(html, /id="addOptionDonationBtn"/);

@@ -159,6 +159,11 @@ Deno.serve(async (req) => {
     } else {
       txns = txRes.data ?? [];
     }
+    // Merged-audit B6 floor: a slipped pre-November row can never
+    // stamp an old week or chain debt into November. The app starts
+    // November 2026; rows before 2026-11-01 are dropped from this
+    // run's walk (plaid-sync drops them at pull time too).
+    txns = txns.filter((t: any) => (t.date ?? '') >= '2026-11-01');
     const { data: temps, error: tempErr } = await supabase
       .from('temp_increases')
       .select('week_start, amount_cents')
@@ -292,6 +297,26 @@ Deno.serve(async (req) => {
     let fundAvailable = (ledger ?? []).reduce((s: number, r: any) => s + (r.amount_cents ?? 0), 0);
     let shortfall = household.fund_shortfall_cents ?? 0;
     const shortfallAtStart = shortfall;
+    // Merged-audit B9: week-close never writes its stale in-memory
+    // shortfall absolutely. persistShortfall re-reads the live row
+    // fresh, applies only the delta this run made since its last
+    // persist, and writes that — so a concurrent top-up (which
+    // serializes on the households row inside its own RPC) is never
+    // clobbered by this run's absolute write. The delta window is
+    // the read-to-write gap only, not the whole run.
+    let lastPersistedShortfall = shortfallAtStart;
+    const persistShortfall = async () => {
+      const { data: fresh } = await supabaseAdmin.from('households')
+        .select('fund_shortfall_cents').eq('id', householdId).single();
+      const freshVal = fresh?.fund_shortfall_cents ?? lastPersistedShortfall;
+      const target = Math.max(0, freshVal + (shortfall - lastPersistedShortfall));
+      if (target !== freshVal) {
+        const rpc = await supabase.rpc('update_fund_shortfall', { household_id: householdId, shortfall_cents: target });
+        check(rpc, 'update_fund_shortfall RPC');
+        shortfall = target;
+      }
+      lastPersistedShortfall = shortfall;
+    };
 
     // ---- Walk range ----
     const candidateWeeks: string[] = [];
@@ -607,10 +632,7 @@ Deno.serve(async (req) => {
 
     // Persist release-driven shortfall before restoration, so a
     // restoration failure never loses the release shortfall.
-    if (shortfall !== shortfallAtStart) {
-      const rpc = await supabase.rpc('update_fund_shortfall', { household_id: householdId, shortfall_cents: shortfall });
-      check(rpc, 'update_fund_shortfall RPC');
-    }
+    await persistShortfall();
 
     // ---- Restoration phase (post-walk; see header on failure) ----
     let restorations = 0, heldCreated = 0;
@@ -688,10 +710,23 @@ Deno.serve(async (req) => {
           // Initial debt into the purchase week: latest close
           // before it (steady state: the immediately preceding
           // week). See S2_NOTES.md for the backfill approximation.
+          // Merged-audit B8: subtract debt cuts already posted by
+          // earlier runs, so a debt already relieved by a prior
+          // restoration is not relieved a second time. Floored at 0.
+          // Merged-audit B7: this simulation uses the same shared
+          // computeWeek + restoration math as compute-week (snapshot
+          // policy via weekPolicy, charges via weekCharges, debt via
+          // computeWeek) — the walk calls that shared logic per week
+          // rather than keeping a second copy of the week math.
           const priorClose = [...closeByWeek.values()]
             .filter((c: any) => c.week_start < purchaseWeek)
             .sort((a: any, b: any) => (a.week_start < b.week_start ? 1 : -1))[0];
-          const initialDebt = priorClose ? (priorClose.outgoing_debt_cents ?? 0) : 0;
+          const priorCuts = restorationEntries
+            .filter((r: any) => r.week_start < currentWeekStart)
+            .reduce((sum: number, r: any) => sum + (r.debt_reduction_cents ?? 0), 0);
+          const initialDebt = priorClose
+            ? Math.max(0, (priorClose.outgoing_debt_cents ?? 0) - priorCuts)
+            : 0;
 
           const sortedRefunds = [...refundList].sort((a: any, b: any) =>
             (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.id < b.id ? -1 : 1)));
@@ -724,13 +759,43 @@ Deno.serve(async (req) => {
             const toFundSurplus = postedSurplus - surplusOffset;
             const toFundFund = postedFund - fundOffset;
             shortfall -= offset;
-            check(await supabaseAdmin.from('restoration_entries').insert({
+            // Merged-audit B10: the held row is queued BEFORE the
+            // restoration entry, and a unique violation on either
+            // insert means a concurrent run already posted it — that
+            // is swallowed as idempotent, not a failure. Any other
+            // held-insert failure throws BEFORE the entry exists, so
+            // the next run retries this refund instead of silently
+            // losing its held amount behind a completed entry.
+            const isUniqueViolation = (e: any) => e?.code === '23505';
+            if (inc.heldCents > 0) {
+              const heldRes = await supabaseAdmin.from('held_refunds').insert({
+                household_id: householdId, refund_transaction_id: refund.id,
+                purchase_transaction_id: purchaseId, held_cents: inc.heldCents, status: 'pending',
+              });
+              if (heldRes.error && !isUniqueViolation(heldRes.error)) {
+                check(heldRes, 'held_refunds insert');
+              } else if (!heldRes.error) {
+                heldCreated += 1;
+              }
+            }
+            const entryRes = await supabaseAdmin.from('restoration_entries').insert({
               household_id: householdId, week_start: currentWeekStart,
               purchase_transaction_id: purchaseId, refund_transaction_id: refund.id,
               restored_surplus_cents: postedSurplus,
               debt_reduction_cents: postedDebt,
               fund_credit_cents: postedFund,
-            }), 'restoration_entries insert');
+            });
+            if (entryRes.error && !isUniqueViolation(entryRes.error)) {
+              check(entryRes, 'restoration_entries insert');
+            }
+            if (entryRes.error) {
+              // Concurrent run already posted this refund: undo this
+              // run's in-memory shortfall offset and skip the fund
+              // credits, so money is never credited twice.
+              shortfall += offset;
+              existingEntryByRefund.set(refund.id, true);
+              continue;
+            }
             if (toFundSurplus > 0) {
               check(await supabaseAdmin.from('fund_ledger').insert({
                 household_id: householdId, kind: 'restoration', amount_cents: toFundSurplus,
@@ -749,13 +814,7 @@ Deno.serve(async (req) => {
               }), 'fund_ledger restoration fund insert');
               fundAvailable += toFundFund;
             }
-            if (inc.heldCents > 0) {
-              check(await supabaseAdmin.from('held_refunds').insert({
-                household_id: householdId, refund_transaction_id: refund.id,
-                purchase_transaction_id: purchaseId, held_cents: inc.heldCents, status: 'pending',
-              }), 'held_refunds insert');
-              heldCreated += 1;
-            }
+            // (Held row already queued above, before the entry.)
             check(await supabaseAdmin.from('audit_log').insert({
               household_id: householdId, actor: user.id, actor_name: 'admin',
               action: 'Refund restoration',
@@ -772,10 +831,7 @@ Deno.serve(async (req) => {
         if (unlinkedCount > 0) {
           restorationsSkipped.push({ reason: `${unlinkedCount} unlinked posted refund(s) noted (S3 linking gap; they net by date in open weeks only)` });
         }
-        if (shortfall !== shortfallAtStart) {
-          const rpc = await supabase.rpc('update_fund_shortfall', { household_id: householdId, shortfall_cents: shortfall });
-          check(rpc, 'update_fund_shortfall RPC');
-        }
+        await persistShortfall();
       } catch (e) {
         restorationError = String((e as any)?.message ?? e);
       }

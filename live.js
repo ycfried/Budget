@@ -26,7 +26,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, resolveRestoredView, resolveRestoredSubView, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, resolveRestoredView, resolveRestoredSubView, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -133,7 +133,7 @@ function stateWord(t, excluded) {
 // amount / suffix. Normalization collapses whitespace and drops punctuation
 // so "Trader Joe's" and "TRADER JOES" dedupe; the stored dedupe_hash below
 // keeps the manual-insert form (uppercased merchant) so it stays consistent
-// with the existing unique (household_id, dedupe_hash) constraint.
+// with the stored dedupe_hash (there is NO unique (household_id, dedupe_hash) constraint live — proven Nov 3, 2026 — so dedupe is matching-only, never a DB backstop).
 const normalizeMerchant = (m) => String(m || '').toUpperCase().trim().replace(/\s+/g, ' ');
 const csvRowKey = (r) => `${normalizeMerchant(r.merchant).replace(/[^A-Z0-9 ]/g, '')}|${r.date}|${r.amountCents}|${r.suffix}`;
 function parseAmountLive(raw) {
@@ -461,7 +461,7 @@ async function refresh() {
       if (pt) pt.textContent = '';
       const heroSpent = document.getElementById('heroSpentLine'); if (heroSpent) heroSpent.textContent = `${formatCents(charges)} spent`;
       const heroUsed = document.getElementById('heroUsedPct'); if (heroUsed) heroUsed.textContent = capacity > 0 ? `${Math.round(pct)}% used` : (charges > 0 ? 'Over budget' : '0% used');
-      const heroAllow = document.getElementById('heroAllowance'); if (heroAllow) heroAllow.textContent = formatCents(baseAllowanceCents ?? (baseAvailable + carried));
+      const heroAllow = document.getElementById('heroAllowance'); if (heroAllow) heroAllow.textContent = formatCents(baseAvailable + tempC); // Merged-audit A3: Home face shows the EFFECTIVE allowance (base room + temp), matching the Weekly breakdown, not the household base.
       lastRefreshAt = Date.now();
       const allowInput = document.getElementById('baseAllowanceInput');
       if (allowInput && document.activeElement !== allowInput && baseAllowanceCents !== null) allowInput.value = (baseAllowanceCents / 100).toFixed(2);
@@ -472,6 +472,7 @@ async function refresh() {
     clearWeekNumbers();
   } };
   await loadWeekNumbers();
+  updateTempPreview();
 
   // Delta3: weeks still close themselves (admin only, once per
   // session) — but only when a close can be due. The due-check reads
@@ -511,7 +512,7 @@ async function refresh() {
   txLoaded = true;
   const q = ($('txSearch')?.value ?? '').trim().toLowerCase();
   // Send-live-bundle, Trash: the main Transactions list never shows
-  // excluded rows — they live only in the Trash bin below the list.
+  // excluded rows — they live only in the Trash link above the list.
   // The old 'excluded' status filter is gone (its select option was
   // removed); a legacy 'excluded' value falls back to 'all', which
   // also hides excluded rows.
@@ -595,13 +596,15 @@ async function refresh() {
     }).join('');
   }
   const thisWeekTxns = all.filter((t) => inThisWeek(t) && !(t.excluded === true || t.state === 'excluded'));
+  // Merged-audit A5: Purchases counts only week-counted purchase (charge) rows — charity gifts, refunds, payments, cashback and transfers never count, even though they appear in Recent.
+  const thisWeekPurchases = all.filter((t) => inThisWeek(t) && !(t.excluded === true || t.state === 'excluded') && t.kind === 'charge' && t.state !== 'reversed');
   const emptyHintEl = document.getElementById('weekEmptyHint');
   // Show the empty-week hint only once a load has actually returned
   // empty — never while the first load is still in flight, and never
   // on a failed load (Nov 3 fix round: it used to flash on every
   // fresh open even in a household with data).
   if (emptyHintEl) emptyHintEl.classList.toggle('hidden', !(txLoaded && !txReadFailed && thisWeekTxns.length === 0));
-  const heroCount = document.getElementById('heroPurchaseCount'); if (heroCount && !txReadFailed) heroCount.textContent = String(thisWeekTxns.length);
+  const heroCount = document.getElementById('heroPurchaseCount'); if (heroCount && !txReadFailed) heroCount.textContent = String(thisWeekPurchases.length);
   const countEl = $('txCount');
   if (countEl) {
     // Charity gifts are not spending: leave them out of the list
@@ -609,7 +612,7 @@ async function refresh() {
     // the gifts total. (Week math already excludes them everywhere.)
     const shownTotal = shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && (txFilter === 'charity' || t.kind !== 'charity')).reduce((s, t) => s + t.amount_cents, 0);
     const capped = all.length >= txLimit ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
-    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : `Showing ${shown.length}${capped}${txWeekOnly ? ' · this week' : ''} · total of the rows shown ${formatCents(shownTotal)} (${txFilter === 'charity' ? 'excluded rows not counted' : 'charity gifts and excluded rows not counted'}) · search covers loaded rows only`;
+    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : (shown.length === 0 && searchOrFilterActive ? 'No matching transactions — try a different search, or clear the search and filters.' : `${shown.length} transactions · Total shown ${formatCents(shownTotal)}${all.length >= txLimit ? ' · of loaded transactions — tap Load more for older ones' : ''}`); // Merged-audit A7: short count + separately labelled total; recovery message outranks a zero total.
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
@@ -744,24 +747,49 @@ async function refresh() {
       : recent.length
       ? recent.map((t) => {
           const excluded = t.excluded === true || t.state === 'excluded';
-          return `<li class="tx-row"><div class="tx-head" data-view="purchases" data-recent-tx="${t.id}" role="button" tabindex="0" aria-label="See ${esc(t.merchant)} in Transactions"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(displayMerchant(t.merchant))}">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
+          const recentCard = (t.kind === 'charity' && String(t.card_suffix) === '0000') ? 'Cash / no card' : `••${esc(t.card_suffix)}`; // Merged-audit A5: same Cash/no-card logic as Transactions, never ••0000.
+          return `<li class="tx-row"><div class="tx-head" data-view="purchases" data-recent-tx="${t.id}" role="button" tabindex="0" aria-label="See ${esc(displayMerchant(t.merchant))} ${formatCents(t.amount_cents)} ${displayDay(t.date)} ${stateWord(t, excluded)} in Transactions"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(displayMerchant(t.merchant))}">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
           <div class="tx-line2">${statePill(t, excluded)}
-          <span class="muted small tx-meta">${displayDay(t.date)} · ••${esc(t.card_suffix)}</span></div></div></li>`;
+          <span class="muted small tx-meta">${displayDay(t.date)} · ${recentCard}</span></div></div></li>`;
         }).join('')
       : '<li class="muted small">No transactions yet.</li>';
     // Rows added after load need the same tab-switch handler as the nav.
     // UX-review-fix: opening a recent item jumps to Transactions AND
     // expands that row's detail, with the row scrolled into view; the
     // detail itself is the way back (tap the row header to collapse).
+    // Merged-audit A6: the jump is robust against filters/search.
+    // Clear every Transactions filter first, so the row is found
+    // after refresh even when the list was filtered; then open its
+    // detail, scroll it into view, and highlight it briefly. If the
+    // row is not in the loaded list (older than the loaded page),
+    // say so plainly instead of silently landing on the list.
     const openRecent = async (el) => {
-      showView(el.dataset.view, { clearMessages: true });
-      // Refresh first when stale, so the re-render does not collapse
-      // the detail we are about to open.
-      if (Date.now() - lastRefreshAt > 30000) await refresh();
-      const detail = document.getElementById(`tx-detail-${el.dataset.recentTx}`);
-      const head = document.querySelector(`[data-tx-head="${el.dataset.recentTx}"]`);
-      if (detail) detail.classList.remove('hidden');
-      if (head) { head.classList.add('open'); head.scrollIntoView({ block: 'start' }); }
+      const txId = el.dataset.recentTx;
+      const setVal = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+      setVal('txSearch', '');
+      // Search is read straight from the input (no txSearch variable),
+      // so clearing the input above is the whole clear.
+      txFilter = 'all'; txMonth = 'all'; txCard = 'all'; txWeekOnly = false;
+      setVal('txMonth', 'all'); setVal('hb-tx-month', 'all'); setVal('hb-tx-card', 'all');
+      txFromDate = ''; txToDate = '';
+      setVal('txFromDate', ''); setVal('txToDate', '');
+      setVal('txMinAmount', ''); setVal('txMaxAmount', '');
+      showView('purchases', { clearMessages: true });
+      await refresh();
+      const detail = document.getElementById(`tx-detail-${txId}`);
+      const head = document.querySelector(`[data-tx-head="${txId}"]`);
+      if (!detail || !head) {
+        showToast('That transaction is not in the loaded list — tap Load more for older ones.');
+        return;
+      }
+      detail.classList.remove('hidden');
+      head.classList.add('open');
+      const row = head.closest('li');
+      if (row) {
+        row.classList.add('tx-recent-highlight');
+        setTimeout(() => row.classList.remove('tx-recent-highlight'), 2500);
+      }
+      head.scrollIntoView({ block: 'start' });
     };
     recentEl.querySelectorAll('[data-view]').forEach((el) => {
       el.addEventListener('click', () => openRecent(el));
@@ -834,7 +862,7 @@ async function refresh() {
   // deleted (delete_transaction, cannot be undone); bank/email/file
   // rows are moved to Trash via exclude_transaction with a reason,
   // with the exact toast 'Moved to trash bin.', and leave the main
-  // list. Trash is rendered below from `all` (excluded rows only).
+  // list. Trash is rendered above the list from `all` (excluded rows only).
   document.querySelectorAll('[data-tx-actions]').forEach((b) => b.addEventListener('click', async () => {
     const row = all.find((t) => t.id === b.dataset.txActions);
     if (row) await openTxActionsSheet(row);
@@ -867,7 +895,7 @@ async function refresh() {
     const trash = all.filter((t) => t.excluded === true || t.state === 'excluded');
     trashEl.innerHTML = trash.length
       ? trash.map((t) => `<li class="tx-row"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
-        <div class="tx-line2"><span class="muted small tx-meta">${displayDay(t.date)} · ••${esc(t.card_suffix)}</span></div>
+        <div class="tx-line2"><span class="muted small tx-meta">${displayDay(t.date)} · ${(t.kind === 'charity' && String(t.card_suffix) === '0000') ? 'Cash / no card' : `••${esc(t.card_suffix)}`}</span></div>
         <div class="btn-row"><button class="btn btn-small btn-primary" data-trash-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} from trash">Restore</button></div></li>`).join('')
       : '<li class="muted small">Trash is empty.</li>';
     trashEl.querySelectorAll('[data-trash-restore]').forEach((b) => b.addEventListener('click', async () => {
@@ -960,6 +988,7 @@ async function refresh() {
       ? '<p class="error">Could not load savings. Try again.</p>'
       : `<div class="sav-grid"><div><div class="kicker">Balance</div><div class="num">${savBalance !== null ? formatCents(savBalance) : 'Not recorded yet'}</div></div><div><div class="kicker">Transferred in</div><div class="num">${formatCents(savIn)}</div></div><div><div class="kicker">Withdrawn</div><div class="num">${formatCents(savOut)}</div></div><div><div class="kicker">Interest / adjustments</div><div class="num">${formatCents(savInterestAdj)}</div></div></div>${savBalance === null && !savRows.length ? '<p class="muted small">No past savings records yet — these old records are separate from the Extra Fund, which is the savings story now.</p>' : savBalance === null ? '<p class="muted small">Past savings records exist, but no balance was ever recorded for them — that is a missing balance, not $0.</p>' : ''}`;
   }
+  if (!savErr && !savRows.length) { const sEl = $('savingsSummary'); if (sEl) sEl.innerHTML = '<p class="muted small">No past savings records.</p>'; } // Merged-audit A8: one empty line, no empty metrics.
   $('savingsList').innerHTML = savErr
     ? '<p class="error">Could not load savings records. Try again.</p>'
     : savRows.length
@@ -1192,7 +1221,7 @@ async function refresh() {
     const heldTotal = heldRows.reduce((t, r) => t + (r.surplus_cents || 0), 0);
     const shortfall = hh?.fund_shortfall_cents ?? 0;
     currentFundData = { available, pending, releasedTotal, spent, shortfall, heldTotal, heldWeeks: heldRows.length };
-    const fp = $('homeFundPrimary'); if (fp) { fp.innerHTML = formatCentsHtml(available); fp.removeAttribute('aria-busy'); }
+    const fp = $('homeFundPrimary'); if (fp) { fp.innerHTML = formatCentsHtml(available); fp.classList.toggle('negative', available < 0); fp.removeAttribute('aria-busy'); }
     // UX audit 07: a member cannot spend fund money, only request it
     // and wait for approval — so members read "Available to request".
     // Audit-merge fix (review B F2): admins read "Available to use"
@@ -1215,13 +1244,10 @@ async function refresh() {
     // the h2 in live.html; this is the amount alone, no "Available"
     // word, no secondary lines. Available, Pending, and Total live
     // in the tap sheet (fundBreakdownRows).
-    if (fs) fs.innerHTML = `<p class="fund-balance"><strong>${formatCents(available)}</strong></p>`;
-    const heldWrap = document.getElementById('fundHeldLinkWrap');
-    if (heldWrap) {
-      heldWrap.classList.toggle('hidden', !(heldRows.length > 0));
-      const heldBtn = document.getElementById('fundHeldLinkBtn');
-      if (heldBtn && heldRows.length > 0) heldBtn.textContent = `Held for review: ${formatCents(heldTotal)} across ${heldRows.length} ${heldRows.length === 1 ? 'week' : 'weeks'} — Open Review queue`;
-    }
+    if (fs) fs.innerHTML = `<p class="fund-balance${available < 0 ? ' negative' : ''}"><strong>${formatCents(available)}</strong></p>`;
+    // Merged-audit A18: the old Funds held-review link had no
+    // element in live.html and was dead code; held weeks are now
+    // counted in the More > Review row instead.
     updateFundTopupPreview();
   } catch (e) {
     console.warn('fund summary read failed:', e);
@@ -1233,7 +1259,6 @@ async function refresh() {
     document.querySelector('[data-home-card="fund"]')?.setAttribute('aria-label', 'Extra Fund, could not load balances, show breakdown');
     const fs = $('fundSummary');
     if (fs) fs.innerHTML = '<p class="error">Could not load fund balances. Try again.</p>';
-    document.getElementById('fundHeldLinkWrap')?.classList.add('hidden');
   }
   // R12 top-up history (admin only, READ-ONLY list). One row per
   // top-up with the split it made, newest first. A load failure
@@ -1297,7 +1322,7 @@ async function refresh() {
     // "No charity tracked yet" lives in the aria-label, and the
     // Given/Total words live in the tap sheet and the aria-label,
     // not on the face.
-    if (cp) { cp.textContent = formatCents(remaining); cp.removeAttribute('aria-busy'); }
+    if (cp) { cp.textContent = formatCents(remaining); cp.classList.toggle('negative', remaining < 0); cp.removeAttribute('aria-busy'); }
     document.querySelector('[data-home-card="charity"]')?.setAttribute('aria-label', (committed === 0 && given === 0)
       ? 'Charity, no charity tracked yet, show breakdown'
       : remaining < 0
@@ -1310,7 +1335,7 @@ async function refresh() {
     // tap sheet shows Available (signed) / Given / Total
     // (charityBreakdownRows); Default rate lives on the Funds
     // income & rate card, the period in the sheet title.
-    if (ch) ch.innerHTML = `<p class="fund-balance"><strong>${formatCents(remaining)}</strong></p>`;
+    if (ch) ch.innerHTML = `<p class="fund-balance${remaining < 0 ? ' negative' : ''}"><strong>${formatCents(remaining)}</strong></p>`;
     document.querySelector('[data-fund-card="charity"]')?.setAttribute('aria-label', remaining < 0
       ? `Show Charity breakdown, ahead by ${formatCents(Math.abs(remaining))}`
       : `Show Charity breakdown, ${formatCents(remaining)} remaining`);
@@ -1345,6 +1370,10 @@ async function refresh() {
             btn.textContent = 'Correct'; btn.setAttribute('aria-label', `Correct income ${esc(r.source_label)}`);
             btn.addEventListener('click', () => {
               correctingIncomeId = r.id;
+              // Merged-audit A4: Correct immediately opens, scrolls to and focuses the correction form — it never stays hidden.
+              setFundForm('income');
+              document.getElementById('section-charity-income')?.scrollIntoView({ block: 'start' });
+              setTimeout(() => document.querySelector('#charityIncomeForm input[name="source"]')?.focus(), 0);
               const f = document.getElementById('charityIncomeForm');
               if (f) {
                 f.source.value = r.source_label; f.amount.value = (r.amount_cents / 100).toFixed(2);
@@ -1577,9 +1606,24 @@ async function refresh() {
           const relCents = !rel ? null : rel.status === 'released' ? (rel.released_cents ?? rel.surplus_cents) : rel.surplus_cents;
           const relValue = (relCents === null || relCents === undefined) ? 'not recorded' : formatCents(relCents);
           const carryIn = carryInByWeek.get(c.week_start);
-          return `<li class="week-block"><strong>${fmtLong(c.week_start)}</strong><div class="week-metrics"><div><span>Carry-in</span><span>${carryIn === null ? 'not recorded' : fmtOrMissing(carryIn)}</span></div><div><span>Surplus</span><span>${fmtOrMissing(c.surplus_cents)}</span></div><div><span>Debt carried out</span><span>${fmtOrMissing(c.outgoing_debt_cents)}</span></div><div><span>${relLabel}</span><span>${relValue}</span></div></div></li>`;
+          return `<li class="week-block week-block-tappable" data-week-start="${esc(c.week_start)}" role="button" tabindex="0" aria-label="Week of ${fmtLong(c.week_start)} — show its transactions"><strong>${fmtLong(c.week_start)}</strong><div class="week-metrics"><div><span>Carry-in</span><span>${carryIn === null ? 'not recorded' : fmtOrMissing(carryIn)}</span></div><div><span>Surplus</span><span>${fmtOrMissing(c.surplus_cents)}</span></div><div><span>Debt carried out</span><span>${fmtOrMissing(c.outgoing_debt_cents)}</span></div><div><span>${relLabel}</span><span>${relValue}</span></div></div></li>`;
         }).join('')
       : `<li class="muted small">${(historyFilter.from || historyFilter.to) ? 'No closed weeks in the selected period.' : 'No closed weeks yet.'}</li>`;
+  // Merged-audit B3: tap a Previous Week to see its summary plus that week's transaction rows. The week range is Sun-Sat from week_start; Transactions date filters are set to it, then the list is shown.
+  document.querySelectorAll('.week-block-tappable[data-week-start]').forEach((el) => {
+    const openWeek = async () => {
+      const ws = el.dataset.weekStart; if (!ws) return;
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ws); if (!m) return;
+      const start = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))); const end = new Date(start); end.setUTCDate(end.getUTCDate() + 6);
+      const fmt = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+      txFilter = 'all'; txMonth = 'all'; txCard = 'all'; txWeekOnly = false; txFromDate = fmt(start); txToDate = fmt(end);
+      const fi = $('historyFromInput'); if (fi) fi.value = '';
+      showView('purchases', { clearMessages: true }); await refresh(); showToast(`Showing transactions for the week of ${fmtLong(ws)}.`, false);
+      document.getElementById('txList')?.scrollIntoView({ block: 'start' });
+    };
+    el.addEventListener('click', openWeek);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWeek(); } });
+  });
   } catch (e) {
     console.warn('week history read failed:', e);
     const wh = $('weekHistoryList'); if (wh) wh.innerHTML = '<li class="error">Could not load week history. Try again.</li>';
@@ -1785,8 +1829,9 @@ $('csvFile')?.addEventListener('change', async (e) => {
   const text = await file.text();
   const parsed = parseCsvLive(text);
   // Existing rows for client-side preview dedupe (normalized key). The
-  // server unique (household_id, dedupe_hash) constraint is the backstop
-  // for any row this preview misses (e.g. beyond the 1000-row fetch).
+  // No server unique (household_id, dedupe_hash) constraint exists
+  // live (proven Nov 3, 2026); the preview + review queue are the
+  // guards for any row this preview misses (e.g. beyond the 1000-row fetch).
   const { data: existing } = await supabase.from('transactions')
     .select('merchant, amount_cents, date, card_suffix').eq('household_id', household.household_id).limit(1000);
   const existingKeys = new Set((existing ?? []).map((t) => csvRowKey({ merchant: t.merchant, date: t.date, amountCents: t.amount_cents, suffix: t.card_suffix })));
@@ -2206,13 +2251,15 @@ async function autoSyncIfWebhookPending() {
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
-  purchases: ['section-manual', 'section-csv', 'section-charity-gift', 'section-transactions', 'section-history-filter', 'section-week-history', 'section-activity'],
+  purchases: ['section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
+  // Merged-audit B3: Previous Weeks and Activity are separate pages linked from Transactions, no new tab. Purchases stays the current list only.
+  prevweeks: ['section-prevweeks-head', 'section-history-filter', 'section-week-history'],
+  activity: ['section-activity-head', 'section-activity'],
   money: ['section-fund-balances', 'section-fund-more', 'section-fund-activity-more', 'section-fund-review-more', 'section-savings-more', 'section-fund-add', 'section-charity-income', 'section-fund-use', 'section-fund-ask'],
   // R2: Settings is reached from the profile menu, not a nav tab.
   // Connections (bank + email), Budget (allowance + temp increase)
   // and Account & household live here; Funds no longer shows them.
   settings: ['section-settings-head', 'section-profile', 'section-bank', 'section-email', 'settingsCard', 'section-settings-account'],
-  activity: ['section-history-filter', 'section-week-history', 'section-activity'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
 let currentView = resolveRestoredView(localStorage.getItem('hb-view'), null);
@@ -2457,7 +2504,10 @@ async function changePasswordFlow() {
 }
 document.getElementById('menuSettingsBtn')?.addEventListener('click', () => {
   document.getElementById('profileMenu')?.classList.add('hidden');
+  document.getElementById('profileBtn')?.setAttribute('aria-expanded', 'false');
   showView('settings');
+  // Merged-audit A9: focus moves to the Settings heading, and Back returns to the previous view (showView previousView handling).
+  document.querySelector('#section-settings-head h2')?.focus();
 });
 // Profile editing lives only in the Settings Profile card
 // (owner, Nov 3, ~11:20 PM): the avatar menu has no Edit-profile
@@ -2497,6 +2547,11 @@ document.getElementById('settingsShareIdBtn')?.addEventListener('click', shareIn
 document.getElementById('settingsPasswordBtn')?.addEventListener('click', changePasswordFlow);
 document.getElementById('settingsDeleteBtn')?.addEventListener('click', deleteAccountFlow);
 document.getElementById('settingsBackBtn')?.addEventListener('click', () => showView(previousView || 'week'));
+// Merged-audit B3: Previous Weeks / Activity pages, linked from Transactions, Back returns to Transactions.
+document.getElementById('txPrevWeeksLink')?.addEventListener('click', () => showView('prevweeks', { clearMessages: true }));
+document.getElementById('txActivityLink')?.addEventListener('click', () => showView('activity', { clearMessages: true }));
+document.getElementById('prevWeeksBackBtn')?.addEventListener('click', () => showView('purchases'));
+document.getElementById('activityBackBtn')?.addEventListener('click', () => showView('purchases'));
 // R5 + R6: Home cards — tap a card for a focused titled bottom
 // sheet over the stationary Home screen. Opening or closing a sheet
 // writes nothing and triggers no sync; it only reads the numbers
@@ -2520,7 +2575,7 @@ async function openWeeklySheet() {
       ['Spent', formatCents(w.chargesCents)],
       ['Balance', formatCents(w.availableCents)],
     ];
-    const weeklyResult = await showSheet({ title: 'Weekly Budget', rows: weeklyRows, extraAction: { label: 'Show transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
+    const weeklyResult = await showSheet({ title: 'Weekly Budget', message: 'Pending transactions are included and marked.', rows: weeklyRows, extraAction: { label: 'Show transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
     // Weekly-sheet-simple: "Show transactions" closes the sheet and
     // opens Transactions filtered to the current week, reusing the
     // existing week-filter state (txWeekOnly) and render path — the
@@ -2753,21 +2808,25 @@ async function openTxActionsSheet(row) {
   const isAdmin = household && household.role === 'admin';
   const excluded = row.excluded === true || row.state === 'excluded';
   if (excluded) return;
-  const actions = [];
-  if (isAdmin && row.kind === 'charity') {
-    actions.push({ id: 'delete', label: 'Delete', sub: row.source === 'manual' ? 'Permanently deletes this hand-entered row' : 'Moves this row to the Trash' });
-  } else {
-    if (isAdmin && row.kind === 'charge' && row.state === 'verified') actions.push({ id: 'charity', label: 'Charity', sub: 'Counts it as a charity gift, out of weekly spending' });
-    if (row.kind === 'charge') actions.push({ id: 'extraFund', label: 'Extra Fund', sub: 'Ask for this charge to be covered from the fund' });
-    if (isAdmin) actions.push({ id: 'other', label: 'Other', sub: 'Change how this transaction counts' });
-    if (isAdmin) actions.push({ id: 'delete', label: 'Delete', sub: row.source === 'manual' ? 'Permanently deletes this hand-entered row' : 'Moves this row to the Trash' });
-  }
+  // Merged-audit B11: detail actions are restricted by kind, via the
+  // shared actionsForTxKind helper (filterState.mjs). Charge keeps
+  // all four; transfer/payment/cashback/fund_charge get Other +
+  // Delete only; charity gets Delete only. Members keep Extra Fund
+  // on charges only, as before.
+  const actionIds = actionsForTxKind(row.kind, isAdmin, row.state === 'verified');
+  const actions = actionIds.map((id) => id === 'charity'
+    ? { id, label: 'Charity', sub: 'Counts it as a charity gift, out of weekly spending' }
+    : id === 'extraFund'
+    ? { id, label: 'Extra Fund', sub: 'Ask for this charge to be covered from the fund' }
+    : id === 'other'
+    ? { id, label: 'Other', sub: 'Change how this transaction counts' }
+    : { id, label: 'Delete', sub: row.source === 'manual' ? 'Permanently deletes this hand-entered row' : 'Moves this row to the Trash' });
   if (!actions.length) return;
   document.getElementById('sheetOverlay')?.remove();
   const overlay = document.createElement('div');
   overlay.id = 'sheetOverlay';
   overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Actions for ${esc(displayMerchant(row.merchant))}"><span class="sheet-handle" aria-hidden="true"></span>
-    <div class="sheet-top"><button class="sheet-top-cancel" type="button" id="txActionsCancel">Cancel</button><h3>Actions</h3><span class="sheet-top-spacer"></span></div><p class="muted small">${esc(displayMerchant(row.merchant))} — ${formatCents(row.amount_cents)}</p>
+    <div class="sheet-top"><button class="sheet-top-cancel" type="button" id="txActionsCancel">Cancel</button><h3>Actions</h3><span class="sheet-top-spacer"></span></div><p class="muted small">${esc(displayMerchant(row.merchant))} — ${formatCents(row.amount_cents)}</p>${['transfer', 'payment', 'cashback', 'fund_charge'].includes(row.kind) ? '<p class="muted small">This row does not count toward weekly spending.</p>' : ''}
     ${actions.map((a) => `<button class="tx-action-row" data-tx-action="${a.id}" type="button"><span><strong>${a.label}</strong><br><span class="muted small">${esc(a.sub)}</span></span><span aria-hidden="true">›</span></button>`).join('')}</div>`;
   document.body.appendChild(overlay);
   syncScrollLock();
@@ -2839,7 +2898,7 @@ async function doTxDelete(row) {
   // Bank/email/file rows: Delete moves the row to Trash (an
   // exclusion with a reason, never a true erase — the bank would
   // re-sync it). The row leaves the main list and is restored from
-  // the Trash bin below the list.
+  // the Trash link above the list.
   const reason = await showSheet({ title: 'Move to trash', message: `"${row?.merchant ?? 'This transaction'}" ${formatCents(row?.amount_cents ?? 0)} — this moves it to the Trash. The admin can bring it back from the Trash. Give a reason to continue.`, inputLabel: 'Reason (required)', confirmLabel: 'Delete', cancelLabel: 'Keep it' });
   if (reason === null) return;
   if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for moving this transaction to the Trash.'); return; }
@@ -2962,7 +3021,7 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     else overlay.querySelector('#sheetConfirm')?.focus();
   });
 }
-const showAlert = (title, message) => showSheet({ title, message, confirmLabel: 'OK' });
+const showAlert = (title, message) => showSheet({ title, message, confirmLabel: 'Close' }); // Merged-audit A10: read-only detail uses Close, unfinished edits use Cancel.
 const showConfirm = (title, message, confirmLabel = 'OK') => showSheet({ title, message, confirmLabel, cancelLabel: 'Cancel' });
 
 function weekRangeOf(dateStr) {
@@ -3096,9 +3155,14 @@ $('charityBackBtn')?.addEventListener('click', () => { document.getElementById('
 // sections in place without scrolling the page to the top.
 const setFundForm = (which) => { fundFormOpen = which; showView('money'); };
 const toggleMore = (which) => {
-  if (which === 'activity') moreFundActivityOpen = !moreFundActivityOpen;
-  else if (which === 'review') moreReviewOpen = !moreReviewOpen;
-  else if (which === 'savings') moreSavingsOpen = !moreSavingsOpen;
+  // Merged-audit B2 accordion: opening one More section closes the others; headers always stay visible (showView money renders them).
+  const wasOpen = which === 'activity' ? moreFundActivityOpen : which === 'review' ? moreReviewOpen : moreSavingsOpen;
+  moreFundActivityOpen = false; moreReviewOpen = false; moreSavingsOpen = false;
+  if (!wasOpen) {
+    if (which === 'activity') moreFundActivityOpen = true;
+    else if (which === 'review') moreReviewOpen = true;
+    else if (which === 'savings') moreSavingsOpen = true;
+  }
   showView('money', { preserveScroll: true });
 };
 $('moreFundActivityBtn')?.addEventListener('click', () => toggleMore('activity'));
@@ -3107,17 +3171,9 @@ $('moreSavingsBtn')?.addEventListener('click', () => toggleMore('savings'));
 // Ask lives once, in the Funds actions card (the delta3 beside-button
 // was removed for parity; the Funds balance card itself is a tap
 // target for its breakdown sheet, not a button row).
-// UX-review-fix P2: the held balance links straight to the Review
-// queue. The button lives under the Funds balance cards and only
-// shows when a held week exists; tapping it opens Funds, expands
-// the Review section, and scrolls to it, so the held amount is never
-// separated from the queue that explains it.
-$('fundHeldLinkBtn')?.addEventListener('click', () => {
-  fundFormOpen = null;
-  moreReviewOpen = true;
-  showView('money');
-  document.getElementById('section-fund-review-more')?.scrollIntoView({ block: 'start' });
-});
+// Merged-audit A18: the old Funds held-review link handler is removed
+// with its dead element (see above); held weeks reach Review through
+// the Funds More > Review row.
 $('fundAddBackBtn')?.addEventListener('click', () => setFundForm(null));
 $('fundUseBackBtn')?.addEventListener('click', () => setFundForm(null));
 $('fundAskBackBtn')?.addEventListener('click', () => setFundForm(null));
@@ -3180,7 +3236,7 @@ $('charityGiftForm')?.addEventListener('submit', async (e) => {
   if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Record this gift anyway?`, 'Record anyway'))) { done(); return; }
   // The gift hash carries a per-submit nonce: two real identical
   // gifts on one day (the Nov 3 case: three $2 gifts to one org) must
-  // not collide on the transactions unique hash, or the second gift
+  // not collide on another gift's dedupe hash, or the second gift
   // could never be recorded. The duplicate warning above is the
   // guard against accidental re-entry, not the hash.
   const nonce = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -3406,6 +3462,32 @@ for (const id of ['txMinAmount', 'txMaxAmount']) {
   });
 }
 
+// Merged-audit B1 (Temporary Allowance): preview before saving.
+// Base is the household weekly allowance, New total is the entered
+// amount, Weeks is 1-4, and the dates are the current Sunday plus
+// the following Sundays in New York time — the same Sundays the
+// save loop writes. No math change: the new total still repeats
+// each week for the chosen duration.
+function updateTempPreview() {
+  const pv = $('tempPreview'); if (!pv) return;
+  const cents = parseDollarsStrict($('tempIncreaseInput')?.value ?? '');
+  const weeksRaw = parseInt($('tempIncreaseWeeks')?.value ?? '1', 10);
+  const weeks = Number.isFinite(weeksRaw) ? Math.min(4, Math.max(1, weeksRaw)) : 1;
+  if (cents === null || cents < 0) { pv.textContent = 'Enter a new total and weeks to see the preview.'; return; }
+  const base = currentWeekData?.baseAllowanceCents;
+  const baseText = Number.isInteger(base) ? formatCents(base) : '—';
+  const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const sunday = new Date(ny); sunday.setDate(ny.getDate() - ny.getDay());
+  const dates = [];
+  for (let i = 0; i < weeks; i += 1) {
+    const d = new Date(Date.UTC(sunday.getFullYear(), sunday.getMonth(), sunday.getDate() + 7 * i));
+    dates.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`);
+  }
+  pv.textContent = `Base ${baseText} · New total ${formatCents(cents)} · ${weeks} week${weeks === 1 ? '' : 's'} · ${dates.join(', ')}.`;
+}
+$('tempIncreaseInput')?.addEventListener('input', updateTempPreview);
+$('tempIncreaseWeeks')?.addEventListener('input', updateTempPreview);
+$('tempIncreaseWeeks')?.addEventListener('change', updateTempPreview);
 $('addTempBtn')?.addEventListener('click', async (e) => {
   const btn = e.currentTarget;
   // Send-live-bundle, weekly allowance override (owner, Nov 4):

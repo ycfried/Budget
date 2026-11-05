@@ -114,7 +114,8 @@ test('profile blocks share even 20px section spacing, still one card', () => {
 
 test('settings header and back button untouched', () => {
   assert.ok(html.includes('id="settingsBackBtn"'), 'Settings back button present');
-  assert.ok(html.includes('<h2>Settings</h2>'), 'Settings heading present');
+  // Merged-audit A9: Settings heading is focusable so focus can move to it when Settings opens.
+  assert.ok(html.includes('<h2 tabindex="-1">Settings</h2>'), 'Settings heading present and focusable');
 });
 
 test('bank card heading and sentence are the short versions, nothing else retitled', () => {
@@ -130,7 +131,7 @@ test('bank card heading and sentence are the short versions, nothing else retitl
   assert.equal(html.includes('id="section-history-link"'), false, 'separate History card gone');
 });
 
-test('version pins: styles v36, live.js v46', () => {
-  assert.match(html, /styles\.css\?v=36/);
-  assert.match(html, /live\.js\?v=46/);
+test('version pins: styles v37, live.js v47', () => {
+  assert.match(html, /styles\.css\?v=37/);
+  assert.match(html, /live\.js\?v=47/);
 });
