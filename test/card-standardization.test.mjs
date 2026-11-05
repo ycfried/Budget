@@ -11,12 +11,14 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const block = css.slice(css.indexOf('/* Card standardization B5'));
 
-test('hero has a visible Weekly Budget heading with a down chevron, not a tap target', () => {
-  assert.match(html, /<h2 class="hero-title">Weekly Budget <span class="hero-title-chevron" aria-hidden="true">⌄<\/span><\/h2>/);
-  const title = html.match(/<h2 class="hero-title"[^>]*>/)[0];
-  assert.doesNotMatch(title, /role="button"|tabindex/);
+test('hero has a visible Weekly Budget heading, no chevron (home-hero-fix)', () => {
+  // Home-hero-fix (owner, Nov 4, later the same evening): the hero
+  // title chevron did nothing when tapped, so it was removed
+  // entirely. The heading and the big-number breakdown target stay.
+  assert.match(html, /<h2 class="hero-title">Weekly Budget<\/h2>/);
+  assert.doesNotMatch(html, /hero-title-chevron/);
+  assert.doesNotMatch(css, /hero-title-chevron/);
   assert.match(block, /body\.live \.hero-title \{[^}]*font-size: 17px; font-weight: 700;[^}]*color: #0f172a;/);
-  assert.match(block, /body\.live \.hero-title-chevron \{[^}]*color: #2f6bff;[^}]*font-size: 22px;/);
 });
 
 test('hero amount keeps the strongest type (44px)', () => {
@@ -55,7 +57,7 @@ test('no pot or fund chevron points right any more', () => {
   assert.doesNotMatch(html, /fund-balance-chevron"[^>]*>›/);
 });
 
-test('pins bumped to v40/v50', () => {
-  assert.match(html, /styles\.css\?v=40/);
-  assert.match(html, /live\.js\?v=50/);
+test('pins bumped to v41/v51', () => {
+  assert.match(html, /styles\.css\?v=41/);
+  assert.match(html, /live\.js\?v=51/);
 });

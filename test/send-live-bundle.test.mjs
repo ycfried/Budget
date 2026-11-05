@@ -20,9 +20,9 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v40, live.js v50', () => {
-  assert.match(html, /styles\.css\?v=40/);
-  assert.match(html, /live\.js\?v=50/);
+test('version pins: styles v41, live.js v51', () => {
+  assert.match(html, /styles\.css\?v=41/);
+  assert.match(html, /live\.js\?v=51/);
 });
 
 test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
@@ -62,8 +62,11 @@ test('3. History row REMOVED (native-style-live): Past weeks live inside Transac
   assert.equal(js.includes('section-history-row'), false);
 });
 
-test('4. Card colour subtle: hero faint blue wash + soft shadow, other cards white + soft shadow', () => {
-  assert.match(css, /body\.live \.hero \{ background: linear-gradient\(#ffffff, #eef4ff\); box-shadow: 0 8px 24px rgba\(47, 107, 255, \.12\); \}/);
+test('4. Hero card: white like other cards, with a brand-blue outline — wash removed (home-hero-fix)', () => {
+  // Home-hero-fix (owner, Nov 4): the blue wash did not match the
+  // rest of the page. White background, 1.5px brand-blue outline,
+  // no blue shadow — life from the outline, not a coloured fill.
+  assert.match(css, /body\.live \.hero \{ background: #fff; border: 1\.5px solid #2f6bff; box-shadow: none; \}/);
   assert.match(css, /body\.live \.card \{[^}]*box-shadow: 0 4px 16px rgba\(15, 23, 42, \.06\); \}/);
 });
 

@@ -380,13 +380,15 @@ body.live h1, body.live h2, body.live h3 { letter-spacing: -0.02em; font-weight:
 /* Header scrolls away; the tab bar is the persistent navigation now. */
 body.live #liveTopbar { position: relative; background: #fff; border-bottom: 1px solid #ececf1; }
 body.live #liveTopbar strong { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
-/* Feedback-bundle (owner, Nov 4): profile icon and hero sync button
-   were pale/light blue with a glow — the wrong colour. Both are now
-   primary brand blue #2f6bff with a white icon, no glow/shadow.
-   Pale #bfdbfe stays the middle tier of 3-button rows only. The
-   sync button keeps its circular-arrow shape and size. */
-body.live .profile-btn { background: #2f6bff; border: 1px solid #2f6bff; color: #fff; box-shadow: none; }
-body.live .hero-number-row .hero-sync-btn { background: #2f6bff; color: #fff; border: 0; box-shadow: none; }
+/* Home-hero-fix (owner, Nov 4): profile icon was primary blue
+   #2f6bff — wrong, owner wants MUCH LIGHTER, maybe not blue at
+   all. It is now white with a dark icon and a light grey border,
+   no blue fill, no glow. The hero sync button is covered by its
+   own ancestor-independent rule below (see the specificity note
+   there); the row rule that used to sit here lost to the pale
+   #view-app .btn rule, which is why the sync button still looked
+   pale on the owner's device despite the blue rule existing. */
+body.live .profile-btn { background: #fff; border: 1px solid #e5e7eb; color: #0f172a; box-shadow: none; }
 body.live .profile-menu { border-color: #ececf1; border-radius: 18px; box-shadow: 0 12px 32px rgba(16,24,40,.14); }
 /* Bottom tab bar with icons, like the reference apps. */
 body.live #view-app .app-nav { position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 30;
@@ -468,6 +470,18 @@ body.live .hero-head { display: flex; align-items: center; gap: 10px; }
 body.live .hero-number-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 body.live .hero-number-row #weeklyAvailable { flex: 1; min-width: 0; }
 body.live .hero-number-row .hero-sync-btn { margin: 0; width: 44px; height: 44px; min-width: 44px; padding: 0; font-size: 22px; line-height: 1; border-radius: 50%; }
+/* Home-hero-fix (owner, Nov 4): the sync button still looked pale
+   on the owner's device even though a blue rule existed. Why: the
+   old rule was `body.live .hero-number-row .hero-sync-btn`
+   (specificity 0,3,1), but the button also carried the plain `btn`
+   class, so `body.live #view-app .btn` (specificity 1,2,1 — the
+   #view-app ID) won and painted it pale #bfdbfe. The class-name
+   tests only checked the blue rule existed, never the rendered
+   colour. Fix, belt and braces: the button no longer carries the
+   `btn` class (live.html), and this rule is ancestor-independent
+   with ID-level specificity (1,2,1) placed AFTER the pale .btn
+   rule, so it wins even if `btn` is ever re-added. */
+body.live #view-app .hero-sync-btn { background: #2f6bff; color: #fff; border: 0; box-shadow: none; }
 /* Excluded-decisions: the hero number is the Weekly breakdown target
    (the small stat card is gone). Only the number is tappable — the
    Sync button beside it is a separate control. */
@@ -994,10 +1008,11 @@ body.live footer.foot { margin-top: auto; }
 body.live #view-auth { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
 body.live #view-auth > div { width: 100%; }
 body.live .card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px; margin-bottom: 16px; box-shadow: 0 4px 16px rgba(15, 23, 42, .06); }
-/* Send-live-bundle, card colour subtle (owner, Nov 4): the hero gets
-   a faint blue wash plus a soft shadow; every other card stays white
-   with the same soft shadow. No new hues, numbers untouched. */
-body.live .hero { background: linear-gradient(#ffffff, #eef4ff); box-shadow: 0 8px 24px rgba(47, 107, 255, .12); }
+/* Home-hero-fix (owner, Nov 4): the hero's blue wash did not
+   match the rest of the page. The hero is now white like every
+   other card, with a coloured outline instead: a 1.5px brand-blue
+   border, no blue shadow, so it has life without a coloured fill. */
+body.live .hero { background: #fff; border: 1.5px solid #2f6bff; box-shadow: none; }
 /* Feedback-bundle (owner, Nov 4): the "Or Join A Household" section
    sat too close/claustrophobic under the Create button. It now
    sits clearly lower, with breathing room below the button. */
@@ -1068,7 +1083,7 @@ body.live .hero-stat { display: flex; flex-direction: column; gap: 2px; }
 body.live .hero-stat-label { font-size: 13px; color: #64748b; }
 body.live .hero-stat-value { font-size: 18px; font-weight: 700; color: #0f172a; }
 body.live .stat-card { position: relative; }
-body.live .pot-chevron { position: absolute; right: 12px; bottom: 8px; font-size: 22px; font-weight: 700; color: #2f6bff; }
+body.live .pot-chevron { position: absolute; right: 20px; bottom: 18px; font-size: 22px; font-weight: 700; color: #2f6bff; }
 body.live .trash-link-row { margin: 2px 0 10px; }
 body.live .trash-link { font-size: 14px; font-weight: 600; color: #64748b; }
 body.live .past-weeks-section { margin-top: 28px; border-top: 3px solid #e5e7eb; }
@@ -1127,9 +1142,11 @@ body.live .add-label-desktop { display: none; }
    bold (hero keeps 44px). Chevron: brand blue #2f6bff, 700,
    22px, line-height 1. No figure, math, flow, or destination
    change here — style/consistency only. Narrow-screen rules
-   (hero 36px, pots/funds 22px at <=390px) are unchanged. */
-body.live .hero-title { font-family: var(--sans); font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: center; }
-body.live .hero-title-chevron { color: #2f6bff; font-weight: 700; font-size: 22px; line-height: 1; }
+   (hero 36px, pots/funds 22px at <=390px) are unchanged.
+   Home-hero-fix (owner, Nov 4, later the same evening): the
+   hero title chevron was removed entirely — it did nothing when
+   tapped, so it did not belong there. Pot/fund chevrons remain. */
+body.live .hero-title { font-family: var(--sans); font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin: 0 0 8px; }
 body.live #section-stats .stat-card .kicker { font-family: var(--sans); font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin-bottom: 8px; }
 body.live .pot-chevron { color: #2f6bff; font-weight: 700; font-size: 22px; line-height: 1; }
 body.live .fund-balance-head h2 { font-family: var(--sans); font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin: 0 0 8px; }
