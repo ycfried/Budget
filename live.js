@@ -781,7 +781,14 @@ async function refresh() {
     // Charity gifts are not spending: leave them out of the list
     // total except on the Charity filter itself, where the total is
     // the gifts total. (Week math already excludes them everywhere.)
-    const shownTotal = shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && (txFilter === 'charity' || t.kind !== 'charity')).reduce((s, t) => s + t.amount_cents, 0);
+    // Net spending only: charges minus refunds. Payments, cashback,
+    // transfers, income and charity are money moved or received, not
+    // spending — summing them in signed made the list total read
+    // negative whenever a large inflow landed in the shown set. On
+    // the Charity filter the total stays the gifts total, as before.
+    const shownTotal = txFilter === 'charity'
+      ? shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && t.kind === 'charity').reduce((s, t) => s + t.amount_cents, 0)
+      : shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && t.state !== 'reversed' && (t.kind === 'charge' || t.kind === 'fund_charge' || t.kind === 'refund')).reduce((s, t) => s + (t.kind === 'refund' ? -Math.abs(t.amount_cents ?? 0) : (t.amount_cents ?? 0)), 0);
     const capped = all.length >= txLimit ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
     countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : (shown.length === 0 && searchOrFilterActive ? 'No matching transactions — try a different search, or clear the search and filters.' : `${shown.length} transactions · Total shown ${formatCents(shownTotal)}${all.length >= txLimit ? ' · of loaded transactions — tap Load more for older ones' : ''}`); // Merged-audit A7: short count + separately labelled total; recovery message outranks a zero total.
   }
@@ -2020,13 +2027,12 @@ $('signInBtn').addEventListener('click', async () => {
   if (error) console.warn('sign-in failed:', error.message);
   // Privacy-safe generic error, plus a direct recovery action: the
   // Forgot password? button sits below this message on the form.
-  // Feedback-bundle (owner, Nov 4, updated by the same-night
-  // clarification): a sign-in failure is a RED error pop-up whose
-  // wording must say what is wrong. Supabase returns a generic
-  // invalid-credentials error, so the wording deliberately does
-  // NOT claim which field is wrong — "Incorrect email or
-  // password" is the safe form of the owner's request.
-  if (error) { setResultMsg('authMsg', '', false); showToast('Incorrect email or password', true); }
+  // Design item 2 (owner, Nov 5): a sign-in failure stays in the
+  // INLINE soft-red box under the field, where it can be read while
+  // fixing it — a 4-second toast vanishes before the fix. The wording
+  // deliberately does NOT claim which field is wrong — "Incorrect
+  // email or password" is the safe form of the owner's request.
+  if (error) { setResultMsg('authMsg', 'Incorrect email or password', true); }
   else setResultMsg('authMsg', 'Signed in.', false);
   if (!error) await show('loading');
   await boot();
@@ -2280,10 +2286,10 @@ $('joinHouseholdBtn').addEventListener('click', async () => {
   // failed attempt and returns NULL instead of raising, so the log
   // survives — see supabase/n13-invite-rate-limit.sql). Treat it
   // exactly like the old exception: same generic message, no join.
-  // Feedback-bundle (owner, Nov 4): a join failure is a RED error
-  // pop-up with exactly this text and nothing else — not the old
-  // blue inline box, and not the extra clause about Settings.
-  if (error || !data) { setResultMsg('householdMsg', '', false); showToast('Check the invite code and try again', true); }
+  // Design item 2 (owner, Nov 5): a join failure stays in the
+  // INLINE soft-red box with exactly this text and nothing else —
+  // not a toast, and not the extra clause about Settings.
+  if (error || !data) { setResultMsg('householdMsg', 'Check the invite code and try again', true); }
   else setResultMsg('householdMsg', 'Joined. Loading shared budget…', false);
   if (!error && data) { household = { household_id: data, role: 'member' }; await show('app'); await refresh(); }
   if (btn) { btn.disabled = false; btn.textContent = 'Join As Member'; }
@@ -3208,7 +3214,7 @@ async function doTxExtraFund(row) {
   await refresh();
 }
 async function doTxReclassify(row) {
-  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }, { value: 'income', label: 'Income' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
   if (newKind === null) return;
   const reason = await showSheet({ title: 'Reclassify Transaction', message: 'Why reclassify this transaction?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
   if (reason === null) return;
@@ -3239,7 +3245,7 @@ async function doTxDelete(row) {
   showToast('Moved to trash bin.');
   await refresh();
 }
-function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null, actions = null }) {
+function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null, actions = null, kind = null }) {
   // SECURITY: EVERY interpolated value is escaped with esc() — title,
   // message, input label/value, option labels/values, and button labels.
   // No raw caller value reaches innerHTML through any showSheet path.
@@ -3280,7 +3286,9 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     // its own treatment (primary / pale / grey) and returns its
     // result; Close is quiet so it cannot read as a money action.
     const actionsHtml = actions ? actions.map((a) => `<button class="${esc(a.btnClass)}" type="button" data-sheet-action="${esc(a.result)}">${esc(a.label)}</button>`).join('') : '';
-    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><span class="sheet-handle" aria-hidden="true"></span>
+    // Design item 4 (owner, Nov 5): failure dialogs use the soft-red
+    // error style (class sheet-error), success/info sheets stay white.
+    overlay.innerHTML = `<div class="sheet${kind === 'error' ? ' sheet-error' : ''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><span class="sheet-handle" aria-hidden="true"></span>
       <div class="sheet-top">${cancelLabel ? `<button class="sheet-top-cancel" type="button" id="sheetCancelTop">${esc(cancelLabel)}</button>` : '<span class="sheet-top-spacer"></span>'}<h3>${esc(title)}</h3><span class="sheet-top-spacer"></span></div>${rowsHtml}${disclosureHtml}${message ? `<p>${esc(message)}</p>` : ''}
       ${inputHtml}
       <div class="sheet-btns">
@@ -3352,7 +3360,7 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     else overlay.querySelector('#sheetConfirm')?.focus();
   });
 }
-const showAlert = (title, message) => showSheet({ title, message, confirmLabel: 'Close' }); // Merged-audit A10: read-only detail uses Close, unfinished edits use Cancel.
+const showAlert = (title, message) => showSheet({ title, message, confirmLabel: 'Close', kind: 'error' }); // Merged-audit A10: read-only detail uses Close, unfinished edits use Cancel. Design item 4: alerts are failures, so they render soft red. showConfirm (below) stays white — it asks, it does not report a failure.
 const showConfirm = (title, message, confirmLabel = 'OK') => showSheet({ title, message, confirmLabel, cancelLabel: 'Cancel' });
 
 function weekRangeOf(dateStr) {

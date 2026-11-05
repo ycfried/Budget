@@ -54,7 +54,12 @@ export async function canonicalHash(
 // to another person keeps its charge/refund kind (admin reclassify
 // covers those cases individually).
 export const TRANSFER_PATTERN = /INTERNAL TRANSFER/i;
-export const PAYMENT_PATTERN = /MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT/i;
+// Refund-classification fix (Nov 5, 2026): checking-account inflows
+// were labelled 'refund' by the sign fallback. A check deposit is
+// income, and a payment credit (EPAYMENT / PAYMENT: CREDIT / / PAYMENT)
+// is a card payment — neither is a refund.
+export const DEPOSIT_PATTERN = /CHECK DEPOSIT|MOBILE DEPOSIT|\bDEPOSIT\b/i;
+export const PAYMENT_PATTERN = /MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT|PAYMENT\s*:\s*CREDIT|PAYMENT CREDIT|\/ ?PAYMENT|EPAYMENT|E-PAYMENT|ACH PAYMENT/i;
 export const CASHBACK_PATTERN = /CASH BACK|CASHBACK|REWARD/i;
 
 // Plaid personal_finance_category values observed for card payments.
@@ -79,7 +84,7 @@ function plaidCategoryIndicatesCardPayment(tx: Record<string, unknown>): boolean
   return false;
 }
 
-export type TxKind = 'charge' | 'refund' | 'payment' | 'cashback' | 'fund_charge' | 'transfer';
+export type TxKind = 'charge' | 'refund' | 'payment' | 'cashback' | 'fund_charge' | 'transfer' | 'income';
 
 // Classification order matters: the internal-transfer check comes FIRST,
 // then payment and cashback are checked BEFORE the sign-based refund
@@ -90,19 +95,31 @@ export function classifyKind(
   tx: Record<string, unknown>,
   merchantName: string,
   signedAmountCents: number,
+  accountType?: string,
 ): TxKind {
   const name = String(merchantName ?? '');
   if (TRANSFER_PATTERN.test(name)) return 'transfer';
+  // Deposit and payment phrases are checked BEFORE the sign-based
+  // refund fallback, and only for negative amounts (a positive
+  // DEPOSIT, e.g. a security-deposit charge, must not become income).
+  if (signedAmountCents < 0 && DEPOSIT_PATTERN.test(name)) return 'income';
   if (plaidCategoryIndicatesCardPayment(tx)) return 'payment';
   if (PAYMENT_PATTERN.test(name)) return 'payment';
   if (CASHBACK_PATTERN.test(name)) return 'cashback';
+  // A depository-account inflow with no refund signal is money
+  // received, not a purchase refund. A genuine debit-card return is
+  // the exception: the admin reclassifies that one row to 'refund'
+  // in the UI (reclassify_transaction). accountType is Plaid's
+  // acc.type ('depository' | 'credit' | ...); undefined keeps the
+  // old behaviour for callers that carry no account (Gmail/CSV).
+  if (signedAmountCents < 0 && accountType === 'depository') return 'income';
   return signedAmountCents < 0 ? 'refund' : 'charge';
 }
 
 // Merchant-name-only classification, for sources (e.g. Gmail alerts)
 // that carry no Plaid category object.
-export function classifyMerchantOnly(merchantName: string, signedAmountCents: number): TxKind {
-  return classifyKind({}, merchantName, signedAmountCents);
+export function classifyMerchantOnly(merchantName: string, signedAmountCents: number, accountType?: string): TxKind {
+  return classifyKind({}, merchantName, signedAmountCents, accountType);
 }
 
 // Constant-time byte comparison: no early exit, no .every() shortcut.

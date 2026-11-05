@@ -115,12 +115,13 @@ test('bank Disconnect is per-account, not per-connection', () => {
 });
 
 // --- Sign-in / profile / password ---------------------------------------
-test('sign-in: primary Sign In, password toggle, red Incorrect email or password on failure', () => {
+test('sign-in: primary Sign In, password toggle, red Incorrect email or password in the inline box on failure', () => {
   assert.ok(html.includes('id="togglePasswordBtn"'));
   assert.match(js, /togglePasswordBtn.*addEventListener\('click'/);
-  // Feedback-bundle: the sign-in failure is a red pop-up saying
-  // what is wrong, not the old long generic inline sentence.
-  assert.match(js, /showToast\('Incorrect email or password', true\)/);
+  // Design item 2 (owner, Nov 5): the sign-in failure is an inline
+  // soft-red box saying what is wrong, not a toast and not the old
+  // long generic inline sentence.
+  assert.match(js, /setResultMsg\('authMsg', 'Incorrect email or password', true\)/);
   // Auth-card-cleanup: the "New to OnBudget?" lead-in is gone (the
   // side-by-side buttons make the choice self-evident).
   assert.equal(html.includes('New to OnBudget?'), false);

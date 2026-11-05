@@ -314,6 +314,15 @@ label { font-size: 14px; font-weight: 600; }
   box-shadow: 0 12px 40px rgba(0,0,0,.25); }
 #sheetOverlay .sheet h3 { margin: 0 0 8px; font-family: var(--serif); }
 #sheetOverlay .sheet p { margin: 0 0 14px; color: var(--muted); line-height: 1.5; }
+/* Design item 4 (owner, Nov 5): failure dialogs use the soft-red error
+   style — background #fef2f2, text #dc2626, border #fecaca — the same
+   as inline .result.error boxes and error toasts. Success/info sheets
+   stay white. Applied only when showSheet is called with kind:'error'
+   (showAlert); showConfirm and form sheets are unaffected. */
+#sheetOverlay .sheet.sheet-error { background: #fef2f2; border: 1px solid #fecaca; }
+#sheetOverlay .sheet.sheet-error h3 { color: #dc2626; }
+#sheetOverlay .sheet.sheet-error p { color: #7f1d1d; }
+#sheetOverlay .sheet.sheet-error .sheet-handle { background: #fecaca; }
 #sheetOverlay .sheet label { display: block; margin-bottom: 14px; font-weight: 600; }
 #sheetOverlay .sheet input { width: 100%; margin-top: 6px; }
 #sheetOverlay .sheet-btns { display: flex; gap: 10px; justify-content: center; }

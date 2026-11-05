@@ -317,6 +317,10 @@ Deno.serve(async (req) => {
       // The upsert deliberately does NOT list disconnected_at, so a
       // sync never clears a per-account disconnect flag.
       const maskByAccount = new Map<string, string>();
+      // Refund-classification fix (Nov 5, 2026): Plaid's acc.type
+      // ('depository' | 'credit' | ...) so a checking-account inflow
+      // is never classified like a credit-card inflow.
+      const typeByAccount = new Map<string, string>();
       try {
         const { ok, data: accData } = await plaidPost(base, '/accounts/get', clientId, secret, {
           access_token: accessToken,
@@ -324,6 +328,7 @@ Deno.serve(async (req) => {
         if (ok) {
           for (const acc of accData.accounts ?? []) {
             if (acc.account_id && acc.mask) maskByAccount.set(acc.account_id, String(acc.mask));
+            if (acc.account_id && acc.type) typeByAccount.set(acc.account_id, String(acc.type));
             if (acc.account_id) {
               const { error: accErr } = await supabaseAdmin.from('plaid_accounts').upsert({
                 household_id: householdId,
@@ -454,7 +459,7 @@ access_token: <redacted>
           // database are untouched.
           if (tx.account_id && disconnectedAccounts.has(String(tx.account_id))) { skipped++; continue; }
           const isModified = (data.modified ?? []).includes(tx);
-          const result = await upsertPlaidTx(supabaseAdmin, householdId, tx, maskByAccount);
+          const result = await upsertPlaidTx(supabaseAdmin, householdId, tx, maskByAccount, typeByAccount);
           if (result === 'added') added++;
           else if (result === 'updated') updated++;
           else skipped++;
@@ -544,6 +549,7 @@ async function upsertPlaidTx(
   householdId: string,
   tx: Record<string, any>,
   maskByAccount: Map<string, string>,
+  typeByAccount?: Map<string, string>,
 ): Promise<'added' | 'updated' | 'skipped'> {
   const signed = Math.round(Number(tx.amount) * 100);
   if (!Number.isFinite(signed)) return 'skipped';
@@ -553,7 +559,7 @@ async function upsertPlaidTx(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'skipped';
   const suffix = maskByAccount.get(tx.account_id) ?? '0000';
   const hash = await canonicalHash(merchant, date, signed, suffix);
-  const kind = classifyKind(tx, merchantRaw, signed);
+  const kind = classifyKind(tx, merchantRaw, signed, typeByAccount?.get(tx.account_id));
   const state = tx.pending ? 'provisional' : 'verified';
   const txId = tx.transaction_id ? String(tx.transaction_id) : null;
   const pendingTxId = tx.pending_transaction_id ? String(tx.pending_transaction_id) : null;
