@@ -83,7 +83,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
-  chargeContribution,
+  chargeContribution, linkedRefundNormalPortionCents,
+  restorationDebtCutsAfterClose,
 } from './engine.mjs';
 import {
   computeRestorationTotal, computeIncrementalRestoration,
@@ -258,13 +259,40 @@ Deno.serve(async (req) => {
     const inWeek = (t: any, ws: string) => t.date >= ws && t.date < addDays(ws, 7);
     const ownCharges = (ws: string) =>
       txns.filter((t: any) => inWeek(t, ws)).reduce((s: number, t: any) => s + chargeContribution(t), 0);
-    const linkedPostedToWeek = (ws: string) => {
-      const purchaseIds = new Set(
-        txns.filter((t: any) => inWeek(t, ws) && (t.kind === 'charge' || t.kind === 'fund_charge')).map((t: any) => t.id),
+    // N1 Option A — fund-first, counted once (Nov 5, 2026): the
+    // NORMAL portion of each linked refund for purchases in this
+    // week, aggregated per purchase from the cumulative refund
+    // total (see engine.mjs linkedRefundNormalPortionCents). The
+    // fund portion is credited to the fund by refund restoration,
+    // never by this walk. Returns a Map purchaseId -> normal
+    // portion (positive cents) so the restoration simulation can
+    // add back exactly what this walk netted for one purchase.
+    const linkedNormalPortionByPurchase = (ws: string) => {
+      const purchaseById = new Map(
+        txns.filter((t: any) => inWeek(t, ws) && (t.kind === 'charge' || t.kind === 'fund_charge')).map((t: any) => [t.id, t]),
       );
-      return txns
-        .filter((t: any) => postedRefund(t) && t.original_purchase_id && purchaseIds.has(t.original_purchase_id))
-        .reduce((s: number, t: any) => s + (t.amount_cents ?? 0), 0);
+      const refundTotalByPurchase = new Map<string, number>();
+      for (const r of txns) {
+        if (postedRefund(r) && r.original_purchase_id && purchaseById.has(r.original_purchase_id)) {
+          refundTotalByPurchase.set(
+            r.original_purchase_id,
+            (refundTotalByPurchase.get(r.original_purchase_id) ?? 0) + Math.abs(r.amount_cents ?? 0),
+          );
+        }
+      }
+      const out = new Map<string, number>();
+      for (const [purchaseId, totalRefunded] of refundTotalByPurchase) {
+        const purchase: any = purchaseById.get(purchaseId);
+        out.set(purchaseId, linkedRefundNormalPortionCents(
+          purchase.amount_cents, purchase.fund_allocation_cents, totalRefunded,
+        ));
+      }
+      return out;
+    };
+    const linkedPostedToWeek = (ws: string) => {
+      let total = 0;
+      for (const portion of linkedNormalPortionByPurchase(ws).values()) total += portion;
+      return -total; // negative: reduces C, as the old full-amount sum did
     };
     const unlinkedPostedInWeek = (ws: string) =>
       txns.filter((t: any) => inWeek(t, ws) && postedRefund(t) && !t.original_purchase_id)
@@ -696,14 +724,14 @@ Deno.serve(async (req) => {
             // Remove them: baseline must carry the FULL purchase
             // charge, with refunds modeled only by the reduction.
             if (!isWeekLocked(ws, currentWeekStart) && ws === purchaseWeek) {
-              // linkedPostedToWeek(purchaseWeek) includes this
-              // purchase's posted refunds; they must not be in the
-              // baseline charges. (Other purchases' refunds linked
-              // to this week stay, as booked.)
-              const thisPurchaseLinked = txns
-                .filter((r: any) => postedRefund(r) && r.original_purchase_id === purchaseId)
-                .reduce((s: number, r: any) => s + (r.amount_cents ?? 0), 0);
-              charges -= thisPurchaseLinked; // amounts are negative, so this ADDS them back
+              // N1: weekCharges netted only the NORMAL portion of
+              // this purchase's refunds (linkedPostedToWeek), so
+              // exactly that portion is added back here — adding
+              // back the full refund sum would put the fund portion
+              // into the baseline charges too and overstate the
+              // restoration. (Other purchases' refunds linked to
+              // this week stay, as booked.)
+              charges += linkedNormalPortionByPurchase(purchaseWeek).get(purchaseId) ?? 0;
             }
             simWeeks.push({ week_start: ws, B, T, charges_cents: Math.max(0, charges) });
           }
@@ -721,9 +749,20 @@ Deno.serve(async (req) => {
           const priorClose = [...closeByWeek.values()]
             .filter((c: any) => c.week_start < purchaseWeek)
             .sort((a: any, b: any) => (a.week_start < b.week_start ? 1 : -1))[0];
-          const priorCuts = restorationEntries
-            .filter((r: any) => r.week_start < currentWeekStart)
-            .reduce((sum: number, r: any) => sum + (r.debt_reduction_cents ?? 0), 0);
+          // N2 Option A — adopt compute-week's definition of
+          // incoming debt (Nov 5, 2026): subtract only cuts posted
+          // AFTER the prior close's week and UP TO the purchase
+          // week (shared helper in engine.mjs, same window
+          // compute-week uses). The old window (every cut before
+          // today) subtracted cuts already inside the stored close
+          // a second time, and cuts from weeks after the purchase
+          // week — time-travelling debt relief backwards — so a
+          // later refund posted phantom surplus instead of a debt
+          // cut (e.g. $75 surplus + $25 debt cut instead of $0
+          // surplus + $100 debt cut).
+          const priorCuts = priorClose
+            ? restorationDebtCutsAfterClose(restorationEntries, priorClose.week_start, purchaseWeek)
+            : 0;
           const initialDebt = priorClose
             ? Math.max(0, (priorClose.outgoing_debt_cents ?? 0) - priorCuts)
             : 0;

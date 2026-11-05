@@ -142,6 +142,55 @@ export function chargeContribution(t) {
 }
 
 // ---------------------------------------------------------------------------
+// N1 + N2 shared helpers (Nov 5, 2026, owner-approved math fixes).
+// Both live in this engine file — the single shared math source both
+// compute-week and week-close import — so the two functions cannot
+// drift apart again. Keep every copy of engine.mjs in sync when
+// changing these (root, compute-week, week-close, _shared).
+// ---------------------------------------------------------------------------
+
+// N1 Option A — fund-first, counted once. The NORMAL portion of a
+// linked refund total for one purchase: the refund pays the fund
+// portion back first (same arithmetic as restoration.mjs
+// fundCreditCents = min(refundable, fundAllocation)), and only the
+// remainder nets against the week's normal charges. Capped at the
+// purchase's normal portion (amount - fundAllocation): a refund
+// beyond the original charge is HELD, never netted here.
+//   $100 purchase ($60 fund / $40 normal), $50 refund -> 0
+//   ($50 fund-first, nothing left for the normal portion).
+//   $100 purchase ($60 fund / $40 normal), $70 refund -> 10.
+//   $100 normal purchase, $50 refund -> 50. Fully-fund -> 0.
+// Callers net this amount (as a positive cents value) once per
+// purchase, from the CUMULATIVE refund total for that purchase, so
+// partial refunds ($30 + $30) are order-independent by construction.
+// Unlinked refunds have no purchase to split against and keep
+// netting in full, unchanged.
+export function linkedRefundNormalPortionCents(purchaseAmountCents, fundAllocationCents, totalRefundedCents) {
+  const amount = Math.max(0, Math.floor(purchaseAmountCents ?? 0));
+  const fund = Math.min(Math.max(0, Math.floor(fundAllocationCents ?? 0)), amount);
+  const refunded = Math.max(0, Math.floor(totalRefundedCents ?? 0));
+  const fundCredit = Math.min(refunded, fund);
+  return Math.min(refunded - fundCredit, amount - fund);
+}
+
+// N2 Option A — debt entering a week. Sum of restoration debt cuts
+// posted AFTER the latest close before the week and UP TO AND
+// INCLUDING that week: cuts posted in or before the close's week are
+// already inside its stored outgoing debt (subtracting them again
+// double-counts), and cuts posted after the week belong to later
+// weeks, never to this week's entering debt. This is the definition
+// compute-week already used; week-close's restoration now uses the
+// same window. Pass null/undefined latestCloseWeekStart when there
+// is no prior close (cuts are then 0 — the caller floors debt at 0
+// anyway when there is no prior close).
+export function restorationDebtCutsAfterClose(entries, latestCloseWeekStart, weekStart) {
+  return (entries ?? [])
+    .filter((r) => (latestCloseWeekStart == null || r.week_start > latestCloseWeekStart)
+      && (weekStart == null || r.week_start <= weekStart))
+    .reduce((s, r) => s + (r.debt_reduction_cents ?? 0), 0);
+}
+
+// ---------------------------------------------------------------------------
 // Week helpers — America/New_York, Sunday 00:00 to next Sunday 00:00.
 // Dates are handled as NY calendar dates (YYYY-MM-DD strings) so DST never
 // shifts a purchase into the wrong week.
