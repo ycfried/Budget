@@ -12,9 +12,9 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
-test('version pins: styles v40, live.js v50', () => {
-  assert.match(html, /styles\.css\?v=40/);
-  assert.match(html, /live\.js\?v=50/);
+test('version pins: styles v41, live.js v51', () => {
+  assert.match(html, /styles\.css\?v=41/);
+  assert.match(html, /live\.js\?v=51/);
 });
 
 // ---- Task 1: removed sentences are gone ----

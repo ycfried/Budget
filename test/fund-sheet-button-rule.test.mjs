@@ -138,7 +138,7 @@ test('B: three-button middles still pale; pale definition untouched', () => {
 });
 
 test('B: deliberately untouched rows — hero sync, detail rows, quiet Decline, + popup', () => {
-  assert.match(html, /class="btn hero-sync-btn" id="homeSyncBtn"/);
+  assert.match(html, /class="hero-sync-btn" id="homeSyncBtn"/);
   // Send-live-bundle: detail rows are one Actions line now; the
   // old Exclude/Use Fund buttons are gone (see send-live-bundle).
   assert.ok(js.includes('data-tx-actions='), 'detail Actions line present');

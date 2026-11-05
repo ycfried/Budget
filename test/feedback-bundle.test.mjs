@@ -43,10 +43,17 @@ test('history From/To are equal, compact, and cannot paint over each other', () 
   assert.ok(fieldAt(320) < 140, '320px side-by-side cannot fit a readable date input, so it stacks');
 });
 
-// 4. Home buttons: primary brand blue, no glow, sync shape kept.
-test('profile and hero sync buttons are primary blue with white icons, no glow', () => {
-  assert.match(css, /body\.live \.profile-btn \{ background: #2f6bff; border: 1px solid #2f6bff; color: #fff; box-shadow: none; \}/);
-  assert.match(css, /body\.live \.hero-number-row \.hero-sync-btn \{ background: #2f6bff; color: #fff; border: 0; box-shadow: none; \}/);
+// 4. Home buttons: SUPERSEDED by home-hero-fix (owner, Nov 4, later
+// the same evening). Profile is no longer primary blue — it is white
+// with a dark icon and a light grey border (much lighter, maybe not
+// blue at all). The sync button is still primary blue, but the old
+// row-scoped rule lost to the pale #view-app .btn rule (see the
+// specificity note in styles.css), so it is now set by an
+// ancestor-independent #view-app .hero-sync-btn rule AND the button
+// no longer carries the plain `btn` class.
+test('profile button is white with dark icon and light grey border; sync is primary blue via an ID-strength rule', () => {
+  assert.match(css, /body\.live \.profile-btn \{ background: #fff; border: 1px solid #e5e7eb; color: #0f172a; box-shadow: none; \}/);
+  assert.match(css, /body\.live #view-app \.hero-sync-btn \{ background: #2f6bff; color: #fff; border: 0; box-shadow: none; \}/);
   assert.match(css, /\.hero-number-row \.hero-sync-btn \{[^}]*width: 44px; height: 44px;[^}]*border-radius: 50%/);
 });
 
@@ -128,7 +135,7 @@ test('Forgot Password is underlined brand blue #2f6bff, not grey', () => {
 });
 
 // Pins bumped together.
-test('pins bumped together to v40/v50', () => {
-  assert.ok(html.includes('styles.css?v=40'));
-  assert.ok(html.includes('live.js?v=50'));
+test('pins bumped together to v41/v51', () => {
+  assert.ok(html.includes('styles.css?v=41'));
+  assert.ok(html.includes('live.js?v=51'));
 });
