@@ -92,9 +92,11 @@ test('C: charity sheet title keeps the period; Record income action stays; rate 
 test('B: every audited two-button row uses grey tertiary for its non-primary button', () => {
   const pairs = [
     ['sign-in Create account', /id="signUpBtn" class="btn btn-tertiary"/],
-    ['sign-up Back', /id="authNameBackBtn" class="btn btn-tertiary"/],
+    // Header-back-swipe (owner, Nov 4): Back is ALWAYS the shared light-blue
+    // back-link now, so the two sign-up Back buttons are NOT in this list
+    // any more — the primary+tertiary pair rule is superseded for Back
+    // buttons only. See header-back-swipe.test.mjs for their assertions.
     ['household choice Join', /id="joinHouseholdBtn" class="btn btn-tertiary btn-block"/],
-    ['household naming Back', /id="householdNameBackBtn" class="btn btn-tertiary"/],
     ['manual Cancel', /class="btn btn-tertiary" id="manualCancelBtn"/],
     ['Transactions Filters', /id="txFiltersToggle" class="btn btn-tertiary"/],
     ['email Check now', /id="pollEmailBtn" class="btn btn-tertiary"/],

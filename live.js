@@ -2634,6 +2634,50 @@ document.getElementById('txPrevWeeksLink')?.addEventListener('click', () => show
 document.getElementById('txActivityLink')?.addEventListener('click', () => showView('activity', { clearMessages: true }));
 document.getElementById('prevWeeksBackBtn')?.addEventListener('click', () => showView('purchases'));
 document.getElementById('activityBackBtn')?.addEventListener('click', () => showView('purchases'));
+// Header-back-swipe (owner, Nov 4): swipe RIGHT to go back — the same
+// action as the Back button, in addition to pressing it. Threshold:
+// a mostly-horizontal swipe of more than 80px within 1.5s
+// (dx > 80, dx at least twice the vertical movement). Listeners are
+// passive, so vertical scrolling is untouched.
+// A swipe is ignored when it starts on a button, link, input, select,
+// or editable field, inside a horizontally scrolling element, or while
+// a bottom sheet / the transaction filter sheet is open (those have
+// their own gestures). Home and other views with no Back action do
+// nothing on swipe-right.
+const swipeBackAction = () => {
+  if (document.getElementById('sheetOverlay')) return null;
+  if (document.getElementById('txFiltersSheet') && !document.getElementById('txFiltersSheet').classList.contains('hidden')) return null;
+  if (addFormOpen === 'manual' || addFormOpen === 'csv' || addFormOpen === 'charity') return () => setAddForm('options');
+  if (addFormOpen === 'options') return () => setAddForm(null);
+  if (fundFormOpen) return () => setFundForm(null);
+  if (currentView === 'settings') return () => showView(previousView || 'week');
+  if (currentView === 'prevweeks' || currentView === 'activity') return () => showView('purchases');
+  return null;
+};
+let swipeStart = null;
+document.addEventListener('touchstart', (e) => {
+  if (!e.changedTouches || e.changedTouches.length !== 1) { swipeStart = null; return; }
+  const t = e.changedTouches[0];
+  const target = e.target instanceof Element ? e.target : null;
+  if (target && target.closest('input, textarea, select, button, a, [contenteditable]')) { swipeStart = null; return; }
+  let el = target;
+  while (el) {
+    if (el.scrollWidth > el.clientWidth + 4) { const ox = getComputedStyle(el).overflowX; if (ox === 'auto' || ox === 'scroll') { swipeStart = null; return; } }
+    el = el.parentElement;
+  }
+  swipeStart = { x: t.clientX, y: t.clientY, time: Date.now() };
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (!swipeStart || !e.changedTouches || e.changedTouches.length !== 1) { swipeStart = null; return; }
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipeStart.x;
+  const dy = t.clientY - swipeStart.y;
+  const dt = Date.now() - swipeStart.time;
+  swipeStart = null;
+  if (dx <= 80 || Math.abs(dx) < 2 * Math.abs(dy) || dt > 1500) return;
+  const goBack = swipeBackAction();
+  if (goBack) goBack();
+}, { passive: true });
 // R5 + R6: Home cards — tap a card for a focused titled bottom
 // sheet over the stationary Home screen. Opening or closing a sheet
 // writes nothing and triggers no sync; it only reads the numbers

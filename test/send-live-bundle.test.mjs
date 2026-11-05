@@ -20,10 +20,9 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v41, live.js v51', () => {
-  assert.match(html, /styles\.css\?v=41/);
-  assert.match(html, /live\.js\?v=51/);
-});
+test('version pins: styles v42, live.js v52', () => {
+  assert.match(html, /styles\.css\?v=42/);
+  assert.match(html, /live\.js\?v=52/);});
 
 test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
   const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = ['), sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')));
@@ -94,14 +93,16 @@ test('6. Activity timeline: dots, plain titles, Admin/Member, jargon translated 
   assert.match(js, /Number\(n\) \/ 100/);
 });
 
-test('7. Back header: one line, Settings left, small Back text right, no subtitle, form Backs untouched', () => {
+test('7. Back header: one line, Settings left, light-blue Back text right, no subtitle, form Backs are back-links too', () => {
   // Merged-audit A9: Settings heading is focusable (focus moves to it when Settings opens).
   assert.match(html, /<div class=\"settings-head-line\"><h2 tabindex=\"-1\">Settings<\/h2><button class=\"settings-back-link\" id=\"settingsBackBtn\"[^>]*>← Back<\/button><\/div>/);
   assert.equal(html.includes('id="settingsIntro"'), false);
   assert.equal(html.includes('Connections, Budget, and Account &amp; household.'), false);
-  assert.match(css, /\.settings-back-link \{ background: none; border: 0; color: #475569;/);
-  // Form-level Backs stay in-row buttons (manual form, name step).
+  // Header-back-swipe (owner, Nov 4): Back is ALWAYS light blue #3b82f6, bold — the old grey #475569 looked dead.
+  assert.match(css, /\.back-link, body\.live \.settings-back-link \{ background: none; border: 0; color: #3b82f6; font-weight: 700;/);
+  // Form-level Backs are the same shared back-link now (owner: Back should ALWAYS be light blue).
   assert.ok(html.includes('id="manualBackBtn"'));
+  assert.match(html, /<button class="back-link" id="manualBackBtn"/);
 });
 
 test('8. Unified sentence on Bank and Email; Email heading Title Case, long paragraph deleted', () => {

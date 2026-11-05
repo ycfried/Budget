@@ -109,7 +109,7 @@ test('password note moved out of the profile card into the change-password sheet
 
 test('profile blocks share even 20px section spacing, still one card', () => {
   assert.match(css, /#section-profile \.profile-email-label \{ display: block; margin-top: 20px; \}/, 'Email label spacing');
-  assert.match(css, /#section-profile h3 \{ margin-top: 20px; \}/, 'Password h3 spacing matches');
+  assert.match(css, /#section-profile h3 \{ font-size: 14px; font-weight: 600; margin-top: 20px; \}/, 'Password h3 matches the Name/Email label size (14px/600)');
   assert.equal(profile.split('class="card"').length, 2, 'exactly one card-class occurrence in the slice — the trailing bank div fragment at the slice boundary — so profile is still one card, not split');
 });
 
@@ -132,7 +132,6 @@ test('bank card heading and sentence are the short versions, nothing else retitl
   assert.equal(html.includes('id="section-history-link"'), false, 'separate History card gone');
 });
 
-test('version pins: styles v41, live.js v51', () => {
-  assert.match(html, /styles\.css\?v=41/);
-  assert.match(html, /live\.js\?v=51/);
-});
+test('version pins: styles v42, live.js v52', () => {
+  assert.match(html, /styles\.css\?v=42/);
+  assert.match(html, /live\.js\?v=52/);});
