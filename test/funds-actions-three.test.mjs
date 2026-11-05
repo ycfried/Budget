@@ -33,7 +33,7 @@ test('Charity sheet offers Record income for admin, via one shared opener', () =
   // Both entry points (Home card and Funds panel) call the same opener.
   assert.equal((js.match(/await openCharitySheet\(\)/g) ?? []).length, 2);
   // No other direct Charity sheet remains outside the opener.
-  const charitySheets = (js.match(/title: 'Charity · November 2026 onward'/g) ?? []).length;
+  const charitySheets = (js.match(/title: 'Charity · November 2026 Onward'/g) ?? []).length;
   assert.equal(charitySheets, 1, 'only the shared opener renders the Charity sheet');
   // Admin-gated extra action, Weekly-sheet precedent (primary button,
   // Close second — the sheet renderer handles that ordering).

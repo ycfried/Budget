@@ -12,9 +12,9 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
-test('version pins: styles v44, live.js v54', () => {
-  assert.match(html, /styles\.css\?v=44/);
-  assert.match(html, /live\.js\?v=54/);});// ---- Task 1: removed sentences are gone ----
+test('version pins: styles v45, live.js v55', () => {
+  assert.match(html, /styles\.css\?v=45/);
+  assert.match(html, /live\.js\?v=55/);});// ---- Task 1: removed sentences are gone ----
 const REMOVED = [
   'Weekly summaries below are the financial record',
   'Closed weeks, read-only — week start, surplus, debt carried',
@@ -125,7 +125,7 @@ test('Task 4: refresh never scrolls to top; dedupe repro path is covered', () =>
   // Dedupe actions still do exactly what they did — merge/exclude + refresh — only scroll changes.
   assert.match(js, /p_action: 'merge'[\s\S]*?else await refresh\(\)/s);
   assert.match(js, /p_action: 'separate'[\s\S]*?else await refresh\(\)/s);
-  assert.match(js, /'Same purchase', 'Keep one transaction and exclude the other from counts\? Neither row is deleted\.'/);
+  assert.match(js, /'Same Purchase', 'Keep one transaction and exclude the other from counts\? Neither row is deleted\.'/);
   // Tab taps still scroll to top (intentional navigation, not a refresh jump).
   assert.match(js, /showView\(b\.dataset\.view, \{ clearMessages: true \}\)/);
 });

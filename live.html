@@ -10,7 +10,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=44"></head><body class="live"><header class="topbar" id="liveTopbar">
+<link rel="stylesheet" href="styles.css?v=45"></head><body class="live"><header class="topbar" id="liveTopbar">
   <div class="topbar-left"></div>
   <div class="topbar-title"><strong aria-label="OnBudget"><img class="wordmark-logo" src="icon-192.png" alt="" aria-hidden="true">nBudget</strong></div>
   <div class="topbar-right">
@@ -42,7 +42,9 @@
     <p class="muted">Loading Your Household</p>
   </section>
 
-  <section id="view-auth" class="card hidden">
+  <section id="view-auth" class="auth-view hidden">
+    <div class="auth-brand"><img class="auth-brand-logo" src="icon-192.png" alt="OnBudget"><div class="auth-brand-name">OnBudget</div></div>
+    <div class="card auth-card">
     <!-- Auth-card-cleanup (owner, Nov 4, 2026): no card heading (the
          app header above already says OnBudget), no subtitle, no
          lead-in text, no card-numbers note. The card is two panels:
@@ -52,8 +54,8 @@
       <label>Email <input id="authEmail" type="email" autocomplete="email" required></label>
       <label>Password <span class="password-row"><input id="authPassword" type="password" autocomplete="current-password" required><button id="togglePasswordBtn" class="auth-eye-btn" type="button" aria-label="Show password" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
       <div class="btn-row auth-btn-row">
-        <button id="signInBtn" class="btn btn-primary" type="button" aria-label="Sign In To The Live App">Sign In</button>
-        <button id="signUpBtn" class="btn btn-tertiary" type="button" aria-label="Create A New Live Account">Create Account</button>
+        <button id="signInBtn" class="btn btn-primary" type="button" aria-label="Sign In to the Live App">Sign In</button>
+        <button id="signUpBtn" class="btn btn-tertiary" type="button" aria-label="Create a New Live Account">Create Account</button>
       </div>
       <button id="forgotPasswordBtn" class="btn btn-quiet btn-block" type="button" aria-label="Reset Your Password">Forgot Password?</button>
       <div id="authMsg" class="result"></div>
@@ -62,14 +64,18 @@
       <h2>Choose Your Name</h2>
       <label>Name <input id="authName" type="text" autocomplete="name" maxlength="80"></label>
       <div class="btn-row auth-btn-row">
-        <button id="authNameBackBtn" class="back-link" type="button" aria-label="Back To Sign In">← Back</button>
-        <button id="authNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create A New Live Account">Create Account</button>
+        <button id="authNameBackBtn" class="back-link" type="button" aria-label="Back to Sign In">← Back</button>
+        <button id="authNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create a New Live Account">Create Account</button>
       </div>
       <div id="authNameMsg" class="result"></div>
     </div>
+    </div>
+    <p class="auth-foot">Your household budget, shared in one place.<br><span>Bank and email are read-only &mdash; nothing is ever moved or changed.</span></p>
   </section>
 
-  <section id="view-household" class="card hidden">
+  <section id="view-household" class="auth-view hidden">
+    <div class="auth-brand"><img class="auth-brand-logo" src="icon-192.png" alt="OnBudget"><div class="auth-brand-name">OnBudget</div></div>
+    <div class="card auth-card">
     <!-- Household naming (owner, Nov 4, 2026): creating a household
          is two panels — choice, then an optional naming step. The
          join path never sees the naming step. -->
@@ -77,19 +83,21 @@
       <h1>Your Household</h1>
       <p class="muted">Create a household as admin, or join one with an invite code.</p>
       <button id="createHouseholdBtn" class="btn btn-primary btn-block" type="button" aria-label="Create Household">Create Household</button>
-      <label>Or Join A Household <input id="joinId" placeholder="Invite Code From The Owner"></label>
-      <button id="joinHouseholdBtn" class="btn btn-tertiary btn-block" type="button" aria-label="Join An Existing Household As A Member">Join As Member</button>
+      <label>Or Join a Household <input id="joinId" placeholder="Invite Code from the Owner"></label>
+      <button id="joinHouseholdBtn" class="btn btn-tertiary btn-block" type="button" aria-label="Join an Existing Household as a Member">Join As Member</button>
       <div id="householdMsg" class="result"></div>
     </div>
     <div id="householdNamePanel" class="hidden">
       <h2>Name Your Household</h2>
       <label>Household Name <input id="householdNameInput" type="text" maxlength="80" placeholder="Household"></label>
       <div class="btn-row auth-btn-row">
-        <button id="householdNameBackBtn" class="back-link" type="button" aria-label="Back To Household Choice">← Back</button>
-        <button id="householdNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create The Household">Create Household</button>
+        <button id="householdNameBackBtn" class="back-link" type="button" aria-label="Back to Household Choice">← Back</button>
+        <button id="householdNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create the Household">Create Household</button>
       </div>
       <div id="householdNameMsg" class="result"></div>
     </div>
+    </div>
+    <p class="auth-foot">Your household budget, shared in one place.<br><span>Bank and email are read-only &mdash; nothing is ever moved or changed.</span></p>
   </section>
 
   <section id="view-app" class="hidden">
@@ -104,8 +112,8 @@
         <div class="kicker"><span id="weekLabel"><span class="skel skel-kicker" aria-hidden="true"></span><span class="sr-only">Loading</span></span></div>
       </div>
       <div class="hero-number-row">
-        <button id="heroSetAllowanceBtn" class="btn btn-primary hidden" type="button" aria-label="Set your weekly allowance">Set Your Weekly Allowance</button>
-        <div id="weeklyAvailable" class="big" role="button" tabindex="0" aria-label="Show Weekly Budget breakdown" aria-busy="true"><span class="skel skel-figure" aria-hidden="true"></span><span class="sr-only">Loading</span></div>
+        <button id="heroSetAllowanceBtn" class="btn btn-primary hidden" type="button" aria-label="Set Your Weekly Allowance">Set Your Weekly Allowance</button>
+        <div id="weeklyAvailable" class="big" role="button" tabindex="0" aria-label="Show Weekly Budget Breakdown" aria-busy="true"><span class="skel skel-figure" aria-hidden="true"></span><span class="sr-only">Loading</span></div>
         <button class="hero-sync-btn" id="homeSyncBtn" type="button" aria-label="Sync bank"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
       </div>
       <div class="hero-progress" aria-hidden="true"><div id="weekProgressBar"></div></div>
@@ -125,7 +133,7 @@
     </div>
 
     <div class="card" id="section-recent">
-      <h2>Recent transactions</h2>
+      <h2>Recent Transactions</h2>
       <ul id="recentList" class="plain" aria-busy="true" aria-label="Loading recent transactions"><li class="sr-only">Loading recent transactions</li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li><li class="skel-row" aria-hidden="true"><span class="skel skel-tile"></span><span class="skel-lines"><span class="skel skel-line"></span><span class="skel skel-line short"></span></span></li></ul>
       <p><a class="quiet-link" data-view="purchases" href="#" role="button" aria-label="See all transactions">See all</a></p>
       <p id="homeSyncMsg" class="result"></p>
@@ -133,8 +141,8 @@
 
 
     <div class="card" id="section-manual">
-      <div class="btn-row"><button class="back-link" id="manualBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
-      <h2>Add a transaction by hand</h2>
+      <div class="btn-row"><button class="back-link" id="manualBackBtn" type="button" aria-label="Back to Add Options">← Back</button></div>
+      <h2>Add a Transaction by Hand</h2>
       <p class="muted small">Counts as pending until the bank confirms it.</p>
       <form id="manualForm" novalidate>
         <label>Merchant <input name="merchant" required maxlength="80"></label>
@@ -151,8 +159,8 @@
     </div>
 
     <div class="card" id="section-csv">
-      <div class="btn-row"><button class="back-link" id="csvBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
-      <h2>Import transactions from a CSV file</h2>
+      <div class="btn-row"><button class="back-link" id="csvBackBtn" type="button" aria-label="Back to Add Options">← Back</button></div>
+      <h2>Import Transactions From a CSV File</h2>
       <p class="muted small">Expected columns: Date, Description, Amount, Card Ending.</p>
       <p class="muted small">Preview first — nothing is added until you confirm.</p>
       <!-- Delta3: styled file control — the native input stays the
@@ -171,8 +179,8 @@
     </div>
 
     <div class="card" id="section-charity-gift">
-      <div class="btn-row"><button class="back-link" id="charityBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
-      <h2>Give to charity</h2>
+      <div class="btn-row"><button class="back-link" id="charityBackBtn" type="button" aria-label="Back to Add Options">← Back</button></div>
+      <h2>Give to Charity</h2>
       <p class="muted small">Counts as given at once, never as weekly spending. Admin only.</p>
       <form id="charityGiftForm" novalidate>
         <label>Organization <input name="merchant" required maxlength="80"></label>
@@ -289,7 +297,7 @@
     </div>
 
     <div class="page-head" id="section-settings-head">
-      <div class="settings-head-line"><h2 tabindex="-1">Settings</h2><button class="settings-back-link" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
+      <div class="settings-head-line"><h2 tabindex="-1">Settings</h2><button class="settings-back-link" id="settingsBackBtn" type="button" aria-label="Back to the Previous Screen">← Back</button></div>
     </div>
 
     <div class="card" id="section-profile">
@@ -297,7 +305,7 @@
       <label>Name <input id="profileNameInput" type="text" maxlength="80" autocomplete="name"></label>
       <button id="saveProfileNameBtn" class="btn btn-primary" type="button" aria-label="Save your profile name">Save name</button>
       <label class="profile-email-label">Email <input id="profileEmailInput" type="email" autocomplete="email"></label>
-      <button id="saveProfileEmailBtn" class="btn" type="button" aria-label="Save your new email address">Save email</button>
+      <button id="saveProfileEmailBtn" class="btn btn-primary" type="button" aria-label="Save your new email address">Save email</button>
       <h3>Password</h3>
       <button id="profilePasswordBtn" class="btn btn-tertiary" type="button" aria-label="Change your password">Change password</button>
     </div>
@@ -315,7 +323,7 @@
       </div>
       <div id="bankMsg" class="result"></div>
       <p class="muted small" id="bankSyncLine"></p>
-      <h3>Connected accounts</h3>
+      <h3>Connected Accounts</h3>
       <div id="bankAccountsList"><p class="muted small">Loading…</p></div>
     </div>
 
@@ -329,7 +337,7 @@
       </div>
       <div id="emailMsg" class="result"></div>
       <p class="muted small" id="emailStatusLine"></p>
-      <h3>Connected email</h3>
+      <h3>Connected Email</h3>
       <div id="emailConnectionsList"><p class="muted small">Loading…</p></div>
     </div>
 
@@ -353,14 +361,14 @@
     </div>
 
     <div class="card" id="section-settings-account">
-      <h2>Account &amp; household</h2>
+      <h2>Account &amp; Household</h2>
       <p class="muted small">Only the admin can share the invite code.</p>
       <p class="muted small" id="householdNameLine">Household: Household</p>
       <div class="btn-row">
         <button id="settingsShareIdBtn" class="btn" type="button" aria-label="Share the invite code">Share invite code</button>
       </div>
       <div class="danger-area">
-        <h3>Delete account</h3>
+        <h3>Delete Account</h3>
         <p class="muted small">Deleting removes you from this household. If you are the last member, the household is deleted too. This cannot be undone.</p>
         <button id="settingsDeleteBtn" class="btn btn-danger" type="button" aria-label="Delete your account">Delete account</button>
       </div>
@@ -398,19 +406,19 @@
     </div>
 
     <div class="card" id="section-fund-activity-more" style="display:none">
-      <h3>Money added</h3>
+      <h3>Money Added</h3>
       <ul id="fundTopupsList" class="plain"><li class="muted small">Loading…</li></ul>
-      <h3>Charity income</h3>
+      <h3>Charity Income</h3>
       <ul id="charityIncomeList" class="plain"><li class="muted small">Loading…</li></ul>
     </div>
 
     <div class="card" id="section-fund-review-more" style="display:none">
-      <h3>Refund restorations &amp; held refunds</h3>
+      <h3>Refund Restorations &amp; Held Refunds</h3>
       <h4>Restorations</h4>
       <div id="restorationList"><p class="muted small">Loading…</p></div>
       <h4>Held for review</h4>
       <div id="heldList"><p class="muted small">Loading…</p></div>
-      <h3>Possible duplicates</h3>
+      <h3>Possible Duplicates</h3>
       <div id="dedupeList"><p class="muted small">Loading…</p></div>
     </div>
 
@@ -421,7 +429,7 @@
 
     <div class="card" id="section-fund-add" style="display:none">
       <div class="btn-row"><button class="back-link" id="fundAddBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
-      <h2>Add money</h2>
+      <h2>Add Money</h2>
       <p class="muted small">Log cash already in checking — owed back is covered first.</p>
       <form id="fundTopupForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
@@ -435,7 +443,7 @@
 
     <div class="card" id="section-charity-income" style="display:none">
       <div class="btn-row"><button class="back-link" id="charityIncomeBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
-      <h2>Charity income &amp; rate</h2>
+      <h2>Charity Income &amp; Rate</h2>
       <p class="muted small">Admin only. Nothing is pulled in automatically.</p>
       <p class="muted small" id="charityRateCurrent">Current default rate: 10%.</p>
       <form id="charityRateForm">
@@ -443,7 +451,7 @@
         <button class="btn" type="submit" aria-label="Save the default charity rate">Save default rate</button>
       </form>
       <p class="muted small">Affects future incomes only.</p>
-      <h3>Record income</h3>
+      <h3>Record Income</h3>
       <p class="muted small" id="charityIncomeMode">Adding new income.</p>
       <form id="charityIncomeForm">
         <label>Source (for example, Paycheck) <input name="source" maxlength="80"></label>
@@ -461,7 +469,7 @@
 
     <div class="card" id="section-fund-use" style="display:none">
       <div class="btn-row"><button class="back-link" id="fundUseBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
-      <h2>Use fund money</h2>
+      <h2>Use Fund Money</h2>
       <p class="muted small">Lowers the fund balance only.</p>
       <form id="fundAllocateForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
@@ -473,7 +481,7 @@
 
     <div class="card" id="section-fund-ask">
       <div class="btn-row"><button class="back-link" id="fundAskBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
-      <h2>Ask for fund money</h2>
+      <h2>Ask for Fund Money</h2>
       <p class="muted small">The admin approves or declines each request.</p>
       <form id="fundRequestForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
@@ -495,7 +503,7 @@
       <p class="muted small">Who did what, and when — not the transaction list.</p>
     </div>
     <div class="card past-weeks-section" id="section-history-filter">
-      <h2>Past weeks</h2>
+      <h2>Past Weeks</h2>
       <div class="form-row-2">
         <label>From
           <input id="historyFromInput" type="date" aria-label="From">
@@ -513,7 +521,7 @@
     </div>
 
     <div class="card" id="section-week-history">
-      <h2>Week history</h2>
+      <h2>Week History</h2>
       <ul id="weekHistoryList" class="plain"><li class="muted small">Loading…</li></ul>
     </div>
 
@@ -532,7 +540,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=54"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
+<script type="module" src="live.js?v=55"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('live-sw.js').catch(() => {});

@@ -81,7 +81,7 @@ test('Extra Fund / Charity sheet openers keep their call shapes; rows changed by
   // Funds-actions-three (owner choice, Nov 4, Option A): the Charity
   // sheet keeps its title, rows, and Close label, and gains exactly
   // the admin-gated Record income extra action — nothing else.
-  assert.match(js, /title: 'Charity · November 2026 onward', rows: charityBreakdownRows\(c\), extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null, confirmLabel: 'Close'/);
+  assert.match(js, /title: 'Charity · November 2026 Onward', rows: charityBreakdownRows\(c\), extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null, confirmLabel: 'Close'/);
   // The extra action is now used exactly twice: Weekly sheet
   // (Show transactions) and Charity sheet (Record income).
   assert.equal((js.match(/extraAction:/g) ?? []).length, 2);

@@ -90,7 +90,7 @@ test('duplicate: empty or unprovable candidate fails open', () => {
 });
 
 test('duplicate warning lists active connections and requires explicit confirm', () => {
-  assert.match(js, /Already connected\?/);
+  assert.match(js, /Already Connected\?/);
   assert.match(js, /Connect anyway/);
   assert.match(js, /describeConnection\(item/);
   assert.equal(describeConnection(keeper, keeper.accounts), 'American Express — Blue Cash Everyday ••1005, Rewards Checking ••1636');

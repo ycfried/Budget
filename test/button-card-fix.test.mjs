@@ -76,7 +76,7 @@ test('Funds balance panels are whole-card tap targets with a chevron', () => {
   // Tap handlers open the same breakdown sheets as the Home cards.
   assert.match(js, /document\.querySelectorAll\('\[data-fund-card\]'\)/);
   assert.match(js, /showSheet\(\{ title: 'Extra Fund', rows: fundBreakdownRows\(f\)/);
-  assert.match(js, /showSheet\(\{ title: 'Charity · November 2026 onward', rows: charityBreakdownRows\(c\)/);
+  assert.match(js, /showSheet\(\{ title: 'Charity · November 2026 Onward', rows: charityBreakdownRows\(c\)/);
   // Enter/Space open the card, like the Home stat cards.
   assert.match(js, /e\.key === 'Enter' \|\| e\.key === ' '/);
 });
@@ -101,7 +101,7 @@ test('Funds card face is Title + Amount only (no secondary-line strings)', () =>
   // Pending; the charity period lives in the sheet title, not a
   // Period row. (Merged-audit A18 removed the dead held-link text.)
   assert.match(js, /Review \(\$\{reviewNeedsCount\}\)/);
-  assert.match(js, /title: 'Charity · November 2026 onward'/);
+  assert.match(js, /title: 'Charity · November 2026 Onward'/);
 });
 
 test('fund breakdown rows are exactly Available / Pending / Total', () => {

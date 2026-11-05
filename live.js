@@ -26,7 +26,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, resolveRestoredView, resolveRestoredSubView, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, resolveRestoredSubView, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -60,8 +60,8 @@ const parseDollarsStrict = (s) => {
 // Nov 4). If the favicon fails to load, or the bank is unmapped, the
 // fallback is a BRAND-COLOURED monogram tile (white initial on the
 // bank's brand colour), never the flat grey box on its own.
-// NOTE: merchant icons (iconForMerchant) still use Clearbit and are
-// out of scope here; they fail the same way and are a follow-up.
+// NOTE (final little things, Nov 4): merchant icons no longer use
+// Clearbit either — see iconForMerchant below.
 const BANK_LOGO_DOMAINS = [
   ['american express', 'americanexpress.com'], ['bank of america', 'bankofamerica.com'],
   ['capital one', 'capitalone.com'], ['chase', 'chase.com'], ['citi', 'citibank.com'],
@@ -101,13 +101,71 @@ const merchantDomainFor = (name) => {
   for (const [k, d] of MERCHANT_LOGO_DOMAINS) if (n.includes(k)) return d;
   return null;
 };
+const MERCHANT_BRAND_COLORS = [
+  ['amazon', '#ff9900'], ['walmart', '#0071dc'], ['target', '#cc0000'],
+  ['costco', '#005daa'], ['starbucks', '#00704a'], ['chipotle', '#a81623'],
+  ['mcdonald', '#da291c'], ['trader joe', '#d2232a'], ['whole foods', '#00674b'],
+  ['home depot', '#f96302'], ['lowe', '#004990'], ['shoprite', '#d71920'],
+  ['cvs', '#cc0000'], ['walgreens', '#e31837'], ['exxon', '#ed1c24'],
+  ['shell', '#fbce07'], ['uber', '#000000'], ['lyft', '#ff00bf'],
+  ['netflix', '#e50914'], ['spotify', '#1db954'], ['apple', '#000000'],
+];
+const merchantBrandColorFor = (name) => {
+  const n = String(name || '').toLowerCase();
+  for (const [k, c] of MERCHANT_BRAND_COLORS) if (n.includes(k)) return c;
+  return '#475569';
+};
+// Merchant icons (final little things, Nov 4): the old source was
+// logo.clearbit.com, which no longer responds at all — same failure
+// as the bank logos in PR #45. Merchant logos now come from
+// Google's favicon service (no key), with a brand-coloured monogram
+// fallback (white initial on the merchant's brand colour, slate
+// #475569 when unmapped), never the flat grey initial tile alone.
 function iconForMerchant(name) {
   const safe = String(name || '?');
   const initial = esc(safe.trim().charAt(0).toUpperCase() || '?');
   const domain = merchantDomainFor(safe);
-  if (!domain) return `<span class="tx-icon" aria-hidden="true">${initial}</span>`;
-  // On logo failure the <img> removes itself and the tile shows its letter.
-  return `<span class="tx-icon tx-icon-logo" aria-hidden="true"><img class="tx-logo" src="https://logo.clearbit.com/${domain}" alt="" loading="lazy" onerror="var p=this.parentNode;this.remove();p.textContent='${initial}';"></span>`;
+  const brand = merchantBrandColorFor(safe);
+  if (!domain) return `<span class="tx-icon" style="background:${brand};color:#fff" aria-hidden="true">${initial}</span>`;
+  // On logo failure the <img> removes itself and the tile shows its
+  // letter on the brand colour.
+  return `<span class="tx-icon tx-icon-logo" aria-hidden="true"><img class="tx-logo" src="https://www.google.com/s2/favicons?domain=${domain}&sz=128" alt="" loading="lazy" onerror="var p=this.parentNode;this.remove();p.textContent='${initial}';p.style.background='${brand}';p.style.color='#fff';"></span>`;
+}
+// Bank/card icon for a transaction row: transactions carry only a
+// card suffix and a source, never an institution name, so the
+// institution comes from the connected accounts (mask -> institution,
+// loaded in refresh() before the lists render). A bank row shows the
+// bank's favicon (Google, same as the Connected accounts list), not
+// just a merchant initial; manual/csv rows and cash gifts have no
+// bank, so they fall back to the merchant icon.
+let institutionBySuffix = new Map();
+async function loadInstitutionBySuffix() {
+  try {
+    const { data: items } = await supabase.from('plaid_items_public')
+      .select('plaid_item_id, institution_name').eq('household_id', household.household_id);
+    if (!items?.length) return;
+    const { data: accts } = await supabase.from('plaid_accounts')
+      .select('plaid_item_id, mask').in('plaid_item_id', items.map((i) => i.plaid_item_id));
+    const map = new Map();
+    for (const a of accts ?? []) {
+      const item = items.find((i) => i.plaid_item_id === a.plaid_item_id);
+      if (a.mask && item?.institution_name) map.set(String(a.mask), item.institution_name);
+    }
+    institutionBySuffix = map;
+  } catch (e) { /* bank icons are best-effort: merchant icons still render */ }
+}
+function bankIconForTx(name) {
+  const initial = esc(String(name || '?').trim().charAt(0).toUpperCase() || '?');
+  const domain = bankDomainFor(name);
+  const brand = bankBrandColorFor(name);
+  if (!domain) return `<span class="tx-icon" style="background:${brand};color:#fff" aria-hidden="true">${initial}</span>`;
+  return `<span class="tx-icon tx-icon-logo" aria-hidden="true"><img class="tx-logo" src="https://www.google.com/s2/favicons?domain=${domain}&sz=128" alt="" loading="lazy" onerror="var p=this.parentNode;this.remove();p.textContent='${initial}';p.style.background='${brand}';p.style.color='#fff';"></span>`;
+}
+function iconForTx(t) {
+  const suffix = String(t?.card_suffix ?? '');
+  const inst = suffix && suffix !== '0000' ? institutionBySuffix.get(suffix) : null;
+  if (inst) return bankIconForTx(inst);
+  return iconForMerchant(t?.merchant);
 }
 function bankLogoHtml(name) {
   const initial = esc(String(name || '?').trim().charAt(0).toUpperCase() || '?');
@@ -563,6 +621,11 @@ async function refresh() {
     }
   }
 
+  // Final little things: load the mask -> institution map before the
+  // lists render, so bank rows can show the bank icon on the first
+  // load (not only after a later refresh). Best-effort; a failed
+  // read leaves merchant icons in place.
+  await loadInstitutionBySuffix();
   const { data: txns, error: txErr } = await supabase.from('transactions')
     .select('*').eq('household_id', household.household_id)
     .order('date', { ascending: false }).limit(txLimit);
@@ -769,7 +832,7 @@ async function refresh() {
         // an identical row name; the chevron marks the
         // row as a disclosure (it rotates when the detail opens).
         const rowLabel = `${displayMerchant(t.merchant)} ${formatCents(t.amount_cents)} ${displayDay(t.date)} ${stateWord(t, excluded)} — show detail`;
-        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="${esc(rowLabel)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(displayMerchant(t.merchant))}">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span><span class="tx-chevron" aria-hidden="true"></span></div>
+        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="${esc(rowLabel)}"><div class="tx-line1">${iconForTx(t)}<strong class="tx-name" title="${esc(displayMerchant(t.merchant))}">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span><span class="tx-chevron" aria-hidden="true"></span></div>
         <div class="tx-line2">${statePill(t, excluded)}
         <span class="pill">${esc(sourceLabel(t.source))}</span>
         <span class="muted small tx-meta">${displayDay(t.date)} · ${cardLabel}</span></div></div>
@@ -810,7 +873,7 @@ async function refresh() {
       ? recent.map((t) => {
           const excluded = t.excluded === true || t.state === 'excluded';
           const recentCard = (t.kind === 'charity' && String(t.card_suffix) === '0000') ? 'Cash / no card' : `••${esc(t.card_suffix)}`; // Merged-audit A5: same Cash/no-card logic as Transactions, never ••0000.
-          return `<li class="tx-row"><div class="tx-head" data-view="purchases" data-recent-tx="${t.id}" role="button" tabindex="0" aria-label="See ${esc(displayMerchant(t.merchant))} ${formatCents(t.amount_cents)} ${displayDay(t.date)} ${stateWord(t, excluded)} in Transactions"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(displayMerchant(t.merchant))}">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
+          return `<li class="tx-row"><div class="tx-head" data-view="purchases" data-recent-tx="${t.id}" role="button" tabindex="0" aria-label="See ${esc(displayMerchant(t.merchant))} ${formatCents(t.amount_cents)} ${displayDay(t.date)} ${stateWord(t, excluded)} in Transactions"><div class="tx-line1">${iconForTx(t)}<strong class="tx-name" title="${esc(displayMerchant(t.merchant))}">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
           <div class="tx-line2">${statePill(t, excluded)}
           <span class="muted small tx-meta">${displayDay(t.date)} · ${recentCard}</span></div></div></li>`;
         }).join('')
@@ -956,7 +1019,7 @@ async function refresh() {
   if (trashEl) {
     const trash = all.filter((t) => t.excluded === true || t.state === 'excluded');
     trashEl.innerHTML = trash.length
-      ? trash.map((t) => `<li class="tx-row"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
+      ? trash.map((t) => `<li class="tx-row"><div class="tx-line1">${iconForTx(t)}<strong class="tx-name">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
         <div class="tx-line2"><span class="muted small tx-meta">${displayDay(t.date)} · ${(t.kind === 'charity' && String(t.card_suffix) === '0000') ? 'Cash / no card' : `••${esc(t.card_suffix)}`}</span></div>
         <div class="btn-row"><button class="btn btn-small btn-primary" data-trash-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} from trash">Restore</button></div></li>`).join('')
       : '<li class="muted small">Trash is empty.</li>';
@@ -1006,7 +1069,7 @@ async function refresh() {
   }));
   document.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
     const req = (reqs ?? []).find((r) => r.id === b.dataset.approve);
-    const amountText = await showSheet({ title: 'Approve from the fund', message: `Approve how much of this ${formatCents(req?.amount_cents ?? 0)} request? Enter less for a split approval.`, inputLabel: 'Amount ($)', inputValue: req ? (req.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Approve', cancelLabel: 'Cancel' });
+    const amountText = await showSheet({ title: 'Approve From the Fund', message: `Approve how much of this ${formatCents(req?.amount_cents ?? 0)} request? Enter less for a split approval.`, inputLabel: 'Amount ($)', inputValue: req ? (req.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Approve', cancelLabel: 'Cancel' });
     if (amountText === null) return;
     const cents = parseDollarsStrict(amountText);
     if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
@@ -1015,7 +1078,7 @@ async function refresh() {
     if (req && cents > req.amount_cents) { await showAlert('Too much', `You cannot approve more than the requested ${formatCents(req.amount_cents)}.`); return; }
     let { error } = await supabase.rpc('approve_and_allocate', { p_request_id: b.dataset.approve, p_amount_cents: cents, p_override_reason: null });
     if (error && /insufficient fund/i.test(error.message)) {
-      const reason = await showSheet({ title: 'Fund is short', message: `The fund does not cover ${formatCents(cents)}. You can still approve with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Approve anyway', cancelLabel: 'Cancel' });
+      const reason = await showSheet({ title: 'Fund Is Short', message: `The fund does not cover ${formatCents(cents)}. You can still approve with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Approve anyway', cancelLabel: 'Cancel' });
       if (reason === null) return;
       ({ error } = await supabase.rpc('approve_and_allocate', { p_request_id: b.dataset.approve, p_amount_cents: cents, p_override_reason: reason.trim() }));
     }
@@ -1208,7 +1271,7 @@ async function refresh() {
           const btn = document.createElement('button'); btn.className = 'btn btn-small btn-danger'; btn.type = 'button';
           btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${item.institution_name || 'bank'}`);
           btn.addEventListener('click', async () => {
-            if (!(await showConfirm('Disconnect bank', `Disconnect ${item.institution_name || 'this bank'}? The app will stop syncing this connection. Past transactions stay in the list.`, 'Disconnect'))) return;
+            if (!(await showConfirm('Disconnect Bank', `Disconnect ${item.institution_name || 'this bank'}? The app will stop syncing this connection. Past transactions stay in the list.`, 'Disconnect'))) return;
             const out = await callFn('plaid-disconnect', { household_id: household.household_id, plaid_item_id: item.plaid_item_id });
             if (!out.disconnected) { console.warn('plaid-disconnect failed:', out.error); await showAlert('Could not disconnect', 'Could not disconnect this bank. Try again.'); return; }
             await refresh();
@@ -1222,7 +1285,7 @@ async function refresh() {
           const acctId = `${nick || acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}`;
           btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${acctId}`);
           btn.addEventListener('click', async () => {
-            if (!(await showConfirm('Disconnect account', `Disconnect ${acctId}? This stops syncing this account only. Other accounts on the same bank connection keep syncing. Past transactions stay in the list. To sync this account again later, reconnect the bank from the Bank Connection card.`, 'Disconnect'))) return;
+            if (!(await showConfirm('Disconnect Account', `Disconnect ${acctId}? This stops syncing this account only. Other accounts on the same bank connection keep syncing. Past transactions stay in the list. To sync this account again later, reconnect the bank from the Bank Connection card.`, 'Disconnect'))) return;
             const out = await callFn('plaid-account-disconnect', { household_id: household.household_id, plaid_item_id: item.plaid_item_id, plaid_account_id: acct.plaid_account_id });
             if (!out.disconnected) { console.warn('plaid-account-disconnect failed:', out.error); await showAlert('Could not disconnect', 'Could not disconnect this account. Try again.'); return; }
             await refresh();
@@ -1286,7 +1349,7 @@ async function refresh() {
           const btn = document.createElement('button'); btn.className = 'btn btn-small btn-danger'; btn.type = 'button';
           btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${c.email_address || 'email'}`);
           btn.addEventListener('click', async () => {
-            if (!(await showConfirm('Disconnect email', `Disconnect ${c.email_address || 'this email'}? The app will stop checking it. Past transactions stay in the list.`, 'Disconnect'))) return;
+            if (!(await showConfirm('Disconnect Email', `Disconnect ${c.email_address || 'this email'}? The app will stop checking it. Past transactions stay in the list.`, 'Disconnect'))) return;
             const out = await callFn('gmail-disconnect', { household_id: household.household_id, connection_id: c.id });
             if (!out.disconnected) { console.warn('gmail-disconnect failed:', out.error); await showAlert('Could not disconnect', 'Could not disconnect this email. Try again.'); return; }
             await refresh();
@@ -1544,7 +1607,7 @@ async function refresh() {
             btn.textContent = 'Release';
             btn.setAttribute('aria-label', `Release held refund ${formatCents(h.held_cents)} to spendable surplus`);
             btn.addEventListener('click', async () => {
-              if (!(await showConfirm('Release held refund', `Release ${formatCents(h.held_cents)} to spendable surplus? Any amount owed back is covered first.`, 'Release'))) return;
+              if (!(await showConfirm('Release Held Refund', `Release ${formatCents(h.held_cents)} to spendable surplus? Any amount owed back is covered first.`, 'Release'))) return;
               const { error } = await supabase.rpc('resolve_held_refund', { p_held_id: h.id, p_action: 'release', p_note: '' });
               if (error) { console.warn('resolve_held_refund failed:', error.message); await showAlert('Could not release', 'Could not release this held refund. Try again.'); } else await refresh();
             });
@@ -1637,7 +1700,7 @@ async function refresh() {
           aliasLabel.appendChild(aliasBox); aliasLabel.appendChild(document.createTextNode(' Remember as same merchant — remembers these two merchant names as the same for future review, so similar pairs are treated as the same merchant next time.'));
           const sameBtn = document.createElement('button'); sameBtn.className = 'btn btn-small btn-primary'; sameBtn.type = 'button'; sameBtn.textContent = 'Same purchase';
           sameBtn.addEventListener('click', async () => {
-            if (!(await showConfirm('Same purchase', 'Keep one transaction and exclude the other from counts? Neither row is deleted.', 'Same purchase'))) return;
+            if (!(await showConfirm('Same Purchase', 'Keep one transaction and exclude the other from counts? Neither row is deleted.', 'Same purchase'))) return;
             sameBtn.disabled = true;
             const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'merge', p_note: '', p_remember_alias: aliasBox.checked });
             if (error) { console.warn('resolve_duplicate_candidate failed:', error.message); sameBtn.disabled = false; await showAlert('Could not resolve', 'Could not resolve this pair. Try again.'); } else await refresh();
@@ -1645,7 +1708,7 @@ async function refresh() {
           btnRow.appendChild(sameBtn);
           const sepBtn = document.createElement('button'); sepBtn.className = 'btn btn-small btn-tertiary'; sepBtn.type = 'button'; sepBtn.textContent = 'Separate';
           sepBtn.addEventListener('click', async () => {
-            if (!(await showConfirm('Separate purchases', 'Keep both transactions and never flag this pair again?', 'Separate'))) return;
+            if (!(await showConfirm('Separate Purchases', 'Keep both transactions and never flag this pair again?', 'Separate'))) return;
             sepBtn.disabled = true;
             const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'separate', p_note: '', p_remember_alias: false });
             if (error) { console.warn('resolve_duplicate_candidate failed:', error.message); sepBtn.disabled = false; await showAlert('Could not resolve', 'Could not resolve this pair. Try again.'); } else await refresh();
@@ -1895,7 +1958,7 @@ async function boot() {
 $('forgotPasswordBtn')?.addEventListener('click', async () => {
   let email = ($('authEmail')?.value ?? '').trim();
   if (!email) {
-    const typed = await showSheet({ title: 'Forgot password?', message: 'Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.', inputLabel: 'Email', inputType: 'email', confirmLabel: 'Send reset link', cancelLabel: 'Cancel' });
+    const typed = await showSheet({ title: 'Forgot Password?', message: 'Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.', inputLabel: 'Email', inputType: 'email', confirmLabel: 'Send reset link', cancelLabel: 'Cancel' });
     if (typed === null) return;
     email = typed.trim();
   }
@@ -2223,7 +2286,7 @@ $('manualForm').addEventListener('submit', async (e) => {
   const { data: dupes } = await supabase.from('transactions')
     .select('merchant, amount_cents, date').eq('household_id', household.household_id)
     .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
-  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add anyway'))) { done(); return; }
+  if ((dupes ?? []).length && !(await showConfirm('Possible Duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add anyway'))) { done(); return; }
   const hash = await sha(`${f.date.value}|${merchant}|${amount}|${suffix}`);
   const { error } = await supabase.from('transactions').insert({
     household_id: household.household_id, date: f.date.value, merchant,
@@ -2259,7 +2322,7 @@ $('connectBankBtn')?.addEventListener('click', async () => {
       const { data: activeAccts } = await supabase.from('plaid_accounts')
         .select('plaid_item_id, name, mask').in('plaid_item_id', activeItems.map((i) => i.plaid_item_id));
       const lines = activeItems.map((item) => describeConnection(item, (activeAccts ?? []).filter((a) => a.plaid_item_id === item.plaid_item_id)));
-      const proceed = await showConfirm('Already connected?', `You already have ${activeItems.length === 1 ? 'this bank connection' : 'these bank connections'}:\n${lines.join('\n')}\n\nConnecting the same account again will create a duplicate. You do not need to reconnect an account that is already syncing — only continue if you are connecting a different account.`, 'Connect anyway');
+      const proceed = await showConfirm('Already Connected?', `You already have ${activeItems.length === 1 ? 'this bank connection' : 'these bank connections'}:\n${lines.join('\n')}\n\nConnecting the same account again will create a duplicate. You do not need to reconnect an account that is already syncing — only continue if you are connecting a different account.`, 'Connect anyway');
       if (!proceed) return;
     }
   } catch (e) { console.warn('duplicate-warning read failed, proceeding:', e); }
@@ -2420,12 +2483,17 @@ const VIEWS = {
   settings: ['section-settings-head', 'section-profile', 'section-bank', 'section-email', 'settingsCard', 'section-settings-account'],
 };
 const ALL_VIEW_SECTIONS = Object.values(VIEWS).flat();
-let currentView = resolveRestoredView(localStorage.getItem('hb-view'), null);
-// Task 5: Settings IS persisted now (hb-view), so a reload from
-// Settings restores Settings instead of Home. previousView (the
-// page Settings Back returns to) persists separately in hb-prev-view;
-// without it, Back after a reload falls back to Home.
-let previousView = resolveRestoredView(localStorage.getItem(PREV_VIEW_STORAGE_KEY), null);
+// Final little things (owner, Nov 4, ~11:50 PM): EVERY fresh load
+// opens Home — refresh, app start, login, reopen after closing.
+// Boot ignores the saved last view (hb-view / resolveRestoredView
+// is no longer read here), so a reload from Transactions or
+// Settings lands on Home. In-app navigation is untouched: showView
+// still moves between views and still writes hb-view (inert on
+// boot, kept so the saved view is there if this is ever revisited).
+// previousView is Home on a fresh load, so Settings Back after a
+// reload also returns Home.
+let currentView = 'week';
+let previousView = 'week';
 // R7: which Add state is open on the Transactions screen:
 // null = list only (choice card hidden by default, UX-review-fix),
 // 'choice' = choice card, 'manual' = hand form, 'csv' = import form.
@@ -2634,17 +2702,17 @@ async function shareInviteCode() {
     const { data } = await supabase.from('households').select('invite_code').eq('id', household.household_id).maybeSingle();
     code = data?.invite_code ?? null;
   } catch (e) { console.warn('invite_code read failed:', e); }
-  if (!code) { await showSheet({ title: 'Invite code', message: 'No invite code is set up for this household yet. Ask the household owner to set one up before the second account joins.', confirmLabel: 'Done' }); return; }
+  if (!code) { await showSheet({ title: 'Invite Code', message: 'No invite code is set up for this household yet. Ask the household owner to set one up before the second account joins.', confirmLabel: 'Done' }); return; }
   let copied = false;
   try { await navigator.clipboard.writeText(code); copied = true; } catch (e) { /* clipboard may be unavailable; the code is still shown */ }
-  await showSheet({ title: 'Invite code', message: `Share this code with the second account so they can join as a member:\n${code}${copied ? '\n(Copied to clipboard.)' : ''}`, confirmLabel: 'Done' });
+  await showSheet({ title: 'Invite Code', message: `Share this code with the second account so they can join as a member:\n${code}${copied ? '\n(Copied to clipboard.)' : ''}`, confirmLabel: 'Done' });
 }
 async function deleteAccountFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
   // TWO-STEP confirmation: "Delete account" then "Yes, delete everything".
-  if (!(await showConfirm('Delete account', 'Delete your account and remove yourself from this household? If you are the last member, the household is deleted too. This cannot be undone.', 'Delete account'))) return;
-  if (!(await showConfirm('Delete everything?', 'This permanently deletes your account and, if you are the last member, the whole household. Are you sure?', 'Yes, delete everything'))) return;
+  if (!(await showConfirm('Delete Account', 'Delete your account and remove yourself from this household? If you are the last member, the household is deleted too. This cannot be undone.', 'Delete account'))) return;
+  if (!(await showConfirm('Delete Everything?', 'This permanently deletes your account and, if you are the last member, the whole household. Are you sure?', 'Yes, delete everything'))) return;
   const out = await callFn('delete-account', {});
   if (out.error || !out.deleted) {
     console.warn('delete-account failed:', out.error, out.step);
@@ -2663,7 +2731,7 @@ async function deleteAccountFlow() {
 async function changePasswordFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
-  const pw = await showSheet({ title: 'Change password', message: 'Enter a new password for this account. Password requirement: at least 8 characters.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change password', cancelLabel: 'Cancel' });
+  const pw = await showSheet({ title: 'Change Password', message: 'Enter a new password for this account. Password requirement: at least 8 characters.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change password', cancelLabel: 'Cancel' });
   if (!pw) return;
   if (pw.length < 8) { await showAlert('Password too short', 'Enter a password of at least 8 characters.'); return; }
   const { error } = await supabase.auth.updateUser({ password: pw });
@@ -2826,7 +2894,7 @@ async function openCharitySheet() {
   const c = currentCharityData;
   if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
   const isAdmin = household && household.role === 'admin';
-  const result = await showSheet({ title: 'Charity · November 2026 onward', rows: charityBreakdownRows(c), extraAction: isAdmin ? { label: 'Record income', result: 'record-income' } : null, confirmLabel: 'Close' });
+  const result = await showSheet({ title: 'Charity · November 2026 Onward', rows: charityBreakdownRows(c), extraAction: isAdmin ? { label: 'Record income', result: 'record-income' } : null, confirmLabel: 'Close' });
   if (result === 'record-income') setFundForm('income');
 }
 // Task 7: the Extra Fund sheet. From the Funds panel (withActions)
@@ -3057,7 +3125,7 @@ async function openTxActionsSheet(row) {
   }));
 }
 async function doTxCharity(row) {
-  if (!row || !(await showConfirm('Mark as charity gift', `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`, 'Mark as charity'))) return;
+  if (!row || !(await showConfirm('Mark as Charity Gift', `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`, 'Mark as charity'))) return;
   const { error } = await supabase.rpc('mark_transaction_charity', { p_transaction_id: row.id });
   if (error) {
     console.warn('mark_transaction_charity failed:', error.message);
@@ -3089,9 +3157,9 @@ async function doTxExtraFund(row) {
   await refresh();
 }
 async function doTxReclassify(row) {
-  const newKind = await showSheet({ title: 'Reclassify transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
   if (newKind === null) return;
-  const reason = await showSheet({ title: 'Reclassify transaction', message: 'Why reclassify this transaction?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
+  const reason = await showSheet({ title: 'Reclassify Transaction', message: 'Why reclassify this transaction?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
   if (reason === null) return;
   if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for reclassifying this transaction.'); return; }
   const { error } = await supabase.rpc('reclassify_transaction', { txn_id: row.id, new_kind: newKind, reason: reason.trim() });
@@ -3101,7 +3169,7 @@ async function doTxReclassify(row) {
 }
 async function doTxDelete(row) {
   if (row.source === 'manual') {
-    if (!(await showConfirm('Delete transaction', `"${row.merchant}" ${formatCents(row.amount_cents)} — this removes the hand-entered transaction and cannot be undone.`, 'Delete'))) return;
+    if (!(await showConfirm('Delete Transaction', `"${row.merchant}" ${formatCents(row.amount_cents)} — this removes the hand-entered transaction and cannot be undone.`, 'Delete'))) return;
     const { error } = await supabase.rpc('delete_transaction', { p_transaction_id: row.id });
     if (error) { console.warn('delete_transaction failed:', error.message); await showAlert('Could not delete', 'Could not delete this transaction. Try again.'); return; }
     await refresh();
@@ -3111,7 +3179,7 @@ async function doTxDelete(row) {
   // exclusion with a reason, never a true erase — the bank would
   // re-sync it). The row leaves the main list and is restored from
   // the Trash link above the list.
-  const reason = await showSheet({ title: 'Move to trash', message: `"${row?.merchant ?? 'This transaction'}" ${formatCents(row?.amount_cents ?? 0)} — this moves it to the Trash. The admin can bring it back from the Trash. Give a reason to continue.`, inputLabel: 'Reason (required)', confirmLabel: 'Delete', cancelLabel: 'Keep it' });
+  const reason = await showSheet({ title: 'Move to Trash', message: `"${row?.merchant ?? 'This transaction'}" ${formatCents(row?.amount_cents ?? 0)} — this moves it to the Trash. The admin can bring it back from the Trash. Give a reason to continue.`, inputLabel: 'Reason (required)', confirmLabel: 'Delete', cancelLabel: 'Keep it' });
   if (reason === null) return;
   if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for moving this transaction to the Trash.'); return; }
   const { error } = await supabase.rpc('exclude_transaction', { txn_id: row.id, reason: reason.trim() });
@@ -3445,7 +3513,7 @@ $('charityGiftForm')?.addEventListener('submit', async (e) => {
   const { data: dupes } = await supabase.from('transactions')
     .select('merchant, amount_cents, date').eq('household_id', household.household_id)
     .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
-  if ((dupes ?? []).length && !(await showConfirm('Possible duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Record this gift anyway?`, 'Record anyway'))) { done(); return; }
+  if ((dupes ?? []).length && !(await showConfirm('Possible Duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Record this gift anyway?`, 'Record anyway'))) { done(); return; }
   // The gift hash carries a per-submit nonce: two real identical
   // gifts on one day (the Nov 3 case: three $2 gifts to one org) must
   // not collide on another gift's dedupe hash, or the second gift
@@ -3743,7 +3811,7 @@ $('saveAllowanceBtn')?.addEventListener('click', async (e) => {
       oldCents = hhRow?.base_allowance_cents ?? null;
     } catch (e) { /* old value stays unknown; the sheet says so */ }
   }
-  const confirmed = await showSheet({ title: 'Change allowance', message: oldCents === null
+  const confirmed = await showSheet({ title: 'Change Allowance', message: oldCents === null
     ? `Set the weekly allowance to ${formatCents(cents)}? (The current allowance could not be read, so no old value is shown.)\nThis applies from the current week onward (${currentWeekData?.weekStart ? `week of ${fmtLong(currentWeekData.weekStart)}` : 'this week'}). It does not rewrite closed weeks.`
     : `Change the weekly allowance from ${formatCents(oldCents)} to ${formatCents(cents)}?\nThis applies from the current week onward (${currentWeekData?.weekStart ? `week of ${fmtLong(currentWeekData.weekStart)}` : 'this week'}). It does not rewrite closed weeks.`, confirmLabel: 'Change allowance', cancelLabel: 'Keep current' });
   if (!confirmed) return;
@@ -3816,7 +3884,7 @@ $('fundAllocateForm')?.addEventListener('submit', async (e) => {
   if (submitBtn) submitBtn.disabled = true;
   let { error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: null });
   if (error && /insufficient fund/i.test(error.message)) {
-    const reason = await showSheet({ title: 'Fund is short', message: `The fund does not cover ${formatCents(cents)}. Record it anyway with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Record anyway', cancelLabel: 'Cancel' });
+    const reason = await showSheet({ title: 'Fund Is Short', message: `The fund does not cover ${formatCents(cents)}. Record it anyway with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Record anyway', cancelLabel: 'Cancel' });
     if (reason === null) { if (submitBtn) submitBtn.disabled = false; return; }
     ({ error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: reason.trim() }));
   }

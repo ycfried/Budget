@@ -81,13 +81,15 @@ test('new sign-up shows Set Your Weekly Allowance, not a figure, until set', () 
 test('Home, Your Household and sign-in pages fill the viewport', () => {
   assert.match(css, /body\.live main \{ padding: 24px 16px 0; min-height: calc\(100dvh - 60px\); display: flex; flex-direction: column; \}/);
   assert.match(css, /body\.live #view-app \{ flex: 1 1 auto; display: flex; flex-direction: column; \}/);
-  assert.match(css, /body\.live #view-auth \{ flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; \}/);
+  assert.match(css, /body\.live #view-auth, body\.live #view-household \{ flex: 0 0 auto; display: block; \}/, 'auth pages are natural height, not stretched (final little things)');
+  assert.ok(html.includes('class="auth-brand"'), 'logo on top of sign-in and sign-up pages');
+  assert.ok(html.includes('class="auth-foot"'), 'useful bottom line under the auth card');
   assert.match(css, /#householdChoicePanel > label \{ margin-top: 28px; display: block; \}/, 'join section breathes below Create');
 });
 
 // 8 + 12 + A: Title Case in the sign-up / household flow.
-test('sign-up and household headers and buttons are Title Case, every word', () => {
-  for (const s of ['Your Household', 'Or Join A Household', 'Name Your Household', 'Household Name',
+test('sign-up and household headers and buttons are refined Title Case (minor words lower)', () => {
+  for (const s of ['Your Household', 'Or Join a Household', 'Name Your Household', 'Household Name',
     'Create Household', 'Join As Member', 'Choose Your Name', 'Sign In', 'Create Account', 'Forgot Password?']) {
     assert.ok(html.includes(s), `Title Case present: ${s}`);
   }
@@ -135,6 +137,6 @@ test('Forgot Password is underlined brand blue #2f6bff, not grey', () => {
 });
 
 // Pins bumped together.
-test('pins bumped together to v44/v54', () => {
-  assert.ok(html.includes('styles.css?v=44'));
-  assert.ok(html.includes('live.js?v=54'));});
+test('pins bumped together to v45/v55', () => {
+  assert.ok(html.includes('styles.css?v=45'));
+  assert.ok(html.includes('live.js?v=55'));});

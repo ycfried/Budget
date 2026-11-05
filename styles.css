@@ -1035,8 +1035,20 @@ body.live footer.foot { margin-top: auto; }
    centres vertically inside it, instead of a small card at the
    top with dead space below. .hidden still wins via !important
    when the view is not shown. */
-body.live #view-auth { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
-body.live #view-auth > div { width: 100%; }
+/* Final little things (owner, Nov 4): sign-in/up smart fill —
+   logo on top, natural-height card, useful bottom line. The old
+   stretch (card fills main, panel centred vertically) is gone: the
+   card is now its natural height, the larger OnBudget logo sits
+   above it, and a quiet tagline + read-only trust line sits below
+   it, so the page is complete top to bottom without a stretched
+   empty card or a giant padded container. Applies to sign-in and
+   sign-up/household pages; Home is untouched. */
+body.live #view-auth, body.live #view-household { flex: 0 0 auto; display: block; }
+body.live .auth-brand { text-align: center; padding: 12px 0 20px; }
+body.live .auth-brand-logo { width: 72px; height: 72px; border-radius: 50%; }
+body.live .auth-brand-name { font-family: var(--serif); font-size: 28px; font-weight: 700; margin-top: 10px; }
+body.live .auth-foot { text-align: center; color: #6b7280; font-size: 14px; line-height: 1.6; margin: 20px 0 8px; }
+body.live .auth-foot span { font-size: 13px; }
 body.live .card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px; margin-bottom: 16px; box-shadow: 0 4px 16px rgba(15, 23, 42, .06); }
 /* Home-hero-fix (owner, Nov 4): the hero's blue wash did not
    match the rest of the page. The hero is now white like every

@@ -26,7 +26,7 @@ test('hero title chevron is gone entirely; heading and big-number target stay', 
   assert.match(html, /<h2 class="hero-title">Weekly Budget<\/h2>/);
   assert.doesNotMatch(html, /hero-title-chevron/);
   assert.doesNotMatch(css, /hero-title-chevron/);
-  assert.match(html, /id="weeklyAvailable"[^>]*aria-label="Show Weekly Budget breakdown"/);
+  assert.match(html, /id="weeklyAvailable"[^>]*aria-label="Show Weekly Budget Breakdown"/);
 });
 
 test('pot chevrons are higher and further left, still down and brand blue', () => {
@@ -51,7 +51,7 @@ test('hero sync button is primary blue via an ID-strength, ancestor-independent 
   assert.match(css, /\.hero-number-row \.hero-sync-btn \{[^}]*width: 44px; height: 44px;[^}]*border-radius: 50%/);
 });
 
-test('pins bumped to v44/v54', () => {
-  assert.match(html, /styles\.css\?v=44/);
-  assert.match(html, /live\.js\?v=54/);
+test('pins bumped to v45/v55', () => {
+  assert.match(html, /styles\.css\?v=45/);
+  assert.match(html, /live\.js\?v=55/);
 });
