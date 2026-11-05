@@ -46,7 +46,7 @@ test('full-page loading view uses the on-brand mark, not the plain spinner', () 
   assert.match(html, /loading-brand-ring/, 'thin rotating brand ring present');
   assert.match(html, /loading-brand-logo" src="icon-192.png"/, 'original-picture logo mark present (old S mark replaced)');
   assert.equal(html.includes('loading-brand-s'), false, 'old S-only loading mark is gone');
-  assert.match(html, /Loading your budget…/, 'loading words kept');
+  assert.match(html, /Loading Your Household/, 'loading words are Title Case, household not budget');
 });
 
 test('skeleton shimmer is brand-palette, slow, and reduced-motion safe', () => {

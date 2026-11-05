@@ -22,7 +22,7 @@
 -- no rows. It only fails if a row already holds a kind outside the
 -- new list; the live probe shows all live kinds are within the six,
 -- so the seven-kind list cannot fail on live data.
-drop constraint if exists transactions_kind_check on transactions;
+alter table transactions drop constraint if exists transactions_kind_check;
 alter table transactions
   add constraint transactions_kind_check
   check (kind in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer'));

@@ -23,11 +23,12 @@ assert.ok(choiceFn.length > 0, 'household choice handler found');
 assert.ok(backFn.length > 0, 'household Back handler found');
 assert.ok(joinFn.length > 0, 'join handler found');
 
-test('household page has a choice panel and a hidden optional naming step', () => {
+test('household page has a choice panel and a hidden REQUIRED naming step', () => {
   assert.ok(choicePanel.includes('id="createHouseholdBtn"'), 'choice panel keeps Create household');
   assert.ok(choicePanel.includes('id="joinHouseholdBtn"'), 'choice panel keeps Join');
-  assert.ok(namePanel.includes('Name your household'), 'naming step is titled');
-  assert.ok(namePanel.includes('Optional'), 'naming step says the name is optional');
+  assert.ok(namePanel.includes('Name Your Household'), 'naming step is Title Cased');
+  assert.ok(!namePanel.includes('Optional'), 'no optional sentence: the name is required');
+  assert.ok(namePanel.includes('Household Name'), 'label is Title Cased');
   const input = namePanel.match(/<input id="householdNameInput"[^>]*>/);
   assert.ok(input, 'household name input present');
   assert.match(input[0], /maxlength="80"/);
@@ -41,10 +42,12 @@ test('choice Create button shows the naming step and calls no RPC', () => {
   assert.equal(choiceFn.includes('supabase.rpc('), false, 'choice button never calls the RPC');
 });
 
-test('naming step: blank name passes no p_name, supplied name passes p_name', () => {
-  // Blank -> empty args object, so both the old no-arg RPC and the
-  // new defaulted RPC create the default 'Household'.
-  assert.match(createFn, /const args = name \? \{ p_name: name \} : \{\};/);
+test('naming step: blank name is refused, supplied name passes p_name', () => {
+  // Feedback-bundle: the name is REQUIRED — a blank name is refused
+  // client-side with 'Enter a household name.' and never reaches
+  // the RPC, so there is no default-fallback path any more.
+  assert.match(createFn, /if \(!rawName\) \{[\s\S]*?Enter a household name\./);
+  assert.match(createFn, /const args = \{ p_name: name \};/);
   assert.match(createFn, /supabase\.rpc\('create_household', args\)/);
   assert.match(createFn, /rawName\.slice\(0, 80\)/, 'name capped at 80 client-side too');
   // Failure on the old RPC (unknown argument) surfaces the existing

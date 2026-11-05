@@ -34,7 +34,7 @@ test('sign-in card order: Email, Password, button row, Forgot password, message'
     assert.ok(at > prev, `${id} follows the previous element`);
     prev = at;
   }
-  assert.ok(authCard.includes('Forgot password?'), 'Forgot password recovery path kept');
+  assert.ok(authCard.includes('Forgot Password?'), 'Forgot password recovery path kept, Title Cased');
 });
 
 test('Sign in and Create account share one row with nothing between them', () => {
@@ -42,7 +42,7 @@ test('Sign in and Create account share one row with nothing between them', () =>
   assert.ok(row, 'shared auth button row found');
   assert.ok(row[1].includes('id="signInBtn"'), 'Sign in in the row');
   assert.ok(row[1].includes('id="signUpBtn"'), 'Create account in the row');
-  assert.match(row[1], /btn-primary[^>]*>Sign in/, 'Sign in is primary');
+  assert.match(row[1], /btn-primary[^>]*>Sign In/, 'Sign In is primary');
   // The row's CSS makes the two buttons equal width, side by side
   // (the selector is shared with the household naming step's row).
   assert.match(css, /#view-auth \.auth-btn-row[^{]*\{[^}]*display: flex[^}]*\}/);

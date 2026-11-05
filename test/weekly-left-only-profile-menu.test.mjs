@@ -167,7 +167,7 @@ test('name step (not the sign-in card) has the Name input', () => {
   assert.equal(signinPanel.includes('id="authName"'), false, 'no Name input on the sign-in panel');
   const namePanel = html.slice(html.indexOf('id="authNamePanel"'), html.indexOf('id="view-household"'));
   assert.ok(namePanel.includes('id="authName"'), 'Name input is in the name step');
-  assert.ok(namePanel.includes('Choose your name'), 'name step is titled');
+  assert.ok(namePanel.includes('Choose Your Name'), 'name step is Title Cased');
   assert.ok(namePanel.includes('id="authNameBackBtn"'), 'name step has a Back button');
 });
 
@@ -186,7 +186,7 @@ test('sign-up with an empty name is refused before signUp is called', () => {
   assert.match(signUpFn, /if \(!signName\?\.value\.trim\(\)\) \{ fail\('Enter a name for your new account\.', signName\); return; \}/);
   assert.ok(signUpFn.indexOf("fail('Enter a name for your new account.'") < signUpFn.indexOf('supabase.auth.signUp('));
   // fail() writes the name step's message area and focuses the field.
-  assert.match(signUpFn, /const fail = \(msg, field\) => \{ \$\('authNameMsg'\)\.textContent = msg; if \(field\) field\.focus\(\)/);
+  assert.match(signUpFn, /const fail = \(msg, field\) => \{ \$\('authNameMsg'\)\.textContent = msg; \$\('authNameMsg'\)\.classList\.add\('error'\); if \(field\) field\.focus\(\)/);
 });
 
 test('sign-up with a name passes full_name in metadata', () => {

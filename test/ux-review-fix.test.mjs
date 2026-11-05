@@ -36,15 +36,18 @@ test('charity Home figure is a confirmed number, never a dash on success', () =>
 });
 
 test('weekly hero kicker is neutral and the sign-instruction sentence is gone', () => {
-  assert.ok(html.includes('<div class="kicker">This week · <span id="weekLabel">'));
+  assert.ok(html.includes('<div class="kicker"><span id="weekLabel">'), 'kicker drops the This week prefix, date range only');
   assert.doesNotMatch(html, /Available this week/);
   assert.doesNotMatch(html, /If the big number is negative/);
 });
 
 // --- Blank shell --------------------------------------------------------
-test('boot shows the current view before refresh, and refresh re-shows on failure', () => {
-  const boot = js.slice(js.indexOf('async function boot()'), js.indexOf('async function boot()') + 1200);
-  assert.match(boot, /await show\('app'\);\s*\/\/ UX-review-fix, blank shell[\s\S]*?showView\(currentView\);/);
+test('boot keeps loading visible until refresh finishes, then shows the app', () => {
+  const boot = js.slice(js.indexOf('async function boot()'), js.indexOf('async function boot()') + 1600);
+  assert.match(boot, /await show\('loading'\);/);
+  assert.match(boot, /try \{ await refresh\(\); \} catch/);
+  assert.match(boot, /await show\('app'\);/);
+  assert.match(boot, /showView\(currentView\);/);
   assert.match(js, /try \{ if \(household\) showView\(currentView, \{ preserveScroll: true \}\); \} catch/);
 });
 
@@ -105,10 +108,12 @@ test('bank Disconnect identifies the exact connection by masked accounts', () =>
 });
 
 // --- Sign-in / profile / password ---------------------------------------
-test('sign-in: primary Sign in, password toggle, recovery copy on failure', () => {
+test('sign-in: primary Sign In, password toggle, red Incorrect email or password on failure', () => {
   assert.ok(html.includes('id="togglePasswordBtn"'));
   assert.match(js, /togglePasswordBtn.*addEventListener\('click'/);
-  assert.match(js, /Forgot password\? below to reset it/);
+  // Feedback-bundle: the sign-in failure is a red pop-up saying
+  // what is wrong, not the old long generic inline sentence.
+  assert.match(js, /showToast\('Incorrect email or password', true\)/);
   // Auth-card-cleanup: the "New to OnBudget?" lead-in is gone (the
   // side-by-side buttons make the choice self-evident).
   assert.equal(html.includes('New to OnBudget?'), false);

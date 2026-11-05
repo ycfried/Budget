@@ -380,7 +380,13 @@ body.live h1, body.live h2, body.live h3 { letter-spacing: -0.02em; font-weight:
 /* Header scrolls away; the tab bar is the persistent navigation now. */
 body.live #liveTopbar { position: relative; background: #fff; border-bottom: 1px solid #ececf1; }
 body.live #liveTopbar strong { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
-body.live .profile-btn { background: #eef4ff; border: 1px solid #2f6bff; color: #2f6bff; }
+/* Feedback-bundle (owner, Nov 4): profile icon and hero sync button
+   were pale/light blue with a glow — the wrong colour. Both are now
+   primary brand blue #2f6bff with a white icon, no glow/shadow.
+   Pale #bfdbfe stays the middle tier of 3-button rows only. The
+   sync button keeps its circular-arrow shape and size. */
+body.live .profile-btn { background: #2f6bff; border: 1px solid #2f6bff; color: #fff; box-shadow: none; }
+body.live .hero-number-row .hero-sync-btn { background: #2f6bff; color: #fff; border: 0; box-shadow: none; }
 body.live .profile-menu { border-color: #ececf1; border-radius: 18px; box-shadow: 0 12px 32px rgba(16,24,40,.14); }
 /* Bottom tab bar with icons, like the reference apps. */
 body.live #view-app .app-nav { position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 30;
@@ -400,17 +406,20 @@ body.live #view-app .app-nav-link { flex: 1 1 0; display: flex; flex-direction: 
 body.live #view-app .app-nav-link svg { width: 22px; height: 22px; display: block; }
 body.live #view-app .app-nav-link.active { color: #2f6bff; border-bottom: 0; }
 /* Bottom toast: in-app messages float above the tab bar instead of
-   pushing cards around. Brand blue for all messages, errors included
-   (owner: the red error bar was ugly and off-brand). It sits well
-   clear of the tab bar (owner: it was too close to the bottom).
+   pushing cards around. Brand blue for success/info messages; red
+   for errors (owner override, Nov 4 — blue did not read as an
+   error). It sits well clear of the tab bar (owner: it was too
+   close to the bottom).
    It auto-dismisses after 4 seconds; tapping it dismisses it sooner;
    switching tabs clears it. */
 body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 120px; z-index: 40;
   background: #2f6bff; color: #fff; padding: 12px 14px; border-radius: 12px;
   font-size: 14px; line-height: 1.4; box-shadow: 0 8px 24px rgba(16,24,40,.25); }
-/* Error toasts stay white on blue: the generic .error color below
-   otherwise leaks red text into the toast (Nov 3 fix round). */
-body.live .toast.error { color: #fff; }
+/* Feedback-bundle (owner, Nov 4): error pop-ups are RED, not blue —
+   an owner override of the Nov 2 "no red toasts ever" rule, for
+   genuine errors only. Success/info toasts stay brand blue #2f6bff;
+   only showToast(..., true) gets the red background. */
+body.live .toast.error { background: #dc2626; color: #fff; }
 /* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
    One gap system: rows use flex gap; standalone buttons use one margin. */
 /* Button levels (Nov 4, pale option B): primary = strong #2f6bff
@@ -488,6 +497,13 @@ body.live #section-week .btn-row { margin-bottom: 12px; }
 
 /* New branding: message boxes are a light blue tint, not the old warm beige. */
 body.live .result { background: #eef4ff; color: #0f172a; }
+/* Feedback-bundle (owner, Nov 4): ALL genuine error messages are
+   RED platform-wide, not blue. This rule restores red for inline
+   .result.error boxes in the live theme, which the blue .result
+   override above would otherwise wash out. Plain .result boxes
+   (mixed success/info messages) stay blue — only messages marked
+   .error, and error toasts, go red. */
+body.live .result.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
 
 /* ===== S4 live-only additions (scoped under body.live / #view-app) ===== */
 body.live #sheetOverlay .sheet p { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -708,9 +724,25 @@ body.live .profile-menu-row-danger { color: #dc2626; }
    8 characters" note itself moved out of this card entirely: the
    change-password sheet already states the requirement where the
    new password is entered, so it is not duplicated here. */
-#section-history-filter .form-row-2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
-#section-history-filter .form-row-2 label, #section-history-filter .form-row-2 input { min-width: 0; box-sizing: border-box; }
-#section-history-filter .form-row-2 input { border: 1px solid #e5e7eb; background: #fff; }
+/* Feedback-bundle (owner, Nov 4): Past weeks From/To were not the
+   same shape and ran into each other on phone. iOS Safari date
+   inputs have a wide intrinsic width that ignores min-width: 0
+   at phone card widths, so the two tracks overflowed into each
+   other. Both fields now share one explicit rule (same padding,
+   font, height, border, width: 100%, min-width: 0, labels as
+   block grid items with overflow hidden so a track can never
+   paint over its neighbour), with a 12px gap. At 390px each field
+   is ~155px — a full tap target. At 320px two date inputs cannot
+   fit side by side at any readable size, so they stack there
+   (this intentionally supersedes the earlier "side by side at
+   every width" rule — equal and non-overlapping wins). Real-phone
+   proving at 320px and 390px is still owed. */
+#section-history-filter .form-row-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+#section-history-filter .form-row-2 label { display: block; width: 100%; min-width: 0; overflow: hidden; box-sizing: border-box; }
+#section-history-filter .form-row-2 input { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #e5e7eb; background: #fff; padding: 10px 8px; font-size: 15px; margin: 6px 0 0; }
+@media (max-width: 360px) {
+  #section-history-filter .form-row-2 { grid-template-columns: 1fr; }
+}
 #section-profile .profile-email-label { display: block; margin-top: 20px; }
 #section-profile h3 { margin-top: 20px; }
 
@@ -724,7 +756,19 @@ body.live .profile-menu-row-danger { color: #dc2626; }
    surfaces. Figures and recent rows load behind brand-palette
    skeleton shimmer bars, sized like the content they stand in for,
    so nothing jumps when the real number arrives. */
-body.live .loading-screen { text-align: center; padding: 48px 22px; }
+/* Feedback-bundle (owner, Nov 4): the loading view fills the
+   screen, not a card floating in white space. The header stays
+   (it is app chrome); the section fills the rest of the viewport,
+   with no card border, shadow, or surrounding gap, and the footer
+   is hidden while loading (both the .is-loading body class set by
+   show() and the :has fallback, so the footer never shows on the
+   first paint before JS runs either). */
+body.live .loading-screen { text-align: center; padding: 24px 22px calc(24px + env(safe-area-inset-bottom));
+  min-height: calc(100dvh - 60px); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #fff; border: 0; border-radius: 0; box-shadow: none; margin: 0; }
+body.live.is-loading main { padding: 0; }
+body.live.is-loading footer.foot, body.live:has(#view-loading:not(.hidden)) footer.foot { display: none; }
+body.live:has(#view-loading:not(.hidden)) main { padding: 0; }
 body.live .loading-mark { font-family: var(--serif); font-size: 28px; font-weight: 700; margin-bottom: 20px; }
 body.live .loading-brand { position: relative; width: 72px; height: 72px; margin: 0 auto 20px; }
 body.live .loading-brand-ring { position: absolute; inset: 0; border: 2px solid #dbeafe; border-top-color: #2f6bff; border-radius: 50%; animation: loading-ring 2.4s linear infinite; }
@@ -789,7 +833,12 @@ body.live .password-row .btn { flex: 0 0 auto; margin: 0; }
    #view-auth: the change-password sheet keeps the generic flex row
    with its side-by-side Show/Hide text toggle above. */
 #view-auth .password-row { position: relative; display: block; margin-top: 6px; }
-#view-auth .password-row input { width: 100%; box-sizing: border-box; margin-top: 0; padding-right: 48px; }
+/* Feedback-bundle (owner, Nov 4): the eye icon sat low because the
+   password input kept its 14px bottom margin inside the relatively
+   positioned row, so 50% of the row was below the input's centre.
+   The input's bottom margin is now 0 in this row, so top: 50% +
+   translateY(-50%) truly centres the icon on the input. */
+#view-auth .password-row input { width: 100%; box-sizing: border-box; margin: 0; padding-right: 48px; }
 #view-auth .password-row .auth-eye-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: none; border: 0; color: #6b7280; cursor: pointer; padding: 0; margin: 0; font: inherit; }
 #view-auth .password-row .auth-eye-btn svg { display: block; }
 #view-auth .password-row .auth-eye-btn:focus-visible { outline: 2px solid #2f6bff; outline-offset: 2px; border-radius: 8px; }
@@ -897,12 +946,46 @@ body.live { font-size: 16px; }
    32px of breathing room — no more, no less. Tab-bar clearance is
    NOT touched: body padding-bottom (72px + safe-area) below the
    footer still keeps the footer clear of the fixed tab bar. */
-body.live main { padding: 24px 16px 0; }
+/* Feedback-bundle (owner, Nov 4): pages must fill the screen, on
+   phone and tablet, with no large dead space between the last card
+   and the tab bar. main now stretches to at least the viewport
+   height (minus the header) as a flex column, and #view-app
+   stretches with it, so the footer sits just above the tab-bar
+   clearance instead of floating mid-page. Cards keep their natural
+   height — nothing is stretched absurdly on phone; on short pages
+   (e.g. a new account on iPad) the empty space moves below the
+   footer, at the very bottom, instead of sitting between the last
+   card and the footer. Trade-off: on short pages the gap is still
+   there, but it is now below all content, not in the middle of
+   the page. This applies to every view (Home, Your Household,
+   Transactions, Funds), not just Home. */
+body.live main { padding: 24px 16px 0; min-height: calc(100dvh - 60px); display: flex; flex-direction: column; }
+body.live #view-app { flex: 1 1 auto; display: flex; flex-direction: column; }
+body.live #view-app > .card, body.live #view-app > .grid { width: 100%; }
+body.live footer.foot { margin-top: auto; }
+/* Feedback-bundle (owner, Nov 4): the sign-in card also fills the
+   page, on phone and iPad — layout only, no flow/field/button
+   change. The card stretches to fill main's height and its panel
+   centres vertically inside it, instead of a small card at the
+   top with dead space below. .hidden still wins via !important
+   when the view is not shown. */
+body.live #view-auth { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
+body.live #view-auth > div { width: 100%; }
 body.live .card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px; margin-bottom: 16px; box-shadow: 0 4px 16px rgba(15, 23, 42, .06); }
 /* Send-live-bundle, card colour subtle (owner, Nov 4): the hero gets
    a faint blue wash plus a soft shadow; every other card stays white
    with the same soft shadow. No new hues, numbers untouched. */
 body.live .hero { background: linear-gradient(#ffffff, #eef4ff); box-shadow: 0 8px 24px rgba(47, 107, 255, .12); }
+/* Feedback-bundle (owner, Nov 4): the "Or Join A Household" section
+   sat too close/claustrophobic under the Create button. It now
+   sits clearly lower, with breathing room below the button. */
+#householdChoicePanel > label { margin-top: 28px; display: block; }
+/* Feedback-bundle (owner, Nov 4): Forgot Password did not look
+   tapable and its grey was boring. It is now an underlined brand-
+   blue link with the button's full tap area. #60a5fa was considered
+   (owner's suggested light blue) but is too light for link text on
+   white, so #2f6bff is used for readability. */
+#forgotPasswordBtn { color: #2f6bff !important; text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }
 body.live .quiet-link { color: #2f6bff; font-weight: 600; font-size: 15px; text-decoration: none; }
 /* Task 7 (owner, Nov 4): Funds More rows — quiet tap rows with a ›
    chevron, no ▶ triangles, no explainer sentences. Same pattern as

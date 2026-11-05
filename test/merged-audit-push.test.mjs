@@ -23,9 +23,9 @@ const heldSql = readFileSync(new URL('../supabase/merged-audit-held-release-atom
 const manifest = readFileSync(new URL('../supabase/APPLY_MANIFEST_MERGED_AUDIT.md', import.meta.url), 'utf8');
 const mockup = readFileSync(new URL('../card-standardization-mockup.html', import.meta.url), 'utf8');
 
-test('pins: styles v37, live.js v47, matching live.html', () => {
-  assert.match(html, /styles\.css\?v=37/);
-  assert.match(html, /live\.js\?v=47/);
+test('pins: styles v38, live.js v48, matching live.html', () => {
+  assert.match(html, /styles\.css\?v=38/);
+  assert.match(html, /live\.js\?v=48/);
 });
 
 // ---- A1: merged kind constraint (file only, not applied) ----
