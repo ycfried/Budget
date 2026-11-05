@@ -294,9 +294,21 @@ Deno.serve(async (req) => {
       for (const portion of linkedNormalPortionByPurchase(ws).values()) total += portion;
       return -total; // negative: reduces C, as the old full-amount sum did
     };
-    const unlinkedPostedInWeek = (ws: string) =>
+    const unlinkedAbsInWeek = (ws: string) =>
       txns.filter((t: any) => inWeek(t, ws) && postedRefund(t) && !t.original_purchase_id)
-        .reduce((s: number, t: any) => s + (t.amount_cents ?? 0), 0);
+        .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
+    // Defence in depth (Nov 5, 2026), mirroring compute-week: unlinked
+    // posted refunds net only up to the week's charges after linked
+    // refunds. The excess is NOT netted; unlinkedExcessInWeek exposes
+    // it so a future misclassification is visible instead of silent.
+    const unlinkedPostedInWeek = (ws: string) => {
+      const cap = Math.max(0, ownCharges(ws) + linkedPostedToWeek(ws));
+      return -Math.min(unlinkedAbsInWeek(ws), cap);
+    };
+    const unlinkedExcessInWeek = (ws: string) => {
+      const cap = Math.max(0, ownCharges(ws) + linkedPostedToWeek(ws));
+      return unlinkedAbsInWeek(ws) - Math.min(unlinkedAbsInWeek(ws), cap);
+    };
     // Charges for a week as the walk/simulation reconstruct them.
     // Open weeks net linked refunds (recompute); locked weeks never
     // net linked refunds (restoration instead). Unlinked posted
@@ -515,6 +527,7 @@ Deno.serve(async (req) => {
     const pendingLateAfterRun = absorbingWeek ? 0 : unpostedLate;
 
     let weeksClosed = 0, releasesDone = 0, heldLegacy = 0;
+    const unlinkedExcessByWeek: { week_start: string; unlinked_excess_cents: number }[] = [];
     const handledReleaseWeeks = new Set<string>();
     for (let ws = earliest; ws < currentWeekStart; ws = addDays(ws, 7)) {
       const locked = isWeekLocked(ws, currentWeekStart);
@@ -553,6 +566,12 @@ Deno.serve(async (req) => {
         created_at: existingClose?.created_at ?? new Date().toISOString(),
       });
       weeksClosed += 1;
+      // Defence in depth (Nov 5, 2026): record any unlinked-refund
+      // excess for this week so it is visible in the response instead
+      // of silently floored away.
+      if (unlinkedExcessInWeek(ws) > 0) {
+        unlinkedExcessByWeek.push({ week_start: ws, unlinked_excess_cents: unlinkedExcessInWeek(ws) });
+      }
 
       const existingRelease = releaseByWeek.get(ws);
       if (existingRelease) {
@@ -932,6 +951,7 @@ Deno.serve(async (req) => {
       restorations, held_refunds_created: heldCreated,
       fund_available_cents: fundAvailable, shortfall_cents: shortfall,
       pending_late_adjustment_cents: pendingLateAfterRun,
+      unlinked_excess_by_week: unlinkedExcessByWeek,
       restorations_skipped: restorationsSkipped,
     };
     if (restorationError) {

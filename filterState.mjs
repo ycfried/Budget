@@ -388,7 +388,11 @@ export function classifyCsvKind(merchant, amountCents) {
   // CSV rows, so only the name patterns are checked here.
   const name = String(merchant ?? '');
   if (/INTERNAL TRANSFER/i.test(name)) return 'transfer';
-  if (/MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT/i.test(name)) return 'payment';
+  // Refund-classification fix (Nov 5, 2026): mirrors canonical.ts —
+  // a check deposit is income, a payment credit is a payment; CSV
+  // rows carry no account type, so only the name patterns apply here.
+  if (amountCents < 0 && /CHECK DEPOSIT|MOBILE DEPOSIT|\bDEPOSIT\b/i.test(name)) return 'income';
+  if (/MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT|PAYMENT\s*:\s*CREDIT|PAYMENT CREDIT|\/ ?PAYMENT|EPAYMENT|E-PAYMENT|ACH PAYMENT/i.test(name)) return 'payment';
   if (/CASH BACK|CASHBACK|REWARD/i.test(name)) return 'cashback';
   return amountCents < 0 ? 'refund' : 'charge';
 }

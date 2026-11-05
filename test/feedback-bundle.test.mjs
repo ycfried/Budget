@@ -116,13 +116,16 @@ test('error messages are red: toasts, inline error boxes, exact join text', () =
   assert.match(css, /body\.live \.toast\.error \{ background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; font-weight: 600; \}/);
   assert.match(css, /body\.live \.result\.error \{ background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; \}/);
   assert.match(css, /body\.live \.toast \{[^}]*background: #2f6bff/, 'success/info toasts stay brand blue');
-  assert.match(js, /showToast\('Check the invite code and try again', true\)/);
+  // Design item 2 (owner, Nov 5): the join failure stays in the
+  // INLINE soft-red box, not a toast.
+  assert.match(js, /setResultMsg\('householdMsg', 'Check the invite code and try again', true\)/);
   assert.equal(js.includes('or ask the household owner to share it again from Settings'), false, 'join extra clause gone');
 });
 
-// D: sign-in error wording.
-test('sign-in failure says Incorrect email or password in a red pop-up', () => {
-  assert.match(js, /showToast\('Incorrect email or password', true\)/);
+// D: sign-in error wording. Design item 2 (owner, Nov 5): the failure
+// stays in the INLINE soft-red box, not a toast.
+test('sign-in failure says Incorrect email or password in the inline red box', () => {
+  assert.match(js, /setResultMsg\('authMsg', 'Incorrect email or password', true\)/);
 });
 
 // E: eye icon centred (input bottom margin removed in the auth row).
@@ -137,6 +140,6 @@ test('Forgot Password is underlined brand blue #2f6bff, not grey', () => {
 });
 
 // Pins bumped together.
-test('pins bumped together to v47/v57', () => {
-  assert.ok(html.includes('styles.css?v=47'));
-  assert.ok(html.includes('live.js?v=57'));});
+test('pins bumped together to v48/v58', () => {
+  assert.ok(html.includes('styles.css?v=48'));
+  assert.ok(html.includes('live.js?v=58'));});

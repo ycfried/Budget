@@ -101,6 +101,11 @@ export function isExcludedFromMath(t) {
   // delta3: transfers between the household's own accounts never count
   // toward weekly spending, refunds, or restoration, either direction.
   if (t.kind === 'transfer') return true;
+  // Refund-classification fix (Nov 5, 2026): income is money received,
+  // never week spending — explicit here so a future walk cannot
+  // accidentally count it (chargeContribution already returns 0 for
+  // non-charge kinds, but the exclusion is the stated rule).
+  if (t.kind === 'income') return true;
   // Pending/provisional REFUNDS restore nothing and are excluded from
   // week math until they post (state 'verified'). Provisional CHARGES
   // still count — the distinction is by kind + state, not state alone.

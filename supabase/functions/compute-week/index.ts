@@ -261,17 +261,22 @@ Deno.serve(async (req) => {
         );
       }
     }
-    for (const t of windowRows) {
-      if (postedRefund(t) && (!hasLinkage || !t.original_purchase_id)) {
-        // Unlinked (or pre-migration) posted refund dated in this week.
-        // Pre-migration fallback: every posted refund in the window
-        // nets here, since linkage cannot be checked.
-        // Locked-week reconstruction guard: a refund that arrived
-        // AFTER this week's close was recorded does not rewrite it.
-        if (thisClose && t.created_at && thisClose.created_at && t.created_at > thisClose.created_at) continue;
-        chargesNet += t.amount_cents ?? 0;
-      }
-    }
+    // Defence in depth (Nov 5, 2026): unlinked posted refunds net only
+    // up to the week's charges. A refund bigger than the week's spending
+    // (e.g. a misclassified $7,000 check deposit) used to floor spent to
+    // $0 silently. The excess is exposed as unlinked_excess_cents
+    // instead of being dropped. The cap is a visibility guard, not the
+    // fix for a misclassification — the classifier is what must label
+    // the row right. The locked-week guard below is preserved: a refund
+    // that arrived AFTER this week's close was recorded does not
+    // rewrite it.
+    const unlinkedRefundAbs = windowRows
+      .filter((t: any) => postedRefund(t) && (!hasLinkage || !t.original_purchase_id)
+        && !(thisClose && t.created_at && thisClose.created_at && t.created_at > thisClose.created_at))
+      .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
+    const unlinkedNetted = Math.min(unlinkedRefundAbs, Math.max(0, chargesNet));
+    chargesNet -= unlinkedNetted;
+    const unlinkedExcessCents = unlinkedRefundAbs - unlinkedNetted;
 
     // Late charges (P0-9): for the CURRENT week, add locked-week
     // charges not yet frozen into any close snapshot. For a week
@@ -338,7 +343,10 @@ Deno.serve(async (req) => {
 
     const result = computeWeek({ B, T, D, C });
 
-    // EXACT response shape — no extra fields.
+    // Response shape: the fields above plus unlinked_excess_cents
+    // (Nov 5, 2026) — the part of unlinked refunds that exceeded the
+    // week's charges and was NOT netted, so a future misclassification
+    // is visible instead of silent.
     return json({
       week_start: weekStart,
       base_available_cents: result.baseAvailable,
@@ -348,6 +356,7 @@ Deno.serve(async (req) => {
       available_cents: result.available,
       week_locked: weekLocked,
       pending_refund_excluded_cents: pendingExcluded,
+      unlinked_excess_cents: unlinkedExcessCents,
     });
   } catch (e) {
     return json({ error: String((e as any)?.message ?? e) }, 500);
