@@ -26,7 +26,7 @@ const historyFilter = html.slice(html.indexOf('id="section-history-filter"'), ht
 assert.ok(historyFilter.length > 0, 'history filter section found');
 
 test('footer gap is 32px: card margin 16 + main bottom 0 + footer top 16', () => {
-  assert.match(css, /body\.live main \{ padding: 24px 16px 0; \}/, 'main bottom padding is 0');
+  assert.match(css, /body\.live main \{ padding: 24px 16px 0;[^}]*\}/, 'main bottom padding is still 0 (min-height/flex added, gap arithmetic unchanged)');
   assert.match(css, /body\.live \.card \{[^}]*margin-bottom: 16px/, 'card margin-bottom stays 16');
   assert.match(css, /\.foot \{ text-align: center; padding: 16px; \}/, 'footer padding stays 16 (top 16)');
 });
@@ -70,8 +70,9 @@ test('filters From/To pair cannot overlap: minmax tracks, not bare 1fr', () => {
   assert.match(css, /body\.live \.tx-sheet-pair input \{ width: 100%; box-sizing: border-box; min-width: 0; \}/);
 });
 
-test('history From/To sit side by side with short labels', () => {
-  assert.match(css, /#section-history-filter \.form-row-2 \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 16px; \}/, 'history pair exempt from phone stacking');
+test('history From/To sit side by side with short labels (stacking only at <=360px)', () => {
+  assert.match(css, /#section-history-filter \.form-row-2 \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 12px; \}/, 'history pair side by side with a real gap');
+  assert.match(css, /@media \(max-width: 360px\) \{\s*#section-history-filter \.form-row-2 \{ grid-template-columns: 1fr; \}/, 'history pair stacks only where two date inputs cannot fit');
   const pair = historyFilter.slice(historyFilter.indexOf('form-row-2'), historyFilter.indexOf('btn-row'));
   assert.ok(pair.includes('id="historyFromInput"') && pair.includes('id="historyToInput"'), 'both date inputs share the one pair row');
   assert.ok(historyFilter.includes('<label>From'), 'visible label is From, not From date');
@@ -131,7 +132,7 @@ test('bank card heading and sentence are the short versions, nothing else retitl
   assert.equal(html.includes('id="section-history-link"'), false, 'separate History card gone');
 });
 
-test('version pins: styles v37, live.js v47', () => {
-  assert.match(html, /styles\.css\?v=37/);
-  assert.match(html, /live\.js\?v=47/);
+test('version pins: styles v38, live.js v48', () => {
+  assert.match(html, /styles\.css\?v=38/);
+  assert.match(html, /live\.js\?v=48/);
 });

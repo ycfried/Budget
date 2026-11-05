@@ -12,9 +12,9 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
-test('version pins: styles v37, live.js v47', () => {
-  assert.match(html, /styles\.css\?v=37/);
-  assert.match(html, /live\.js\?v=47/);
+test('version pins: styles v38, live.js v48', () => {
+  assert.match(html, /styles\.css\?v=38/);
+  assert.match(html, /live\.js\?v=48/);
 });
 
 // ---- Task 1: removed sentences are gone ----
@@ -70,7 +70,7 @@ test('Task 1: period line empty with no filter; count line only when meaningful'
 
 // ---- Task 2: field spacing ----
 test('Task 2: every adjacent pair has a visible gap, own border, no overflow', () => {
-  assert.match(css, /#section-history-filter \.form-row-2 \{[^}]*gap: 16px;/);
+  assert.match(css, /#section-history-filter \.form-row-2 \{[^}]*gap: 12px;/);
   assert.match(css, /#section-history-filter \.form-row-2 input \{[^}]*border: 1px solid #e5e7eb; background: #fff;/);
   assert.match(css, /\.form-row-2 \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 12px;/);
   assert.match(css, /\.form-row-3 \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 12px;/);

@@ -10,7 +10,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=37">
+<link rel="stylesheet" href="styles.css?v=38">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -39,10 +39,10 @@
        directly with the auth, household, or app view once the session
        is known; a signed-out visit goes loading -> sign-in, with no
        app-shell flash in between. -->
-  <section id="view-loading" class="card loading-screen" aria-label="Loading">
+  <section id="view-loading" class="loading-screen" aria-label="Loading">
     <div class="loading-brand" aria-hidden="true"><span class="loading-brand-ring"></span><img class="loading-brand-logo" src="icon-192.png" alt="" aria-hidden="true"></div>
     <div class="loading-mark">OnBudget</div>
-    <p class="muted">Loading your budget…</p>
+    <p class="muted">Loading Your Household</p>
   </section>
 
   <section id="view-auth" class="card hidden">
@@ -55,18 +55,18 @@
       <label>Email <input id="authEmail" type="email" autocomplete="email" required></label>
       <label>Password <span class="password-row"><input id="authPassword" type="password" autocomplete="current-password" required><button id="togglePasswordBtn" class="auth-eye-btn" type="button" aria-label="Show password" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
       <div class="btn-row auth-btn-row">
-        <button id="signInBtn" class="btn btn-primary" type="button" aria-label="Sign in to the live app">Sign in</button>
-        <button id="signUpBtn" class="btn btn-tertiary" type="button" aria-label="Create a new live account">Create account</button>
+        <button id="signInBtn" class="btn btn-primary" type="button" aria-label="Sign In To The Live App">Sign In</button>
+        <button id="signUpBtn" class="btn btn-tertiary" type="button" aria-label="Create A New Live Account">Create Account</button>
       </div>
-      <button id="forgotPasswordBtn" class="btn btn-quiet btn-block" type="button" aria-label="Reset your password">Forgot password?</button>
+      <button id="forgotPasswordBtn" class="btn btn-quiet btn-block" type="button" aria-label="Reset Your Password">Forgot Password?</button>
       <div id="authMsg" class="result"></div>
     </div>
     <div id="authNamePanel" class="hidden">
-      <h2>Choose your name</h2>
+      <h2>Choose Your Name</h2>
       <label>Name <input id="authName" type="text" autocomplete="name" maxlength="80"></label>
       <div class="btn-row auth-btn-row">
-        <button id="authNameBackBtn" class="btn btn-tertiary" type="button" aria-label="Back to sign in">← Back</button>
-        <button id="authNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create a new live account">Create account</button>
+        <button id="authNameBackBtn" class="btn btn-tertiary" type="button" aria-label="Back To Sign In">← Back</button>
+        <button id="authNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create A New Live Account">Create Account</button>
       </div>
       <div id="authNameMsg" class="result"></div>
     </div>
@@ -77,20 +77,19 @@
          is two panels — choice, then an optional naming step. The
          join path never sees the naming step. -->
     <div id="householdChoicePanel">
-      <h1>Your household</h1>
+      <h1>Your Household</h1>
       <p class="muted">Create a household as admin, or join one with an invite code.</p>
-      <button id="createHouseholdBtn" class="btn btn-primary btn-block" type="button" aria-label="Create a household as owner and admin">Create household (I am the owner / admin)</button>
-      <label>Or join a household <input id="joinId" placeholder="Invite code from the owner"></label>
-      <button id="joinHouseholdBtn" class="btn btn-tertiary btn-block" type="button" aria-label="Join an existing household as a member">Join as member</button>
+      <button id="createHouseholdBtn" class="btn btn-primary btn-block" type="button" aria-label="Create Household">Create Household</button>
+      <label>Or Join A Household <input id="joinId" placeholder="Invite Code From The Owner"></label>
+      <button id="joinHouseholdBtn" class="btn btn-tertiary btn-block" type="button" aria-label="Join An Existing Household As A Member">Join As Member</button>
       <div id="householdMsg" class="result"></div>
     </div>
     <div id="householdNamePanel" class="hidden">
-      <h2>Name your household</h2>
-      <p class="muted small">Optional — leave it blank to keep the default.</p>
-      <label>Household name <input id="householdNameInput" type="text" maxlength="80" placeholder="Household"></label>
+      <h2>Name Your Household</h2>
+      <label>Household Name <input id="householdNameInput" type="text" maxlength="80" placeholder="Household"></label>
       <div class="btn-row auth-btn-row">
-        <button id="householdNameBackBtn" class="btn btn-tertiary" type="button" aria-label="Back to household choice">← Back</button>
-        <button id="householdNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create the household">Create household</button>
+        <button id="householdNameBackBtn" class="btn btn-tertiary" type="button" aria-label="Back To Household Choice">← Back</button>
+        <button id="householdNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create The Household">Create Household</button>
       </div>
       <div id="householdNameMsg" class="result"></div>
     </div>
@@ -104,9 +103,10 @@
     </nav>
     <div class="card hero" id="section-week">
       <div class="hero-head">
-        <div class="kicker">This week · <span id="weekLabel"><span class="skel skel-kicker" aria-hidden="true"></span><span class="sr-only">Loading</span></span></div>
+        <div class="kicker"><span id="weekLabel"><span class="skel skel-kicker" aria-hidden="true"></span><span class="sr-only">Loading</span></span></div>
       </div>
       <div class="hero-number-row">
+        <button id="heroSetAllowanceBtn" class="btn btn-primary hidden" type="button" aria-label="Set your weekly allowance">Set Your Weekly Allowance</button>
         <div id="weeklyAvailable" class="big" role="button" tabindex="0" aria-label="Show Weekly Budget breakdown" aria-busy="true"><span class="skel skel-figure" aria-hidden="true"></span><span class="sr-only">Loading</span></div>
         <button class="btn hero-sync-btn" id="homeSyncBtn" type="button" aria-label="Sync bank"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
       </div>
@@ -534,7 +534,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=47"></script>
+<script type="module" src="live.js?v=48"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

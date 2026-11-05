@@ -233,6 +233,11 @@ let currentCharityData = null; // last charity aggregates, for the Charity card 
 let nicknameByAccount = new Map();
 let nicknameBySuffix = new Map();
 let nicknamesLoaded = false;
+// Feedback-bundle: true unless the households row proves an allowance
+// was never explicitly set (allowance_set_at is null, see the
+// PREPARED SQL file). Defaults to true so households whose DB has
+// not had that migration applied keep the old behaviour.
+let allowanceExplicitlySet = true;
 // Generic display labels for transaction sources. Database values are
 // unchanged (e.g. 'plaid'); only what the user sees is bank-agnostic.
 const sourceLabel = (s) => ({ plaid: 'Bank', manual: 'By hand', csv: 'File', amex_alert: 'Email alert' }[s] ?? String(s));
@@ -243,6 +248,7 @@ async function show(view) {
   // form — boot() replaces the loader directly with auth, household,
   // or app once the session is known.
   $('view-loading')?.classList.toggle('hidden', view !== 'loading');
+  document.body.classList.toggle('is-loading', view === 'loading');
   $('view-auth').classList.toggle('hidden', view !== 'auth');
   $('view-household').classList.toggle('hidden', view !== 'household');
   $('view-app').classList.toggle('hidden', view !== 'app');
@@ -368,9 +374,24 @@ async function refresh() {
   // there is no credit field in this contract at all.
   let baseAllowanceCents = null;
   try {
-    const { data: hhRow } = await supabase.from('households')
-      .select('base_allowance_cents').eq('id', household.household_id).maybeSingle();
-    if (hhRow && Number.isInteger(hhRow.base_allowance_cents)) baseAllowanceCents = hhRow.base_allowance_cents;
+    try {
+      const { data: hhRow } = await supabase.from('households')
+        .select('base_allowance_cents, allowance_set_at').eq('id', household.household_id).maybeSingle();
+      if (hhRow && Number.isInteger(hhRow.base_allowance_cents)) baseAllowanceCents = hhRow.base_allowance_cents;
+      // A null allowance_set_at means no admin has ever explicitly
+      // set an allowance for this household — the $375 figure would
+      // otherwise be the schema default, not a choice.
+      allowanceExplicitlySet = !(hhRow && 'allowance_set_at' in hhRow && hhRow.allowance_set_at === null);
+    } catch (e) {
+      // Column not present yet (migration not applied): fall back
+      // to the old base-only read and the old behaviour.
+      try {
+        const { data: hhRow2 } = await supabase.from('households')
+          .select('base_allowance_cents').eq('id', household.household_id).maybeSingle();
+        if (hhRow2 && Number.isInteger(hhRow2.base_allowance_cents)) baseAllowanceCents = hhRow2.base_allowance_cents;
+      } catch (e2) { console.warn('base allowance read failed:', e2); }
+      allowanceExplicitlySet = true;
+    }
   } catch (e) { console.warn('base allowance read failed:', e); }
   const weekErrEl = document.getElementById('weekError');
   const clearWeekNumbers = () => {
@@ -462,6 +483,24 @@ async function refresh() {
       const heroSpent = document.getElementById('heroSpentLine'); if (heroSpent) heroSpent.textContent = `${formatCents(charges)} spent`;
       const heroUsed = document.getElementById('heroUsedPct'); if (heroUsed) heroUsed.textContent = capacity > 0 ? `${Math.round(pct)}% used` : (charges > 0 ? 'Over budget' : '0% used');
       const heroAllow = document.getElementById('heroAllowance'); if (heroAllow) heroAllow.textContent = formatCents(baseAvailable + tempC); // Merged-audit A3: Home face shows the EFFECTIVE allowance (base room + temp), matching the Weekly breakdown, not the household base.
+      // Feedback-bundle (owner, Nov 4): a new sign-up must NOT show
+      // a weekly allowance figure before one is set. The big figure
+      // and the Weekly allowance stat are replaced by the Set button
+      // (admin only); members see no figure and no button. Spent
+      // and purchase counts are real and stay.
+      const heroSetBtn = document.getElementById('heroSetAllowanceBtn');
+      const heroFig = document.getElementById('weeklyAvailable');
+      const isAdminHero = household && household.role === 'admin';
+      if (!allowanceExplicitlySet) {
+        if (heroFig) heroFig.classList.add('hidden');
+        if (heroSetBtn) heroSetBtn.classList.toggle('hidden', !isAdminHero);
+        if (heroAllow) heroAllow.textContent = '—';
+        if (bar) bar.style.width = '0%';
+        const heroUsed2 = document.getElementById('heroUsedPct'); if (heroUsed2) heroUsed2.textContent = '—';
+      } else {
+        if (heroFig) heroFig.classList.remove('hidden');
+        if (heroSetBtn) heroSetBtn.classList.add('hidden');
+      }
       lastRefreshAt = Date.now();
       const allowInput = document.getElementById('baseAllowanceInput');
       if (allowInput && document.activeElement !== allowInput && baseAllowanceCents !== null) allowInput.value = (baseAllowanceCents / 100).toFixed(2);
@@ -1738,6 +1777,15 @@ async function boot() {
   if (!session) { await show('auth'); return; }
   household = await loadMembership();
   if (!household) { await show('household'); return; }
+  // Feedback-bundle (owner, Nov 4): do NOT switch to the app shell
+  // before the first refresh finishes — that is how the blank white
+  // page (header + footer + tab bar, no content) appeared. Keep the
+  // full-screen loading view visible while refresh() runs, then
+  // switch to the app once, with its sections, after refresh
+  // completes (or fails — refresh() itself renders inline errors,
+  // so a failed refresh still shows the app, never a blank page).
+  await show('loading');
+  try { await refresh(); } catch (e) { console.warn('boot refresh failed:', e); }
   await show('app');
   // UX-review-fix, blank shell (owner screenshot Nov 3, 7:48 PM):
   // #view-app > .card starts display:none in CSS and showView() is
@@ -1749,6 +1797,14 @@ async function boot() {
   // "Loading…" placeholders appear instantly; refresh() then fills
   // them in, and its finally block re-runs showView even on failure.
   showView(currentView);
+  // Feedback-bundle empty-page guard: if the restored view somehow
+  // leaves every section hidden, fall back to Home rather than a
+  // blank page.
+  try {
+    const anyVisible = ['section-week', 'section-stats', 'section-recent', 'section-transactions', 'section-fund-balances', 'section-profile', 'section-history-filter']
+      .some((id) => { const el = document.getElementById(id); return el && el.style.display !== 'none' && !el.classList.contains('hidden'); });
+    if (!anyVisible) showView('week');
+  } catch (e) { /* fall back silently */ }
   // Gmail OAuth return: the callback redirects back here with
   // ?gmail=connected or ?gmail=failed. The param only picks the
   // message (server truth on refresh decides what the card shows);
@@ -1763,7 +1819,6 @@ async function boot() {
       window.history.replaceState(null, '', u.pathname + u.search + u.hash);
     }
   } catch (e) { /* ignore malformed URLs */ }
-  await refresh();
   // Task 5: on a fresh load the refresh above starts at scroll 0,
   // so Task 4's in-refresh restore cannot know where the user was.
   // Restore the saved position for this page now, once, after the
@@ -1801,10 +1856,17 @@ $('signInBtn').addEventListener('click', async () => {
   if (error) console.warn('sign-in failed:', error.message);
   // Privacy-safe generic error, plus a direct recovery action: the
   // Forgot password? button sits below this message on the form.
-  $('authMsg').textContent = error ? 'Could not sign in. Check your email and password and try again. If you forgot the password, use Forgot password? below to reset it.' : 'Signed in.';
+  // Feedback-bundle (owner, Nov 4, updated by the same-night
+  // clarification): a sign-in failure is a RED error pop-up whose
+  // wording must say what is wrong. Supabase returns a generic
+  // invalid-credentials error, so the wording deliberately does
+  // NOT claim which field is wrong — "Incorrect email or
+  // password" is the safe form of the owner's request.
+  if (error) { $('authMsg').textContent = ''; showToast('Incorrect email or password', true); }
+  else $('authMsg').textContent = 'Signed in.';
   if (!error) await show('loading');
   await boot();
-  if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
+  if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
 });
 // ---- Live CSV import (Transactions tab), registered at top level so
 // it works after a plain reload, not only after an in-page sign-in
@@ -1939,7 +2001,7 @@ $('authNameCreateBtn').addEventListener('click', async () => {
   // Delta3: same busy pattern as sign-in.
   const btn = $('authNameCreateBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
-  const fail = (msg, field) => { $('authNameMsg').textContent = msg; if (field) field.focus(); if (btn) { btn.disabled = false; btn.textContent = 'Create account'; } };
+  const fail = (msg, field) => { $('authNameMsg').textContent = msg; $('authNameMsg').classList.add('error'); if (field) field.focus(); if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; } };
   const signEmail = $('authEmail'); const signPw = $('authPassword'); const signName = $('authName');
   // Sign-up name requirement (owner, Nov 3, ~11:22 PM): a new
   // account must set a name, so the profile header has a display
@@ -1955,7 +2017,7 @@ $('authNameCreateBtn').addEventListener('click', async () => {
   $('authNameMsg').textContent = error ? 'Could not create the account. Try again.' : 'Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.';
   if (!error) await show('loading');
   if (!error) await boot();
-  if (btn) { btn.disabled = false; btn.textContent = 'Create account'; }
+  if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
 });
 $('signOutBtn').addEventListener('click', async () => {
   await supabase.auth.signOut(); household = null;
@@ -2002,16 +2064,21 @@ $('householdNameCreateBtn').addEventListener('click', async () => {
   // owner, acts only for auth.uid(), refuses if the caller already has
   // a household, and needs no secret key at all. The client must still
   // never grant itself admin directly — this RPC is the only path.
-  // Naming: the name is OPTIONAL. A blank name passes NO p_name
-  // argument, so both the old no-arg RPC and the new
-  // create_household(p_name) (supabase/create-household-name.sql,
-  // NOT yet applied — owner review first) create the default
-  // 'Household'. A supplied name passes p_name, which requires the
-  // new SQL; on the old RPC that call fails and the existing error
-  // message shows — never a silent fallback through another path.
+  // Naming: the name is REQUIRED (owner, Nov 4). A supplied name
+  // passes p_name, which requires the create_household(p_name) SQL;
+  // on the old RPC that call fails and the existing error message
+  // shows — never a silent fallback through another path.
   const rawName = $('householdNameInput')?.value.trim() ?? '';
+  // Feedback-bundle (owner, Nov 4): the household name is REQUIRED.
+  // A blank name can no longer fall back to the default 'Household'.
+  if (!rawName) {
+    $('householdNameMsg').textContent = 'Enter a household name.'; $('householdNameMsg').classList.add('error');
+    $('householdNameInput')?.focus();
+    if (btn) { btn.disabled = false; btn.textContent = 'Create Household'; }
+    return;
+  }
   const name = rawName.slice(0, 80);
-  const args = name ? { p_name: name } : {};
+  const args = { p_name: name };
   const { data, error } = await supabase.rpc('create_household', args);
   if (error) console.warn('create_household failed:', error.message);
   $('householdNameMsg').textContent = data
@@ -2031,7 +2098,7 @@ $('householdNameCreateBtn').addEventListener('click', async () => {
     showHouseholdPanel('choice');
     await show('app'); await refresh();
   }
-  if (btn) { btn.disabled = false; btn.textContent = 'Create household'; }
+  if (btn) { btn.disabled = false; btn.textContent = 'Create Household'; }
 });
 $('joinHouseholdBtn').addEventListener('click', async () => {
   const btn = $('joinHouseholdBtn');
@@ -2049,9 +2116,13 @@ $('joinHouseholdBtn').addEventListener('click', async () => {
   // failed attempt and returns NULL instead of raising, so the log
   // survives — see supabase/n13-invite-rate-limit.sql). Treat it
   // exactly like the old exception: same generic message, no join.
-  $('householdMsg').textContent = (error || !data) ? 'Join failed. Check the invite code and try again, or ask the household owner to share it again from Settings.' : 'Joined. Loading shared budget…';
+  // Feedback-bundle (owner, Nov 4): a join failure is a RED error
+  // pop-up with exactly this text and nothing else — not the old
+  // blue inline box, and not the extra clause about Settings.
+  if (error || !data) { $('householdMsg').textContent = ''; showToast('Check the invite code and try again', true); }
+  else $('householdMsg').textContent = 'Joined. Loading shared budget…';
   if (!error && data) { household = { household_id: data, role: 'member' }; await show('app'); await refresh(); }
-  if (btn) { btn.disabled = false; btn.textContent = 'Join as member'; }
+  if (btn) { btn.disabled = false; btn.textContent = 'Join As Member'; }
 });
 
 let manualSubmitting = false;
@@ -2190,6 +2261,7 @@ $('syncBankBtn')?.addEventListener('click', async () => {
   await runBankSync();
   await refresh();
 });
+document.getElementById('heroSetAllowanceBtn')?.addEventListener('click', () => showView('settings'));
 $('homeSyncBtn')?.addEventListener('click', async () => {
   await runBankSync();
   await refresh();

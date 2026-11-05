@@ -15,9 +15,9 @@ const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(readFileSync(new URL('../manifest-live.json', import.meta.url), 'utf8'));
 
-test('pins: styles v37, live.js v47, matching live.html', () => {
-  assert.match(html, /styles\.css\?v=37/);
-  assert.match(html, /live\.js\?v=47/);
+test('pins: styles v38, live.js v48, matching live.html', () => {
+  assert.match(html, /styles\.css\?v=38/);
+  assert.match(html, /live\.js\?v=48/);
 });
 
 test('combined hero: Available + progress + Spent/% + allowance + purchases, in one card', () => {
@@ -82,9 +82,9 @@ test('button tiers kept: primary, pale, grey, ink mid', () => {
   assert.match(css, /#bfdbfe/);
   assert.match(css, /#e5e7eb/);
   assert.match(css, /#0f172a/);
-  // No red toasts: the .toast.error rule is white text on the blue
-  // toast, and the toast itself stays brand blue.
-  assert.match(css, /body\.live \.toast\.error \{ color: #fff/);
+  // Feedback-bundle: error toasts are RED (owner override of the
+  // no-red-toasts rule, errors only); the toast itself stays blue.
+  assert.match(css, /body\.live \.toast\.error \{ background: #dc2626; color: #fff/);
   assert.match(css, /body\.live \.toast \{[^}]*background: #2f6bff/);
 });
 
