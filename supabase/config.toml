@@ -41,6 +41,9 @@ verify_jwt = true
 [functions.plaid-disconnect]
 verify_jwt = true
 
+[functions.plaid-account-disconnect]
+verify_jwt = true
+
 [functions.ingest-amex-alert]
 verify_jwt = false
 

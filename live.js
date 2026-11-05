@@ -50,17 +50,39 @@ const parseDollarsStrict = (s) => {
   return Math.round(n * 100);
 };
 // Curated institution-name -> logo domain map (bank logos only; no token
-// or account data is ever rendered). Fallback is a letter tile.
+// or account data is ever rendered).
+// LOGO SOURCE (connected-accounts-rework, Nov 4, 2026): the old source
+// was logo.clearbit.com, which no longer responds at all (curl to
+// logo.clearbit.com/americanexpress.com fails to connect, Nov 4) —
+// that is why every bank showed the flat grey initial tile instead of
+// its logo. Bank logos now come from Google's favicon service
+// (www.google.com/s2/favicons, no key, verified 200 for Amex + Chase
+// Nov 4). If the favicon fails to load, or the bank is unmapped, the
+// fallback is a BRAND-COLOURED monogram tile (white initial on the
+// bank's brand colour), never the flat grey box on its own.
+// NOTE: merchant icons (iconForMerchant) still use Clearbit and are
+// out of scope here; they fail the same way and are a follow-up.
 const BANK_LOGO_DOMAINS = [
   ['american express', 'americanexpress.com'], ['bank of america', 'bankofamerica.com'],
   ['capital one', 'capitalone.com'], ['chase', 'chase.com'], ['citi', 'citibank.com'],
   ['discover', 'discover.com'], ['pnc', 'pnc.com'], ['td', 'td.com'],
   ['us bank', 'usbank.com'], ['wells fargo', 'wellsfargo.com'],
 ];
+const BANK_BRAND_COLORS = [
+  ['american express', '#2e77bc'], ['bank of america', '#e31837'],
+  ['capital one', '#004977'], ['chase', '#117aca'], ['citi', '#003b70'],
+  ['discover', '#f48120'], ['pnc', '#f58025'], ['td', '#00a651'],
+  ['us bank', '#0c2074'], ['wells fargo', '#d71e28'],
+];
 const bankDomainFor = (name) => {
   const n = String(name || '').toLowerCase();
   for (const [k, d] of BANK_LOGO_DOMAINS) if (n.includes(k)) return d;
   return null;
+};
+const bankBrandColorFor = (name) => {
+  const n = String(name || '').toLowerCase();
+  for (const [k, c] of BANK_BRAND_COLORS) if (n.includes(k)) return c;
+  return '#475569';
 };
 // ONE shared merchant-icon helper, used by BOTH Transactions rows and Home
 // recent rows. Curated keyword -> domain; anything unmapped (or any logo
@@ -90,8 +112,9 @@ function iconForMerchant(name) {
 function bankLogoHtml(name) {
   const initial = esc(String(name || '?').trim().charAt(0).toUpperCase() || '?');
   const domain = bankDomainFor(name);
-  if (!domain) return `<span class="bank-logo-tile" aria-hidden="true">${initial}</span>`;
-  return `<span class="bank-logo" aria-hidden="true"><img class="bank-logo-img" src="https://logo.clearbit.com/${domain}" alt="" loading="lazy" onerror="var p=this.parentNode;this.remove();p.textContent='${initial}';p.classList.add('bank-logo-tile');"></span>`;
+  const brand = bankBrandColorFor(name);
+  if (!domain) return `<span class="bank-logo-tile" style="background:${brand};color:#fff" aria-hidden="true">${initial}</span>`;
+  return `<span class="bank-logo" aria-hidden="true"><img class="bank-logo-img" src="https://www.google.com/s2/favicons?domain=${domain}&sz=128" alt="" loading="lazy" onerror="var p=this.parentNode;this.remove();p.textContent='${initial}';p.classList.add('bank-logo-tile');p.style.background='${brand}';p.style.color='#fff';"></span>`;
 }
 // Plain-language account type for the Connected accounts list, DISPLAY
 // ONLY (overnight audit C2, owner approved Nov 4, 2026): Plaid's raw
@@ -1052,7 +1075,7 @@ async function refresh() {
     let acctRows = [];
     if (itemRows.length) {
       const { data: accts, error: acctsErr } = await supabase.from('plaid_accounts')
-        .select('plaid_item_id, plaid_account_id, name, mask, type, subtype')
+        .select('plaid_item_id, plaid_account_id, name, mask, type, subtype, disconnected_at')
         .in('plaid_item_id', itemRows.map((i) => i.plaid_item_id));
       if (acctsErr) { console.warn('plaid_accounts read failed (items still shown):', acctsErr.message); }
       else acctRows = accts ?? [];
@@ -1107,85 +1130,115 @@ async function refresh() {
     // Funds sync button for non-admins so members never see a dead
     // button. (The Home sync row is gated in showView instead.)
     if (sb) sb.style.display = (household && household.role === 'admin') ? '' : 'none';
-    const renderBankList = (elId, rows) => {
-      const el = document.getElementById(elId);
+    // Connected accounts — ONE ROW PER ACCOUNT (owner, Nov 4, 2026):
+    // the old list grouped every account under its Plaid item (one
+    // institution block, one Disconnect for the whole item), so two
+    // accounts on one bank could only be disconnected together. Each
+    // account is now its own mature row: bank icon, account name bold,
+    // institution + plain-language type + mask, connected/last-synced
+    // line, nickname button, and its OWN Disconnect. Plaid itself can
+    // only remove a whole item (/item/remove), so a per-account
+    // Disconnect is app-level: plaid-account-disconnect sets
+    // plaid_accounts.disconnected_at, plaid-sync skips that account,
+    // past transactions stay, and only when it was the LAST active
+    // account on the item is the Plaid item itself removed. Accounts
+    // whose disconnected_at is set are not rendered at all.
+    // "Previously connected" is GONE (owner, Nov 4, 2026): disconnected
+    // items are simply not listed anymore. No database row is deleted.
+    const renderConnectedAccounts = () => {
+      const el = document.getElementById('bankAccountsList');
       if (!el) return;
       // Build off-DOM and swap atomically: the old rows stay visible
       // until the new ones are ready, so the card never collapses to
       // empty mid-refresh and the cards below never jump up and back
       // (Nov 2, 2026: the blank-then-fill rebuild was the glitch).
       const frag = document.createDocumentFragment();
-      if (!rows.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'None.'; frag.appendChild(p); el.replaceChildren(frag); return; }
-      for (const item of rows) {
-        const wrap = document.createElement('div'); wrap.className = 'bank-row';
+      const activeItems = itemRows.filter((i) => i.status === 'active');
+      const entries = [];
+      for (const item of activeItems) {
+        for (const acct of acctRows.filter((x) => x.plaid_item_id === item.plaid_item_id && !x.disconnected_at)) {
+          entries.push({ item, acct });
+        }
+        if (!acctRows.some((x) => x.plaid_item_id === item.plaid_item_id)) entries.push({ item, acct: null });
+      }
+      if (!entries.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'None.'; frag.appendChild(p); el.replaceChildren(frag); return; }
+      for (const { item, acct } of entries) {
+        const wrap = document.createElement('div'); wrap.className = 'bank-row bank-acct-row';
         const logo = document.createElement('span'); logo.innerHTML = bankLogoHtml(item.institution_name || 'Bank'); wrap.appendChild(logo);
         const info = document.createElement('div'); info.className = 'bank-info';
-        const name = document.createElement('strong'); name.textContent = item.institution_name || 'Bank'; info.appendChild(name);
-        if (item.created_at) { const cl = document.createElement('div'); cl.className = 'muted small'; cl.textContent = `Connected ${fmtLong(String(item.created_at).slice(0, 10))}`; info.appendChild(cl); }
-        const accts = acctRows.filter((x) => x.plaid_item_id === item.plaid_item_id);
-        if (accts.length) {
-          for (const acct of accts) {
-            const line = document.createElement('div'); line.className = 'muted small';
-            const nick = nicknameByAccount.get(`${item.plaid_item_id}|${acct.plaid_account_id}`);
-            const typeLabel = plainAccountType(acct.type, acct.subtype);
-            line.textContent = `${nick ? `${nick} · ` : ''}${acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}${typeLabel ? ` · ${typeLabel}` : ''}`;
-            info.appendChild(line);
-            // R3: nickname editing lives in Settings, admin-only, via
-            // the RPC (never a direct table write).
-            if (household.role === 'admin') {
-              const nickBtn = document.createElement('button'); nickBtn.className = 'btn btn-small'; nickBtn.type = 'button';
-              nickBtn.textContent = nick ? 'Edit nickname' : 'Add nickname';
-              nickBtn.setAttribute('aria-label', `Set a nickname for ${acct.name || 'this account'}`);
-              nickBtn.addEventListener('click', async () => {
-                if (!nicknamesLoaded) { await showAlert('Nicknames unavailable', 'Nicknames could not be loaded. Try again.'); return; }
-                const value = await showSheet({ title: 'Nickname', message: 'Give this account a short name (up to 40 characters). Leave it blank to remove the nickname. The nickname is only a label — it never changes bank links, matching, or week math.', inputLabel: 'Nickname', inputValue: nick ?? '', confirmLabel: 'Save', cancelLabel: 'Cancel' });
-                if (value === null) return;
-                const { error } = await supabase.rpc('set_account_nickname', { p_household_id: household.household_id, p_plaid_item_id: item.plaid_item_id, p_plaid_account_id: acct.plaid_account_id, p_card_suffix: acct.mask ?? null, p_nickname: value.trim() ? value.trim().slice(0, 40) : null });
-                if (error) { console.warn('set_account_nickname failed:', error.message); await showAlert('Could not save nickname', 'Could not save this nickname. Try again.'); } else await refresh();
-              });
-              info.appendChild(nickBtn);
-            }
+        const nick = acct ? nicknameByAccount.get(`${item.plaid_item_id}|${acct.plaid_account_id}`) : null;
+        const name = document.createElement('div'); name.className = 'bank-acct-name';
+        name.textContent = acct ? (nick || acct.name || 'Account') : (item.institution_name || 'Bank');
+        info.appendChild(name);
+        if (acct) {
+          const typeLabel = plainAccountType(acct.type, acct.subtype);
+          const meta = document.createElement('div'); meta.className = 'bank-acct-meta';
+          meta.textContent = [item.institution_name || 'Bank', typeLabel, acct.mask ? `••${acct.mask}` : ''].filter(Boolean).join(' · ');
+          info.appendChild(meta);
+          // R3: nickname editing lives in Settings, admin-only, via
+          // the RPC (never a direct table write). Quiet small button,
+          // not a pale button: pale is only the middle of a
+          // three-button row, and this is a secondary edit action.
+          if (household.role === 'admin') {
+            const nickBtn = document.createElement('button'); nickBtn.className = 'btn btn-small btn-quiet'; nickBtn.type = 'button';
+            nickBtn.textContent = nick ? 'Edit nickname' : 'Add nickname';
+            nickBtn.setAttribute('aria-label', `Set a nickname for ${acct.name || 'this account'}`);
+            nickBtn.addEventListener('click', async () => {
+              if (!nicknamesLoaded) { await showAlert('Nicknames unavailable', 'Nicknames could not be loaded. Try again.'); return; }
+              const value = await showSheet({ title: 'Nickname', message: 'Give this account a short name (up to 40 characters). Leave it blank to remove the nickname. The nickname is only a label — it never changes bank links, matching, or week math.', inputLabel: 'Nickname', inputValue: nick ?? '', confirmLabel: 'Save', cancelLabel: 'Cancel' });
+              if (value === null) return;
+              const { error } = await supabase.rpc('set_account_nickname', { p_household_id: household.household_id, p_plaid_item_id: item.plaid_item_id, p_plaid_account_id: acct.plaid_account_id, p_card_suffix: acct.mask ?? null, p_nickname: value.trim() ? value.trim().slice(0, 40) : null });
+              if (error) { console.warn('set_account_nickname failed:', error.message); await showAlert('Could not save nickname', 'Could not save this nickname. Try again.'); } else await refresh();
+            });
+            info.appendChild(nickBtn);
           }
         } else {
           const line = document.createElement('div'); line.className = 'muted small'; line.textContent = 'Account details unavailable.'; info.appendChild(line);
         }
-        if (item.last_sync_at) { const line = document.createElement('div'); line.className = 'muted small'; line.textContent = `Last synced ${fmtDateTime(item.last_sync_at)}`; info.appendChild(line); }
+        const sub = document.createElement('div'); sub.className = 'bank-acct-sub';
+        sub.textContent = item.created_at ? `Connected ${fmtLong(String(item.created_at).slice(0, 10))}${item.last_sync_at ? ` · Last synced ${fmtDateTime(item.last_sync_at)}` : ''}` : (item.last_sync_at ? `Last synced ${fmtDateTime(item.last_sync_at)}` : '');
+        if (sub.textContent) info.appendChild(sub);
         wrap.appendChild(info);
-        if (item.status === 'active' && household.role === 'admin') {
+        // No account rows at all for this item: there is no account
+        // to disconnect per-account, so the old whole-item Disconnect
+        // stays as the escape hatch for this case only (it removes the
+        // item at Plaid, past transactions stay).
+        if (!acct && household.role === 'admin') {
+          const actions = document.createElement('div'); actions.className = 'bank-actions';
           const btn = document.createElement('button'); btn.className = 'btn btn-small btn-danger'; btn.type = 'button';
-          // UX-review-fix: two connections can share one institution
-          // name, so Disconnect must identify THIS connection — by
-          // its masked accounts (and connection date when known), in
-          // both the button label and the confirmation. Accounts are
-          // already grouped under their connection above; this is the
-          // disambiguation the duplicate-Disconnect report asked for.
-          // It does not change disconnect behavior: past transactions
-          // stay, only syncing stops (see the confirmation copy).
-          const connMasks = acctRows.filter((x) => x.plaid_item_id === item.plaid_item_id).map((x) => x.mask ? `••${x.mask}` : 'account').join(', ');
-          const connId = connMasks ? `${item.institution_name || 'Bank'} (${connMasks})` : (item.institution_name || 'bank');
-          btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${connId}`);
+          btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${item.institution_name || 'bank'}`);
           btn.addEventListener('click', async () => {
-            if (!(await showConfirm('Disconnect bank', `Disconnect ${connId}? The app will stop syncing this connection only. Past transactions stay in the list, and other connections are untouched.`, 'Disconnect'))) return;
-            // Sibling S3 plaid-disconnect requires BOTH household_id and plaid_item_id
-            // (the S4 brief listed only plaid_item_id); sending both satisfies
-            // the implemented function and is harmless if a stricter function
-            // ignores the extra field.
+            if (!(await showConfirm('Disconnect bank', `Disconnect ${item.institution_name || 'this bank'}? The app will stop syncing this connection. Past transactions stay in the list.`, 'Disconnect'))) return;
             const out = await callFn('plaid-disconnect', { household_id: household.household_id, plaid_item_id: item.plaid_item_id });
             if (!out.disconnected) { console.warn('plaid-disconnect failed:', out.error); await showAlert('Could not disconnect', 'Could not disconnect this bank. Try again.'); return; }
             await refresh();
           });
-          wrap.appendChild(btn);
+          actions.appendChild(btn);
+          wrap.appendChild(actions);
+        }
+        if (acct && household.role === 'admin') {
+          const actions = document.createElement('div'); actions.className = 'bank-actions';
+          const btn = document.createElement('button'); btn.className = 'btn btn-small btn-danger'; btn.type = 'button';
+          const acctId = `${nick || acct.name || 'Account'}${acct.mask ? ` ••${acct.mask}` : ''}`;
+          btn.textContent = 'Disconnect'; btn.setAttribute('aria-label', `Disconnect ${acctId}`);
+          btn.addEventListener('click', async () => {
+            if (!(await showConfirm('Disconnect account', `Disconnect ${acctId}? This stops syncing this account only. Other accounts on the same bank connection keep syncing. Past transactions stay in the list. To sync this account again later, reconnect the bank from the Bank Connection card.`, 'Disconnect'))) return;
+            const out = await callFn('plaid-account-disconnect', { household_id: household.household_id, plaid_item_id: item.plaid_item_id, plaid_account_id: acct.plaid_account_id });
+            if (!out.disconnected) { console.warn('plaid-account-disconnect failed:', out.error); await showAlert('Could not disconnect', 'Could not disconnect this account. Try again.'); return; }
+            await refresh();
+          });
+          actions.appendChild(btn);
+          wrap.appendChild(actions);
         }
         frag.appendChild(wrap);
       }
       el.replaceChildren(frag);
     };
-    renderBankList('bankAccountsList', itemRows.filter((i) => i.status === 'active'));
-    renderBankList('bankPreviouslyList', itemRows.filter((i) => i.status === 'disconnected'));
+    renderConnectedAccounts();
   } catch (e) {
     console.warn('bank accounts read failed:', e);
     const syncLine = $('bankSyncLine'); if (syncLine) syncLine.textContent = 'Could not load bank accounts.';
-    for (const id of ['bankAccountsList', 'bankPreviouslyList']) {
+    for (const id of ['bankAccountsList']) {
       const el = document.getElementById(id); if (el) el.innerHTML = '<p class="error">Could not load bank accounts. Try again.</p>';
     }
     const ls = document.getElementById('lastSync'); if (ls) ls.textContent = '—';
@@ -1224,7 +1277,7 @@ async function refresh() {
           const info = document.createElement('div'); info.className = 'bank-info';
           const name = document.createElement('strong'); name.textContent = c.email_address || 'Email'; info.appendChild(name);
           const st = document.createElement('div'); st.className = 'muted small';
-          st.textContent = c.status === 'error' ? 'Needs reconnect — access was revoked or expired.' : 'Connected (read-only)';
+          st.textContent = c.status === 'error' ? 'Needs reconnect — access was revoked or expired.' : 'Connected';
           info.appendChild(st);
           if (c.last_poll_at) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = `Last checked ${fmtDateTime(c.last_poll_at)}`; info.appendChild(l); }
           if (c.last_error) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = c.last_error; info.appendChild(l); }

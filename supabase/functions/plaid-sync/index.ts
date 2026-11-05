@@ -257,11 +257,23 @@ Deno.serve(async (req) => {
     // Keeper account map for the duplicate guard: plaid_accounts rows
     // grouped by item, for active items only. Disconnected items are
     // excluded, so reconnecting after a disconnect still works.
+    // Connected-accounts-rework: per-account disconnected accounts
+    // (disconnected_at set) are ALSO excluded — otherwise reconnecting
+    // one account via Plaid Link would look like a full duplicate of
+    // the old item (which still carries that account's row) and the
+    // new item would be removed on a guess.
     const keeperAccounts = new Map<string, DupAcct[]>();
+    // Per-account disconnect set (connected-accounts-rework): Plaid
+    // account_ids whose transactions this sync must skip. Loaded once
+    // for the household, checked per transaction below. Past
+    // transactions are never deleted; only new/changed rows for these
+    // accounts are ignored.
+    const disconnectedAccounts = new Set<string>();
     try {
       const { data: keeperRows } = await supabaseAdmin.from('plaid_accounts')
-        .select('plaid_item_id, name, mask').eq('household_id', householdId);
+        .select('plaid_item_id, plaid_account_id, name, mask, disconnected_at').eq('household_id', householdId);
       for (const row of keeperRows ?? []) {
+        if (row.disconnected_at) { disconnectedAccounts.add(String(row.plaid_account_id)); continue; }
         if (!activeItems.some((i) => i.plaid_item_id === row.plaid_item_id)) continue;
         const list = keeperAccounts.get(row.plaid_item_id) ?? [];
         list.push({ mask: row.mask, name: row.name });
@@ -297,6 +309,8 @@ Deno.serve(async (req) => {
       // Suffixes come from account.mask (the card's real last 4), NOT
       // from account_id (a Plaid UUID). Mask lookup failure is
       // best-effort for suffixes only; sync still proceeds.
+      // The upsert deliberately does NOT list disconnected_at, so a
+      // sync never clears a per-account disconnect flag.
       const maskByAccount = new Map<string, string>();
       try {
         const { ok, data: accData } = await plaidPost(base, '/accounts/get', clientId, secret, {
@@ -326,7 +340,7 @@ Deno.serve(async (req) => {
       // at the same institution (mask + name, see helper above),
       // remove this item at Plaid and mark it disconnected — the
       // same semantics as plaid-disconnect: past transactions stay,
-      // the item moves to Previously connected. Any failure fails
+      // and the item is no longer listed. Any failure fails
       // OPEN: the item syncs normally instead of being removed on
       // a guess, and a removal failure never blocks the sync.
       {
@@ -429,6 +443,11 @@ access_token: <redacted>
         cursor = data.next_cursor ?? null;
 
         for (const tx of [...(data.added ?? []), ...(data.modified ?? [])]) {
+          // Per-account disconnect (connected-accounts-rework): a
+          // disconnected account's new/changed transactions are
+          // ignored entirely. Past transactions already in the
+          // database are untouched.
+          if (tx.account_id && disconnectedAccounts.has(String(tx.account_id))) { skipped++; continue; }
           const isModified = (data.modified ?? []).includes(tx);
           const result = await upsertPlaidTx(supabaseAdmin, householdId, tx, maskByAccount);
           if (result === 'added') added++;
