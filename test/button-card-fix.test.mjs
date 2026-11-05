@@ -138,7 +138,7 @@ test('typography: system sans stack, bold headings, large bold figures, small gr
   // weight rebalance — figures stay 800, headings no longer do).
   assert.match(css, /body\.live h1, body\.live h2, body\.live h3 \{ letter-spacing: -0\.02em; font-weight: 700; \}/);
   // Funds amount is the large bold figure on the card face.
-  assert.match(css, /body\.live \.fund-balance \{ font-size: 32px; font-weight: 800;/);
+  assert.match(css, /body\.live \.fund-balance \{ font-size: 34px; font-weight: 800;/);
   // Secondary labels stay small and grey.
   assert.match(css, /--muted: #6b7280;/);
   assert.match(css, /body\.live \.kicker \{ color: #6b7280; font-size: 12px;/);

@@ -473,7 +473,7 @@ body.live .kicker { color: #6b7280; font-size: 12px; font-weight: 600; letter-sp
 body.live .num { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; }
 body.live .hero-progress { height: 6px; background: #eef1f6; border-radius: 999px; overflow: hidden; margin: 12px 0 6px; }
 body.live .hero-progress > div { height: 100%; background: #2f6bff; border-radius: 999px; width: 0%; }
-body.live .fund-balance { font-size: 32px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0 0 4px; }
+body.live .fund-balance { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0 0 4px; }
 /* Transaction rows: icon square + merchant, like the reference lists. */
 body.live .tx-line1 { display: flex; align-items: center; gap: 10px; }
 body.live .tx-icon { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 10px; background: #eef1f6;
@@ -1097,3 +1097,17 @@ body.live .add-label-desktop { display: none; }
   body.live .add-plus-btn { width: auto; height: 44px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 15px; }
   body.live .add-label-desktop { display: inline; }
 }
+
+/* Card standardization B5 (owner pick, Nov 4, 2026; mockup:
+   card-standardization-mockup.html): same heading style, same
+   chevron, same label-then-amount order on the amount cards.
+   Heading: 17px, bold 700, sans, ink, 8px below. Amount: 34px
+   bold (hero keeps 44px). Chevron: brand blue #2f6bff, 700,
+   22px, line-height 1. No figure, math, flow, or destination
+   change here — style/consistency only. Narrow-screen rules
+   (hero 36px, pots/funds 22px at <=390px) are unchanged. */
+body.live .hero-title { font-family: var(--sans); font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: center; }
+body.live .hero-title-chevron { color: #2f6bff; font-weight: 700; font-size: 22px; line-height: 1; }
+body.live #section-stats .stat-card .kicker { font-family: var(--sans); font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin-bottom: 8px; }
+body.live .pot-chevron { color: #2f6bff; font-weight: 700; font-size: 22px; line-height: 1; }
+body.live .fund-balance-head h2 { font-family: var(--sans); font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin: 0 0 8px; }

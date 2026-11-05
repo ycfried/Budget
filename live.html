@@ -10,7 +10,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=38">
+<link rel="stylesheet" href="styles.css?v=39">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
@@ -102,6 +102,7 @@
       <button class="app-nav-link" data-view="money" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg><span>Funds</span></button>
     </nav>
     <div class="card hero" id="section-week">
+      <h2 class="hero-title">Weekly Budget <span class="hero-title-chevron" aria-hidden="true">⌄</span></h2>
       <div class="hero-head">
         <div class="kicker"><span id="weekLabel"><span class="skel skel-kicker" aria-hidden="true"></span><span class="sr-only">Loading</span></span></div>
       </div>
@@ -122,8 +123,8 @@
       <p id="weekEmptyHint" class="muted small hidden">No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account in Settings.</p>
     </div>
     <div class="grid" id="section-stats">
-      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><span class="pot-chevron" aria-hidden="true">›</span><div class="kicker">Charity</div><div class="num" id="homeCharityPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
-      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><span class="pot-chevron" aria-hidden="true">›</span><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
+      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><span class="pot-chevron" aria-hidden="true">⌄</span><div class="kicker">Charity</div><div class="num" id="homeCharityPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
+      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><span class="pot-chevron" aria-hidden="true">⌄</span><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
     </div>
 
     <div class="card" id="section-recent">
@@ -534,7 +535,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=48"></script>
+<script type="module" src="live.js?v=49"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.
