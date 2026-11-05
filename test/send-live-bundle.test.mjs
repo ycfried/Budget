@@ -20,9 +20,9 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v35, live.js v45', () => {
-  assert.match(html, /styles\.css\?v=35/);
-  assert.match(html, /live\.js\?v=45/);
+test('version pins: styles v36, live.js v46', () => {
+  assert.match(html, /styles\.css\?v=36/);
+  assert.match(html, /live\.js\?v=46/);
 });
 
 test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
@@ -53,13 +53,12 @@ test('2. Pale option B: fill stays #bfdbfe, wording is ink #0f172a', () => {
   assert.ok(html.includes('<button id="syncBankBtn" class="btn"'));
 });
 
-test('3. History row for now: no separate card, See all is a quiet link, History is one tappable row', () => {
-  assert.equal(html.includes('id="section-history-link"'), false);
+test('3. History row REMOVED (native-style-live): Past weeks live inside Transactions, no Home row', () => {
+  assert.equal(html.includes('id="section-history-row"'), false);
   assert.equal(html.includes('View history'), false);
-  assert.ok(html.includes('id="section-history-row"'));
   assert.match(html, /<a class="quiet-link" data-view="purchases"[^>]*>See all<\/a>/);
-  assert.match(html, /<div class="history-row" data-view="activity"[^>]*><strong>History<\/strong><span[^>]*>›<\/span><\/div>/);
-  assert.ok(js.includes("section-history-row"), 'Home view lists the history row section');
+  assert.match(js, /purchases: \[[^\]]*section-history-filter[^\]]*section-week-history[^\]]*section-activity/);
+  assert.equal(js.includes('section-history-row'), false);
 });
 
 test('4. Card colour subtle: hero faint blue wash + soft shadow, other cards white + soft shadow', () => {
@@ -194,14 +193,15 @@ test('11. Detail Actions sheet: exactly Charity, Extra Fund, Other, Delete; char
   assert.match(js, /exclude_transaction/);
 });
 
-test('11b. Trash: admin-only bin button at Transactions bottom, excluded rows only, Restore there, main list hides excluded', () => {
+test('11b. Trash (native-style-live): quiet text link above the list, only when non-empty, admin only', () => {
   assert.ok(html.includes('id="txTrashBtn"'));
+  assert.match(html, /class="quiet-link trash-link"/);
+  assert.equal(html.includes('🗑'), false, 'no emoji pill trash button');
   assert.ok(html.includes('id="trashList"'));
-  assert.match(html, /🗑 <span>Trash<\/span>/);
-  assert.match(js, /trashBtn\.style\.display = \(household && household\.role === 'admin'\) \? '' : 'none'/);
+  assert.match(js, /trashRowCount > 0\) \? '' : 'none'/);
   assert.match(js, /data-trash-restore=/);
   assert.match(js, /restore_transaction/);
   assert.equal(html.includes('<option value="excluded">Excluded</option>'), false);
   assert.match(js, /!isExcludedRow\(t\)/);
-  assert.match(js, /deleted bank rows live in the Trash below/);
+  assert.match(js, /deleted bank rows live in the Trash link above the list/);
 });

@@ -54,10 +54,10 @@ test('sync button keeps its identity, treatment hook, and the number keeps its t
 });
 
 test('Home stat kickers are one line each: Charity and Extra Fund', () => {
-  const charity = html.match(/data-home-card="charity"[^>]*><div class="kicker">([^<]*)<\/div>/);
+  const charity = html.match(/data-home-card="charity"[^>]*>(?:<span class="pot-chevron"[^>]*>›<\/span>)?<div class="kicker">([^<]*)<\/div>/);
   assert.ok(charity, 'Home charity card found');
   assert.equal(charity[1], 'Charity', 'Home charity kicker is exactly "Charity"');
-  const fund = html.match(/data-home-card="fund"[^>]*><div class="kicker">([^<]*)<\/div>/);
+  const fund = html.match(/data-home-card="fund"[^>]*>(?:<span class="pot-chevron"[^>]*>›<\/span>)?<div class="kicker">([^<]*)<\/div>/);
   assert.ok(fund, 'Home fund card found');
   assert.equal(fund[1], 'Extra Fund', 'Home fund kicker is exactly "Extra Fund"');
   assert.equal(html.includes('data-home-card="charity"'), true);
@@ -72,7 +72,7 @@ test('Funds Charity panel heading is untouched (already just Charity)', () => {
   assert.match(html, /data-fund-card="charity"[^>]*>\s*<div class="fund-balance-head"><h2>Charity<\/h2><\/div>/);
 });
 
-test('version pins: styles v35, live.js v45 after the PR #32 merge', () => {
-  assert.match(html, /styles\.css\?v=35/);
-  assert.match(html, /live\.js\?v=45/);
+test('version pins: styles v36, live.js v46 after the PR #32 merge', () => {
+  assert.match(html, /styles\.css\?v=36/);
+  assert.match(html, /live\.js\?v=46/);
 });

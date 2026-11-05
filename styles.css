@@ -728,7 +728,6 @@ body.live .loading-screen { text-align: center; padding: 48px 22px; }
 body.live .loading-mark { font-family: var(--serif); font-size: 28px; font-weight: 700; margin-bottom: 20px; }
 body.live .loading-brand { position: relative; width: 72px; height: 72px; margin: 0 auto 20px; }
 body.live .loading-brand-ring { position: absolute; inset: 0; border: 2px solid #dbeafe; border-top-color: #2f6bff; border-radius: 50%; animation: loading-ring 2.4s linear infinite; }
-body.live .loading-brand-s { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: 700; color: #2f6bff; animation: loading-pulse 2.4s ease-in-out infinite; }
 @keyframes loading-ring { to { transform: rotate(360deg); } }
 @keyframes loading-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.75; transform: scale(0.96); } }
 /* Screen-reader-only text for skeleton loading states. */
@@ -746,7 +745,7 @@ body.live .skel-lines { display: flex; flex-direction: column; gap: 8px; }
 body.live .skel-line { width: 140px; height: 12px; }
 body.live .skel-line.short { width: 88px; }
 @media (prefers-reduced-motion: reduce) {
-  body.live .skel::after, body.live .loading-brand-ring, body.live .loading-brand-s { animation: none; }
+  body.live .skel::after, body.live .loading-brand-ring, body.live .loading-brand-logo { animation: none; }
 }
 /* Inline card header: subtitle sits on the same line as the heading
    (Add card), so the card gets smaller. Wraps gracefully on very
@@ -905,7 +904,6 @@ body.live .card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px;
    with the same soft shadow. No new hues, numbers untouched. */
 body.live .hero { background: linear-gradient(#ffffff, #eef4ff); box-shadow: 0 8px 24px rgba(47, 107, 255, .12); }
 body.live .quiet-link { color: #2f6bff; font-weight: 600; font-size: 15px; text-decoration: none; }
-body.live .history-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; cursor: pointer; font-size: 16px; }
 /* Task 7 (owner, Nov 4): Funds More rows — quiet tap rows with a ›
    chevron, no ▶ triangles, no explainer sentences. Same pattern as
    the Home History row: title left, chevron right, divider between. */
@@ -916,7 +914,6 @@ body.live .more-row:last-child { border-bottom: 0; }
    button row as Close; Close is quiet when actions are present so
    it cannot be mistaken for a fourth money action. */
 body.live .sheet-btns { display: flex; flex-wrap: wrap; gap: 10px; }
-body.live .history-row-card { cursor: pointer; }
 body.live .settings-head-line { display: flex; justify-content: space-between; align-items: center; }
 body.live .settings-head-line h2 { margin: 0; }
 body.live .settings-back-link { background: none; border: 0; color: #475569; font-weight: 600; font-size: 14px; cursor: pointer; padding: 4px 0; }
@@ -934,8 +931,6 @@ body.live .activity-dot-money { background: #2f6bff; }
 body.live .activity-dot-charity { background: #2e6b3e; }
 body.live .activity-dot-system { background: #94a3b8; }
 body.live .tx-action-row { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #e5e7eb; padding: 14px 4px; font-size: 15px; color: #0f172a; cursor: pointer; font-family: inherit; }
-body.live .trash-bin-row { margin-top: 16px; text-align: center; }
-body.live .trash-bin-btn { font-size: 20px; }
 body.live .grid .card { margin-bottom: 0; }
 body.live .grid, body.live #section-stats { gap: 16px; }
 body.live #section-stats .stat-card { padding: 16px; }
@@ -949,3 +944,41 @@ body.live .tx-line1 .tx-amount.negative { color: #2e6b3e; }
 body.live .hero .big.negative { color: var(--soft-red); }
 body.live .stat-card .num.negative { color: var(--soft-red); }
 body.live #section-recent .quiet-link { color: #2f6bff; }
+
+/* Native-style-live (owner, Nov 4, 7:11 PM, mockup direction):
+   combined Home hero, bottom sheets for all popups, Past weeks
+   inside Transactions, quiet Trash link, Title Case / Today /
+   Yesterday display, breathing room, and the original-picture
+   logo as the header O and loading mark. UI only: no figure,
+   week, fund, or charity math changes here. */
+body.live #liveTopbar strong { display: inline-flex; align-items: center; gap: 0; }
+body.live .wordmark-logo { width: 1em; height: 1em; flex: 0 0 auto; vertical-align: middle; }
+body.live .loading-brand-logo { position: absolute; inset: 6px; width: 60px; height: 60px; border-radius: 50%; animation: loading-pulse 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { body.live .loading-brand-logo { animation: none; } }
+body.live .hero { padding: 28px 24px 24px; }
+body.live .hero .big { font-size: 44px; line-height: 1.1; }
+body.live .hero-spent-line { display: flex; justify-content: space-between; gap: 12px; margin: 14px 0 4px; font-size: 15px; font-weight: 600; color: #0f172a; }
+body.live .hero-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid #e5e7eb; margin-top: 14px; padding-top: 14px; }
+body.live .hero-stat { display: flex; flex-direction: column; gap: 2px; }
+body.live .hero-stat-label { font-size: 13px; color: #64748b; }
+body.live .hero-stat-value { font-size: 18px; font-weight: 700; color: #0f172a; }
+body.live .stat-card { position: relative; }
+body.live .pot-chevron { position: absolute; right: 12px; bottom: 8px; font-size: 22px; font-weight: 700; color: #2f6bff; }
+body.live .trash-link-row { margin: 2px 0 10px; }
+body.live .trash-link { font-size: 14px; font-weight: 600; color: #64748b; }
+body.live .past-weeks-section { margin-top: 28px; border-top: 3px solid #e5e7eb; }
+body.live .sheet-handle { display: block; width: 40px; height: 5px; border-radius: 3px; background: #e5e7eb; margin: 2px auto 12px; }
+body.live .sheet-top { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+body.live .sheet-top h3 { flex: 1; text-align: center; margin: 0; font-family: var(--sans); }
+body.live .sheet-top-cancel { background: none; border: 0; color: #2f6bff; font-size: 15px; font-weight: 600; padding: 6px 4px; cursor: pointer; white-space: nowrap; }
+body.live .sheet-top-spacer { width: 56px; flex: 0 0 auto; }
+#sheetOverlay { padding: 0; }
+#sheetOverlay .sheet { border-radius: 20px 20px 0 0; padding: 12px 22px calc(24px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; max-height: 88dvh; box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.18); }
+#sheetOverlay .sheet-btns { justify-content: stretch; }
+#sheetOverlay .sheet-btns .btn { flex: 1 1 auto; }
+body.live .tx-sheet { padding: 0; }
+body.live .tx-sheet-card { border-radius: 20px 20px 0 0; padding: 12px 22px calc(22px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; max-height: 88dvh; box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.18); }
+body.live .add-popup-overlay { align-items: flex-end; padding: 0; }
+body.live .add-popup-card { border-radius: 20px 20px 0 0; padding: 12px 22px calc(22px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; max-height: 88dvh; box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.18); }
+body.live .tx-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.live .tx-amount { flex: 0 0 auto; }

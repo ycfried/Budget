@@ -35,6 +35,33 @@ export function formatShortDate(iso) {
   if (year === new Date().getFullYear()) return `${monthName} ${day}`;
   return `${monthName} ${day}, ${year}`;
 }
+// Native-style-live (owner, Nov 4): display-only merchant/date
+// wording. Stored values are never changed: bank names arrive in
+// ALL CAPS, dates as YYYY-MM-DD; the screen shows Title Case and
+// Today/Yesterday for today/yesterday (NY date, via the caller's
+// today string). Words that are already mixed-case are left alone
+// except for an all-caps run, so "McDonald's" style names are not
+// mangled by a blind title-caser.
+export function titleCaseMerchant(name) {
+  const s = String(name ?? '');
+  if (!s) return s;
+  return s.split(/(\s+|[-/])/).map((part) => {
+    if (/^\s+$/.test(part) || part === '-' || part === '/') return part;
+    if (part !== part.toUpperCase() || part.length <= 1) return part;
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  }).join('');
+}
+export function relativeDayLabel(iso, todayIso) {
+  const d = String(iso ?? '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !todayIso) return null;
+  const t = String(todayIso).slice(0, 10);
+  if (d === t) return 'Today';
+  const dt = new Date(`${t}T12:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  const y = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  if (d === y) return 'Yesterday';
+  return null;
+}
 export function activeFilterLabels(f) {
   const labels = [];
   if (f.status && f.status !== 'all') {

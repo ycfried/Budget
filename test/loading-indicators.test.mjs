@@ -32,7 +32,7 @@ test('figure placeholders are skeleton bars, not dots or dashes', () => {
 });
 
 test('recent transactions load behind skeleton rows, not "Loading…" text', () => {
-  const list = html.slice(html.indexOf('id="recentList"'), html.indexOf('id="section-history-row"'));
+  const list = html.slice(html.indexOf('id="recentList"'), html.indexOf('id="section-transactions"'));
   assert.match(list, /aria-busy="true"/, 'recent list is marked busy');
   assert.match(list, /aria-label="Loading recent transactions"/, 'recent list has an accessible loading label');
   assert.equal((list.match(/skel-row/g) || []).length, 4, 'exactly 4 skeleton rows');
@@ -44,7 +44,8 @@ test('recent transactions load behind skeleton rows, not "Loading…" text', () 
 test('full-page loading view uses the on-brand mark, not the plain spinner', () => {
   assert.doesNotMatch(html, /loading-spinner/, 'plain spinner div is gone');
   assert.match(html, /loading-brand-ring/, 'thin rotating brand ring present');
-  assert.match(html, /loading-brand-s">S</, 'pulsing S mark present');
+  assert.match(html, /loading-brand-logo" src="icon-192.png"/, 'original-picture logo mark present (old S mark replaced)');
+  assert.equal(html.includes('loading-brand-s'), false, 'old S-only loading mark is gone');
   assert.match(html, /Loading your budget…/, 'loading words kept');
 });
 
