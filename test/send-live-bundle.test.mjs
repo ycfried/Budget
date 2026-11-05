@@ -20,10 +20,9 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v42, live.js v52', () => {
-  assert.match(html, /styles\.css\?v=42/);
-  assert.match(html, /live\.js\?v=52/);});
-
+test('version pins: styles v43, live.js v53', () => {
+  assert.match(html, /styles\.css\?v=43/);
+  assert.match(html, /live\.js\?v=53/);});
 test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
   const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = ['), sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')));
   assert.deepEqual([...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]), ['Allowance', 'Spent', 'Balance']);
@@ -46,10 +45,12 @@ test('2. Pale option B: fill stays #bfdbfe, wording is ink #0f172a', () => {
   assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{ background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; \}/);
   assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #0f172a; color: #fff; border: 1px solid #0f172a; \}/);
   // Three-button middles are still plain .btn (pale): Funds Use
-  // (now in the Extra Fund sheet, Task 7), Filters Reset, Bank Sync.
+  // (now in the Extra Fund sheet, Task 7) and Filters Reset. Bank
+  // Sync is no longer a pale middle (settings-bank-buttons, Nov 4):
+  // the bank row is two buttons, Connect primary + Sync tertiary.
   assert.match(js, /label: 'Use fund money', result: 'use', btnClass: 'btn'/);
   assert.ok(html.includes('<button class="btn" id="txFiltersResetBtn"'));
-  assert.ok(html.includes('<button id="syncBankBtn" class="btn"'));
+  assert.ok(html.includes('<button id="syncBankBtn" class="btn btn-tertiary"'));
 });
 
 test('3. History row REMOVED (native-style-live): Past weeks live inside Transactions, no Home row', () => {

@@ -131,10 +131,13 @@ test('B: three-button middles still pale; pale definition untouched', () => {
   assert.match(html, /class="btn btn-primary" id="txFiltersApplyBtn"/);
   assert.match(html, /class="btn" id="txFiltersResetBtn"/);
   assert.match(html, /class="btn btn-tertiary" id="txFiltersCancelBtn"/);
-  // Connect bank: Connect primary, Sync plain (pale middle), Enable tertiary.
+  // Bank card (settings-bank-buttons, owner Nov 4): two shortened
+  // buttons in one row — Connect primary, Sync tertiary-grey — and
+  // Automatic Sync is a switch, not a third button.
   assert.match(html, /id="connectBankBtn" class="btn btn-primary"/);
-  assert.match(html, /id="syncBankBtn" class="btn"/);
-  assert.match(html, /id="registerWebhookBtn" class="btn btn-tertiary"/);
+  assert.match(html, /id="syncBankBtn" class="btn btn-tertiary"/);
+  assert.match(html, /id="autoSyncSwitch" class="auto-sync-switch"[^>]*role="switch"/);
+  assert.equal(html.includes('id="registerWebhookBtn"'), false, 'enable button gone, replaced by the switch');
   // The pale fill itself is not redefined by this branch.
   assert.ok(css.includes('#bfdbfe'), 'pale secondary fill must still exist for three-button middles');
 });

@@ -10,8 +10,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=42"></head>
-<body class="live">
+<link rel="stylesheet" href="styles.css?v=43"></head><body class="live">
 <header class="topbar" id="liveTopbar">
   <div class="topbar-left"></div>
   <div class="topbar-title"><strong aria-label="OnBudget"><img class="wordmark-logo" src="icon-192.png" alt="" aria-hidden="true">nBudget</strong></div>
@@ -307,10 +306,13 @@
     <div class="card" id="section-bank">
       <h2>Bank Connection</h2>
       <p class="muted small">Look only — it never moves, sends, or changes anything.</p>
-      <div class="btn-row">
-        <button id="connectBankBtn" class="btn btn-primary" type="button" aria-label="Connect a bank account">Connect a bank account</button>
-        <button id="syncBankBtn" class="btn" type="button" aria-label="Sync bank transactions now">Sync bank transactions now</button>
-        <button id="registerWebhookBtn" class="btn btn-tertiary" type="button" aria-label="Enable automatic bank sync">Enable automatic sync</button>
+      <div class="btn-row" id="bankBtnRow">
+        <button id="connectBankBtn" class="btn btn-primary" type="button" aria-label="Connect a new bank account">Connect New Account</button>
+        <button id="syncBankBtn" class="btn btn-tertiary" type="button" aria-label="Sync bank transactions">Sync Transactions</button>
+      </div>
+      <div class="auto-sync-row" id="autoSyncRow">
+        <label class="auto-sync-label" for="autoSyncSwitch">Automatic Sync</label>
+        <button id="autoSyncSwitch" class="auto-sync-switch" type="button" role="switch" aria-checked="false" aria-label="Automatic Sync"><span class="auto-sync-knob" aria-hidden="true"></span></button>
       </div>
       <div id="bankMsg" class="result"></div>
       <p class="muted small" id="bankSyncLine"></p>
@@ -534,8 +536,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=52"></script><script>
-  // Live service worker (network-first app shell, offline fallback).
+<script type="module" src="live.js?v=53"></script><script>  // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
