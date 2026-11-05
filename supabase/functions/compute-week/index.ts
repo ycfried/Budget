@@ -68,6 +68,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
   isExcludedFromMath, pendingRefundExcludedCents, chargeContribution,
+  linkedRefundNormalPortionCents, restorationDebtCutsAfterClose,
 } from './engine.mjs';
 
 const corsHeaders = {
@@ -178,9 +179,11 @@ Deno.serve(async (req) => {
         .select('week_start, debt_reduction_cents')
         .eq('household_id', householdId);
       if (!restRes.error) {
-        restorationCuts = (restRes.data ?? [])
-          .filter((r: any) => r.week_start > latestCloseBefore.week_start && r.week_start <= weekStart)
-          .reduce((s: number, r: any) => s + (r.debt_reduction_cents ?? 0), 0);
+        // N2 Option A: same shared window as week-close (see engine.mjs
+        // restorationDebtCutsAfterClose) — only cuts after the latest
+        // close and up to this week; cuts already inside the close
+        // are never subtracted twice.
+        restorationCuts = restorationDebtCutsAfterClose(restRes.data ?? [], latestCloseBefore.week_start, weekStart);
       }
     }
 
@@ -228,10 +231,34 @@ Deno.serve(async (req) => {
     const postedRefund = (t: any) =>
       t.kind === 'refund' && t.state === 'verified' && t.excluded !== true && t.state !== 'reversed';
     if (!weekLocked) {
+      // N1 Option A — fund-first, counted once (Nov 5, 2026): a linked
+      // refund nets only its NORMAL portion against this week's
+      // charges. The fund portion is credited to the fund by refund
+      // restoration, never by this walk — netting the full refund
+      // here paid a split purchase's refund twice ($90 of benefit
+      // from a $50 refund on a $60 fund / $40 normal purchase).
+      // Aggregated per purchase from the cumulative refund total, so
+      // partial refunds are order-independent; capped at the
+      // purchase's normal portion (excess over the charge is HELD).
+      // Unlinked refunds (below) still net in full — they have no
+      // purchase to split against.
+      const purchaseById = new Map(
+        windowRows.filter((t: any) => t.kind === 'charge' || t.kind === 'fund_charge').map((t: any) => [t.id, t]),
+      );
+      const refundTotalByPurchase = new Map<string, number>();
       for (const t of txns) {
         if (postedRefund(t) && t.original_purchase_id && purchaseIdsInWindow.has(t.original_purchase_id)) {
-          chargesNet += t.amount_cents ?? 0; // negative: reduces C
+          refundTotalByPurchase.set(
+            t.original_purchase_id,
+            (refundTotalByPurchase.get(t.original_purchase_id) ?? 0) + Math.abs(t.amount_cents ?? 0),
+          );
         }
+      }
+      for (const [purchaseId, totalRefunded] of refundTotalByPurchase) {
+        const purchase: any = purchaseById.get(purchaseId);
+        chargesNet -= linkedRefundNormalPortionCents(
+          purchase.amount_cents, purchase.fund_allocation_cents, totalRefunded,
+        );
       }
     }
     for (const t of windowRows) {
