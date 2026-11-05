@@ -482,6 +482,13 @@ body.live .hero-number-row .hero-sync-btn { margin: 0; width: 44px; height: 44px
    with ID-level specificity (1,2,1) placed AFTER the pale .btn
    rule, so it wins even if `btn` is ever re-added. */
 body.live #view-app .hero-sync-btn { background: #2f6bff; color: #fff; border: 0; box-shadow: none; }
+/* Design-questions (owner, Nov 5): when no weekly allowance is set
+   yet, "Set Your Weekly Allowance" is the hero's only primary blue
+   control — the sync button goes grey tertiary (same #e5e7eb / ink
+   as .btn-tertiary) until an allowance is set, then returns to
+   primary blue. Placed after the blue rule so it wins when the
+   .sync-unset class is present. */
+body.live #view-app .hero-sync-btn.sync-unset { background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; }
 /* Excluded-decisions: the hero number is the Weekly breakdown target
    (the small stat card is gone). Only the number is tappable — the
    Sync button beside it is a separate control. */
@@ -1016,22 +1023,21 @@ body.live { font-size: 16px; }
    NOT touched: body padding-bottom (72px + safe-area) below the
    footer still keeps the footer clear of the fixed tab bar. */
 /* Feedback-bundle (owner, Nov 4): pages must fill the screen, on
-   phone and tablet, with no large dead space between the last card
-   and the tab bar. main now stretches to at least the viewport
-   height (minus the header) as a flex column, and #view-app
-   stretches with it, so the footer sits just above the tab-bar
-   clearance instead of floating mid-page. Cards keep their natural
-   height — nothing is stretched absurdly on phone; on short pages
-   (e.g. a new account on iPad) the empty space moves below the
-   footer, at the very bottom, instead of sitting between the last
-   card and the footer. Trade-off: on short pages the gap is still
-   there, but it is now below all content, not in the middle of
-   the page. This applies to every view (Home, Your Household,
-   Transactions, Funds), not just Home. */
+   phone and tablet. main stretches to at least the viewport height
+   (minus the header) as a flex column, and #view-app stretches with
+   it. Cards keep their natural height — nothing is stretched. */
 body.live main { padding: 24px 16px 0; min-height: calc(100dvh - 60px); display: flex; flex-direction: column; }
 body.live #view-app { flex: 1 1 auto; display: flex; flex-direction: column; }
 body.live #view-app > .card, body.live #view-app > .grid { width: 100%; }
-body.live footer.foot { margin-top: auto; }
+/* Design-questions (owner, Nov 5): the footer sits directly under
+   the last card (margin-top 16px), not pushed to the bottom of the
+   viewport — on Home the old margin-top:auto left a large dead gap
+   between the Recent card and the footer. Any remaining space is
+   below the footer, above the tab bar, not in the middle of the
+   page. Tab-bar clearance is NOT touched: body padding-bottom
+   (72px + safe-area) below the footer still keeps the footer clear
+   of the fixed tab bar. */
+body.live footer.foot { margin-top: 16px; }
 /* Feedback-bundle (owner, Nov 4): the sign-in card also fills the
    page, on phone and iPad — layout only, no flow/field/button
    change. The card stretches to fill main's height and its panel
@@ -1084,7 +1090,7 @@ body.live .settings-head-line h2 { margin: 0; }
 /* Header-back-swipe (owner, Nov 4): page headers are NOT cards —
    a header-only card is an empty card. .page-head is a plain header
    row: no card background, border, or shadow, just the title, the
-   Back link, and (Previous Weeks / Activity) one subtext line. */
+   Back link, and (Past Weeks / Activity) one subtext line. */
 body.live .page-head { background: none; border: 0; box-shadow: none; border-radius: 0; padding: 4px 4px 12px; margin-bottom: 4px; }
 body.live .page-head .muted.small { margin: 6px 0 0; }
 /* Header-back-swipe (owner, Nov 4): every Back control is the same
@@ -1099,11 +1105,25 @@ body.live .back-link, body.live .settings-back-link { background: none; border: 
 body.live .money-input-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
 body.live .money-prefix { font-size: 16px; font-weight: 600; color: #0f172a; }
 body.live .temp-increase-heading { margin-top: 28px; }
-body.live .temp-increase-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-body.live .temp-increase-row .money-input-row input, body.live .temp-increase-row .weeks-label select { min-width: 0; box-sizing: border-box; }
-body.live .temp-increase-row .money-input-row { margin-bottom: 12px; }
-body.live .weeks-label { font-size: 14px; font-weight: 600; color: #0f172a; }
-body.live .weeks-label select { display: block; margin-top: 4px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; font-size: 15px; }
+/* Design-questions (owner, Nov 5, item A): the $ amount and Weeks
+   fields are symmetrical — same label style, same control height
+   (46px), same border, radius and padding, same 4px gap under the
+   label, aligned baselines. The $ field flexes to fill the row and
+   the Weeks field is a fixed 96px, so the pair sits properly side
+   by side even at 320px. The old layout had a wide $ box against a
+   small narrow Weeks box at different heights. */
+body.live .temp-increase-row { display: flex; align-items: flex-start; gap: 12px; flex-wrap: nowrap; }
+body.live .temp-increase-row .temp-field-label { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 600; color: #0f172a; }
+body.live .temp-increase-row .temp-field-label.weeks-field { flex: 0 0 96px; }
+body.live .temp-increase-row .money-input-row { margin: 4px 0 0; }
+body.live .temp-increase-row .money-input-row input, body.live .temp-increase-row .weeks-field select { width: 100%; height: 46px; margin: 0; padding: 11px 12px; font-size: 16px; border: 1px solid #e5e7eb; border-radius: 12px; min-width: 0; box-sizing: border-box; }
+body.live .temp-increase-row .weeks-field select { display: block; margin-top: 4px; }
+/* Design-questions (owner, Nov 5, item C): household members list
+   in the Account & Household card — one row per member, name on the
+   left, role pill on the right. */
+body.live .member-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eef1f6; }
+body.live .member-row:last-child { border-bottom: 0; }
+body.live .member-name { flex: 1; min-width: 0; font-weight: 600; color: #0f172a; }
 body.live .activity-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; }
 body.live .activity-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; }
 body.live .activity-dot-money { background: #2f6bff; }
@@ -1181,7 +1201,7 @@ body.live .stat-card .num.negative { color: var(--soft-red); }
 /* Merged-audit A6: temporary highlight on a row reached from Home
    Recent, so the exact record is visible after the jump. */
 body.live .tx-recent-highlight { outline: 2px solid #2f6bff; background: #eef4ff; }
-/* Merged-audit B3: tappable closed-week blocks on Previous Weeks,
+/* Merged-audit B3: tappable closed-week blocks on Past Weeks,
    and the quiet page links at the top of Transactions. */
 body.live .week-block-tappable { cursor: pointer; }
 body.live .tx-page-links { display: flex; gap: 12px; margin: 0 0 8px; }

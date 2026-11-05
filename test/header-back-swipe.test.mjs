@@ -13,9 +13,9 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
-test('pins bumped to v46/v56', () => {
-  assert.ok(html.includes('styles.css?v=46'));
-  assert.ok(html.includes('live.js?v=56'));
+test('pins bumped to v47/v57', () => {
+  assert.ok(html.includes('styles.css?v=47'));
+  assert.ok(html.includes('live.js?v=57'));
 });
 
 test('header-only cards are plain headers, not cards', () => {
@@ -27,7 +27,7 @@ test('header-only cards are plain headers, not cards', () => {
   }
   // Titles, Back controls, and the PrevWeeks/Activity subtext lines stay.
   assert.ok(html.includes('<h2 tabindex="-1">Settings</h2>'));
-  assert.ok(html.includes('<h2 tabindex="-1">Previous Weeks</h2>'));
+  assert.ok(html.includes('<h2 tabindex="-1">Past Weeks</h2>'));
   assert.ok(html.includes('<h2 tabindex="-1">Activity</h2>'));
   assert.ok(html.includes('Closed weeks, read-only. Tap a week to see its summary and its transactions.'));
   assert.ok(html.includes('Who did what, and when — not the transaction list.'));
@@ -78,7 +78,10 @@ test('swipe right goes back, with a threshold that leaves scrolling alone', () =
   // Same destinations as the Back buttons.
   assert.match(swipe, /currentView === 'settings'.*showView\(previousView \|\| 'week'\)/);
   assert.match(swipe, /currentView === 'prevweeks' \|\| currentView === 'activity'.*showView\('purchases'\)/);
-  assert.match(swipe, /addFormOpen === 'manual'.*setAddForm\('options'\)/);
+  // Design-questions (owner, Nov 5): swipe-right is IGNORED while the
+  // Add popup is open — it must not step back inside the popup.
+  assert.match(swipe, /if \(addFormOpen\) return null;/);
+  assert.equal(swipe.includes("setAddForm('options')"), false, 'swipe never steps back inside the Add popup');
   assert.match(swipe, /fundFormOpen.*setFundForm\(null\)/);
   // Ignored: starts on buttons/links/inputs, inside horizontal scrollers, or while a sheet is open.
   assert.match(swipe, /closest\('input, textarea, select, button, a, \[contenteditable\]'\)/);

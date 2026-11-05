@@ -23,9 +23,9 @@ const heldSql = readFileSync(new URL('../supabase/merged-audit-held-release-atom
 const manifest = readFileSync(new URL('../supabase/APPLY_MANIFEST_MERGED_AUDIT.md', import.meta.url), 'utf8');
 const mockup = readFileSync(new URL('../card-standardization-mockup.html', import.meta.url), 'utf8');
 
-test('pins: styles v46, live.js v56, matching live.html', () => {
-  assert.match(html, /styles\.css\?v=46/);
-  assert.match(html, /live\.js\?v=56/);});// ---- A1: merged kind constraint (file only, not applied) ----
+test('pins: styles v47, live.js v57, matching live.html', () => {
+  assert.match(html, /styles\.css\?v=47/);
+  assert.match(html, /live\.js\?v=57/);});// ---- A1: merged kind constraint (file only, not applied) ----
 test('A1: kind-constraint SQL lists exactly the seven kinds, transfer included', () => {
   assert.match(kindSql, /PREPARED FOR OWNER-APPROVED APPLY/);
   for (const k of ['charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer']) {
@@ -176,7 +176,7 @@ test('B2: toggleMore closes the other two sections before opening the tapped one
   assert.match(js, /moreFundActivityOpen = false; moreReviewOpen = false; moreSavingsOpen = false;/);
 });
 
-// ---- B3: Previous Weeks + Activity split, no new tab ----
+// ---- B3: Past Weeks + Activity split, no new tab ----
 test('B3: prevweeks and activity are restorable views; Transactions links to both; no fourth tab', () => {
   assert.ok(MAIN_VIEWS.includes('prevweeks'));
   assert.ok(html.includes('id="txPrevWeeksLink"'));

@@ -244,8 +244,9 @@ test('no two adjacent buttons share a treatment after the tertiary change', () =
   const fundBtns = [...fundSheet.matchAll(/btnClass: 'btn([^']*)'/g)].map((m) => m[1].trim());
   assert.deepEqual(fundBtns, ['btn-primary', '', 'btn-tertiary']);
   // Settings Account card: Share only (audit-fixes-morning B2
-  // deleted the duplicate Change password button).
+  // deleted the duplicate Change password button). Design-questions
+  // (owner, Nov 5, item B): Share invite code is primary blue.
   const acct = html.slice(html.indexOf('id="section-settings-account"'), html.indexOf('id="settingsDeleteBtn"'));
   const acctBtns = [...acct.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());
-  assert.deepEqual(acctBtns, ['']);
+  assert.deepEqual(acctBtns, ['btn-primary']);
 });

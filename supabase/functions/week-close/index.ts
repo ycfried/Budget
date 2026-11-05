@@ -333,6 +333,34 @@ Deno.serve(async (req) => {
     // clobbered by this run's absolute write. The delta window is
     // the read-to-write gap only, not the whole run.
     let lastPersistedShortfall = shortfallAtStart;
+    // Design-questions (owner, Nov 5, audit N20): the same stale-read
+    // problem also hit the surplus reductions themselves — a
+    // concurrent top-up's ledger insert was invisible to the run, so
+    // a same-run surplus reduction could under-apply and overstate
+    // the shortfall. refreshFundState re-reads the live shortfall
+    // and the live ledger sum just before a surplus reduction, and
+    // reconciles this run's own deltas on top of the fresh values
+    // (the same delta accounting persistShortfall uses), so the
+    // reduction sees the fund as it is now, not as it was at run
+    // start. A failed re-read keeps the previous values — the run
+    // then behaves exactly as it did before this fix. No lock.
+    let fundAvailableAtSync = fundAvailable;
+    const refreshFundState = async () => {
+      const { data: freshHh } = await supabaseAdmin.from('households')
+        .select('fund_shortfall_cents').eq('id', householdId).single();
+      if (freshHh) {
+        const freshShortfall = freshHh.fund_shortfall_cents ?? lastPersistedShortfall;
+        shortfall = Math.max(0, freshShortfall + (shortfall - lastPersistedShortfall));
+        lastPersistedShortfall = freshShortfall;
+      }
+      const { data: freshLedger } = await supabaseAdmin.from('fund_ledger')
+        .select('amount_cents').eq('household_id', householdId);
+      if (freshLedger) {
+        const freshSum = freshLedger.reduce((s: number, r: any) => s + (r.amount_cents ?? 0), 0);
+        fundAvailable = freshSum + (fundAvailable - fundAvailableAtSync);
+        fundAvailableAtSync = freshSum;
+      }
+    };
     const persistShortfall = async () => {
       const { data: fresh } = await supabaseAdmin.from('households')
         .select('fund_shortfall_cents').eq('id', householdId).single();
@@ -439,6 +467,9 @@ Deno.serve(async (req) => {
       // Computes the shortfall offset from CURRENT in-memory shortfall,
       // claims, then inserts the ledger row. On ledger failure the
       // claim is best-effort reverted and the error propagates.
+      // Design-questions (owner, Nov 5): re-read the fund first, so
+      // a concurrent top-up is visible to this reduction.
+      await refreshFundState();
       const applied = Math.min(shortfall, surplusCents);
       const toFund = surplusCents - applied;
       const won = await claimRelease(ws, toFund);
@@ -533,7 +564,10 @@ Deno.serve(async (req) => {
           const oldSurplus = existingRelease.surplus_cents ?? 0;
           if (result.earnedSurplus < oldSurplus) {
             // Reduction after release (A4): fund to at most zero,
-            // remainder becomes shortfall.
+            // remainder becomes shortfall. Re-read the fund first
+            // (design-questions, owner, Nov 5): a concurrent top-up
+            // is visible to this reduction, not just to the persist.
+            await refreshFundState();
             const reduction = oldSurplus - result.earnedSurplus;
             const applied = Math.min(reduction, fundAvailable);
             if (applied > 0) {
@@ -554,8 +588,11 @@ Deno.serve(async (req) => {
             releaseByWeek.set(ws, { ...existingRelease, surplus_cents: result.earnedSurplus });
           } else if (result.earnedSurplus > oldSurplus) {
             // Increase after release (P1-7): release the delta net
-            // of shortfall. Claim first (optimistic on old surplus)
+            // of shortfall. Re-read the fund first (design-questions,
+            // owner, Nov 5): the claim below and the offset after it
+            // must see a concurrent top-up. Claim first (optimistic on old surplus)
             // so a concurrent run cannot double-release the delta.
+            await refreshFundState();
             const delta = result.earnedSurplus - oldSurplus;
             const claim = await supabaseAdmin.from('surplus_releases')
               .update({

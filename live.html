@@ -10,7 +10,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=46"></head><body class="live"><header class="topbar" id="liveTopbar">
+<link rel="stylesheet" href="styles.css?v=47"></head><body class="live"><header class="topbar" id="liveTopbar">
   <div class="topbar-left"></div>
   <div class="topbar-title"><strong aria-label="OnBudget"><img class="wordmark-logo" src="icon-192.png" alt="" aria-hidden="true">nBudget</strong></div>
   <div class="topbar-right">
@@ -204,7 +204,7 @@
           <button class="btn btn-primary add-plus-btn" id="txAddBtn" type="button" aria-label="Add transaction"><span aria-hidden="true">+</span><span class="add-label-desktop">Add transaction</span></button>
         </div>
       </div>
-      <p class="tx-page-links"><button class="quiet-link" id="txPrevWeeksLink" type="button" aria-label="Open Previous Weeks">Previous Weeks</button><span aria-hidden="true"> · </span><button class="quiet-link" id="txActivityLink" type="button" aria-label="Open Activity">Activity</button></p>
+      <p class="tx-page-links"><button class="quiet-link" id="txPrevWeeksLink" type="button" aria-label="Open Past Weeks">Past Weeks</button><span aria-hidden="true"> · </span><button class="quiet-link" id="txActivityLink" type="button" aria-label="Open Activity">Activity</button></p>
       <div class="tx-search-row">
         <input id="txSearch" type="search" placeholder="Search transactions (merchant, amount, date)" aria-label="Search transactions">
       </div>
@@ -271,7 +271,6 @@
       </div>
       <p id="txCount" class="muted small tx-count"></p>
       <p class="trash-link-row"><button id="txTrashBtn" class="quiet-link trash-link" type="button" style="display:none" aria-label="Open trash bin">Trash<span id="txTrashCount"></span></button></p>
-      <div id="txTrashList" class="hidden"><h3>Trash</h3><p class="muted small">Bank rows you deleted live here. The admin can bring them back.</p><ul id="trashList" class="plain"></ul><button id="txTrashCloseBtn" class="btn btn-tertiary" type="button" aria-label="Close trash bin">Close trash</button></div>
       <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
       <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
     </div>
@@ -350,12 +349,14 @@
       <div id="settingsMsg" class="result"></div>
       <h3 class="temp-increase-heading">Temporary Allowance</h3>
       <div class="temp-increase-row">
-        <div class="money-input-row"><span class="money-prefix" aria-hidden="true">$</span><input id="tempIncreaseInput" type="number" step="0.01" min="0" inputmode="decimal" aria-label="New total allowance amount in dollars"></div>
-        <label class="weeks-label">Weeks
+        <label class="temp-field-label">New total
+          <div class="money-input-row"><span class="money-prefix" aria-hidden="true">$</span><input id="tempIncreaseInput" type="number" step="0.01" min="0" inputmode="decimal" aria-label="New total allowance amount in dollars"></div>
+        </label>
+        <label class="temp-field-label weeks-field">Weeks
           <select id="tempIncreaseWeeks" aria-label="Number of weeks the new total lasts"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
         </label>
       </div>
-      <button id="addTempBtn" class="btn" type="button" aria-label="Set the new total allowance for the chosen weeks">Set new total</button>
+      <button id="addTempBtn" class="btn btn-primary" type="button" aria-label="Set the new total allowance for the chosen weeks">Set new total</button>
       <p id="tempPreview" class="muted small">Enter a new total and weeks to see the preview.</p>
       <div id="tempMsg" class="result"></div>
     </div>
@@ -364,8 +365,11 @@
       <h2>Account &amp; Household</h2>
       <p class="muted small">Only the admin can share the invite code.</p>
       <p class="muted small" id="householdNameLine">Household: Household</p>
+      <h3>Members</h3>
+      <div id="membersList"><p class="muted small">Loading…</p></div>
+      <p class="muted small">Members join with the invite code. Removing a member or changing a role needs a server step that is not built yet.</p>
       <div class="btn-row">
-        <button id="settingsShareIdBtn" class="btn" type="button" aria-label="Share the invite code">Share invite code</button>
+        <button id="settingsShareIdBtn" class="btn btn-primary" type="button" aria-label="Share the invite code">Share invite code</button>
       </div>
       <div class="danger-area">
         <h3>Delete Account</h3>
@@ -495,12 +499,24 @@
     </div>
 
     <div class="page-head" id="section-prevweeks-head">
-      <div class="settings-head-line"><h2 tabindex="-1">Previous Weeks</h2><button class="settings-back-link" id="prevWeeksBackBtn" type="button" aria-label="Back to Transactions">← Back</button></div>
+      <div class="settings-head-line"><h2 tabindex="-1">Past Weeks</h2><button class="settings-back-link" id="prevWeeksBackBtn" type="button" aria-label="Back to Transactions">← Back</button></div>
       <p class="muted small">Closed weeks, read-only. Tap a week to see its summary and its transactions.</p>
     </div>
     <div class="page-head" id="section-activity-head">
       <div class="settings-head-line"><h2 tabindex="-1">Activity</h2><button class="settings-back-link" id="activityBackBtn" type="button" aria-label="Back to Transactions">← Back</button></div>
       <p class="muted small">Who did what, and when — not the transaction list.</p>
+    </div>
+    <!-- Design-questions (owner, Nov 5, item D): Trash is its own
+         page, like Past Weeks and Activity — not a pill-toggle inside
+         the Transactions list. Linked from Transactions with the
+         count, with its own plain page-head, Back/swipe, and the
+         trashed rows with their Restore buttons. -->
+    <div class="page-head" id="section-trash-head">
+      <div class="settings-head-line"><h2 tabindex="-1">Trash</h2><button class="settings-back-link" id="trashBackBtn" type="button" aria-label="Back to Transactions">← Back</button></div>
+      <p class="muted small">Bank rows you deleted live here. The admin can bring them back.</p>
+    </div>
+    <div class="card" id="section-trash">
+      <ul id="trashList" class="plain"><li class="muted small">Loading…</li></ul>
     </div>
     <div class="card past-weeks-section" id="section-history-filter">
       <h2>Past Weeks</h2>
@@ -541,7 +557,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=56"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
+<script type="module" src="live.js?v=57"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('live-sw.js').catch(() => {});

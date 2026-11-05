@@ -26,7 +26,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, resolveRestoredSubView, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -225,6 +225,13 @@ function parseAmountLive(raw) {
   if (!Number.isFinite(n)) return null;
   return Math.round(Math.abs(n) * 100) * (neg || n < 0 ? -1 : 1);
 }
+// Design-questions (owner, Nov 5): transactions start Nov 1, 2026.
+// A row dated before that would sit in the list while week math
+// (which floors at Nov 1) ignores it, so the manual form and the
+// CSV import reject pre-Nov dates. Charity forms already floor
+// their own dates and are untouched. YYYY-MM-DD strings compare
+// correctly as plain strings.
+const isPreNovDate = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && d < '2026-11-01';
 // Port of the demo CSV parser (app.js parseCsv): header Date/Description/
 // Amount/Card Ending, quote-aware split, YYYY-MM-DD or MM/DD/YYYY dates.
 // Returns {rows, errors}; rows carry no insert until the user confirms.
@@ -258,6 +265,7 @@ function parseCsvLive(text) {
     const mdy = dateRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (mdy) date = `${mdy[3]}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !merchant || cents === null) { errors.push(`Skipped unparseable row: ${line}`); continue; }
+    if (isPreNovDate(date)) { errors.push(`Skipped row before Nov 1, 2026: ${line}`); continue; }
     rows.push({ date, merchant, amountCents: cents, suffix });
   }
   return { rows, errors };
@@ -417,6 +425,35 @@ async function refresh() {
     const hn = document.getElementById('householdNameLine');
     if (hn && typeof hrow?.name === 'string' && hrow.name.trim()) hn.textContent = `Household: ${hrow.name.trim()}`;
   } catch (e) { console.warn('household name read failed:', e); }
+  // Design-questions (owner, Nov 5, item C): members list in the
+  // Account & Household card — each member with name and role.
+  // Reads household_members for this household. Names come from
+  // display_name where set; the app stores profile names in auth
+  // metadata, not display_name, so other members show as "Member"
+  // until a server-side list exists. There is NO remove-member or
+  // change-role RPC, so no manage buttons are rendered — never a
+  // button that fails. Live limitation, reported to the owner: the
+  // household_members read policy lets a member read only their own
+  // row (fix-membership-policy.sql, Nov 1), so until that policy is
+  // widened or a list-members RPC is built, this list shows only
+  // the signed-in member.
+  try {
+    const { data: { user: me } } = await supabase.auth.getUser();
+    const { data: mrows } = await supabase.from('household_members')
+      .select('user_id, display_name, role, created_at').eq('household_id', household.household_id).order('created_at');
+    const ml = document.getElementById('membersList');
+    if (ml) {
+      if (!mrows?.length) { ml.innerHTML = '<p class="muted small">No members yet.</p>'; }
+      else {
+        ml.innerHTML = mrows.map((m) => {
+          const name = (m.display_name && String(m.display_name).trim()) || 'Member';
+          const role = m.role === 'admin' ? 'Admin' : 'Member';
+          const you = me && m.user_id === me.id ? ' (you)' : '';
+          return `<div class="member-row"><span class="member-name">${esc(name + you)}</span><span class="role-pill">${role}</span></div>`;
+        }).join('');
+      }
+    }
+  } catch (e) { console.warn('household members read failed:', e); }
   // Audit-merge fix (review B S2): when no name is set, the header
   // below falls back to the email, so showing this line too would
   // print the email twice. Hide it exactly when it duplicates the
@@ -575,6 +612,12 @@ async function refresh() {
       const heroSetBtn = document.getElementById('heroSetAllowanceBtn');
       const heroFig = document.getElementById('weeklyAvailable');
       const isAdminHero = household && household.role === 'admin';
+      // Design-questions (owner, Nov 5): while no allowance is set,
+      // the sync button is grey tertiary, so Set Your Weekly
+      // Allowance is the hero's only primary blue control. Once an
+      // allowance is set, sync returns to primary blue.
+      const heroSyncBtn = document.getElementById('homeSyncBtn');
+      if (heroSyncBtn) heroSyncBtn.classList.toggle('sync-unset', !allowanceExplicitlySet);
       if (!allowanceExplicitlySet) {
         if (heroFig) heroFig.classList.add('hidden');
         if (heroSetBtn) heroSetBtn.classList.toggle('hidden', !isAdminHero);
@@ -865,11 +908,14 @@ async function refresh() {
     const mx = $('txMaxAmount'); if (mx) mx.value = '';
     refresh();
   }));
-  // Home preview: the 4 newest transactions, tapping one jumps to Transactions.
+  // Home preview: the 6 newest transactions, tapping one jumps to Transactions.
+  // Design-questions (owner, Nov 5): 4 rows left a large dead gap
+  // above the footer on a phone-height Home; 6 rows + the footer
+  // sitting directly under the last card fills the page.
   const recentEl = $('recentList');
   if (recentEl) {
     recentEl.removeAttribute('aria-busy');
-    const recent = [...all].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
+    const recent = [...all].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
     recentEl.innerHTML = txReadFailed
       ? '<li class="muted small error">Could not load recent transactions.</li>'
       : recent.length
@@ -990,7 +1036,8 @@ async function refresh() {
   // deleted (delete_transaction, cannot be undone); bank/email/file
   // rows are moved to Trash via exclude_transaction with a reason,
   // with the exact toast 'Moved to trash bin.', and leave the main
-  // list. Trash is rendered above the list from `all` (excluded rows only).
+  // list. Trash is rendered on its own page (section-trash) from
+  // `all` (excluded rows only).
   document.querySelectorAll('[data-tx-actions]').forEach((b) => b.addEventListener('click', async () => {
     const row = all.find((t) => t.id === b.dataset.txActions);
     if (row) await openTxActionsSheet(row);
@@ -1001,22 +1048,11 @@ async function refresh() {
     trashBtn.style.display = (household && household.role === 'admin' && trashRowCount > 0) ? '' : 'none';
     if (!trashBtn.dataset.bound) {
       trashBtn.dataset.bound = '1';
-      trashBtn.addEventListener('click', () => {
-        const el = $('txTrashList'); if (!el) return;
-        const nowHidden = el.classList.toggle('hidden');
-        // Task 5: Trash is a sub-view of Transactions, admin-only.
-        // Persist it so a reload returns to the open Trash, not
-        // just the Transactions list; a member never restores it
-        // (resolveRestoredSubView returns null for members).
-        try { localStorage.setItem('hb-view-sub', nowHidden ? '' : 'trash'); } catch (e) { /* private mode */ }
-      });
-      $('txTrashCloseBtn')?.addEventListener('click', () => { $('txTrashList')?.classList.add('hidden'); try { localStorage.setItem('hb-view-sub', ''); } catch (e) { /* private mode */ } });
+      // Design-questions (owner, Nov 5, item D): Trash is its own
+      // page — the link navigates to it, it no longer toggles an
+      // inline list inside Transactions.
+      trashBtn.addEventListener('click', () => showView('trash', { clearMessages: true }));
     }
-  }
-  // Task 5: reopen the Trash list when the saved sub-view says so
-  // (admin only; members get null from resolveRestoredSubView).
-  if (resolveRestoredSubView(currentView, localStorage.getItem('hb-view-sub'), household?.role) === 'trash') {
-    $('txTrashList')?.classList.remove('hidden');
   }
   const trashEl = $('trashList');
   if (trashEl) {
@@ -1776,7 +1812,7 @@ async function refresh() {
           return `<li class="week-block week-block-tappable" data-week-start="${esc(c.week_start)}" role="button" tabindex="0" aria-label="Week of ${fmtLong(c.week_start)} — show its transactions"><strong>${fmtLong(c.week_start)}</strong><div class="week-metrics"><div><span>Carry-in</span><span>${carryIn === null ? 'not recorded' : fmtOrMissing(carryIn)}</span></div><div><span>Surplus</span><span>${fmtOrMissing(c.surplus_cents)}</span></div><div><span>Debt carried out</span><span>${fmtOrMissing(c.outgoing_debt_cents)}</span></div><div><span>${relLabel}</span><span>${relValue}</span></div></div></li>`;
         }).join('')
       : `<li class="muted small">${(historyFilter.from || historyFilter.to) ? 'No closed weeks in the selected period.' : 'No closed weeks yet.'}</li>`;
-  // Merged-audit B3: tap a Previous Week to see its summary plus that week's transaction rows. The week range is Sun-Sat from week_start; Transactions date filters are set to it, then the list is shown.
+  // Merged-audit B3: tap a Past Week to see its summary plus that week's transaction rows. The week range is Sun-Sat from week_start; Transactions date filters are set to it, then the list is shown.
   document.querySelectorAll('.week-block-tappable[data-week-start]').forEach((el) => {
     const openWeek = async () => {
       const ws = el.dataset.weekStart; if (!ws) return;
@@ -2283,6 +2319,10 @@ $('manualForm').addEventListener('submit', async (e) => {
   // native required attribute used to provide for that field.
   if (!f.merchant.value.trim()) { done(); setFieldError('Merchant: enter a name for this transaction.', f.merchant); return; }
   if (!f.date.value) { done(); setFieldError('Date: pick the date of this transaction.', f.date); return; }
+  // Design-questions (owner, Nov 5): transactions start Nov 1,
+  // 2026 — a hand-entered row dated before that would sit in the
+  // list while week math (which floors at Nov 1) ignores it.
+  if (isPreNovDate(f.date.value)) { done(); setFieldError('Date: transactions start Nov 1, 2026. Pick a date on or after Nov 1, 2026.', f.date); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
   // Smarter entry: warn on an apparent duplicate instead of silently
   // creating a second copy of the same transaction.
@@ -2478,9 +2518,13 @@ async function autoSyncIfWebhookPending() {
 const VIEWS = {
   week: ['section-week', 'section-stats', 'section-recent'],
   purchases: ['section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
-  // Merged-audit B3: Previous Weeks and Activity are separate pages linked from Transactions, no new tab. Purchases stays the current list only.
+  // Merged-audit B3: Past Weeks and Activity are separate pages linked from Transactions, no new tab. Purchases stays the current list only.
   prevweeks: ['section-prevweeks-head', 'section-history-filter', 'section-week-history'],
   activity: ['section-activity-head', 'section-activity'],
+  // Design-questions (owner, Nov 5, item D): Trash is its own page,
+  // like Past Weeks and Activity — linked from Transactions with the
+  // count, own page-head, Back/swipe to Transactions.
+  trash: ['section-trash-head', 'section-trash'],
   money: ['section-fund-balances', 'section-fund-more', 'section-fund-activity-more', 'section-fund-review-more', 'section-savings-more', 'section-fund-add', 'section-charity-income', 'section-fund-use', 'section-fund-ask'],
   // R2: Settings is reached from the profile menu, not a nav tab.
   // Connections (bank + email), Budget (allowance + temp increase)
@@ -2788,11 +2832,12 @@ document.getElementById('settingsShareIdBtn')?.addEventListener('click', shareIn
 document.getElementById('settingsPasswordBtn')?.addEventListener('click', changePasswordFlow);
 document.getElementById('settingsDeleteBtn')?.addEventListener('click', deleteAccountFlow);
 document.getElementById('settingsBackBtn')?.addEventListener('click', () => showView(previousView || 'week'));
-// Merged-audit B3: Previous Weeks / Activity pages, linked from Transactions, Back returns to Transactions.
+// Merged-audit B3: Past Weeks / Activity pages, linked from Transactions, Back returns to Transactions.
 document.getElementById('txPrevWeeksLink')?.addEventListener('click', () => showView('prevweeks', { clearMessages: true }));
 document.getElementById('txActivityLink')?.addEventListener('click', () => showView('activity', { clearMessages: true }));
 document.getElementById('prevWeeksBackBtn')?.addEventListener('click', () => showView('purchases'));
 document.getElementById('activityBackBtn')?.addEventListener('click', () => showView('purchases'));
+document.getElementById('trashBackBtn')?.addEventListener('click', () => showView('purchases'));
 // Header-back-swipe (owner, Nov 4): swipe RIGHT to go back — the same
 // action as the Back button, in addition to pressing it. Threshold:
 // a mostly-horizontal swipe of more than 80px within 1.5s
@@ -2801,16 +2846,17 @@ document.getElementById('activityBackBtn')?.addEventListener('click', () => show
 // A swipe is ignored when it starts on a button, link, input, select,
 // or editable field, inside a horizontally scrolling element, or while
 // a bottom sheet / the transaction filter sheet is open (those have
-// their own gestures). Home and other views with no Back action do
-// nothing on swipe-right.
+// their own gestures). Design-questions (owner, Nov 5): swipe-right
+// is also ignored while the Add popup is open — swiping inside it
+// must not step back inside the popup. Home and other views with no
+// Back action do nothing on swipe-right.
 const swipeBackAction = () => {
   if (document.getElementById('sheetOverlay')) return null;
   if (document.getElementById('txFiltersSheet') && !document.getElementById('txFiltersSheet').classList.contains('hidden')) return null;
-  if (addFormOpen === 'manual' || addFormOpen === 'csv' || addFormOpen === 'charity') return () => setAddForm('options');
-  if (addFormOpen === 'options') return () => setAddForm(null);
+  if (addFormOpen) return null;
   if (fundFormOpen) return () => setFundForm(null);
   if (currentView === 'settings') return () => showView(previousView || 'week');
-  if (currentView === 'prevweeks' || currentView === 'activity') return () => showView('purchases');
+  if (currentView === 'prevweeks' || currentView === 'activity' || currentView === 'trash') return () => showView('purchases');
   return null;
 };
 let swipeStart = null;

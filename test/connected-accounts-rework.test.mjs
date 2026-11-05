@@ -16,9 +16,9 @@ const itemDisconnect = readFileSync(new URL('../supabase/functions/plaid-disconn
 const config = readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8');
 const acctSql = readFileSync(new URL('../supabase/plaid-account-disconnect.sql', import.meta.url), 'utf8');
 
-test('pins bumped to v46/v56', () => {
-  assert.match(html, /styles\.css\?v=46/);
-  assert.match(html, /live\.js\?v=56/);
+test('pins bumped to v47/v57', () => {
+  assert.match(html, /styles\.css\?v=47/);
+  assert.match(html, /live\.js\?v=57/);
 });
 
 test('Previously connected is gone from the UI, no rows deleted', () => {

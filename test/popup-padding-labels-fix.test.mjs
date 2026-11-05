@@ -132,6 +132,6 @@ test('bank card heading and sentence are the short versions, nothing else retitl
   assert.equal(html.includes('id="section-history-link"'), false, 'separate History card gone');
 });
 
-test('version pins: styles v46, live.js v56', () => {
-  assert.match(html, /styles\.css\?v=46/);
-  assert.match(html, /live\.js\?v=56/);});
+test('version pins: styles v47, live.js v57', () => {
+  assert.match(html, /styles\.css\?v=47/);
+  assert.match(html, /live\.js\?v=57/);});

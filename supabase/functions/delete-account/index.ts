@@ -61,7 +61,11 @@ Deno.serve(async (req) => {
     if (memErr) return json({ error: 'could not delete account', step: 'membership-read' }, 500);
     const householdIds = (memberships ?? []).map((m) => m.household_id);
     // Restore helper: if a later step fails, put the membership
-    // rows back so the account is intact, not half-deleted.
+    // rows back so the account is intact, not half-deleted. Only
+    // used while the auth user still exists (see authDeleted below):
+    // once the auth user is deleted, membership rows pointing at
+    // it cannot be re-inserted, and the account is gone anyway.
+    let authDeleted = false;
     const restoreMemberships = async () => {
       // Per-row inserts, not one upsert: if one household is already
       // gone, its row fails alone instead of failing the whole batch.
@@ -73,12 +77,23 @@ Deno.serve(async (req) => {
     };
     const fail = async (step: string, message: string) => {
       console.error(`delete-account failed at ${step}:`, message);
-      await restoreMemberships();
+      if (!authDeleted) await restoreMemberships();
       return json({ error: 'could not delete account', step }, 500);
     };
+    // Design-questions (owner, Nov 5, audit N22): delete the auth
+    // user FIRST, then the memberships and any emptied household.
+    // If the auth delete fails, nothing else has been touched, the
+    // account is intact, and the deletion can be retried. The old
+    // order (household first, auth user last) left a stranded auth
+    // user with no household when the auth delete failed, because
+    // restoreMemberships could not re-insert rows pointing at the
+    // deleted household.
+    const { error: delUserErr } = await admin.auth.admin.deleteUser(user.id);
+    if (delUserErr) return await fail('auth-delete', delUserErr.message);
+    authDeleted = true;
     const { error: delMemErr } = await admin
       .from('household_members').delete().eq('user_id', user.id);
-    if (delMemErr) return json({ error: 'could not delete account', step: 'membership-delete' }, 500);
+    if (delMemErr) return await fail('membership-delete', delMemErr.message);
     // Delete any household left with no members. A failure here used
     // to be swallowed; it is now fatal, because leaving an emptied
     // household behind with a live invite code would expose its data
@@ -91,8 +106,6 @@ Deno.serve(async (req) => {
         if (delHhErr) return await fail('household-cleanup', delHhErr.message);
       }
     }
-    const { error: delUserErr } = await admin.auth.admin.deleteUser(user.id);
-    if (delUserErr) return await fail('auth-delete', delUserErr.message);
     return json({ deleted: true });
   } catch (e) {
     console.error('delete-account failed:', String((e as Error)?.message ?? e));

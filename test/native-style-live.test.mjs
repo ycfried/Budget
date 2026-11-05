@@ -15,9 +15,9 @@ const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(readFileSync(new URL('../manifest-live.json', import.meta.url), 'utf8'));
 
-test('pins: styles v46, live.js v56, matching live.html', () => {
-  assert.match(html, /styles\.css\?v=46/);
-  assert.match(html, /live\.js\?v=56/);});test('combined hero: Available + progress + Spent/% + allowance + purchases, in one card', () => {
+test('pins: styles v47, live.js v57, matching live.html', () => {
+  assert.match(html, /styles\.css\?v=47/);
+  assert.match(html, /live\.js\?v=57/);});test('combined hero: Available + progress + Spent/% + allowance + purchases, in one card', () => {
   const hero = html.slice(html.indexOf('id="section-week"'), html.indexOf('id="section-stats"'));
   for (const id of ['weeklyAvailable', 'weekProgressBar', 'heroSpentLine', 'heroUsedPct', 'heroAllowance', 'heroPurchaseCount']) {
     assert.ok(hero.includes(`id="${id}"`), `hero contains ${id}`);
@@ -47,9 +47,9 @@ test('bottom sheets: handle + top Cancel + rounded top corners only, no centred 
   assert.match(js, /syncScrollLock/);
 });
 
-test('no fourth tab and no Home History row; Previous Weeks is its own page linked from Transactions (merged-audit B3)', () => {
+test('no fourth tab and no Home History row; Past Weeks is its own page linked from Transactions (merged-audit B3)', () => {
   assert.equal(html.includes('id="section-history-row"'), false);
-  assert.match(html, /<h2 tabindex=\"-1\">Previous Weeks<\/h2>/);
+  assert.match(html, /<h2 tabindex=\"-1\">Past Weeks<\/h2>/);
   assert.match(js, /prevweeks: \[[^\]]*section-prevweeks-head[^\]]*section-history-filter[^\]]*section-week-history/);
   assert.match(js, /activity: \[[^\]]*section-activity-head[^\]]*section-activity/);
   assert.equal(/purchases: \[[^\]]*section-week-history/.test(js), false, 'Transactions view no longer embeds week history');
