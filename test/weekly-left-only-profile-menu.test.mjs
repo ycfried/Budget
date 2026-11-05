@@ -225,11 +225,13 @@ test('tertiary buttons are grey fill with ink text, distinct from primary and se
 });
 
 test('no two adjacent buttons share a treatment after the tertiary change', () => {
-  // Bank card (the reported row): Connect primary, Sync secondary,
-  // Enable automatic sync tertiary-grey — all three distinct.
+  // Bank card (the reported row, settings-bank-buttons Nov 4): two
+  // shortened buttons, Connect primary and Sync tertiary-grey, plus
+  // the Automatic Sync switch on its own row below them.
   const bank = html.slice(html.indexOf('id="section-bank"'), html.indexOf('id="bankMsg"'));
   const bankBtns = [...bank.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());
-  assert.deepEqual(bankBtns, ['btn-primary', '', 'btn-tertiary']);
+  assert.deepEqual(bankBtns, ['btn-primary', 'btn-tertiary']);
+  assert.match(bank, /id="autoSyncSwitch"[^>]*role="switch"/);
   // Filters sheet: Apply primary, Reset secondary, Cancel tertiary.
   const sheet = html.slice(html.indexOf('id="txFiltersSheet"'), html.indexOf('id="txCount"'));
   const sheetBtns = [...sheet.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());

@@ -1078,15 +1078,24 @@ async function refresh() {
     bankLastSyncAt = syncTimes.length ? syncTimes[syncTimes.length - 1] : null;
     const syncLine = $('bankSyncLine');
     if (syncLine) syncLine.textContent = bankLastSyncAt ? `Last synced ${fmtDateTime(bankLastSyncAt)}` : 'Not synced yet.';
+    // Automatic Sync switch state is the server truth
+    // (households.auto_sync_enabled, written by plaid-webhook-register).
+    // Before the migration the column does not exist, so a failed read
+    // leaves the switch off rather than showing a wrong state.
+    try {
+      const { data: autoRow } = await supabase.from('households').select('auto_sync_enabled').eq('id', household.household_id).maybeSingle();
+      setAutoSyncSwitch(autoRow?.auto_sync_enabled === true);
+    } catch (e) { console.warn('auto sync read failed:', e.message); }
     const ls = document.getElementById('lastSync'); if (ls) ls.textContent = bankLastSyncAt ? fmtDateTime(bankLastSyncAt) : 'Not synced yet';
     const cb = $('connectBankBtn');
-    // Button-card-fix: Connect stays primary and Sync stays secondary
-    // in every state. The old code stripped primary from Connect and
+    // Button-card-fix: Connect stays primary and Sync stays tertiary
+    // (grey) in every state. The old code stripped primary from Connect and
     // toggled it onto Sync when an item was active, so with no active
     // item Connect and Sync were adjacent secondary buttons — the
-    // exact duplicate the owner rule forbids. Sequence is now always
-    // primary, secondary, tertiary.
-    if (cb) { cb.disabled = false; cb.classList.add('btn-primary'); cb.textContent = itemRows.some((i) => i.status === 'active') ? 'Connect another bank account' : 'Connect a bank account'; }
+    // exact duplicate the owner rule forbids. The two-button row is now
+    // always primary blue first, grey tertiary second (pale is only the
+    // middle tier of a three-button row).
+    if (cb) { cb.disabled = false; cb.classList.add('btn-primary'); cb.textContent = 'Connect New Account'; }
     // Reaudit N1: bank linking is admin-only (plaid-link/plaid-exchange
     // enforce it server-side with a 403); hide the connect button for
     // non-admins so members never see a dead button.
@@ -2217,7 +2226,7 @@ $('connectBankBtn')?.addEventListener('click', async () => {
         institution_name: metadata?.institution?.name ?? null,
       });
       showToast(ex.connected
-        ? 'Connected. Tap "Sync bank transactions now" to pull transactions.'
+        ? 'Connected. Tap "Sync Transactions" to pull transactions.'
         : `Connection could not be finished: ${ex.error ?? 'unknown error'}`, !ex.connected);
       if (ex.connected) { await refresh(); } // connection state now comes from plaid_items on refresh, not localStorage
     },
@@ -2267,15 +2276,39 @@ $('homeSyncBtn')?.addEventListener('click', async () => {
   await refresh();
 });
 
-$('registerWebhookBtn')?.addEventListener('click', async () => {
-  showToast('Enabling automatic sync…');
-  const out = await callFn('plaid-webhook-register', { household_id: household.household_id });
-  if (out.error) { showToast(`Could not enable automatic sync: ${out.error}`, true); return; }
+// Automatic Sync switch (owner, Nov 4): "Enable automatic sync" is no
+// longer a button — it is an on/off switch whose state is visible at a
+// glance. The switch is real, not cosmetic: turning it on registers the
+// webhook on every connected item via plaid-webhook-register, turning
+// it off clears the webhook (Plaid /item/webhook/update with an empty
+// webhook), and the function stores the result in
+// households.auto_sync_enabled, which refresh() reads back below.
+// A failed toggle leaves the switch where it was.
+function setAutoSyncSwitch(on) {
+  const sw = $('autoSyncSwitch');
+  if (!sw) return;
+  sw.setAttribute('aria-checked', on ? 'true' : 'false');
+}
+$('autoSyncSwitch')?.addEventListener('click', async () => {
+  const sw = $('autoSyncSwitch');
+  if (!sw || sw.disabled) return;
+  const target = sw.getAttribute('aria-checked') !== 'true';
+  sw.disabled = true;
+  showToast(target ? 'Enabling automatic sync…' : 'Turning off automatic sync…');
+  const out = await callFn('plaid-webhook-register', { household_id: household.household_id, enabled: target });
+  sw.disabled = false;
+  if (out.error) { showToast(`Could not ${target ? 'enable' : 'turn off'} automatic sync: ${out.error}`, true); return; }
+  if (!(out.results ?? []).length) { showToast('No bank connection yet — connect a bank account first.', true); return; }
   const failed = (out.results ?? []).filter((r) => !r.ok);
-  showToast(failed.length
-    ? `Automatic sync partly enabled — ${failed.length} connection(s) failed. Try again.`
-    : 'Automatic sync enabled. New transactions will be pulled in on your next refresh.', failed.length > 0);
-  if (!failed.length) { await refresh(); }
+  if (failed.length) {
+    showToast(`Automatic sync partly ${target ? 'enabled' : 'turned off'} — ${failed.length} connection(s) failed. Try again.`, true);
+    return;
+  }
+  setAutoSyncSwitch(target);
+  showToast(target
+    ? 'Automatic sync on. New transactions will be pulled in on your next refresh.'
+    : 'Automatic sync off.');
+  await refresh();
 });
 
 // Email (OAuth) connection — admin only. gmail-oauth-start derives the
@@ -2468,7 +2501,7 @@ function showView(name, opts = {}) {
       const b = document.getElementById(id);
       if (b) b.style.display = visible ? '' : 'none';
     };
-    setBtn('registerWebhookBtn', isAdmin);
+    setBtn('autoSyncRow', isAdmin);
     setBtn('connectEmailBtn', isAdmin);
     setBtn('pollEmailBtn', isAdmin);
     setBtn('settingsShareIdBtn', isAdmin);

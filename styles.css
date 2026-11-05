@@ -489,6 +489,21 @@ body.live #weeklyAvailable[role="button"] { cursor: pointer; }
 /* R2: deletion lives in a distinct danger area inside Settings. */
 body.live .danger-area { border: 1px solid #fecaca; border-radius: 12px; padding: 12px; margin-top: 12px; }
 body.live .btn-row .btn { margin: 0; }
+/* Settings bank buttons (owner, Nov 4): the three long buttons took up
+   too much space. The two shortened buttons now share one row on a
+   phone width — no wrap, equal halves, compact padding, no wrap of
+   the label text — and Automatic Sync is a switch on its own row
+   below them, not a third button. */
+body.live #section-bank .btn-row { flex-wrap: nowrap; }
+body.live #section-bank .btn-row .btn { flex: 1 1 0; min-width: 0; padding: 13px 8px; white-space: nowrap; }
+body.live .auto-sync-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+body.live .auto-sync-label { font-size: 15px; font-weight: 600; color: #0f172a; }
+body.live .auto-sync-switch { flex: none; width: 52px; height: 30px; border: 0; border-radius: 999px; background: #e5e7eb; padding: 0; cursor: pointer; position: relative; transition: background 0.15s ease; }
+body.live .auto-sync-switch .auto-sync-knob { position: absolute; left: 3px; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.15s ease; }
+body.live .auto-sync-switch[aria-checked="true"] { background: #2f6bff; }
+body.live .auto-sync-switch[aria-checked="true"] .auto-sync-knob { transform: translateX(22px); }
+body.live .auto-sync-switch:focus-visible { outline: 2px solid #2f6bff; outline-offset: 2px; }
+body.live .auto-sync-switch:disabled { opacity: 0.6; cursor: default; }
 /* Chips: grey pills, blue when active. */
 body.live #view-app .tx-chip { background: #bfdbfe; color: #1e40af; padding: 9px 15px; font-weight: 600; }
 body.live #view-app .tx-chip.active { background: #2f6bff; color: #fff; }

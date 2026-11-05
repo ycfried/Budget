@@ -1,8 +1,18 @@
-// Household Budget — plaid-webhook-register (new, Nov 1, 2026).
+// Household Budget — plaid-webhook-register (new, Nov 1, 2026;
+// toggle, Nov 4, 2026).
 // Registers the webhook URL on each of the household's connected bank
 // items via Plaid /item/webhook/update. Plaid's dashboard does NOT
 // offer Transactions webhooks, so this per-item API call is the only
 // way to turn them on for an existing connection.
+// Toggle (Nov 4): the client sends { enabled: true | false }. Enabling
+// registers WEBHOOK_URL; disabling clears the webhook by passing an
+// empty string — Plaid's item webhook is an empty string when no
+// webhook is set. After a fully successful run the function stores the
+// result in households.auto_sync_enabled (see
+// supabase/auto-sync-toggle.sql), which the client reads back as the
+// switch state. A partial failure stores nothing, so the stored state
+// never claims a state Plaid does not have. With no connected items
+// there is nothing to register, so nothing is stored.
 // Security: admin-only (checked via household membership + role).
 // The bank access token is fetched as ciphertext via the
 // get_plaid_ciphertext RPC, decrypted IN MEMORY with PLAID_TOKEN_KEY,
@@ -43,6 +53,9 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const householdId = String(body.household_id ?? '');
     if (!householdId) return json({ error: 'household_id required' }, 400);
+    // Toggle: enabled defaults to true, so older clients that call
+    // without it still enable, exactly as before.
+    const enabled = body.enabled !== false;
     const { data: membership } = await supabase
       .from('household_members')
       .select('role')
@@ -68,6 +81,7 @@ Deno.serve(async (req) => {
     const { data: items } = await supabaseAdmin.from('plaid_items')
       .select('plaid_item_id, institution_name')
       .eq('household_id', householdId);
+    const webhook = enabled ? WEBHOOK_URL : '';
     const results = [];
     for (const item of items ?? []) {
       const { data: ct } = await supabaseAdmin.rpc('get_plaid_ciphertext', {
@@ -78,12 +92,18 @@ Deno.serve(async (req) => {
       const res = await fetch(`https://${env === 'production' ? 'production' : env}.plaid.com/item/webhook/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken, webhook: WEBHOOK_URL }),
+        body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken, webhook }),
       });
       const data = await res.json();
       results.push({ item: item.plaid_item_id, ok: res.ok, error: res.ok ? null : (data?.error_message ?? 'unknown') });
     }
-    return json({ webhook_url: WEBHOOK_URL, results });
+    // Store the switch state only on a fully successful run with at
+    // least one item — a partial failure stores nothing, and with no
+    // items there is nothing to store.
+    if ((items ?? []).length && results.every((r) => r.ok)) {
+      await supabaseAdmin.from('households').update({ auto_sync_enabled: enabled }).eq('id', householdId);
+    }
+    return json({ webhook_url: WEBHOOK_URL, enabled, results });
   } catch (e) {
     return json({ error: String(e?.message ?? e) }, 500);
   }

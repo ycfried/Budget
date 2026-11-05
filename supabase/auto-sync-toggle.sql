@@ -1,0 +1,14 @@
+-- Household Budget — Automatic Sync toggle state (Nov 4, 2026).
+-- NOT APPLIED — apply in the Supabase SQL editor only after the owner
+-- approves the settings-bank-buttons push. The edge function
+-- plaid-webhook-register writes this column (service role); the client
+-- only reads it, so no RLS change is needed: the existing
+-- "members read own household" select policy on households already
+-- covers the read, and members have no UPDATE grant on households.
+--
+-- Backfill note: existing households default to false. Plaid-side
+-- webhook state is not readable from here, so a household that already
+-- had its webhook registered will show the switch OFF until an admin
+-- toggles it on once — toggling on re-registers the webhook on every
+-- connected item, which is idempotent, and then stores true.
+alter table households add column if not exists auto_sync_enabled boolean not null default false;
