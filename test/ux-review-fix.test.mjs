@@ -177,7 +177,7 @@ test('Funds chevrons sit bottom-right and face down', () => {
 test('weight rebalance: figures 800, headings 700, buttons 600', () => {
   assert.match(css, /body\.live \.hero \.big \{ font-size: 42px; font-weight: 800;/);
   assert.match(css, /body\.live \.num \{ font-size: 26px; font-weight: 800;/);
-  assert.match(css, /body\.live \.fund-balance \{ font-size: 32px; font-weight: 800;/);
+  assert.match(css, /body\.live \.fund-balance \{ font-size: 34px; font-weight: 800;/);
   assert.match(css, /body\.live h1, body\.live h2, body\.live h3 \{ letter-spacing: -0\.02em; font-weight: 700; \}/);
   assert.match(css, /font-size: 15px; font-weight: 600; \}\s*body\.live #view-app \.btn-primary/);
   // No other body.live 800 weights remain.

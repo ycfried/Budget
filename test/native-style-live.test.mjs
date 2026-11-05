@@ -15,9 +15,9 @@ const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(readFileSync(new URL('../manifest-live.json', import.meta.url), 'utf8'));
 
-test('pins: styles v38, live.js v48, matching live.html', () => {
-  assert.match(html, /styles\.css\?v=38/);
-  assert.match(html, /live\.js\?v=48/);
+test('pins: styles v39, live.js v49, matching live.html', () => {
+  assert.match(html, /styles\.css\?v=39/);
+  assert.match(html, /live\.js\?v=49/);
 });
 
 test('combined hero: Available + progress + Spent/% + allowance + purchases, in one card', () => {
