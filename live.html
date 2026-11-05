@@ -7,13 +7,15 @@
 <title>OnBudget — Live</title>
 <link rel="manifest" href="manifest-live.json">
 <link rel="icon" href="icon-192.png" type="image/png">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=35">
+<link rel="stylesheet" href="styles.css?v=36">
 </head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
   <div class="topbar-left"></div>
-  <div class="topbar-title"><strong>OnBudget</strong></div>
+  <div class="topbar-title"><strong aria-label="OnBudget"><img class="wordmark-logo" src="icon-192.png" alt="" aria-hidden="true">nBudget</strong></div>
   <div class="topbar-right">
     <button id="profileBtn" class="profile-btn hidden" type="button" aria-label="Open profile menu" aria-expanded="false">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
@@ -38,7 +40,7 @@
        is known; a signed-out visit goes loading -> sign-in, with no
        app-shell flash in between. -->
   <section id="view-loading" class="card loading-screen" aria-label="Loading">
-    <div class="loading-brand" aria-hidden="true"><span class="loading-brand-ring"></span><span class="loading-brand-s">S</span></div>
+    <div class="loading-brand" aria-hidden="true"><span class="loading-brand-ring"></span><img class="loading-brand-logo" src="icon-192.png" alt="" aria-hidden="true"></div>
     <div class="loading-mark">OnBudget</div>
     <p class="muted">Loading your budget…</p>
   </section>
@@ -111,13 +113,18 @@
       <p class="muted">Pending transactions are included and marked.</p>
       <div class="hero-progress" aria-hidden="true"><div id="weekProgressBar"></div></div>
       <p class="muted small" id="weekProgressText"></p>
+      <div class="hero-spent-line"><span id="heroSpentLine">—</span><span id="heroUsedPct">—</span></div>
+      <div class="hero-stats">
+        <div class="hero-stat"><span class="hero-stat-label">Weekly allowance</span><span class="hero-stat-value" id="heroAllowance">—</span></div>
+        <div class="hero-stat"><span class="hero-stat-label">Purchases</span><span class="hero-stat-value" id="heroPurchaseCount">—</span></div>
+      </div>
       <div id="weekBreakdown" class="hidden"></div>
       <p id="weekError" class="result error hidden"></p>
       <p id="weekEmptyHint" class="muted small hidden">No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account in Settings.</p>
     </div>
     <div class="grid" id="section-stats">
-      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><div class="kicker">Charity</div><div class="num" id="homeCharityPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
-      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
+      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><span class="pot-chevron" aria-hidden="true">›</span><div class="kicker">Charity</div><div class="num" id="homeCharityPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
+      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><span class="pot-chevron" aria-hidden="true">›</span><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
     </div>
 
     <div class="card" id="section-recent">
@@ -127,9 +134,6 @@
       <p id="homeSyncMsg" class="result"></p>
     </div>
 
-    <div class="card history-row-card" id="section-history-row">
-      <div class="history-row" data-view="activity" role="button" tabindex="0" aria-label="Open History"><strong>History</strong><span aria-hidden="true">›</span></div>
-    </div>
 
     <div class="card" id="section-manual">
       <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
@@ -200,7 +204,7 @@
       </div>
       <div id="txActiveFilters" class="tx-active-filters" aria-label="Active filters"></div>
       <div id="txFiltersSheet" class="tx-sheet hidden" role="dialog" aria-modal="true" aria-label="Transaction filters">
-        <div class="tx-sheet-card">
+        <div class="tx-sheet-card"><span class="sheet-handle" aria-hidden="true"></span>
           <h3>Filters</h3>
           <div class="tx-sheet-group">
             <label>Status
@@ -259,10 +263,10 @@
         </div>
       </div>
       <p id="txCount" class="muted small tx-count"></p>
+      <p class="trash-link-row"><button id="txTrashBtn" class="quiet-link trash-link" type="button" style="display:none" aria-label="Open trash bin">Trash<span id="txTrashCount"></span></button></p>
+      <div id="txTrashList" class="hidden"><h3>Trash</h3><p class="muted small">Bank rows you deleted live here. The admin can bring them back.</p><ul id="trashList" class="plain"></ul><button id="txTrashCloseBtn" class="btn btn-tertiary" type="button" aria-label="Close trash bin">Close trash</button></div>
       <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
       <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
-      <div class="trash-bin-row"><button id="txTrashBtn" class="btn btn-tertiary trash-bin-btn" type="button" aria-label="Open trash bin">🗑 <span>Trash</span></button></div>
-      <div id="txTrashList" class="hidden"><h3>Trash</h3><p class="muted small">Bank rows you deleted live here. The admin can bring them back.</p><ul id="trashList" class="plain"></ul><button id="txTrashCloseBtn" class="btn btn-tertiary" type="button" aria-label="Close trash bin">Close trash</button></div>
     </div>
 
     <!-- Add popup (owner design Nov 3, 9:49 PM): the Transactions
@@ -272,7 +276,7 @@
          moved, not copied, so its handlers, validation, draft, and
          CSV preview stay exactly as they are). -->
     <div id="addPopupOverlay" class="add-popup-overlay hidden" role="dialog" aria-modal="true" aria-label="Add">
-      <div class="add-popup-card">
+      <div class="add-popup-card"><span class="sheet-handle" aria-hidden="true"></span>
         <div class="card" id="addOptionsCard">
           <div class="add-options-list">
             <button class="btn add-option-btn" id="addOptionPurchaseBtn" type="button" aria-label="Add a purchase by hand"><span class="add-option-title">Purchase</span><span class="muted small">Add a transaction by hand</span></button>
@@ -482,8 +486,8 @@
       </details>
     </div>
 
-    <div class="card" id="section-history-filter">
-      <h2>History</h2>
+    <div class="card past-weeks-section" id="section-history-filter">
+      <h2>Past weeks</h2>
       <div class="form-row-2">
         <label>From
           <input id="historyFromInput" type="date" aria-label="From">
@@ -520,7 +524,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=45"></script>
+<script type="module" src="live.js?v=46"></script>
 <script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.

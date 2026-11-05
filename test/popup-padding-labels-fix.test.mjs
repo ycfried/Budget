@@ -55,7 +55,11 @@ test('scroll lock is called on every overlay open and close path', () => {
 });
 
 test('overlay cards scroll internally and do not chain-scroll the page', () => {
-  assert.match(css, /#sheetOverlay \.sheet \{[^}]*max-height: calc\(100dvh - 32px\); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;/, 'generic sheet scrolls internally');
+  // Native-style-live: the appended bottom-sheet rule caps the sheet
+  // at 88dvh; the original rule's internal-scroll properties still
+  // apply (later rules only override the properties they set).
+  assert.match(css, /#sheetOverlay \.sheet \{[^}]*max-height: 88dvh/, 'generic bottom sheet height capped');
+  assert.match(css, /#sheetOverlay \.sheet \{[^}]*overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;/, 'generic sheet scrolls internally');
   assert.match(css, /body\.live \.tx-sheet-card \{[^}]*overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;/, 'filters card scrolls internally');
   assert.match(css, /body\.live \.add-popup-overlay \{[^}]*overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;/, 'add popup backdrop contains scroll');
 });
@@ -122,11 +126,11 @@ test('bank card heading and sentence are the short versions, nothing else retitl
   assert.ok(html.includes('<h2>Profile</h2>'), 'Profile heading untouched');
   // Send-live-bundle: the separate History card is gone; History
   // is one tappable row on Home instead.
-  assert.ok(html.includes('id="section-history-row"'), 'History row present');
+  assert.equal(html.includes('id="section-history-row"'), false, 'Home History row removed (Past weeks live inside Transactions)');
   assert.equal(html.includes('id="section-history-link"'), false, 'separate History card gone');
 });
 
-test('version pins: styles v35, live.js v45', () => {
-  assert.match(html, /styles\.css\?v=35/);
-  assert.match(html, /live\.js\?v=45/);
+test('version pins: styles v36, live.js v46', () => {
+  assert.match(html, /styles\.css\?v=36/);
+  assert.match(html, /live\.js\?v=46/);
 });

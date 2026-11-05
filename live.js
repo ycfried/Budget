@@ -26,12 +26,17 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, resolveRestoredView, resolveRestoredSubView, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, resolveRestoredView, resolveRestoredSubView, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Native-style-live: display-only merchant/date wording (stored
+// values unchanged). Today/Yesterday use the NY date, matching the
+// Sunday–Saturday week.
+const displayMerchant = (name) => titleCaseMerchant(name);
+const displayDay = (dateStr) => relativeDayLabel(dateStr, nyTodayString()) ?? fmtShort(dateStr);
 const dollarsToCents = (s) => Math.round(Number(s) * 100);
 // Strict money-input parsing (S4): empty, blank, or non-numeric input is
 // null — never 0. Callers reject null instead of sending 0 for an empty
@@ -377,6 +382,7 @@ async function refresh() {
     if (bar) { bar.style.width = '0%'; bar.parentElement?.classList.remove('over'); }
     const pt = document.getElementById('weekProgressText');
     if (pt) pt.textContent = '';
+    for (const id of ['heroSpentLine', 'heroUsedPct', 'heroAllowance', 'heroPurchaseCount']) { const el = document.getElementById(id); if (el) el.textContent = '—'; }
     currentWeekData = null;
   };
   // Delta3: week figures load through this helper so a week-close that
@@ -453,6 +459,9 @@ async function refresh() {
       // refund status are sheet rows instead (see weeklyRows).
       const pt = document.getElementById('weekProgressText');
       if (pt) pt.textContent = '';
+      const heroSpent = document.getElementById('heroSpentLine'); if (heroSpent) heroSpent.textContent = `${formatCents(charges)} spent`;
+      const heroUsed = document.getElementById('heroUsedPct'); if (heroUsed) heroUsed.textContent = capacity > 0 ? `${Math.round(pct)}% used` : (charges > 0 ? 'Over budget' : '0% used');
+      const heroAllow = document.getElementById('heroAllowance'); if (heroAllow) heroAllow.textContent = formatCents(baseAllowanceCents ?? (baseAvailable + carried));
       lastRefreshAt = Date.now();
       const allowInput = document.getElementById('baseAllowanceInput');
       if (allowInput && document.activeElement !== allowInput && baseAllowanceCents !== null) allowInput.value = (baseAllowanceCents / 100).toFixed(2);
@@ -592,6 +601,7 @@ async function refresh() {
   // on a failed load (Nov 3 fix round: it used to flash on every
   // fresh open even in a household with data).
   if (emptyHintEl) emptyHintEl.classList.toggle('hidden', !(txLoaded && !txReadFailed && thisWeekTxns.length === 0));
+  const heroCount = document.getElementById('heroPurchaseCount'); if (heroCount && !txReadFailed) heroCount.textContent = String(thisWeekTxns.length);
   const countEl = $('txCount');
   if (countEl) {
     // Charity gifts are not spending: leave them out of the list
@@ -657,7 +667,7 @@ async function refresh() {
   const emptyHint = searchOrFilterActive
     ? 'No matching transactions. Try a different search, or clear the search and filters.'
     : trashRowCount > 0 && shown.length === 0
-    ? 'No transactions here — deleted bank rows live in the Trash below.'
+    ? 'No transactions here — deleted bank rows live in the Trash link above the list.'
     : txFilter === 'refunds'
     ? 'No refunds in this list yet.'
     : txFilter === 'charity'
@@ -693,13 +703,13 @@ async function refresh() {
         // amount, date, and status, so repeated merchants never share
         // an identical row name; the chevron marks the
         // row as a disclosure (it rotates when the detail opens).
-        const rowLabel = `${t.merchant} ${formatCents(t.amount_cents)} ${fmtShort(t.date)} ${stateWord(t, excluded)} — show detail`;
-        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="${esc(rowLabel)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span><span class="tx-chevron" aria-hidden="true"></span></div>
+        const rowLabel = `${displayMerchant(t.merchant)} ${formatCents(t.amount_cents)} ${displayDay(t.date)} ${stateWord(t, excluded)} — show detail`;
+        return `<li class="tx-row ${excluded ? 'tx-excluded' : ''}"><div class="tx-head" data-tx-head="${t.id}" role="button" tabindex="0" aria-label="${esc(rowLabel)}"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(displayMerchant(t.merchant))}">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${neg}">${formatCents(t.amount_cents)}</span><span class="tx-chevron" aria-hidden="true"></span></div>
         <div class="tx-line2">${statePill(t, excluded)}
         <span class="pill">${esc(sourceLabel(t.source))}</span>
-        <span class="muted small tx-meta">${fmtShort(t.date)} · ${cardLabel}</span></div></div>
+        <span class="muted small tx-meta">${displayDay(t.date)} · ${cardLabel}</span></div></div>
         <div class="tx-detail hidden" id="tx-detail-${t.id}">
-          <p class="small"><strong>${esc(t.merchant)}</strong> — ${formatCents(t.amount_cents)} (${kindLabel})</p>
+          <p class="small"><strong>${esc(displayMerchant(t.merchant))}</strong> — ${formatCents(t.amount_cents)} (${kindLabel})</p>
           <p class="small muted">${t.kind === 'charity' ? 'Outside weekly spending.' : excluded ? 'Kept for the record; does not count toward any week.' : t.state === 'reversed' ? 'Reversed; does not count.' : t.kind === 'payment' ? 'Card payment; does not count toward weekly spending.' : t.kind === 'cashback' ? 'Cash-back credit; does not count toward weekly spending.' : t.kind === 'transfer' ? 'Transfer; does not count toward weekly spending.' : 'Counts toward its week unless excluded.'}</p>
           <div class="tx-detail-rows">
             <div><span>Week</span><span>${esc(weekRangeOf(t.date))} (Sun–Sat)</span></div>
@@ -734,9 +744,9 @@ async function refresh() {
       : recent.length
       ? recent.map((t) => {
           const excluded = t.excluded === true || t.state === 'excluded';
-          return `<li class="tx-row"><div class="tx-head" data-view="purchases" data-recent-tx="${t.id}" role="button" tabindex="0" aria-label="See ${esc(t.merchant)} in Transactions"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(t.merchant)}">${esc(t.merchant)}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
+          return `<li class="tx-row"><div class="tx-head" data-view="purchases" data-recent-tx="${t.id}" role="button" tabindex="0" aria-label="See ${esc(t.merchant)} in Transactions"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name" title="${esc(displayMerchant(t.merchant))}">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
           <div class="tx-line2">${statePill(t, excluded)}
-          <span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span></div></div></li>`;
+          <span class="muted small tx-meta">${displayDay(t.date)} · ••${esc(t.card_suffix)}</span></div></div></li>`;
         }).join('')
       : '<li class="muted small">No transactions yet.</li>';
     // Rows added after load need the same tab-switch handler as the nav.
@@ -831,7 +841,8 @@ async function refresh() {
   }));
   const trashBtn = $('txTrashBtn');
   if (trashBtn) {
-    trashBtn.style.display = (household && household.role === 'admin') ? '' : 'none';
+    const trashCountEl = $('txTrashCount'); if (trashCountEl) trashCountEl.textContent = trashRowCount ? ` (${trashRowCount})` : '';
+    trashBtn.style.display = (household && household.role === 'admin' && trashRowCount > 0) ? '' : 'none';
     if (!trashBtn.dataset.bound) {
       trashBtn.dataset.bound = '1';
       trashBtn.addEventListener('click', () => {
@@ -855,8 +866,8 @@ async function refresh() {
   if (trashEl) {
     const trash = all.filter((t) => t.excluded === true || t.state === 'excluded');
     trashEl.innerHTML = trash.length
-      ? trash.map((t) => `<li class="tx-row"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name">${esc(t.merchant)}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
-        <div class="tx-line2"><span class="muted small tx-meta">${fmtShort(t.date)} · ••${esc(t.card_suffix)}</span></div>
+      ? trash.map((t) => `<li class="tx-row"><div class="tx-line1">${iconForMerchant(t.merchant)}<strong class="tx-name">${esc(displayMerchant(t.merchant))}</strong><span class="tx-amount${t.amount_cents < 0 ? ' negative' : ''}">${formatCents(t.amount_cents)}</span></div>
+        <div class="tx-line2"><span class="muted small tx-meta">${displayDay(t.date)} · ••${esc(t.card_suffix)}</span></div>
         <div class="btn-row"><button class="btn btn-small btn-primary" data-trash-restore="${t.id}" type="button" aria-label="Restore ${esc(t.merchant)} from trash">Restore</button></div></li>`).join('')
       : '<li class="muted small">Trash is empty.</li>';
     trashEl.querySelectorAll('[data-trash-restore]').forEach((b) => b.addEventListener('click', async () => {
@@ -2194,8 +2205,8 @@ async function autoSyncIfWebhookPending() {
 // only one section group is shown at a time, so the app is never
 // one long scrollable page. Choice persists across visits.
 const VIEWS = {
-  week: ['section-week', 'section-stats', 'section-hint', 'section-recent', 'section-history-row'],
-  purchases: ['section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
+  week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
+  purchases: ['section-manual', 'section-csv', 'section-charity-gift', 'section-transactions', 'section-history-filter', 'section-week-history', 'section-activity'],
   money: ['section-fund-balances', 'section-fund-more', 'section-fund-activity-more', 'section-fund-review-more', 'section-savings-more', 'section-fund-add', 'section-charity-income', 'section-fund-use', 'section-fund-ask'],
   // R2: Settings is reached from the profile menu, not a nav tab.
   // Connections (bank + email), Budget (allowance + temp increase)
@@ -2486,7 +2497,6 @@ document.getElementById('settingsShareIdBtn')?.addEventListener('click', shareIn
 document.getElementById('settingsPasswordBtn')?.addEventListener('click', changePasswordFlow);
 document.getElementById('settingsDeleteBtn')?.addEventListener('click', deleteAccountFlow);
 document.getElementById('settingsBackBtn')?.addEventListener('click', () => showView(previousView || 'week'));
-document.querySelector('.history-row')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showView('activity', { clearMessages: true }); } });
 // R5 + R6: Home cards — tap a card for a focused titled bottom
 // sheet over the stationary Home screen. Opening or closing a sheet
 // writes nothing and triggers no sync; it only reads the numbers
@@ -2756,10 +2766,9 @@ async function openTxActionsSheet(row) {
   document.getElementById('sheetOverlay')?.remove();
   const overlay = document.createElement('div');
   overlay.id = 'sheetOverlay';
-  overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Actions for ${esc(row.merchant)}">
-    <h3>Actions</h3><p class="muted small">${esc(row.merchant)} — ${formatCents(row.amount_cents)}</p>
-    ${actions.map((a) => `<button class="tx-action-row" data-tx-action="${a.id}" type="button"><span><strong>${a.label}</strong><br><span class="muted small">${esc(a.sub)}</span></span><span aria-hidden="true">›</span></button>`).join('')}
-    <div class="sheet-btns"><button class="btn btn-tertiary" type="button" id="txActionsCancel">Cancel</button></div></div>`;
+  overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Actions for ${esc(displayMerchant(row.merchant))}"><span class="sheet-handle" aria-hidden="true"></span>
+    <div class="sheet-top"><button class="sheet-top-cancel" type="button" id="txActionsCancel">Cancel</button><h3>Actions</h3><span class="sheet-top-spacer"></span></div><p class="muted small">${esc(displayMerchant(row.merchant))} — ${formatCents(row.amount_cents)}</p>
+    ${actions.map((a) => `<button class="tx-action-row" data-tx-action="${a.id}" type="button"><span><strong>${a.label}</strong><br><span class="muted small">${esc(a.sub)}</span></span><span aria-hidden="true">›</span></button>`).join('')}</div>`;
   document.body.appendChild(overlay);
   syncScrollLock();
   const close = () => { document.removeEventListener('keydown', escHandler); overlay.remove(); syncScrollLock(); };
@@ -2881,11 +2890,10 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     // its own treatment (primary / pale / grey) and returns its
     // result; Close is quiet so it cannot read as a money action.
     const actionsHtml = actions ? actions.map((a) => `<button class="${esc(a.btnClass)}" type="button" data-sheet-action="${esc(a.result)}">${esc(a.label)}</button>`).join('') : '';
-    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-      <h3>${esc(title)}</h3>${rowsHtml}${disclosureHtml}${message ? `<p>${esc(message)}</p>` : ''}
+    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><span class="sheet-handle" aria-hidden="true"></span>
+      <div class="sheet-top">${cancelLabel ? `<button class="sheet-top-cancel" type="button" id="sheetCancelTop">${esc(cancelLabel)}</button>` : '<span class="sheet-top-spacer"></span>'}<h3>${esc(title)}</h3><span class="sheet-top-spacer"></span></div>${rowsHtml}${disclosureHtml}${message ? `<p>${esc(message)}</p>` : ''}
       ${inputHtml}
       <div class="sheet-btns">
-        ${cancelLabel ? `<button class="btn${extraAction ? '' : ' btn-tertiary'}" type="button" id="sheetCancel">${esc(cancelLabel)}</button>` : ''}
         ${extraHtml}
         ${actionsHtml}
         <button class="btn${actions ? ' btn-quiet' : extraAction ? ' btn-tertiary' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
@@ -2944,7 +2952,7 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     };
     document.addEventListener('keydown', sheetKeyHandler);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) done(inputLabel ? null : false); });
-    overlay.querySelector('#sheetCancel')?.addEventListener('click', () => done(inputLabel ? null : false));
+    overlay.querySelector('#sheetCancelTop')?.addEventListener('click', () => done(inputLabel ? null : false));
     overlay.querySelector('#sheetExtra')?.addEventListener('click', () => done(extraAction.result ?? 'extra'));
     overlay.querySelectorAll('[data-sheet-action]').forEach((b) => b.addEventListener('click', () => done(b.dataset.sheetAction)));
     overlay.querySelector('#sheetConfirm').addEventListener('click', () => {
