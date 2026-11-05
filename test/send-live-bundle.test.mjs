@@ -20,10 +20,9 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v43, live.js v53', () => {
-  assert.match(html, /styles\.css\?v=43/);
-  assert.match(html, /live\.js\?v=53/);});
-test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
+test('version pins: styles v44, live.js v54', () => {
+  assert.match(html, /styles\.css\?v=44/);
+  assert.match(html, /live\.js\?v=54/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
   const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = ['), sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')));
   assert.deepEqual([...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]), ['Allowance', 'Spent', 'Balance']);
   assert.match(sheetFn, /weeklyAllowanceCents = \(w\.baseAvailableCents \?\? w\.baseRoomCents \?\? 0\) \+ \(w\.tempCents \?\? 0\)/);
@@ -116,8 +115,13 @@ test('8. Unified sentence on Bank and Email; Email heading Title Case, long para
   for (const gone of ['never your whole mailbox', 'stay provisional until the bank confirms them', 'does not change any existing email setup', 'The app can see transactions.', 'Email alerts (read-only)']) {
     assert.equal(html.includes(gone), false, `removed sentence/fragment still present: ${gone}`);
   }
-  // Status lines are not headings and are untouched.
-  assert.ok(js.includes("Connected (read-only)"));
+  // Email status line (connected-accounts-rework, owner Nov 4, 2026):
+  // just "Connected" — the "(read-only)" is gone because the card
+  // already says "Look only" above it. The "Needs reconnect" error
+  // text is unchanged.
+  assert.equal(js.includes('Connected (read-only)'), false);
+  assert.ok(js.includes(": 'Connected';"));
+  assert.ok(js.includes('Needs reconnect — access was revoked or expired.'));
 });
 
 test('9. Budget card: heading Budget with Admin pill, sentence kept', () => {

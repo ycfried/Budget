@@ -101,10 +101,17 @@ test('held button removed; held amount folds into the fund sheet Pending', () =>
   assert.doesNotMatch(fundRows, /\['Held for review',/);
 });
 
-test('bank Disconnect identifies the exact connection by masked accounts', () => {
-  assert.match(js, /const connMasks = acctRows\.filter/);
-  assert.match(js, /Disconnect \$\{connId\}/);
-  assert.match(js, /stop syncing this connection only/);
+test('bank Disconnect is per-account, not per-connection', () => {
+  // Connected-accounts-rework (owner, Nov 4, 2026): one row per
+  // account, each with its own Disconnect that names THAT account
+  // (name + mask) and says this account only. The old whole-item
+  // Disconnect (connMasks / plaid-disconnect per item) is gone from
+  // the list.
+  assert.equal(js.includes('const connMasks = acctRows.filter'), false);
+  assert.match(js, /plaid-account-disconnect/);
+  assert.match(js, /Disconnect \$\{acctId\}/);
+  assert.match(js, /This stops syncing this account only/);
+  assert.match(js, /Other accounts on the same bank connection keep syncing/);
 });
 
 // --- Sign-in / profile / password ---------------------------------------
