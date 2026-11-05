@@ -78,9 +78,15 @@ Deno.serve(async (req) => {
     const env = Deno.env.get('PLAID_ENV') ?? 'sandbox';
     if (!clientId || !secret || !tokenKey) return json({ error: 'plaid not configured' }, 503);
 
-    const { data: items } = await supabaseAdmin.from('plaid_items')
-      .select('plaid_item_id, institution_name')
+    const { data: allItems } = await supabaseAdmin.from('plaid_items')
+      .select('plaid_item_id, institution_name, status')
       .eq('household_id', householdId);
+    // Deep audit Nov 5: disconnected items still carry ciphertext, so
+    // /item/webhook/update fails for them and results.every(ok) is
+    // false forever — auto_sync_enabled is never stored and the
+    // switch stays OFF even though active items were registered.
+    // plaid-sync already filters status !== 'disconnected'; do the same.
+    const items = (allItems ?? []).filter((i) => (i.status ?? 'active') !== 'disconnected');
     const webhook = enabled ? WEBHOOK_URL : '';
     const results = [];
     for (const item of items ?? []) {

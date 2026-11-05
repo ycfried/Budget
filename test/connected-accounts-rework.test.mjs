@@ -16,9 +16,9 @@ const itemDisconnect = readFileSync(new URL('../supabase/functions/plaid-disconn
 const config = readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8');
 const acctSql = readFileSync(new URL('../supabase/plaid-account-disconnect.sql', import.meta.url), 'utf8');
 
-test('pins bumped to v45/v55', () => {
-  assert.match(html, /styles\.css\?v=45/);
-  assert.match(html, /live\.js\?v=55/);
+test('pins bumped to v46/v56', () => {
+  assert.match(html, /styles\.css\?v=46/);
+  assert.match(html, /live\.js\?v=56/);
 });
 
 test('Previously connected is gone from the UI, no rows deleted', () => {
@@ -89,10 +89,10 @@ test('plaid-account-disconnect: admin-only, last-account item removal, idempoten
   assert.match(config, /\[functions\.plaid-account-disconnect\]\nverify_jwt = true/);
 });
 
-test('SQL migration: one nullable column, nothing else, not applied by the branch', () => {
+test('SQL migration: one nullable column, nothing else, applied live Nov 4 (PR #45)', () => {
   assert.match(acctSql, /alter table plaid_accounts\s+add column if not exists disconnected_at timestamptz/i);
   assert.doesNotMatch(acctSql, /update plaid_accounts|delete from|drop/i);
-  assert.match(acctSql, /APPLY: owner approval required/);
+  assert.match(acctSql, /APPLIED live Nov 4, 2026 \(PR #45/);
 });
 
 test('plaid-sync skips disconnected accounts and keeps the reconnect path open', () => {

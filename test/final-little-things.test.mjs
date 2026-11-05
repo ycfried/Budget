@@ -78,7 +78,7 @@ test('icons: Google favicon first, brand monogram fallback, bank icon per transa
 });
 
 // Pins bumped consistently with the live-file changes.
-test('pins bumped to v45/v55', () => {
-  assert.match(html, /styles\.css\?v=45/);
-  assert.match(html, /live\.js\?v=55/);
+test('pins bumped to v46/v56', () => {
+  assert.match(html, /styles\.css\?v=46/);
+  assert.match(html, /live\.js\?v=56/);
 });

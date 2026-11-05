@@ -1,6 +1,7 @@
 -- Household Budget — Automatic Sync toggle state (Nov 4, 2026).
--- NOT APPLIED — apply in the Supabase SQL editor only after the owner
--- approves the settings-bank-buttons push. The edge function
+-- APPLIED live Nov 4, 2026 (PR #44, verified via information_schema).
+-- Re-running is idempotent (add column if not exists) — do not treat
+-- this file as still pending. The edge function
 -- plaid-webhook-register writes this column (service role); the client
 -- only reads it, so no RLS change is needed: the existing
 -- "members read own household" select policy on households already

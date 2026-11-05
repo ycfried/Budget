@@ -6,8 +6,8 @@
 -- plaid-account-disconnect Edge Function, plaid-sync skips that
 -- account's transactions, and past transactions stay untouched.
 --
--- APPLY: owner approval required before running in the Supabase SQL
--- editor. This file is NOT applied by the branch itself.
+-- APPLIED live Nov 4, 2026 (PR #45, verified via information_schema).
+-- Re-running is idempotent (add column if not exists).
 --   * Adds ONE nullable timestamp column; no rows are changed, no
 --     rows are deleted, no grants or RLS policies are changed.
 --   * The column is written ONLY by the service-role Edge Function

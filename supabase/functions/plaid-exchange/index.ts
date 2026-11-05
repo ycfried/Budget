@@ -76,10 +76,9 @@ Deno.serve(async (req) => {
     const data = await res.json();
     if (!res.ok) return json({ error: 'plaid exchange failed' }, 502);
     const encrypted = await encryptToken(tokenKey, data.access_token);
-    // No service-role client here on purpose: the legacy service role
-    // key proved broken in this project (bootstrap-household, Nov 1).
-    // The upsert runs with the caller's own JWT under the
-    // "members insert own plaid items" policy; the ciphertext is
+    // Deep audit Nov 5: the old comment claimed this upsert ran
+    // with the caller's own JWT — it does not. It runs with the
+    // service-role client (supabaseAdmin, above); the ciphertext is
     // useless without PLAID_TOKEN_KEY, which only functions hold.
     const { error: upsertError } = await supabaseAdmin.from('plaid_items').upsert({
       household_id: householdId,

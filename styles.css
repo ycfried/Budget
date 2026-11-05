@@ -664,8 +664,8 @@ body.live .tx-head-row { display: flex; justify-content: space-between; align-it
 body.live .tx-head-row h2 { margin-bottom: 0; }
 /* Filters on the header line (owner, Nov 3, ~10:38 PM): Filters sits
    immediately left of the + button, grouped at the right so the
-   title stays left. Filters keeps its secondary pale-blue treatment
-   and + keeps primary blue — adjacent buttons never share a color.
+   title stays left. Filters is grey tertiary (btn-tertiary) and + keeps primary
+   blue — adjacent buttons never share a color.
    The search input now spans its row alone. */
 body.live .tx-head-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; flex: 0 0 auto; }
 body.live .tx-head-actions #txFiltersToggle { flex: 0 0 auto; }
@@ -980,6 +980,9 @@ body.live .profile-email { font-size: 14px; overflow-wrap: anywhere; }
 body.live .tx-sheet-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 body.live .tx-sheet-pair label { min-width: 0; }
 body.live .tx-sheet-pair input { width: 100%; box-sizing: border-box; min-width: 0; }
+@media (max-width: 360px) {
+  body.live .tx-sheet-pair { grid-template-columns: 1fr; }
+}
 /* Add popup (owner design Nov 3, 9:49 PM): the Transactions header's
    blue + button opens this overlay. Options are one full-width row
    each; a chosen form's existing section is moved into the slot, so

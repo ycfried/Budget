@@ -354,8 +354,11 @@ async function loadMembership() {
   // household screen (the Nov 1 stuck-screen bug was exactly this: a
   // broken read policy made this return nothing with no visible error).
   if (error) {
-    const el = $('householdMsg');
-    if (el) el.textContent = `Could not load your household membership: ${error.message}`;
+    // Deep audit Nov 5: was a direct textContent write, bypassing
+    // setResultMsg, so this error rendered in the blue info box
+    // instead of soft red. setResultMsg is the only way .result
+    // text is set elsewhere in this file.
+    setResultMsg('householdMsg', `Could not load your household membership: ${error.message}`, true);
     console.warn('loadMembership failed:', error.message);
   }
   return data;
@@ -2469,9 +2472,11 @@ async function autoSyncIfWebhookPending() {
 
 // Section views: the nav tabs are real screens, not jump links —
 // only one section group is shown at a time, so the app is never
-// one long scrollable page. Choice persists across visits.
+// one long scrollable page. Home-on-load (Nov 4): boot always opens
+// Home and never reads the saved view; hb-view is still written
+// by in-app navigation but is inert on boot.
 const VIEWS = {
-  week: ['section-week', 'section-stats', 'section-hint', 'section-recent'],
+  week: ['section-week', 'section-stats', 'section-recent'],
   purchases: ['section-manual', 'section-csv', 'section-charity-gift', 'section-transactions'],
   // Merged-audit B3: Previous Weeks and Activity are separate pages linked from Transactions, no new tab. Purchases stays the current list only.
   prevweeks: ['section-prevweeks-head', 'section-history-filter', 'section-week-history'],
@@ -3157,7 +3162,7 @@ async function doTxExtraFund(row) {
   await refresh();
 }
 async function doTxReclassify(row) {
-  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
   if (newKind === null) return;
   const reason = await showSheet({ title: 'Reclassify Transaction', message: 'Why reclassify this transaction?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
   if (reason === null) return;
