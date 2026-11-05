@@ -136,10 +136,10 @@ test('email status is just Connected, error text unchanged', () => {
   assert.match(js, /Needs reconnect — access was revoked or expired\./);
 });
 
-test('bank buttons and Look only sentence untouched', () => {
+test('bank buttons (now Connect New Account / Sync Transactions / Automatic Sync switch) and Look only sentence untouched', () => {
   const bank = html.slice(html.indexOf('id="section-bank"'), html.indexOf('id="section-email"'));
-  assert.ok(bank.includes('Connect a bank account'));
-  assert.ok(bank.includes('Sync bank transactions now'));
-  assert.ok(bank.includes('Enable automatic sync'));
+  assert.ok(bank.includes('Connect New Account'));
+  assert.ok(bank.includes('Sync Transactions'));
+  assert.ok(bank.includes('Automatic Sync'));
   assert.ok(bank.includes('Look only — it never moves, sends, or changes anything.'));
 });
