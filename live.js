@@ -1837,12 +1837,12 @@ $('forgotPasswordBtn')?.addEventListener('click', async () => {
     if (typed === null) return;
     email = typed.trim();
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { $('authMsg').textContent = 'Enter a valid email address.'; return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setResultMsg('authMsg', 'Enter a valid email address.', true); return; }
   const base = window.location.href.replace(/live\.html.*$/, '');
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${base}reset.html` });
   if (error) console.warn('password reset request failed:', error.message);
   // Generic wording either way: do not reveal whether an account exists.
-  $('authMsg').textContent = 'If an account exists for that email, a password-reset link was sent to it.';
+  setResultMsg('authMsg', 'If an account exists for that email, a password-reset link was sent to it.', false);
 });
 $('signInBtn').addEventListener('click', async () => {
   // Delta3: the sync-button busy pattern, extended to sign-in —
@@ -1862,8 +1862,8 @@ $('signInBtn').addEventListener('click', async () => {
   // invalid-credentials error, so the wording deliberately does
   // NOT claim which field is wrong — "Incorrect email or
   // password" is the safe form of the owner's request.
-  if (error) { $('authMsg').textContent = ''; showToast('Incorrect email or password', true); }
-  else $('authMsg').textContent = 'Signed in.';
+  if (error) { setResultMsg('authMsg', '', false); showToast('Incorrect email or password', true); }
+  else setResultMsg('authMsg', 'Signed in.', false);
   if (!error) await show('loading');
   await boot();
   if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
@@ -1881,12 +1881,12 @@ $('csvFile')?.addEventListener('change', async (e) => {
   const preview = $('csvPreview'); const confirmBtn = $('csvConfirmBtn'); const msg = $('csvMsg');
   pendingCsvRows = [];
   if (confirmBtn) confirmBtn.disabled = true;
-  if (msg) msg.textContent = '';
+  if (msg) setResultMsg('csvMsg', '', false);
   // Loud failure (Nov 2 import bug): the old handler died silently when
   // the picker handed over no file or an unreadable file, leaving the
   // user with a file name, no preview, and a disabled button. Every
   // failure path now says so on screen.
-  if (!file) { if (preview) preview.innerHTML = ''; if (msg) msg.textContent = 'No file reached the app from the picker. Try saving the file to Files first, then picking it from Files.'; return; }
+  if (!file) { if (preview) preview.innerHTML = ''; if (msg) setResultMsg('csvMsg', 'No file reached the app from the picker. Try saving the file to Files first, then picking it from Files.', true); return; }
   try {
   const text = await file.text();
   const parsed = parseCsvLive(text);
@@ -1909,21 +1909,21 @@ $('csvFile')?.addEventListener('change', async (e) => {
   if (preview) preview.innerHTML = `<p class="muted small">${newCount} new, ${dupes} duplicate(s) skipped, ${parsed.errors.length} unparseable row(s).</p>`
     + (parsed.errors.length ? `<p class="muted small">${parsed.errors.map((er) => esc(er)).join('<br>')}</p>` : '')
     + `<ul class="plain">${previewRows.map((r, i) => `<li class="csv-row${r.isDupe ? ' csv-dupe' : ''}">${i + 1}. ${esc(r.date)} \u00b7 ${esc(r.merchant)} \u00b7 ${formatCents(r.amountCents)} \u00b7 \u2022\u2022${esc(r.suffix)} \u2014 ${r.isDupe ? 'Duplicate, will be skipped' : 'New'}</li>`).join('')}</ul>`;
-  if (msg) msg.textContent = '';
+  if (msg) setResultMsg('csvMsg', '', false);
   if (confirmBtn) confirmBtn.disabled = newCount === 0;
   } catch (err) {
     console.warn('csv import failed:', err);
     pendingCsvRows = [];
     if (preview) preview.innerHTML = '';
     if (confirmBtn) confirmBtn.disabled = true;
-    if (msg) msg.textContent = `Could not read this file (${err?.message || err}). Try saving the file to Files first, then picking it from Files.`;
+    if (msg) setResultMsg('csvMsg', `Could not read this file (${err?.message || err}). Try saving the file to Files first, then picking it from Files.`, true);
   }
 });
 $('csvConfirmBtn')?.addEventListener('click', async () => {
   // Add popup member gate (owner design Nov 3, 9:49 PM: members get
   // Purchase only): a member reaching the import form any other way
   // is refused here, before any row is inserted.
-  if (!(household && household.role === 'admin')) { showToast('Only the admin can import transactions.'); return; }
+  if (!(household && household.role === 'admin')) { showToast('Only the admin can import transactions.', true); return; }
   const msg = $('csvMsg');
   if (!pendingCsvRows.length) { showToast('Nothing new to import.'); return; }
   // R1 busy control: block repeat taps while the import is inserting.
@@ -1944,7 +1944,7 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
   const fileEl = $('csvFile'); if (fileEl) fileEl.value = '';
   const confirmBtn = $('csvConfirmBtn'); if (confirmBtn) confirmBtn.disabled = true;
   const preview = $('csvPreview'); if (preview) preview.innerHTML = '';
-  if (msg) msg.textContent = '';
+  if (msg) setResultMsg('csvMsg', '', false);
   showToast(`Imported ${added} transaction(s) as provisional.`);
   setAddForm(null);
   await refresh();
@@ -1982,13 +1982,13 @@ $('signUpBtn').addEventListener('click', async () => {
   // Audit-merge fix (audit A finding 6): name the missing field
   // before moving on, instead of a generic failure. The 8-character
   // minimum is surfaced, not changed. No Supabase call happens here.
-  const fail = (msg, field) => { $('authMsg').textContent = msg; if (field) field.focus(); };
+  const fail = (msg, field) => { setResultMsg('authMsg', msg, true); if (field) field.focus(); };
   const signEmail = $('authEmail'); const signPw = $('authPassword');
   if (!signEmail?.value.trim()) { fail('Enter an email address to create an account.', signEmail); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signEmail.value.trim())) { fail('Enter a valid email address.', signEmail); return; }
   if (!signPw?.value) { fail('Enter a password of at least 8 characters.', signPw); return; }
   if (signPw.value.length < 8) { fail('Password must be at least 8 characters.', signPw); return; }
-  $('authNameMsg').textContent = '';
+  setResultMsg('authNameMsg', '', false);
   showAuthPanel('name');
   $('authName')?.focus();
 });
@@ -2001,7 +2001,7 @@ $('authNameCreateBtn').addEventListener('click', async () => {
   // Delta3: same busy pattern as sign-in.
   const btn = $('authNameCreateBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
-  const fail = (msg, field) => { $('authNameMsg').textContent = msg; $('authNameMsg').classList.add('error'); if (field) field.focus(); if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; } };
+  const fail = (msg, field) => { setResultMsg('authNameMsg', msg, true); if (field) field.focus(); if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; } };
   const signEmail = $('authEmail'); const signPw = $('authPassword'); const signName = $('authName');
   // Sign-up name requirement (owner, Nov 3, ~11:22 PM): a new
   // account must set a name, so the profile header has a display
@@ -2014,7 +2014,7 @@ $('authNameCreateBtn').addEventListener('click', async () => {
     options: { data: { full_name: signName.value.trim() } },
   });
   if (error) console.warn('sign-up failed:', error.message);
-  $('authNameMsg').textContent = error ? 'Could not create the account. Try again.' : 'Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.';
+  setResultMsg('authNameMsg', error ? 'Could not create the account. Try again.' : 'Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.', !!error);
   if (!error) await show('loading');
   if (!error) await boot();
   if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
@@ -2044,7 +2044,7 @@ const showHouseholdPanel = (which) => {
   $('householdNamePanel')?.classList.toggle('hidden', which !== 'name');
 };
 $('createHouseholdBtn').addEventListener('click', async () => {
-  $('householdNameMsg').textContent = '';
+  setResultMsg('householdNameMsg', '', false);
   showHouseholdPanel('name');
   $('householdNameInput')?.focus();
 });
@@ -2072,7 +2072,7 @@ $('householdNameCreateBtn').addEventListener('click', async () => {
   // Feedback-bundle (owner, Nov 4): the household name is REQUIRED.
   // A blank name can no longer fall back to the default 'Household'.
   if (!rawName) {
-    $('householdNameMsg').textContent = 'Enter a household name.'; $('householdNameMsg').classList.add('error');
+    setResultMsg('householdNameMsg', 'Enter a household name.', true);
     $('householdNameInput')?.focus();
     if (btn) { btn.disabled = false; btn.textContent = 'Create Household'; }
     return;
@@ -2081,9 +2081,9 @@ $('householdNameCreateBtn').addEventListener('click', async () => {
   const args = { p_name: name };
   const { data, error } = await supabase.rpc('create_household', args);
   if (error) console.warn('create_household failed:', error.message);
-  $('householdNameMsg').textContent = data
+  setResultMsg('householdNameMsg', data
     ? 'Household created. Share the invite code from Settings so the second account can join as member.'
-    : 'Could not create household. Try again.';
+    : 'Could not create household. Try again.', !data);
   // FIX (Nov 1, evening — reproduced by the beta test): do NOT re-read
   // the membership here. boot()'s loadMembership() returned null right
   // after creation (the RPC had just committed), so the app stayed on
@@ -2104,8 +2104,8 @@ $('joinHouseholdBtn').addEventListener('click', async () => {
   const btn = $('joinHouseholdBtn');
   const { data: { user } } = await supabase.auth.getUser();
   const code = $('joinId').value.trim();
-  if (!user) { $('householdMsg').textContent = 'Sign in first.'; return; }
-  if (!code) { $('householdMsg').textContent = 'Enter the invite code from the household owner.'; return; }
+  if (!user) { setResultMsg('householdMsg', 'Sign in first.', true); return; }
+  if (!code) { setResultMsg('householdMsg', 'Enter the invite code from the household owner.', true); return; }
   if (btn) { btn.disabled = true; btn.textContent = 'Joining…'; }
   // Join takes an invite CODE, not a UUID. join_household_by_code returns
   // the household UUID, which the client stores for its own queries but
@@ -2119,8 +2119,8 @@ $('joinHouseholdBtn').addEventListener('click', async () => {
   // Feedback-bundle (owner, Nov 4): a join failure is a RED error
   // pop-up with exactly this text and nothing else — not the old
   // blue inline box, and not the extra clause about Settings.
-  if (error || !data) { $('householdMsg').textContent = ''; showToast('Check the invite code and try again', true); }
-  else $('householdMsg').textContent = 'Joined. Loading shared budget…';
+  if (error || !data) { setResultMsg('householdMsg', '', false); showToast('Check the invite code and try again', true); }
+  else setResultMsg('householdMsg', 'Joined. Loading shared budget…', false);
   if (!error && data) { household = { household_id: data, role: 'member' }; await show('app'); await refresh(); }
   if (btn) { btn.disabled = false; btn.textContent = 'Join As Member'; }
 });
@@ -2284,21 +2284,21 @@ $('registerWebhookBtn')?.addEventListener('click', async () => {
 // the whole page to Google; after consent the callback page links back
 // to the app. This never touches the Apps Script email path.
 $('connectEmailBtn')?.addEventListener('click', async () => {
-  $('emailMsg').textContent = 'Getting a secure email connection…';
+  setResultMsg('emailMsg', 'Getting a secure email connection…', false);
   const out = await callFn('gmail-oauth-start', {});
   if (!out.auth_url) {
-    $('emailMsg').textContent = `Could not start the email connection: ${out.error ?? 'unknown error'}. If it says "not configured," the email connection is not set up on the server yet.`;
+    setResultMsg('emailMsg', `Could not start the email connection: ${out.error ?? 'unknown error'}. If it says "not configured," the email connection is not set up on the server yet.`, true);
     return;
   }
   window.location.href = out.auth_url;
 });
 
 $('pollEmailBtn')?.addEventListener('click', async () => {
-  $('emailMsg').textContent = 'Checking email…';
+  setResultMsg('emailMsg', 'Checking email…', false);
   const out = await callFn('gmail-poll', { household_id: household.household_id });
-  $('emailMsg').textContent = out.error
+  setResultMsg('emailMsg', out.error
     ? `Email check failed: ${out.error}`
-    : `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`;
+    : `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`, !!out.error);
   await refresh();
 });
 
@@ -2348,6 +2348,16 @@ let addFormOpen = null;
 // of popping open inside cards and shoving everything below them down.
 // Function declarations hoist, so handlers below can call these freely.
 let toastTimer = null;
+// Error-red-fix (owner, Nov 4): inline .result boxes use ONE lighter
+// red for failures and plain blue for success/info. setResultMsg is
+// the only way .result text is set in this file, so a failure can
+// never stay blue because a caller forgot the .error class, and a
+// success can never inherit a stale .error from an earlier failure.
+function setResultMsg(id, text, isError) {
+  const el = document.getElementById(id); if (!el) return;
+  el.textContent = text ?? '';
+  el.classList.toggle('error', !!isError && !!text);
+}
 function showToast(text, isError) {
   const t = document.getElementById('toast');
   if (!t) return;
@@ -2386,7 +2396,7 @@ function showView(name, opts = {}) {
     // savingsList, savingsSummary, or the CSV preview, which refresh()
     // only repopulates on a timed refresh.
     for (const id of ['bankMsg', 'homeSyncMsg', 'settingsMsg', 'tempMsg', 'fundAllocateMsg', 'csvMsg']) {
-      const el = document.getElementById(id); if (el) el.textContent = '';
+      const el = document.getElementById(id); if (el) { el.textContent = ''; el.classList.remove('error'); }
     }
     hideToast();
     document.getElementById('weekError')?.classList.add('hidden');
@@ -2562,7 +2572,7 @@ async function deleteAccountFlow() {
   if ($('authEmail')) $('authEmail').value = '';
   if ($('authPassword')) $('authPassword').value = '';
   await show('auth');
-  $('authMsg').textContent = 'Your account was deleted.';
+  setResultMsg('authMsg', 'Your account was deleted.', false);
 }
 async function changePasswordFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');

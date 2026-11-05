@@ -413,13 +413,24 @@ body.live #view-app .app-nav-link.active { color: #2f6bff; border-bottom: 0; }
    It auto-dismisses after 4 seconds; tapping it dismisses it sooner;
    switching tabs clears it. */
 body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 120px; z-index: 40;
+  box-sizing: border-box; max-width: calc(100vw - 32px); overflow-wrap: break-word;
   background: #2f6bff; color: #fff; padding: 12px 14px; border-radius: 12px;
   font-size: 14px; line-height: 1.4; box-shadow: 0 8px 24px rgba(16,24,40,.25); }
-/* Feedback-bundle (owner, Nov 4): error pop-ups are RED, not blue —
+/* Error-red-fix (owner, Nov 4): the error toast went off the screen
+   a little on the sides. The fixed left/right 16px offsets only
+   guarantee the margins if padding is inside the width, so the
+   toast now declares box-sizing: border-box and
+   max-width: calc(100vw - 32px) explicitly — it can never be wider
+   than the viewport minus its 16px margins on both sides. */
+/* Error-red-fix (owner, Nov 4): error pop-ups are RED, not blue —
    an owner override of the Nov 2 "no red toasts ever" rule, for
    genuine errors only. Success/info toasts stay brand blue #2f6bff;
-   only showToast(..., true) gets the red background. */
-body.live .toast.error { background: #dc2626; color: #fff; }
+   only showToast(..., true) gets the red background. The red is
+   the LIGHTER red, the same as inline .result.error boxes and the
+   soft status/badge reds: light red background #fef2f2, dark red
+   text #dc2626, border #fecaca — NOT the old solid #dc2626 bar
+   with white text, which was too heavy and dark. */
+body.live .toast.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; font-weight: 600; }
 /* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
    One gap system: rows use flex gap; standalone buttons use one margin. */
 /* Button levels (Nov 4, pale option B): primary = strong #2f6bff
@@ -847,6 +858,17 @@ body.live .password-row .btn { flex: 0 0 auto; margin: 0; }
    same two-button row (Back + Create household). */
 #view-auth .auth-btn-row, #view-household .auth-btn-row { display: flex; gap: 10px; flex-wrap: nowrap; }
 #view-auth .auth-btn-row .btn, #view-household .auth-btn-row .btn { flex: 1 1 0; min-width: 0; margin: 0; }
+/* Error-red-fix (owner, Nov 4): the Sign In / Create Account row
+   hugged the password field. The eye-centring fix set the password
+   input's bottom margin to 0, removing the standard 14px field gap
+   every other input gets. Restore that gap on the sign-in button
+   row only (margin-top: 14px, the same standard gap). The
+   create-account name step and the household name step share the
+   .auth-btn-row class, but their preceding inputs keep the 14px
+   bottom margin, so they already have this gap and are unchanged.
+   This is a gap inside the card only — it does not stretch the
+   card or move the buttons anywhere. */
+#view-auth #authSigninPanel .auth-btn-row { margin-top: 14px; }
 /* Possible-duplicates comparison cards: vertical, NOT a horizontal
    bank-row. Merchant on its own bold line (full name, wraps at word
    boundaries, never mid-word), labeled Amount/Date/Card/Source rows

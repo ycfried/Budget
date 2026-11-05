@@ -20,9 +20,9 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v39, live.js v49', () => {
-  assert.match(html, /styles\.css\?v=39/);
-  assert.match(html, /live\.js\?v=49/);
+test('version pins: styles v40, live.js v50', () => {
+  assert.match(html, /styles\.css\?v=40/);
+  assert.match(html, /live\.js\?v=50/);
 });
 
 test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
