@@ -59,7 +59,9 @@ test('transaction detail rows: one Actions line, no five-button row', () => {
 });
 
 test('Settings account row: Share only; Change password lives in the Profile card', () => {
-  assert.ok(html.includes('<button id="settingsShareIdBtn" class="btn"'));
+  // Design-questions (owner, Nov 5, item B): Share invite code is
+  // primary blue, not pale.
+  assert.ok(html.includes('<button id="settingsShareIdBtn" class="btn btn-primary"'));
   // Audit-fixes-morning B2: the Account card's duplicate Change
   // password button is deleted; the Profile card's is the only one.
   assert.equal(html.includes('id="settingsPasswordBtn"'), false);

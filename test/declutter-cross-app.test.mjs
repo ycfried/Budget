@@ -12,9 +12,9 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
-test('version pins: styles v46, live.js v56', () => {
-  assert.match(html, /styles\.css\?v=46/);
-  assert.match(html, /live\.js\?v=56/);});// ---- Task 1: removed sentences are gone ----
+test('version pins: styles v47, live.js v57', () => {
+  assert.match(html, /styles\.css\?v=47/);
+  assert.match(html, /live\.js\?v=57/);});// ---- Task 1: removed sentences are gone ----
 const REMOVED = [
   'Weekly summaries below are the financial record',
   'Closed weeks, read-only — week start, surplus, debt carried',
@@ -143,13 +143,17 @@ test('Task 5: resolveRestoredView / sub-view / scroll key', () => {
   assert.equal(scrollStorageKey('money'), 'hb-scroll-money');
 });
 
-test('Task 5: live.js persists every view incl. Settings, plus scroll, plus Trash sub-view', () => {
+test('Task 5: live.js persists every view incl. Settings, plus scroll (Trash is now its own view, not a sub-view)', () => {
   assert.equal(js.includes("if (name !== 'settings') localStorage.setItem('hb-view', name)"), false);
   assert.match(js, /localStorage\.setItem\(VIEW_STORAGE_KEY, name\)/);
   assert.match(js, /localStorage\.setItem\(PREV_VIEW_STORAGE_KEY, previousView\)/);
   assert.match(js, /window\.addEventListener\('beforeunload'/);
-  assert.match(js, /localStorage\.setItem\('hb-view-sub', nowHidden \? '' : 'trash'\)/);
-  assert.match(js, /resolveRestoredSubView\(currentView, localStorage\.getItem\('hb-view-sub'\), household\?\.role\)/);
+  // Design-questions (owner, Nov 5, item D): Trash moved from an
+  // inline toggle inside Transactions to its own page — no Trash
+  // sub-view is persisted or restored any more.
+  assert.equal(js.includes("localStorage.setItem('hb-view-sub'"), false);
+  assert.equal(js.includes('resolveRestoredSubView(currentView'), false);
+  assert.match(js, /trash: \['section-trash-head', 'section-trash'\]/);
   assert.match(js, /const saved = Number\(localStorage\.getItem\(scrollStorageKey\(currentView\)\)\)/);
   // Auth / household screens still come first in boot().
   assert.match(js, /if \(!session\) \{ await show\('auth'\); return; \}/);
