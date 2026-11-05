@@ -82,7 +82,7 @@ test('sign-in button row has the standard 14px gap from the password field', () 
   assert.doesNotMatch(css, /#householdNamePanel \.auth-btn-row \{ margin-top/);
 });
 
-test('pins bumped to v45/v55', () => {
-  assert.match(html, /styles\.css\?v=45/);
-  assert.match(html, /live\.js\?v=55/);
+test('pins bumped to v46/v56', () => {
+  assert.match(html, /styles\.css\?v=46/);
+  assert.match(html, /live\.js\?v=56/);
 });

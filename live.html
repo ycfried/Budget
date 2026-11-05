@@ -10,7 +10,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=45"></head><body class="live"><header class="topbar" id="liveTopbar">
+<link rel="stylesheet" href="styles.css?v=46"></head><body class="live"><header class="topbar" id="liveTopbar">
   <div class="topbar-left"></div>
   <div class="topbar-title"><strong aria-label="OnBudget"><img class="wordmark-logo" src="icon-192.png" alt="" aria-hidden="true">nBudget</strong></div>
   <div class="topbar-right">
@@ -526,7 +526,8 @@
     </div>
 
     <div class="card" id="section-activity">
-      <h2>Activity</h2>
+      <!-- Deep audit Nov 5: page-head above already says Activity;
+           the second identical heading on this screen is removed. -->
       <ul id="auditList" class="plain"><li class="muted small">Loading…</li></ul>
       <button id="historyLoadMoreBtn" class="btn hidden" type="button" aria-label="Load more activity entries">Load more activity</button>
     </div>
@@ -540,7 +541,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=55"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
+<script type="module" src="live.js?v=56"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('live-sw.js').catch(() => {});

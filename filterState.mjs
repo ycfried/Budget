@@ -381,6 +381,14 @@ export function actionsForTxKind(kind, isAdmin, isVerified) {
   return isAdmin ? ['other', 'delete'] : [];
 }
 export function classifyCsvKind(merchant, amountCents) {
-  if (/INTERNAL TRANSFER/i.test(String(merchant ?? ''))) return 'transfer';
+  // Deep audit Nov 5: was transfer-or-sign only, so a CSV
+  // "PAYMENT - THANK YOU" or "CASH BACK" row imported as kind='refund'.
+  // Mirrors supabase/functions/_shared/canonical.ts classifyKind
+  // (same patterns, same order); Plaid category is unavailable for
+  // CSV rows, so only the name patterns are checked here.
+  const name = String(merchant ?? '');
+  if (/INTERNAL TRANSFER/i.test(name)) return 'transfer';
+  if (/MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT/i.test(name)) return 'payment';
+  if (/CASH BACK|CASHBACK|REWARD/i.test(name)) return 'cashback';
   return amountCents < 0 ? 'refund' : 'charge';
 }

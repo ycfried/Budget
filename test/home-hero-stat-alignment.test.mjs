@@ -72,6 +72,6 @@ test('Funds Charity panel heading is untouched (already just Charity)', () => {
   assert.match(html, /data-fund-card="charity"[^>]*>\s*<div class="fund-balance-head"><h2>Charity<\/h2><\/div>/);
 });
 
-test('version pins: styles v45, live.js v55 after the PR #32 merge', () => {
-  assert.match(html, /styles\.css\?v=45/);
-  assert.match(html, /live\.js\?v=55/);});
+test('version pins: styles v46, live.js v56 after the PR #32 merge', () => {
+  assert.match(html, /styles\.css\?v=46/);
+  assert.match(html, /live\.js\?v=56/);});

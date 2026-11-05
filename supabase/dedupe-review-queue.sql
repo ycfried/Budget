@@ -122,7 +122,11 @@ begin
   end if;
   v_note := nullif(btrim(coalesce(p_note, '')), '');
   if p_action = 'merge' then
-    update transactions set excluded = true where id = v_cand.duplicate_transaction_id;
+    -- Deep audit Nov 5: must also set state='excluded' (as
+    -- exclude_transaction does) — restore_transaction refuses any
+    -- row whose state is not 'excluded', so a merge-only flag made
+    -- a merged row unrestorable from Trash.
+    update transactions set excluded = true, state = 'excluded' where id = v_cand.duplicate_transaction_id;
     if v_note is null then v_note := 'merge'; end if;
     update duplicate_candidates
       set status = 'merged', resolved_at = now(), resolved_by = auth.uid(), resolution_note = v_note

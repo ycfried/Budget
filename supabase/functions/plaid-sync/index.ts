@@ -16,14 +16,14 @@
 //     and never returned to the client. No client ever receives token
 //     ciphertext: the plaid_items_public view concept is S1's vault
 //     file — this function does not expose plaid_items rows.
-//   * P1-16 RESIDUAL (function-side note, not fixed here): the
-//     get_plaid_ciphertext / update_plaid_sync RPCs are still granted
-//     to `authenticated` members in supabase/plaid-token-column.sql.
+//   * P1-16 RESIDUAL, resolved in repo (deep audit Nov 5):
+//     supabase/07-service-rpc-access.sql restricts
+//     get_plaid_ciphertext / update_plaid_sync to service_role only;
+//     the old "still granted to authenticated" note above is stale.
 //     This function does NOT widen them: it writes a cursor only with
 //     the value Plaid itself returned for that item, only after a page
 //     sequence completes without a Plaid error, and never from a
-//     client-supplied value. Restricting those RPCs to admin/service
-//     role is an S1 migration dependency — see S3_INTERFACE_NOTES.md.
+//     client-supplied value.
 //   * Auth (server-sync build, Nov 2, 2026): verify_jwt=false in
 //     config.toml + in-code auth (admin JWT for manual sync, or the
 //     service-key bearer for server calls from plaid-webhook / pg_cron).
@@ -285,6 +285,11 @@ Deno.serve(async (req) => {
 
     let added = 0, updated = 0, reversed = 0, skipped = 0;
     let truncated = false;
+    // Deep audit Nov 5: Plaid failures on one item used to return 502
+    // immediately, aborting all remaining items and skipping the
+    // full-pull cleanup. Collect failures and keep going; the
+    // aggregated failure is reported after the cleanup below.
+    const failedItems: string[] = [];
     // Merged-audit B6: set when any item started with a NULL cursor
     // (a full pull). The pre-Nov drop runs once, after all items,
     // so a second item's pull cannot re-add rows the first item's
@@ -490,7 +495,8 @@ access_token: <redacted>
           p_household_id: householdId, p_item_id: item.plaid_item_id, p_cursor: cursor,
         });
       } else if (plaidFailed) {
-        return json({ error: 'plaid sync failed' }, 502);
+        failedItems.push(item.plaid_item_id);
+        continue;
       }
 
       // A successful sync consumes pending webhook events for this item.
@@ -502,14 +508,20 @@ access_token: <redacted>
 
     // Merged-audit B6 date guard, second layer (the first is the
     // Nov 1 filter the app start implies): after a full pull, drop
-    // any row dated before 2026-11-01 for this household. This is
-    // a delete of re-pulled bank history only; manually entered rows
-    // are never dated before November 2026 by the app's own rules.
+    // any re-pulled BANK row dated before 2026-11-01 for this household.
+    // Deep audit Nov 5: the old version had no source filter, yet the
+    // manual form and CSV import accept any date — a hand/CSV row
+    // dated Oct 2026 was deleted on the next cursor-reset full pull.
+    // Only source='plaid' rows are bank history; manual/csv/amex_alert
+    // rows are never deleted here.
     if (fullPullSeen) {
       await supabaseAdmin.from('transactions')
-        .delete().eq('household_id', householdId).lt('date', '2026-11-01');
+        .delete().eq('household_id', householdId).eq('source', 'plaid').lt('date', '2026-11-01');
     }
 
+    if (failedItems.length) {
+      return json({ error: 'plaid sync failed', failed_items: failedItems, added, updated, reversed, skipped }, 502);
+    }
     return json({
       added, updated, reversed, skipped,
       duplicate_removed: duplicateRemoved,

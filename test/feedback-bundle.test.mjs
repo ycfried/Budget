@@ -137,6 +137,6 @@ test('Forgot Password is underlined brand blue #2f6bff, not grey', () => {
 });
 
 // Pins bumped together.
-test('pins bumped together to v45/v55', () => {
-  assert.ok(html.includes('styles.css?v=45'));
-  assert.ok(html.includes('live.js?v=55'));});
+test('pins bumped together to v46/v56', () => {
+  assert.ok(html.includes('styles.css?v=46'));
+  assert.ok(html.includes('live.js?v=56'));});

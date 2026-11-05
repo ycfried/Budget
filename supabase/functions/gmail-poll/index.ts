@@ -86,6 +86,13 @@ function hexToBytes(hex: string): Uint8Array {
   return out;
 }
 
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 async function decryptToken(keyHex: string, b64: string): Promise<string> {
   const raw = hexToBytes(keyHex);
   const key = await crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['decrypt']);
@@ -125,7 +132,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (!membership) return json({ error: 'not a household member' }, 403);
       if (membership.role !== 'admin') return json({ error: 'admin only' }, 403);
-    } else if (bearer !== serviceKey) {
+    } else if (!timingSafeEqual(bearer, serviceKey)) {
       // Neither a valid user session nor the server key.
       return json({ error: 'unauthorized' }, 401);
     }
