@@ -10,8 +10,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=41">
-</head>
+<link rel="stylesheet" href="styles.css?v=42"></head>
 <body class="live">
 <header class="topbar" id="liveTopbar">
   <div class="topbar-left"></div>
@@ -65,7 +64,7 @@
       <h2>Choose Your Name</h2>
       <label>Name <input id="authName" type="text" autocomplete="name" maxlength="80"></label>
       <div class="btn-row auth-btn-row">
-        <button id="authNameBackBtn" class="btn btn-tertiary" type="button" aria-label="Back To Sign In">← Back</button>
+        <button id="authNameBackBtn" class="back-link" type="button" aria-label="Back To Sign In">← Back</button>
         <button id="authNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create A New Live Account">Create Account</button>
       </div>
       <div id="authNameMsg" class="result"></div>
@@ -88,7 +87,7 @@
       <h2>Name Your Household</h2>
       <label>Household Name <input id="householdNameInput" type="text" maxlength="80" placeholder="Household"></label>
       <div class="btn-row auth-btn-row">
-        <button id="householdNameBackBtn" class="btn btn-tertiary" type="button" aria-label="Back To Household Choice">← Back</button>
+        <button id="householdNameBackBtn" class="back-link" type="button" aria-label="Back To Household Choice">← Back</button>
         <button id="householdNameCreateBtn" class="btn btn-primary" type="button" aria-label="Create The Household">Create Household</button>
       </div>
       <div id="householdNameMsg" class="result"></div>
@@ -136,7 +135,7 @@
 
 
     <div class="card" id="section-manual">
-      <div class="btn-row"><button class="btn" id="manualBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
+      <div class="btn-row"><button class="back-link" id="manualBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
       <h2>Add a transaction by hand</h2>
       <p class="muted small">Counts as pending until the bank confirms it.</p>
       <form id="manualForm" novalidate>
@@ -154,7 +153,7 @@
     </div>
 
     <div class="card" id="section-csv">
-      <div class="btn-row"><button class="btn" id="csvBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
+      <div class="btn-row"><button class="back-link" id="csvBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
       <h2>Import transactions from a CSV file</h2>
       <p class="muted small">Expected columns: Date, Description, Amount, Card Ending.</p>
       <p class="muted small">Preview first — nothing is added until you confirm.</p>
@@ -174,7 +173,7 @@
     </div>
 
     <div class="card" id="section-charity-gift">
-      <div class="btn-row"><button class="btn" id="charityBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
+      <div class="btn-row"><button class="back-link" id="charityBackBtn" type="button" aria-label="Back to Add options">← Back</button></div>
       <h2>Give to charity</h2>
       <p class="muted small">Counts as given at once, never as weekly spending. Admin only.</p>
       <form id="charityGiftForm" novalidate>
@@ -291,7 +290,7 @@
       </div>
     </div>
 
-    <div class="card" id="section-settings-head">
+    <div class="page-head" id="section-settings-head">
       <div class="settings-head-line"><h2 tabindex="-1">Settings</h2><button class="settings-back-link" id="settingsBackBtn" type="button" aria-label="Back to the previous screen">← Back</button></div>
     </div>
 
@@ -423,7 +422,7 @@
     </div>
 
     <div class="card" id="section-fund-add" style="display:none">
-      <div class="btn-row"><button class="btn" id="fundAddBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
+      <div class="btn-row"><button class="back-link" id="fundAddBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
       <h2>Add money</h2>
       <p class="muted small">Log cash already in checking — owed back is covered first.</p>
       <form id="fundTopupForm">
@@ -437,7 +436,7 @@
     </div>
 
     <div class="card" id="section-charity-income" style="display:none">
-      <div class="btn-row"><button class="btn" id="charityIncomeBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
+      <div class="btn-row"><button class="back-link" id="charityIncomeBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
       <h2>Charity income &amp; rate</h2>
       <p class="muted small">Admin only. Nothing is pulled in automatically.</p>
       <p class="muted small" id="charityRateCurrent">Current default rate: 10%.</p>
@@ -463,7 +462,7 @@
     </div>
 
     <div class="card" id="section-fund-use" style="display:none">
-      <div class="btn-row"><button class="btn" id="fundUseBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
+      <div class="btn-row"><button class="back-link" id="fundUseBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
       <h2>Use fund money</h2>
       <p class="muted small">Lowers the fund balance only.</p>
       <form id="fundAllocateForm">
@@ -475,7 +474,7 @@
     </div>
 
     <div class="card" id="section-fund-ask">
-      <div class="btn-row"><button class="btn" id="fundAskBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
+      <div class="btn-row"><button class="back-link" id="fundAskBackBtn" type="button" aria-label="Back to Funds">← Back</button></div>
       <h2>Ask for fund money</h2>
       <p class="muted small">The admin approves or declines each request.</p>
       <form id="fundRequestForm">
@@ -489,11 +488,11 @@
       </details>
     </div>
 
-    <div class="card" id="section-prevweeks-head">
+    <div class="page-head" id="section-prevweeks-head">
       <div class="settings-head-line"><h2 tabindex="-1">Previous Weeks</h2><button class="settings-back-link" id="prevWeeksBackBtn" type="button" aria-label="Back to Transactions">← Back</button></div>
       <p class="muted small">Closed weeks, read-only. Tap a week to see its summary and its transactions.</p>
     </div>
-    <div class="card" id="section-activity-head">
+    <div class="page-head" id="section-activity-head">
       <div class="settings-head-line"><h2 tabindex="-1">Activity</h2><button class="settings-back-link" id="activityBackBtn" type="button" aria-label="Back to Transactions">← Back</button></div>
       <p class="muted small">Who did what, and when — not the transaction list.</p>
     </div>
@@ -535,8 +534,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=51"></script>
-<script>
+<script type="module" src="live.js?v=52"></script><script>
   // Live service worker (network-first app shell, offline fallback).
   // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
