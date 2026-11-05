@@ -104,7 +104,7 @@ test('merged-audit kind SQL uses the valid alter-table drop', () => {
 
 // 11 + C: red error pop-ups, exact join text, platform-wide error red.
 test('error messages are red: toasts, inline error boxes, exact join text', () => {
-  assert.match(css, /body\.live \.toast\.error \{ background: #dc2626; color: #fff; \}/);
+  assert.match(css, /body\.live \.toast\.error \{ background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; font-weight: 600; \}/);
   assert.match(css, /body\.live \.result\.error \{ background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; \}/);
   assert.match(css, /body\.live \.toast \{[^}]*background: #2f6bff/, 'success/info toasts stay brand blue');
   assert.match(js, /showToast\('Check the invite code and try again', true\)/);
@@ -128,7 +128,7 @@ test('Forgot Password is underlined brand blue #2f6bff, not grey', () => {
 });
 
 // Pins bumped together.
-test('pins bumped together to v39/v49', () => {
-  assert.ok(html.includes('styles.css?v=39'));
-  assert.ok(html.includes('live.js?v=49'));
+test('pins bumped together to v40/v50', () => {
+  assert.ok(html.includes('styles.css?v=40'));
+  assert.ok(html.includes('live.js?v=50'));
 });

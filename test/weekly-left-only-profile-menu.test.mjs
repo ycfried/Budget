@@ -186,7 +186,7 @@ test('sign-up with an empty name is refused before signUp is called', () => {
   assert.match(signUpFn, /if \(!signName\?\.value\.trim\(\)\) \{ fail\('Enter a name for your new account\.', signName\); return; \}/);
   assert.ok(signUpFn.indexOf("fail('Enter a name for your new account.'") < signUpFn.indexOf('supabase.auth.signUp('));
   // fail() writes the name step's message area and focuses the field.
-  assert.match(signUpFn, /const fail = \(msg, field\) => \{ \$\('authNameMsg'\)\.textContent = msg; \$\('authNameMsg'\)\.classList\.add\('error'\); if \(field\) field\.focus\(\)/);
+  assert.match(signUpFn, /const fail = \(msg, field\) => \{ setResultMsg\('authNameMsg', msg, true\); if \(field\) field\.focus\(\)/);
 });
 
 test('sign-up with a name passes full_name in metadata', () => {

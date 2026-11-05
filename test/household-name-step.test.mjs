@@ -52,7 +52,7 @@ test('naming step: blank name is refused, supplied name passes p_name', () => {
   assert.match(createFn, /rawName\.slice\(0, 80\)/, 'name capped at 80 client-side too');
   // Failure on the old RPC (unknown argument) surfaces the existing
   // message — never a silent fallback through another path.
-  assert.match(createFn, /householdNameMsg'\)\.textContent = data/);
+  assert.match(createFn, /setResultMsg\('householdNameMsg', data/);
   assert.match(createFn, /Could not create household\. Try again\./);
   assert.equal(createFn.includes("supabase.rpc('create_household')") && !createFn.includes('args'), false);
 });
