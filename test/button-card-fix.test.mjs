@@ -88,16 +88,19 @@ test('Funds card face is Title + Amount only (no secondary-line strings)', () =>
   // "Ahead by $X" lives only in the charity card's aria-label, not
   // in the tap sheet (the sheet's Available row is the signed number,
   // so its rows add up).
-  const fundFaceLine = js.split('\n').find((l) => l.includes("fs.innerHTML = `<p class=\"fund-balance\">"));
-  assert.match(fundFaceLine, /<p class="fund-balance"><strong>\$\{formatCents\(available\)\}<\/strong><\/p>/);
+  // Merged-audit A12: the face line now carries the negative class
+  // for a negative balance (still Title + Amount only, no words).
+  const fundFaceLine = js.split('\n').find((l) => l.includes('fs.innerHTML') && l.includes('fund-balance'));
+  assert.match(fundFaceLine, /<p class=\"fund-balance\$\{available < 0 \? ' negative' : ''\}\"><strong>\$\{formatCents\(available\)\}<\/strong><\/p>/);
   assert.doesNotMatch(fundFaceLine, /Available/);
   const charityFace = js.slice(js.indexOf("const ch = $('charitySummary')"), js.indexOf("const ch = $('charitySummary')") + 1200);
   assert.match(charityFace, /formatCents\(remaining\)/);
   assert.match(charityFace, /ahead by/);
-  // Held still surfaces in the fund summary (Review link text) and
-  // folded into the fund sheet's Pending; the charity period lives
-  // in the sheet title, not a Period row.
-  assert.match(js, /Held for review:/);
+  // Held still surfaces via the Funds More > Review row label
+  // (Review (N) when N > 0) and folded into the fund sheet's
+  // Pending; the charity period lives in the sheet title, not a
+  // Period row. (Merged-audit A18 removed the dead held-link text.)
+  assert.match(js, /Review \(\$\{reviewNeedsCount\}\)/);
   assert.match(js, /title: 'Charity · November 2026 onward'/);
 });
 

@@ -982,3 +982,35 @@ body.live .add-popup-overlay { align-items: flex-end; padding: 0; }
 body.live .add-popup-card { border-radius: 20px 20px 0 0; padding: 12px 22px calc(22px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; max-height: 88dvh; box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.18); }
 body.live .tx-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.live .tx-amount { flex: 0 0 auto; }
+
+/* Merged-audit A13: the Add popup is a true bottom sheet, matching
+   the other sheets — solid background and its own scroll, with the
+   handle on the card, not on the scrim. */
+body.live .add-popup-card { background: #ffffff; overflow-y: auto; }
+/* Merged-audit A11: narrow-screen fund amounts. The two fund cards
+   stack sooner (below 420px, as before) and, at 390px and below,
+   the big numbers shrink so a four- or five-digit balance with
+   cents still fits its card; cents stay readable at 22px. */
+@media (max-width: 390px) {
+  body.live #section-stats .num, body.live .stat-card .num, body.live .fund-balance { font-size: 22px; overflow-wrap: anywhere; }
+  body.live .hero .big { font-size: 36px; overflow-wrap: anywhere; }
+}
+/* Merged-audit A12: negative Charity/Extra Fund pots turn red, like
+   the hero. (.stat-card .num.negative already exists.) */
+body.live .fund-balance.negative { color: var(--soft-red); }
+body.live .stat-card .num.negative { color: var(--soft-red); }
+/* Merged-audit A6: temporary highlight on a row reached from Home
+   Recent, so the exact record is visible after the jump. */
+body.live .tx-recent-highlight { outline: 2px solid #2f6bff; background: #eef4ff; }
+/* Merged-audit B3: tappable closed-week blocks on Previous Weeks,
+   and the quiet page links at the top of Transactions. */
+body.live .week-block-tappable { cursor: pointer; }
+body.live .tx-page-links { display: flex; gap: 12px; margin: 0 0 8px; }
+body.live .tx-page-links .quiet-link { background: none; border: none; color: #2f6bff; font-size: 14px; padding: 4px 0; cursor: pointer; }
+/* Merged-audit B4: desktop-only "Add transaction" label next to +.
+   Phone keeps + only; desktop shows a pill button with the label. */
+body.live .add-label-desktop { display: none; }
+@media (min-width: 768px) {
+  body.live .add-plus-btn { width: auto; height: 44px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 15px; }
+  body.live .add-label-desktop { display: inline; }
+}

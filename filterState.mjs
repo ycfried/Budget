@@ -289,7 +289,7 @@ export function simplifyActivityDetail(detail) {
 // pass the underlying page, never the popup. Trash is a sub-view of
 // Transactions and is admin-only: a member restoring it falls back
 // to the Transactions list, not the Trash.
-export const MAIN_VIEWS = ['week', 'purchases', 'money', 'activity', 'settings'];
+export const MAIN_VIEWS = ['week', 'purchases', 'money', 'activity', 'settings', 'prevweeks']; // Merged-audit B3: Previous Weeks is a restorable page, like Activity.
 export const VIEW_STORAGE_KEY = 'hb-view';
 export const PREV_VIEW_STORAGE_KEY = 'hb-prev-view';
 export function scrollStorageKey(view) {
@@ -359,6 +359,27 @@ export function isWeekCloseCheckDue({ lastCheckedWeekStart = null, currentWeekSt
 // TRANSFER row in a CSV file imports as kind='transfer' (excluded
 // from week math), never as a charge or a refund by sign. Every other
 // row keeps the old sign rule.
+// Merged-audit B11: detail actions restricted by transaction kind.
+// Charge: Charity (admin + verified only), Extra Fund (any role),
+// Other (admin), Delete (admin). Transfer/payment/cashback/
+// fund_charge: Other + Delete (admin only) — these rows never count
+// toward weekly spending, so there is no Charity or Extra Fund
+// action for them. Charity: Delete only (as before). Members get
+// Extra Fund on charges only; every other action is admin-only.
+export function actionsForTxKind(kind, isAdmin, isVerified) {
+  if (kind === 'charity') return isAdmin ? ['delete'] : [];
+  if (kind === 'charge') {
+    const out = [];
+    if (isAdmin && isVerified) out.push('charity');
+    out.push('extraFund');
+    if (isAdmin) out.push('other', 'delete');
+    return out;
+  }
+  if (kind === 'transfer' || kind === 'payment' || kind === 'cashback' || kind === 'fund_charge') {
+    return isAdmin ? ['other', 'delete'] : [];
+  }
+  return isAdmin ? ['other', 'delete'] : [];
+}
 export function classifyCsvKind(merchant, amountCents) {
   if (/INTERNAL TRANSFER/i.test(String(merchant ?? ''))) return 'transfer';
   return amountCents < 0 ? 'refund' : 'charge';

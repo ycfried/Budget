@@ -15,9 +15,9 @@ const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(readFileSync(new URL('../manifest-live.json', import.meta.url), 'utf8'));
 
-test('pins: styles v36, live.js v46, matching live.html', () => {
-  assert.match(html, /styles\.css\?v=36/);
-  assert.match(html, /live\.js\?v=46/);
+test('pins: styles v37, live.js v47, matching live.html', () => {
+  assert.match(html, /styles\.css\?v=37/);
+  assert.match(html, /live\.js\?v=47/);
 });
 
 test('combined hero: Available + progress + Spent/% + allowance + purchases, in one card', () => {
@@ -50,10 +50,12 @@ test('bottom sheets: handle + top Cancel + rounded top corners only, no centred 
   assert.match(js, /syncScrollLock/);
 });
 
-test('no fourth tab and no Home History row; Past weeks live inside Transactions', () => {
+test('no fourth tab and no Home History row; Previous Weeks is its own page linked from Transactions (merged-audit B3)', () => {
   assert.equal(html.includes('id="section-history-row"'), false);
-  assert.match(html, /<h2>Past weeks<\/h2>/);
-  assert.match(js, /purchases: \[[^\]]*section-history-filter[^\]]*section-week-history[^\]]*section-activity/);
+  assert.match(html, /<h2 tabindex=\"-1\">Previous Weeks<\/h2>/);
+  assert.match(js, /prevweeks: \[[^\]]*section-prevweeks-head[^\]]*section-history-filter[^\]]*section-week-history/);
+  assert.match(js, /activity: \[[^\]]*section-activity-head[^\]]*section-activity/);
+  assert.equal(/purchases: \[[^\]]*section-week-history/.test(js), false, 'Transactions view no longer embeds week history');
   // Navigation is still exactly Home, Transactions, Funds — no
   // fourth History tab, and no nav link to the old activity view.
   assert.equal((html.match(/class="app-nav-link"/g) || []).length, 3);

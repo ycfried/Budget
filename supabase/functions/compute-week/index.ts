@@ -206,6 +206,9 @@ Deno.serve(async (req) => {
     } else {
       txns = txRes.data ?? [];
     }
+    // Merged-audit B6 floor (same rule as week-close): pre-November
+    // rows never enter this week's math, even after a cursor reset.
+    txns = txns.filter((t: any) => (t.date ?? '') >= '2026-11-01');
 
     const weekEnd = addDays(weekStart, 7);
     const inWindow = (t: any) => t.date >= weekStart && t.date < weekEnd;

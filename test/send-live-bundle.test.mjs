@@ -20,9 +20,9 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v36, live.js v46', () => {
-  assert.match(html, /styles\.css\?v=36/);
-  assert.match(html, /live\.js\?v=46/);
+test('version pins: styles v37, live.js v47', () => {
+  assert.match(html, /styles\.css\?v=37/);
+  assert.match(html, /live\.js\?v=47/);
 });
 
 test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
@@ -57,7 +57,8 @@ test('3. History row REMOVED (native-style-live): Past weeks live inside Transac
   assert.equal(html.includes('id="section-history-row"'), false);
   assert.equal(html.includes('View history'), false);
   assert.match(html, /<a class="quiet-link" data-view="purchases"[^>]*>See all<\/a>/);
-  assert.match(js, /purchases: \[[^\]]*section-history-filter[^\]]*section-week-history[^\]]*section-activity/);
+  // Merged-audit B3: history sections moved to the prevweeks view; Transactions stays the current list only.
+  assert.match(js, /prevweeks: \[[^\]]*section-history-filter[^\]]*section-week-history/);
   assert.equal(js.includes('section-history-row'), false);
 });
 
@@ -91,7 +92,8 @@ test('6. Activity timeline: dots, plain titles, Admin/Member, jargon translated 
 });
 
 test('7. Back header: one line, Settings left, small Back text right, no subtitle, form Backs untouched', () => {
-  assert.match(html, /<div class="settings-head-line"><h2>Settings<\/h2><button class="settings-back-link" id="settingsBackBtn"[^>]*>← Back<\/button><\/div>/);
+  // Merged-audit A9: Settings heading is focusable (focus moves to it when Settings opens).
+  assert.match(html, /<div class=\"settings-head-line\"><h2 tabindex=\"-1\">Settings<\/h2><button class=\"settings-back-link\" id=\"settingsBackBtn\"[^>]*>← Back<\/button><\/div>/);
   assert.equal(html.includes('id="settingsIntro"'), false);
   assert.equal(html.includes('Connections, Budget, and Account &amp; household.'), false);
   assert.match(css, /\.settings-back-link \{ background: none; border: 0; color: #475569;/);
@@ -123,7 +125,8 @@ test('9. Budget card: heading Budget with Admin pill, sentence kept', () => {
 test('10. Temporary increase layout + Weeks selector + override logic (lower totals work)', () => {
   const card = html.slice(html.indexOf('id="settingsCard"'), html.indexOf('id="section-settings-account"'));
   assert.ok(card.includes('<h3>Weekly Allowance</h3>'));
-  assert.ok(card.includes('<h3 class="temp-increase-heading">Temporary Increase</h3>'));
+  // Merged-audit B1: form renamed Temporary Allowance (no 'Increase', so lower totals fit).
+  assert.ok(card.includes('<h3 class="temp-increase-heading">Temporary Allowance</h3>'));
   assert.equal(card.includes('Amount ($)'), false);
   assert.equal(card.includes('Amount for this week ($)'), false);
   assert.ok(card.includes('<span class="money-prefix" aria-hidden="true">$</span><input id="baseAllowanceInput"'));
@@ -182,11 +185,14 @@ test('11. Detail Actions sheet: exactly Charity, Extra Fund, Other, Delete; char
   assert.equal(js.includes('data-reclassify='), false);
   assert.equal(js.includes('data-remove-tx='), false);
   assert.equal(js.includes('data-delete-tx='), false);
-  assert.match(actionsFn, /id: 'charity', label: 'Charity'/);
-  assert.match(actionsFn, /id: 'extraFund', label: 'Extra Fund'/);
-  assert.match(actionsFn, /id: 'other', label: 'Other'/);
-  assert.match(actionsFn, /id: 'delete', label: 'Delete'/);
-  assert.match(actionsFn, /if \(isAdmin && row\.kind === 'charity'\)/);
+  // Merged-audit B11: actions now come from the shared
+  // actionsForTxKind helper (kind-restricted); the exact sets are
+  // asserted in merged-audit-push.test.mjs.
+  assert.match(js, /actionsForTxKind\(row\.kind, isAdmin, row\.state === 'verified'\)/);
+  assert.match(actionsFn, /label: 'Charity'/);
+  assert.match(actionsFn, /label: 'Extra Fund'/);
+  assert.match(actionsFn, /label: 'Other'/);
+  assert.match(actionsFn, /label: 'Delete'/);
   assert.match(js, /Charity gifts cannot be covered by the Extra Fund/);
   assert.match(js, /Moved to trash bin\./);
   assert.match(js, /delete_transaction/);
