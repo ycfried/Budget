@@ -16,9 +16,9 @@ const itemDisconnect = readFileSync(new URL('../supabase/functions/plaid-disconn
 const config = readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8');
 const acctSql = readFileSync(new URL('../supabase/plaid-account-disconnect.sql', import.meta.url), 'utf8');
 
-test('pins bumped to v48/v58', () => {
-  assert.match(html, /styles\.css\?v=48/);
-  assert.match(html, /live\.js\?v=58/);
+test('pins bumped to v49/v59', () => {
+  assert.match(html, /styles\.css\?v=49/);
+  assert.match(html, /live\.js\?v=59/);
 });
 
 test('Previously connected is gone from the UI, no rows deleted', () => {
@@ -130,9 +130,12 @@ test('bank logo: Clearbit gone, Google favicon first, brand-coloured fallback', 
   assert.match(css, /body\.live \.bank-actions \{/);
 });
 
-test('email status is just Connected, error text unchanged', () => {
+test('email status has no standalone Connected line, error text unchanged', () => {
+  // Owner, Nov 6, 2026: under a "Connected Email" heading the word
+  // "Connected" repeats the heading, so the status line is gone —
+  // only the reconnect error text survives.
   assert.equal(js.includes('Connected (read-only)'), false);
-  assert.match(js, /: 'Connected';/);
+  assert.equal(js.includes(": 'Connected';"), false, 'no standalone Connected status is rendered');
   assert.match(js, /Needs reconnect — access was revoked or expired\./);
 });
 

@@ -48,12 +48,15 @@ test('title case: Or Join a Household, headings and sheet titles refined', () =>
     assert.ok(html.includes(h), `heading present: ${h}`);
   }
   for (const t of ["title: 'Approve From the Fund'", "title: 'Fund Is Short'",
-    "title: 'Forgot Password?'", "title: 'Charity · November 2026 Onward'",
+    "title: 'Forgot Password?'",
     "title: 'Reclassify Transaction'", "title: 'Move to Trash'",
     "title: 'Change Allowance'", 'Release Held Refund',
     'Mark as Charity Gift', 'Delete Everything?']) {
     assert.ok(js.includes(t), `sheet/dialog title present: ${t}`);
   }
+  // Charity period: the sheet title is gone with the sheet — the
+  // period now lives as the small line in the expanded Charity card.
+  assert.ok(js.includes('November 2026 onward'), 'charity period kept in the expansion');
   // Sentence-case subtitles deliberately untouched.
   assert.ok(html.includes('Create a household as admin, or join one with an invite code.'));
 });
@@ -78,7 +81,7 @@ test('icons: Google favicon first, brand monogram fallback, bank icon per transa
 });
 
 // Pins bumped consistently with the live-file changes.
-test('pins bumped to v48/v58', () => {
-  assert.match(html, /styles\.css\?v=48/);
-  assert.match(html, /live\.js\?v=58/);
+test('pins bumped to v49/v59', () => {
+  assert.match(html, /styles\.css\?v=49/);
+  assert.match(html, /live\.js\?v=59/);
 });

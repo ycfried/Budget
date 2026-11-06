@@ -33,17 +33,18 @@ test('button levels are three distinct blues plus grey tertiary, no grey seconda
 
 test('Funds actions row: exactly three buttons, three different treatments', () => {
   // Funds-actions-three (owner choice, Nov 4, Option A): Record
-  // income moved out of the actions card into the Charity sheet, so
-  // the row is Add money (primary), Use fund money (secondary),
-  // Ask for fund money (tertiary grey) — in that DOM order, and
+  // income moved out of the actions card into the Charity expansion, so
+  // the row is Add money (primary), Spend from fund (secondary),
+  // Request money (tertiary grey) — in that order, and
   // nothing else in the row.
-  // Task 7: the Funds actions card is gone; the same three actions
-  // live in the Extra Fund sheet (openFundSheet), same order and
-  // treatments, and Record income is still not among them.
+  // Funds expand-in-place (owner, Nov 6): the Funds actions card is
+  // gone; the same three actions live in fundExpandActions, rendered
+  // inside the expanded Extra Fund card, same order and treatments,
+  // and Record income is still not among them.
   assert.equal(html.includes('id="section-fund-actions"'), false);
   assert.equal(html.includes('fundActionIncomeBtn'), false);
-  const sheet = js.slice(js.indexOf('async function openFundSheet'), js.indexOf(": [{ label: 'Ask for fund money'"));
-  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Use fund money', 'Ask for fund money']);
+  const sheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request money'"));
+  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Spend from fund', 'Request money']);
   assert.deepEqual([...sheet.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
 });
 
@@ -58,10 +59,13 @@ test('transaction detail rows: one Actions line, no five-button row', () => {
   assert.ok(js.includes('data-trash-restore='));
 });
 
-test('Settings account row: Share only; Change password lives in the Profile card', () => {
-  // Design-questions (owner, Nov 5, item B): Share invite code is
-  // primary blue, not pale.
-  assert.ok(html.includes('<button id="settingsShareIdBtn" class="btn btn-primary"'));
+test('Settings account row: invite is inline (Copy/Share), no Share button; Change password lives in the Profile card', () => {
+  // Invite code inline (owner, Nov 6): the "Share invite code"
+  // button and its sheet are gone; the code box has Copy (primary
+  // blue) and Share (grey tertiary) instead.
+  assert.equal(html.includes('settingsShareIdBtn'), false, 'no Share invite code button remains');
+  assert.ok(html.includes('<button id="inviteCopyBtn" class="btn btn-primary"'));
+  assert.ok(html.includes('<button id="inviteShareBtn" class="btn btn-tertiary"'));
   // Audit-fixes-morning B2: the Account card's duplicate Change
   // password button is deleted; the Profile card's is the only one.
   assert.equal(html.includes('id="settingsPasswordBtn"'), false);
@@ -71,15 +75,17 @@ test('Settings account row: Share only; Change password lives in the Profile car
 // --- Funds balance cards: tap + face -----------------------------------
 
 test('Funds balance panels are whole-card tap targets with a chevron', () => {
-  assert.match(html, /class="fund-balance-panel" data-fund-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"/);
-  assert.match(html, /class="fund-balance-panel" data-fund-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"/);
+  assert.match(html, /class="fund-balance-panel" data-fund-card="fund" role="button" tabindex="0" aria-expanded="false" aria-label="Show Extra Fund breakdown"/);
+  assert.match(html, /class="fund-balance-panel" data-fund-card="charity" role="button" tabindex="0" aria-expanded="false" aria-label="Show Charity breakdown"/);
   assert.match(html, /class="fund-balance-chevron"[^>]*>⌄</);
   assert.match(css, /body\.live \.fund-balance-panel\[role="button"\] \{ cursor: pointer; \}/);
-  // Tap handlers open the same breakdown sheets as the Home cards.
-  assert.match(js, /document\.querySelectorAll\('\[data-fund-card\]'\)/);
-  assert.match(js, /showSheet\(\{ title: 'Extra Fund', rows: fundBreakdownRows\(f\)/);
-  assert.match(js, /showSheet\(\{ title: 'Charity · November 2026 Onward', rows: charityBreakdownRows\(c\)/);
-  // Enter/Space open the card, like the Home stat cards.
+  // Tap handlers expand the same card in place as the Home cards —
+  // no sheet is opened for either card (funds-expand-in-place).
+  assert.match(js, /document\.querySelectorAll\('\[data-fund-card\], \[data-home-card\]'\)/);
+  assert.equal(js.includes('openFundSheet'), false);
+  assert.equal(js.includes('openCharitySheet'), false);
+  assert.match(js, /toggleFundCard\(el\.dataset\.fundCard \|\| el\.dataset\.homeCard\)/);
+  // Enter/Space toggle the card, like the Home stat cards.
   assert.match(js, /e\.key === 'Enter' \|\| e\.key === ' '/);
 });
 
@@ -99,11 +105,11 @@ test('Funds card face is Title + Amount only (no secondary-line strings)', () =>
   assert.match(charityFace, /formatCents\(remaining\)/);
   assert.match(charityFace, /ahead by/);
   // Held still surfaces via the Funds More > Review row label
-  // (Review (N) when N > 0) and folded into the fund sheet's
-  // Pending; the charity period lives in the sheet title, not a
-  // Period row. (Merged-audit A18 removed the dead held-link text.)
+  // (Review (N) when N > 0) and folded into the fund expansion's
+  // Pending; the charity period lives in the expansion's small line,
+  // not a Period row. (Merged-audit A18 removed the dead held-link text.)
   assert.match(js, /Review \(\$\{reviewNeedsCount\}\)/);
-  assert.match(js, /title: 'Charity · November 2026 Onward'/);
+  assert.match(js, /fund-expand-period">November 2026 onward/);
 });
 
 test('fund breakdown rows are exactly Available / Pending / Total', () => {
@@ -124,7 +130,7 @@ test('charity breakdown rows are exactly Available / Given / Total', () => {
     assert.ok(rows.includes(label), `charity sheet missing ${label}`);
   }
   // Old rows are gone (Remaining label, Committed, Default rate,
-  // Period — the period stays in the sheet title, not a row).
+  // Period — the period stays in the expansion's small line, not a row).
   for (const pattern of [/\['Remaining',/, /\['Committed',/, /\['Default rate',/, /\['Period',/]) {
     assert.doesNotMatch(rows, pattern);
   }

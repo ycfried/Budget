@@ -314,8 +314,8 @@ let txLoaded = false; // transactions have loaded at least once (gates the empty
 let refreshInFlight = 0; // Task 6: overlap counter only; it drives no UI text (the footer is last-sync only).
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
 let lastSpentBreakdown = null; // { datedTotal, lateTotal } cents, for the Weekly sheet
-let currentFundData = null; // last fund aggregates, for the Extra Fund card sheet
-let currentCharityData = null; // last charity aggregates, for the Charity card sheet
+let currentFundData = null; // last fund aggregates, for the Extra Fund card expansion
+let currentCharityData = null; // last charity aggregates, for the Charity card expansion
 // R3 nicknames: keyed by stable Plaid account id, never by suffix alone.
 // nicknameBySuffix is a display hint only, built from the same rows, and
 // drops any suffix claimed by two accounts.
@@ -427,16 +427,36 @@ async function refresh() {
   } catch (e) { console.warn('household name read failed:', e); }
   // Design-questions (owner, Nov 5, item C): members list in the
   // Account & Household card — each member with name and role.
-  // Reads household_members for this household. Names come from
-  // display_name where set; the app stores profile names in auth
-  // metadata, not display_name, so other members show as "Member"
-  // until a server-side list exists. There is NO remove-member or
-  // change-role RPC, so no manage buttons are rendered — never a
-  // button that fails. Live limitation, reported to the owner: the
+  // Reads household_members for this household. There is NO
+  // remove-member or change-role RPC, so no manage buttons are
+  // rendered — never a button that fails. Live limitation: the
   // household_members read policy lets a member read only their own
   // row (fix-membership-policy.sql, Nov 1), so until that policy is
   // widened or a list-members RPC is built, this list shows only
   // the signed-in member.
+  // Member names (owner, Nov 6, 2026): a row shows the person's
+  // NAME, never the word "Member" as a name. Resolution, in order:
+  // stored display_name; the signed-in user's own auth metadata
+  // full_name/name (that is where the app keeps profile names);
+  // the signed-in user's email prefix. display_name is populated
+  // nowhere today (no create/join RPC sets it), so the metadata
+  // path is what makes the owner's row read "Shuki (you)" live.
+  // Another member with no stored name has no name or email in the
+  // loaded data, so that fallback is unreachable live; it exists
+  // only so a widened list never renders a blank row, and it still
+  // never uses the word "Member" as a name.
+  function memberDisplayName(m, me) {
+    const stored = m.display_name && String(m.display_name).trim();
+    if (stored) return stored;
+    const isMe = me && m.user_id === me.id;
+    if (isMe) {
+      const meta = (me.user_metadata?.full_name || me.user_metadata?.name || '').trim();
+      if (meta) return meta;
+      const prefix = (me.email || '').split('@')[0].trim();
+      if (prefix) return prefix;
+    }
+    return m.role === 'admin' ? 'Admin' : 'Household member';
+  }
   try {
     const { data: { user: me } } = await supabase.auth.getUser();
     const { data: mrows } = await supabase.from('household_members')
@@ -446,7 +466,7 @@ async function refresh() {
       if (!mrows?.length) { ml.innerHTML = '<p class="muted small">No members yet.</p>'; }
       else {
         ml.innerHTML = mrows.map((m) => {
-          const name = (m.display_name && String(m.display_name).trim()) || 'Member';
+          const name = memberDisplayName(m, me);
           const role = m.role === 'admin' ? 'Admin' : 'Member';
           const you = me && m.user_id === me.id ? ' (you)' : '';
           return `<div class="member-row"><span class="member-name">${esc(name + you)}</span><span class="role-pill">${role}</span></div>`;
@@ -454,6 +474,10 @@ async function refresh() {
       }
     }
   } catch (e) { console.warn('household members read failed:', e); }
+  // Invite code inline (owner, Nov 6, 2026): loaded with the members
+  // list so the code box in the Account & Household card is filled
+  // on every refresh. Admin-only; members never see the code.
+  loadInviteCodeInline();
   // Audit-merge fix (review B S2): when no name is set, the header
   // below falls back to the email, so showing this line too would
   // print the email twice. Hide it exactly when it duplicates the
@@ -1254,6 +1278,15 @@ async function refresh() {
     // whose disconnected_at is set are not rendered at all.
     // "Previously connected" is GONE (owner, Nov 4, 2026): disconnected
     // items are simply not listed anymore. No database row is deleted.
+    // "Last synced" once (owner, Nov 6, 2026): an item missed the
+    // latest run iff it has a last_sync_at older than the household's
+    // latest sync time. plaid-sync stamps last_sync_at only on a
+    // successful item sync, so a stale stamp while the others
+    // advanced means that item failed. Null (never synced, e.g. just
+    // connected) is not a failure.
+    function accountSyncFailed(itemLastSyncAt, householdLastSyncAt) {
+      return Boolean(itemLastSyncAt && householdLastSyncAt && new Date(itemLastSyncAt) < new Date(householdLastSyncAt));
+    }
     const renderConnectedAccounts = () => {
       const el = document.getElementById('bankAccountsList');
       if (!el) return;
@@ -1304,9 +1337,24 @@ async function refresh() {
         } else {
           const line = document.createElement('div'); line.className = 'muted small'; line.textContent = 'Account details unavailable.'; info.appendChild(line);
         }
+        // "Last synced" lives ONCE, at the top level under Automatic
+        // Sync (bankSyncLine, owner Nov 6, 2026): the accounts sync
+        // together in one run, so a per-account time adds nothing.
+        // Each row keeps only its Connected date. Exception: an item
+        // whose last_sync_at is older than the household's latest
+        // sync missed that run while the others succeeded
+        // (plaid-sync stamps last_sync_at only on a successful item
+        // sync), so that account row alone shows a red "Sync failed".
+        // A never-synced item (last_sync_at null) shows no failure
+        // line, so a just-connected account is never flagged.
         const sub = document.createElement('div'); sub.className = 'bank-acct-sub';
-        sub.textContent = item.created_at ? `Connected ${fmtLong(String(item.created_at).slice(0, 10))}${item.last_sync_at ? ` · Last synced ${fmtDateTime(item.last_sync_at)}` : ''}` : (item.last_sync_at ? `Last synced ${fmtDateTime(item.last_sync_at)}` : '');
+        sub.textContent = item.created_at ? `Connected ${fmtLong(String(item.created_at).slice(0, 10))}` : '';
         if (sub.textContent) info.appendChild(sub);
+        if (accountSyncFailed(item.last_sync_at, bankLastSyncAt)) {
+          const fail = document.createElement('div'); fail.className = 'bank-acct-fail';
+          fail.textContent = 'Sync failed';
+          info.appendChild(fail);
+        }
         wrap.appendChild(info);
         // No account rows at all for this item: there is no account
         // to disconnect per-account, so the old whole-item Disconnect
@@ -1379,15 +1427,17 @@ async function refresh() {
         // card never collapses mid-refresh.
         const frag = document.createDocumentFragment();
         if (!rows.length) {
-          const p = document.createElement('p'); p.className = 'muted small'; p.textContent = household.role === 'admin' ? 'None — connect an email above.' : 'None — the admin connects email alerts.'; frag.appendChild(p);
+          const p = document.createElement('p'); p.className = 'muted small'; p.textContent = household.role === 'admin' ? 'None — connect an email below.' : 'None — the admin connects email alerts.'; frag.appendChild(p);
         }
         for (const c of rows) {
           const wrap = document.createElement('div'); wrap.className = 'bank-row';
           const info = document.createElement('div'); info.className = 'bank-info';
           const name = document.createElement('strong'); name.textContent = c.email_address || 'Email'; info.appendChild(name);
-          const st = document.createElement('div'); st.className = 'muted small';
-          st.textContent = c.status === 'error' ? 'Needs reconnect — access was revoked or expired.' : 'Connected';
-          info.appendChild(st);
+          // No standalone "Connected" line: under a "Connected Email"
+          // heading it repeats the heading. Only a real problem gets
+          // a line — the reconnect warning. "Last checked" stays as
+          // the one small grey line under the email.
+          if (c.status === 'error') { const st = document.createElement('div'); st.className = 'muted small'; st.textContent = 'Needs reconnect — access was revoked or expired.'; info.appendChild(st); }
           if (c.last_poll_at) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = `Last checked ${fmtDateTime(c.last_poll_at)}`; info.appendChild(l); }
           if (c.last_error) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = c.last_error; info.appendChild(l); }
           wrap.appendChild(info);
@@ -1413,7 +1463,7 @@ async function refresh() {
     }
   }
   // Extra Fund summary — aggregates from fund_ledger /
-  // surplus_releases / week_closes. The tap sheet shows only
+  // surplus_releases / week_closes. The expanded card shows only
   // Available / Pending / Total (owner, Nov 4); the other aggregates
   // stay computed in currentFundData for history and previews.
   // failure is an error state, not a soft "will appear later" note.
@@ -1436,11 +1486,11 @@ async function refresh() {
     // and wait for approval — so members read "Available to request".
     // Audit-merge fix (review B F2): admins read "Available to use"
     // (was "Spendable now"). That wording
-    // lives in the tap sheet and in the Home card's aria-label, not
+    // lives in the expanded card and in the Home card's aria-label, not
     // on either card face (numbers-only faces, UX-review-fix).
     const fundFreeWord = household.role === 'admin' ? 'Available to use' : 'Available to request';
     // Numbers-only face: the secondary line is gone from the card.
-    // Its wording lives in the tap sheet and in the aria-label.
+    // Its wording lives in the expanded card and in the aria-label.
     // Fund-sheet-button-rule (owner, Nov 4): the Home fund card's
     // aria-label carries Available + the sheet's Pending (pending
     // releases plus held weeks) — no owed-back mention, matching the
@@ -1453,7 +1503,7 @@ async function refresh() {
     // Button-card-fix: the face is Title + Amount only. The title is
     // the h2 in live.html; this is the amount alone, no "Available"
     // word, no secondary lines. Available, Pending, and Total live
-    // in the tap sheet (fundBreakdownRows).
+    // in the expanded card (fundBreakdownRows).
     if (fs) fs.innerHTML = `<p class="fund-balance${available < 0 ? ' negative' : ''}"><strong>${formatCents(available)}</strong></p>`;
     // Merged-audit A18: the old Funds held-review link had no
     // element in live.html and was dead code; held weeks are now
@@ -1530,7 +1580,7 @@ async function refresh() {
     // Numbers-only face: a confirmed zero is $0.00, a negative
     // remaining is a signed number (given more than committed).
     // "No charity tracked yet" lives in the aria-label, and the
-    // Given/Total words live in the tap sheet and the aria-label,
+    // Given/Total words live in the expanded card and the aria-label,
     // not on the face.
     if (cp) { cp.textContent = formatCents(remaining); cp.classList.toggle('negative', remaining < 0); cp.removeAttribute('aria-busy'); }
     document.querySelector('[data-home-card="charity"]')?.setAttribute('aria-label', (committed === 0 && given === 0)
@@ -1542,7 +1592,7 @@ async function refresh() {
     // Button-card-fix: the face is Title + Amount only. The title is
     // the h2 in live.html; this is the amount alone. A negative
     // remaining still reads as a signed number on the face, and the
-    // tap sheet shows Available (signed) / Given / Total
+    // expanded card shows Available (signed) / Given / Total
     // (charityBreakdownRows); Default rate lives on the Funds
     // income & rate card, the period in the sheet title.
     if (ch) ch.innerHTML = `<p class="fund-balance${remaining < 0 ? ' negative' : ''}"><strong>${formatCents(remaining)}</strong></p>`;
@@ -1559,6 +1609,10 @@ async function refresh() {
     document.querySelector('[data-home-card="charity"]')?.setAttribute('aria-label', 'Charity, could not load, show breakdown');
     const ch = $('charitySummary'); if (ch) ch.innerHTML = '<p class="error">Could not load charity. Try again.</p>';
   }
+  // Funds expand-in-place: refresh() re-renders the card faces; an
+  // already-expanded card re-renders its rows/buttons too, so the
+  // open card never shows stale numbers after a reload.
+  syncFundCardExpansion();
   // R13 charity income list (admin only, READ-ONLY except Correct,
   // which prefills the form for an append-only reversal + replacement).
   if (household.role === 'admin') {
@@ -2624,8 +2678,8 @@ function showView(name, opts = {}) {
   }
   // Task 7 (owner, Nov 4, Option A): the Funds actions card, Review
   // card, and Past savings card are gone as cards. Their functions
-  // live on: the three fund actions moved into the Extra Fund sheet
-  // (see openFundSheet), and Review / Fund activity / Past savings
+  // live on: the three fund actions moved into the expanded Extra Fund card
+  // (see fundExpandActions), and Review / Fund activity / Past savings
   // are quiet › rows on one More card, each toggling its section
   // below (no ▶ triangles, no explainer sentences). The More card
   // shows when no form is open, like the old actions card; each
@@ -2680,7 +2734,8 @@ function showView(name, opts = {}) {
     setBtn('autoSyncRow', isAdmin);
     setBtn('connectEmailBtn', isAdmin);
     setBtn('pollEmailBtn', isAdmin);
-    setBtn('settingsShareIdBtn', isAdmin);
+    // No settingsShareIdBtn anymore: the invite code is inline in
+    // the Account & Household card, admin-only via loadInviteCodeInline.
     // Send-live-bundle: the Settings subtitle is deleted (see
     // live.html); there is no settingsIntro element left to update.
   }
@@ -2750,17 +2805,53 @@ document.addEventListener('keydown', (e) => {
 });
 async function shareInviteCode() {
   document.getElementById('profileMenu')?.classList.add('hidden');
-  // Share shows/copies the invite CODE, never the household UUID.
+  // Invite code inline (owner, Nov 6, 2026): no sheet, no copy-paste
+  // by hand. The code lives in the Account & Household card as a big
+  // monospace box, with Copy and Share beside it. Share uses the
+  // phone's native share sheet (navigator.share) with a prefilled
+  // message; where that is unavailable it falls back to copying the
+  // code. The code is never the household UUID.
   if (!household) { await showAlert('Not signed in', 'Sign in first, then share the invite code.'); return; }
+  let code = currentInviteCode;
+  if (!code) {
+    try {
+      const { data } = await supabase.from('households').select('invite_code').eq('id', household.household_id).maybeSingle();
+      code = data?.invite_code ?? null;
+    } catch (e) { console.warn('invite_code read failed:', e); }
+  }
+  if (!code) { await showAlert('No invite code', 'No invite code is set up for this household yet.'); return; }
+  const text = `Join my household on OnBudget with invite code ${code}`;
+  if (navigator.share) {
+    try { await navigator.share({ title: 'OnBudget invite code', text }); return; }
+    catch (e) { if (e?.name === 'AbortError') return; /* user dismissed the sheet — fall through to Copy */ }
+  }
+  await copyInviteCode();
+}
+let currentInviteCode = null;
+async function loadInviteCodeInline() {
+  const box = document.getElementById('inviteCodeBox');
+  const empty = document.getElementById('inviteCodeEmpty');
+  const intro = document.getElementById('inviteCodeIntro');
+  if (!box || !empty) return;
+  // Members never see the invite code — sharing is admin-only.
+  if (household?.role !== 'admin') { box.hidden = true; empty.hidden = true; if (intro) intro.hidden = true; return; }
+  if (intro) intro.hidden = false;
   let code = null;
   try {
     const { data } = await supabase.from('households').select('invite_code').eq('id', household.household_id).maybeSingle();
     code = data?.invite_code ?? null;
   } catch (e) { console.warn('invite_code read failed:', e); }
-  if (!code) { await showSheet({ title: 'Invite Code', message: 'No invite code is set up for this household yet. Ask the household owner to set one up before the second account joins.', confirmLabel: 'Done' }); return; }
-  let copied = false;
-  try { await navigator.clipboard.writeText(code); copied = true; } catch (e) { /* clipboard may be unavailable; the code is still shown */ }
-  await showSheet({ title: 'Invite Code', message: `Share this code with the second account so they can join as a member:\n${code}${copied ? '\n(Copied to clipboard.)' : ''}`, confirmLabel: 'Done' });
+  currentInviteCode = code;
+  const textEl = document.getElementById('inviteCodeText');
+  if (textEl) textEl.textContent = code ?? '';
+  box.hidden = !code;
+  empty.hidden = !!code;
+}
+async function copyInviteCode() {
+  const btn = document.getElementById('inviteCopyBtn');
+  if (!currentInviteCode) return;
+  try { await navigator.clipboard.writeText(currentInviteCode); } catch (e) { /* clipboard may be unavailable; the code stays visible */ }
+  if (btn) { const label = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = label; }, 2000); }
 }
 async function deleteAccountFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
@@ -2834,7 +2925,8 @@ document.getElementById('saveProfileEmailBtn')?.addEventListener('click', async 
   showToast(`Confirmation sent to ${email} — your sign-in email stays as it is until you confirm it.`);
 });
 document.getElementById('profilePasswordBtn')?.addEventListener('click', changePasswordFlow);
-document.getElementById('settingsShareIdBtn')?.addEventListener('click', shareInviteCode);
+document.getElementById('inviteCopyBtn')?.addEventListener('click', copyInviteCode);
+document.getElementById('inviteShareBtn')?.addEventListener('click', shareInviteCode);
 document.getElementById('settingsPasswordBtn')?.addEventListener('click', changePasswordFlow);
 document.getElementById('settingsDeleteBtn')?.addEventListener('click', deleteAccountFlow);
 document.getElementById('settingsBackBtn')?.addEventListener('click', () => showView(previousView || 'week'));
@@ -2938,60 +3030,97 @@ heroWeeklyTarget?.addEventListener('click', openWeeklySheet);
 heroWeeklyTarget?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWeeklySheet(); }
 });
-// Funds-actions-three (owner choice, Nov 4, Option A): Record income
-// moved out of the Funds actions card into the Charity breakdown
-// sheet, admin-only. It is a charity action, not a fund action, so
-// the actions card drops to exactly three buttons (Add / Use / Ask).
-// Both charity sheets (Home card and Funds panel) share this opener.
-// The Weekly sheet's extraAction precedent is reused: Record income
-// renders primary, Close second; choosing it closes the sheet and
-// then opens the existing Record income form via setFundForm('income').
-// Members get no extra action, so the sheet renders exactly as before.
-async function openCharitySheet() {
-  const c = currentCharityData;
-  if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
-  const isAdmin = household && household.role === 'admin';
-  const result = await showSheet({ title: 'Charity · November 2026 Onward', rows: charityBreakdownRows(c), extraAction: isAdmin ? { label: 'Record income', result: 'record-income' } : null, confirmLabel: 'Close' });
-  if (result === 'record-income') setFundForm('income');
-}
-// Task 7: the Extra Fund sheet. From the Funds panel (withActions)
-// it carries the three fund actions in their original order and
-// treatments (Add primary, Use pale, Ask grey; members see Ask
-// only) and opens the chosen form after the sheet closes. From the
-// Home stat card it stays the read-only breakdown, as before.
-async function openFundSheet(withActions) {
-  const f = currentFundData;
-  if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
-  const isAdmin = household && household.role === 'admin';
-  const actions = !withActions ? null : isAdmin
+// Funds expand-in-place (owner approval, Nov 6, 2026, on the
+// funds-expand-in-place mockup): the Extra Fund and Charity cards
+// expand IN PLACE instead of opening a bottom sheet. No overlay, no
+// dimmed background, no sheet sliding up. Tap the card again, or tap
+// the other card, and it closes. The same expansion serves both
+// surfaces that used to share the sheet openers — the Funds panels
+// ([data-fund-card]) and the Home stat cards ([data-home-card]) —
+// so a card tap anywhere never opens a sheet for these two cards.
+// The Weekly sheet, alerts, and transaction Action sheets are
+// untouched and still use showSheet.
+// Buttons (mockup labels) live ONLY on the Funds page: Extra Fund —
+// "Add money" primary blue, "Spend from fund" pale #bfdbfe/ink
+// (middle tier), "Request money" grey tertiary; members see "Request
+// money" only. Charity — "Record income" primary blue, "Close" grey
+// tertiary; members see "Close" only. Home is the overview
+// (assistant decision, Nov 6, 2026, on the owner's "whatever you
+// think is better"): its stat cards expand in place to the rows
+// ONLY, with no action buttons — actions belong on the Funds page,
+// the right page for them.
+// cards (section-fund-add / -use / -ask / -charity-income), opened
+// via setFundForm exactly as the sheet did; they are NOT sheets.
+// Expanding or collapsing writes nothing and triggers no sync; it
+// only reads the numbers already loaded by refresh().
+let expandedFundCard = null; // 'fund' | 'charity' | null — at most one card expanded, Home and Funds together
+function fundExpandActions(isAdmin) {
+  return isAdmin
     ? [
         { label: 'Add money', result: 'add', btnClass: 'btn btn-primary' },
-        { label: 'Use fund money', result: 'use', btnClass: 'btn' },
-        { label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary' },
+        { label: 'Spend from fund', result: 'use', btnClass: 'btn' },
+        { label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary' },
       ]
-    : [{ label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary' }];
-  const result = await showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), actions, confirmLabel: 'Close' });
-  if (result === 'add') setFundForm('add');
-  else if (result === 'use') setFundForm('use');
-  else if (result === 'ask') setFundForm('ask');
+    : [{ label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary' }];
 }
-document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListener('click', async () => {
-  const kind = el.dataset.homeCard;
-  if (kind === 'fund') {
-    await openFundSheet(false);
-  } else {
-    await openCharitySheet();
-  }
-}));
+function charityExpandActions(isAdmin) {
+  return isAdmin
+    ? [
+        { label: 'Record income', result: 'record-income', btnClass: 'btn btn-primary' },
+        { label: 'Close', result: 'close', btnClass: 'btn btn-tertiary' },
+      ]
+    : [{ label: 'Close', result: 'close', btnClass: 'btn btn-tertiary' }];
+}
+function fundExpandDetailHtml(kind, data, isAdmin, withActions = true) {
+  if (!data) return '';
+  const rows = kind === 'fund' ? fundBreakdownRows(data) : charityBreakdownRows(data);
+  const attr = kind === 'fund' ? 'data-fund-action' : 'data-charity-action';
+  const period = kind === 'charity' ? '<p class="muted small fund-expand-period">November 2026 onward</p>' : '';
+  // Home read-only: withActions false renders the rows only, no
+  // button row at all — the Funds page passes true (default).
+  const actions = withActions ? (kind === 'fund' ? fundExpandActions(isAdmin) : charityExpandActions(isAdmin)) : [];
+  const btns = actions.length ? `<div class="btn-row fund-expand-btns">${actions.map((a) => `<button class="${a.btnClass}" type="button" ${attr}="${a.result}">${esc(a.label)}</button>`).join('')}</div>` : '';
+  return `<div class="fund-expand" data-fund-expand="${kind}">${rows.map(([label, amount]) => `<div class="fund-expand-row"><span>${esc(label)}</span><strong>${esc(amount)}</strong></div>`).join('')}${period}${btns}</div>`;
+}
+function syncFundCardExpansion() {
+  document.querySelectorAll('[data-fund-card], [data-home-card]').forEach((el) => {
+    const kind = el.dataset.fundCard || el.dataset.homeCard;
+    const expanded = expandedFundCard === kind;
+    el.classList.toggle('fund-expanded', expanded);
+    el.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    const chev = el.querySelector('.fund-balance-chevron, .pot-chevron');
+    if (chev) chev.textContent = expanded ? '⌃' : '⌄';
+    const detail = el.querySelector('[data-fund-expand]');
+    if (!expanded) { detail?.remove(); return; }
+    const html = fundExpandDetailHtml(kind, kind === 'fund' ? currentFundData : currentCharityData, household?.role === 'admin', !el.hasAttribute('data-home-card'));
+    if (!html) { detail?.remove(); return; }
+    if (detail) detail.outerHTML = html;
+    // Funds panel: the chevron is the last child, so the detail goes
+    // just above it. Home stat card: the chevron is the FIRST child,
+    // so the detail goes at the end, below the amount — never above
+    // the card title.
+    else if (el.querySelector('.fund-balance-chevron')) chev.insertAdjacentHTML('beforebegin', html);
+    else el.insertAdjacentHTML('beforeend', html);
+  });
+}
+function toggleFundCard(kind) {
+  const data = kind === 'fund' ? currentFundData : currentCharityData;
+  // Not loaded yet: an alert sheet (not a breakdown sheet) says so,
+  // exactly as the old opener did — and nothing expands.
+  if (!data) { showAlert(kind === 'fund' ? 'Extra Fund' : 'Charity', kind === 'fund' ? 'Fund balances are not loaded yet. Try again in a moment.' : 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
+  expandedFundCard = expandedFundCard === kind ? null : kind;
+  syncFundCardExpansion();
+}
 // Button-card-fix: the labeled rows for the Extra Fund and Charity
-// breakdown sheets. These are the SINGLE source for both the Home
-// stat-card sheets and the Funds balance-card sheets, so a line moved
-// off a Funds card face cannot go missing from either sheet.
-// Fund sheet (owner, Nov 4): exactly three rows — Available, Pending
-// (pending releases PLUS held weeks: everything not yet available),
-// Total (Available + Pending). Released total, Spent from fund,
-// Owed back, and the Held-for-review row were removed from this
-// sheet; Review queue access stays on the Funds page (Review card).
+// breakdowns. These are the SINGLE source for both the Home
+// stat-card expansions and the Funds balance-card expansions, so a
+// line moved off a Funds card face cannot go missing from either.
+// Fund expansion (owner, Nov 4): exactly three rows — Available,
+// Pending (pending releases PLUS held weeks: everything not yet
+// available), Total (Available + Pending). Released total, Spent
+// from fund, Owed back, and the Held-for-review row were removed
+// from this breakdown; Review queue access stays on the Funds page
+// (Review card).
 function fundBreakdownRows(f) {
   const pending = (f.pending ?? 0) + (f.heldTotal ?? 0);
   return [
@@ -3001,34 +3130,43 @@ function fundBreakdownRows(f) {
   ];
 }
 function charityBreakdownRows(c) {
-  // Charity sheet (owner, Nov 4): exactly three rows — Available
+  // Charity expansion (owner, Nov 4): exactly three rows — Available
   // (remaining, signed, so the rows add up), Given, Total (Available
   // + Given = the old Committed). Committed, Default rate, and Period
-  // rows were removed; the period stays in the sheet title and the
-  // default rate stays on the Funds "Charity income & rate" card.
+  // rows were removed; the period stays as the small line under the
+  // rows and the default rate stays on the Funds "Charity income &
+  // rate" card.
   return [
     ['Available', formatCents(c.remaining)],
     ['Given', formatCents(c.given)],
     ['Total', formatCents(c.remaining + c.given)],
   ];
 }
-// Button-card-fix: Funds balance cards — tap the whole card (click,
-// Enter, or Space) for the same breakdown sheet as the Home card.
-// The chevron at the bottom-right of the card, facing down, marks
-// it as tappable (more below, not a link to another page). Opening or
-// closing a sheet writes nothing and triggers no sync; it only reads
-// the numbers already loaded by refresh().
-document.querySelectorAll('[data-fund-card]').forEach((el) => {
-  const open = async () => {
-    const kind = el.dataset.fundCard;
-    if (kind === 'fund') {
-      await openFundSheet(true);
-    } else {
-      await openCharitySheet();
+// Button-card-fix: Funds balance cards and Home stat cards — tap the
+// whole card (click, Enter, or Space) to expand it in place; tap
+// again, or tap the other card, to collapse. The chevron flips
+// (down collapsed, up expanded) and stays brand blue. A click on a
+// button inside the expanded card runs that button (form / Close),
+// never re-toggles the card; keyboard Enter/Space on the card itself
+// toggles, and focus stays on the card, never trapped.
+document.querySelectorAll('[data-fund-card], [data-home-card]').forEach((el) => {
+  el.addEventListener('click', (e) => {
+    const actionBtn = e.target instanceof Element ? e.target.closest('[data-fund-action], [data-charity-action]') : null;
+    if (actionBtn) {
+      e.stopPropagation();
+      const result = actionBtn.dataset.fundAction || actionBtn.dataset.charityAction;
+      expandedFundCard = null;
+      syncFundCardExpansion();
+      if (result === 'close') return;
+      setFundForm(result === 'record-income' ? 'income' : result);
+      return;
     }
-  };
-  el.addEventListener('click', open);
-  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    toggleFundCard(el.dataset.fundCard || el.dataset.homeCard);
+  });
+  el.addEventListener('keydown', (e) => {
+    if (e.target !== el) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFundCard(el.dataset.fundCard || el.dataset.homeCard); }
+  });
 });
 // HTML form of an amount with smaller cents, for the hero and stat
 // numbers only (formatCents from the engine stays the plain-text form
@@ -3489,8 +3627,8 @@ $('manualCancelBtn')?.addEventListener('click', () => {
 });
 $('csvBackBtn')?.addEventListener('click', () => setAddForm('options'));
 $('charityBackBtn')?.addEventListener('click', () => { document.getElementById('charityFormError')?.classList.add('hidden'); setAddForm('options'); });
-// Task 7: Funds forms open from the Extra Fund sheet (see
-// openFundSheet), one at a time. The More › rows toggle their
+// Funds expand-in-place: Funds forms open from the expanded Extra Fund card (see
+// fundExpandActions), one at a time. The More › rows toggle their
 // sections in place without scrolling the page to the top.
 const setFundForm = (which) => { fundFormOpen = which; showView('money'); };
 const toggleMore = (which) => {
@@ -3812,7 +3950,9 @@ function updateTempPreview() {
   const cents = parseDollarsStrict($('tempIncreaseInput')?.value ?? '');
   const weeksRaw = parseInt($('tempIncreaseWeeks')?.value ?? '1', 10);
   const weeks = Number.isFinite(weeksRaw) ? Math.min(4, Math.max(1, weeksRaw)) : 1;
-  if (cents === null || cents < 0) { pv.textContent = 'Enter a new total and weeks to see the preview.'; return; }
+  // No instruction sentence: the preview itself appears once values
+  // are entered, and stays empty until then (owner, Nov 6, 2026).
+  if (cents === null || cents < 0) { pv.textContent = ''; return; }
   const base = currentWeekData?.baseAllowanceCents;
   const baseText = Number.isInteger(base) ? formatCents(base) : '—';
   const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));

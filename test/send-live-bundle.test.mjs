@@ -20,9 +20,9 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v48, live.js v58', () => {
-  assert.match(html, /styles\.css\?v=48/);
-  assert.match(html, /live\.js\?v=58/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
+test('version pins: styles v49, live.js v59', () => {
+  assert.match(html, /styles\.css\?v=49/);
+  assert.match(html, /live\.js\?v=59/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
   const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = ['), sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')));
   assert.deepEqual([...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]), ['Allowance', 'Spent', 'Balance']);
   assert.match(sheetFn, /weeklyAllowanceCents = \(w\.baseAvailableCents \?\? w\.baseRoomCents \?\? 0\) \+ \(w\.tempCents \?\? 0\)/);
@@ -44,10 +44,10 @@ test('2. Pale option B: fill stays #bfdbfe, wording is ink #0f172a', () => {
   assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{ background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; \}/);
   assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #0f172a; color: #fff; border: 1px solid #0f172a; \}/);
   // Three-button middles are still plain .btn (pale): Funds Use
-  // (now in the Extra Fund sheet, Task 7) and Filters Reset. Bank
+  // (now in the expanded Extra Fund card, Task 7) and Filters Reset. Bank
   // Sync is no longer a pale middle (settings-bank-buttons, Nov 4):
   // the bank row is two buttons, Connect primary + Sync tertiary.
-  assert.match(js, /label: 'Use fund money', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Spend from fund', result: 'use', btnClass: 'btn'/);
   assert.ok(html.includes('<button class="btn" id="txFiltersResetBtn"'));
   assert.ok(html.includes('<button id="syncBankBtn" class="btn btn-tertiary"'));
 });
@@ -115,12 +115,11 @@ test('8. Unified sentence on Bank and Email; Email heading Title Case, long para
   for (const gone of ['never your whole mailbox', 'stay provisional until the bank confirms them', 'does not change any existing email setup', 'The app can see transactions.', 'Email alerts (read-only)']) {
     assert.equal(html.includes(gone), false, `removed sentence/fragment still present: ${gone}`);
   }
-  // Email status line (connected-accounts-rework, owner Nov 4, 2026):
-  // just "Connected" — the "(read-only)" is gone because the card
-  // already says "Look only" above it. The "Needs reconnect" error
-  // text is unchanged.
+  // Email status (owner Nov 6, 2026): no standalone "Connected"
+  // line at all — under a "Connected Email" heading it repeats the
+  // heading. The "Needs reconnect" error text is unchanged.
   assert.equal(js.includes('Connected (read-only)'), false);
-  assert.ok(js.includes(": 'Connected';"));
+  assert.equal(js.includes(": 'Connected';"), false, 'no standalone Connected status is rendered');
   assert.ok(js.includes('Needs reconnect — access was revoked or expired.'));
 });
 

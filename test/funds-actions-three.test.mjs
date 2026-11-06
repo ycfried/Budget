@@ -1,8 +1,12 @@
 // Funds-actions-three (owner choice, Nov 4, Option A): Record income
-// moves OUT of the Funds actions card and INTO the Charity breakdown
-// sheet, admin-only. The actions card drops to exactly three buttons
-// (Add / Use / Ask); the income form itself does not move, and its
-// Back button still returns to the three-button actions card.
+// moves OUT of the Funds actions card and INTO the Charity breakdown,
+// admin-only. The actions card drops to exactly three buttons
+// (Add / Spend / Request); the income form itself does not move, and
+// its Back button still returns to Funds.
+// Funds expand-in-place (owner approval, Nov 6, 2026): both
+// breakdowns now render inside the expanded card, not a bottom
+// sheet — openFundSheet / openCharitySheet are gone, replaced by
+// fundExpandActions / charityExpandActions + toggleFundCard.
 // Static tests only — no live data, no network, no money math. The
 // secondary button treatment is deliberately untouched here (the
 // light-blue deepening was NOT approved with Option A).
@@ -13,15 +17,12 @@ import { readFileSync } from 'node:fs';
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 
-const opener = js.slice(js.indexOf('async function openCharitySheet()'));
-assert.ok(opener.length > 0, 'openCharitySheet exists');
-const openerBody = opener.slice(0, opener.indexOf('\n}\n') + 3);
-
-test('Funds actions row is exactly Add / Use / Ask, in order (now in the Extra Fund sheet)', () => {
+test('Funds actions row is exactly Add / Spend / Request, in order (now in the expanded Extra Fund card)', () => {
   assert.equal(html.includes('id="section-fund-actions"'), false);
-  const sheet = js.slice(js.indexOf('async function openFundSheet'), js.indexOf(": [{ label: 'Ask for fund money'"));
-  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Use fund money', 'Ask for fund money']);
-  assert.deepEqual([...sheet.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
+  const actions = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request money'"));
+  assert.deepEqual([...actions.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Spend from fund', 'Request money']);
+  assert.deepEqual([...actions.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
+  assert.deepEqual([...actions.matchAll(/result: '([^']+)'/g)].map((m) => m[1]), ['add', 'use', 'ask']);
 });
 
 test('Record income button is fully gone from the actions card', () => {
@@ -29,17 +30,17 @@ test('Record income button is fully gone from the actions card', () => {
   assert.equal(js.includes('fundActionIncomeBtn'), false);
 });
 
-test('Charity sheet offers Record income for admin, via one shared opener', () => {
-  // Both entry points (Home card and Funds panel) call the same opener.
-  assert.equal((js.match(/await openCharitySheet\(\)/g) ?? []).length, 2);
-  // No other direct Charity sheet remains outside the opener.
-  const charitySheets = (js.match(/title: 'Charity · November 2026 Onward'/g) ?? []).length;
-  assert.equal(charitySheets, 1, 'only the shared opener renders the Charity sheet');
-  // Admin-gated extra action, Weekly-sheet precedent (primary button,
-  // Close second — the sheet renderer handles that ordering).
-  assert.match(openerBody, /household\.role === 'admin'/);
-  assert.match(openerBody, /extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null/);
-  assert.match(openerBody, /confirmLabel: 'Close'/);
+test('Charity expansion offers Record income for admin, via one shared toggle', () => {
+  // Both entry points (Home card and Funds panel) share one toggle.
+  assert.equal((js.match(/toggleFundCard\(/g) ?? []).length, 3, 'toggle called from click + keydown + definition-site guard');
+  // No sheet opener or Charity sheet title remains anywhere.
+  assert.equal(js.includes('openCharitySheet'), false);
+  assert.equal(js.includes('openFundSheet'), false);
+  assert.equal(js.includes("title: 'Charity · November 2026 Onward'"), false);
+  // Admin-gated actions: Record income primary, Close grey tertiary.
+  const actions = js.slice(js.indexOf('function charityExpandActions'), js.indexOf(": [{ label: 'Close'"));
+  assert.deepEqual([...actions.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Record income', 'Close']);
+  assert.deepEqual([...actions.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn btn-tertiary']);
   // Rows (fund-sheet-button-rule, owner Nov 4): Available / Given / Total.
   assert.match(js, /\['Available', formatCents\(c\.remaining\)\]/);
   assert.match(js, /\['Given', formatCents\(c\.given\)\]/);
@@ -50,31 +51,34 @@ test('Charity sheet offers Record income for admin, via one shared opener', () =
 });
 
 test('Choosing Record income opens the existing income form', () => {
-  assert.match(openerBody, /if \(result === 'record-income'\) setFundForm\('income'\)/);
+  assert.match(js, /setFundForm\(result === 'record-income' \? 'income' : result\)/);
   // The form itself is untouched and still admin-gated.
   assert.ok(js.includes("formShown('section-charity-income', 'income')"));
 });
 
-test('Income form Back returns to the three-button actions card', () => {
+test('Income form Back returns to Funds', () => {
   assert.ok(js.includes("$('charityIncomeBackBtn')?.addEventListener('click', () => setFundForm(null))"));
 });
 
 test('Member visibility in Funds actions is unchanged', () => {
-  // Task 7: Add/Use stay admin-only, Ask stays for everyone — now
-  // as the sheet's member branch (Ask only, tertiary); no income
-  // button exists for either role to see.
-  assert.ok(js.includes(": [{ label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary' }]"));
+  // Task 7: Add/Spend stay admin-only, Request stays for everyone —
+  // now as the expansion's member branch (Request only, tertiary); no
+  // income button exists for either role to see in the fund card.
+  assert.ok(js.includes(": [{ label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary' }]"));
   assert.ok(js.includes("setBtn('moreFundActivityBtn', !!isAdmin)"));
   assert.ok(js.includes("setBtn('moreReviewBtn', !!isAdmin)"));
   assert.ok(js.includes("setBtn('moreSavingsBtn', true)"));
 });
 
-test('Extra Fund sheet rows and Close are untouched; only actions were added', () => {
-  // Task 7: one sheet function now serves both openers (Home
-  // read-only, Funds with actions); rows and Close are unchanged.
-  assert.ok(js.includes('await openFundSheet(false)'));
-  assert.ok(js.includes('await openFundSheet(true)'));
-  assert.ok(js.includes("showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), actions, confirmLabel: 'Close' })"));
+test('Extra Fund expansion rows are unchanged; no sheet Close remains', () => {
+  // One detail renderer serves both surfaces (Home + Funds); rows
+  // are unchanged and there is no sheet Close button any more —
+  // the fund card closes by tapping the card again or the other card.
+  assert.match(js, /function fundExpandDetailHtml\(kind, data, isAdmin, withActions = true\)/);
+  assert.match(js, /fundBreakdownRows\(data\)/);
+  assert.doesNotMatch(js, /showSheet\(\{ title: 'Extra Fund'/);
+  const fundActions = js.slice(js.indexOf('function fundExpandActions'), js.indexOf('function charityExpandActions'));
+  assert.doesNotMatch(fundActions, /'Close'/, 'fund card has no Close button');
 });
 
 test('Secondary button treatment is untouched', () => {

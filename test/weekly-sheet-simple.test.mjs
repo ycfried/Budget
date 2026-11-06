@@ -76,15 +76,18 @@ test('generic sheet renders an extra primary action without duplicating button t
   assert.match(js, /class="btn\$\{actions \? ' btn-quiet' : extraAction \? ' btn-tertiary' : ' btn-primary'\}"/);
 });
 
-test('Extra Fund / Charity sheet openers keep their call shapes; rows changed by fund-sheet-button-rule', () => {
-  assert.match(js, /showSheet\(\{ title: 'Extra Fund', rows: fundBreakdownRows\(f\), actions, confirmLabel: 'Close' \}\)/);
-  // Funds-actions-three (owner choice, Nov 4, Option A): the Charity
-  // sheet keeps its title, rows, and Close label, and gains exactly
-  // the admin-gated Record income extra action — nothing else.
-  assert.match(js, /title: 'Charity · November 2026 Onward', rows: charityBreakdownRows\(c\), extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null, confirmLabel: 'Close'/);
-  // The extra action is now used exactly twice: Weekly sheet
-  // (Show transactions) and Charity sheet (Record income).
-  assert.equal((js.match(/extraAction:/g) ?? []).length, 2);
+test('Extra Fund / Charity cards expand in place; no sheet opener remains; rows unchanged', () => {
+  // Funds expand-in-place (owner, Nov 6): neither card calls showSheet
+  // any more — the breakdown rows render inside the expanded card.
+  assert.equal(js.includes('openFundSheet'), false);
+  assert.equal(js.includes('openCharitySheet'), false);
+  assert.doesNotMatch(js, /showSheet\(\{ title: 'Extra Fund'/);
+  assert.doesNotMatch(js, /title: 'Charity · November 2026 Onward'/);
+  assert.match(js, /fundExpandDetailHtml\(kind, kind === 'fund' \? currentFundData : currentCharityData/);
+  // The extra action is now used exactly once: Weekly sheet
+  // (Show transactions). Charity Record income is a button in the
+  // expanded card, not a sheet extra action.
+  assert.equal((js.match(/extraAction:/g) ?? []).length, 1);
 });
 
 test('hero number remains the only Weekly entry point, numbers-only face', () => {

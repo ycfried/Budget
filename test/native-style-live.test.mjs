@@ -15,9 +15,9 @@ const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(readFileSync(new URL('../manifest-live.json', import.meta.url), 'utf8'));
 
-test('pins: styles v48, live.js v58, matching live.html', () => {
-  assert.match(html, /styles\.css\?v=48/);
-  assert.match(html, /live\.js\?v=58/);});test('combined hero: Available + progress + Spent/% + allowance + purchases, in one card', () => {
+test('pins: styles v49, live.js v59, matching live.html', () => {
+  assert.match(html, /styles\.css\?v=49/);
+  assert.match(html, /live\.js\?v=59/);});test('combined hero: Available + progress + Spent/% + allowance + purchases, in one card', () => {
   const hero = html.slice(html.indexOf('id="section-week"'), html.indexOf('id="section-stats"'));
   for (const id of ['weeklyAvailable', 'weekProgressBar', 'heroSpentLine', 'heroUsedPct', 'heroAllowance', 'heroPurchaseCount']) {
     assert.ok(hero.includes(`id="${id}"`), `hero contains ${id}`);
@@ -27,12 +27,15 @@ test('pins: styles v48, live.js v58, matching live.html', () => {
   assert.match(js, /heroAllowance.*baseAllowanceCents/s);
 });
 
-test('Charity and Extra Fund pots below the hero keep their tap targets and sheets', () => {
+test('Charity and Extra Fund pots below the hero keep their tap targets and expand in place (no sheets)', () => {
   assert.match(html, /data-home-card="charity"/);
   assert.match(html, /data-home-card="fund"/);
   assert.match(html, /pot-chevron/);
-  assert.match(js, /openCharitySheet/);
-  assert.match(js, /openFundSheet/);
+  assert.match(html, /data-home-card="charity"[^>]*aria-expanded="false"/);
+  assert.match(html, /data-home-card="fund"[^>]*aria-expanded="false"/);
+  assert.match(js, /toggleFundCard/);
+  assert.equal(js.includes('openCharitySheet'), false);
+  assert.equal(js.includes('openFundSheet'), false);
 });
 
 test('bottom sheets: handle + top Cancel + rounded top corners only, no centred modal', () => {
