@@ -101,7 +101,7 @@ test('B. Set new total is primary blue; Delete account stays pale red; invite is
 test('C. Account & Household shows a members list with name and role; no fake manage buttons', () => {
   assert.match(html, /<h3>Members<\/h3>/);
   assert.ok(html.includes('id="membersList"'), 'members list container exists');
-  assert.match(js, /supabase\.from\('household_members'\)\s*\n\s*\.select\('user_id, display_name, role, created_at'\)/, 'members are read from household_members');
+  assert.match(js, /const \{ data: mrows \} = await supabase\.rpc\('list_household_members'\);/, 'members are read via the list-members RPC (owner, Nov 6): the own-row RLS policy cannot list other members');
   assert.match(js, /class="member-row"/, 'each member renders a name + role row');
   assert.match(js, /\(you\)/, 'the signed-in member is marked');
   assert.equal(html.includes('data-member-remove'), false, 'no remove-member button: no safe RPC exists');
@@ -128,7 +128,7 @@ test('D. Trash is its own page, like Past Weeks and Activity', () => {
   assert.match(js, /currentView === 'trash'\) return \(\) => showView\('purchases'\)/);
 });
 
-test('version pins: styles v49, live.js v59', () => {
-  assert.match(html, /styles\.css\?v=49/);
-  assert.match(html, /live\.js\?v=59/);
+test('version pins: styles v50, live.js v60', () => {
+  assert.match(html, /styles\.css\?v=50/);
+  assert.match(html, /live\.js\?v=60/);
 });

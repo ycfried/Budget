@@ -57,6 +57,6 @@ test('no pot or fund chevron points right any more', () => {
   assert.doesNotMatch(html, /fund-balance-chevron"[^>]*>›/);
 });
 
-test('pins bumped to v49/v59', () => {
-  assert.match(html, /styles\.css\?v=49/);
-  assert.match(html, /live\.js\?v=59/);});
+test('pins bumped to v50/v60', () => {
+  assert.match(html, /styles\.css\?v=50/);
+  assert.match(html, /live\.js\?v=60/);});
