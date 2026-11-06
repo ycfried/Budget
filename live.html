@@ -10,7 +10,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=48"></head><body class="live"><header class="topbar" id="liveTopbar">
+<link rel="stylesheet" href="styles.css?v=49"></head><body class="live"><header class="topbar" id="liveTopbar">
   <div class="topbar-left"></div>
   <div class="topbar-title"><strong aria-label="OnBudget"><img class="wordmark-logo" src="icon-192.png" alt="" aria-hidden="true">nBudget</strong></div>
   <div class="topbar-right">
@@ -128,8 +128,8 @@
       <p id="weekEmptyHint" class="muted small hidden">No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account in Settings.</p>
     </div>
     <div class="grid" id="section-stats">
-      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown"><span class="pot-chevron" aria-hidden="true">⌄</span><div class="kicker">Charity</div><div class="num" id="homeCharityPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
-      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown"><span class="pot-chevron" aria-hidden="true">⌄</span><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
+      <div class="card stat-card" data-home-card="charity" role="button" tabindex="0" aria-expanded="false" aria-label="Show Charity breakdown"><span class="pot-chevron" aria-hidden="true">⌄</span><div class="kicker">Charity</div><div class="num" id="homeCharityPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
+      <div class="card stat-card" data-home-card="fund" role="button" tabindex="0" aria-expanded="false" aria-label="Show Extra Fund breakdown"><span class="pot-chevron" aria-hidden="true">⌄</span><div class="kicker">Extra Fund</div><div class="num" id="homeFundPrimary" aria-busy="true"><span class="skel skel-num" aria-hidden="true"></span><span class="sr-only">Loading</span></div></div>
     </div>
 
     <div class="card" id="section-recent">
@@ -383,16 +383,16 @@
         <!-- Button-card-fix: both panels share the identical
              template — title, amount, chevron at the bottom-right
              facing down — and nothing else on the face. Secondary
-             lines live only in the tap sheet.
+             lines live only in the in-place expansion.
              The whole panel is the tap target (see live.js
              data-fund-card handlers, following the Home stat-card
              tap pattern). Ask lives once, in Funds actions below. -->
-        <div class="fund-balance-panel" data-fund-card="fund" role="button" tabindex="0" aria-label="Show Extra Fund breakdown">
+        <div class="fund-balance-panel" data-fund-card="fund" role="button" tabindex="0" aria-expanded="false" aria-label="Show Extra Fund breakdown">
           <div class="fund-balance-head"><h2>Extra Fund</h2></div>
           <div id="fundSummary"><p class="muted small">Loading fund balance…</p></div>
           <span class="fund-balance-chevron" aria-hidden="true">⌄</span>
         </div>
-        <div class="fund-balance-panel" data-fund-card="charity" role="button" tabindex="0" aria-label="Show Charity breakdown">
+        <div class="fund-balance-panel" data-fund-card="charity" role="button" tabindex="0" aria-expanded="false" aria-label="Show Charity breakdown">
           <div class="fund-balance-head"><h2>Charity</h2></div>
           <div id="charitySummary"><p class="muted small">Loading charity…</p></div>
           <span class="fund-balance-chevron" aria-hidden="true">⌄</span>
@@ -557,7 +557,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=58"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
+<script type="module" src="live.js?v=59"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('live-sw.js').catch(() => {});

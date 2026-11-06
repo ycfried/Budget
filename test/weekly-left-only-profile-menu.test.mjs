@@ -238,9 +238,10 @@ test('no two adjacent buttons share a treatment after the tertiary change', () =
   assert.ok(sheetBtns.includes('btn-primary'));
   assert.ok(sheetBtns.includes('btn-tertiary'));
   // Funds actions: primary, secondary, tertiary in order (Record
-  // income left the row for the Charity sheet, funds-actions-three).
-  // Task 7: fund actions live in the Extra Fund sheet (openFundSheet).
-  const fundSheet = js.slice(js.indexOf('async function openFundSheet'), js.indexOf(": [{ label: 'Ask for fund money'"));
+  // income left the row for the Charity expansion, funds-actions-three).
+  // Funds expand-in-place (owner, Nov 6): fund actions live in
+  // fundExpandActions, rendered inside the expanded card.
+  const fundSheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request money'"));
   const fundBtns = [...fundSheet.matchAll(/btnClass: 'btn([^']*)'/g)].map((m) => m[1].trim());
   assert.deepEqual(fundBtns, ['btn-primary', '', 'btn-tertiary']);
   // Settings Account card: Share only (audit-fixes-morning B2

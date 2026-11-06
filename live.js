@@ -314,8 +314,8 @@ let txLoaded = false; // transactions have loaded at least once (gates the empty
 let refreshInFlight = 0; // Task 6: overlap counter only; it drives no UI text (the footer is last-sync only).
 let currentWeekData = null; // last compute-week result, for per-stat breakdowns
 let lastSpentBreakdown = null; // { datedTotal, lateTotal } cents, for the Weekly sheet
-let currentFundData = null; // last fund aggregates, for the Extra Fund card sheet
-let currentCharityData = null; // last charity aggregates, for the Charity card sheet
+let currentFundData = null; // last fund aggregates, for the Extra Fund card expansion
+let currentCharityData = null; // last charity aggregates, for the Charity card expansion
 // R3 nicknames: keyed by stable Plaid account id, never by suffix alone.
 // nicknameBySuffix is a display hint only, built from the same rows, and
 // drops any suffix claimed by two accounts.
@@ -1413,7 +1413,7 @@ async function refresh() {
     }
   }
   // Extra Fund summary — aggregates from fund_ledger /
-  // surplus_releases / week_closes. The tap sheet shows only
+  // surplus_releases / week_closes. The expanded card shows only
   // Available / Pending / Total (owner, Nov 4); the other aggregates
   // stay computed in currentFundData for history and previews.
   // failure is an error state, not a soft "will appear later" note.
@@ -1436,11 +1436,11 @@ async function refresh() {
     // and wait for approval — so members read "Available to request".
     // Audit-merge fix (review B F2): admins read "Available to use"
     // (was "Spendable now"). That wording
-    // lives in the tap sheet and in the Home card's aria-label, not
+    // lives in the expanded card and in the Home card's aria-label, not
     // on either card face (numbers-only faces, UX-review-fix).
     const fundFreeWord = household.role === 'admin' ? 'Available to use' : 'Available to request';
     // Numbers-only face: the secondary line is gone from the card.
-    // Its wording lives in the tap sheet and in the aria-label.
+    // Its wording lives in the expanded card and in the aria-label.
     // Fund-sheet-button-rule (owner, Nov 4): the Home fund card's
     // aria-label carries Available + the sheet's Pending (pending
     // releases plus held weeks) — no owed-back mention, matching the
@@ -1453,7 +1453,7 @@ async function refresh() {
     // Button-card-fix: the face is Title + Amount only. The title is
     // the h2 in live.html; this is the amount alone, no "Available"
     // word, no secondary lines. Available, Pending, and Total live
-    // in the tap sheet (fundBreakdownRows).
+    // in the expanded card (fundBreakdownRows).
     if (fs) fs.innerHTML = `<p class="fund-balance${available < 0 ? ' negative' : ''}"><strong>${formatCents(available)}</strong></p>`;
     // Merged-audit A18: the old Funds held-review link had no
     // element in live.html and was dead code; held weeks are now
@@ -1530,7 +1530,7 @@ async function refresh() {
     // Numbers-only face: a confirmed zero is $0.00, a negative
     // remaining is a signed number (given more than committed).
     // "No charity tracked yet" lives in the aria-label, and the
-    // Given/Total words live in the tap sheet and the aria-label,
+    // Given/Total words live in the expanded card and the aria-label,
     // not on the face.
     if (cp) { cp.textContent = formatCents(remaining); cp.classList.toggle('negative', remaining < 0); cp.removeAttribute('aria-busy'); }
     document.querySelector('[data-home-card="charity"]')?.setAttribute('aria-label', (committed === 0 && given === 0)
@@ -1542,7 +1542,7 @@ async function refresh() {
     // Button-card-fix: the face is Title + Amount only. The title is
     // the h2 in live.html; this is the amount alone. A negative
     // remaining still reads as a signed number on the face, and the
-    // tap sheet shows Available (signed) / Given / Total
+    // expanded card shows Available (signed) / Given / Total
     // (charityBreakdownRows); Default rate lives on the Funds
     // income & rate card, the period in the sheet title.
     if (ch) ch.innerHTML = `<p class="fund-balance${remaining < 0 ? ' negative' : ''}"><strong>${formatCents(remaining)}</strong></p>`;
@@ -1559,6 +1559,10 @@ async function refresh() {
     document.querySelector('[data-home-card="charity"]')?.setAttribute('aria-label', 'Charity, could not load, show breakdown');
     const ch = $('charitySummary'); if (ch) ch.innerHTML = '<p class="error">Could not load charity. Try again.</p>';
   }
+  // Funds expand-in-place: refresh() re-renders the card faces; an
+  // already-expanded card re-renders its rows/buttons too, so the
+  // open card never shows stale numbers after a reload.
+  syncFundCardExpansion();
   // R13 charity income list (admin only, READ-ONLY except Correct,
   // which prefills the form for an append-only reversal + replacement).
   if (household.role === 'admin') {
@@ -2624,8 +2628,8 @@ function showView(name, opts = {}) {
   }
   // Task 7 (owner, Nov 4, Option A): the Funds actions card, Review
   // card, and Past savings card are gone as cards. Their functions
-  // live on: the three fund actions moved into the Extra Fund sheet
-  // (see openFundSheet), and Review / Fund activity / Past savings
+  // live on: the three fund actions moved into the expanded Extra Fund card
+  // (see fundExpandActions), and Review / Fund activity / Past savings
   // are quiet › rows on one More card, each toggling its section
   // below (no ▶ triangles, no explainer sentences). The More card
   // shows when no form is open, like the old actions card; each
@@ -2938,60 +2942,90 @@ heroWeeklyTarget?.addEventListener('click', openWeeklySheet);
 heroWeeklyTarget?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWeeklySheet(); }
 });
-// Funds-actions-three (owner choice, Nov 4, Option A): Record income
-// moved out of the Funds actions card into the Charity breakdown
-// sheet, admin-only. It is a charity action, not a fund action, so
-// the actions card drops to exactly three buttons (Add / Use / Ask).
-// Both charity sheets (Home card and Funds panel) share this opener.
-// The Weekly sheet's extraAction precedent is reused: Record income
-// renders primary, Close second; choosing it closes the sheet and
-// then opens the existing Record income form via setFundForm('income').
-// Members get no extra action, so the sheet renders exactly as before.
-async function openCharitySheet() {
-  const c = currentCharityData;
-  if (!c) { await showAlert('Charity', 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
-  const isAdmin = household && household.role === 'admin';
-  const result = await showSheet({ title: 'Charity · November 2026 Onward', rows: charityBreakdownRows(c), extraAction: isAdmin ? { label: 'Record income', result: 'record-income' } : null, confirmLabel: 'Close' });
-  if (result === 'record-income') setFundForm('income');
-}
-// Task 7: the Extra Fund sheet. From the Funds panel (withActions)
-// it carries the three fund actions in their original order and
-// treatments (Add primary, Use pale, Ask grey; members see Ask
-// only) and opens the chosen form after the sheet closes. From the
-// Home stat card it stays the read-only breakdown, as before.
-async function openFundSheet(withActions) {
-  const f = currentFundData;
-  if (!f) { await showAlert('Extra Fund', 'Fund balances are not loaded yet. Try again in a moment.'); return; }
-  const isAdmin = household && household.role === 'admin';
-  const actions = !withActions ? null : isAdmin
+// Funds expand-in-place (owner approval, Nov 6, 2026, on the
+// funds-expand-in-place mockup): the Extra Fund and Charity cards
+// expand IN PLACE instead of opening a bottom sheet. No overlay, no
+// dimmed background, no sheet sliding up. Tap the card again, or tap
+// the other card, and it closes. The same expansion serves both
+// surfaces that used to share the sheet openers — the Funds panels
+// ([data-fund-card]) and the Home stat cards ([data-home-card]) —
+// so a card tap anywhere never opens a sheet for these two cards.
+// The Weekly sheet, alerts, and transaction Action sheets are
+// untouched and still use showSheet.
+// Buttons (mockup labels): Extra Fund — "Add money" primary blue,
+// "Spend from fund" pale #bfdbfe/ink (middle tier), "Request money"
+// grey tertiary; members see "Request money" only. Charity —
+// "Record income" primary blue, "Close" grey tertiary; members see
+// "Close" only. The forms behind the buttons are unchanged in-page
+// cards (section-fund-add / -use / -ask / -charity-income), opened
+// via setFundForm exactly as the sheet did; they are NOT sheets.
+// Expanding or collapsing writes nothing and triggers no sync; it
+// only reads the numbers already loaded by refresh().
+let expandedFundCard = null; // 'fund' | 'charity' | null — at most one card expanded, Home and Funds together
+function fundExpandActions(isAdmin) {
+  return isAdmin
     ? [
         { label: 'Add money', result: 'add', btnClass: 'btn btn-primary' },
-        { label: 'Use fund money', result: 'use', btnClass: 'btn' },
-        { label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary' },
+        { label: 'Spend from fund', result: 'use', btnClass: 'btn' },
+        { label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary' },
       ]
-    : [{ label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary' }];
-  const result = await showSheet({ title: 'Extra Fund', rows: fundBreakdownRows(f), actions, confirmLabel: 'Close' });
-  if (result === 'add') setFundForm('add');
-  else if (result === 'use') setFundForm('use');
-  else if (result === 'ask') setFundForm('ask');
+    : [{ label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary' }];
 }
-document.querySelectorAll('[data-home-card]').forEach((el) => el.addEventListener('click', async () => {
-  const kind = el.dataset.homeCard;
-  if (kind === 'fund') {
-    await openFundSheet(false);
-  } else {
-    await openCharitySheet();
-  }
-}));
+function charityExpandActions(isAdmin) {
+  return isAdmin
+    ? [
+        { label: 'Record income', result: 'record-income', btnClass: 'btn btn-primary' },
+        { label: 'Close', result: 'close', btnClass: 'btn btn-tertiary' },
+      ]
+    : [{ label: 'Close', result: 'close', btnClass: 'btn btn-tertiary' }];
+}
+function fundExpandDetailHtml(kind, data, isAdmin) {
+  if (!data) return '';
+  const rows = kind === 'fund' ? fundBreakdownRows(data) : charityBreakdownRows(data);
+  const actions = kind === 'fund' ? fundExpandActions(isAdmin) : charityExpandActions(isAdmin);
+  const attr = kind === 'fund' ? 'data-fund-action' : 'data-charity-action';
+  const period = kind === 'charity' ? '<p class="muted small fund-expand-period">November 2026 onward</p>' : '';
+  return `<div class="fund-expand" data-fund-expand="${kind}">${rows.map(([label, amount]) => `<div class="fund-expand-row"><span>${esc(label)}</span><strong>${esc(amount)}</strong></div>`).join('')}${period}<div class="btn-row fund-expand-btns">${actions.map((a) => `<button class="${a.btnClass}" type="button" ${attr}="${a.result}">${esc(a.label)}</button>`).join('')}</div></div>`;
+}
+function syncFundCardExpansion() {
+  document.querySelectorAll('[data-fund-card], [data-home-card]').forEach((el) => {
+    const kind = el.dataset.fundCard || el.dataset.homeCard;
+    const expanded = expandedFundCard === kind;
+    el.classList.toggle('fund-expanded', expanded);
+    el.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    const chev = el.querySelector('.fund-balance-chevron, .pot-chevron');
+    if (chev) chev.textContent = expanded ? '⌃' : '⌄';
+    const detail = el.querySelector('[data-fund-expand]');
+    if (!expanded) { detail?.remove(); return; }
+    const html = fundExpandDetailHtml(kind, kind === 'fund' ? currentFundData : currentCharityData, household?.role === 'admin');
+    if (!html) { detail?.remove(); return; }
+    if (detail) detail.outerHTML = html;
+    // Funds panel: the chevron is the last child, so the detail goes
+    // just above it. Home stat card: the chevron is the FIRST child,
+    // so the detail goes at the end, below the amount — never above
+    // the card title.
+    else if (el.querySelector('.fund-balance-chevron')) chev.insertAdjacentHTML('beforebegin', html);
+    else el.insertAdjacentHTML('beforeend', html);
+  });
+}
+function toggleFundCard(kind) {
+  const data = kind === 'fund' ? currentFundData : currentCharityData;
+  // Not loaded yet: an alert sheet (not a breakdown sheet) says so,
+  // exactly as the old opener did — and nothing expands.
+  if (!data) { showAlert(kind === 'fund' ? 'Extra Fund' : 'Charity', kind === 'fund' ? 'Fund balances are not loaded yet. Try again in a moment.' : 'Charity numbers are not loaded yet. Try again in a moment.'); return; }
+  expandedFundCard = expandedFundCard === kind ? null : kind;
+  syncFundCardExpansion();
+}
 // Button-card-fix: the labeled rows for the Extra Fund and Charity
-// breakdown sheets. These are the SINGLE source for both the Home
-// stat-card sheets and the Funds balance-card sheets, so a line moved
-// off a Funds card face cannot go missing from either sheet.
-// Fund sheet (owner, Nov 4): exactly three rows — Available, Pending
-// (pending releases PLUS held weeks: everything not yet available),
-// Total (Available + Pending). Released total, Spent from fund,
-// Owed back, and the Held-for-review row were removed from this
-// sheet; Review queue access stays on the Funds page (Review card).
+// breakdowns. These are the SINGLE source for both the Home
+// stat-card expansions and the Funds balance-card expansions, so a
+// line moved off a Funds card face cannot go missing from either.
+// Fund expansion (owner, Nov 4): exactly three rows — Available,
+// Pending (pending releases PLUS held weeks: everything not yet
+// available), Total (Available + Pending). Released total, Spent
+// from fund, Owed back, and the Held-for-review row were removed
+// from this breakdown; Review queue access stays on the Funds page
+// (Review card).
 function fundBreakdownRows(f) {
   const pending = (f.pending ?? 0) + (f.heldTotal ?? 0);
   return [
@@ -3001,34 +3035,43 @@ function fundBreakdownRows(f) {
   ];
 }
 function charityBreakdownRows(c) {
-  // Charity sheet (owner, Nov 4): exactly three rows — Available
+  // Charity expansion (owner, Nov 4): exactly three rows — Available
   // (remaining, signed, so the rows add up), Given, Total (Available
   // + Given = the old Committed). Committed, Default rate, and Period
-  // rows were removed; the period stays in the sheet title and the
-  // default rate stays on the Funds "Charity income & rate" card.
+  // rows were removed; the period stays as the small line under the
+  // rows and the default rate stays on the Funds "Charity income &
+  // rate" card.
   return [
     ['Available', formatCents(c.remaining)],
     ['Given', formatCents(c.given)],
     ['Total', formatCents(c.remaining + c.given)],
   ];
 }
-// Button-card-fix: Funds balance cards — tap the whole card (click,
-// Enter, or Space) for the same breakdown sheet as the Home card.
-// The chevron at the bottom-right of the card, facing down, marks
-// it as tappable (more below, not a link to another page). Opening or
-// closing a sheet writes nothing and triggers no sync; it only reads
-// the numbers already loaded by refresh().
-document.querySelectorAll('[data-fund-card]').forEach((el) => {
-  const open = async () => {
-    const kind = el.dataset.fundCard;
-    if (kind === 'fund') {
-      await openFundSheet(true);
-    } else {
-      await openCharitySheet();
+// Button-card-fix: Funds balance cards and Home stat cards — tap the
+// whole card (click, Enter, or Space) to expand it in place; tap
+// again, or tap the other card, to collapse. The chevron flips
+// (down collapsed, up expanded) and stays brand blue. A click on a
+// button inside the expanded card runs that button (form / Close),
+// never re-toggles the card; keyboard Enter/Space on the card itself
+// toggles, and focus stays on the card, never trapped.
+document.querySelectorAll('[data-fund-card], [data-home-card]').forEach((el) => {
+  el.addEventListener('click', (e) => {
+    const actionBtn = e.target instanceof Element ? e.target.closest('[data-fund-action], [data-charity-action]') : null;
+    if (actionBtn) {
+      e.stopPropagation();
+      const result = actionBtn.dataset.fundAction || actionBtn.dataset.charityAction;
+      expandedFundCard = null;
+      syncFundCardExpansion();
+      if (result === 'close') return;
+      setFundForm(result === 'record-income' ? 'income' : result);
+      return;
     }
-  };
-  el.addEventListener('click', open);
-  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    toggleFundCard(el.dataset.fundCard || el.dataset.homeCard);
+  });
+  el.addEventListener('keydown', (e) => {
+    if (e.target !== el) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFundCard(el.dataset.fundCard || el.dataset.homeCard); }
+  });
 });
 // HTML form of an amount with smaller cents, for the hero and stat
 // numbers only (formatCents from the engine stays the plain-text form
@@ -3489,8 +3532,8 @@ $('manualCancelBtn')?.addEventListener('click', () => {
 });
 $('csvBackBtn')?.addEventListener('click', () => setAddForm('options'));
 $('charityBackBtn')?.addEventListener('click', () => { document.getElementById('charityFormError')?.classList.add('hidden'); setAddForm('options'); });
-// Task 7: Funds forms open from the Extra Fund sheet (see
-// openFundSheet), one at a time. The More › rows toggle their
+// Funds expand-in-place: Funds forms open from the expanded Extra Fund card (see
+// fundExpandActions), one at a time. The More › rows toggle their
 // sections in place without scrolling the page to the top.
 const setFundForm = (which) => { fundFormOpen = which; showView('money'); };
 const toggleMore = (which) => {

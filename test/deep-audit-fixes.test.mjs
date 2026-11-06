@@ -12,9 +12,9 @@ const webhookRegister = readFileSync(new URL('../supabase/functions/plaid-webhoo
 const plaidSync = readFileSync(new URL('../supabase/functions/plaid-sync/index.ts', import.meta.url), 'utf8');
 const gmailPoll = readFileSync(new URL('../supabase/functions/gmail-poll/index.ts', import.meta.url), 'utf8');
 
-test('pins bumped to v48/v58', () => {
-  assert.match(html, /styles\.css\?v=48/);
-  assert.match(html, /live\.js\?v=58/);
+test('pins bumped to v49/v59', () => {
+  assert.match(html, /styles\.css\?v=49/);
+  assert.match(html, /live\.js\?v=59/);
 });
 
 test('loadMembership failure uses setResultMsg soft red, not a direct blue box write', () => {

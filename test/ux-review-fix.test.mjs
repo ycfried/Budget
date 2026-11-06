@@ -67,12 +67,13 @@ test('button levels are solid colors, no pale tint or white outline', () => {
   assert.doesNotMatch(html, /btn-outline/);
   assert.doesNotMatch(js, /btn-outline/);
   // Funds actions: primary, pale, grey — three buttons, three
-  // treatments (Record income left the row for the Charity sheet).
-  // Task 7: fund actions live in the Extra Fund sheet, not a card.
+  // treatments (Record income left the row for the Charity expansion).
+  // Funds expand-in-place (owner, Nov 6): fund actions live in the
+  // expanded Extra Fund card, not a sheet and not a card.
   assert.equal(html.includes('id="section-fund-actions"'), false);
   assert.match(js, /label: 'Add money', result: 'add', btnClass: 'btn btn-primary'/);
-  assert.match(js, /label: 'Use fund money', result: 'use', btnClass: 'btn'/);
-  assert.match(js, /label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary'/);
+  assert.match(js, /label: 'Spend from fund', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary'/);
   assert.equal(html.includes('fundActionIncomeBtn'), false);
   // Detail: send-live-bundle replaced the button row with one
   // Actions line (see send-live-bundle tests); the old Mark/Use
@@ -86,7 +87,7 @@ test('held button removed; held amount folds into the fund sheet Pending', () =>
   // Audit-fixes-morning B1: the Funds "Held for review" button and
   // its wrap are gone from the HTML (it duplicated the Review
   // card's opener on the same page). The guarded JS references
-  // remain as no-ops, and the fund sheet's Pending row folds held
+  // remain as no-ops, and the fund expansion's Pending row folds held
   // weeks in (fund-sheet-button-rule, owner Nov 4) — no Held row.
   assert.equal(html.includes('id="fundHeldLinkWrap"'), false);
   assert.equal(html.includes('id="fundHeldLinkBtn"'), false);
@@ -97,7 +98,7 @@ test('held button removed; held amount folds into the fund sheet Pending', () =>
   assert.match(js, /Review \(\$\{reviewNeedsCount\}\)/);
   assert.match(js, /moreReviewOpen/);
   const fundRows = js.slice(js.indexOf('function fundBreakdownRows'), js.indexOf('function charityBreakdownRows'));
-  assert.ok(fundRows.includes('heldTotal'), 'fund sheet Pending must fold in held weeks');
+  assert.ok(fundRows.includes('heldTotal'), 'fund expansion Pending must fold in held weeks');
   assert.doesNotMatch(fundRows, /\['Held for review',/);
 });
 

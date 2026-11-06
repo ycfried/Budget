@@ -170,7 +170,7 @@ test('reclassify options include Income; SQL adds the 8th kind', () => {
 });
 
 // --- Pins -------------------------------------------------------------------
-test('version pins: styles v48, live.js v58', () => {
-  assert.match(html, /styles\.css\?v=48/);
-  assert.match(html, /live\.js\?v=58/);
+test('version pins: styles v49, live.js v59', () => {
+  assert.match(html, /styles\.css\?v=49/);
+  assert.match(html, /live\.js\?v=59/);
 });

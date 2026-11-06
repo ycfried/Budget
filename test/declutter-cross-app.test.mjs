@@ -12,9 +12,9 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
-test('version pins: styles v48, live.js v58', () => {
-  assert.match(html, /styles\.css\?v=48/);
-  assert.match(html, /live\.js\?v=58/);});// ---- Task 1: removed sentences are gone ----
+test('version pins: styles v49, live.js v59', () => {
+  assert.match(html, /styles\.css\?v=49/);
+  assert.match(html, /live\.js\?v=59/);});// ---- Task 1: removed sentences are gone ----
 const REMOVED = [
   'Weekly summaries below are the financial record',
   'Closed weeks, read-only — week start, surplus, debt carried',
@@ -224,22 +224,21 @@ test('Task 7: Review count shows only when something needs review', () => {
   assert.equal(js.includes('restRows') && js.includes('reviewNeedsCount = (restRows'), false);
 });
 
-test('Task 7: three fund actions live in the Extra Fund sheet, original order/treatments/gating', () => {
-  const sheet = js.slice(js.indexOf('async function openFundSheet'), js.indexOf(": [{ label: 'Ask for fund money'"));
-  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Use fund money', 'Ask for fund money']);
+test('Task 7: three fund actions live in the expanded Extra Fund card, original order/treatments/gating', () => {
+  const sheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request money'"));
+  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Spend from fund', 'Request money']);
   assert.deepEqual([...sheet.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
   assert.deepEqual([...sheet.matchAll(/result: '([^']+)'/g)].map((m) => m[1]), ['add', 'use', 'ask']);
-  // Members see Ask only, in the same tertiary treatment.
-  assert.ok(js.includes(": [{ label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary' }]"));
+  // Members see Request only, in the same tertiary treatment.
+  assert.ok(js.includes(": [{ label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary' }]"));
   // Choosing an action opens the same form as the old card buttons did.
-  assert.match(js, /if \(result === 'add'\) setFundForm\('add'\);/);
-  assert.match(js, /else if \(result === 'use'\) setFundForm\('use'\);/);
-  assert.match(js, /else if \(result === 'ask'\) setFundForm\('ask'\);/);
-  // Funds panel gets actions; Home stat card stays read-only.
-  assert.ok(js.includes('await openFundSheet(true)'));
-  assert.ok(js.includes('await openFundSheet(false)'));
-  // Charity Record income stays in the Charity sheet, not in More.
-  assert.match(js, /extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null/);
+  assert.match(js, /setFundForm\(result === 'record-income' \? 'income' : result\)/);
+  // Both surfaces expand with the same actions: the Funds panel and
+  // the Home stat card share one toggle (no read-only Home variant).
+  assert.match(js, /document\.querySelectorAll\('\[data-fund-card\], \[data-home-card\]'\)/);
+  assert.equal(js.includes('openFundSheet'), false);
+  // Charity Record income stays in the Charity expansion, not in More.
+  assert.match(js, /label: 'Record income', result: 'record-income', btnClass: 'btn btn-primary'/);
   assert.equal(html.slice(html.indexOf('id="section-fund-more"'), html.indexOf('id="section-fund-activity-more"')).includes('Record income'), false);
   // More rows gate by role exactly as the old content did.
   assert.match(js, /setBtn\('moreFundActivityBtn', !!isAdmin\)/);

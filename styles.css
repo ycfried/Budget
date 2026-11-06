@@ -671,6 +671,25 @@ body.live .fund-balance-head h2 { margin: 0; min-width: 0; }
    margin-top:auto pushes it to the bottom; the whole panel stays
    the tap target, with the same size and accessibility label. */
 body.live .fund-balance-chevron { color: #2f6bff; font-weight: 700; font-size: 22px; line-height: 1; align-self: flex-end; margin-top: auto; padding-top: 8px; }
+
+/* Funds expand-in-place (owner approval, Nov 6, 2026, mockup:
+   funds-expand-in-place.png): the card expands where it is — no
+   overlay, no dimmed page, no sheet. The expanded card gets the
+   brand-blue border from the mockup; a Home stat card spans both
+   columns when expanded so its rows and buttons fit. Rows are the
+   same three labeled rows as before (Available / Pending / Total
+   for the fund, Available / Given / Total for charity). Buttons
+   wrap instead of squeezing: the mockup's middle button text
+   overflows its button at phone width, so the row wraps to keep
+   every label readable. Chevron flip is text (⌄/⌃) in live.js. */
+body.live .fund-balance-panel.fund-expanded, body.live .stat-card.fund-expanded { border-color: #2f6bff; }
+body.live #section-stats .stat-card.fund-expanded { grid-column: 1 / -1; }
+body.live .fund-expand { margin-top: 12px; border-top: 1px solid #e5e7eb; padding-top: 4px; }
+body.live .fund-expand-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #e5e7eb; font-size: 15px; color: #0f172a; }
+body.live .fund-expand-row strong { font-weight: 700; color: #0f172a; white-space: nowrap; }
+body.live .fund-expand-period { margin: 8px 0 0; }
+body.live .fund-expand-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+body.live .fund-expand-btns .btn { flex: 1 1 auto; white-space: nowrap; }
 @media (max-width: 420px) {
   body.live .fund-balance-grid { grid-template-columns: 1fr; }
 }

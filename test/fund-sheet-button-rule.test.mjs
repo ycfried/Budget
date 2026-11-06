@@ -82,8 +82,10 @@ test('C: charity negative remaining stays a signed number and still adds up', ()
   assert.doesNotMatch(rows.map(([label]) => label).join(','), /Ahead by/);
 });
 
-test('C: charity sheet title keeps the period; Record income action stays; rate card stays', () => {
-  assert.match(js, /title: 'Charity · November 2026 Onward', rows: charityBreakdownRows\(c\), extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null/);
+test('C: charity expansion keeps the period; Record income action stays; rate card stays', () => {
+  assert.match(js, /fund-expand-period">November 2026 onward/);
+  assert.match(js, /label: 'Record income', result: 'record-income', btnClass: 'btn btn-primary'/);
+  assert.match(js, /label: 'Close', result: 'close', btnClass: 'btn btn-tertiary'/);
   assert.ok(html.includes('id="charityRateCurrent"'), 'Funds Charity income & rate card keeps the default rate line');
 });
 
@@ -122,11 +124,12 @@ test('B: sheet buttons follow the two-button rule; single-button sheets keep pri
 });
 
 test('B: three-button middles still pale; pale definition untouched', () => {
-  // Task 7: Funds actions (Add primary, Use plain pale middle, Ask
-  // tertiary) live in the Extra Fund sheet, not a card.
+  // Funds expand-in-place (owner, Nov 6): Funds actions (Add primary,
+  // Spend plain pale middle, Request tertiary) live in the expanded
+  // Extra Fund card, not a sheet and not a card.
   assert.match(js, /label: 'Add money', result: 'add', btnClass: 'btn btn-primary'/);
-  assert.match(js, /label: 'Use fund money', result: 'use', btnClass: 'btn'/);
-  assert.match(js, /label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary'/);
+  assert.match(js, /label: 'Spend from fund', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary'/);
   // Filters: Apply primary, Reset plain (pale middle), Cancel tertiary.
   assert.match(html, /class="btn btn-primary" id="txFiltersApplyBtn"/);
   assert.match(html, /class="btn" id="txFiltersResetBtn"/);
