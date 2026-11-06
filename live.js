@@ -427,16 +427,36 @@ async function refresh() {
   } catch (e) { console.warn('household name read failed:', e); }
   // Design-questions (owner, Nov 5, item C): members list in the
   // Account & Household card — each member with name and role.
-  // Reads household_members for this household. Names come from
-  // display_name where set; the app stores profile names in auth
-  // metadata, not display_name, so other members show as "Member"
-  // until a server-side list exists. There is NO remove-member or
-  // change-role RPC, so no manage buttons are rendered — never a
-  // button that fails. Live limitation, reported to the owner: the
+  // Reads household_members for this household. There is NO
+  // remove-member or change-role RPC, so no manage buttons are
+  // rendered — never a button that fails. Live limitation: the
   // household_members read policy lets a member read only their own
   // row (fix-membership-policy.sql, Nov 1), so until that policy is
   // widened or a list-members RPC is built, this list shows only
   // the signed-in member.
+  // Member names (owner, Nov 6, 2026): a row shows the person's
+  // NAME, never the word "Member" as a name. Resolution, in order:
+  // stored display_name; the signed-in user's own auth metadata
+  // full_name/name (that is where the app keeps profile names);
+  // the signed-in user's email prefix. display_name is populated
+  // nowhere today (no create/join RPC sets it), so the metadata
+  // path is what makes the owner's row read "Shuki (you)" live.
+  // Another member with no stored name has no name or email in the
+  // loaded data, so that fallback is unreachable live; it exists
+  // only so a widened list never renders a blank row, and it still
+  // never uses the word "Member" as a name.
+  function memberDisplayName(m, me) {
+    const stored = m.display_name && String(m.display_name).trim();
+    if (stored) return stored;
+    const isMe = me && m.user_id === me.id;
+    if (isMe) {
+      const meta = (me.user_metadata?.full_name || me.user_metadata?.name || '').trim();
+      if (meta) return meta;
+      const prefix = (me.email || '').split('@')[0].trim();
+      if (prefix) return prefix;
+    }
+    return m.role === 'admin' ? 'Admin' : 'Household member';
+  }
   try {
     const { data: { user: me } } = await supabase.auth.getUser();
     const { data: mrows } = await supabase.from('household_members')
@@ -446,7 +466,7 @@ async function refresh() {
       if (!mrows?.length) { ml.innerHTML = '<p class="muted small">No members yet.</p>'; }
       else {
         ml.innerHTML = mrows.map((m) => {
-          const name = (m.display_name && String(m.display_name).trim()) || 'Member';
+          const name = memberDisplayName(m, me);
           const role = m.role === 'admin' ? 'Admin' : 'Member';
           const you = me && m.user_id === me.id ? ' (you)' : '';
           return `<div class="member-row"><span class="member-name">${esc(name + you)}</span><span class="role-pill">${role}</span></div>`;
@@ -454,6 +474,10 @@ async function refresh() {
       }
     }
   } catch (e) { console.warn('household members read failed:', e); }
+  // Invite code inline (owner, Nov 6, 2026): loaded with the members
+  // list so the code box in the Account & Household card is filled
+  // on every refresh. Admin-only; members never see the code.
+  loadInviteCodeInline();
   // Audit-merge fix (review B S2): when no name is set, the header
   // below falls back to the email, so showing this line too would
   // print the email twice. Hide it exactly when it duplicates the
@@ -1254,6 +1278,15 @@ async function refresh() {
     // whose disconnected_at is set are not rendered at all.
     // "Previously connected" is GONE (owner, Nov 4, 2026): disconnected
     // items are simply not listed anymore. No database row is deleted.
+    // "Last synced" once (owner, Nov 6, 2026): an item missed the
+    // latest run iff it has a last_sync_at older than the household's
+    // latest sync time. plaid-sync stamps last_sync_at only on a
+    // successful item sync, so a stale stamp while the others
+    // advanced means that item failed. Null (never synced, e.g. just
+    // connected) is not a failure.
+    function accountSyncFailed(itemLastSyncAt, householdLastSyncAt) {
+      return Boolean(itemLastSyncAt && householdLastSyncAt && new Date(itemLastSyncAt) < new Date(householdLastSyncAt));
+    }
     const renderConnectedAccounts = () => {
       const el = document.getElementById('bankAccountsList');
       if (!el) return;
@@ -1304,9 +1337,24 @@ async function refresh() {
         } else {
           const line = document.createElement('div'); line.className = 'muted small'; line.textContent = 'Account details unavailable.'; info.appendChild(line);
         }
+        // "Last synced" lives ONCE, at the top level under Automatic
+        // Sync (bankSyncLine, owner Nov 6, 2026): the accounts sync
+        // together in one run, so a per-account time adds nothing.
+        // Each row keeps only its Connected date. Exception: an item
+        // whose last_sync_at is older than the household's latest
+        // sync missed that run while the others succeeded
+        // (plaid-sync stamps last_sync_at only on a successful item
+        // sync), so that account row alone shows a red "Sync failed".
+        // A never-synced item (last_sync_at null) shows no failure
+        // line, so a just-connected account is never flagged.
         const sub = document.createElement('div'); sub.className = 'bank-acct-sub';
-        sub.textContent = item.created_at ? `Connected ${fmtLong(String(item.created_at).slice(0, 10))}${item.last_sync_at ? ` · Last synced ${fmtDateTime(item.last_sync_at)}` : ''}` : (item.last_sync_at ? `Last synced ${fmtDateTime(item.last_sync_at)}` : '');
+        sub.textContent = item.created_at ? `Connected ${fmtLong(String(item.created_at).slice(0, 10))}` : '';
         if (sub.textContent) info.appendChild(sub);
+        if (accountSyncFailed(item.last_sync_at, bankLastSyncAt)) {
+          const fail = document.createElement('div'); fail.className = 'bank-acct-fail';
+          fail.textContent = 'Sync failed';
+          info.appendChild(fail);
+        }
         wrap.appendChild(info);
         // No account rows at all for this item: there is no account
         // to disconnect per-account, so the old whole-item Disconnect
@@ -1379,15 +1427,17 @@ async function refresh() {
         // card never collapses mid-refresh.
         const frag = document.createDocumentFragment();
         if (!rows.length) {
-          const p = document.createElement('p'); p.className = 'muted small'; p.textContent = household.role === 'admin' ? 'None — connect an email above.' : 'None — the admin connects email alerts.'; frag.appendChild(p);
+          const p = document.createElement('p'); p.className = 'muted small'; p.textContent = household.role === 'admin' ? 'None — connect an email below.' : 'None — the admin connects email alerts.'; frag.appendChild(p);
         }
         for (const c of rows) {
           const wrap = document.createElement('div'); wrap.className = 'bank-row';
           const info = document.createElement('div'); info.className = 'bank-info';
           const name = document.createElement('strong'); name.textContent = c.email_address || 'Email'; info.appendChild(name);
-          const st = document.createElement('div'); st.className = 'muted small';
-          st.textContent = c.status === 'error' ? 'Needs reconnect — access was revoked or expired.' : 'Connected';
-          info.appendChild(st);
+          // No standalone "Connected" line: under a "Connected Email"
+          // heading it repeats the heading. Only a real problem gets
+          // a line — the reconnect warning. "Last checked" stays as
+          // the one small grey line under the email.
+          if (c.status === 'error') { const st = document.createElement('div'); st.className = 'muted small'; st.textContent = 'Needs reconnect — access was revoked or expired.'; info.appendChild(st); }
           if (c.last_poll_at) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = `Last checked ${fmtDateTime(c.last_poll_at)}`; info.appendChild(l); }
           if (c.last_error) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = c.last_error; info.appendChild(l); }
           wrap.appendChild(info);
@@ -2684,7 +2734,8 @@ function showView(name, opts = {}) {
     setBtn('autoSyncRow', isAdmin);
     setBtn('connectEmailBtn', isAdmin);
     setBtn('pollEmailBtn', isAdmin);
-    setBtn('settingsShareIdBtn', isAdmin);
+    // No settingsShareIdBtn anymore: the invite code is inline in
+    // the Account & Household card, admin-only via loadInviteCodeInline.
     // Send-live-bundle: the Settings subtitle is deleted (see
     // live.html); there is no settingsIntro element left to update.
   }
@@ -2754,17 +2805,53 @@ document.addEventListener('keydown', (e) => {
 });
 async function shareInviteCode() {
   document.getElementById('profileMenu')?.classList.add('hidden');
-  // Share shows/copies the invite CODE, never the household UUID.
+  // Invite code inline (owner, Nov 6, 2026): no sheet, no copy-paste
+  // by hand. The code lives in the Account & Household card as a big
+  // monospace box, with Copy and Share beside it. Share uses the
+  // phone's native share sheet (navigator.share) with a prefilled
+  // message; where that is unavailable it falls back to copying the
+  // code. The code is never the household UUID.
   if (!household) { await showAlert('Not signed in', 'Sign in first, then share the invite code.'); return; }
+  let code = currentInviteCode;
+  if (!code) {
+    try {
+      const { data } = await supabase.from('households').select('invite_code').eq('id', household.household_id).maybeSingle();
+      code = data?.invite_code ?? null;
+    } catch (e) { console.warn('invite_code read failed:', e); }
+  }
+  if (!code) { await showAlert('No invite code', 'No invite code is set up for this household yet.'); return; }
+  const text = `Join my household on OnBudget with invite code ${code}`;
+  if (navigator.share) {
+    try { await navigator.share({ title: 'OnBudget invite code', text }); return; }
+    catch (e) { if (e?.name === 'AbortError') return; /* user dismissed the sheet — fall through to Copy */ }
+  }
+  await copyInviteCode();
+}
+let currentInviteCode = null;
+async function loadInviteCodeInline() {
+  const box = document.getElementById('inviteCodeBox');
+  const empty = document.getElementById('inviteCodeEmpty');
+  const intro = document.getElementById('inviteCodeIntro');
+  if (!box || !empty) return;
+  // Members never see the invite code — sharing is admin-only.
+  if (household?.role !== 'admin') { box.hidden = true; empty.hidden = true; if (intro) intro.hidden = true; return; }
+  if (intro) intro.hidden = false;
   let code = null;
   try {
     const { data } = await supabase.from('households').select('invite_code').eq('id', household.household_id).maybeSingle();
     code = data?.invite_code ?? null;
   } catch (e) { console.warn('invite_code read failed:', e); }
-  if (!code) { await showSheet({ title: 'Invite Code', message: 'No invite code is set up for this household yet. Ask the household owner to set one up before the second account joins.', confirmLabel: 'Done' }); return; }
-  let copied = false;
-  try { await navigator.clipboard.writeText(code); copied = true; } catch (e) { /* clipboard may be unavailable; the code is still shown */ }
-  await showSheet({ title: 'Invite Code', message: `Share this code with the second account so they can join as a member:\n${code}${copied ? '\n(Copied to clipboard.)' : ''}`, confirmLabel: 'Done' });
+  currentInviteCode = code;
+  const textEl = document.getElementById('inviteCodeText');
+  if (textEl) textEl.textContent = code ?? '';
+  box.hidden = !code;
+  empty.hidden = !!code;
+}
+async function copyInviteCode() {
+  const btn = document.getElementById('inviteCopyBtn');
+  if (!currentInviteCode) return;
+  try { await navigator.clipboard.writeText(currentInviteCode); } catch (e) { /* clipboard may be unavailable; the code stays visible */ }
+  if (btn) { const label = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = label; }, 2000); }
 }
 async function deleteAccountFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
@@ -2838,7 +2925,8 @@ document.getElementById('saveProfileEmailBtn')?.addEventListener('click', async 
   showToast(`Confirmation sent to ${email} — your sign-in email stays as it is until you confirm it.`);
 });
 document.getElementById('profilePasswordBtn')?.addEventListener('click', changePasswordFlow);
-document.getElementById('settingsShareIdBtn')?.addEventListener('click', shareInviteCode);
+document.getElementById('inviteCopyBtn')?.addEventListener('click', copyInviteCode);
+document.getElementById('inviteShareBtn')?.addEventListener('click', shareInviteCode);
 document.getElementById('settingsPasswordBtn')?.addEventListener('click', changePasswordFlow);
 document.getElementById('settingsDeleteBtn')?.addEventListener('click', deleteAccountFlow);
 document.getElementById('settingsBackBtn')?.addEventListener('click', () => showView(previousView || 'week'));
@@ -2952,11 +3040,15 @@ heroWeeklyTarget?.addEventListener('keydown', (e) => {
 // so a card tap anywhere never opens a sheet for these two cards.
 // The Weekly sheet, alerts, and transaction Action sheets are
 // untouched and still use showSheet.
-// Buttons (mockup labels): Extra Fund — "Add money" primary blue,
-// "Spend from fund" pale #bfdbfe/ink (middle tier), "Request money"
-// grey tertiary; members see "Request money" only. Charity —
-// "Record income" primary blue, "Close" grey tertiary; members see
-// "Close" only. The forms behind the buttons are unchanged in-page
+// Buttons (mockup labels) live ONLY on the Funds page: Extra Fund —
+// "Add money" primary blue, "Spend from fund" pale #bfdbfe/ink
+// (middle tier), "Request money" grey tertiary; members see "Request
+// money" only. Charity — "Record income" primary blue, "Close" grey
+// tertiary; members see "Close" only. Home is the overview
+// (assistant decision, Nov 6, 2026, on the owner's "whatever you
+// think is better"): its stat cards expand in place to the rows
+// ONLY, with no action buttons — actions belong on the Funds page,
+// the right page for them.
 // cards (section-fund-add / -use / -ask / -charity-income), opened
 // via setFundForm exactly as the sheet did; they are NOT sheets.
 // Expanding or collapsing writes nothing and triggers no sync; it
@@ -2979,13 +3071,16 @@ function charityExpandActions(isAdmin) {
       ]
     : [{ label: 'Close', result: 'close', btnClass: 'btn btn-tertiary' }];
 }
-function fundExpandDetailHtml(kind, data, isAdmin) {
+function fundExpandDetailHtml(kind, data, isAdmin, withActions = true) {
   if (!data) return '';
   const rows = kind === 'fund' ? fundBreakdownRows(data) : charityBreakdownRows(data);
-  const actions = kind === 'fund' ? fundExpandActions(isAdmin) : charityExpandActions(isAdmin);
   const attr = kind === 'fund' ? 'data-fund-action' : 'data-charity-action';
   const period = kind === 'charity' ? '<p class="muted small fund-expand-period">November 2026 onward</p>' : '';
-  return `<div class="fund-expand" data-fund-expand="${kind}">${rows.map(([label, amount]) => `<div class="fund-expand-row"><span>${esc(label)}</span><strong>${esc(amount)}</strong></div>`).join('')}${period}<div class="btn-row fund-expand-btns">${actions.map((a) => `<button class="${a.btnClass}" type="button" ${attr}="${a.result}">${esc(a.label)}</button>`).join('')}</div></div>`;
+  // Home read-only: withActions false renders the rows only, no
+  // button row at all — the Funds page passes true (default).
+  const actions = withActions ? (kind === 'fund' ? fundExpandActions(isAdmin) : charityExpandActions(isAdmin)) : [];
+  const btns = actions.length ? `<div class="btn-row fund-expand-btns">${actions.map((a) => `<button class="${a.btnClass}" type="button" ${attr}="${a.result}">${esc(a.label)}</button>`).join('')}</div>` : '';
+  return `<div class="fund-expand" data-fund-expand="${kind}">${rows.map(([label, amount]) => `<div class="fund-expand-row"><span>${esc(label)}</span><strong>${esc(amount)}</strong></div>`).join('')}${period}${btns}</div>`;
 }
 function syncFundCardExpansion() {
   document.querySelectorAll('[data-fund-card], [data-home-card]').forEach((el) => {
@@ -2997,7 +3092,7 @@ function syncFundCardExpansion() {
     if (chev) chev.textContent = expanded ? '⌃' : '⌄';
     const detail = el.querySelector('[data-fund-expand]');
     if (!expanded) { detail?.remove(); return; }
-    const html = fundExpandDetailHtml(kind, kind === 'fund' ? currentFundData : currentCharityData, household?.role === 'admin');
+    const html = fundExpandDetailHtml(kind, kind === 'fund' ? currentFundData : currentCharityData, household?.role === 'admin', !el.hasAttribute('data-home-card'));
     if (!html) { detail?.remove(); return; }
     if (detail) detail.outerHTML = html;
     // Funds panel: the chevron is the last child, so the detail goes
@@ -3855,7 +3950,9 @@ function updateTempPreview() {
   const cents = parseDollarsStrict($('tempIncreaseInput')?.value ?? '');
   const weeksRaw = parseInt($('tempIncreaseWeeks')?.value ?? '1', 10);
   const weeks = Number.isFinite(weeksRaw) ? Math.min(4, Math.max(1, weeksRaw)) : 1;
-  if (cents === null || cents < 0) { pv.textContent = 'Enter a new total and weeks to see the preview.'; return; }
+  // No instruction sentence: the preview itself appears once values
+  // are entered, and stays empty until then (owner, Nov 6, 2026).
+  if (cents === null || cents < 0) { pv.textContent = ''; return; }
   const base = currentWeekData?.baseAllowanceCents;
   const baseText = Number.isInteger(base) ? formatCents(base) : '—';
   const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));

@@ -244,10 +244,10 @@ test('no two adjacent buttons share a treatment after the tertiary change', () =
   const fundSheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request money'"));
   const fundBtns = [...fundSheet.matchAll(/btnClass: 'btn([^']*)'/g)].map((m) => m[1].trim());
   assert.deepEqual(fundBtns, ['btn-primary', '', 'btn-tertiary']);
-  // Settings Account card: Share only (audit-fixes-morning B2
-  // deleted the duplicate Change password button). Design-questions
-  // (owner, Nov 5, item B): Share invite code is primary blue.
+  // Settings Account card: invite Copy (primary blue) + Share
+  // (grey tertiary) in the inline code box (owner, Nov 6). The old
+  // "Share invite code" button and its sheet are gone.
   const acct = html.slice(html.indexOf('id="section-settings-account"'), html.indexOf('id="settingsDeleteBtn"'));
   const acctBtns = [...acct.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());
-  assert.deepEqual(acctBtns, ['btn-primary']);
+  assert.deepEqual(acctBtns, ['btn-primary', 'btn-tertiary']);
 });

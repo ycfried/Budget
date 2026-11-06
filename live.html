@@ -330,14 +330,14 @@
     <div class="card" id="section-email" style="display:none">
       <h2>Email Alerts</h2>
       <p class="muted small">Look only — it never moves, sends, or changes anything.</p>
+      <h3>Connected Email</h3>
+      <div id="emailConnectionsList"><p class="muted small">Loading…</p></div>
+      <p class="muted small" id="emailStatusLine"></p>
       <div class="btn-row">
         <button id="connectEmailBtn" class="btn btn-primary" type="button" aria-label="Connect email">Connect email</button>
         <button id="pollEmailBtn" class="btn btn-tertiary" type="button" aria-label="Check email now">Check email now</button>
       </div>
       <div id="emailMsg" class="result"></div>
-      <p class="muted small" id="emailStatusLine"></p>
-      <h3>Connected Email</h3>
-      <div id="emailConnectionsList"><p class="muted small">Loading…</p></div>
     </div>
 
     <div class="card" id="settingsCard" style="display:none">
@@ -357,7 +357,7 @@
         </label>
       </div>
       <button id="addTempBtn" class="btn btn-primary" type="button" aria-label="Set the new total allowance for the chosen weeks">Set new total</button>
-      <p id="tempPreview" class="muted small">Enter a new total and weeks to see the preview.</p>
+      <p id="tempPreview" class="muted small"></p>
       <div id="tempMsg" class="result"></div>
     </div>
 
@@ -367,10 +367,15 @@
       <p class="muted small" id="householdNameLine">Household: Household</p>
       <h3>Members</h3>
       <div id="membersList"><p class="muted small">Loading…</p></div>
-      <p class="muted small">Members join with the invite code. Removing a member or changing a role needs a server step that is not built yet.</p>
-      <div class="btn-row">
-        <button id="settingsShareIdBtn" class="btn btn-primary" type="button" aria-label="Share the invite code">Share invite code</button>
+      <p class="muted small" id="inviteCodeIntro">Members join with the invite code below.</p>
+      <div class="invite-code-box" id="inviteCodeBox" hidden>
+        <code id="inviteCodeText" class="invite-code" aria-label="Invite code"></code>
+        <div class="btn-row invite-code-btns">
+          <button id="inviteCopyBtn" class="btn btn-primary" type="button" aria-label="Copy the invite code">Copy</button>
+          <button id="inviteShareBtn" class="btn btn-tertiary" type="button" aria-label="Share the invite code">Share</button>
+        </div>
       </div>
+      <p class="muted small" id="inviteCodeEmpty" hidden>No invite code is set up for this household yet.</p>
       <div class="danger-area">
         <h3>Delete Account</h3>
         <p class="muted small">Deleting removes you from this household. If you are the last member, the household is deleted too. This cannot be undone.</p>

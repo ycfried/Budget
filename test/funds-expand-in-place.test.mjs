@@ -99,6 +99,46 @@ test('no data, no expansion markup', () => {
   assert.equal(admin.fundExpandDetailHtml('charity', null, true), '');
 });
 
+// --- Home is read-only (assistant decision, Nov 6, 2026) -----------------
+
+test('Home fund card expands to rows only, no action buttons', () => {
+  const detail = admin.fundExpandDetailHtml('fund', fundData, true, false);
+  assert.ok(detail.includes('<span>Spendable available</span><strong>$67.11</strong>'));
+  assert.ok(detail.includes('<span>Pending</span><strong>$375.00</strong>'));
+  assert.ok(detail.includes('<span>Total</span><strong>$442.11</strong>'));
+  assert.equal(detail.includes('<button'), false, 'no action buttons on Home');
+  assert.equal(detail.includes('data-fund-action'), false);
+  assert.equal(detail.includes('fund-expand-btns'), false);
+});
+
+test('Home charity card expands to rows only, no action buttons', () => {
+  const detail = admin.fundExpandDetailHtml('charity', charityData, true, false);
+  assert.ok(detail.includes('<span>Available</span><strong>$50.00</strong>'));
+  assert.ok(detail.includes('<span>Given</span><strong>$30.00</strong>'));
+  assert.ok(detail.includes('<span>Total</span><strong>$80.00</strong>'));
+  assert.ok(detail.includes('November 2026 onward'), 'period line stays — it is information, not an action');
+  assert.equal(detail.includes('<button'), false);
+  assert.equal(detail.includes('data-charity-action'), false);
+});
+
+test('Home member card is rows only too', () => {
+  const detail = member.fundExpandDetailHtml('fund', fundData, false, false);
+  assert.ok(detail.includes('<span>Available to request</span>'));
+  assert.equal(detail.includes('<button'), false);
+});
+
+test('sync passes withActions=false for Home cards, true for Funds cards', () => {
+  const sync = js.slice(js.indexOf('function syncFundCardExpansion'), js.indexOf('function toggleFundCard'));
+  assert.match(sync, /fundExpandDetailHtml\(kind, kind === 'fund' \? currentFundData : currentCharityData, household\?\.role === 'admin', !el\.hasAttribute\('data-home-card'\)\)/);
+});
+
+test('Funds page default keeps the full buttons (withActions defaults true)', () => {
+  const detail = admin.fundExpandDetailHtml('fund', fundData, true);
+  assert.deepEqual(btnLabels(detail), ['Add money', 'Spend from fund', 'Request money']);
+  const charity = admin.fundExpandDetailHtml('charity', charityData, true);
+  assert.deepEqual(btnLabels(charity), ['Record income', 'Close']);
+});
+
 // --- No sheet is opened by a card tap -----------------------------------
 
 test('no sheet opener remains for either card; Weekly sheet is untouched', () => {

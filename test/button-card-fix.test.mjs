@@ -59,10 +59,13 @@ test('transaction detail rows: one Actions line, no five-button row', () => {
   assert.ok(js.includes('data-trash-restore='));
 });
 
-test('Settings account row: Share only; Change password lives in the Profile card', () => {
-  // Design-questions (owner, Nov 5, item B): Share invite code is
-  // primary blue, not pale.
-  assert.ok(html.includes('<button id="settingsShareIdBtn" class="btn btn-primary"'));
+test('Settings account row: invite is inline (Copy/Share), no Share button; Change password lives in the Profile card', () => {
+  // Invite code inline (owner, Nov 6): the "Share invite code"
+  // button and its sheet are gone; the code box has Copy (primary
+  // blue) and Share (grey tertiary) instead.
+  assert.equal(html.includes('settingsShareIdBtn'), false, 'no Share invite code button remains');
+  assert.ok(html.includes('<button id="inviteCopyBtn" class="btn btn-primary"'));
+  assert.ok(html.includes('<button id="inviteShareBtn" class="btn btn-tertiary"'));
   // Audit-fixes-morning B2: the Account card's duplicate Change
   // password button is deleted; the Profile card's is the only one.
   assert.equal(html.includes('id="settingsPasswordBtn"'), false);

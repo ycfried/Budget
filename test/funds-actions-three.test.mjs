@@ -74,7 +74,7 @@ test('Extra Fund expansion rows are unchanged; no sheet Close remains', () => {
   // One detail renderer serves both surfaces (Home + Funds); rows
   // are unchanged and there is no sheet Close button any more —
   // the fund card closes by tapping the card again or the other card.
-  assert.match(js, /function fundExpandDetailHtml\(kind, data, isAdmin\)/);
+  assert.match(js, /function fundExpandDetailHtml\(kind, data, isAdmin, withActions = true\)/);
   assert.match(js, /fundBreakdownRows\(data\)/);
   assert.doesNotMatch(js, /showSheet\(\{ title: 'Extra Fund'/);
   const fundActions = js.slice(js.indexOf('function fundExpandActions'), js.indexOf('function charityExpandActions'));

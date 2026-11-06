@@ -115,12 +115,11 @@ test('8. Unified sentence on Bank and Email; Email heading Title Case, long para
   for (const gone of ['never your whole mailbox', 'stay provisional until the bank confirms them', 'does not change any existing email setup', 'The app can see transactions.', 'Email alerts (read-only)']) {
     assert.equal(html.includes(gone), false, `removed sentence/fragment still present: ${gone}`);
   }
-  // Email status line (connected-accounts-rework, owner Nov 4, 2026):
-  // just "Connected" — the "(read-only)" is gone because the card
-  // already says "Look only" above it. The "Needs reconnect" error
-  // text is unchanged.
+  // Email status (owner Nov 6, 2026): no standalone "Connected"
+  // line at all — under a "Connected Email" heading it repeats the
+  // heading. The "Needs reconnect" error text is unchanged.
   assert.equal(js.includes('Connected (read-only)'), false);
-  assert.ok(js.includes(": 'Connected';"));
+  assert.equal(js.includes(": 'Connected';"), false, 'no standalone Connected status is rendered');
   assert.ok(js.includes('Needs reconnect — access was revoked or expired.'));
 });
 

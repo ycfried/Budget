@@ -597,6 +597,7 @@ body.live .bank-row.bank-acct-row { align-items: flex-start; padding: 16px 0; }
 body.live .bank-acct-name { font-size: 16px; font-weight: 700; color: #0f172a; overflow-wrap: break-word; }
 body.live .bank-acct-meta { font-size: 13px; color: #6b7280; margin-top: 2px; overflow-wrap: break-word; }
 body.live .bank-acct-sub { font-size: 13px; color: #6b7280; margin-top: 2px; overflow-wrap: break-word; }
+body.live .bank-acct-fail { font-size: 13px; color: #dc2626; font-weight: 600; margin-top: 2px; overflow-wrap: break-word; }
 body.live .bank-acct-row .btn-quiet { padding: 2px 0; margin-top: 6px; font-size: 13px; }
 body.live .bank-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: 0 0 auto; align-self: flex-start; }
 body.live .sav-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -1133,19 +1134,28 @@ body.live .back-link, body.live .settings-back-link { background: none; border: 
 body.live .money-input-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
 body.live .money-prefix { font-size: 16px; font-weight: 600; color: #0f172a; }
 body.live .temp-increase-heading { margin-top: 28px; }
-/* Design-questions (owner, Nov 5, item A): the $ amount and Weeks
-   fields are symmetrical — same label style, same control height
-   (46px), same border, radius and padding, same 4px gap under the
-   label, aligned baselines. The $ field flexes to fill the row and
-   the Weeks field is a fixed 96px, so the pair sits properly side
-   by side even at 320px. The old layout had a wide $ box against a
-   small narrow Weeks box at different heights. */
+/* Design-questions (owner, Nov 5, item A; refined Nov 6): the $ amount
+   and Weeks fields are symmetrical — same label style, same control
+   height (46px), same border, radius and padding, same 4px gap under
+   the label, aligned baselines. The $ field is capped at 200px so the
+   Weeks field sits CLOSE beside it instead of being pushed to the far
+   edge of a stretched field, and Weeks is a narrow 64px — the biggest
+   number that ever goes in it is 4, one digit plus the dropdown
+   arrow. Clear space (12px) sits between the fields and the "Set new
+   total" button, so the field never touches the button. */
 body.live .temp-increase-row { display: flex; align-items: flex-start; gap: 12px; flex-wrap: nowrap; }
-body.live .temp-increase-row .temp-field-label { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 600; color: #0f172a; }
-body.live .temp-increase-row .temp-field-label.weeks-field { flex: 0 0 96px; }
+body.live .temp-increase-row .temp-field-label { flex: 0 1 200px; min-width: 0; font-size: 14px; font-weight: 600; color: #0f172a; }
+body.live .temp-increase-row .temp-field-label.weeks-field { flex: 0 0 64px; }
 body.live .temp-increase-row .money-input-row { margin: 4px 0 0; }
 body.live .temp-increase-row .money-input-row input, body.live .temp-increase-row .weeks-field select { width: 100%; height: 46px; margin: 0; padding: 11px 12px; font-size: 16px; border: 1px solid #e5e7eb; border-radius: 12px; min-width: 0; box-sizing: border-box; }
-body.live .temp-increase-row .weeks-field select { display: block; margin-top: 4px; }
+body.live .temp-increase-row .weeks-field select { display: block; margin-top: 4px; padding: 11px 6px; }
+body.live #addTempBtn { margin-top: 12px; }
+/* Design-questions (owner, Nov 6): invite code inline in the Account
+   & Household card — a big monospace code box, no sheet. Copy is
+   primary blue, Share is grey tertiary. */
+body.live .invite-code-box { margin: 8px 0 0; padding: 14px; border: 1.5px solid #2f6bff; border-radius: 12px; background: #fff; }
+body.live .invite-code { display: block; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 28px; font-weight: 700; letter-spacing: 4px; color: #0f172a; text-align: center; overflow-wrap: break-word; }
+body.live .invite-code-btns { margin-top: 12px; }
 /* Design-questions (owner, Nov 5, item C): household members list
    in the Account & Household card — one row per member, name on the
    left, role pill on the right. */

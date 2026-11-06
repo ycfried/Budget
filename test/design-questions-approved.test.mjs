@@ -73,18 +73,27 @@ test('18. Dates before Nov 1, 2026 are rejected in the manual form and CSV impor
   assert.equal(js.includes('isPreNovDate'), true);
 });
 
-test('A. Temporary Allowance $ and Weeks fields are symmetrical: same label, same 46px control height, same border/padding', () => {
+test('A. Temporary Allowance $ and Weeks fields: same 46px height, Weeks narrow and adjacent, space before Set new total, no preview sentence', () => {
   assert.match(html, /<label class="temp-field-label">New total/, '$ field has a matching label above it');
   assert.match(html, /<label class="temp-field-label weeks-field">Weeks/, 'Weeks field carries the shared field class');
   // Both controls share one rule: same height, padding, font, border, radius.
   assert.match(css, /\.temp-increase-row \.money-input-row input, body\.live \.temp-increase-row \.weeks-field select \{ width: 100%; height: 46px; margin: 0; padding: 11px 12px; font-size: 16px; border: 1px solid #e5e7eb; border-radius: 12px; min-width: 0; box-sizing: border-box; \}/);
-  assert.match(css, /\.temp-increase-row \.temp-field-label\.weeks-field \{ flex: 0 0 96px; \}/, 'Weeks is a fixed 96px while $ flexes');
+  assert.match(css, /\.temp-increase-row \.temp-field-label \{ flex: 0 1 200px;/, '$ field is capped so Weeks sits adjacent, not far away');
+  assert.match(css, /\.temp-increase-row \.temp-field-label\.weeks-field \{ flex: 0 0 64px; \}/, 'Weeks is a narrow 64px — one digit, biggest value 4');
+  assert.match(css, /body\.live #addTempBtn \{ margin-top: 12px; \}/, 'field never touches the Set new total button');
+  // The preview instruction sentence is gone; the preview itself
+  // appears once values are entered, and stays empty until then.
+  assert.equal(html.includes('Enter a new total and weeks to see the preview.'), false, 'no preview sentence in the markup');
+  assert.equal(js.includes('Enter a new total and weeks to see the preview.'), false, 'no preview sentence in the code');
+  assert.match(js, /if \(cents === null \|\| cents < 0\) \{ pv\.textContent = ''; return; \}/, 'empty preview until values are entered');
   assert.equal(css.includes('.weeks-label'), false, 'the old mismatched Weeks label rule is gone');
 });
 
-test('B. Set new total and Share invite code are primary blue; Delete account stays pale red', () => {
+test('B. Set new total is primary blue; Delete account stays pale red; invite is inline Copy/Share, not a Share button', () => {
   assert.match(html, /id="addTempBtn" class="btn btn-primary"/, 'Set new total is primary blue like Save allowance');
-  assert.match(html, /id="settingsShareIdBtn" class="btn btn-primary"/, 'Share invite code is primary blue');
+  assert.ok(html.includes('<button id="inviteCopyBtn" class="btn btn-primary"'), 'invite Copy is primary blue');
+  assert.ok(html.includes('<button id="inviteShareBtn" class="btn btn-tertiary"'), 'invite Share is grey tertiary');
+  assert.equal(html.includes('settingsShareIdBtn'), false, 'no Share invite code button remains');
   assert.match(html, /id="settingsDeleteBtn" class="btn btn-danger"/, 'Delete account stays destructive pale red');
   assert.match(html, /id="saveAllowanceBtn" class="btn btn-primary"/, 'Save allowance is still primary blue');
 });
@@ -97,7 +106,7 @@ test('C. Account & Household shows a members list with name and role; no fake ma
   assert.match(js, /\(you\)/, 'the signed-in member is marked');
   assert.equal(html.includes('data-member-remove'), false, 'no remove-member button: no safe RPC exists');
   assert.equal(html.includes('data-member-role'), false, 'no change-role button: no safe RPC exists');
-  assert.match(html, /Removing a member or changing a role needs a server step that is not built yet\./, 'the list says plainly what is not built');
+  assert.equal(html.includes('Removing a member or changing a role needs a server step that is not built yet.'), false, 'the internal-machinery sentence is gone (owner, Nov 6)');
 });
 
 test('D. Trash is its own page, like Past Weeks and Activity', () => {
