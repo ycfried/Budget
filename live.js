@@ -427,24 +427,22 @@ async function refresh() {
   } catch (e) { console.warn('household name read failed:', e); }
   // Design-questions (owner, Nov 5, item C): members list in the
   // Account & Household card — each member with name and role.
-  // Reads household_members for this household. There is NO
-  // remove-member or change-role RPC, so no manage buttons are
-  // rendered — never a button that fails. Live limitation: the
-  // household_members read policy lets a member read only their own
-  // row (fix-membership-policy.sql, Nov 1), so until that policy is
-  // widened or a list-members RPC is built, this list shows only
-  // the signed-in member.
+  // Reads household_members for this household via the
+  // list_household_members() SECURITY DEFINER RPC (owner, Nov 6,
+  // 2026): the household_members read policy lets a member read only
+  // their own row (fix-membership-policy.sql, Nov 1), so a direct
+  // select could only ever show the signed-in member. The RPC
+  // scopes to the caller's own household and returns every member's
+  // user_id, display_name, role, created_at and email_prefix — no
+  // full email — so the list shows real names for all members.
   // Member names (owner, Nov 6, 2026): a row shows the person's
   // NAME, never the word "Member" as a name. Resolution, in order:
-  // stored display_name; the signed-in user's own auth metadata
-  // full_name/name (that is where the app keeps profile names);
-  // the signed-in user's email prefix. display_name is populated
-  // nowhere today (no create/join RPC sets it), so the metadata
-  // path is what makes the owner's row read "Shuki (you)" live.
-  // Another member with no stored name has no name or email in the
-  // loaded data, so that fallback is unreachable live; it exists
-  // only so a widened list never renders a blank row, and it still
-  // never uses the word "Member" as a name.
+  // stored display_name (set from the auth-metadata name when the
+  // member row is created, create/join); the signed-in user's own
+  // auth metadata full_name/name; the row's email_prefix (the part
+  // before '@', supplied by the RPC for any member); last resort
+  // "Household member". A member with no stored name and no
+  // metadata name still never renders as "Member".
   function memberDisplayName(m, me) {
     const stored = m.display_name && String(m.display_name).trim();
     if (stored) return stored;
@@ -452,15 +450,18 @@ async function refresh() {
     if (isMe) {
       const meta = (me.user_metadata?.full_name || me.user_metadata?.name || '').trim();
       if (meta) return meta;
-      const prefix = (me.email || '').split('@')[0].trim();
-      if (prefix) return prefix;
     }
-    return m.role === 'admin' ? 'Admin' : 'Household member';
+    const prefix = m.email_prefix && String(m.email_prefix).trim();
+    if (prefix) return prefix;
+    if (isMe) {
+      const mePrefix = (me.email || '').split('@')[0].trim();
+      if (mePrefix) return mePrefix;
+    }
+    return 'Household member';
   }
   try {
     const { data: { user: me } } = await supabase.auth.getUser();
-    const { data: mrows } = await supabase.from('household_members')
-      .select('user_id, display_name, role, created_at').eq('household_id', household.household_id).order('created_at');
+    const { data: mrows } = await supabase.rpc('list_household_members');
     const ml = document.getElementById('membersList');
     if (ml) {
       if (!mrows?.length) { ml.innerHTML = '<p class="muted small">No members yet.</p>'; }

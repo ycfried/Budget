@@ -15,9 +15,9 @@ const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(readFileSync(new URL('../manifest-live.json', import.meta.url), 'utf8'));
 
-test('pins: styles v49, live.js v59, matching live.html', () => {
-  assert.match(html, /styles\.css\?v=49/);
-  assert.match(html, /live\.js\?v=59/);});test('combined hero: Available + progress + Spent/% + allowance + purchases, in one card', () => {
+test('pins: styles v50, live.js v60, matching live.html', () => {
+  assert.match(html, /styles\.css\?v=50/);
+  assert.match(html, /live\.js\?v=60/);});test('combined hero: Available + progress + Spent/% + allowance + purchases, in one card', () => {
   const hero = html.slice(html.indexOf('id="section-week"'), html.indexOf('id="section-stats"'));
   for (const id of ['weeklyAvailable', 'weekProgressBar', 'heroSpentLine', 'heroUsedPct', 'heroAllowance', 'heroPurchaseCount']) {
     assert.ok(hero.includes(`id="${id}"`), `hero contains ${id}`);

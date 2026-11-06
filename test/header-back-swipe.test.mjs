@@ -13,9 +13,9 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
-test('pins bumped to v49/v59', () => {
-  assert.ok(html.includes('styles.css?v=49'));
-  assert.ok(html.includes('live.js?v=59'));
+test('pins bumped to v50/v60', () => {
+  assert.ok(html.includes('styles.css\?v=50'));
+  assert.ok(html.includes('live.js\?v=60'));
 });
 
 test('header-only cards are plain headers, not cards', () => {

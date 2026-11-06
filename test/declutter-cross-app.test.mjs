@@ -12,9 +12,9 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
-test('version pins: styles v49, live.js v59', () => {
-  assert.match(html, /styles\.css\?v=49/);
-  assert.match(html, /live\.js\?v=59/);});// ---- Task 1: removed sentences are gone ----
+test('version pins: styles v50, live.js v60', () => {
+  assert.match(html, /styles\.css\?v=50/);
+  assert.match(html, /live\.js\?v=60/);});// ---- Task 1: removed sentences are gone ----
 const REMOVED = [
   'Weekly summaries below are the financial record',
   'Closed weeks, read-only — week start, surplus, debt carried',
