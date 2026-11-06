@@ -109,6 +109,53 @@ test('Dropped at owner direction: no admin set-name path, no backfill', () => {
   assert.equal(js.includes("Edit name"), false, 'no inline name edit in the Members section');
 });
 
+// --- 1b. N13 reconciliation (owner, Nov 6, 2026) -------------------------
+// The first apply of signup-display-name.sql was STOPPED at Step 0:
+// its §1b was written against the pre-N13 join and would have removed
+// the live invite-join rate limiting. The reconciled §1b is the LIVE
+// N13 body, verbatim except the limit (10 -> 5, owner decision) and
+// the display_name insert. No live DB here — these are static checks
+// of the SQL text; the live apply re-verifies from pg_get_functiondef.
+
+test('1b. join keeps the live N13 rate limiting, limit 5 in every bucket', () => {
+  const n13 = readFileSync(new URL('../supabase/n13-invite-rate-limit.sql', import.meta.url), 'utf8');
+  const joinFn = sql.slice(sql.indexOf('create or replace function public.join_household_by_code'), sql.indexOf('create or replace function public.list_household_members()'));
+  const body = joinFn.slice(joinFn.indexOf('as $$'));
+  // 24-hour sweep, three buckets, all at 5, no 10 left in the body.
+  assert.match(body, /delete from invite_join_attempts where created_at < now\(\) - interval '24 hours';/, '24-hour sweep kept');
+  assert.equal((body.match(/>= 5 then/g) || []).length, 3, 'exactly three buckets, all at 5');
+  assert.equal(body.includes('>= 10'), false, 'no 10 threshold remains in the join body');
+  // Unknown/malformed code: log the attempt and return NULL (commits),
+  // never raise — raising would roll the log row back.
+  assert.match(body, /if v_household_id is null then\s*\n\s*insert into invite_join_attempts \(user_id, attempted_code, household_id\)\s*\n\s*values \(auth\.uid\(\), v_input, null\);\s*\n\s*return null;/, 'unknown code logs and returns NULL');
+  assert.equal(body.includes("raise exception 'invalid invite code'"), false, 'no raise on invalid code (pre-N13 behaviour is gone)');
+  // Already-in-a-household is checked only AFTER the code resolves,
+  // so the failure can be attributed to that household.
+  assert.ok(body.indexOf('select id into v_household_id') < body.indexOf("raise exception 'already in a household'"), 'already-in-household check comes after resolving the code');
+  // display_name is still stored on the join path.
+  assert.match(body, /v_display_name := public\._caller_display_name\(\);/, 'join reads the metadata name');
+  // The N13 reference file agrees: same limit, no 10 anywhere.
+  assert.match(n13, /Threshold is 5 failed attempts per bucket/, 'N13 header states the limit of 5');
+  assert.equal(n13.includes('>= 10'), false, 'no 10 threshold remains in the N13 file');
+  assert.equal((n13.match(/>= 5 then/g) || []).length, 3, 'N13 file has the same three buckets at 5');
+});
+
+test('1b. reconciled join is the N13 join plus display_name only', () => {
+  const n13 = readFileSync(new URL('../supabase/n13-invite-rate-limit.sql', import.meta.url), 'utf8');
+  const fnOnly = (src) => {
+    const start = src.indexOf('create or replace function public.join_household_by_code');
+    return src.slice(start, src.indexOf('$$;', start) + 3);
+  };
+  const norm = (src) => src.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('--')).map((l) => l.replace(/\s+/g, ' ')).join('\n');
+  // Rewrite the display_name insert back to the N13 form, and drop
+  // the declaration + assignment lines, before comparing.
+  const reconciled = fnOnly(sql)
+    .replace(/insert into household_members \(household_id, user_id, role, display_name\)/, 'insert into household_members (household_id, user_id, role)')
+    .replace(/values \(v_household_id, auth\.uid\(\), 'member', v_display_name\);/, "values (v_household_id, auth.uid(), 'member');")
+    .split('\n').filter((l) => !l.includes('v_display_name')).join('\n');
+  assert.equal(norm(reconciled), norm(fnOnly(n13)), 'reconciled join differs from the N13 join only by the display_name lines');
+});
+
 // --- Pins ----------------------------------------------------------------------
 
 test('version pins: styles v50, live.js v60', () => {

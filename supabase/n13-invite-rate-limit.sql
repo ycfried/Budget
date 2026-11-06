@@ -1,16 +1,21 @@
 -- =====================================================================
--- N13 migration — invite join rate limiting (NOT YET APPLIED LIVE)
+-- N13 migration — invite join rate limiting (APPLIED LIVE, Nov 2026;
+-- the live function was verified from pg_get_functiondef Nov 6, 2026)
 -- Owner ruling preserved: invite codes stay REUSABLE and NON-EXPIRING.
 -- This file changes NOTHING about code validity: a correct code
 -- still joins, any number of times, forever. It only throttles
 -- FAILED attempts so a code cannot be brute-forced unthrottled.
+-- Threshold is 5 failed attempts per bucket (owner, Nov 6, 2026 —
+-- was 10).
 --
--- APPLY ORDER WARNING: apply this file ONLY after the companion
--- live.js join-handler fix is live (it treats a NULL return as a
--- failed join; see the header note below). The SQL must not go live
--- before that UI line, or a failed join would show the wrong
--- message. The UI fix is already pushed to main; this SQL file is
--- for the parent to apply via the SQL Editor when ready.
+-- NOTE: this file is now APPLIED LIVE (verified Nov 6, 2026) and the
+-- companion live.js join-handler fix (NULL = failed join) is live
+-- too. Do NOT re-apply this file blind: it would overwrite the
+-- display_name handling added by supabase/signup-display-name.sql
+-- (§1b, which is the same N13 body with the display_name insert
+-- and the threshold of 5). That file is the live-apply source from
+-- here on; this file stays as the N13 reference with the same
+-- threshold of 5.
 --
 -- WHY THE INVALID-CODE PATH RETURNS NULL INSTEAD OF RAISING:
 -- A Postgres exception aborts the whole RPC transaction, so an
@@ -28,13 +33,13 @@
 --
 -- Buckets (all counted over the trailing 1 hour, all raising the
 -- same generic error so no bucket leaks code existence):
---   1. Per caller:    >10 failed attempts by this user_id.
---   2. Per code value: >10 failed attempts against the same
+--   1. Per caller:    >5 failed attempts by this user_id.
+--   2. Per code value: >5 failed attempts against the same
 --      normalized code value, from any callers. A household's code
 --      IS a single value, so this is the household-facing bucket:
 --      it throttles guessing pressure against any one household's
 --      code, including distributed attempts.
---   3. Per household: after a code resolves to a household, >10
+--   3. Per household: after a code resolves to a household, >5
 --      failed attempts attributed to that household (e.g. callers
 --      already in another household attempting this code).
 -- Unknown codes cannot be attributed to a household — that is why
@@ -103,12 +108,12 @@ begin
 
   -- Bucket 1: per caller.
   if (select count(*) from invite_join_attempts
-       where user_id = auth.uid() and created_at >= v_window_start) >= 10 then
+       where user_id = auth.uid() and created_at >= v_window_start) >= 5 then
     raise exception 'too many failed join attempts, try again later';
   end if;
   -- Bucket 2: per attempted code value (household-facing).
   if v_input <> '' and (select count(*) from invite_join_attempts
-       where attempted_code = v_input and created_at >= v_window_start) >= 10 then
+       where attempted_code = v_input and created_at >= v_window_start) >= 5 then
     raise exception 'too many failed join attempts, try again later';
   end if;
 
@@ -126,7 +131,7 @@ begin
 
   -- Bucket 3: per resolved household.
   if (select count(*) from invite_join_attempts
-       where household_id = v_household_id and created_at >= v_window_start) >= 10 then
+       where household_id = v_household_id and created_at >= v_window_start) >= 5 then
     raise exception 'too many failed join attempts, try again later';
   end if;
 
@@ -160,8 +165,8 @@ grant execute on function public.join_household_by_code(text) to authenticated;
 --   -- (as owner/deployer) one attempt row for that code:
 --   select count(*) from invite_join_attempts
 --    where attempted_code = 'ZZZZZZ';  -- expect: 1
---   -- 10 more invalid attempts, then the 11th raises:
---   select join_household_by_code('ZZZZZZ');  -- x10, each null
+--   -- 5 more invalid attempts, then the 6th raises:
+--   select join_household_by_code('ZZZZZZ');  -- x5, each null
 --   select join_household_by_code('ZZZZZZ');
 --     -- expect exception 'too many failed join attempts'
 --   -- A valid code still joins after the limit window (or for a
