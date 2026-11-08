@@ -1135,7 +1135,7 @@ async function refresh() {
         return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(statusLabel)} · ${esc(r.note || '')}</div>
         <div class="tx-detail hidden" id="fund-detail-${r.id}">
           <p class="small muted">Requested: ${formatCents(r.amount_cents)} · Status: ${esc(statusLabel)}<br>
-          Fund available now: ${currentFundData ? formatCents(currentFundData.available) : 'not loaded'}<br>
+          Fund available now: <span data-fund-available-now>${currentFundData ? formatCents(currentFundData.available) : '…'}</span><br>
           ${approvedCents !== null ? `Approved: ${formatCents(approvedCents)}${r.status === 'split' ? ` of ${formatCents(r.amount_cents)} requested — ${formatCents(r.remainder_cents)} is still unapproved and needs a new request.` : ' (in full).'}` : ''}<br>
           Note: ${esc(r.note || '—')}<br>
           Requested: ${fmtDateTime(r.created_at)}<br>
@@ -1145,7 +1145,13 @@ async function refresh() {
       }).join('')
     : '<li>No fund requests yet.</li>';
   document.querySelectorAll('[data-fund-head]').forEach((el) => el.addEventListener('click', () => {
-    document.getElementById(`fund-detail-${el.dataset.fundHead}`)?.classList.toggle('hidden');
+    const det = document.getElementById(`fund-detail-${el.dataset.fundHead}`);
+    det?.classList.toggle('hidden');
+    // P1-F3 (Nov 8, 2026): the fund aggregates load AFTER this list
+    // renders in refresh(), so the baked "Fund available now" line
+    // was 'not loaded' on first load. Fill it lazily at tap time,
+    // when currentFundData is set (refresh has completed by then).
+    if (det && !det.classList.contains('hidden')) det.querySelectorAll('[data-fund-available-now]').forEach((s) => { s.textContent = currentFundData ? formatCents(currentFundData.available) : 'not loaded'; });
   }));
   document.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
     const req = (reqs ?? []).find((r) => r.id === b.dataset.approve);

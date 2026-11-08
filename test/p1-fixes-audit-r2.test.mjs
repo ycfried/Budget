@@ -97,3 +97,20 @@ test('P1-R2: client reads the grant clock, warns before expiry, surfaces poll er
   assert.match(mig, /set connected_at = created_at/);
   assert.match(mig, /connected_at\n  from public\.email_connections/);
 });
+
+// ---- P1-F1/F2/F3: small-screen overflow + fund-request first load ----
+
+test('P1-F1: bank buttons keep the no-wrap row above 360px and stack below it', () => {
+  assert.match(stylesCss, /#section-bank \.btn-row \{ flex-wrap: nowrap; \}/);
+  assert.match(stylesCss, /@media \(max-width: 360px\) \{\n  body\.live #section-bank \.btn-row \{ flex-wrap: wrap; \}\n  body\.live #section-bank \.btn-row \.btn \{ flex: 1 1 100%; \}\n\}/);
+});
+
+test('P1-F2: Transactions heading row wraps instead of overflowing at 320px', () => {
+  assert.match(stylesCss, /\.tx-head-row \{ display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; \}/);
+});
+
+test('P1-F3: fund-request detail fills "Fund available now" lazily at tap time', () => {
+  assert.match(liveJs, /<span data-fund-available-now>/);
+  assert.match(liveJs, /det\.querySelectorAll\('\[data-fund-available-now\]'\)\.forEach\(\(s\) => \{ s\.textContent = currentFundData \? formatCents\(currentFundData\.available\) : 'not loaded'; \}\)/);
+  assert.doesNotMatch(liveJs, /Fund available now: \$\{currentFundData \? formatCents\(currentFundData\.available\) : 'not loaded'\}/);
+});
