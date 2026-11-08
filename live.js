@@ -819,6 +819,14 @@ async function refresh() {
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
+  // P0-2 (Nov 8, 2026): Load more was dead — the button existed and
+  // the count line told users to tap it, but no handler ever raised
+  // txLimit. Bound once (refresh re-runs; the dataset flag stops the
+  // listener stacking). Mirrors the Activity pattern (auditLimit += 50).
+  if (loadMore && !loadMore.dataset.bound) {
+    loadMore.dataset.bound = '1';
+    loadMore.addEventListener('click', async () => { txLimit += 100; await refresh(); });
+  }
   // Delta B2: the sheet controls mirror the state variables (the
   // month/card selects are rebuilt above; status, week, and dates
   // are synced here so Apply/Cancel always show the true state).
@@ -923,6 +931,7 @@ async function refresh() {
             <div><span>Status</span><span>${esc(stateWord(t, excluded))}</span></div>
             <div><span>Card</span><span>${cardLabel}</span></div>
             <div><span>Source</span><span>${esc(sourceLabel(t.source))}</span></div>
+            ${t.kind === 'refund' ? `<div><span>Refund link</span><span>${t.original_purchase_id ? 'Linked to a purchase' : 'Not linked to a purchase yet'}</span></div>` : ''}
           </div>
           ${t.source === 'amex_alert' ? `<p class="small muted">${t.state === 'provisional' ? 'From an email alert — pending until the bank confirms it.' : 'From an email alert, confirmed by the bank.'}</p>` : ''}
           <div>${action}</div>
@@ -2521,7 +2530,15 @@ $('autoSyncSwitch')?.addEventListener('click', async () => {
   if (!(out.results ?? []).length) { showToast('No bank connection yet — connect a bank account first.', true); return; }
   const failed = (out.results ?? []).filter((r) => !r.ok);
   if (failed.length) {
-    showToast(`Automatic sync partly ${target ? 'enabled' : 'turned off'} — ${failed.length} connection(s) failed. Try again.`, true);
+    // P0-4 (Nov 8, 2026): the old toast claimed a partial success — a
+    // lie, nothing is enabled when any item fails (the function stores
+    // nothing on a partial failure). Say which connection failed and
+    // why, and that the switch did not move.
+    const first = failed[0];
+    const name = first.institution ? first.institution : 'A bank connection';
+    const why = first.error ? `: ${first.error}` : '';
+    const more = failed.length > 1 ? ` (+${failed.length - 1} more)` : '';
+    showToast(`Automatic sync could not be ${target ? 'turned on' : 'turned off'} — ${name} failed${why}${more}. Nothing was changed; the switch stays ${target ? 'off' : 'on'}.`, true);
     return;
   }
   setAutoSyncSwitch(target);
@@ -3280,6 +3297,9 @@ function syncScrollLock() {
 // 'Moved to trash bin.'). Charity automatically excludes Extra
 // Fund: charity rows list Delete only, and Extra Fund refuses
 // charity rows outright. Members list Extra Fund only, on charges.
+// P0-1 (Nov 8, 2026): refund rows list Link to purchase first
+// (admin only) — linking a refund to its purchase is what makes
+// refund restoration reachable for a locked week.
 async function openTxActionsSheet(row) {
   const isAdmin = household && household.role === 'admin';
   const excluded = row.excluded === true || row.state === 'excluded';
@@ -3292,6 +3312,8 @@ async function openTxActionsSheet(row) {
   const actionIds = actionsForTxKind(row.kind, isAdmin, row.state === 'verified');
   const actions = actionIds.map((id) => id === 'charity'
     ? { id, label: 'Charity', sub: 'Counts it as a charity gift, out of weekly spending' }
+    : id === 'linkRefund'
+    ? { id, label: 'Link to purchase', sub: row.original_purchase_id ? 'Change or remove the purchase this refund is linked to' : 'Link this refund to the purchase it came from' }
     : id === 'extraFund'
     ? { id, label: 'Extra Fund', sub: 'Ask for this charge to be covered from the fund' }
     : id === 'other'
@@ -3316,6 +3338,7 @@ async function openTxActionsSheet(row) {
     close();
     if (id === 'charity') await doTxCharity(row);
     else if (id === 'extraFund') await doTxExtraFund(row);
+    else if (id === 'linkRefund') await doTxLinkRefund(row);
     else if (id === 'other') await doTxReclassify(row);
     else if (id === 'delete') await doTxDelete(row);
   }));
@@ -3350,6 +3373,58 @@ async function doTxExtraFund(row) {
   });
   if (error) { console.warn('fund request (use-fund) failed:', error.message); await showAlert('Could not send request', 'Could not send this request. Try again.'); return; }
   await audit('Extra Fund request created', `Requested ${formatCents(cents)} for ${row?.merchant ?? 'a transaction'}.`);
+  await refresh();
+}
+// P0-1 (Nov 8, 2026): link a refund to its purchase, by hand. Most
+// refunds link themselves when they arrive (auto_link_refund); this
+// is for the ones that did not — two identical purchases, a partial
+// refund, or a refund that arrived before its purchase. Linking is
+// what makes refund restoration reachable for a locked week: a linked
+// posted refund restores its purchase week instead of netting against
+// the current week's charges. Admin only; the server enforces same
+// household, same card, purchase on or before the refund, and that
+// the refund fits in what the purchase has left to refund.
+async function doTxLinkRefund(row) {
+  if (!row || row.kind !== 'refund') return;
+  // Already linked → offer to unlink (the server refuses when a
+  // restoration entry already exists for this refund).
+  if (row.original_purchase_id) {
+    const { data: linked } = await supabase.from('transactions').select('merchant, amount_cents, date').eq('id', row.original_purchase_id).maybeSingle();
+    const label = linked ? `${displayMerchant(linked.merchant)} ${formatCents(linked.amount_cents)} ${displayDay(linked.date)}` : 'its purchase';
+    if (!(await showConfirm('Unlink Refund', `This refund is linked to ${label}. Unlink it? It will count as an unlinked refund again.`, 'Unlink'))) return;
+    const { error } = await supabase.rpc('unlink_refund', { p_refund_id: row.id });
+    if (error) { console.warn('unlink_refund failed:', error.message); await showAlert('Could not unlink', /already restored/i.test(error.message || '') ? error.message : 'Could not unlink this refund. Try again.'); return; }
+    await audit('Refund unlinked', `${row.merchant} ${formatCents(row.amount_cents)} unlinked from its purchase.`);
+    showToast('Refund unlinked.');
+    await refresh();
+    return;
+  }
+  // Candidate purchases: same place, same card, in the 90 days before
+  // this refund. The amount is shown on each option so a partial
+  // refund can be matched by hand; the server refuses a pick the
+  // refund does not fit.
+  const d = new Date(`${row.date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 90);
+  const since = d.toISOString().slice(0, 10);
+  const { data: cands, error: candErr } = await supabase.from('transactions').select('id, merchant, amount_cents, date')
+    .eq('household_id', household.household_id)
+    .in('kind', ['charge', 'fund_charge'])
+    .eq('card_suffix', row.card_suffix)
+    .eq('merchant', row.merchant)
+    .lte('date', row.date).gte('date', since)
+    .neq('excluded', true).neq('state', 'excluded').neq('state', 'reversed')
+    .order('date', { ascending: false }).limit(20);
+  if (candErr) { console.warn('refund candidates failed:', candErr.message); await showAlert('Could not look for purchases', 'Could not look for the purchase this refund came from. Try again.'); return; }
+  if (!(cands ?? []).length) {
+    await showAlert('No matching purchase found', `No charge from the same place, on the same card, in the 90 days before ${displayDay(row.date)}. If the purchase was older, on another card, or under a different name, it cannot be linked from here.`);
+    return;
+  }
+  const picked = await showSheet({ title: 'Link Refund to Purchase', message: `Which purchase is this ${formatCents(row.amount_cents)} refund for? Only purchases from the same place, on the same card, in the 90 days before ${displayDay(row.date)} are listed.`, inputLabel: 'Purchase', inputOptions: cands.map((c) => ({ value: c.id, label: `${displayMerchant(c.merchant)} — ${formatCents(c.amount_cents)} · ${displayDay(c.date)}` })), confirmLabel: 'Link refund', cancelLabel: 'Cancel' });
+  if (picked === null) return;
+  const { error } = await supabase.rpc('link_refund', { p_refund_id: row.id, p_purchase_id: picked });
+  if (error) { console.warn('link_refund failed:', error.message); await showAlert('Could not link refund', /different|more than|after the refund|already linked|admin only/i.test(error.message || '') ? error.message : 'Could not link this refund. Try again.'); return; }
+  await audit('Refund linked', `${row.merchant} ${formatCents(row.amount_cents)} linked to its purchase.`);
+  showToast('Refund linked to its purchase.');
   await refresh();
 }
 async function doTxReclassify(row) {

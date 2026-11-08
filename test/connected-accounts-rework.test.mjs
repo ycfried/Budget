@@ -18,7 +18,7 @@ const acctSql = readFileSync(new URL('../supabase/plaid-account-disconnect.sql',
 
 test('pins bumped to v50/v60', () => {
   assert.match(html, /styles\.css\?v=50/);
-  assert.match(html, /live\.js\?v=60/);
+  assert.match(html, /live\.js\?v=61/);
 });
 
 test('Previously connected is gone from the UI, no rows deleted', () => {

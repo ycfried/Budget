@@ -270,6 +270,13 @@ Deno.serve(async (req) => {
                 id: inserted.id, merchant, date: parsed.date, amount_cents: parsed.amountCents,
                 card_suffix: parsed.cardSuffix, source: 'amex_alert', created_at: inserted.created_at,
               });
+              // P0-1 (Nov 8, 2026): link this row to its purchase/refund
+              // so restoration can reach it (supabase/refund-linking.sql).
+              // Best-effort: never fails the poll.
+              try {
+                if (kind === 'refund') await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: inserted.id });
+                else if (kind === 'charge' || kind === 'fund_charge') await supabaseAdmin.rpc('link_refunds_to_purchase', { p_purchase_id: inserted.id });
+              } catch { /* linking is best-effort */ }
             }
             await supabaseAdmin.from('processed_email_ids').insert({
               connection_id: conn.id, message_id: messageId, disposition: 'stored',

@@ -25,7 +25,7 @@ const mockup = readFileSync(new URL('../card-standardization-mockup.html', impor
 
 test('pins: styles v50, live.js v60, matching live.html', () => {
   assert.match(html, /styles\.css\?v=50/);
-  assert.match(html, /live\.js\?v=60/);});// ---- A1: merged kind constraint (file only, not applied) ----
+  assert.match(html, /live\.js\?v=61/);});// ---- A1: merged kind constraint (file only, not applied) ----
 test('A1: kind-constraint SQL lists exactly the seven kinds, transfer included', () => {
   assert.match(kindSql, /PREPARED FOR OWNER-APPROVED APPLY/);
   for (const k of ['charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer']) {

@@ -90,18 +90,26 @@ Deno.serve(async (req) => {
     const webhook = enabled ? WEBHOOK_URL : '';
     const results = [];
     for (const item of items ?? []) {
-      const { data: ct } = await supabaseAdmin.rpc('get_plaid_ciphertext', {
-        p_household_id: householdId, p_item_id: item.plaid_item_id,
-      });
-      if (!ct) { results.push({ item: item.plaid_item_id, ok: false, error: 'no token' }); continue; }
-      const accessToken = await decryptToken(tokenKey, ct);
-      const res = await fetch(`https://${env === 'production' ? 'production' : env}.plaid.com/item/webhook/update`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken, webhook }),
-      });
-      const data = await res.json();
-      results.push({ item: item.plaid_item_id, ok: res.ok, error: res.ok ? null : (data?.error_message ?? 'unknown') });
+      // P0-4 (Nov 8, 2026): one bad item must not 500 the whole toggle.
+      // Each item is isolated — a decrypt/fetch failure yields ok:false
+      // for that item only, with the institution named so the client
+      // toast can say which connection failed and why.
+      try {
+        const { data: ct } = await supabaseAdmin.rpc('get_plaid_ciphertext', {
+          p_household_id: householdId, p_item_id: item.plaid_item_id,
+        });
+        if (!ct) { results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: false, error: 'no token' }); continue; }
+        const accessToken = await decryptToken(tokenKey, ct);
+        const res = await fetch(`https://${env === 'production' ? 'production' : env}.plaid.com/item/webhook/update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken, webhook }),
+        });
+        const data = await res.json().catch(() => ({}));
+        results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: res.ok, error: res.ok ? null : (data?.error_message ?? 'unknown') });
+      } catch (e) {
+        results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: false, error: String((e as Error)?.message ?? e) });
+      }
     }
     // Store the switch state only on a fully successful run with at
     // least one item — a partial failure stores nothing, and with no
