@@ -13,7 +13,8 @@
 // does not issue for this flow, and it would have rejected every real
 // webhook. That version is superseded by this one.
 // Only transactions-sync events are recorded, via the
-// log_webhook_event RPC (dedupe hash rejects Plaid retries). Since the
+// log_webhook_event RPC (dedupe hash rejects same-JWT redeliveries;
+// distinct deliveries are distinguished by the JWT iat, P1-C6).
 // server-sync build (Nov 2, 2026) the webhook also triggers plaid-sync
 // itself for the event's household, using the service-role identity
 // (which works now that its table grants are fixed) — so new data is
@@ -108,7 +109,18 @@ Deno.serve(async (req) => {
   }
   if (!SUPABASE_SERVICE_KEY) return new Response(JSON.stringify({ error: 'service key not configured' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-  const dedupe = await sha256Hex(`${body.item_id}|${code}|${body.new_transactions ?? ''}`);
+  // P1-C6 (Nov 8, 2026): the old hash (item_id | code |
+  // new_transactions) collided whenever two distinct
+  // SYNC_UPDATES_AVAILABLE events carried the same new-transaction
+  // COUNT — the second returned {duplicate:true} before the sync
+  // trigger, and only the hourly cron recovered (≤1h delay). The JWT
+  // iat is now part of the hash, so distinct deliveries never
+  // collide. Trade-off, stated plainly: a Plaid RETRY carries a
+  // fresh JWT (fresh iat), so a retried delivery records a second row
+  // instead of deduping — harmless, because plaid-sync is idempotent
+  // through the cursor and the extra row is consumed by the next
+  // sync. The hash still dedupes a same-JWT redelivery.
+  const dedupe = await sha256Hex(`${body.item_id}|${code}|${body.new_transactions ?? ''}|${payload.iat}`);
   const { error } = await supabase.rpc('log_webhook_event', {
     p_item_id: body.item_id ?? null,
     p_webhook_code: code,

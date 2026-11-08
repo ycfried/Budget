@@ -710,7 +710,16 @@ async function refresh() {
   // Read failures are an ERROR STATE, never a silent empty list or stale
   // numbers: txReadFailed overrides the lists below.
   const txReadFailed = !!txErr;
-  if (txErr) console.warn('transactions read failed:', txErr.message);
+  // P1-C4 (Nov 8, 2026): name the failure kind. A dead session used
+  // to show the same generic line as a server failure, and the owner
+  // could not tell them apart. PostgREST surfaces a 401 as code
+  // PGRST301 / 'JWT expired'; a missing session confirms it.
+  let txReadErrorKind = null;
+  if (txErr) {
+    console.warn('transactions read failed:', txErr.message);
+    const { data: { session: readSession } } = await supabase.auth.getSession();
+    txReadErrorKind = (!readSession || /jwt expired|invalid jwt|unauthorized|PGRST301/i.test(`${txErr.code ?? ''} ${txErr.message ?? ''}`)) ? 'auth' : 'server';
+  }
   const all = txReadFailed ? [] : (txns ?? []);
   txLoaded = true;
   const q = ($('txSearch')?.value ?? '').trim().toLowerCase();
@@ -822,7 +831,7 @@ async function refresh() {
       ? shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && t.kind === 'charity').reduce((s, t) => s + t.amount_cents, 0)
       : shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && t.state !== 'reversed' && (t.kind === 'charge' || t.kind === 'fund_charge' || t.kind === 'refund')).reduce((s, t) => s + (t.kind === 'refund' ? -Math.abs(t.amount_cents ?? 0) : (t.amount_cents ?? 0)), 0);
     const capped = all.length >= txLimit ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
-    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : (shown.length === 0 && searchOrFilterActive ? 'No matching transactions — try a different search, or clear the search and filters.' : `${shown.length} transactions · Total shown ${formatCents(shownTotal)}${all.length >= txLimit ? ' · of loaded transactions — tap Load more for older ones' : ''}`); // Merged-audit A7: short count + separately labelled total; recovery message outranks a zero total.
+    countEl.textContent = txReadFailed ? (txReadErrorKind === 'auth' ? 'Sign-in expired — sign in again to see transactions.' : 'Could not load transactions — try again.') : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : (shown.length === 0 && searchOrFilterActive ? 'No matching transactions — try a different search, or clear the search and filters.' : `${shown.length} transactions · Total shown ${formatCents(shownTotal)}${all.length >= txLimit ? ' · of loaded transactions — tap Load more for older ones' : ''}`); // Merged-audit A7: short count + separately labelled total; recovery message outranks a zero total.
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
@@ -898,7 +907,9 @@ async function refresh() {
     ? `<li class="tx-empty">${emptyHint} <button class="btn btn-small" data-clear-search-filters type="button" aria-label="Clear search and filters">Clear search and filters</button></li>`
     : `<li class="tx-empty">${emptyHint}</li>`;
   $('txList').innerHTML = txReadFailed
-    ? `<li class="tx-empty error">Could not load transactions. Check your connection and try again — nothing here is a complete list.</li>`
+    ? txReadErrorKind === 'auth'
+      ? `<li class="tx-empty error">Your sign-in expired — sign in again to see transactions. <button class="btn btn-small" data-tx-signin-again type="button" aria-label="Sign in again">Sign in again</button></li>`
+      : `<li class="tx-empty error">Could not load transactions — the server did not answer. Nothing here is a complete list. <button class="btn btn-small" data-tx-retry-load type="button" aria-label="Try loading transactions again">Try again</button></li>`
     : shown.length
     ? shown.map((t) => {
         const excluded = t.excluded === true || t.state === 'excluded';
@@ -956,6 +967,11 @@ async function refresh() {
     const mx = $('txMaxAmount'); if (mx) mx.value = '';
     refresh();
   }));
+  // P1-C4 (Nov 8, 2026): the load-failure actions. "Sign in again"
+  // reuses the sign-out button's handler (sign-out + sign-in panel);
+  // "Try again" just re-runs the load.
+  document.querySelectorAll('[data-tx-signin-again]').forEach((b) => b.addEventListener('click', () => { $('signOutBtn')?.click(); }));
+  document.querySelectorAll('[data-tx-retry-load]').forEach((b) => b.addEventListener('click', async () => { await refresh(); }));
   // Home preview: the 6 newest transactions, tapping one jumps to Transactions.
   // Design-questions (owner, Nov 5): 4 rows left a large dead gap
   // above the footer on a phone-height Home; 6 rows + the footer
@@ -2430,12 +2446,26 @@ $('manualForm').addEventListener('submit', async (e) => {
 
 async function callFn(name, body) {
   const { data: { session: s } } = await supabase.auth.getSession();
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token ?? ''}`, apikey: SUPABASE_ANON_KEY },
-    body: JSON.stringify(body),
-  });
-  return res.json();
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token ?? ''}`, apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    // P1-C4 (Nov 8, 2026): a network failure used to throw out of
+    // every caller. Return it like any other failure instead, so
+    // callers show their error toast rather than crashing.
+    return { error: 'network error — check your connection', status: 0 };
+  }
+  const data = await res.json().catch(() => ({}));
+  // P1-C4: callers only ever saw res.json() — a 401/500 body was
+  // indistinguishable from a success body. Surface the status so a
+  // dead session (401) can be told apart from a server failure, and
+  // keep the generic error string the function returned (P1-B3).
+  if (!res.ok) return { ...data, error: data.error ?? `request failed (${res.status})`, status: res.status };
+  return data;
 }
 
 $('connectBankBtn')?.addEventListener('click', async () => {

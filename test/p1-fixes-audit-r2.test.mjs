@@ -377,3 +377,24 @@ test('P1-C2: plaid-exchange checks for duplicates before returning connected, an
   const live = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
   assert.match(live, /ex\.duplicate\n          \? 'This bank is already connected — the duplicate connection was removed\. Past transactions stay\.'/);
 });
+
+// ---- P1-C4: load failures name the kind; callFn is status-aware ----
+
+test('P1-C4: a dead session says "Sign in again"; other failures offer a retry; callFn surfaces status', () => {
+  const live = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
+  assert.match(live, /txReadErrorKind = \(!readSession \|\| \/jwt expired\|invalid jwt\|unauthorized\|PGRST301\/i\.test/);
+  assert.match(live, /Your sign-in expired — sign in again to see transactions\. <button class="btn btn-small" data-tx-signin-again/);
+  assert.match(live, /Could not load transactions — the server did not answer\. Nothing here is a complete list\. <button class="btn btn-small" data-tx-retry-load/);
+  assert.match(live, /\$\('signOutBtn'\)\?\.click\(\)/);
+  assert.match(live, /data-tx-retry-load.*refresh\(\)/s);
+  assert.match(live, /if \(!res\.ok\) return \{ \.\.\.data, error: data\.error \?\? `request failed \(\$\{res\.status\}\)`, status: res\.status \};/);
+  assert.match(live, /return \{ error: 'network error — check your connection', status: 0 \};/);
+});
+
+// ---- P1-C6: webhook dedupe includes the JWT iat ----
+
+test('P1-C6: the webhook dedupe hash includes payload.iat so same-count events never collide', () => {
+  const src = readFileSync(new URL('../supabase/functions/plaid-webhook/index.ts', import.meta.url), 'utf8');
+  assert.match(src, /const dedupe = await sha256Hex\(`\$\{body\.item_id\}\|\$\{code\}\|\$\{body\.new_transactions \?\? ''\}\|\$\{payload\.iat\}`\);/);
+  assert.doesNotMatch(src, /sha256Hex\(`\$\{body\.item_id\}\|\$\{code\}\|\$\{body\.new_transactions \?\? ''\}`\)/);
+});
