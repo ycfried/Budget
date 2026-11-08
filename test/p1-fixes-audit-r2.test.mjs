@@ -213,3 +213,29 @@ test('P1-B2: webhook_events policy is a direct household check; log_webhook_even
   const live = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
   assert.match(live, /supabase\.from\('webhook_events'\)/);
 });
+
+// ---- P1-B3: no raw server/DB errors reach clients ----
+
+test('P1-B3: every 500 body is a generic string; the detail goes to console.error only', () => {
+  const expected = {
+    'compute-week': ['could not compute week'],
+    'week-close': ['restoration failed partway', 'could not close week'],
+    'plaid-exchange': ['could not store plaid item', 'could not complete bank connection'],
+    'plaid-sync': ['bank sync failed'],
+    'gmail-poll': ['email check failed'],
+    'ingest-amex-alert': ['could not save email alert'],
+    'plaid-disconnect': ['could not disconnect bank'],
+    'plaid-account-disconnect': ['could not disconnect account'],
+    'gmail-oauth-start': ['could not start email connection'],
+    'gmail-disconnect': ['could not disconnect email'],
+    'plaid-link': ['could not create bank link'],
+    'plaid-webhook-register': ['request failed', 'could not update automatic sync'],
+  };
+  for (const [fn, messages] of Object.entries(expected)) {
+    const src = readFileSync(new URL(`../supabase/functions/${fn}/index.ts`, import.meta.url), 'utf8');
+    assert.doesNotMatch(src, /error: String\(/, `${fn} leaks no raw exception text`);
+    assert.doesNotMatch(src, /error: `[^`]*\$\{[^}]*message[^}]*\}/, `${fn} interpolates no error detail`);
+    for (const m of messages) assert.ok(src.includes(`error: '${m}'`), `${fn} returns generic '${m}'`);
+    assert.match(src, /console\.error\(/, `${fn} logs the detail server-side`);
+  }
+});

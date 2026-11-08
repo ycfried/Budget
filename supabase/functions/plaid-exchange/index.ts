@@ -90,10 +90,11 @@ Deno.serve(async (req) => {
     // so the app reported "Connected" even when the item row never
     // landed — which is exactly why a later sync saw 0 items. A failed
     // store is a failed connection, and must be reported as such.
-    if (upsertError) return json({ error: `could not store plaid item: ${upsertError.message}` }, 500);
+    if (upsertError) { console.error('plaid-exchange: could not store plaid item:', upsertError.message); return json({ error: 'could not store plaid item' }, 500); }
     return json({ item_id: data.item_id, connected: true });
   } catch (e) {
-    return json({ error: String(e?.message ?? e) }, 500);
+    console.error('plaid-exchange failed:', e?.message ?? e);
+    return json({ error: 'could not complete bank connection' }, 500);
   }
 });
 

@@ -362,7 +362,10 @@ Deno.serve(async (req) => {
       unlinked_excess_cents: unlinkedExcessCents,
     });
   } catch (e) {
-    return json({ error: String((e as any)?.message ?? e) }, 500);
+    // P1-B3 (Nov 8, 2026): never leak a raw DB/server error to the
+    // client — log the detail server-side, return a generic string.
+    console.error('compute-week failed:', (e as any)?.message ?? e);
+    return json({ error: 'could not compute week' }, 500);
   }
 });
 

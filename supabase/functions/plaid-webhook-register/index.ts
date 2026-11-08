@@ -108,7 +108,12 @@ Deno.serve(async (req) => {
         const data = await res.json().catch(() => ({}));
         results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: res.ok, error: res.ok ? null : (data?.error_message ?? 'unknown') });
       } catch (e) {
-        results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: false, error: String((e as Error)?.message ?? e) });
+        // P1-B3 (Nov 8, 2026): the per-item error is shown in the
+        // auto-sync toast, so it must be generic — the institution is
+        // named separately. Plaid's own error_message (kept above) is
+        // a vendor-facing string, not a DB leak. Log the detail here.
+        console.error('plaid-webhook-register: item failed:', item.plaid_item_id, (e as Error)?.message ?? e);
+        results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: false, error: 'request failed' });
       }
     }
     // Store the switch state only on a fully successful run with at
@@ -119,7 +124,8 @@ Deno.serve(async (req) => {
     }
     return json({ webhook_url: WEBHOOK_URL, enabled, results });
   } catch (e) {
-    return json({ error: String(e?.message ?? e) }, 500);
+    console.error('plaid-webhook-register failed:', e?.message ?? e);
+    return json({ error: 'could not update automatic sync' }, 500);
   }
 });
 

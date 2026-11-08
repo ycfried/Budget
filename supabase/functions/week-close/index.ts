@@ -966,7 +966,8 @@ Deno.serve(async (req) => {
       // Loud partial failure: closes/releases above ARE persisted;
       // restoration stopped at the error and is re-runnable (entries
       // are unique per refund). Never report this as success.
-      return json({ ...payload, error: `restoration failed partway: ${restorationError}` }, 500);
+      console.error('week-close restoration failed partway:', restorationError);
+      return json({ ...payload, error: 'restoration failed partway' }, 500);
     }
     return json(payload);
   } catch (e) {
@@ -975,7 +976,7 @@ Deno.serve(async (req) => {
     // 7 unexplained 500s). The message below is what the next
     // failure investigation reads first.
     console.error('week-close failed:', (e as any)?.message ?? e);
-    return json({ error: String((e as any)?.message ?? e) }, 500);
+    return json({ error: 'could not close week' }, 500);
   }
 });
 

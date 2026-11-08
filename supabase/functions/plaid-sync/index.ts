@@ -538,7 +538,8 @@ Deno.serve(async (req) => {
       ...(allItems.length === 0 ? { no_bank_connected: true } : {}),
     });
   } catch (e) {
-    return json({ error: String((e as Error)?.message ?? e) }, 500);
+    console.error('plaid-sync failed:', (e as Error)?.message ?? e);
+    return json({ error: 'bank sync failed' }, 500);
   }
 });
 

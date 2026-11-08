@@ -139,7 +139,8 @@ Deno.serve(async (req) => {
     if (markError) return json({ error: 'could not mark disconnected' }, 500);
     return json({ disconnected: true, plaid_item_id: plaidItemId });
   } catch (e) {
-    return json({ error: String((e as Error)?.message ?? e) }, 500);
+    console.error('plaid-disconnect failed:', (e as Error)?.message ?? e);
+    return json({ error: 'could not disconnect bank' }, 500);
   }
 });
 

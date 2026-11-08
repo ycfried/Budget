@@ -217,7 +217,8 @@ Deno.serve(async (req) => {
     // duplicate above). Never on 401/202/500.
     return json({ stored: true, duplicate: false, state: 'provisional' });
   } catch (e) {
-    return json({ error: String((e as Error)?.message ?? e) }, 500);
+    console.error('ingest-amex-alert failed:', (e as Error)?.message ?? e);
+    return json({ error: 'could not save email alert' }, 500);
   }
 });
 
