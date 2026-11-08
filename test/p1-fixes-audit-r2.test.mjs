@@ -177,3 +177,39 @@ test('P1-M3: restore is the merged version — snapshot + reversed + refund chec
   }
   assert.match(n4, /CANONICAL FILE for exclude_transaction \+ restore_transaction/);
 });
+
+// ---- P1-B1: approve_and_allocate canonical version ----
+
+test('P1-B1: approve-ambiguity-fix.sql is the canonical strong version; the other two are bannered never-reapply', () => {
+  const canon = readFileSync(new URL('../supabase/approve-ambiguity-fix.sql', import.meta.url), 'utf8');
+  assert.match(canon, /CANONICAL DEFINITION of approve_and_allocate/);
+  assert.match(canon, /for update/);
+  assert.match(canon, /amount exceeds requested amount/);
+  assert.match(canon, /remainder_cents/);
+  assert.match(canon, /fund_allocation_cents \+ p_amount_cents/);
+  assert.match(canon, /create or replace function public\.approve_and_allocate\(p_request_id uuid, p_amount_cents integer, p_override_reason text\)/);
+  const fl = readFileSync(new URL('../supabase/fund-ledger.sql', import.meta.url), 'utf8');
+  assert.match(fl, /DO NOT RE-APPLY THE approve_and_allocate DEFINITION BELOW/);
+  const s04 = readFileSync(new URL('../supabase/04-admin-rpcs.sql', import.meta.url), 'utf8');
+  assert.match(s04, /DO NOT RE-APPLY THIS SECTION \(P1-B1/);
+  const live = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
+  assert.match(live, /supabase\.rpc\('approve_and_allocate', \{ p_request_id: b\.dataset\.approve, p_amount_cents: cents, p_override_reason: null \}\)/);
+});
+
+// ---- P1-B2: webhook_events household_id ----
+
+test('P1-B2: webhook_events policy is a direct household check; log_webhook_event stamps household_id', () => {
+  const mig = readFileSync(new URL('../supabase/webhook-events-household-id.sql', import.meta.url), 'utf8');
+  assert.match(mig, /add column if not exists household_id uuid references households\(id\) on delete cascade/);
+  assert.match(mig, /update webhook_events w\n  set household_id = p\.household_id\n  from plaid_items p/);
+  assert.match(mig, /using \(household_id in \(select household_id from household_members/);
+  assert.doesNotMatch(mig.split('VERIFICATION')[0], /plaid_item_id in \(select plaid_item_id from plaid_items/);
+  assert.match(mig, /insert into webhook_events \(plaid_item_id, webhook_code, dedupe_hash, household_id\)/);
+  const canon = readFileSync(new URL('../supabase/webhook-events.sql', import.meta.url), 'utf8');
+  assert.match(canon, /household_id uuid references households\(id\) on delete cascade/);
+  assert.match(canon, /using \(household_id in \(select household_id from household_members/);
+  // The client read needs no change — it filters by plaid_item_id,
+  // which still works once the policy returns rows.
+  const live = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
+  assert.match(live, /supabase\.from\('webhook_events'\)/);
+});

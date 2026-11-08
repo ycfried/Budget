@@ -66,6 +66,15 @@ alter table fund_requests
 
 -- ---------------------------------------------------------------------
 -- 1. approve_and_allocate — full replacement
+--    DO NOT RE-APPLY THIS SECTION (P1-B1, Nov 8, 2026). Its
+--    parameters are named request_id / amount_cents / override_reason
+--    and amount_cents COLLIDES with the amount_cents column of
+--    fund_requests / fund_ledger — applying this version makes every
+--    Approve fail with Postgres "column reference amount_cents is
+--    ambiguous" (audit A finding 1, Nov 3). The body is otherwise
+--    the correct strong version; the CANONICAL definition is
+--    supabase/approve-ambiguity-fix.sql (same body, p_-prefixed
+--    parameters). Apply that file instead.
 --    approve_and_allocate(request_id uuid, amount_cents int,
 --                         override_reason text) returns void
 --    Rules, in order:
