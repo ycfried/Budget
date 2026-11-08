@@ -26,7 +26,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind, emailConnectionWarnings } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -1425,7 +1425,7 @@ async function refresh() {
   {
     try {
       const { data: conns, error: connErr } = await supabase.from('email_connections_public')
-        .select('id, provider, email_address, status, last_poll_at, last_error')
+        .select('id, provider, email_address, status, last_poll_at, last_error, created_at, connected_at')
         .eq('household_id', household.household_id).order('created_at', { ascending: false });
       if (connErr) throw connErr;
       const rows = conns ?? [];
@@ -1448,6 +1448,10 @@ async function refresh() {
           // a line — the reconnect warning. "Last checked" stays as
           // the one small grey line under the email.
           if (c.status === 'error') { const st = document.createElement('div'); st.className = 'muted small'; st.textContent = 'Needs reconnect — access was revoked or expired.'; info.appendChild(st); }
+          // P1-R2 (Nov 8, 2026): warn BEFORE the Testing-mode token
+          // dies (~7 days after the grant), and say so plainly when
+          // the last check is stale. The grant clock is connected_at.
+          for (const w of emailConnectionWarnings(c)) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = w === 'expiring' ? 'Email access expires about 7 days after connecting — reconnect soon to keep alerts coming.' : `Not checked since ${fmtDateTime(c.last_poll_at)} — if new alerts stop arriving, reconnect.`; info.appendChild(l); }
           if (c.last_poll_at) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = `Last checked ${fmtDateTime(c.last_poll_at)}`; info.appendChild(l); }
           if (c.last_error) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = c.last_error; info.appendChild(l); }
           wrap.appendChild(info);
@@ -2566,9 +2570,18 @@ $('connectEmailBtn')?.addEventListener('click', async () => {
 $('pollEmailBtn')?.addEventListener('click', async () => {
   setResultMsg('emailMsg', 'Checking email…', false);
   const out = await callFn('gmail-poll', { household_id: household.household_id });
-  setResultMsg('emailMsg', out.error
-    ? `Email check failed: ${out.error}`
-    : `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`, !!out.error);
+  // P1-R2 (Nov 8, 2026): gmail-poll returns per-connection failures
+  // in errors[] with NO top-level error — the old code read only
+  // out.error and reported false success ("Email checked: 0 added…")
+  // after the token died. Surface the first per-connection failure.
+  const firstErr = Array.isArray(out.errors) && out.errors.length ? out.errors[0] : null;
+  const failed = out.error || firstErr;
+  const failText = firstErr && /reauthorization/i.test(firstErr.error || '')
+    ? 'access expired — reconnect your email.'
+    : (firstErr?.error ?? out.error);
+  setResultMsg('emailMsg', failed
+    ? `Email check failed: ${failText}`
+    : `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`, !!failed);
   await refresh();
 });
 

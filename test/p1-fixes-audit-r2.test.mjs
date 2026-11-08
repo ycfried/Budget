@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { classifyKind, classifyMerchantOnly } from '../supabase/functions/_shared/canonical.ts';
-import { actionsForTxKind, classifyCsvKind } from '../filterState.mjs';
+import { actionsForTxKind, classifyCsvKind, emailConnectionWarnings } from '../filterState.mjs';
 import { chargeContribution } from '../engine.mjs';
 
 const liveJs = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
@@ -67,4 +67,33 @@ test('P1-NEW1: reclassify offers Charity and dispatches to the guarded mark path
 test('P1-NEW1: a charity row counts $0 toward week math', () => {
   assert.equal(chargeContribution({ kind: 'charity', amount_cents: 200, state: 'verified' }), 0);
   assert.equal(chargeContribution({ kind: 'charge', amount_cents: 200, state: 'verified' }), 200);
+});
+
+// ---- P1-R2: Gmail Testing-mode token expiry ----
+
+test('P1-R2: emailConnectionWarnings flags expiring grants and stale checks', () => {
+  const now = Date.parse('2026-11-08T12:00:00Z');
+  const day = 24 * 3600 * 1000;
+  assert.deepEqual(emailConnectionWarnings({ status: 'active', connected_at: '2026-11-02T12:00:00Z', last_poll_at: '2026-11-08T11:00:00Z' }, now), ['expiring']);
+  assert.deepEqual(emailConnectionWarnings({ status: 'active', connected_at: '2026-11-06T12:00:00Z', last_poll_at: '2026-11-08T10:00:00Z' }, now), []);
+  assert.deepEqual(emailConnectionWarnings({ status: 'active', connected_at: '2026-11-06T12:00:00Z', last_poll_at: '2026-11-06T12:00:00Z' }, now), ['stale']);
+  assert.deepEqual(emailConnectionWarnings({ status: 'active', connected_at: '2026-11-01T12:00:00Z', last_poll_at: '2026-11-06T12:00:00Z' }, now), ['expiring', 'stale']);
+  // status='error' already shows "Needs reconnect" — no extra lines.
+  assert.deepEqual(emailConnectionWarnings({ status: 'error', connected_at: '2026-11-01T12:00:00Z', last_poll_at: '2026-11-06T12:00:00Z' }, now), []);
+  // created_at fallback when connected_at is missing (pre-migration rows).
+  assert.deepEqual(emailConnectionWarnings({ status: 'active', created_at: '2026-11-02T12:00:00Z', last_poll_at: '2026-11-08T11:00:00Z' }, now), ['expiring']);
+});
+
+test('P1-R2: client reads the grant clock, warns before expiry, surfaces poll errors', () => {
+  assert.match(liveJs, /select\('id, provider, email_address, status, last_poll_at, last_error, created_at, connected_at'\)/);
+  assert.match(liveJs, /Email access expires about 7 days after connecting — reconnect soon to keep alerts coming\./);
+  assert.match(liveJs, /Not checked since /);
+  assert.match(liveJs, /const firstErr = Array\.isArray\(out\.errors\) && out\.errors\.length \? out\.errors\[0\] : null;/);
+  assert.match(liveJs, /access expired — reconnect your email\./);
+  const cb = readFileSync(new URL('../supabase/functions/gmail-oauth-callback/index.ts', import.meta.url), 'utf8');
+  assert.match(cb, /connected_at: new Date\(\)\.toISOString\(\)/);
+  const mig = readFileSync(new URL('../supabase/gmail-connected-at.sql', import.meta.url), 'utf8');
+  assert.match(mig, /add column if not exists connected_at timestamptz/);
+  assert.match(mig, /set connected_at = created_at/);
+  assert.match(mig, /connected_at\n  from public\.email_connections/);
 });

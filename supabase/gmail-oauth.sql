@@ -63,6 +63,8 @@ alter table public.gmail_oauth_states enable row level security;
 -- In particular, refresh_token_encrypted is never client-readable.
 
 -- Public view: status only, ciphertext excluded by construction.
+-- P1-R2 (Nov 8, 2026): connected_at is the grant clock (see
+-- supabase/gmail-connected-at.sql); keep this list in sync with it.
 create or replace view public.email_connections_public as
   select
     id,
@@ -72,7 +74,8 @@ create or replace view public.email_connections_public as
     status,
     last_poll_at,
     last_error,
-    created_at
+    created_at,
+    connected_at
   from public.email_connections
   where household_id in (select household_id from public.household_members
                          where user_id = auth.uid());
