@@ -27,7 +27,7 @@ const gmailPoll = readFileSync(new URL('../supabase/functions/gmail-poll/index.t
 const register = readFileSync(new URL('../supabase/functions/plaid-webhook-register/index.ts', import.meta.url), 'utf8');
 
 test('pins are styles v50 / live.js v61', () => {
-  assert.match(html, /styles\.css\?v=50/);
+  assert.match(html, /styles\.css\?v=51/);
   assert.match(html, /live\.js\?v=61/);
 });
 

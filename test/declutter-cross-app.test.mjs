@@ -13,7 +13,7 @@ const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
 test('version pins: styles v50, live.js v60', () => {
-  assert.match(html, /styles\.css\?v=50/);
+  assert.match(html, /styles\.css\?v=51/);
   assert.match(html, /live\.js\?v=61/);});// ---- Task 1: removed sentences are gone ----
 const REMOVED = [
   'Weekly summaries below are the financial record',

@@ -182,7 +182,10 @@ test('all four cards start collapsed with aria-expanded=false and a down chevron
   assert.match(html, /data-home-card="fund"[^>]*aria-expanded="false"/);
   assert.match(html, /data-home-card="charity"[^>]*aria-expanded="false"/);
   assert.match(css, /\.fund-balance-panel\.fund-expanded, body\.live \.stat-card\.fund-expanded \{ border-color: #2f6bff; \}/);
-  assert.match(css, /#section-stats \.stat-card\.fund-expanded \{ grid-column: 1 \/ -1; \}/);
+  // Home stacked (owner, Nov 8, 2026): the old two-column span rule is
+  // gone — #section-stats is a single column, so an expanded Home card
+  // needs no grid-column span. See home-stacked-fund-charity.test.mjs.
+  assert.doesNotMatch(css, /#section-stats \.stat-card\.fund-expanded \{ grid-column/);
   // Insertion point: Funds detail goes above the (last-child) chevron;
   // Home detail goes at the end, below the amount — the Home chevron
   // is the first child, so inserting before it would put the rows
@@ -242,7 +245,7 @@ test('refresh re-renders an open card so it never shows stale numbers', () => {
 
 // --- Pins -----------------------------------------------------------------
 
-test('pins bumped to v50/v60', () => {
-  assert.match(html, /styles\.css\?v=50/);
+test('pins bumped to v51/v61', () => {
+  assert.match(html, /styles\.css\?v=51/);
   assert.match(html, /live\.js\?v=61/);
 });

@@ -21,7 +21,7 @@ const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowa
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
 test('version pins: styles v50, live.js v60', () => {
-  assert.match(html, /styles\.css\?v=50/);
+  assert.match(html, /styles\.css\?v=51/);
   assert.match(html, /live\.js\?v=61/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
   const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = ['), sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')));
   assert.deepEqual([...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]), ['Allowance', 'Spent', 'Balance']);

@@ -24,7 +24,7 @@ const manifest = readFileSync(new URL('../supabase/APPLY_MANIFEST_MERGED_AUDIT.m
 const mockup = readFileSync(new URL('../card-standardization-mockup.html', import.meta.url), 'utf8');
 
 test('pins: styles v50, live.js v60, matching live.html', () => {
-  assert.match(html, /styles\.css\?v=50/);
+  assert.match(html, /styles\.css\?v=51/);
   assert.match(html, /live\.js\?v=61/);});// ---- A1: merged kind constraint (file only, not applied) ----
 test('A1: kind-constraint SQL lists exactly the seven kinds, transfer included', () => {
   assert.match(kindSql, /PREPARED FOR OWNER-APPROVED APPLY/);
