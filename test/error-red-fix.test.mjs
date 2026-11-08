@@ -52,7 +52,7 @@ test('converted failures now use the lighter red error style', () => {
   assert.match(js, /setResultMsg\('authNameMsg', error \? 'Could not create the account\. Try again\.'[\s\S]*?, !!error\)/);
   // Email connect / check failures.
   assert.match(js, /setResultMsg\('emailMsg', `Could not start the email connection:[\s\S]*?, true\)/);
-  assert.match(js, /setResultMsg\('emailMsg', out\.error[\s\S]*?, !!out\.error\)/);
+  assert.match(js, /setResultMsg\('emailMsg', failed\n    \? `Email check failed: \$\{failText\}`[\s\S]*?, !!failed\)/);
   // CSV failures.
   assert.match(js, /setResultMsg\('csvMsg', 'No file reached the app from the picker\.[\s\S]*?, true\)/);
   assert.match(js, /setResultMsg\('csvMsg', `Could not read this file \([\s\S]*?, true\)/);
@@ -82,7 +82,7 @@ test('sign-in button row has the standard 14px gap from the password field', () 
   assert.doesNotMatch(css, /#householdNamePanel \.auth-btn-row \{ margin-top/);
 });
 
-test('pins bumped to v51/v61', () => {
-  assert.match(html, /styles\.css\?v=51/);
-  assert.match(html, /live\.js\?v=61/);
+test('pins bumped to v52/v62', () => {
+  assert.match(html, /styles\.css\?v=52/);
+  assert.match(html, /live\.js\?v=62/);
 });

@@ -120,6 +120,6 @@ test('Funds page untouched: balance grid still side by side, stacking only at <=
 });
 
 test('Pins: styles v51, live.js v61', () => {
-  assert.match(html, /styles\.css\?v=51/);
-  assert.match(html, /live\.js\?v=61/);
+  assert.match(html, /styles\.css\?v=52/);
+  assert.match(html, /live\.js\?v=62/);
 });

@@ -149,7 +149,7 @@ test('cap: an unlinked refund bigger than the week nets only up to the charges',
   assert.equal(netted, 10000);
   assert.equal(excess, 15000);
   assert.equal(Math.max(0, chargesNet - netted), 0);
-  assert.match(computeWeekTs, /const unlinkedNetted = Math\.min\(unlinkedRefundAbs, Math\.max\(0, chargesNet\)\);/);
+  assert.match(computeWeekTs, /const unlinkedNetted = weekLocked \? 0 : Math\.min\(unlinkedRefundAbs, Math\.max\(0, chargesNet\)\);/);
   assert.match(computeWeekTs, /unlinked_excess_cents: unlinkedExcessCents/);
   assert.match(weekCloseTs, /const unlinkedExcessInWeek = \(ws: string\) => \{/);
   assert.match(weekCloseTs, /unlinked_excess_by_week: unlinkedExcessByWeek/);
@@ -170,7 +170,7 @@ test('reclassify options include Income; SQL adds the 8th kind', () => {
 });
 
 // --- Pins -------------------------------------------------------------------
-test('version pins: styles v50, live.js v60', () => {
-  assert.match(html, /styles\.css\?v=51/);
-  assert.match(html, /live\.js\?v=61/);
+test('version pins: styles v52, live.js v62', () => {
+  assert.match(html, /styles\.css\?v=52/);
+  assert.match(html, /live\.js\?v=62/);
 });
