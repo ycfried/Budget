@@ -8,22 +8,36 @@
 //
 // Auth: the caller sends their own Supabase user JWT (Authorization:
 // Bearer). The function verifies it and deletes ONLY that caller.
-// Order: (1) the caller's household_membership rows, (2) any household
-// left with no members (its rows cascade-delete under the schema FKs),
-// (3) the caller's auth user via the admin API. Nothing else is deleted,
-// and no other user's data is touched.
+// Order: (1) the caller's auth user via the admin API, (2) the
+// caller's household_membership rows, (3) for any household left
+// with no members, revoke its Plaid items and Gmail grants
+// (best-effort — the tokens die with the household rows, so
+// revocation must happen while the rows still exist), then delete
+// the household (its rows cascade-delete under the schema FKs).
+// Nothing else is deleted, and no other user's data is touched.
+// Revocation runs ONLY for emptied households: a household with
+// remaining members keeps its connections for them.
 //
-// FAILURE SAFETY (Round 3, bug 9): the old version swallowed the
-// household-cleanup error and returned a generic error after the
-// membership was already deleted, leaving an orphaned auth account
-// with no household. Two changes fix that class: (a) the FK
-// migration (delete-account-fk-migration.sql) re-points every
-// user-referencing history column to ON DELETE SET NULL, so the
-// auth-user delete is no longer blocked by the caller's own history
-// rows; (b) this function now restores the membership rows if any
-// later step fails, and reports the failing step instead of a
-// generic error, so a failure leaves the account intact and
-// diagnosable instead of half-deleted.
+// FAILURE SAFETY (Round 3, bug 9; P1-B7, Nov 8, 2026): the old
+// version swallowed the household-cleanup error and returned a
+// generic error after the membership was already deleted, leaving
+// an orphaned auth account with no household. Two changes fix that
+// class: (a) the FK migration (delete-account-fk-migration.sql)
+// re-points every user-referencing history column to ON DELETE SET
+// NULL, so the auth-user delete is no longer blocked by the
+// caller's own history rows; (b) this function now restores the
+// membership rows if any step fails BEFORE the auth delete, and
+// reports the failing step instead of a generic error, so a failure
+// leaves the account intact and diagnosable instead of half-deleted.
+// After the auth delete the memberships cannot be restored (the
+// user is gone), so post-auth failures take a compensating path
+// instead: the failed delete is retried once, and if the household
+// cleanup still fails, the orphaned household's invite code is
+// revoked (invite_code = NULL) so nobody can join it and read its
+// data — the row itself then needs a manual delete, logged loudly
+// for the runbook. Revocation failures never block deletion: a
+// household whose Plaid/Gmail revoke fails is still deleted, and
+// the failure is logged (the token dies with the row either way).
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
@@ -36,6 +50,103 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+// Token decryption (local copies of the per-function helpers — the
+// repo has no shared decrypt module): Plaid keys are base64
+// (plaid-disconnect), Gmail keys are 64-char hex (gmail-disconnect).
+async function decryptPlaidToken(keyB64: string, b64: string): Promise<string> {
+  const raw = Uint8Array.from(atob(keyB64), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['decrypt']);
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.slice(0, 12) }, key, bytes.slice(12));
+  return new TextDecoder().decode(pt);
+}
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.trim();
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+async function decryptGmailToken(keyHex: string, b64: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', hexToBytes(keyHex), { name: 'AES-GCM' }, false, ['decrypt']);
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.slice(0, 12) }, key, bytes.slice(12));
+  return new TextDecoder().decode(pt);
+}
+
+// P1-B7 (Nov 8, 2026): revoke an emptied household's Plaid items
+// (/item/remove) and Gmail grants (Google revoke) before its rows
+// are deleted. Best-effort throughout — a failure is logged and the
+// deletion continues (the token dies with the row either way, and a
+// failed revoke must never strand the account). Missing env skips
+// that provider with one log line, so deletion works on a project
+// that never configured Plaid or Gmail.
+async function revokeHouseholdConnections(admin: any, householdId: string) {
+  // Plaid: remove every active item at Plaid.
+  try {
+    const clientId = Deno.env.get('PLAID_CLIENT_ID');
+    const secret = Deno.env.get('PLAID_SECRET');
+    const tokenKey = Deno.env.get('PLAID_TOKEN_KEY');
+    const env = Deno.env.get('PLAID_ENV') ?? 'sandbox';
+    if (!clientId || !secret || !tokenKey) {
+      console.error('delete-account: Plaid not configured, skipping item removal for household', householdId);
+    } else {
+      const { data: items } = await admin.from('plaid_items')
+        .select('plaid_item_id, status').eq('household_id', householdId);
+      for (const item of items ?? []) {
+        if (item.status === 'disconnected') continue;
+        try {
+          const { data: ct } = await admin.rpc('get_plaid_ciphertext', {
+            p_household_id: householdId, p_item_id: item.plaid_item_id,
+          });
+          if (!ct) continue;
+          const accessToken = await decryptPlaidToken(tokenKey, ct);
+          const res = await fetch(
+            `https://${env === 'production' ? 'production' : env}.plaid.com/item/remove`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken }),
+            },
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok && String(data?.error_code ?? '') !== 'ITEM_NOT_FOUND') {
+            console.error('delete-account: Plaid item/remove failed for', item.plaid_item_id, data?.error_message ?? res.status);
+          }
+        } catch (e) {
+          console.error('delete-account: Plaid item/remove failed for', item.plaid_item_id, (e as Error)?.message ?? e);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('delete-account: Plaid revocation failed for household', householdId, (e as Error)?.message ?? e);
+  }
+  // Gmail: revoke every connection's refresh token at Google.
+  try {
+    const tokenKey = Deno.env.get('GMAIL_TOKEN_KEY');
+    if (!tokenKey) {
+      console.error('delete-account: Gmail token key not configured, skipping grant revocation for household', householdId);
+    } else {
+      const { data: conns } = await admin.from('email_connections')
+        .select('id, refresh_token_encrypted').eq('household_id', householdId);
+      for (const conn of conns ?? []) {
+        if (!conn.refresh_token_encrypted) continue;
+        try {
+          const refreshToken = await decryptGmailToken(tokenKey, conn.refresh_token_encrypted);
+          await fetch('https://oauth2.googleapis.com/revoke', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ token: refreshToken }),
+          }).catch(() => null);
+        } catch (e) {
+          console.error('delete-account: Gmail revoke failed for connection', conn.id, (e as Error)?.message ?? e);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('delete-account: Gmail revocation failed for household', householdId, (e as Error)?.message ?? e);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -93,17 +204,43 @@ Deno.serve(async (req) => {
     authDeleted = true;
     const { error: delMemErr } = await admin
       .from('household_members').delete().eq('user_id', user.id);
-    if (delMemErr) return await fail('membership-delete', delMemErr.message);
+    if (delMemErr) {
+      // P1-B7 compensating path: the auth user is already gone, so
+      // memberships cannot be restored. Retry once — a transient
+      // failure must not orphan the household. If it still fails,
+      // the dead rows point at a deleted user and the household
+      // needs a manual cleanup (logged loudly below via fail()).
+      const { error: retryErr } = await admin
+        .from('household_members').delete().eq('user_id', user.id);
+      if (retryErr) return await fail('membership-delete', retryErr.message);
+    }
     // Delete any household left with no members. A failure here used
     // to be swallowed; it is now fatal, because leaving an emptied
     // household behind with a live invite code would expose its data
-    // to whoever joins next. Memberships are restored instead.
+    // to whoever joins next. Memberships are restored instead — but
+    // only while the auth user still exists (see fail() above).
     for (const hid of householdIds) {
       const { data: remaining } = await admin
         .from('household_members').select('user_id').eq('household_id', hid).limit(1);
       if (!remaining?.length) {
+        // P1-B7: revoke the household's Plaid items and Gmail grants
+        // while their rows still exist (best-effort, never throws).
+        await revokeHouseholdConnections(admin, hid);
         const { error: delHhErr } = await admin.from('households').delete().eq('id', hid);
-        if (delHhErr) return await fail('household-cleanup', delHhErr.message);
+        if (delHhErr) {
+          const { error: retryErr } = await admin.from('households').delete().eq('id', hid);
+          if (retryErr) {
+            // P1-B7 compensating path: the household is orphaned
+            // (its only member's auth user is gone) and the delete
+            // failed twice. Revoke its invite code so nobody can
+            // join it and read its data; the row itself needs a
+            // manual delete. Logged loudly for the runbook.
+            const { error: revokeErr } = await admin.from('households')
+              .update({ invite_code: null }).eq('id', hid);
+            console.error('delete-account: household orphaned, invite code revoked:', hid, revokeErr?.message ?? '(revoked)');
+            return await fail('household-cleanup', retryErr.message);
+          }
+        }
       }
     }
     return json({ deleted: true });

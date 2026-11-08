@@ -263,3 +263,25 @@ test('P1-B6: guard requires a linked charge; client gates the same way and surfa
   assert.match(live, /if \(row\.kind !== 'charge'\) \{ await showAlert\('Does not qualify', 'Only a charge can be covered by the Extra Fund\./);
   assert.match(live, /\/must be a charge\|different household\/i\.test\(error\.message \|\| ''\) \? error\.message : 'Could not send this request\. Try again\.'/);
 });
+
+// ---- P1-B7: delete-account FK gaps + revocation + compensating path ----
+
+test('P1-B7: FK migration covers weekly_allowance_overrides.created_by as SET NULL', () => {
+  const mig = readFileSync(new URL('../supabase/delete-account-fk-migration.sql', import.meta.url), 'utf8');
+  assert.match(mig, /alter table weekly_allowance_overrides alter column created_by drop not null;/);
+  assert.match(mig, /weekly_allowance_overrides_created_by_fkey foreign key \(created_by\) references auth\.users\(id\) on delete set null/);
+  assert.match(mig, /'weekly_allowance_overrides'\)/);
+});
+
+test('P1-B7: delete-account revokes Plaid + Gmail for emptied households and revokes the invite code on orphan', () => {
+  const src = readFileSync(new URL('../supabase/functions/delete-account/index.ts', import.meta.url), 'utf8');
+  assert.match(src, /async function revokeHouseholdConnections\(admin: any, householdId: string\)/);
+  assert.match(src, /plaid\.com\/item\/remove/);
+  assert.match(src, /oauth2\.googleapis\.com\/revoke/);
+  assert.match(src, /await revokeHouseholdConnections\(admin, hid\);/);
+  // Compensating path: retry, then invite-code revoke on orphan.
+  assert.match(src, /\.update\(\{ invite_code: null \}\)\.eq\('id', hid\)/);
+  assert.match(src, /household orphaned, invite code revoked/);
+  // Revocation never blocks deletion: the helper swallows its own errors.
+  assert.match(src, /a failed revoke must never strand the account/);
+});
