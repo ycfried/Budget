@@ -144,3 +144,36 @@ test('P1-M1: (a) open week with a post-close unlinked refund nets it; (b) locked
   // Cap still holds in an open week: refund bigger than charges.
   assert.deepEqual(m1Net(10000, 700000, false), { c: 0, excess: 690000 });
 });
+
+// ---- P1-M2: locked-week mutation guard ----
+
+test('P1-M2: exclude and reclassify raise on locked weeks (same 35-day rule as mark-as-charity)', () => {
+  const n4 = readFileSync(new URL('../supabase/n4-pre-exclusion-state.sql', import.meta.url), 'utf8');
+  const rcl = readFileSync(new URL('../supabase/refund-classification-income-kind.sql', import.meta.url), 'utf8');
+  for (const [name, src] of [['exclude', n4], ['reclassify', rcl]]) {
+    assert.match(src, /v_cur_week > v_tx_week \+ 35/, `${name} has the 35-day lock check`);
+    assert.match(src, /raise exception 'week is locked: a locked-week transaction cannot be changed here'/, `${name} raises on locked weeks`);
+  }
+  const live = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
+  assert.match(live, /\/locked\/i\.test\(error\.message \|\| ''\) \? error\.message : 'Could not reclassify this transaction\. Try again\.'/);
+  assert.match(live, /\/locked\/i\.test\(error\.message \|\| ''\) \? error\.message : 'Could not delete this transaction\. Try again\.'/);
+});
+
+// ---- P1-M3: canonical merged restore_transaction ----
+
+test('P1-M3: restore is the merged version — snapshot + reversed + refund check, no phantom columns', () => {
+  const n4 = readFileSync(new URL('../supabase/n4-pre-exclusion-state.sql', import.meta.url), 'utf8');
+  assert.match(n4, /if v_row\.state <> 'excluded' and v_row\.state <> 'reversed' then/);
+  assert.match(n4, /if v_row\.pre_exclusion_state is null then\n    raise exception 'cannot restore: no prior state recorded'/);
+  assert.match(n4, /if v_row\.kind = 'refund' and v_row\.original_purchase_id is not null then/);
+  assert.match(n4, /raise exception 'cannot restore refund: original transaction is missing'/);
+  assert.match(n4, /v_state := v_row\.pre_exclusion_state;/);
+  // The investigation doc's verbatim SQL referenced columns that do
+  // not exist in the schema — the canonical file's executable body
+  // must not (comments may name them to explain the correction).
+  const code = n4.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+  for (const col of ['refund_of_transaction_id', 'source_transaction_id', 'excluded_at', 'excluded_by', 'excluded_reason', 'exclusion_note']) {
+    assert.doesNotMatch(code, new RegExp(col), `no phantom column ${col}`);
+  }
+  assert.match(n4, /CANONICAL FILE for exclude_transaction \+ restore_transaction/);
+});

@@ -3465,7 +3465,10 @@ async function doTxReclassify(row) {
   if (reason === null) return;
   if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for reclassifying this transaction.'); return; }
   const { error } = await supabase.rpc('reclassify_transaction', { txn_id: row.id, new_kind: newKind, reason: reason.trim() });
-  if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', 'Could not reclassify this transaction. Try again.'); return; }
+  // P1-M2 (Nov 8, 2026): a locked-week refusal names the reason —
+  // the generic "Try again" would invite an admin to retry a change
+  // the server will never accept. Same pattern as doTxCharity.
+  if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', /locked/i.test(error.message || '') ? error.message : 'Could not reclassify this transaction. Try again.'); return; }
   await audit('Transaction reclassified', `${row ? row.merchant : 'Transaction'} reclassified to ${newKind} — reason: ${reason.trim()}.`);
   await refresh();
 }
@@ -3485,7 +3488,9 @@ async function doTxDelete(row) {
   if (reason === null) return;
   if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for moving this transaction to the Trash.'); return; }
   const { error } = await supabase.rpc('exclude_transaction', { txn_id: row.id, reason: reason.trim() });
-  if (error) { console.warn('exclude_transaction (trash) failed:', error.message); await showAlert('Could not delete', 'Could not delete this transaction. Try again.'); return; }
+  // P1-M2 (Nov 8, 2026): surface a locked-week refusal by name
+  // instead of the generic "Try again" (see doTxReclassify).
+  if (error) { console.warn('exclude_transaction (trash) failed:', error.message); await showAlert('Could not delete', /locked/i.test(error.message || '') ? error.message : 'Could not delete this transaction. Try again.'); return; }
   await audit('Transaction moved to trash', `${row.merchant} ${formatCents(row.amount_cents)} moved to trash — reason: ${reason.trim()}.`);
   showToast('Moved to trash bin.');
   await refresh();

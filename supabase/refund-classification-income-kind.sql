@@ -56,6 +56,9 @@ set search_path = public
 as $$
 declare
   v_row transactions%rowtype;
+  v_now date;
+  v_cur_week date;
+  v_tx_week date;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'transfer', 'income', 'charity') then
@@ -66,6 +69,16 @@ begin
   if not exists (select 1 from household_members
                  where household_id = v_row.household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';
+  end if;
+  -- P1-M2 (Nov 8, 2026): a locked week's transactions are immutable
+  -- through the mutation RPCs — the same 35-day rule as
+  -- mark_transaction_charity (r13-charity.sql). Locked-week
+  -- corrections go through restoration, never a direct edit.
+  v_now := (now() at time zone 'America/New_York')::date;
+  v_cur_week := v_now - extract(dow from v_now)::int;
+  v_tx_week := v_row.date - extract(dow from v_row.date)::int;
+  if v_cur_week > v_tx_week + 35 then
+    raise exception 'week is locked: a locked-week transaction cannot be changed here';
   end if;
   update transactions set kind = new_kind where id = txn_id;
   insert into audit_log (household_id, actor, actor_name, action, detail)
