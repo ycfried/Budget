@@ -3310,8 +3310,13 @@ async function openTxActionsSheet(row) {
   // Delete only; charity gets Delete only. Members keep Extra Fund
   // on charges only, as before.
   const actionIds = actionsForTxKind(row.kind, isAdmin, row.state === 'verified');
+  // P1-NEW1 (Nov 8, 2026): the Charity row is offered on any charge
+  // but rendered DISABLED with honest copy when it cannot act yet —
+  // admin on a pending charge ("Available once this posts"), any
+  // member ("Ask the admin to mark this as a gift"). A disabled row
+  // never fires its handler.
   const actions = actionIds.map((id) => id === 'charity'
-    ? { id, label: 'Charity', sub: 'Counts it as a charity gift, out of weekly spending' }
+    ? { id, label: 'Charity', sub: !isAdmin ? 'Ask the admin to mark this as a gift' : row.state === 'verified' ? 'Counts it as a charity gift, out of weekly spending' : 'Available once this posts', disabled: !isAdmin || row.state !== 'verified' }
     : id === 'linkRefund'
     ? { id, label: 'Link to purchase', sub: row.original_purchase_id ? 'Change or remove the purchase this refund is linked to' : 'Link this refund to the purchase it came from' }
     : id === 'extraFund'
@@ -3325,7 +3330,7 @@ async function openTxActionsSheet(row) {
   overlay.id = 'sheetOverlay';
   overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Actions for ${esc(displayMerchant(row.merchant))}"><span class="sheet-handle" aria-hidden="true"></span>
     <div class="sheet-top"><button class="sheet-top-cancel" type="button" id="txActionsCancel">Cancel</button><h3>Actions</h3><span class="sheet-top-spacer"></span></div><p class="muted small">${esc(displayMerchant(row.merchant))} — ${formatCents(row.amount_cents)}</p>${['transfer', 'payment', 'cashback', 'fund_charge'].includes(row.kind) ? '<p class="muted small">This row does not count toward weekly spending.</p>' : ''}
-    ${actions.map((a) => `<button class="tx-action-row" data-tx-action="${a.id}" type="button"><span><strong>${a.label}</strong><br><span class="muted small">${esc(a.sub)}</span></span><span aria-hidden="true">›</span></button>`).join('')}</div>`;
+    ${actions.map((a) => `<button class="tx-action-row" data-tx-action="${a.id}" type="button"${a.disabled ? ' disabled' : ''}><span><strong>${a.label}</strong><br><span class="muted small">${esc(a.sub)}</span></span><span aria-hidden="true">›</span></button>`).join('')}</div>`;
   document.body.appendChild(overlay);
   syncScrollLock();
   const close = () => { document.removeEventListener('keydown', escHandler); overlay.remove(); syncScrollLock(); };
@@ -3335,6 +3340,7 @@ async function openTxActionsSheet(row) {
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
   overlay.querySelectorAll('[data-tx-action]').forEach((btn) => btn.addEventListener('click', async () => {
     const id = btn.dataset.txAction;
+    if (btn.disabled) return;
     close();
     if (id === 'charity') await doTxCharity(row);
     else if (id === 'extraFund') await doTxExtraFund(row);
@@ -3428,8 +3434,14 @@ async function doTxLinkRefund(row) {
   await refresh();
 }
 async function doTxReclassify(row) {
-  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }, { value: 'income', label: 'Income' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }, { value: 'income', label: 'Income' }, { value: 'charity', label: 'Charity' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
   if (newKind === null) return;
+  // P1-NEW1 (Nov 8, 2026): Charity goes through the guarded
+  // mark_transaction_charity path (posted charge, unlocked week),
+  // not the raw reclassify RPC — the allow-list entry for 'charity'
+  // in refund-classification-income-kind.sql is the admin override
+  // only, not the client path.
+  if (newKind === 'charity') { await doTxCharity(row); return; }
   const reason = await showSheet({ title: 'Reclassify Transaction', message: 'Why reclassify this transaction?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
   if (reason === null) return;
   if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for reclassifying this transaction.'); return; }

@@ -269,7 +269,13 @@ test('B10: held row queued before the entry; unique violations swallowed as idem
 // ---- B11: detail actions by kind ----
 test('B11: actionsForTxKind restricts by kind exactly as decided', () => {
   assert.deepEqual(actionsForTxKind('charge', true, true), ['charity', 'extraFund', 'other', 'delete']);
-  assert.deepEqual(actionsForTxKind('charge', false, true), ['extraFund']);
+  // P1-NEW1 (Nov 8, 2026): Charity is offered on any charge — the
+  // sheet renders it disabled with honest copy when pending (admin)
+  // or for members (ask the admin). The guarded RPC still enforces
+  // posted + unlocked week when tapped.
+  assert.deepEqual(actionsForTxKind('charge', true, false), ['charity', 'extraFund', 'other', 'delete']);
+  assert.deepEqual(actionsForTxKind('charge', false, true), ['charity', 'extraFund']);
+  assert.deepEqual(actionsForTxKind('charge', false, false), ['charity', 'extraFund']);
   assert.deepEqual(actionsForTxKind('transfer', true, true), ['other', 'delete']);
   assert.deepEqual(actionsForTxKind('payment', true, false), ['other', 'delete']);
   assert.deepEqual(actionsForTxKind('cashback', true, true), ['other', 'delete']);

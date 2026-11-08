@@ -369,8 +369,12 @@ export function isWeekCloseCheckDue({ lastCheckedWeekStart = null, currentWeekSt
 export function actionsForTxKind(kind, isAdmin, isVerified) {
   if (kind === 'charity') return isAdmin ? ['delete'] : [];
   if (kind === 'charge') {
-    const out = [];
-    if (isAdmin && isVerified) out.push('charity');
+    // P1-NEW1 (Nov 8, 2026): Charity is offered on any charge,
+    // regardless of posted status — the sheet renders it disabled
+    // with honest copy when pending (admin) or for members (ask the
+    // admin). The guarded mark_transaction_charity RPC still enforces
+    // posted + unlocked week when it is actually tapped.
+    const out = ['charity'];
     out.push('extraFund');
     if (isAdmin) out.push('other', 'delete');
     return out;
@@ -400,5 +404,8 @@ export function classifyCsvKind(merchant, amountCents) {
   if (amountCents < 0 && /CHECK DEPOSIT|MOBILE DEPOSIT|\bDEPOSIT\b/i.test(name)) return 'income';
   if (/MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT|PAYMENT\s*:\s*CREDIT|PAYMENT CREDIT|\/ ?PAYMENT|EPAYMENT|E-PAYMENT|ACH PAYMENT/i.test(name)) return 'payment';
   if (/CASH BACK|CASHBACK|REWARD/i.test(name)) return 'cashback';
+  // P1-NEW1 (Nov 8, 2026): charity auto-detect, money-out only —
+  // same conservative list as canonical.ts CHARITY_PATTERN.
+  if (amountCents > 0 && /\b(CHARITY|DONATION|DONATE|TZEDAKA|TZEDAKAH|KEREN|CHABAD|TOIREMORG|COLEL)\b/i.test(name)) return 'charity';
   return amountCents < 0 ? 'refund' : 'charge';
 }

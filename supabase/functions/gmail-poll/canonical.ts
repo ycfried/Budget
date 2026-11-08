@@ -61,6 +61,17 @@ export const TRANSFER_PATTERN = /INTERNAL TRANSFER/i;
 export const DEPOSIT_PATTERN = /CHECK DEPOSIT|MOBILE DEPOSIT|\bDEPOSIT\b/i;
 export const PAYMENT_PATTERN = /MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT|PAYMENT\s*:\s*CREDIT|PAYMENT CREDIT|\/ ?PAYMENT|EPAYMENT|E-PAYMENT|ACH PAYMENT/i;
 export const CASHBACK_PATTERN = /CASH BACK|CASHBACK|REWARD/i;
+// Charity auto-detect (Nov 8, 2026, P1-NEW1 — owner-reported gap: no
+// donation was ever picked up automatically, and no Action could mark
+// one). CONSERVATIVE list, owner confirmation pending before launch:
+// explicit charity words plus the household's own known charity
+// merchants (KEREN HATZEDAKA, TOIREMORG CHARITY, COLEL CHABAD). Only
+// money-OUT rows (positive amounts) match — a negative charity-named
+// row is a refund of a gift and keeps the sign fallback. Classifying a
+// row as 'charity' only moves it out of weekly spending (it counts as
+// Given); it does NOT accrue charity — only admin-called
+// record_charity_income accrues (R13). Do NOT widen this list silently.
+export const CHARITY_PATTERN = /\b(CHARITY|DONATION|DONATE|TZEDAKA|TZEDAKAH|KEREN|CHABAD|TOIREMORG|COLEL)\b/i;
 
 // Plaid personal_finance_category values observed for card payments.
 // These are fields Plaid already returns on each /transactions/sync
@@ -84,7 +95,7 @@ function plaidCategoryIndicatesCardPayment(tx: Record<string, unknown>): boolean
   return false;
 }
 
-export type TxKind = 'charge' | 'refund' | 'payment' | 'cashback' | 'fund_charge' | 'transfer' | 'income';
+export type TxKind = 'charge' | 'refund' | 'payment' | 'cashback' | 'fund_charge' | 'transfer' | 'income' | 'charity';
 
 // Classification order matters: the internal-transfer check comes FIRST,
 // then payment and cashback are checked BEFORE the sign-based refund
@@ -106,6 +117,10 @@ export function classifyKind(
   if (plaidCategoryIndicatesCardPayment(tx)) return 'payment';
   if (PAYMENT_PATTERN.test(name)) return 'payment';
   if (CASHBACK_PATTERN.test(name)) return 'cashback';
+  // P1-NEW1 (Nov 8, 2026): charity auto-detect, money-out only, after
+  // payment/cashback so a "PAYMENT - THANK YOU" from a charity-named
+  // merchant still counts as a payment, not a gift.
+  if (signedAmountCents > 0 && CHARITY_PATTERN.test(name)) return 'charity';
   // A depository-account inflow with no refund signal is money
   // received, not a purchase refund. A genuine debit-card return is
   // the exception: the admin reclassifies that one row to 'refund'

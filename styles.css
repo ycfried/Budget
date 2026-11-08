@@ -1177,6 +1177,9 @@ body.live .activity-dot-money { background: #2f6bff; }
 body.live .activity-dot-charity { background: #2e6b3e; }
 body.live .activity-dot-system { background: #94a3b8; }
 body.live .tx-action-row { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #e5e7eb; padding: 14px 4px; font-size: 15px; color: #0f172a; cursor: pointer; font-family: inherit; }
+/* P1-NEW1 (Nov 8, 2026): a disabled action row (Charity on a pending
+   charge, or for a member) is visible but dimmed and never fires. */
+body.live .tx-action-row[disabled] { opacity: .55; cursor: default; }
 body.live .grid .card { margin-bottom: 0; }
 body.live .grid, body.live #section-stats { gap: 16px; }
 body.live #section-stats .stat-card { padding: 16px; }

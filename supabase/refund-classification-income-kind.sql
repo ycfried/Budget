@@ -38,11 +38,16 @@ alter table transactions
   add constraint transactions_kind_check
   check (kind in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer', 'income'));
 
--- STEP 2 — Extend reclassify_transaction to allow 'income'.
--- Identical to supabase/05-transaction-mutation-rpcs.sql except the
--- allow-list and the error message gain 'income'. Admin-only and the
--- audit row are unchanged. Do NOT apply the 05 file in full (its §1
--- Approve is outdated and would break Approve).
+-- STEP 2 — Extend reclassify_transaction to allow 'income' AND
+-- 'charity' ('charity' added Nov 8, 2026, P1-NEW1). The 'charity'
+-- entry is the ADMIN OVERRIDE only: it lets reclassify_transaction
+-- set kind='charity' directly, bypassing mark_transaction_charity's
+-- posted/unlocked-week guards. The client never calls it that way —
+-- doTxReclassify dispatches Charity to mark_transaction_charity
+-- (guarded path). Identical to supabase/05-transaction-mutation-rpcs.sql
+-- except the allow-list and the error message gain 'income' and
+-- 'charity'. Admin-only and the audit row are unchanged. Do NOT apply
+-- the 05 file in full (its §1 Approve is outdated and would break Approve).
 create or replace function public.reclassify_transaction(txn_id uuid, new_kind text, reason text)
 returns void
 language plpgsql
@@ -53,8 +58,8 @@ declare
   v_row transactions%rowtype;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
-  if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'transfer', 'income') then
-    raise exception 'invalid kind: must be charge, refund, fund_charge, payment, cashback, transfer, or income';
+  if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'transfer', 'income', 'charity') then
+    raise exception 'invalid kind: must be charge, refund, fund_charge, payment, cashback, transfer, income, or charity';
   end if;
   select * into v_row from transactions where id = txn_id;
   if not found then raise exception 'transaction not found'; end if;
