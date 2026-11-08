@@ -3396,7 +3396,7 @@ async function doTxExtraFund(row) {
     household_id: household.household_id, requested_by: user.id,
     amount_cents: cents, note: '', status: 'pending', transaction_id: row.id,
   });
-  if (error) { console.warn('fund request (use-fund) failed:', error.message); await showAlert('Could not send request', 'Could not send this request. Try again.'); return; }
+  if (error) { console.warn('fund request (use-fund) failed:', error.message); await showAlert('Could not send request', /must be a charge|different household/i.test(error.message || '') ? error.message : 'Could not send this request. Try again.'); return; }
   await audit('Extra Fund request created', `Requested ${formatCents(cents)} for ${row?.merchant ?? 'a transaction'}.`);
   await refresh();
 }

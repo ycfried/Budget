@@ -1,7 +1,11 @@
 -- merged-audit-held-release-atomic.sql — Merged audit B10
+-- CANONICAL DEFINITION of resolve_held_refund (P1-B4, Nov 8, 2026).
 -- PREPARED FOR OWNER-APPROVED APPLY — NOT APPLIED BY THIS BRANCH.
 -- Do NOT apply from a merge: the parent applies it via the approved
 -- browser SQL run after the owner has seen this exact file.
+-- P1-B4 follow-up (Nov 8, 2026): the households row is now locked
+-- before the shortfall read (see the release branch), closing the
+-- shortfall race the first atomic version kept.
 --
 -- WHY: resolve_held_refund (from restoration-snapshots.sql) selects
 -- the held row, checks status='pending', then updates it without a
@@ -43,7 +47,15 @@ begin
     raise exception 'admin only';
   end if;
   if p_action = 'release' then
-    select fund_shortfall_cents into v_shortfall from households where id = v_row.household_id;
+    -- P1-B4 follow-up (Nov 8, 2026): lock the households row before
+    -- reading the shortfall. The plain select + absolute update below
+    -- raced a concurrent release (or week-close) for a DIFFERENT held
+    -- row in the same household — both could read the same shortfall
+    -- and the second write would clobber the first. FOR UPDATE
+    -- serializes all shortfall writers for this household, the same
+    -- pattern as approve_and_allocate's household-row lock.
+    select fund_shortfall_cents into v_shortfall from households where id = v_row.household_id for update;
+    if not found then raise exception 'household not found'; end if;
     v_shortfall := coalesce(v_shortfall, 0);
     v_applied := least(v_shortfall, v_row.held_cents);
     v_to_fund := v_row.held_cents - v_applied;

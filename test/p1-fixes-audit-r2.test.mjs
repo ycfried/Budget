@@ -239,3 +239,27 @@ test('P1-B3: every 500 body is a generic string; the detail goes to console.erro
     assert.match(src, /console\.error\(/, `${fn} logs the detail server-side`);
   }
 });
+
+// ---- P1-B4: held-release atomicity ----
+
+test('P1-B4: canonical resolve_held_refund locks the held row and the households row; old body is bannered', () => {
+  const canon = readFileSync(new URL('../supabase/merged-audit-held-release-atomic.sql', import.meta.url), 'utf8');
+  assert.match(canon, /CANONICAL DEFINITION of resolve_held_refund/);
+  assert.match(canon, /select \* into v_row from held_refunds where id = p_held_id for update;/);
+  assert.match(canon, /select fund_shortfall_cents into v_shortfall from households where id = v_row\.household_id for update;/);
+  assert.match(canon, /where id = p_held_id and status = 'pending';/);
+  assert.match(canon, /raise exception 'held refund already resolved'/);
+  const old = readFileSync(new URL('../supabase/restoration-snapshots.sql', import.meta.url), 'utf8');
+  assert.match(old, /DO NOT RE-APPLY THE DEFINITION BELOW \(P1-B4/);
+});
+
+// ---- P1-B6: fund-request kind guard ----
+
+test('P1-B6: guard requires a linked charge; client gates the same way and surfaces a refusal', () => {
+  const guard = readFileSync(new URL('../supabase/merged-audit-fund-request-kind-guard.sql', import.meta.url), 'utf8');
+  assert.match(guard, /CANONICAL DEFINITION of validate_fund_request_txn\(\)/);
+  assert.match(guard, /if v_kind is distinct from 'charge' then\n        raise exception 'fund request transaction must be a charge';/);
+  const live = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
+  assert.match(live, /if \(row\.kind !== 'charge'\) \{ await showAlert\('Does not qualify', 'Only a charge can be covered by the Extra Fund\./);
+  assert.match(live, /\/must be a charge\|different household\/i\.test\(error\.message \|\| ''\) \? error\.message : 'Could not send this request\. Try again\.'/);
+});
