@@ -75,13 +75,14 @@
 //   because they have distinct external_ids / row ids; the hash alone
 //   never blocks an insert.
 //
-// Refund linkage (best-effort, documented limit): Plaid's
-// /transactions/sync payload carries NO refund-to-original-purchase
-// link field, so original_purchase_id is left NULL for Plaid refunds
-// in this function. Setting it by merchant+amount window matching is
-// NOT reliable and is deliberately not done here; a real matcher is
-// S2/future work. S2 must treat a null original_purchase_id refund as
-// unlinked, never invent a link.
+// Refund linkage (P0-1, Nov 8, 2026): Plaid's /transactions/sync
+// payload carries NO refund-to-original-purchase link field, so the
+// link is made after insert by supabase/refund-linking.sql —
+// auto_link_refund for a refund row (exact-amount, same card, same
+// normalized merchant, 90-day window, exactly one candidate) and
+// link_refunds_to_purchase for a charge row (reverse direction, so a
+// refund that arrived first still gets linked). A null
+// original_purchase_id refund is unlinked, never invented.
 //
 // Sync cursor (P1-15): loaded from plaid_items.sync_cursor at start,
 // persisted via update_plaid_sync at end. Pagination runs until
@@ -357,7 +358,7 @@ Deno.serve(async (req) => {
         const candidateAccts: DupAcct[] = [];
         try {
           const { ok: dupOk, data: dupData } = await plaidPost(base, '/accounts/get', clientId, secret, {
-access_token: <redacted>
+            access_token: accessToken,
           });
           if (dupOk) {
             for (const acc of dupData.accounts ?? []) {
@@ -571,8 +572,8 @@ async function upsertPlaidTx(
     external_id: txId, dedupe_hash: hash,
     plaid_transaction_id: txId,
     plaid_pending_transaction_id: pendingTxId,
-    // original_purchase_id: intentionally left null — Plaid's sync
-    // payload carries no refund-to-purchase link (see header).
+    // original_purchase_id starts null; the link is made just after
+    // insert by auto_link_refund / link_refunds_to_purchase (P0-1).
     original_purchase_id: null,
   };
 
@@ -621,10 +622,25 @@ async function upsertPlaidTx(
     if (!trashed) update.state = state;
     const { error } = await supabaseAdmin.from('transactions').update(update)
       .eq('id', existing.id).eq('household_id', householdId);
-    return error ? 'skipped' : 'updated';
+    if (error) return 'skipped';
+    // P0-1 (Nov 8, 2026): a refund re-delivered after the purchase (or
+    // after refund-linking.sql went live) gets its link now. Idempotent
+    // — auto_link_refund returns null when already linked. Best-effort.
+    if (kind === 'refund') {
+      try { await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: existing.id }); } catch { /* best-effort */ }
+    }
+    return 'updated';
   }
   const { data: inserted, error } = await supabaseAdmin.from('transactions').insert(row).select('id, created_at').single();
   if (error || !inserted) return 'skipped';
+  // P0-1 (Nov 8, 2026): link this row to its purchase/refund so
+  // restoration can reach it (supabase/refund-linking.sql). A refund
+  // auto-links to its one exact-amount purchase; a charge links any
+  // earlier unlinked refund to itself. Best-effort: never fails sync.
+  try {
+    if (kind === 'refund') await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: inserted.id });
+    else if (kind === 'charge' || kind === 'fund_charge') await supabaseAdmin.rpc('link_refunds_to_purchase', { p_purchase_id: inserted.id });
+  } catch { /* linking is best-effort */ }
   // Lookalike review (Nov 3 Amazon case): a same-date/amount/suffix
   // row with a related merchant name is flagged for admin review,
   // never auto-merged. Best-effort: never fails the sync.

@@ -1,3 +1,18 @@
+-- ██████████████████████████████████████████████████████████████████████
+-- DO NOT APPLY THIS FILE. EVER.
+-- ██████████████████████████████████████████████████████████████████████
+-- This file renames update_fund_shortfall's parameter to p_household_id.
+-- week-close calls the RPC BY NAMED ARGUMENT ({ household_id, shortfall_cents },
+-- supabase/functions/week-close/index.ts:382), and PostgREST matches by
+-- name — after this rename both call sites fail with a missing-parameter
+-- error, mid-run, after closes/releases were already persisted. That is
+-- the P0-3 failure this file was written to prevent.
+-- The CANONICAL version is supabase/update-fund-shortfall.sql (alias-
+-- qualified, parameter name kept as household_id). Apply that instead.
+-- This file is kept in the repo only as a record of the rejected fix;
+-- its DO-NOT-APPLY name is the quarantine. (P0-3, Nov 8, 2026.)
+-- ██████████████████████████████████████████████████████████████████████
+--
 -- Deep audit Nov 5, 2026 — FIX for update_fund_shortfall ONLY.
 -- DO NOT re-apply supabase/04-admin-rpcs.sql in full (its §1 Approve
 -- function is outdated and re-applying it would break Approve).

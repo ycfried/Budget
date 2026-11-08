@@ -378,6 +378,12 @@ export function actionsForTxKind(kind, isAdmin, isVerified) {
   if (kind === 'transfer' || kind === 'payment' || kind === 'cashback' || kind === 'fund_charge') {
     return isAdmin ? ['other', 'delete'] : [];
   }
+  // P0-1 (Nov 8, 2026): a refund gets Link to purchase first (admin
+  // only) — linking is what makes restoration reachable. Members get
+  // no actions on a refund, as before.
+  if (kind === 'refund') {
+    return isAdmin ? ['linkRefund', 'other', 'delete'] : [];
+  }
   return isAdmin ? ['other', 'delete'] : [];
 }
 export function classifyCsvKind(merchant, amountCents) {

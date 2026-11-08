@@ -205,6 +205,13 @@ Deno.serve(async (req) => {
         id: inserted.id, merchant, date, amount_cents: amountCents,
         card_suffix: cardSuffix, source: 'amex_alert', created_at: inserted.created_at,
       });
+      // P0-1 (Nov 8, 2026): link this row to its purchase/refund so
+      // restoration can reach it (supabase/refund-linking.sql).
+      // Best-effort: never fails ingest.
+      try {
+        if (kind === 'refund') await supabase.rpc('auto_link_refund', { p_refund_id: inserted.id });
+        else if (kind === 'charge' || kind === 'fund_charge') await supabase.rpc('link_refunds_to_purchase', { p_purchase_id: inserted.id });
+      } catch { /* linking is best-effort */ }
     }
     // stored:true ONLY after a successful insert (or a proven
     // duplicate above). Never on 401/202/500.
