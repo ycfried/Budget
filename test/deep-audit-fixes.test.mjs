@@ -13,8 +13,8 @@ const webhookRegister = readFileSync(new URL('../supabase/functions/plaid-webhoo
 const plaidSync = readFileSync(new URL('../supabase/functions/plaid-sync/index.ts', import.meta.url), 'utf8');
 const gmailPoll = readFileSync(new URL('../supabase/functions/gmail-poll/index.ts', import.meta.url), 'utf8');
 
-test('pins bumped to v50/v60', () => {
-  assert.match(html, /styles\.css\?v=50/);
+test('pins bumped to v51/v61', () => {
+  assert.match(html, /styles\.css\?v=51/);
   assert.match(html, /live\.js\?v=61/);
 });
 

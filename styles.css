@@ -541,10 +541,16 @@ body.live #txFilters { margin-top: 10px; }
 body.live #txFilters label { display: block; margin: 10px 0 4px; font-weight: 600; }
 body.live #txFilters label select { display: block; width: 100%; margin-top: 4px; }
 
-/* Home stats: two-by-two tiles (owner request Nov 2 — the four-in-a-row
-   tiles left numbers small and cards mostly empty), and the
+/* Home stats (owner, Nov 8, 2026, mockup:
+   home-stacked-fund-charity.png): Charity ABOVE Extra Fund, stacked
+   vertically, both full-width — one column, not two. The old two-column
+   row plus the expanded card spanning both columns is what made the
+   Extra Fund box wrap down below the small Charity card when tapped
+   (the bug: Charity is first in the row so it looked in place, Extra
+   Fund is second so it jumped). Stacked, each card expands downward
+   in place and the other stays collapsed in its own spot. The
    Recent purchases buttons get breathing room from the last row. */
-body.live #section-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+body.live #section-stats { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 body.live #section-stats .stat-card { padding: 14px 12px; min-width: 0; }
 body.live #section-stats .kicker { font-size: 11px; }
 body.live #section-stats .num { font-size: 24px; }
@@ -676,15 +682,18 @@ body.live .fund-balance-chevron { color: #2f6bff; font-weight: 700; font-size: 2
 /* Funds expand-in-place (owner approval, Nov 6, 2026, mockup:
    funds-expand-in-place.png): the card expands where it is — no
    overlay, no dimmed page, no sheet. The expanded card gets the
-   brand-blue border from the mockup; a Home stat card spans both
-   columns when expanded so its rows and buttons fit. Rows are the
+   brand-blue border from the mockup. Home stat cards are stacked
+   vertically (owner, Nov 8, 2026, mockup:
+   home-stacked-fund-charity.png), so an expanded Home card already
+   spans the full width and needs no grid-column span — the old
+   span rule is gone, it only existed for the two-column row that
+   made the Extra Fund box wrap below Charity. Rows are the
    same three labeled rows as before (Available / Pending / Total
    for the fund, Available / Given / Total for charity). Buttons
    wrap instead of squeezing: the mockup's middle button text
    overflows its button at phone width, so the row wraps to keep
    every label readable. Chevron flip is text (⌄/⌃) in live.js. */
 body.live .fund-balance-panel.fund-expanded, body.live .stat-card.fund-expanded { border-color: #2f6bff; }
-body.live #section-stats .stat-card.fund-expanded { grid-column: 1 / -1; }
 body.live .fund-expand { margin-top: 12px; border-top: 1px solid #e5e7eb; padding-top: 4px; }
 body.live .fund-expand-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #e5e7eb; font-size: 15px; color: #0f172a; }
 body.live .fund-expand-row strong { font-weight: 700; color: #0f172a; white-space: nowrap; }
