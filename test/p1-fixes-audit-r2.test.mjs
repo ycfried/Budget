@@ -283,5 +283,5 @@ test('P1-B7: delete-account revokes Plaid + Gmail for emptied households and rev
   assert.match(src, /\.update\(\{ invite_code: null \}\)\.eq\('id', hid\)/);
   assert.match(src, /household orphaned, invite code revoked/);
   // Revocation never blocks deletion: the helper swallows its own errors.
-  assert.match(src, /a failed revoke must never strand the account/);
+  assert.match(src, /Revocation failures never block deletion/);
 });
