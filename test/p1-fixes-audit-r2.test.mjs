@@ -313,3 +313,37 @@ test('P1-B8: 07 is the canonical service-role-only vault state; plaid-token-colu
     assert.doesNotMatch(src, /grant execute on function log_webhook_event\(text, text, text\) to anon, authenticated;/);
   }
 });
+
+// ---- P1-B5/B9: one canonical kind constraint; footgun files bannered ----
+
+test('P1-B5/B9: refund-classification file is the canonical 8-kind constraint; superseded kind lists are bannered', () => {
+  const canon = readFileSync(new URL('../supabase/refund-classification-income-kind.sql', import.meta.url), 'utf8');
+  assert.match(canon, /CANONICAL KIND CONSTRAINT \(P1-B5/);
+  assert.match(canon, /check \(kind in \('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer', 'income'\)\)/);
+  const merged = readFileSync(new URL('../supabase/merged-audit-kind-constraint.sql', import.meta.url), 'utf8');
+  assert.match(merged, /SUPERSEDED — DO NOT APPLY \(P1-B5/);
+  assert.match(merged, /THE CANONICAL KIND CONSTRAINT IS\n-- supabase\/refund-classification-income-kind\.sql/);
+  const schema = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+  assert.match(schema, /kind text not null check \(kind in \('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer', 'income'\)\)/);
+});
+
+test('P1-B9: every footgun file carries a never-reapply banner; the member-UPDATE revoke is prepared', () => {
+  const checks = [
+    ['fix-transactions-upsert.sql', /DO NOT RE-APPLY THIS FILE \(P1-B9/],
+    ['fix-grants.sql', /DO NOT RE-GRANT member SELECT on plaid_items \(P1-B9/],
+    ['fix-plaid-grants.sql', /DO NOT RE-APPLY THIS FILE \(P1-B9/],
+    ['n13-invite-rate-limit.sql', /DO NOT RE-APPLY THIS FILE \(P1-B9/],
+    ['05-transaction-mutation-rpcs.sql', /SUPERSEDED — DO NOT APPLY IN FULL \(P1-B9/],
+    ['04-admin-rpcs.sql', /DO NOT APPLY IN FULL \(P1-B9/],
+  ];
+  for (const [f, re] of checks) {
+    const src = readFileSync(new URL(`../supabase/${f}`, import.meta.url), 'utf8');
+    assert.match(src, re, `${f} is bannered`);
+  }
+  // The grant itself is commented out of fix-grants.sql (not re-grantable by applying it).
+  const fg = readFileSync(new URL('../supabase/fix-grants.sql', import.meta.url), 'utf8');
+  assert.doesNotMatch(fg.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n'), /grant select on plaid_items to authenticated;/);
+  const revoke = readFileSync(new URL('../supabase/revoke-member-transaction-update.sql', import.meta.url), 'utf8');
+  assert.match(revoke, /revoke update on transactions from authenticated;/);
+  assert.match(revoke, /drop policy if exists "members update own transactions" on transactions;/);
+});

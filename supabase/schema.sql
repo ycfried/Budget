@@ -42,7 +42,13 @@ create table if not exists transactions (
   card_suffix char(4) not null default '0000',
   source text not null check (source in ('csv', 'amex_alert', 'plaid', 'manual')),
   state text not null check (state in ('provisional', 'verified', 'excluded', 'reversed')),
-  kind text not null check (kind in ('charge', 'refund', 'fund_charge')),
+  -- P1-B5 (Nov 8, 2026): the kind list here is the ORIGINAL 3-kind
+  -- list, kept only so a fresh setup creates the table. The live
+  -- constraint is the 8-kind list in
+  -- supabase/refund-classification-income-kind.sql, which a fresh
+  -- setup must apply after this file. Never narrow this list by
+  -- re-applying an older kind file.
+  kind text not null check (kind in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer', 'income')),
   fund_allocation_cents integer not null default 0,
   excluded boolean not null default false,
   exclude_reason text not null default '',

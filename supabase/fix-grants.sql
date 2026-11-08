@@ -25,4 +25,8 @@ grant select, insert on transactions to authenticated;
 grant select, insert on fund_requests to authenticated;
 grant select on savings_ledger to authenticated;
 grant select, insert on audit_log to authenticated;
-grant select on plaid_items to authenticated;
+-- DO NOT RE-GRANT member SELECT on plaid_items (P1-B9, Nov 8, 2026):
+-- it was revoked by 03-plaid-vault.sql (the vault's ciphertext column
+-- must never be client-readable). The line below is commented out
+-- deliberately — applying this file must not restore the grant.
+-- grant select on plaid_items to authenticated;

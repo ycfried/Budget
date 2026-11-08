@@ -1,4 +1,9 @@
 -- Refund misclassification fix — add 'income' as an 8th transaction kind.
+-- CANONICAL KIND CONSTRAINT (P1-B5, Nov 8, 2026): this file holds the
+-- single authoritative transactions_kind_check (8 kinds). No other
+-- file's kind list may be applied — merged-audit-kind-constraint.sql
+-- (7 kinds, no income) and schema.sql's original 3-kind list are both
+-- superseded and bannered never-reapply.
 -- Owner-approved Nov 5, 2026. DO NOT APPLY LIVE without the owner's
 -- explicit approval of the statements in the branch HANDOFF addendum
 -- (HANDOFF.md, "Refund classification fix — live correction, owner
