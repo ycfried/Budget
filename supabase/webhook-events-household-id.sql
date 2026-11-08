@@ -55,7 +55,17 @@ as $$
           (select household_id from plaid_items where plaid_item_id = p_item_id limit 1));
 $$;
 revoke all on function log_webhook_event(text, text, text) from public;
-grant execute on function log_webhook_event(text, text, text) to anon, authenticated;
+revoke execute on function log_webhook_event(text, text, text) from authenticated;
+revoke execute on function log_webhook_event(text, text, text) from anon;
+-- P1-B8 (Nov 8, 2026): service_role ONLY. The only caller is the
+-- plaid-webhook Edge Function, which uses the service-role key
+-- (plaid-webhook/index.ts:110-112) after verifying the Plaid JWT.
+-- The old anon/authenticated grant (copied from the original file)
+-- would have let any client record fake webhook events; 07-service-
+-- rpc-access.sql already revoked it — this migration must not
+-- re-grant it. If this file is applied before 07, 07's grants still
+-- win on its own apply; if applied after, this line keeps them.
+grant execute on function log_webhook_event(text, text, text) to service_role;
 
 -- VERIFICATION (run after applying, read-only):
 --   select column_name from information_schema.columns

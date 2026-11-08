@@ -285,3 +285,31 @@ test('P1-B7: delete-account revokes Plaid + Gmail for emptied households and rev
   // Revocation never blocks deletion: the helper swallows its own errors.
   assert.match(src, /Revocation failures never block deletion/);
 });
+
+// ---- P1-B8: vault RPC grants (escalation check) ----
+
+test('P1-B8: 07 is the canonical service-role-only vault state; plaid-token-column.sql is bannered never-reapply', () => {
+  const s07 = readFileSync(new URL('../supabase/07-service-rpc-access.sql', import.meta.url), 'utf8');
+  // get_plaid_ciphertext: service_role only, membership branch deleted.
+  assert.match(s07, /if auth\.role\(\) <> 'service_role' then raise exception 'service role only'; end if;/);
+  assert.doesNotMatch(s07, /get_plaid_ciphertext[\s\S]{0,800}not a household member/);
+  assert.match(s07, /grant execute on function public\.get_plaid_ciphertext\(uuid, text\) to service_role;/);
+  assert.match(s07, /grant execute on function public\.update_plaid_sync\(uuid, text, text\) to service_role;/);
+  assert.match(s07, /revoke execute on function public\.log_webhook_event\(text, text, text\) from authenticated;/);
+  assert.match(s07, /grant execute on function public\.log_webhook_event\(text, text, text\) to service_role;/);
+  // update_plaid_sync keeps a membership branch in the body, but it
+  // is unreachable while the grants are service_role-only.
+  assert.match(s07, /grant execute on function public\.update_plaid_sync\(uuid, text, text\) to service_role;/);
+  const ptc = readFileSync(new URL('../supabase/plaid-token-column.sql', import.meta.url), 'utf8');
+  assert.match(ptc, /DO NOT RE-APPLY THIS FILE \(P1-B8/);
+  assert.match(ptc, /CANONICAL vault state is\n-- supabase\/07-service-rpc-access\.sql/);
+  // B2 correction: log_webhook_event must be service_role-only in
+  // both webhook files — the plaid-webhook function uses the service
+  // key, and an anon/authenticated grant would let any client record
+  // fake webhook events.
+  for (const f of ['webhook-events.sql', 'webhook-events-household-id.sql']) {
+    const src = readFileSync(new URL(`../supabase/${f}`, import.meta.url), 'utf8');
+    assert.match(src, /grant execute on function log_webhook_event\(text, text, text\) to service_role;/);
+    assert.doesNotMatch(src, /grant execute on function log_webhook_event\(text, text, text\) to anon, authenticated;/);
+  }
+});

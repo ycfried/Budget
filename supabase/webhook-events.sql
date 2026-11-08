@@ -1,12 +1,11 @@
 -- Household Budget — webhook events (Nov 1, 2026).
 -- WHY: Plaid webhooks need a durable, replay-protected record so the
 -- live app can auto-sync on its next refresh. plaid-webhook verifies
--- the Plaid signature first, then calls log_webhook_event; the RPC is
--- SECURITY DEFINER so the anon-keyed function can append the event
--- without any client ever writing this table directly. Duplicates
--- (Plaid retries) are rejected by the unique hash. No token, secret,
--- or card data is ever stored here — only the Plaid item id, the
--- webhook code, and a dedupe hash.
+-- the Plaid signature first, then calls log_webhook_event with the
+-- service-role key; the RPC is SECURITY DEFINER so no client ever
+-- writes this table directly. Duplicates (Plaid retries) are rejected
+-- by the unique hash. No token, secret, or card data is ever stored
+-- here — only the Plaid item id, the webhook code, and a dedupe hash.
 create table if not exists webhook_events (
   id uuid primary key default gen_random_uuid(),
   plaid_item_id text,
@@ -43,4 +42,10 @@ as $$
           (select household_id from plaid_items where plaid_item_id = p_item_id limit 1));
 $$;
 revoke all on function log_webhook_event(text, text, text) from public;
-grant execute on function log_webhook_event(text, text, text) to anon, authenticated;
+revoke execute on function log_webhook_event(text, text, text) from authenticated;
+revoke execute on function log_webhook_event(text, text, text) from anon;
+-- P1-B8 (Nov 8, 2026): service_role ONLY — the only caller is the
+-- plaid-webhook Edge Function (service-role key, after Plaid JWT
+-- verification). Never re-grant to anon/authenticated: 07-service-
+-- rpc-access.sql revoked those grants deliberately, and a member
+-- grant here would let any client record fake webhook events.

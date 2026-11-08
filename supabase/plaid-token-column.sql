@@ -1,4 +1,17 @@
 -- Household Budget — encrypted Plaid token storage (run after schema.sql).
+--
+-- DO NOT RE-APPLY THIS FILE (P1-B8, Nov 8, 2026). Its two RPC
+-- definitions grant EXECUTE to authenticated with member-level
+-- bodies — re-applying it reopens member access to the Plaid vault
+-- (any household member could read any household's Plaid
+-- ciphertext, audit P0-4). The CANONICAL vault state is
+-- supabase/07-service-rpc-access.sql (service_role-only bodies and
+-- grants, applied after this file). If a future probe shows the old
+-- bodies/grants live, apply 07-service-rpc-access.sql immediately —
+-- that is a P0 escalation, not a routine apply. The column + policy
+-- section above the RPCs is also superseded: 03-plaid-vault.sql
+-- revoked member SELECT on plaid_items and 07 revoked member
+-- INSERT/UPDATE; do not re-add them.
 -- WHY: plaid-exchange was blocked because there was nowhere safe to put
 -- the Plaid access token. This is the vault that can be built today
 -- with no new service: the token is stored AES-GCM-encrypted, with the
