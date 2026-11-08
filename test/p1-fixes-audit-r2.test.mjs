@@ -347,3 +347,33 @@ test('P1-B9: every footgun file carries a never-reapply banner; the member-UPDAT
   assert.match(revoke, /revoke update on transactions from authenticated;/);
   assert.match(revoke, /drop policy if exists "members update own transactions" on transactions;/);
 });
+
+// ---- P1-C1: cursor persist checked; Nov 1 floor on the list ----
+
+test('P1-C1: plaid-sync checks the cursor persist and names failed institutions; the list is floored at Nov 1', () => {
+  const ps = readFileSync(new URL('../supabase/functions/plaid-sync/index.ts', import.meta.url), 'utf8');
+  assert.match(ps, /const \{ error: cursorErr \} = await supabaseAdmin\.rpc\('update_plaid_sync'/);
+  assert.match(ps, /cursor persist failed for item/);
+  assert.match(ps, /failedInstitutions\.push\(item\.institution_name \?\? item\.plaid_item_id\);/);
+  assert.match(ps, /failed_institutions: failedInstitutions/);
+  const live = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
+  assert.match(live, /\.gte\('date', '2026-11-01'\)/);
+  assert.match(live, /failedNames\.length \? ` — \$\{failedNames\.join\(', '\)\}` : ''/);
+});
+
+// ---- P1-C2: duplicate guard at connect ----
+
+test('P1-C2: plaid-exchange checks for duplicates before returning connected, and the client reports them', () => {
+  const pe = readFileSync(new URL('../supabase/functions/plaid-exchange/index.ts', import.meta.url), 'utf8');
+  assert.match(pe, /async function checkDuplicateAtConnect\(/);
+  assert.match(pe, /const dup = await checkDuplicateAtConnect\(supabaseAdmin, householdId, data\.item_id, body\.institution_name \?\? null, data\.access_token, clientId, secret, env\);/);
+  assert.match(pe, /if \(dup\) return json\(\{ item_id: data\.item_id, connected: false, duplicate: true, duplicate_of: dup \}\);/);
+  // Same rule as plaid-sync: every candidate account covered by an
+  // older keeper at the same institution (mask + name).
+  assert.match(pe, /normDup\(keeper\.institution_name\) !== normDup\(institutionName\)/);
+  assert.match(pe, /normDup\(k\.mask\) === normDup\(acct\.mask\) && normDup\(k\.name\) === normDup\(acct\.name\)/);
+  // Fail open: any check failure keeps the connection.
+  assert.match(pe, /duplicate check failed open/);
+  const live = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
+  assert.match(live, /ex\.duplicate\n          \? 'This bank is already connected — the duplicate connection was removed\. Past transactions stay\.'/);
+});

@@ -291,6 +291,9 @@ Deno.serve(async (req) => {
     // full-pull cleanup. Collect failures and keep going; the
     // aggregated failure is reported after the cleanup below.
     const failedItems: string[] = [];
+    // P1-C1 (Nov 8, 2026): institutions of failed items, so the
+    // sync toast can name them instead of 'plaid sync failed'.
+    const failedInstitutions: string[] = [];
     // Merged-audit B6: set when any item started with a NULL cursor
     // (a full pull). The pre-Nov drop runs once, after all items,
     // so a second item's pull cannot re-add rows the first item's
@@ -496,12 +499,24 @@ Deno.serve(async (req) => {
       }
       // Persist the cursor only after a page sequence that did not hit
       // a Plaid error. On error, the next run re-pulls idempotently.
+      // P1-C1 (Nov 8, 2026): the persist result MUST be checked — a
+      // silent failure here used to make EVERY later sync a full pull
+      // forever (the cursor never advanced). A failed persist fails
+      // this item loudly instead: it lands in failed_items and the
+      // toast names its institution.
       if (!plaidFailed && cursor) {
-        await supabaseAdmin.rpc('update_plaid_sync', {
+        const { error: cursorErr } = await supabaseAdmin.rpc('update_plaid_sync', {
           p_household_id: householdId, p_item_id: item.plaid_item_id, p_cursor: cursor,
         });
+        if (cursorErr) {
+          console.error('plaid-sync: cursor persist failed for item', item.plaid_item_id, cursorErr.message);
+          failedItems.push(item.plaid_item_id);
+          failedInstitutions.push(item.institution_name ?? item.plaid_item_id);
+          continue;
+        }
       } else if (plaidFailed) {
         failedItems.push(item.plaid_item_id);
+        failedInstitutions.push(item.institution_name ?? item.plaid_item_id);
         continue;
       }
 
@@ -526,7 +541,7 @@ Deno.serve(async (req) => {
     }
 
     if (failedItems.length) {
-      return json({ error: 'plaid sync failed', failed_items: failedItems, added, updated, reversed, skipped }, 502);
+      return json({ error: 'plaid sync failed', failed_items: failedItems, failed_institutions: failedInstitutions, added, updated, reversed, skipped }, 502);
     }
     return json({
       added, updated, reversed, skipped,

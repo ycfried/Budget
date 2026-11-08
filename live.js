@@ -697,8 +697,15 @@ async function refresh() {
   // load (not only after a later refresh). Best-effort; a failed
   // read leaves merchant icons in place.
   await loadInstitutionBySuffix();
+  // P1-C1 (Nov 8, 2026): the app starts Nov 1, 2026 — the list never
+  // shows pre-Nov rows. The server already deletes re-pulled pre-Nov
+  // Plaid rows (plaid-sync B6 guard) and entry rejects pre-Nov dates,
+  // but a legacy pre-Nov row would otherwise show here while being
+  // excluded from week math. This floor covers Home, Transactions
+  // and Trash, which all render from this one load.
   const { data: txns, error: txErr } = await supabase.from('transactions')
     .select('*').eq('household_id', household.household_id)
+    .gte('date', '2026-11-01')
     .order('date', { ascending: false }).limit(txLimit);
   // Read failures are an ERROR STATE, never a silent empty list or stale
   // numbers: txReadFailed overrides the lists below.
@@ -2466,7 +2473,9 @@ $('connectBankBtn')?.addEventListener('click', async () => {
       });
       showToast(ex.connected
         ? 'Connected. Tap "Sync Transactions" to pull transactions.'
-        : `Connection could not be finished: ${ex.error ?? 'unknown error'}`, !ex.connected);
+        : ex.duplicate
+          ? 'This bank is already connected — the duplicate connection was removed. Past transactions stay.'
+          : `Connection could not be finished: ${ex.error ?? 'unknown error'}`, !ex.connected);
       if (ex.connected) { await refresh(); } // connection state now comes from plaid_items on refresh, not localStorage
     },
     onExit: (err) => {
@@ -2491,8 +2500,12 @@ async function runBankSync() {
   try {
     showToast('Syncing bank transactions…');
     const out = await callFn('plaid-sync', { household_id: household.household_id });
+    // P1-C1 (Nov 8, 2026): name the failed connection(s) — a bare
+    // 'plaid sync failed' never said which bank, or that a failed
+    // cursor persist would make every later sync a full pull.
+    const failedNames = Array.isArray(out.failed_institutions) ? out.failed_institutions.filter(Boolean) : [];
     const text = out.error
-      ? `Sync failed: ${out.error}`
+      ? `Sync failed: ${out.error}${failedNames.length ? ` — ${failedNames.join(', ')}` : ''}`
       : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).${(out.duplicate_removed ?? []).length ? ` A duplicate bank connection was removed because those accounts are already connected on another connection. Past transactions stay.` : ''}`;
     showToast(text, !!out.error);
     // No localStorage sync/connection state: refresh() re-reads last_sync_at
