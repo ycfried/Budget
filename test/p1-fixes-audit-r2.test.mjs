@@ -114,3 +114,33 @@ test('P1-F3: fund-request detail fills "Fund available now" lazily at tap time',
   assert.match(liveJs, /det\.querySelectorAll\('\[data-fund-available-now\]'\)\.forEach\(\(s\) => \{ s\.textContent = currentFundData \? formatCents\(currentFundData\.available\) : 'not loaded'; \}\)/);
   assert.doesNotMatch(liveJs, /Fund available now: \$\{currentFundData \? formatCents\(currentFundData\.available\) : 'not loaded'\}/);
 });
+
+// ---- P1-M1: compute-week vs week-close agree on unlinked refunds ----
+
+test('P1-M1: both functions net unlinked refunds only in open weeks, never locked', () => {
+  const cw = readFileSync(new URL('../supabase/functions/compute-week/index.ts', import.meta.url), 'utf8');
+  const wc = readFileSync(new URL('../supabase/functions/week-close/index.ts', import.meta.url), 'utf8');
+  // compute-week: the created_at guard is gone; the lock gates netting.
+  assert.doesNotMatch(cw, /t\.created_at > thisClose\.created_at/);
+  assert.match(cw, /const unlinkedNetted = weekLocked \? 0 : Math\.min\(unlinkedRefundAbs, Math\.max\(0, chargesNet\)\);/);
+  // week-close: unlinkedPostedInWeek returns 0 for locked weeks.
+  assert.match(wc, /const unlinkedPostedInWeek = \(ws: string\) => \{\n      if \(isWeekLocked\(ws, currentWeekStart\)\) return 0;/);
+  assert.match(wc, /if \(isWeekLocked\(ws, currentWeekStart\)\) return unlinkedAbsInWeek\(ws\);/);
+});
+
+// The agreed rule, mirrored in plain JS (the Deno functions never
+// execute under node --test): open week nets up to charges, locked
+// week nets nothing and exposes the whole amount as excess.
+function m1Net(chargesNet, unlinkedAbs, weekLocked) {
+  const netted = weekLocked ? 0 : Math.min(unlinkedAbs, Math.max(0, chargesNet));
+  return { c: chargesNet - netted, excess: unlinkedAbs - netted };
+}
+
+test('P1-M1: (a) open week with a post-close unlinked refund nets it; (b) locked week does not', () => {
+  // (a) Open week, charges $4,603.33, post-close unlinked refund $158.97 → nets.
+  assert.deepEqual(m1Net(460333, 15897, false), { c: 444436, excess: 0 });
+  // (b) Same week once locked → refund nets $0, full amount is excess.
+  assert.deepEqual(m1Net(460333, 15897, true), { c: 460333, excess: 15897 });
+  // Cap still holds in an open week: refund bigger than charges.
+  assert.deepEqual(m1Net(10000, 700000, false), { c: 0, excess: 690000 });
+});

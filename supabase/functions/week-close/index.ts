@@ -301,19 +301,26 @@ Deno.serve(async (req) => {
     // posted refunds net only up to the week's charges after linked
     // refunds. The excess is NOT netted; unlinkedExcessInWeek exposes
     // it so a future misclassification is visible instead of silent.
+    // P1-M1 (Nov 8, 2026): locked weeks never net unlinked refunds —
+    // the same rule as compute-week. Locked history is rewritten only
+    // by restoration, never by re-netting.
     const unlinkedPostedInWeek = (ws: string) => {
+      if (isWeekLocked(ws, currentWeekStart)) return 0;
       const cap = Math.max(0, ownCharges(ws) + linkedPostedToWeek(ws));
       return -Math.min(unlinkedAbsInWeek(ws), cap);
     };
     const unlinkedExcessInWeek = (ws: string) => {
+      // Locked: nothing netted, so the whole unlinked amount is excess.
+      if (isWeekLocked(ws, currentWeekStart)) return unlinkedAbsInWeek(ws);
       const cap = Math.max(0, ownCharges(ws) + linkedPostedToWeek(ws));
       return unlinkedAbsInWeek(ws) - Math.min(unlinkedAbsInWeek(ws), cap);
     };
     // Charges for a week as the walk/simulation reconstruct them.
     // Open weeks net linked refunds (recompute); locked weeks never
     // net linked refunds (restoration instead). Unlinked posted
-    // refunds dated in the week net in that week whenever it is
-    // (re)computed. Stored late adjustments are part of the week.
+    // refunds dated in the week net in that week only while it is
+    // open (P1-M1) — a locked week never re-nets them. Stored late
+    // adjustments are part of the week.
     const weekCharges = (ws: string) => {
       const locked = isWeekLocked(ws, currentWeekStart);
       const storedLate = closeByWeek.get(ws)?.late_adjustment_cents ?? 0;
