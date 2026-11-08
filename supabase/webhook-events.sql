@@ -44,6 +44,7 @@ $$;
 revoke all on function log_webhook_event(text, text, text) from public;
 revoke execute on function log_webhook_event(text, text, text) from authenticated;
 revoke execute on function log_webhook_event(text, text, text) from anon;
+grant execute on function log_webhook_event(text, text, text) to service_role;
 -- P1-B8 (Nov 8, 2026): service_role ONLY — the only caller is the
 -- plaid-webhook Edge Function (service-role key, after Plaid JWT
 -- verification). Never re-grant to anon/authenticated: 07-service-
