@@ -62,7 +62,7 @@ public struct CharityIncomeForm: View {
         FundsCard {
             VStack(alignment: .leading, spacing: 16) {
                 FundsHeading("Charity Income & Rate")
-                FundsMuted(text: "Admin only. Nothing is pulled in automatically.")
+                FundsMuted("Admin only. Nothing is pulled in automatically.")
                 Text("Current default rate: \(MoneyFormat.formatRateBp(defaultRateBp))%.")
                     .font(.system(size: 15))
                 HStack(spacing: 12) {
@@ -85,7 +85,7 @@ public struct CharityIncomeForm: View {
                 if let rateError {
                     FundsErrorBox(rateError)
                 }
-                FundsMuted(text: "Affects future incomes only.")
+                FundsMuted("Affects future incomes only.")
 
                 Divider()
 
@@ -238,7 +238,7 @@ public struct CharityIncomeHistory: View {
             if let error = viewModel.charityIncomeError {
                 FundsErrorBox(error)
             } else if viewModel.charityIncome.isEmpty {
-                FundsMuted(text: "No income recorded yet.")
+                FundsMuted("No income recorded yet.")
             } else {
                 ForEach(viewModel.charityIncome) { row in
                     HStack(alignment: .top, spacing: 8) {
@@ -282,7 +282,7 @@ public struct FundTopupsHistory: View {
             if let error = viewModel.topupsError {
                 FundsErrorBox(error)
             } else if viewModel.topups.isEmpty {
-                FundsMuted(text: "No money added yet.")
+                FundsMuted("No money added yet.")
             } else {
                 ForEach(viewModel.topups, id: \.clientKey) { row in
                     VStack(alignment: .leading, spacing: 2) {

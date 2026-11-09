@@ -36,7 +36,7 @@ public struct AddMoneyForm: View {
         FundsCard {
             VStack(alignment: .leading, spacing: 12) {
                 FundsHeading("Add Money")
-                FundsMuted(text: "Log cash already in checking — owed back is covered first.")
+                FundsMuted("Log cash already in checking — owed back is covered first.")
                 FundsMoneyField("Amount ($)", text: $amountText)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Note (optional)")
@@ -69,7 +69,7 @@ public struct AddMoneyForm: View {
                         viewModel.toast = nil
                     }
                 }
-                FundsMuted(text: "Log each deposit only once.")
+                FundsMuted("Log each deposit only once.")
             }
         }
         .confirmationDialog(
@@ -127,7 +127,7 @@ public struct UseFundForm: View {
         FundsCard {
             VStack(alignment: .leading, spacing: 12) {
                 FundsHeading("Use Fund Money")
-                FundsMuted(text: "Lowers the fund balance only.")
+                FundsMuted("Lowers the fund balance only.")
                 FundsMoneyField("Amount ($)", text: $amountText)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Note (optional)")
@@ -227,7 +227,7 @@ public struct AskFundForm: View {
             FundsCard {
                 VStack(alignment: .leading, spacing: 12) {
                     FundsHeading("Ask for Fund Money")
-                    FundsMuted(text: "The admin approves or declines each request.")
+                    FundsMuted("The admin approves or declines each request.")
                     FundsMoneyField("Amount ($)", text: $amountText)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Note (optional)")
@@ -289,7 +289,7 @@ public struct FundRequestQueue: View {
                 if let error = viewModel.fundRequestsError {
                     FundsErrorBox(error)
                 } else if viewModel.fundRequests.isEmpty {
-                    FundsMuted(text: "No fund requests yet.")
+                    FundsMuted("No fund requests yet.")
                 } else {
                     ForEach(viewModel.fundRequests) { request in
                         fundRequestRow(request)
@@ -468,7 +468,7 @@ public struct ApproveRequestSheet: View {
     public var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                FundsMuted(text: "Approve how much of this \(MoneyFormat.formatCents(request.amountCents)) request? Enter less for a split approval.")
+                FundsMuted("Approve how much of this \(MoneyFormat.formatCents(request.amountCents)) request? Enter less for a split approval.")
                 FundsMoneyField("Amount ($)", text: $amountText)
                 if let error {
                     FundsErrorBox(error)

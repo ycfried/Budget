@@ -818,6 +818,21 @@ public struct CharitySummary: Equatable {
     public let pendingGiftCents: Int
     public let defaultRateBp: Int
 
+    /// Public memberwise init: the struct's stored properties are public
+    /// but the synthesized memberwise init is internal, so the app target
+    /// (another module) cannot construct it without this.
+    public init(
+        committedCents: Int,
+        givenCents: Int,
+        pendingGiftCents: Int,
+        defaultRateBp: Int
+    ) {
+        self.committedCents = committedCents
+        self.givenCents = givenCents
+        self.pendingGiftCents = pendingGiftCents
+        self.defaultRateBp = defaultRateBp
+    }
+
     public var remainingCents: Int { committedCents - givenCents }
 
     public static func compute(

@@ -152,7 +152,7 @@ public struct ReviewView: View {
             if let error = viewModel.restorationsError {
                 FundsErrorBox(error)
             } else if viewModel.restorations.isEmpty {
-                FundsMuted(text: "No restorations yet.")
+                FundsMuted("No restorations yet.")
             } else {
                 ForEach(Array(viewModel.restorations.enumerated()), id: \.offset) { _, entry in
                     Text("Week of \(MoneyFormat.fmtLong(entry.weekStart)) · Restored \(MoneyFormat.formatCents(entry.restoredSurplusCents)) · Debt cut \(MoneyFormat.formatCents(entry.debtReductionCents))\(entry.fundCreditCents != 0 ? " · Fund +\(MoneyFormat.formatCents(entry.fundCreditCents))" : "")")
@@ -165,7 +165,7 @@ public struct ReviewView: View {
             if let error = viewModel.heldError {
                 FundsErrorBox(error)
             } else if viewModel.heldRefunds.isEmpty {
-                FundsMuted(text: "Nothing held for review.")
+                FundsMuted("Nothing held for review.")
             } else {
                 ForEach(viewModel.heldRefunds) { held in
                     HStack(alignment: .top, spacing: 8) {
@@ -208,11 +208,11 @@ public struct ReviewView: View {
             if let error = viewModel.duplicatesError {
                 FundsErrorBox(error)
             } else if viewModel.pendingDuplicates.isEmpty {
-                FundsMuted(text: "No possible duplicates waiting.")
+                FundsMuted("No possible duplicates waiting.")
             } else {
                 let shown = Array(viewModel.pendingDuplicates.prefix(dedupeShownCount))
                 if viewModel.pendingDuplicates.count > shown.count {
-                    FundsMuted(text: "Showing the first \(shown.count) of \(viewModel.pendingDuplicates.count) possible duplicates.")
+                    FundsMuted("Showing the first \(shown.count) of \(viewModel.pendingDuplicates.count) possible duplicates.")
                 }
                 ForEach(shown) { candidate in
                     DuplicatePairCard(
@@ -255,7 +255,7 @@ public struct ReviewView: View {
             if let error = viewModel.resolvedError {
                 FundsErrorBox(error)
             } else if viewModel.resolvedDuplicates.isEmpty {
-                FundsMuted(text: "No resolved duplicates.")
+                FundsMuted("No resolved duplicates.")
             } else {
                 ForEach(viewModel.resolvedDuplicates.prefix(20)) { row in
                     HStack(alignment: .top, spacing: 8) {
@@ -293,13 +293,13 @@ public struct ReviewView: View {
             if let error = viewModel.refundLinksError {
                 FundsErrorBox(error)
             } else if !viewModel.hasUnlinkedRefunds {
-                FundsMuted(text: "No unlinked refunds.")
+                FundsMuted("No unlinked refunds.")
             } else if viewModel.refundSuggestions.isEmpty {
-                FundsMuted(text: "No refund links to suggest.")
+                FundsMuted("No refund links to suggest.")
             } else {
                 let shown = Array(viewModel.refundSuggestions.prefix(refundLinkShownCount))
                 if viewModel.refundSuggestions.count > shown.count {
-                    FundsMuted(text: "Showing the first \(shown.count) of \(viewModel.refundSuggestions.count) refund link suggestions.")
+                    FundsMuted("Showing the first \(shown.count) of \(viewModel.refundSuggestions.count) refund link suggestions.")
                 }
                 ForEach(shown) { suggestion in
                     refundLinkCard(suggestion)
@@ -452,7 +452,7 @@ public struct DuplicateSide: View {
                 DuplicateDetailRow("Source", sourceLabel(transaction.source))
                 DuplicateDetailRow("Counts", transaction.excluded ? "Excluded" : "Counted")
             } else {
-                FundsMuted(text: fallback)
+                FundsMuted(fallback)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
