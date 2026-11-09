@@ -35,9 +35,9 @@ test('P2-F3: sort direction button is grey tertiary beside the pale select', () 
   assert.ok(css.includes('P2-F3'), 'sort comment records the fix');
 });
 
-// ---- P2-F4: DEFERRED — owner decision owed, code unchanged ----
-test('P2-F4 (deferred): Transactions header order is untouched — Filters grey left of + primary', () => {
-  assert.ok(html.indexOf('id="txFiltersToggle"') < html.indexOf('id="txAddBtn"'), 'Filters still precedes Add in the header');
+// ---- P2-F4: owner decision Nov 8 — SWAP, + Add primary first, Filters grey second ----
+test('P2-F4: Transactions header order is swapped — + Add primary first, Filters grey second', () => {
+  assert.ok(html.indexOf('id="txAddBtn"') < html.indexOf('id="txFiltersToggle"'), 'Add precedes Filters in the header');
   assert.ok(html.includes('id="txFiltersToggle" class="btn btn-tertiary"'), 'Filters still grey tertiary');
   assert.ok(html.includes('class="btn btn-primary add-plus-btn" id="txAddBtn"'), 'Add still primary');
 });
