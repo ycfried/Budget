@@ -231,7 +231,7 @@ default because these were unset — that is fixed, not a standing bug.
   present.
 - **N8 (restoration/held UI):** live (live.js v8) — admin-only card on
   Bank & Funds listing restoration_entries + held_refunds (read-only),
-  Release button for pending held rows (confirm-gated).
+  Release button for held rows (confirm-gated).
 - **N12 (parse drift guard):** test in repo (both parse copies must
   match).
 - **Owner decisions 2–16, ALL APPROVED Nov 2, ~12:00 PM** (👍 = yes):

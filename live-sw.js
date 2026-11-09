@@ -5,11 +5,11 @@
 // changes. (The repo's older sw.js caches demo-era files and must
 // NOT be registered for the live app.)
 // P2-F11 (Nov 8, 2026): the cache name carries the live.js pin
-// (v66) and MUST be bumped with it — the name sat at v1 while the
+// (v67) and MUST be bumped with it — the name sat at v1 while the
 // pins moved v50→v64, so old caches were never cleaned on activate.
 // A test pins this number equal to the live.js pin in live.html, so
 // the two cannot drift again.
-const CACHE = 'onbudget-live-v66';
+const CACHE = 'onbudget-live-v67';
 const SHELL = new Set(['live.html', 'styles.css', 'live.js', 'manifest-live.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']);
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['live.html', 'styles.css', 'live.js'])).then(() => self.skipWaiting()).catch((err) => console.warn('OnBudget service worker install failed:', err)));

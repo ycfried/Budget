@@ -259,7 +259,7 @@ test('P1-B4: canonical resolve_held_refund locks the held row and the households
   assert.match(canon, /CANONICAL DEFINITION of resolve_held_refund/);
   assert.match(canon, /select \* into v_row from held_refunds where id = p_held_id for update;/);
   assert.match(canon, /select fund_shortfall_cents into v_shortfall from households where id = v_row\.household_id for update;/);
-  assert.match(canon, /where id = p_held_id and status = 'pending';/);
+  assert.match(canon, /where id = p_held_id and status = 'held';/);
   assert.match(canon, /raise exception 'held refund already resolved'/);
   const old = readFileSync(new URL('../supabase/restoration-snapshots.sql', import.meta.url), 'utf8');
   assert.match(old, /DO NOT RE-APPLY THE DEFINITION BELOW \(P1-B4/);

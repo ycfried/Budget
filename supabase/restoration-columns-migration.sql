@@ -5,6 +5,12 @@
 -- Do NOT re-apply blindly: every ADD COLUMN is IF NOT EXISTS, so
 -- re-running is a no-op — but re-apply only if a live probe shows
 -- a column missing, and reconcile first.
+-- STATUS VOCABULARY (Nov 9, 2026 — live defect 2): the status
+-- column below is written as default 'held', check
+-- ('held','written_off','resolved'), matching the LIVE constraint.
+-- The repo previously said ('pending','resolved'); re-running this
+-- file live changes nothing (the column already exists), it only
+-- keeps a fresh database consistent with live.
 --
 -- WHY: the live restoration_entries and held_refunds tables are an
 -- older shape than supabase/restoration-snapshots.sql defines. That
@@ -42,7 +48,7 @@ alter table held_refunds
   add column if not exists refund_transaction_id uuid,
   add column if not exists purchase_transaction_id uuid,
   add column if not exists held_cents integer check (held_cents > 0),
-  add column if not exists status text not null default 'pending' check (status in ('pending', 'resolved')),
+  add column if not exists status text not null default 'held' check (status in ('held', 'written_off', 'resolved')),
   add column if not exists resolution_note text,
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists resolved_at timestamptz;
