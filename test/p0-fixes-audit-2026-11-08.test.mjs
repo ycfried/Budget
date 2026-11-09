@@ -26,9 +26,9 @@ const ingestAlert = readFileSync(new URL('../supabase/functions/ingest-amex-aler
 const gmailPoll = readFileSync(new URL('../supabase/functions/gmail-poll/index.ts', import.meta.url), 'utf8');
 const register = readFileSync(new URL('../supabase/functions/plaid-webhook-register/index.ts', import.meta.url), 'utf8');
 
-test('pins are styles v53 / live.js v65', () => {
+test('pins are styles v53 / live.js v66', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=65/);
+  assert.match(html, /live\.js\?v=66/);
 });
 
 // --- P0-1. Refund linking -----------------------------------------------

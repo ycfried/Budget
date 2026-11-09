@@ -29,6 +29,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
 import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, merchantStem, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind, emailConnectionWarnings, bankSyncToast, emailCheckMessage, adminHouseholdOptions } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
+import { computeRefundSuggestions, REFUND_SUGGESTION_REASONS } from './refundSuggestions.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
@@ -301,6 +302,8 @@ function updateMoreReviewLabel() {
 }
 const syncGuard = createSyncGuard(); // delta B3: one bank sync at a time
 let txLimit = 100; // transactions load in pages of 100; Load more raises it
+let dedupeShownCount = 20; // Possible Duplicates show in pages of 20; Show More raises it
+let refundLinkShownCount = 20; // Refund Links show in pages of 20; Show More raises it
 // P2-N1 (Nov 8, 2026): how many rows the last transactions fetch
 // actually returned. The fetch asks for txLimit + 1 rows, so a
 // return of txLimit + 1 proves an older row exists and anything
@@ -1888,8 +1891,8 @@ async function refresh() {
             .in('id', allIds)
           : { data: [] };
         const byId = new Map((txRows ?? []).map((t) => [t.id, t]));
-        const shownCands = (candRows ?? []).slice(0, 20);
-        if ((candRows ?? []).length > shownCands.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = `Showing the first 20 of ${(candRows ?? []).length} possible duplicates.`; frag.appendChild(p); }
+        const shownCands = (candRows ?? []).slice(0, dedupeShownCount);
+        if ((candRows ?? []).length > shownCands.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = `Showing the first ${shownCands.length} of ${(candRows ?? []).length} possible duplicates.`; frag.appendChild(p); }
         for (const c of shownCands) {
           const keep = byId.get(c.canonical_transaction_id);
           const dup = byId.get(c.duplicate_transaction_id);
@@ -1916,6 +1919,16 @@ async function refresh() {
           const match = document.createElement('p'); match.className = 'dedupe-match';
           match.textContent = matchParts.length ? `Match: ${matchParts.join(', ')}.` : 'Compare the two records below.';
           card.appendChild(match);
+          // Nov 9, 2026: the flag reason was fetched but never shown —
+          // the card said what matched, not why it was flagged. The
+          // related merchant names (merchant_a / merchant_b) are the
+          // flag's evidence; show them so the admin judges the pair
+          // instead of re-deriving it from the two records.
+          if (c.merchant_a && c.merchant_b) {
+            const why = document.createElement('p'); why.className = 'muted small';
+            why.textContent = `Flagged as a lookalike — merchant names look related: ${c.merchant_a} / ${c.merchant_b}.`;
+            card.appendChild(why);
+          }
           const pair = document.createElement('div'); pair.className = 'dedupe-pair';
           const side = (label, tx, fallback) => {
             const sEl = document.createElement('div'); sEl.className = 'dedupe-side';
@@ -1959,11 +1972,196 @@ async function refresh() {
           card.appendChild(aliasLabel);
           frag.appendChild(card);
         }
+        // Nov 9, 2026: only the first 20 of up to 100 pending pairs
+        // were shown, with just a count line — the rest were
+        // unreachable without resolving the first 20. Show More
+        // pages through them, same pattern as Transactions Load More.
+        if ((candRows ?? []).length > shownCands.length) {
+          const moreBtn = document.createElement('button'); moreBtn.className = 'btn btn-small btn-tertiary'; moreBtn.type = 'button';
+          moreBtn.textContent = 'Show More';
+          moreBtn.setAttribute('aria-label', `Show more possible duplicates, ${shownCands.length} of ${(candRows ?? []).length} shown`);
+          moreBtn.addEventListener('click', () => { dedupeShownCount += 20; refresh(); });
+          frag.appendChild(moreBtn);
+        }
         dl.replaceChildren(frag);
       }
     } catch (e) {
       console.warn('dedupe read failed:', e);
       const dl = $('dedupeList'); if (dl) dl.innerHTML = '<p class="error">Could not load possible duplicates. Try again.</p>';
+    }
+  }
+  // Resolved duplicates (admin only, Funds tab, inside the Review
+  // area — Nov 9, 2026). 'Separate' used to be permanent with no
+  // undo: the detector skips any pair that already has a candidate
+  // row. Resolved pairs are listed here so a Separate can be
+  // reopened (reopen_duplicate_candidate RPC); a merged pair's undo
+  // is Trash restore, so merged rows show without a Reopen button.
+  if (household.role === 'admin') {
+    try {
+      const { data: resRows, error: resErr } = await supabase.from('duplicate_candidates')
+        .select('id, merchant_a, merchant_b, status, resolved_at')
+        .eq('household_id', household.household_id).in('status', ['merged', 'separate']).order('resolved_at', { ascending: false }).limit(20);
+      if (resErr) throw resErr;
+      const rdl = $('dedupeResolvedList');
+      if (rdl) {
+        const frag = document.createDocumentFragment();
+        if (!(resRows ?? []).length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No resolved duplicates.'; frag.appendChild(p); }
+        for (const r of resRows ?? []) {
+          const wrap = document.createElement('div'); wrap.className = 'bank-row';
+          const info = document.createElement('div'); info.className = 'bank-info';
+          const m = document.createElement('strong'); m.textContent = `${r.merchant_a} / ${r.merchant_b}`; info.appendChild(m);
+          const st = document.createElement('div'); st.className = 'muted small';
+          const when = r.resolved_at ? ` · ${displayDay(String(r.resolved_at).slice(0, 10))}` : '';
+          st.textContent = r.status === 'merged'
+            ? `Merged${when} — the duplicate can be restored from Trash.`
+            : `Kept separate${when}.`;
+          info.appendChild(st);
+          wrap.appendChild(info);
+          if (r.status === 'separate') {
+            const btn = document.createElement('button'); btn.className = 'btn btn-small btn-tertiary'; btn.type = 'button';
+            btn.textContent = 'Reopen';
+            btn.setAttribute('aria-label', `Reopen the duplicate review for ${r.merchant_a} and ${r.merchant_b}`);
+            btn.addEventListener('click', async () => {
+              if (!(await showConfirm('Reopen Duplicate Review', 'Show this pair in Possible Duplicates again?', 'Reopen'))) return;
+              btn.disabled = true;
+              const { error } = await supabase.rpc('reopen_duplicate_candidate', { p_candidate_id: r.id });
+              if (error) { console.warn('reopen_duplicate_candidate failed:', error.message); btn.disabled = false; await showAlert('Could Not Reopen', 'Could not reopen this pair. Try again.'); } else await refresh();
+            });
+            wrap.appendChild(btn);
+          }
+          frag.appendChild(wrap);
+        }
+        rdl.replaceChildren(frag);
+      }
+    } catch (e) {
+      console.warn('resolved duplicates read failed:', e);
+      const rdl = $('dedupeResolvedList'); if (rdl) rdl.innerHTML = '<p class="error">Could not load resolved duplicates. Try again.</p>';
+    }
+  }
+  // Refund-link suggestions (admin only, Funds tab, inside the
+  // Review area, below Possible Duplicates — Nov 9, 2026). Unlinked
+  // refunds with suggested purchases, computed client-side by
+  // refundSuggestions.mjs with the server auto-link's matcher
+  // (same card, purchase within 90 days, refund fits in the
+  // purchase's remaining refund room). Link calls the existing
+  // link_refund RPC; Dismiss records the pair in
+  // refund_link_dismissals so it never reappears. Nothing here
+  // links anything by itself — every link is an admin tap, and the
+  // server's fit check in link_refund stays the guard.
+  if (household.role === 'admin') {
+    try {
+      const { data: refundRows, error: refundErr } = await supabase.from('transactions')
+        .select('id, merchant, amount_cents, date, card_suffix, source')
+        .eq('household_id', household.household_id).eq('kind', 'refund').is('original_purchase_id', null)
+        .neq('excluded', true).neq('state', 'excluded').neq('state', 'reversed')
+        .order('date', { ascending: false }).limit(100);
+      if (refundErr) throw refundErr;
+      const rl = $('refundLinkList');
+      if (!rl) { /* section absent; nothing to render */ } else if (!(refundRows ?? []).length) {
+        const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No unlinked refunds.';
+        rl.replaceChildren(p);
+      } else {
+        const oldest = (refundRows ?? []).reduce((a, r) => (a < r.date ? a : r.date), refundRows[0].date);
+        const sinceD = new Date(`${oldest}T12:00:00Z`); sinceD.setUTCDate(sinceD.getUTCDate() - 90);
+        const since = sinceD.toISOString().slice(0, 10);
+        const newest = refundRows[0].date;
+        const { data: aliasRows } = await supabase.from('merchant_aliases').select('name_a, name_b').eq('household_id', household.household_id);
+        // Dismissals are a nicety: if the table is not applied live
+        // yet, suggestions still work and Dismiss reports its own
+        // failure when tapped.
+        let dismissRows = [];
+        try {
+          const { data } = await supabase.from('refund_link_dismissals').select('refund_id, purchase_id').eq('household_id', household.household_id);
+          dismissRows = data ?? [];
+        } catch (e) { console.warn('refund link dismissals read failed:', e); }
+        const { data: purRows, error: purErr } = await supabase.from('transactions')
+          .select('id, merchant, amount_cents, date, card_suffix, source')
+          .eq('household_id', household.household_id).in('kind', ['charge', 'fund_charge'])
+          .neq('excluded', true).neq('state', 'excluded').neq('state', 'reversed')
+          .lte('date', newest).gte('date', since)
+          .order('date', { ascending: false }).limit(500);
+        if (purErr) throw purErr;
+        const purIds = (purRows ?? []).map((p) => p.id);
+        const linkedTotals = new Map();
+        if (purIds.length) {
+          const { data: linkedRows, error: linkedErr } = await supabase.from('transactions')
+            .select('original_purchase_id, amount_cents')
+            .in('original_purchase_id', purIds).eq('kind', 'refund')
+            .neq('excluded', true).neq('state', 'excluded').neq('state', 'reversed').limit(500);
+          if (linkedErr) throw linkedErr;
+          for (const r of linkedRows ?? []) {
+            linkedTotals.set(r.original_purchase_id, (linkedTotals.get(r.original_purchase_id) ?? 0) + Math.abs(r.amount_cents));
+          }
+        }
+        const suggestions = computeRefundSuggestions({ refunds: refundRows, purchases: purRows ?? [], aliases: aliasRows ?? [], dismissals: dismissRows, linkedTotals });
+        reviewNeedsCount += suggestions.length;
+        updateMoreReviewLabel();
+        const frag = document.createDocumentFragment();
+        if (!suggestions.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No refund links to suggest.'; frag.appendChild(p); }
+        const shownSugs = suggestions.slice(0, refundLinkShownCount);
+        if (suggestions.length > shownSugs.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = `Showing the first ${shownSugs.length} of ${suggestions.length} refund link suggestions.`; frag.appendChild(p); }
+        const sugSide = (label, tx) => {
+          const sEl = document.createElement('div'); sEl.className = 'dedupe-side';
+          const h = document.createElement('h4'); h.textContent = label; sEl.appendChild(h);
+          const m = document.createElement('p'); m.className = 'dedupe-merchant'; m.textContent = displayMerchant(tx.merchant); sEl.appendChild(m);
+          const rows = document.createElement('div'); rows.className = 'dedupe-rows';
+          const row = (k, v) => { const d = document.createElement('div'); const a = document.createElement('span'); a.textContent = k; const b = document.createElement('span'); b.textContent = v; d.appendChild(a); d.appendChild(b); rows.appendChild(d); };
+          row('Amount', formatCents(tx.amount_cents));
+          row('Date', fmtLong(tx.date));
+          row('Card', tx.card_suffix ? `••${tx.card_suffix}` : '—');
+          row('Source', sourceLabel(tx.source));
+          sEl.appendChild(rows);
+          return sEl;
+        };
+        for (const s of shownSugs) {
+          const card = document.createElement('div'); card.className = 'dedupe-card';
+          const reason = document.createElement('p'); reason.className = 'dedupe-match';
+          reason.textContent = REFUND_SUGGESTION_REASONS[s.reason];
+          card.appendChild(reason);
+          const pair = document.createElement('div'); pair.className = 'dedupe-pair';
+          pair.appendChild(sugSide('Refund', s.refund));
+          pair.appendChild(sugSide('Purchase', s.purchase));
+          card.appendChild(pair);
+          const btnRow = document.createElement('div'); btnRow.className = 'btn-row';
+          const linkBtn = document.createElement('button'); linkBtn.className = 'btn btn-small btn-primary'; linkBtn.type = 'button';
+          linkBtn.textContent = 'Link';
+          linkBtn.setAttribute('aria-label', `Link refund ${displayMerchant(s.refund.merchant)} ${formatCents(s.refund.amount_cents)} to purchase ${displayMerchant(s.purchase.merchant)} ${formatCents(s.purchase.amount_cents)}`);
+          linkBtn.addEventListener('click', async () => {
+            if (!(await showConfirm('Link Refund', `Link this ${formatCents(s.refund.amount_cents)} refund from ${displayMerchant(s.refund.merchant)} to ${displayMerchant(s.purchase.merchant)} ${formatCents(s.purchase.amount_cents)}?`, 'Link Refund'))) return;
+            linkBtn.disabled = true;
+            const { error } = await supabase.rpc('link_refund', { p_refund_id: s.refund.id, p_purchase_id: s.purchase.id });
+            if (error) { console.warn('link_refund failed:', error.message); linkBtn.disabled = false; await showAlert('Could Not Link Refund', /different|more than|after the refund|already linked|admin only/i.test(error.message || '') ? error.message : 'Could not link this refund. Try again.'); return; }
+            await audit('Refund linked', `${s.refund.merchant} ${formatCents(s.refund.amount_cents)} linked to its purchase.`);
+            showToast('Refund linked to its purchase.');
+            await refresh();
+          });
+          btnRow.appendChild(linkBtn);
+          const disBtn = document.createElement('button'); disBtn.className = 'btn btn-small btn-tertiary'; disBtn.type = 'button';
+          disBtn.textContent = 'Dismiss';
+          disBtn.setAttribute('aria-label', `Dismiss the suggested link for refund ${displayMerchant(s.refund.merchant)} ${formatCents(s.refund.amount_cents)}`);
+          disBtn.addEventListener('click', async () => {
+            if (!(await showConfirm('Dismiss Suggestion', 'Hide this suggestion? It will not be shown again.', 'Dismiss'))) return;
+            disBtn.disabled = true;
+            const { error } = await supabase.rpc('dismiss_refund_link_suggestion', { p_refund_id: s.refund.id, p_purchase_id: s.purchase.id });
+            if (error) { console.warn('dismiss_refund_link_suggestion failed:', error.message); disBtn.disabled = false; await showAlert('Could Not Dismiss', 'Could not dismiss this suggestion. Try again.'); return; }
+            await refresh();
+          });
+          btnRow.appendChild(disBtn);
+          card.appendChild(btnRow);
+          frag.appendChild(card);
+        }
+        if (suggestions.length > shownSugs.length) {
+          const moreBtn = document.createElement('button'); moreBtn.className = 'btn btn-small btn-tertiary'; moreBtn.type = 'button';
+          moreBtn.textContent = 'Show More';
+          moreBtn.setAttribute('aria-label', `Show more refund link suggestions, ${shownSugs.length} of ${suggestions.length} shown`);
+          moreBtn.addEventListener('click', () => { refundLinkShownCount += 20; refresh(); });
+          frag.appendChild(moreBtn);
+        }
+        rl.replaceChildren(frag);
+      }
+    } catch (e) {
+      console.warn('refund link suggestions failed:', e);
+      const rl = $('refundLinkList'); if (rl) rl.innerHTML = '<p class="error">Could not load refund link suggestions. Try again.</p>';
     }
   }
   // Week history display (History tab) — READ-ONLY, from week_closes +

@@ -70,7 +70,7 @@
       <div id="authNameMsg" class="result"></div>
     </div>
     </div>
-    <p class="auth-foot">Your household budget, shared in one place.<br><span>Bank and email are read-only &mdash; nothing is ever moved or changed.</span></p>
+    <p class="auth-foot">Your household budget, shared in one place.<br><span>Bank and email are read-only &mdash; nothing is ever moved or changed.</span><br><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
   </section>
 
   <section id="view-household" class="auth-view hidden">
@@ -97,7 +97,7 @@
       <div id="householdNameMsg" class="result"></div>
     </div>
     </div>
-    <p class="auth-foot">Your household budget, shared in one place.<br><span>Bank and email are read-only &mdash; nothing is ever moved or changed.</span></p>
+    <p class="auth-foot">Your household budget, shared in one place.<br><span>Bank and email are read-only &mdash; nothing is ever moved or changed.</span><br><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
   </section>
 
   <section id="view-app" class="hidden">
@@ -381,6 +381,7 @@
         <p class="muted small">Deleting removes you from this household. If you are the last member, the household is deleted too. This cannot be undone.</p>
         <button id="settingsDeleteBtn" class="btn btn-danger" type="button" aria-label="Delete your account">Delete Account</button>
       </div>
+      <p class="muted small"><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
     </div>
 
     <div class="card" id="section-fund-balances">
@@ -429,6 +430,10 @@
       <div id="heldList"><p class="muted small">Loading…</p></div>
       <h3>Possible Duplicates</h3>
       <div id="dedupeList"><p class="muted small">Loading…</p></div>
+      <h3>Resolved Duplicates</h3>
+      <div id="dedupeResolvedList"><p class="muted small">Loading…</p></div>
+      <h3>Refund Links</h3>
+      <div id="refundLinkList"><p class="muted small">Loading…</p></div>
     </div>
 
     <div class="card" id="section-savings-more" style="display:none">
@@ -564,7 +569,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=65"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
+<script type="module" src="live.js?v=66"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('live-sw.js').catch((err) => console.warn('Service worker registration failed:', err));
