@@ -1239,6 +1239,12 @@ body.live .hero-stat-label { font-size: 13px; color: #64748b; }
 body.live .hero-stat-value { font-size: 18px; font-weight: 700; color: #0f172a; }
 body.live .stat-card { position: relative; }
 body.live .pot-chevron { position: absolute; right: 20px; bottom: 18px; font-size: 22px; font-weight: 700; color: #2f6bff; }
+/* Home-stat-chevron fix (owner, Nov 8, 2026): the chevron is
+   absolutely positioned at the card's bottom-right, so on an expanded
+   card it overlapped the Total row's amount. The expanded detail gets
+   bottom clearance, so the chevron sits in clear space below the
+   rows instead of on top of them. Collapsed cards are untouched. */
+body.live #section-stats .stat-card.fund-expanded .fund-expand { padding-bottom: 44px; }
 body.live .trash-link-row { margin: 2px 0 10px; }
 body.live .trash-link { font-size: 14px; font-weight: 600; color: #64748b; }
 body.live .past-weeks-section { margin-top: 28px; border-top: 3px solid #e5e7eb; }

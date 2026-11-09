@@ -49,8 +49,10 @@ test('P1-NEW1: CSV classifier matches the server charity rule', () => {
 test('P1-NEW1: Charity is offered on any charge; disabled copy is honest', () => {
   assert.deepEqual(actionsForTxKind('charge', true, false).slice(0, 1), ['charity']);
   assert.deepEqual(actionsForTxKind('charge', false, true).slice(0, 1), ['charity']);
-  // The sheet renders the disabled states with honest copy.
-  assert.match(liveJs, /Available once this posts/);
+  // Pending gifts can be marked (owner, Nov 8, 2026): the admin row
+  // is live even while pending, with copy saying it counts once it posts.
+  assert.match(liveJs, /Counts as a charity gift once it posts/);
+  assert.doesNotMatch(liveJs, /Available once this posts/);
   assert.match(liveJs, /Ask the admin to mark this as a gift/);
   assert.match(liveJs, /tx-action-row" data-tx-action="\$\{a\.id\}" type="button"\$\{a\.disabled \? ' disabled' : ''\}/);
   assert.match(stylesCss, /\.tx-action-row\[disabled\]/);

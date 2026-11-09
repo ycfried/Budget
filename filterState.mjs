@@ -382,11 +382,11 @@ export function isWeekCloseCheckDue({ lastCheckedWeekStart = null, currentWeekSt
 export function actionsForTxKind(kind, isAdmin, isVerified) {
   if (kind === 'charity') return isAdmin ? ['delete'] : [];
   if (kind === 'charge') {
-    // P1-NEW1 (Nov 8, 2026): Charity is offered on any charge,
-    // regardless of posted status — the sheet renders it disabled
-    // with honest copy when pending (admin) or for members (ask the
-    // admin). The guarded mark_transaction_charity RPC still enforces
-    // posted + unlocked week when it is actually tapped.
+    // P1-NEW1 (Nov 8, 2026), relaxed Nov 8, 2026 (pending charity
+    // marking): Charity is offered on any charge, regardless of
+    // posted status — the sheet renders it disabled only for members
+    // (ask the admin). The guarded mark_transaction_charity RPC
+    // accepts pending or posted charges in an unlocked week.
     const out = ['charity'];
     out.push('extraFund');
     if (isAdmin) out.push('other', 'delete');

@@ -3,7 +3,7 @@
 // Pure committed-per-income math (half-up, per income, override
 // replaces the default) plus static guards on
 // supabase/r13-charity.sql: admin-only RPCs, November 2026 start,
-// posted-only + unlocked-only marking, and no weekly-math writes.
+// pending-or-posted + unlocked-only marking, and no weekly-math writes.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,8 +47,9 @@ test('R13 SQL: charity starts November 2026, never earlier', () => {
   assert.match(sql, /2026-11-01/);
 });
 
-test('R13 SQL: marking requires a posted, unexcluded, non-fund charge in an unlocked week', () => {
-  assert.match(sql, /only a posted transaction can be marked/);
+test('R13 SQL: marking requires a pending or posted, unexcluded, non-fund charge in an unlocked week', () => {
+  assert.match(sql, /only a pending or posted transaction can be marked/);
+  assert.match(sql, /state not in \('provisional', 'verified'\)/);
   assert.match(sql, /week is locked/);
   assert.match(sql, /fund_allocation_cents/);
 });

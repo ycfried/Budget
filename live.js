@@ -842,7 +842,10 @@ async function refresh() {
   // on a failed load (Nov 3 fix round: it used to flash on every
   // fresh open even in a household with data).
   if (emptyHintEl) emptyHintEl.classList.toggle('hidden', !(txLoaded && !txReadFailed && thisWeekTxns.length === 0));
-  const heroCount = document.getElementById('heroPurchaseCount'); if (heroCount && !txReadFailed) heroCount.textContent = String(thisWeekPurchases.length);
+  // Owner fix (Nov 8, 2026): Purchases shows N/A — never a bare dash
+  // — when transactions could not be loaded (the count is unknown,
+  // not zero). A loaded week with no purchases shows 0.
+  const heroCount = document.getElementById('heroPurchaseCount'); if (heroCount) heroCount.textContent = txReadFailed ? 'N/A' : String(thisWeekPurchases.length);
   const countEl = $('txCount');
   if (countEl) {
     // Charity gifts are not spending: leave them out of the list
@@ -3450,9 +3453,10 @@ function syncScrollLock() {
 // Send-live-bundle, transaction Actions sheet: one Actions line in
 // a detail opens this list sheet (same pattern as the Add popup).
 // Exactly four actions: Charity, Extra Fund, Other, Delete.
-// Charity = old Mark as charity (whole only, admin only, posted
-// charge only). Extra Fund = old Use Extra Fund (charges only, a
-// pending fund request, never instant cover). Other = old
+// Charity = old Mark as charity (whole only, admin only, pending or
+// posted charge — a pending gift counts once it posts). Extra Fund =
+// old Use Extra Fund (charges only, a pending fund request, never
+// instant cover). Other = old
 // Reclassify (admin only, pick a type + reason). Delete:
 // hand-written rows are permanently deleted; bank/email/file rows
 // are moved to Trash (exclude_transaction + reason, toast exactly
@@ -3472,13 +3476,14 @@ async function openTxActionsSheet(row) {
   // Delete only; charity gets Delete only. Members keep Extra Fund
   // on charges only, as before.
   const actionIds = actionsForTxKind(row.kind, isAdmin, row.state === 'verified');
-  // P1-NEW1 (Nov 8, 2026): the Charity row is offered on any charge
-  // but rendered DISABLED with honest copy when it cannot act yet —
-  // admin on a pending charge ("Available once this posts"), any
-  // member ("Ask the admin to mark this as a gift"). A disabled row
-  // never fires its handler.
+  // P1-NEW1 (Nov 8, 2026), relaxed Nov 8, 2026 (pending charity
+  // marking): the Charity row is offered on any charge and is live
+  // for the admin even while pending — a pending gift counts toward
+  // Given only once it posts, so there is nothing to wait for. Only
+  // members see it disabled ("Ask the admin to mark this as a gift").
+  // A disabled row never fires its handler.
   const actions = actionIds.map((id) => id === 'charity'
-    ? { id, label: 'Charity', sub: !isAdmin ? 'Ask the admin to mark this as a gift' : row.state === 'verified' ? 'Counts it as a charity gift, out of weekly spending' : 'Available once this posts', disabled: !isAdmin || row.state !== 'verified' }
+    ? { id, label: 'Charity', sub: !isAdmin ? 'Ask the admin to mark this as a gift' : row.state === 'verified' ? 'Counts it as a charity gift, out of weekly spending' : 'Counts as a charity gift once it posts', disabled: !isAdmin }
     : id === 'linkRefund'
     ? { id, label: 'Link to purchase', sub: row.original_purchase_id ? 'Change or remove the purchase this refund is linked to' : 'Link this refund to the purchase it came from' }
     : id === 'extraFund'
@@ -3512,7 +3517,15 @@ async function openTxActionsSheet(row) {
   }));
 }
 async function doTxCharity(row) {
-  if (!row || !(await showConfirm('Mark as Charity Gift', `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`, 'Mark as charity'))) return;
+  // Pending gifts may be marked (owner, Nov 8, 2026): the row keeps
+  // its state and counts toward Given only once it posts, so the
+  // confirm says so for a pending row instead of promising it counts
+  // right away.
+  const pending = row.state !== 'verified';
+  const confirmMsg = pending
+    ? `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending. It counts as charity given once it posts. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`
+    : `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`;
+  if (!row || !(await showConfirm('Mark as Charity Gift', confirmMsg, 'Mark as charity'))) return;
   const { error } = await supabase.rpc('mark_transaction_charity', { p_transaction_id: row.id });
   if (error) {
     console.warn('mark_transaction_charity failed:', error.message);
@@ -3616,7 +3629,7 @@ async function doTxReclassify(row) {
   const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }, { value: 'income', label: 'Income' }, { value: 'charity', label: 'Charity' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
   if (newKind === null) return;
   // P1-NEW1 (Nov 8, 2026): Charity goes through the guarded
-  // mark_transaction_charity path (posted charge, unlocked week),
+  // mark_transaction_charity path (pending or posted charge, unlocked week),
   // not the raw reclassify RPC — the allow-list entry for 'charity'
   // in refund-classification-income-kind.sql is the admin override
   // only, not the client path.

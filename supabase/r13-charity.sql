@@ -286,7 +286,11 @@ begin
     raise exception 'admin only';
   end if;
   if v_row.kind <> 'charge' then raise exception 'only a charge can be marked as a charity gift'; end if;
-  if v_row.state <> 'verified' then raise exception 'only a posted transaction can be marked as a charity gift'; end if;
+  -- Pending gifts may be marked (owner, Nov 8, 2026): the row keeps
+  -- its state, so Given — which counts verified charity rows only —
+  -- stays $0 until the bank confirms it. A reversed row still refuses.
+  -- See supabase/pending-charity-mark.sql, applied live Nov 8, 2026.
+  if v_row.state not in ('provisional', 'verified') then raise exception 'only a pending or posted transaction can be marked as a charity gift'; end if;
   if v_row.excluded then raise exception 'an excluded transaction cannot be marked as a charity gift'; end if;
   if coalesce(v_row.fund_allocation_cents, 0) <> 0 then raise exception 'a transaction partly paid from the fund cannot be marked as a charity gift'; end if;
   if v_row.date < date '2026-11-01' then raise exception 'charity starts November 2026'; end if;
