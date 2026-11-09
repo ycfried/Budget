@@ -29,6 +29,10 @@ struct ContentView: View {
         .task {
             await appState.boot()
         }
+        // Toasts at the root so they also show on Auth / Household
+        // (account-created confirmation, account-deleted notice) —
+        // not only inside the app shell.
+        .toastOverlay($appState.toast)
     }
 }
 

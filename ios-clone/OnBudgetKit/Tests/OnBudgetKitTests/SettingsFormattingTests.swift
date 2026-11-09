@@ -47,6 +47,41 @@ final class SettingsFormattingTests: XCTestCase {
         XCTAssertFalse(MoneyFormat.isValidEmail("a@b"))
     }
 
+    // MARK: - MoneyFormat additions (integration, Nov 9, 2026):
+    // APIs ported in from the deleted app-target MoneyFormat copies
+    // so the kit type is the single owner.
+
+    func testStringPartsSignedString() {
+        XCTAssertEqual(MoneyFormat.string(cents: 123456), "$1,234.56")
+        XCTAssertEqual(MoneyFormat.string(cents: -15897), "-$158.97")
+        XCTAssertEqual(MoneyFormat.signedString(cents: -500), "-$5.00")
+        let parts = MoneyFormat.parts(cents: 123456)
+        XCTAssertEqual(parts.sign, "")
+        XCTAssertEqual(parts.dollars, "1,234")
+        XCTAssertEqual(parts.cents, "56")
+        XCTAssertEqual(MoneyFormat.parts(cents: -99).sign, "-")
+    }
+
+    func testRateBpRoundTrip() {
+        XCTAssertEqual(MoneyFormat.formatRateBp(1000), "10")
+        XCTAssertEqual(MoneyFormat.formatRateBp(1050), "10.5")
+        XCTAssertEqual(MoneyFormat.parseRatePercent("10.5"), 1050)
+        XCTAssertEqual(MoneyFormat.parseRatePercent("10"), 1000)
+        XCTAssertNil(MoneyFormat.parseRatePercent("abc"))
+        XCTAssertNil(MoneyFormat.parseRatePercent("101"))
+    }
+
+    func testDateHelpersAndDataFloor() {
+        XCTAssertEqual(MoneyFormat.dataFloor, "2026-11-01")
+        XCTAssertEqual(MoneyFormat.dateString(from: MoneyFormat.date(from: "2026-11-08")!), "2026-11-08")
+        XCTAssertEqual(MoneyFormat.displayDay("2026-11-08T19:30:00Z"), "Nov 8, 2026")
+        XCTAssertEqual(MoneyFormat.sundays(from: "2026-11-08", count: 3),
+                       ["2026-11-08", "2026-11-15", "2026-11-22"])
+        XCTAssertEqual(MoneyFormat.sundays(from: "2026-11-08", count: 9).count, 4)
+        XCTAssertEqual(MoneyFormat.daysBetween("2026-11-08", "2026-11-15"), 7)
+        XCTAssertNil(MoneyFormat.daysBetween("nope", "2026-11-15"))
+    }
+
     // MARK: - AuditFormatting
 
     func testFormatDetailStripsUUIDsAndConvertsCentsAndDates() {

@@ -13,7 +13,7 @@ import OnBudgetKit
 /// - Reclassify: `client.rpcs.reclassifyTransaction(txnId:newKind:reason:)`.
 /// - Link / unlink refund: `client.rpcs.linkRefund(pRefundId:pPurchaseId:)`
 ///   / `client.rpcs.unlinkRefund(pRefundId:)`; candidates are read with
-///   a full-column `PostgrestQuery` (see `linkCandidates(for:)` note).
+///   `client.postgrest.refundLinkCandidates(...)`.
 /// - Delete (hand-written, permanent): `client.rpcs.deleteTransaction(pTransactionId:)`.
 /// - Exclude (bank/email/file → Trash): `client.rpcs.excludeTransaction(txnId:reason:)`.
 /// - Restore from Trash: `client.rpcs.restoreTransaction(txnId:)`.
@@ -228,6 +228,28 @@ public final class TransactionsViewModel {
         filters = TransactionFilters()
         persistFilters()
         resetPage()
+    }
+
+    /// Past Weeks / Weekly-sheet jump (live.js:3457-3500): clear
+    /// search/filters first, then show only the Sun–Sat week starting
+    /// `weekStart`. The shell clears `pendingWeekFilter` once consumed.
+    public func applyWeekFilter(weekStart: String) {
+        clearSearchAndFilters()
+        filters.fromDate = weekStart
+        filters.toDate = MoneyFormat.weekEndString(weekStart: weekStart) ?? weekStart
+        filterChanged()
+    }
+
+    /// Recent-row jump (live.js:1040-1110): clear search/filters
+    /// first, then expand the row — when it is in the loaded page.
+    /// Otherwise the shell's exact toast: the row is not loaded yet.
+    public func applyTransactionJump(_ id: UUID) {
+        clearSearchAndFilters()
+        if loadedPage.contains(where: { $0.id == id }) {
+            expandedTransactionId = id
+        } else {
+            toastManager.show("That transaction is not in the loaded list — tap Load more for older ones.")
+        }
     }
 
     /// Apply a filter change that resets the page (status / month /
@@ -473,44 +495,30 @@ public final class TransactionsViewModel {
     /// charges/fund_charges in the 90 days before the refund, not
     /// excluded/reversed; merchant-stem match first (`ilike %stem%`),
     /// fallback to every same-card charge in the window when no name
-    /// matches. NOTE: `PostgrestClient.refundLinkCandidates` selects
-    /// only four columns but decodes them as full `Transaction` rows,
-    /// which cannot decode — so the query is built here with `*`
-    /// (same filters, same order, same 20-row cap) instead.
+    /// matches. Reads via `PostgrestClient.refundLinkCandidates`
+    /// (fixed Nov 9, 2026 — it used to select 4 columns and decode
+    /// full Transaction rows, so this method queried with `*` here).
     public func linkCandidates(for refund: Transaction) async -> [Transaction] {
         let since = RefundLinkCandidates.windowStart(for: refund.date)
         let stem = RefundLinkCandidates.merchantStem(for: refund.merchant)
-        let baseFilters: [PostgrestFilter] = [
-            .householdId(householdId),
-            .in("kind", ["charge", "fund_charge"]),
-            .equal("card_suffix", refund.cardSuffix),
-            .lessThanOrEqual("date", refund.date),
-            .greaterThanOrEqual("date", since),
-            .notEqual("excluded", "true"),
-            .notEqual("state", "excluded"),
-            .notEqual("state", "reversed"),
-        ]
         do {
             if let stem {
-                var stemmed = baseFilters
-                stemmed.append(.ilike("merchant", "%\(stem)%"))
-                let stemmedRows: [Transaction] = try await client.postgrest.fetch(PostgrestQuery(
-                    table: "transactions",
-                    columns: "*",
-                    filters: stemmed,
-                    orders: [PostgrestOrder("date", ascending: false)],
-                    limit: 20
-                ))
-                if !stemmedRows.isEmpty { return stemmedRows }
+                let stemmed = try await client.postgrest.refundLinkCandidates(
+                    householdId: householdId,
+                    cardSuffix: refund.cardSuffix,
+                    refundDate: refund.date,
+                    sinceDate: since,
+                    merchantStem: stem
+                )
+                if !stemmed.isEmpty { return stemmed }
             }
-            let rows: [Transaction] = try await client.postgrest.fetch(PostgrestQuery(
-                table: "transactions",
-                columns: "*",
-                filters: baseFilters,
-                orders: [PostgrestOrder("date", ascending: false)],
-                limit: 20
-            ))
-            return rows
+            return try await client.postgrest.refundLinkCandidates(
+                householdId: householdId,
+                cardSuffix: refund.cardSuffix,
+                refundDate: refund.date,
+                sinceDate: since,
+                merchantStem: nil
+            )
         } catch {
             return []
         }

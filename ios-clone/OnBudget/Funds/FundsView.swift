@@ -13,21 +13,25 @@ import OnBudgetKit
 // Back returns to the Funds list (swipe-right closes the form too,
 // via the navigation stack in the coordinator).
 //
-// Entry point for the coordinator's tab bar:
-//   FundsView(context: FundsContext(client:householdId:role:userId:))
-// The view model is owned here; TrashView shares it via
-// `fundsViewModel` so a restore refreshes both screens.
+// Entry point for the app shell's tab bar:
+//   FundsView(context: FundsContext(client:householdId:role:userId:),
+//             appState: appState)
+// The view model is owned here. Card expansion is the SHARED
+// `appState.expandedCard` (integration, Nov 9, 2026 — the local
+// `FundsExpandedCard` state is deleted): one-open-at-a-time spans
+// Home + Funds. Temporary Allowance opens as a form here when the
+// shell sets `appState.pendingTemporaryAllowance` (Settings Budget
+// link).
 
 public enum FundsForm: Equatable {
     case add
     case use
     case ask
     case income
-}
-
-public enum FundsExpandedCard: Equatable {
-    case fund
-    case charity
+    /// Temporary Allowance (Settings Budget link) — owned by the
+    /// Funds workstream, presented as a form, never duplicated in
+    /// Settings.
+    case temp
 }
 
 public enum FundsMoreSection: Equatable {
@@ -38,16 +42,19 @@ public enum FundsMoreSection: Equatable {
 
 public struct FundsView: View {
     @StateObject private var viewModel: FundsViewModel
-    @State private var expandedCard: FundsExpandedCard?
+    /// Shared shell state: card expansion + the Temporary Allowance
+    /// handoff from Settings Budget.
+    @ObservedObject var appState: AppViewModel
     @State private var openForm: FundsForm?
     @State private var openMore: FundsMoreSection?
     @State private var correctingIncome: CharityIncome?
 
-    public init(context: FundsContext) {
+    public init(context: FundsContext, appState: AppViewModel) {
+        self.appState = appState
         self._viewModel = StateObject(wrappedValue: FundsViewModel(context: context))
     }
 
-    /// The shared view model, for TrashView (same data, one refresh).
+    /// The shared view model, for Review (same data, one refresh).
     public var fundsViewModel: FundsViewModel { viewModel }
 
     private var isAdmin: Bool { viewModel.context.isAdmin }
@@ -66,6 +73,8 @@ public struct FundsView: View {
                         AskFundForm(viewModel: viewModel)
                     case .income:
                         CharityIncomeForm(viewModel: viewModel, correcting: $correctingIncome)
+                    case .temp:
+                        TemporaryAllowanceView(viewModel: viewModel)
                     }
                 } else {
                     fundCard
@@ -89,7 +98,11 @@ public struct FundsView: View {
             Text(viewModel.alertMessage ?? "")
         }
         .task {
+            consumeTemporaryAllowanceHandoff()
             await viewModel.refresh()
+        }
+        .onChange(of: appState.pendingTemporaryAllowance) { _, _ in
+            consumeTemporaryAllowanceHandoff()
         }
         .refreshable {
             await viewModel.refresh()
@@ -115,7 +128,7 @@ public struct FundsView: View {
         FundsExpandableCard(
             title: "Extra Fund",
             amountText: fundFaceText,
-            isExpanded: expandedCard == .fund,
+            isExpanded: appState.expandedCard == .fund,
             isNegative: (viewModel.fundSummary?.availableCents ?? 0) < 0,
             accessibilityLabel: fundAccessibilityLabel,
             onToggle: { toggleCard(.fund) }
@@ -169,7 +182,7 @@ public struct FundsView: View {
         FundsExpandableCard(
             title: "Charity",
             amountText: charityFaceText,
-            isExpanded: expandedCard == .charity,
+            isExpanded: appState.expandedCard == .charity,
             isNegative: (viewModel.charitySummary?.remainingCents ?? 0) < 0,
             accessibilityLabel: charityAccessibilityLabel,
             onToggle: { toggleCard(.charity) }
@@ -187,9 +200,9 @@ public struct FundsView: View {
                             correctingIncome = nil
                             openForm = .income
                         }
-                        FundsTertiaryButton("Close") { expandedCard = nil }
+                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
                     } else {
-                        FundsTertiaryButton("Close") { expandedCard = nil }
+                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
                     }
                 }
             } else {
@@ -218,11 +231,19 @@ public struct FundsView: View {
         return "Charity, \(MoneyFormat.formatCents(summary.remainingCents)) remaining, \(MoneyFormat.formatCents(summary.givenCents)) given, \(MoneyFormat.formatCents(summary.committedCents)) committed, show breakdown"
     }
 
-    private func toggleCard(_ card: FundsExpandedCard) {
-        if expandedCard == card {
-            expandedCard = nil
+    /// Settings Budget → Temporary Allowance: open the form here
+    /// and clear the flag so a later tab switch does not re-open it.
+    private func consumeTemporaryAllowanceHandoff() {
+        guard appState.pendingTemporaryAllowance else { return }
+        appState.pendingTemporaryAllowance = false
+        openForm = .temp
+    }
+
+    private func toggleCard(_ card: ExpandedCard) {
+        if appState.expandedCard == card {
+            appState.expandedCard = nil
         } else {
-            expandedCard = card
+            appState.expandedCard = card
         }
     }
 

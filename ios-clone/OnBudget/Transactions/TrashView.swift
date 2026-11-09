@@ -12,6 +12,11 @@ import OnBudgetKit
 /// ("cannot restore: no prior state recorded" — surfaced verbatim).
 /// Empty: "Trash is empty."
 ///
+/// The single TrashView (integration, Nov 9, 2026): the Funds copy
+/// is deleted — CLONE_SPEC §11 links Trash only from Transactions,
+/// and no Funds call site ever existed. Reached from the
+/// Transactions "Trash (N)" link only (admin-only, hidden at 0).
+///
 /// KNOWN LIVE DEFECT (not worked around): merged duplicates were
 /// excluded without recording `pre_exclusion_state`, so restoring
 /// one always refuses until the server fix lands (branch-only fix
@@ -20,12 +25,19 @@ import OnBudgetKit
 public struct TrashView: View {
     @Bindable var viewModel: TransactionsViewModel
     let onBack: () -> Void
+    /// Load error from the shared list load, when the caller has one
+    /// (merged from the deleted Funds copy, which surfaced its view
+    /// model's `transactionsError` here; the Transactions screen
+    /// surfaces load failure on the list itself, so this stays nil
+    /// there). Shown above the list when non-nil.
+    let errorMessage: String?
 
     @State private var restoringId: UUID?
 
-    public init(viewModel: TransactionsViewModel, onBack: @escaping () -> Void) {
+    public init(viewModel: TransactionsViewModel, onBack: @escaping () -> Void, errorMessage: String? = nil) {
         self.viewModel = viewModel
         self.onBack = onBack
+        self.errorMessage = errorMessage
     }
 
     public var body: some View {
@@ -36,7 +48,19 @@ public struct TrashView: View {
                         .font(.system(size: 14))
                         .foregroundStyle(Color(hex: "#6b7280"))
 
-                    if viewModel.trashTransactions.isEmpty {
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.errorText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(DesignTokens.errorBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(DesignTokens.errorBorder, lineWidth: 1)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    } else if viewModel.trashTransactions.isEmpty {
                         Text("Trash is empty.")
                             .font(.system(size: 15))
                             .foregroundStyle(Color(hex: "#6b7280"))

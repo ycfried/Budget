@@ -78,7 +78,10 @@ public struct TemporaryAllowanceView: View {
                 FundsErrorBox(fieldError)
             }
             FundsPrimaryButton("Set New Total", isBusy: viewModel.busyAction == "temp") {
-                guard let cents = newTotalCents else {
+                // Non-negative, matching the preview (the kit's
+                // web-faithful parse accepts negatives; a new total
+                // can never be one).
+                guard let cents = newTotalCents, cents >= 0 else {
                     fieldError = "Enter a valid amount."
                     return
                 }

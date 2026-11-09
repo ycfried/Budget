@@ -15,53 +15,12 @@ import OnBudgetKit
 /// - Toasts: bottom only, clear of the tab bar, auto-dismiss 4s,
 ///   tap dismisses sooner; success/info brand blue, errors soft red.
 ///
-/// NOTE (scaffold mismatch, Nov 9): `ToastStyle.autoDismissSeconds`
-/// in OnBudgetKit is 3.0, but the spec (§2.3) and the task brief both
-/// say 4s. This view uses 4s; the scaffold constant should be fixed
-/// to 4.0 by its owner.
-
-public struct PrimaryButtonStyle: ButtonStyle {
-    public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(.white)
-            .padding(.vertical, 13)
-            .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity)
-            .background(DesignTokens.primary)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .opacity(configuration.isPressed ? 0.85 : 1)
-    }
-}
-
-public struct TertiaryButtonStyle: ButtonStyle {
-    public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(DesignTokens.ink)
-            .padding(.vertical, 13)
-            .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity)
-            .background(Color(hex: "#e5e7eb"))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .opacity(configuration.isPressed ? 0.85 : 1)
-    }
-}
-
-/// Pale #bfdbfe — ONLY as the middle tier of a three-button row.
-public struct PaleButtonStyle: ButtonStyle {
-    public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(DesignTokens.ink)
-            .padding(.vertical, 13)
-            .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity)
-            .background(DesignTokens.pale)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .opacity(configuration.isPressed ? 0.85 : 1)
-    }
-}
+/// Button styles + toast banner live in SharedViews.swift
+/// (integration, Nov 9, 2026): this file used to define its own
+/// `PrimaryButtonStyle`, `TertiaryButtonStyle`, `PaleButtonStyle`,
+/// `SmallTertiaryButtonStyle` and `ToastBanner` — identical to the
+/// SharedViews copies, which are the canonical ones (they carry
+/// public inits). Only the Transactions-only helpers below remain.
 
 public struct SmallPrimaryButtonStyle: ButtonStyle {
     public func makeBody(configuration: Configuration) -> some View {
@@ -71,19 +30,6 @@ public struct SmallPrimaryButtonStyle: ButtonStyle {
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
             .background(DesignTokens.primary)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .opacity(configuration.isPressed ? 0.85 : 1)
-    }
-}
-
-public struct SmallTertiaryButtonStyle: ButtonStyle {
-    public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(DesignTokens.ink)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(Color(hex: "#e5e7eb"))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
@@ -195,7 +141,7 @@ public final class ToastManager {
         dismissTask?.cancel()
         toast = Toast(message: message, kind: kind)
         dismissTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(4))
+            try? await Task.sleep(for: .seconds(ToastStyle.autoDismissSeconds))
             guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
                 self?.toast = nil
@@ -213,37 +159,3 @@ public final class ToastManager {
     }
 }
 
-public struct ToastBanner: View {
-    let toast: Toast
-    let onTap: () -> Void
-
-    public init(toast: Toast, onTap: @escaping () -> Void) {
-        self.toast = toast
-        self.onTap = onTap
-    }
-
-    public var body: some View {
-        Button(action: onTap) {
-            Text(toast.message)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color(hex: ToastStyle.textHex(for: toast.kind)))
-                .multilineTextAlignment(.center)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .frame(maxWidth: .infinity)
-                .background(Color(hex: ToastStyle.backgroundHex(for: toast.kind)))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(
-                            toast.kind == .error ? DesignTokens.errorBorder : Color.clear,
-                            lineWidth: 1
-                        )
-                )
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        // Bottom, floating clear of the tab bar (spec §2.3: bottom 120px).
-        .padding(.bottom, 120)
-    }
-}

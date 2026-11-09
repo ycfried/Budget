@@ -184,4 +184,90 @@ final class APISelectShapeTests: XCTestCase {
         XCTAssertEqual(row.committedCents, 10000)
         XCTAssertEqual(row.sourceLabel, "Paycheck")
     }
+
+    // MARK: - Integration pass (Nov 9, 2026): six more narrow selects
+    // that could not decode their full model (same class as the nine
+    // above). Each JSON below contains exactly the columns its read
+    // now selects.
+
+    func testHouseholdDecodesFromSelectedColumns() throws {
+        let row = try decode("""
+        {
+          "id": "22222222-2222-2222-2222-222222222222",
+          "name": "Friedman Household",
+          "base_allowance_cents": 37500,
+          "fund_shortfall_cents": 0,
+          "auto_sync_enabled": true,
+          "created_at": "2026-11-01T00:00:00Z"
+        }
+        """, as: Household.self)
+        XCTAssertEqual(row.name, "Friedman Household")
+        XCTAssertEqual(row.baseAllowanceCents, 37500)
+        XCTAssertTrue(row.autoSyncEnabled)
+    }
+
+    func testTransactionDecodesFromRefundLinkCandidateColumns() throws {
+        let row = try decode("""
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "household_id": "22222222-2222-2222-2222-222222222222",
+          "date": "2026-11-06",
+          "merchant": "Trader Joe's",
+          "amount_cents": 4523,
+          "card_suffix": "1234",
+          "source": "plaid",
+          "state": "verified",
+          "kind": "charge",
+          "fund_allocation_cents": 0,
+          "excluded": false,
+          "exclude_reason": "",
+          "late": false,
+          "dedupe_hash": "abc123",
+          "created_at": "2026-11-06T00:00:00Z"
+        }
+        """, as: Transaction.self)
+        XCTAssertEqual(row.merchant, "Trader Joe's")
+        XCTAssertEqual(row.amountCents, 4523)
+        XCTAssertFalse(row.isInTrash)
+    }
+
+    func testWeekCloseDecodesFromSelectedColumns() throws {
+        let row = try decode("""
+        {
+          "household_id": "22222222-2222-2222-2222-222222222222",
+          "week_start": "2026-11-01",
+          "surplus_cents": 5000,
+          "outgoing_debt_cents": 0
+        }
+        """, as: WeekClose.self)
+        XCTAssertEqual(row.weekStart, "2026-11-01")
+        XCTAssertEqual(row.surplusCents, 5000)
+    }
+
+    func testSurplusReleaseForHistoryDecodesFromSelectedColumns() throws {
+        let row = try decode("""
+        {
+          "household_id": "22222222-2222-2222-2222-222222222222",
+          "week_start": "2026-11-01",
+          "surplus_cents": 5000,
+          "release_date": "2026-11-09",
+          "status": "pending",
+          "released_cents": 0
+        }
+        """, as: SurplusRelease.self)
+        XCTAssertEqual(row.status, "pending")
+        XCTAssertEqual(row.releaseDate, "2026-11-09")
+    }
+
+    func testWebhookEventDecodesFromSelectedColumns() throws {
+        let row = try decode("""
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "webhook_code": "DEFAULT_UPDATE",
+          "processed": false
+        }
+        """, as: WebhookEvent.self)
+        XCTAssertEqual(row.webhookCode, "DEFAULT_UPDATE")
+        XCTAssertFalse(row.processed)
+    }
 }

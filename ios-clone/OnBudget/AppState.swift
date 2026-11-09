@@ -84,6 +84,11 @@ public final class AppViewModel: ObservableObject {
     /// Transactions screen once consumed.
     @Published public var pendingWeekFilter: String?
 
+    /// Handoff from Settings Budget → Temporary Allowance (spec
+    /// §10.4): switch to the Funds tab and open the Temporary
+    /// Allowance form there. Cleared by FundsView once consumed.
+    @Published public var pendingTemporaryAllowance = false
+
     /// Deep-link password reset in progress (a recovery code arrived
     /// via onbudget://reset-password?code=…).
     @Published public var pendingResetCode: String?
@@ -188,6 +193,7 @@ public final class AppViewModel: ObservableObject {
         expandedCard = nil
         pendingTransactionJump = nil
         pendingWeekFilter = nil
+        pendingTemporaryAllowance = false
         showSettings = false
         weekCloseAttempted = false
         selectedTab = .home
@@ -228,6 +234,17 @@ public final class AppViewModel: ObservableObject {
         pendingWeekFilter = weekStart
         pendingTransactionJump = nil
         selectedTab = .transactions
+    }
+
+    /// Settings Budget "Open Temporary Allowance" (spec §10.4): the
+    /// box itself lives on Funds — switch there and let FundsView
+    /// open its Temporary Allowance form. Dismissing Settings first
+    /// (the link lives inside the Settings cover) so the Funds tab
+    /// is visible when the form opens.
+    public func openTemporaryAllowance() {
+        showSettings = false
+        pendingTemporaryAllowance = true
+        selectedTab = .funds
     }
 
     // MARK: - Password-reset deep link

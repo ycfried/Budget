@@ -8,43 +8,19 @@
 // Sunday–Saturday. Clone basis: live web v66.
 
 import Foundation
+import OnBudgetKit
 
 /// Money + date formatting shared by the Auth and Home screens.
-public enum MoneyFormat {
-
-    private static let dollarsFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.groupingSeparator = ","
-        formatter.maximumFractionDigits = 0
-        formatter.locale = Locale(identifier: "en_US")
-        return formatter
-    }()
-
-    /// "$1,234.56" / "-$12.00" / "$0.00". Never a bare dash for a
-    /// confirmed zero — a dash is reserved for "could not load".
-    public static func string(cents: Int) -> String {
-        let sign = cents < 0 ? "-" : ""
-        let absolute = abs(cents)
-        let dollars = absolute / 100
-        let remainder = absolute % 100
-        let grouped = dollarsFormatter.string(from: NSNumber(value: dollars)) ?? "\(dollars)"
-        return "\(sign)$\(grouped).\(String(format: "%02d", remainder))"
-    }
-
-    /// The dollars part and the cents part separately, so the hero can
-    /// render cents smaller (formatCentsHtml, live.js:3651-3659).
-    public static func parts(cents: Int) -> (sign: String, dollars: String, cents: String) {
-        let sign = cents < 0 ? "-" : ""
-        let absolute = abs(cents)
-        let dollars = dollarsFormatter.string(from: NSNumber(value: absolute / 100)) ?? "\(absolute / 100)"
-        return (sign, dollars, String(format: "%02d", absolute % 100))
-    }
-
-    /// Signed display for a stat-card face: negative stays signed
-    /// (a charity "ahead by" reads as a negative remaining figure).
-    public static func signedString(cents: Int) -> String { string(cents: cents) }
-}
+/// The single owner of `MoneyFormat` is `OnBudgetKit.MoneyFormat`
+/// (integration, Nov 9, 2026 — the two app-target copies that used
+/// to live here and in Funds/MoneyFormat.swift are deleted); this
+/// typealias is the one app-target spelling, so existing call sites
+/// (`MoneyFormat.string`, `.formatCents`, …) keep working.
+/// NOTE: the kit's `parseDollarsStrict` and `fmtDateTime` are the
+/// web-faithful shapes (live.js:44-53, fmtDateTime has no year);
+/// the deleted Funds copy rejected negatives / $-prefixed input and
+/// stamped a year — both diverged from the web and are gone with it.
+public typealias MoneyFormat = OnBudgetKit.MoneyFormat
 
 /// Date helpers. The app's data floor is 2026-11-01; no transaction
 /// dated before it is ever shown (live.js:756).

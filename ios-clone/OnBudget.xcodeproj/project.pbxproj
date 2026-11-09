@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		B1B1B1B1B1B1B1B1B1B1B1B1 /* OnBudgetApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1A1A1A1A1A1A1A1A1A1A1 /* OnBudgetApp.swift */; };
 		B2B2B2B2B2B2B2B2B2B2B2B2 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A2A2A2A2A2A2A2A2A2A2A2 /* ContentView.swift */; };
-		F20000000000000000000001 /* MoneyFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* MoneyFormat.swift */; };
 		F20000000000000000000002 /* FundsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* FundsShared.swift */; };
 		F20000000000000000000003 /* RefundSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* RefundSuggestions.swift */; };
 		F20000000000000000000004 /* FundsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000004 /* FundsViewModel.swift */; };
@@ -17,7 +16,6 @@
 		F20000000000000000000006 /* CharityIncomeForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000006 /* CharityIncomeForm.swift */; };
 		F20000000000000000000007 /* TemporaryAllowanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000007 /* TemporaryAllowanceView.swift */; };
 		F20000000000000000000008 /* ReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000008 /* ReviewView.swift */; };
-		F20000000000000000000009 /* TrashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000009 /* TrashView.swift */; };
 		F20000000000000000000010 /* FundsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000010 /* FundsView.swift */; };
 		D101D101D101D101D101D101 /* SettingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = C101C101C101C101C101C101 /* SettingsShared.swift */; };
 		D102D102D102D102D102D102 /* ProfileSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C102C102C102C102C102C102 /* ProfileSettingsView.swift */; };
@@ -65,7 +63,6 @@
 /* Begin PBXFileReference section */
 		A1A1A1A1A1A1A1A1A1A1A1A1 /* OnBudgetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnBudgetApp.swift; sourceTree = "<group>"; };
 		A2A2A2A2A2A2A2A2A2A2A2A2 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		F10000000000000000000001 /* MoneyFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyFormat.swift; sourceTree = "<group>"; };
 		F10000000000000000000002 /* FundsShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsShared.swift; sourceTree = "<group>"; };
 		F10000000000000000000003 /* RefundSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefundSuggestions.swift; sourceTree = "<group>"; };
 		F10000000000000000000004 /* FundsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsViewModel.swift; sourceTree = "<group>"; };
@@ -73,7 +70,6 @@
 		F10000000000000000000006 /* CharityIncomeForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharityIncomeForm.swift; sourceTree = "<group>"; };
 		F10000000000000000000007 /* TemporaryAllowanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryAllowanceView.swift; sourceTree = "<group>"; };
 		F10000000000000000000008 /* ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewView.swift; sourceTree = "<group>"; };
-		F10000000000000000000009 /* TrashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashView.swift; sourceTree = "<group>"; };
 		F10000000000000000000010 /* FundsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsView.swift; sourceTree = "<group>"; };
 		C101C101C101C101C101C101 /* SettingsShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsShared.swift; sourceTree = "<group>"; };
 		C102C102C102C102C102C102 /* ProfileSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSettingsView.swift; sourceTree = "<group>"; };
@@ -160,7 +156,6 @@
 		F30000000000000000000001 /* Funds */ = {
 			isa = PBXGroup;
 			children = (
-				F10000000000000000000001 /* MoneyFormat.swift */,
 				F10000000000000000000002 /* FundsShared.swift */,
 				F10000000000000000000003 /* RefundSuggestions.swift */,
 				F10000000000000000000004 /* FundsViewModel.swift */,
@@ -168,7 +163,6 @@
 				F10000000000000000000006 /* CharityIncomeForm.swift */,
 				F10000000000000000000007 /* TemporaryAllowanceView.swift */,
 				F10000000000000000000008 /* ReviewView.swift */,
-				F10000000000000000000009 /* TrashView.swift */,
 				F10000000000000000000010 /* FundsView.swift */,
 			);
 			path = Funds;
@@ -330,7 +324,6 @@
 				9051A85E7352EDDD7DD458C5 /* HouseholdViews.swift in Sources */,
 				CBA111F13C502EA3D22E33D9 /* HomeView.swift in Sources */,
 				328FAC8708AF8A36C0C524B3 /* AppShellView.swift in Sources */,
-				F20000000000000000000001 /* MoneyFormat.swift in Sources */,
 				F20000000000000000000002 /* FundsShared.swift in Sources */,
 				F20000000000000000000003 /* RefundSuggestions.swift in Sources */,
 				F20000000000000000000004 /* FundsViewModel.swift in Sources */,
@@ -338,7 +331,6 @@
 				F20000000000000000000006 /* CharityIncomeForm.swift in Sources */,
 				F20000000000000000000007 /* TemporaryAllowanceView.swift in Sources */,
 				F20000000000000000000008 /* ReviewView.swift in Sources */,
-				F20000000000000000000009 /* TrashView.swift in Sources */,
 				F20000000000000000000010 /* FundsView.swift in Sources */,
 				B70101010101010101010101 /* TransactionFormatting.swift in Sources */,
 				B70202020202020202020202 /* TransactionIconLookup.swift in Sources */,
