@@ -119,7 +119,7 @@ test('Funds page untouched: balance grid still side by side, stacking only at <=
   assert.ok(funds.indexOf('data-fund-card="fund"') < funds.indexOf('data-fund-card="charity"'));
 });
 
-test('Pins: styles v51, live.js v61', () => {
+test('Pins: styles v52, live.js v62', () => {
   assert.match(html, /styles\.css\?v=52/);
   assert.match(html, /live\.js\?v=62/);
 });
