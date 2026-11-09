@@ -1134,6 +1134,20 @@ public struct AuditLogInsert: Equatable, Codable {
     public let action: String
     public let detail: String
 
+    /// Public memberwise init (compile-fixes, Nov 9, 2026): the
+    /// compiler-synthesized memberwise init of a public struct is
+    /// internal, so the app target could only see the Decodable
+    /// `init(from:)` and every `AuditLogInsert(...)` call site
+    /// failed. This explicit public init restores construction
+    /// from the app.
+    public init(householdId: UUID, actor: UUID?, actorName: String, action: String, detail: String) {
+        self.householdId = householdId
+        self.actor = actor
+        self.actorName = actorName
+        self.action = action
+        self.detail = detail
+    }
+
     enum CodingKeys: String, CodingKey {
         case householdId = "household_id"
         case actor

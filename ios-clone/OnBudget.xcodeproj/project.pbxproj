@@ -29,6 +29,7 @@
 		D110D110D110D110D110D110 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C110C110C110C110C110C110 /* SettingsView.swift */; };
 		B3B3B3B3B3B3B3B3B3B3B3B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */; };
 		B4B4B4B4B4B4B4B4B4B4B4B4 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = E2E2E2E2E2E2E2E2E2E2E2E2 /* OnBudgetKit */; };
+		3B3B3B3B3B3B3B3B3B3B3B3B /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A3A3A3A3A3A3A3A3A3A3A3A /* AuthenticationServices.framework */; };
 		B5B5B5B5B5B5B5B5B5B5B5B5 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */; };
 		B6B6B6B6B6B6B6B6B6B6B6B6 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = E3E3E3E3E3E3E3E3E3E3E3E3 /* OnBudgetKit */; };
 		9DD011568CC6FB3844445ABC /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12291D00947248EEBEDE8CE3 /* Formatting.swift */; };
@@ -61,6 +62,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		3A3A3A3A3A3A3A3A3A3A3A3A /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		A1A1A1A1A1A1A1A1A1A1A1A1 /* OnBudgetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnBudgetApp.swift; sourceTree = "<group>"; };
 		A2A2A2A2A2A2A2A2A2A2A2A2 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F10000000000000000000002 /* FundsShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsShared.swift; sourceTree = "<group>"; };
@@ -110,6 +112,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B4B4B4B4B4B4B4B4B4B4B4B4 /* OnBudgetKit in Frameworks */,
+				3B3B3B3B3B3B3B3B3B3B3B3B /* AuthenticationServices.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

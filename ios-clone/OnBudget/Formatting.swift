@@ -22,6 +22,15 @@ import OnBudgetKit
 /// stamped a year — both diverged from the web and are gone with it.
 public typealias MoneyFormat = OnBudgetKit.MoneyFormat
 
+/// The single owner of `Transaction` is `OnBudgetKit.Transaction`
+/// (compile-fixes, Nov 9, 2026): bare `Transaction` is ambiguous
+/// in the app target because SwiftUI also declares a `Transaction`
+/// type, and the app never uses SwiftUI's (no `withTransaction` /
+/// `.transaction(` anywhere). This typealias is the one app-target
+/// spelling, exactly like `MoneyFormat` above, so every existing
+/// call site keeps working and the model stays canonical in the kit.
+public typealias Transaction = OnBudgetKit.Transaction
+
 /// Date helpers. The app's data floor is 2026-11-01; no transaction
 /// dated before it is ever shown (live.js:756).
 public enum AppDates {
