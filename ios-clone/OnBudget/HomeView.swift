@@ -420,7 +420,7 @@ public struct HomeView: View {
         // Set Your Weekly Allowance: admin only, never-set state.
         if viewModel.isAdmin, viewModel.allowanceSet == false {
             Button("Set Your Weekly Allowance") {
-                appState.selectedTab = .settings
+                appState.openSettings()
             }
             .buttonStyle(PrimaryButtonStyle())
         }
