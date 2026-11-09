@@ -28,7 +28,7 @@ import Foundation
 /// twice (8 kinds in `refund-classification-income-kind.sql`; 6 in
 /// `r13-charity.sql` — see the README's ambiguity list), so decoding
 /// tolerates any string the server may send via `.other`.
-public enum TransactionKind: Equatable, Codable {
+public enum TransactionKind: Equatable, Codable, Sendable {
     case charge
     case refund
     case fundCharge

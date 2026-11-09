@@ -32,7 +32,7 @@ import FoundationNetworking
 /// Connection constants. The anon key is the publishable client key
 /// from `config.js` — public by design, enforced by RLS + Edge
 /// Functions, not by key secrecy.
-public struct SupabaseConfiguration: Equatable {
+public struct SupabaseConfiguration: Equatable, Sendable {
     /// The live backend. URL + anon key come from the scaffold's
     /// `Configuration` (Sources/OnBudgetKit/Configuration.swift) —
     /// the publishable client key from `config.js`, public by design.
@@ -285,7 +285,10 @@ public final class URLSessionTransport: HTTPTransport {
 /// Thread-safety: the stored session and the in-flight refresh task
 /// are guarded by a lock; concurrent callers coalesce onto one
 /// refresh instead of racing the refresh-token endpoint.
-public final class SupabaseClient {
+/// The class is `@unchecked Sendable` because that mutable state is
+/// only ever touched under `lock` (the `lazy` API clients are
+/// created once and then read-only).
+public final class SupabaseClient: @unchecked Sendable {
     public let configuration: SupabaseConfiguration
     public let store: SessionStore
     private let transport: HTTPTransport

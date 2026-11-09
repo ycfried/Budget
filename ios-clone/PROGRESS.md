@@ -24,7 +24,7 @@ branch.
   - [ ] GitHub Actions simulator workflow green on `macos-15-intel` — BLOCKED on token scope (see above)
 - [x] **Clone spec** — `CLONE_SPEC.md` (26 screens, 1,965 lines; 16 NEEDS-LIVE-PROBE items; 10 live.js/HANDOFF conflicts resolved live.js-wins)
 - [x] **Notifications + App Store prep** — `docs/APNS_DESIGN.md` + `docs/APP_STORE_PLAN.md` (v1 set: Week Closed, New Purchase, Fund Request Waiting; server design only, no SQL applied)
-- [ ] **API client** — Supabase client on the live backend (sibling branch `ios-clone-v66/apiclient`)
+- [x] **API client** — Supabase client on the live backend (merged from `ios-clone-v66/apiclient`, b0e52e8): Auth REST, PostgREST reads (101-row paging + whole-history helper), 26 typed RPCs, 12 Edge Functions, Codable models, error mapping. 57/57 package tests pass locally (Swift 6.1.2 on Linux; CI not yet green — see blocker above). Manifest fix by coordinator: swift-tools 5.9 → 6.0 (`.iOS(.v18)` needs PackageDescription 6.0) + `Sendable` fixes in Models/SupabaseClient.
 - [ ] **Auth** — sign-in / sign-up / household join, same flows as web v66
 - [ ] **Home** — stacked Charity above Extra Fund, one-open-at-a-time
 - [ ] **Transactions** — list, detail, manual add, trash/restore
@@ -34,6 +34,10 @@ branch.
 - [ ] **Settings / Members / Profile** — incl. invite code, remove member
 - [ ] **Notifications** — week close, new purchase, fund request awaiting approval
 - [ ] **App Store** — privacy labels, privacy policy link, account deletion, screenshots, listing
+
+## Watch items (web-side, affect the clone)
+- **TWO LIVE SERVER DEFECTS found by the Nov 9 synthetic proofs (8 of 12 run, 5 pass):** (1) merged duplicates can NEVER be restored from Trash — `resolve_duplicate_candidate` excludes without recording `pre_exclusion_state`, although the UI promises restoration; (2) held refunds can NEVER be released — `resolve_held_refund` (atomic version confirmed LIVE by probe F) expects `status='pending'` but the CHECK allows only `held`/`written_off`/`resolved`, and Review shows "Resolved" with no Release button. Web fix work started ~4:40 PM Nov 9, branch-only first, exact SQL to owner before any live apply. **Clone rule: build these flows to the INTENDED behaviour (restore-after-merge works; held release works) and surface server refusals verbatim — do not work around them in the client. When the server fix lands, the flows work with no clone change.** If the web fix changes the behaviour, that becomes native v2 scope only if it is not a P0 — these two are P0, so the clone follows the fix; flag any divergence to the coordinator.
+- Synthetic proofs NOT RUN: 4/5/6 (need admin sign-in — owner taps the test-mailbox reset link), 12 (CSV — needs a file), 7 BLOCKED (Plaid needs real bank credentials). Loading hang (~2:00–2:33 PM Nov 9) cleared on its own — transient, no fix.
 
 ## Notes
 
