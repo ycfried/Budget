@@ -21,8 +21,8 @@ const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowa
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
 test('version pins: styles v52, live.js v62', () => {
-  assert.match(html, /styles\.css\?v=52/);
-  assert.match(html, /live\.js\?v=62/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
+  assert.match(html, /styles\.css\?v=53/);
+  assert.match(html, /live\.js\?v=63/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
   const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = ['), sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')));
   assert.deepEqual([...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]), ['Allowance', 'Spent', 'Balance']);
   assert.match(sheetFn, /weeklyAllowanceCents = \(w\.baseAvailableCents \?\? w\.baseRoomCents \?\? 0\) \+ \(w\.tempCents \?\? 0\)/);
@@ -160,8 +160,14 @@ test('10b. Override math: debt still comes off the top, T = 0', () => {
   assert.equal(high.available, 27500);
 });
 
-test('10c. Override SQL (review only): table, unique, RLS, RPC upsert + temp delete + audit', () => {
-  assert.match(sql, /NOT YET APPLIED/);
+test('10c. Override SQL: table, unique, RLS, RPC upsert + temp delete + audit', () => {
+  // P2-B19 (Nov 8, 2026): the old test pinned "NOT YET APPLIED" on
+  // this file, but the table is live — delete-account-fk-migration.sql
+  // does an UNGUARDED `alter table weekly_allowance_overrides ...`
+  // inside a transaction and was applied live Nov 8 with no errors
+  // and a 9-row FK verification (R3 §2), impossible if the table did
+  // not exist. The pin is removed; the SQL file's own stale header
+  // belongs to the SQL workstream (supabase/ untouched here).
   assert.match(sql, /create table if not exists weekly_allowance_overrides/);
   assert.match(sql, /unique \(household_id, week_start\)/);
   assert.match(sql, /allowance_cents integer not null check \(allowance_cents >= 0\)/);

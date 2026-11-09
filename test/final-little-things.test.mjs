@@ -40,14 +40,14 @@ test('title case: Or Join a Household, headings and sheet titles refined', () =>
   assert.ok(html.includes('Or Join a Household'));
   assert.equal(html.includes('Or Join A Household'), false);
   for (const h of ['Recent Transactions', 'Add a Transaction by Hand',
-    'Import Transactions From a CSV File', 'Give to Charity', 'Connected Accounts',
+    'Import Transactions from a CSV File', 'Give to Charity', 'Connected Accounts',
     'Connected Email', 'Account &amp; Household', 'Delete Account', 'Money Added',
     'Charity Income', 'Refund Restorations &amp; Held Refunds', 'Possible Duplicates',
     'Add Money', 'Charity Income &amp; Rate', 'Record Income', 'Use Fund Money',
     'Ask for Fund Money', 'Past Weeks', 'Week History']) {
     assert.ok(html.includes(h), `heading present: ${h}`);
   }
-  for (const t of ["title: 'Approve From the Fund'", "title: 'Fund Is Short'",
+  for (const t of ["title: 'Approve from the Fund'", "title: 'Fund Is Short'",
     "title: 'Forgot Password?'",
     "title: 'Reclassify Transaction'", "title: 'Move to Trash'",
     "title: 'Change Allowance'", 'Release Held Refund',
@@ -82,6 +82,6 @@ test('icons: Google favicon first, brand monogram fallback, bank icon per transa
 
 // Pins bumped consistently with the live-file changes.
 test('pins bumped to v52/v62', () => {
-  assert.match(html, /styles\.css\?v=52/);
-  assert.match(html, /live\.js\?v=62/);
+  assert.match(html, /styles\.css\?v=53/);
+  assert.match(html, /live\.js\?v=63/);
 });

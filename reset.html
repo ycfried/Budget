@@ -67,7 +67,11 @@ $('saveBtn').addEventListener('click', async () => {
   const { error } = await supabase.auth.updateUser({ password: pw });
   if (error) { console.warn('password reset failed:', error.message); msg.textContent = 'Could not save the new password. The link may have expired — request a new one from the sign-in screen.'; msg.classList.add('error'); return; }
   msg.classList.remove('error');
-  msg.textContent = 'Password saved. You can now sign in with it.';
+  msg.textContent = 'Password saved. You can now sign in with it. Taking you back to sign in…';
+  // P2-F12 (Nov 8, 2026): a saved password used to leave the user
+  // on this dead page. Redirect to the app after 2s; the "Back to
+  // Sign In" link below stays as the fallback.
+  setTimeout(() => { window.location.href = 'live.html'; }, 2000);
 });
 </script>
 </body>

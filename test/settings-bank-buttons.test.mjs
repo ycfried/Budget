@@ -47,7 +47,7 @@ test('switch toggles for real: enable and disable via the edge function, state s
   assert.match(fn, /const webhook = enabled \? WEBHOOK_URL : '';/);
   assert.match(fn, /update\(\{ auto_sync_enabled: enabled \}\)\.eq\('id', householdId\)/);
   assert.match(fn, /results\.every\(\(r\) => r\.ok\)/);
-  // Migration file exists and adds the column (not applied live).
+  // Migration file exists and adds the column (applied live Nov 4, 2026 (PR #44) — P2-B19: the old "(not applied live)" comment was stale; see supabase/auto-sync-toggle.sql).
   assert.match(sql, /alter table households add column if not exists auto_sync_enabled boolean not null default false;/);
   // Admin-only gating moved from the old button to the switch row.
   assert.match(js, /setBtn\('autoSyncRow', isAdmin\)/);
@@ -55,8 +55,8 @@ test('switch toggles for real: enable and disable via the edge function, state s
 });
 
 test('pins bumped to v52/v62', () => {
-  assert.ok(html.includes('styles.css\?v=52'));
-  assert.ok(html.includes('live.js\?v=62'));
+  assert.ok(html.includes('styles.css\?v=53'));
+  assert.ok(html.includes('live.js\?v=63'));
 });
 
 test('untouched copy: look-only sentence, last synced line, connected list', () => {

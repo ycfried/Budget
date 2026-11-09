@@ -73,6 +73,17 @@ as $$
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   if p_allowance_cents is null or p_allowance_cents < 0 then raise exception 'allowance must be zero or positive'; end if;
+  -- P2-B4 (Nov 8, 2026): week_start must be a Sunday. compute-week
+  -- and week-close look overrides up by exact Sunday (weekStartOf),
+  -- so a non-Sunday row would silently never match — a no-op the
+  -- admin would never notice. The DB CHECK in
+  -- supabase/p2-sunday-week-start-checks.sql enforces the same rule
+  -- at the table level; this raise gives the admin a readable error
+  -- instead of a constraint violation. The client already sends
+  -- Sundays (live.js builds the week from the NY Sunday).
+  if p_week_start is null or extract(dow from p_week_start) <> 0 then
+    raise exception 'week_start must be a Sunday';
+  end if;
   if not exists (select 1 from household_members
                  where household_id = p_household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';

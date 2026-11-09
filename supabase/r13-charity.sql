@@ -30,7 +30,20 @@
 -- income row 'reversed' and inserts a replacement (replaces_id set);
 -- no income row is ever edited or deleted. Rates are integer basis
 -- points (1000 = 10%); committed per income is half-up rounded:
--- (amount_cents * rate_bp + 5000) / 10000 in integer arithmetic.
+-- (amount_cents::bigint * rate_bp + 5000) / 10000. The product runs
+-- in bigint, NOT int4 (P2-B14, Nov 8, 2026): in int4 the product
+-- overflows above ~$21.5k of income at the 10% default rate
+-- (2,147,484 cents x 1000 = 2,147,484,000 > int4 max 2,147,483,647;
+-- the first audit's "~$214k" was 10x too high — the true threshold
+-- at 10% is ~$21.5k, and at a 100% rate it is ~$2.1k), erroring the
+-- RPC instead of recording the income. The half-up rounding itself
+-- is unchanged, and the committed result still fits integer cents
+-- (it never exceeds amount_cents), so no stored column changes:
+-- charity_income has no committed_cents column — committed is
+-- computed in the RPCs and returned, never stored — and
+-- amount_cents / rate_bp stay integer inputs bounded by their
+-- CHECKs (a caller passing an amount past int4 range fails at the
+-- parameter boundary, it cannot silently overflow).
 begin;
 -- 1. Extend the transactions kind check with 'charity', following the
 -- payment-kind.sql pattern (look the constraint up, drop it, re-add).
@@ -125,7 +138,7 @@ declare
   v_rate integer;
   v_label text;
   v_id uuid;
-  v_committed integer;
+  v_committed bigint;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   if p_amount_cents is null or p_amount_cents <= 0 then raise exception 'amount must be positive'; end if;
@@ -140,7 +153,9 @@ begin
   v_rate := coalesce(p_rate_bp, v_rate, 1000);
   v_label := nullif(btrim(coalesce(p_source_label, '')), '');
   if v_label is null then v_label := 'Income'; end if;
-  v_committed := (p_amount_cents * v_rate + 5000) / 10000;
+  -- P2-B14: bigint product — the int4 product overflows above
+  -- ~$21.5k income at the 10% default rate (see file header).
+  v_committed := (p_amount_cents::bigint * v_rate + 5000) / 10000;
   insert into public.charity_income
     (household_id, source_label, amount_cents, income_date, rate_bp, note, created_by)
   values (p_household_id, v_label, p_amount_cents, p_income_date, v_rate,
@@ -167,7 +182,7 @@ declare
   v_rate integer;
   v_label text;
   v_id uuid;
-  v_committed integer;
+  v_committed bigint;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_old from public.charity_income where id = p_income_id;
@@ -186,7 +201,9 @@ begin
   v_rate := coalesce(p_rate_bp, v_old.rate_bp);
   v_label := nullif(btrim(coalesce(p_source_label, '')), '');
   if v_label is null then v_label := v_old.source_label; end if;
-  v_committed := (p_amount_cents * v_rate + 5000) / 10000;
+  -- P2-B14: bigint product — the int4 product overflows above
+  -- ~$21.5k income at the 10% default rate (see file header).
+  v_committed := (p_amount_cents::bigint * v_rate + 5000) / 10000;
   insert into public.charity_income
     (household_id, source_label, amount_cents, income_date, rate_bp, replaces_id, note, created_by)
   values (v_old.household_id, v_label, p_amount_cents, p_income_date, v_rate, p_income_id,
@@ -269,7 +286,11 @@ begin
     raise exception 'admin only';
   end if;
   if v_row.kind <> 'charge' then raise exception 'only a charge can be marked as a charity gift'; end if;
-  if v_row.state <> 'verified' then raise exception 'only a posted transaction can be marked as a charity gift'; end if;
+  -- Pending gifts may be marked (owner, Nov 8, 2026): the row keeps
+  -- its state, so Given — which counts verified charity rows only —
+  -- stays $0 until the bank confirms it. A reversed row still refuses.
+  -- See supabase/pending-charity-mark.sql, applied live Nov 8, 2026.
+  if v_row.state not in ('provisional', 'verified') then raise exception 'only a pending or posted transaction can be marked as a charity gift'; end if;
   if v_row.excluded then raise exception 'an excluded transaction cannot be marked as a charity gift'; end if;
   if coalesce(v_row.fund_allocation_cents, 0) <> 0 then raise exception 'a transaction partly paid from the fund cannot be marked as a charity gift'; end if;
   if v_row.date < date '2026-11-01' then raise exception 'charity starts November 2026'; end if;

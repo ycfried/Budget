@@ -73,7 +73,12 @@ Deno.serve(async (req) => {
       }),
     });
     const data = await res.json();
-    if (!res.ok) return json({ error: 'plaid link token failed', detail: data?.error_message ?? 'unknown' }, 502);
+    if (!res.ok) {
+      // P2-NEW5 (Nov 8, 2026): Plaid's error_message is vendor detail
+      // for the server log only; the client gets a generic string.
+      console.error('plaid-link: Plaid link/token/create failed:', data?.error_code ?? data?.error_message ?? 'unknown');
+      return json({ error: 'plaid link token failed' }, 502);
+    }
     return json({ link_token: data.link_token, expiration: data.expiration });
   } catch (e) {
     console.error('plaid-link failed:', e?.message ?? e);

@@ -21,13 +21,12 @@
 -- and stays a refund. See REFUND_CLASSIFICATION_FIX_PLAN.md.
 --
 -- STEP 0 — VERIFY LIVE FIRST (read-only; run these and compare before
--- applying anything). Expected: constraint = the 7-kind list below;
--- reclassify allow-list = the 6-kind list (no 'charity' — the repo
--- copy matches that; if live already allows 'charity', KEEP it in
--- the new allow-list below instead of dropping it, and report the
--- difference; do not add it as a side effect if live does not have
--- it). Also verify no week_closes row exists for 2026-11-01 yet —
--- if one does, STOP and use the restoration path instead.
+-- applying anything). Expected: constraint = the 8-kind list below;
+-- reclassify allow-list = the 8-kind list incl. 'income' and
+-- 'charity' (P1-NEW1, Nov 8, 2026 — 'charity' is the ADMIN OVERRIDE
+-- only; the client never calls reclassify for Charity). Also verify
+-- no week_closes row exists for 2026-11-01 yet — if one does, STOP
+-- and use the restoration path instead.
 --
 --   select conname, pg_get_constraintdef(oid) from pg_constraint
 --   where conrelid = 'transactions'::regclass and conname = 'transactions_kind_check';
@@ -92,6 +91,24 @@ begin
             || v_row.kind || ' to ' || new_kind
             || case when reason is not null and btrim(reason) <> ''
                     then ' — reason: ' || reason else ' — no reason given' end || '.');
+  -- P2-N7 (Nov 8, 2026): a reclassification can make a pair linkable
+  -- (a row reclassified TO 'refund' gains a purchase to link to; a
+  -- row reclassified TO a purchase gains earlier unlinked refunds).
+  -- Offer it to the refund linker best-effort so the pair links
+  -- without waiting for a re-delivery. Linking never fails the
+  -- reclassify, so errors are swallowed deliberately. NOTE: a row
+  -- reclassified AWAY from 'refund' keeps any original_purchase_id
+  -- it already had — clearing stale links is not done here; an
+  -- admin unlinks it by hand if that ever matters.
+  begin
+    if new_kind = 'refund' then
+      perform public.auto_link_refund(txn_id);
+    elsif new_kind in ('charge', 'fund_charge') then
+      perform public.link_refunds_to_purchase(txn_id);
+    end if;
+  exception when others then
+    null;
+  end;
 end;
 $$;
 revoke execute on function public.reclassify_transaction(uuid, text, text) from public;

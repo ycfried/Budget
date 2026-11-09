@@ -42,7 +42,8 @@
 // RESPONSE SHAPE (exact — the UI workstream codes against these 8
 // fields and no others; do not add fields without coordinating):
 // {
-//   week_start: "YYYY-MM-DD" (Sunday, normalized from the request),
+//   week_start: "YYYY-MM-DD" (Sunday; a supplied week_start must
+//     already be a Sunday, else 400 — P2-B13; omitted → current week),
 //   base_available_cents: base capacity left after incoming debt,
 //   temp_cents: active temporary increment for the week,
 //   carried_debt_cents: incoming debt D carried INTO the week
@@ -67,7 +68,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
-  isExcludedFromMath, pendingRefundExcludedCents, chargeContribution,
+  chargeContribution,
   linkedRefundNormalPortionCents, restorationDebtCutsAfterClose,
 } from './engine.mjs';
 
@@ -75,6 +76,19 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// P2-B13: strict Sunday-date check. The regex + round-trip reject
+// malformed dates (weekStartOf normalises them instead of failing —
+// e.g. 2026-13-45 rolls over to a real date in 2027), and the
+// weekStartOf equality rejects non-Sundays.
+function isValidWeekStart(s: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return false;
+  return weekStartOf(s) === s;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -99,6 +113,13 @@ Deno.serve(async (req) => {
     const rawWeek = String(body.week_start ?? '');
     const today = nyTodayString();
     const currentWeekStart = weekStartOf(today);
+    // P2-B13 (Nov 8, 2026): a supplied week_start must be a real
+    // Sunday date — anything else is a 400, not figures for a week
+    // nobody asked for. (Omitted week_start still defaults to the
+    // current week.)
+    if (rawWeek && !isValidWeekStart(rawWeek)) {
+      return json({ error: 'week_start must be a Sunday date (YYYY-MM-DD)' }, 400);
+    }
     const weekStart = rawWeek ? weekStartOf(rawWeek) : currentWeekStart;
     // NOTE: body.D, body.T, and any legacy credit fields are
     // deliberately never read here. Server-side derivation only.
@@ -321,8 +342,6 @@ Deno.serve(async (req) => {
     }
     const pendingExcluded = [...pendingById.values()]
       .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
-    void pendingRefundExcludedCents;
-    void isExcludedFromMath;
 
     // Snapshot precedence: a closed week's stored B/T win over any
     // later override (a later change never rewrites a closed week).

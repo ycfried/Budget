@@ -49,8 +49,10 @@ test('P1-NEW1: CSV classifier matches the server charity rule', () => {
 test('P1-NEW1: Charity is offered on any charge; disabled copy is honest', () => {
   assert.deepEqual(actionsForTxKind('charge', true, false).slice(0, 1), ['charity']);
   assert.deepEqual(actionsForTxKind('charge', false, true).slice(0, 1), ['charity']);
-  // The sheet renders the disabled states with honest copy.
-  assert.match(liveJs, /Available once this posts/);
+  // Pending gifts can be marked (owner, Nov 8, 2026): the admin row
+  // is live even while pending, with copy saying it counts once it posts.
+  assert.match(liveJs, /Counts as a charity gift once it posts/);
+  assert.doesNotMatch(liveJs, /Available once this posts/);
   assert.match(liveJs, /Ask the admin to mark this as a gift/);
   assert.match(liveJs, /tx-action-row" data-tx-action="\$\{a\.id\}" type="button"\$\{a\.disabled \? ' disabled' : ''\}/);
   assert.match(stylesCss, /\.tx-action-row\[disabled\]/);
@@ -137,7 +139,11 @@ function m1Net(chargesNet, unlinkedAbs, weekLocked) {
 }
 
 test('P1-M1: (a) open week with a post-close unlinked refund nets it; (b) locked week does not', () => {
-  // (a) Open week, charges $4,603.33, post-close unlinked refund $158.97 → nets.
+  // (a) Open week: cap arithmetic only — the $4,603.33 input is the
+  // Nov 1–7 NET spent C (R2 §1; gross charges $4,762.30, Nordstrom
+  // $158.97 already netted), used here as the charges figure for the
+  // cap example. Live C stays $4,603.33; this case double-nets it
+  // only as an arithmetic example, not as a live claim (P2-B19).
   assert.deepEqual(m1Net(460333, 15897, false), { c: 444436, excess: 0 });
   // (b) Same week once locked → refund nets $0, full amount is excess.
   assert.deepEqual(m1Net(460333, 15897, true), { c: 460333, excess: 15897 });

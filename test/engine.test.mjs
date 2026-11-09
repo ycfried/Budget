@@ -371,7 +371,7 @@ test('FINAL A4: replay idempotency + read-only simulation (inputs and stored sta
   assert.deepEqual(weeks, before); // simulation is read-only
 });
 
-test('FINAL A4: split fund purchase uses fund-first ordering (S2 interpretation, flagged for owner confirmation)', () => {
+test('FINAL A4: split fund purchase uses fund-first ordering (owner-confirmed Nov 5, 2026 — N1 Option A; P2-M3)', () => {
   // $100 purchase: $60 fund + $40 normal. Normal charges in wk1 = $40.
   // $80 refund -> $60 fund credit + $20 normal restoration.
   const weeks = weeksFromCharges({ '2026-10-04': 4000, '2026-10-11': 0 });

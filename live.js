@@ -17,8 +17,9 @@
 //   * Week numbers come from compute-week under the FINAL-spec contract:
 //     {week_start, base_available_cents, temp_cents, carried_debt_cents,
 //     charges_cents, available_cents, week_locked,
-//     pending_refund_excluded_cents}. No credit/R/X fields are used, and
-//     the client never sends D, T, or R_in to compute-week.
+//     pending_refund_excluded_cents, unlinked_excess_cents}. No credit/R/X
+//     fields are used, and the client never sends D, T, or R_in to
+//     compute-week.
 //   * Bank connection state comes from the server plaid_items /
 //     plaid_accounts rows, never from per-device localStorage.
 //   * The demo entry is demo.html (app.js); the public root is landing.html
@@ -26,7 +27,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind, emailConnectionWarnings } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, merchantStem, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind, emailConnectionWarnings } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -300,6 +301,17 @@ function updateMoreReviewLabel() {
 }
 const syncGuard = createSyncGuard(); // delta B3: one bank sync at a time
 let txLimit = 100; // transactions load in pages of 100; Load more raises it
+// P2-N1 (Nov 8, 2026): how many rows the last transactions fetch
+// actually returned. The fetch asks for txLimit + 1 rows, so a
+// return of txLimit + 1 proves an older row exists and anything
+// less proves the list is complete — with exactly txLimit rows in
+// the household the button must not show at all, instead of
+// inviting one wasted tap that refetches the same rows.
+// Reset the page whenever the filter set changes (below): a new
+// filter is a new list, and a raised limit from the old list would
+// otherwise silently fetch a bigger page than the user asked for.
+let lastFetchedCount = 0;
+function resetTxLimit() { txLimit = 100; }
 let weekCloseRan = false; // week-close runs itself once per session (admin only)
 // Delta3 week-close fingerprint: the week start of the last successful
 // week-close check, in localStorage per household, so a reload in the
@@ -617,6 +629,7 @@ async function refresh() {
         carriedDebtCents: carried, chargesCents: charges, availableCents: avail,
         outgoingDebtCents: outgoingDebt, weekLocked: !!r.week_locked,
         pendingRefundExcludedCents: r.pending_refund_excluded_cents ?? 0,
+        unlinkedExcessCents: r.unlinked_excess_cents ?? 0,
         baseAllowanceCents, baseRoomCents: recon.baseRoom,
         unabsorbedDebtCents: recon.unabsorbed, newDebtCents: recon.newDebt };
       // Hero progress, debt-aware: spending room is base room + temp room
@@ -713,7 +726,9 @@ async function refresh() {
   const { data: txns, error: txErr } = await supabase.from('transactions')
     .select('*').eq('household_id', household.household_id)
     .gte('date', '2026-11-01')
-    .order('date', { ascending: false }).limit(txLimit);
+    // P2-N1: ask for one probe row past the page, so the fetch
+    // itself proves whether older rows exist (see lastFetchedCount).
+    .order('date', { ascending: false }).limit(txLimit + 1);
   // Read failures are an ERROR STATE, never a silent empty list or stale
   // numbers: txReadFailed overrides the lists below.
   const txReadFailed = !!txErr;
@@ -727,7 +742,11 @@ async function refresh() {
     const { data: { session: readSession } } = await supabase.auth.getSession();
     txReadErrorKind = (!readSession || /jwt expired|invalid jwt|unauthorized|PGRST301/i.test(`${txErr.code ?? ''} ${txErr.message ?? ''}`)) ? 'auth' : 'server';
   }
-  const all = txReadFailed ? [] : (txns ?? []);
+  // P2-N1: the fetch returned up to txLimit + 1 rows; `all` is
+  // exactly the page shown, and lastFetchedCount (the raw return)
+  // is what proves whether an older row exists.
+  lastFetchedCount = txReadFailed ? 0 : (txns ?? []).length;
+  const all = txReadFailed ? [] : (txns ?? []).slice(0, txLimit);
   txLoaded = true;
   const q = ($('txSearch')?.value ?? '').trim().toLowerCase();
   // Send-live-bundle, Trash: the main Transactions list never shows
@@ -823,7 +842,10 @@ async function refresh() {
   // on a failed load (Nov 3 fix round: it used to flash on every
   // fresh open even in a household with data).
   if (emptyHintEl) emptyHintEl.classList.toggle('hidden', !(txLoaded && !txReadFailed && thisWeekTxns.length === 0));
-  const heroCount = document.getElementById('heroPurchaseCount'); if (heroCount && !txReadFailed) heroCount.textContent = String(thisWeekPurchases.length);
+  // Owner fix (Nov 8, 2026): Purchases shows N/A — never a bare dash
+  // — when transactions could not be loaded (the count is unknown,
+  // not zero). A loaded week with no purchases shows 0.
+  const heroCount = document.getElementById('heroPurchaseCount'); if (heroCount) heroCount.textContent = txReadFailed ? 'N/A' : String(thisWeekPurchases.length);
   const countEl = $('txCount');
   if (countEl) {
     // Charity gifts are not spending: leave them out of the list
@@ -837,11 +859,20 @@ async function refresh() {
     const shownTotal = txFilter === 'charity'
       ? shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && t.kind === 'charity').reduce((s, t) => s + t.amount_cents, 0)
       : shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && t.state !== 'reversed' && (t.kind === 'charge' || t.kind === 'fund_charge' || t.kind === 'refund')).reduce((s, t) => s + (t.kind === 'refund' ? -Math.abs(t.amount_cents ?? 0) : (t.amount_cents ?? 0)), 0);
-    const capped = all.length >= txLimit ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
-    countEl.textContent = txReadFailed ? (txReadErrorKind === 'auth' ? 'Sign-in expired — sign in again to see transactions.' : 'Could not load transactions — try again.') : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : (shown.length === 0 && searchOrFilterActive ? 'No matching transactions — try a different search, or clear the search and filters.' : `${shown.length} transactions · Total shown ${formatCents(shownTotal)}${all.length >= txLimit ? ' · of loaded transactions — tap Load more for older ones' : ''}`); // Merged-audit A7: short count + separately labelled total; recovery message outranks a zero total.
+    // P2-N1: "more exists" comes from the probe row, not from the
+    // page filling up — a full page of exactly txLimit rows means
+    // the list may already be complete.
+    const hasMoreTxns = lastFetchedCount > txLimit;
+    const capped = hasMoreTxns ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
+    countEl.textContent = txReadFailed ? (txReadErrorKind === 'auth' ? 'Sign-in expired — sign in again to see transactions.' : 'Could not load transactions — try again.') : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : (shown.length === 0 && searchOrFilterActive ? 'No matching transactions — try a different search, or clear the search and filters.' : `${shown.length} transactions · Total shown ${formatCents(shownTotal)}${hasMoreTxns ? ' · of loaded transactions — tap Load more for older ones' : ''}`); // Merged-audit A7: short count + separately labelled total; recovery message outranks a zero total.
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
+  // P2-N1: the probe row decides too — when the last fetch returned
+  // no row past the page, there is nothing older to load, even when
+  // the page is exactly full (exactly txLimit rows used to show the
+  // button and waste one tap refetching the same rows).
+  if (loadMore && lastFetchedCount <= txLimit) loadMore.classList.add('hidden');
   // P0-2 (Nov 8, 2026): Load more was dead — the button existed and
   // the count line told users to tap it, but no handler ever raised
   // txLimit. Bound once (refresh re-runs; the dataset flag stops the
@@ -889,6 +920,8 @@ async function refresh() {
       else if (key === 'week') txWeekOnly = false;
       else if (key === 'from') txFromDate = '';
       else if (key === 'to') txToDate = '';
+      // P2-N1: removing a status/month/card filter is a new list.
+      if (key === 'status' || key === 'month' || key === 'card') resetTxLimit();
       refresh();
     }));
   }
@@ -972,6 +1005,7 @@ async function refresh() {
     txWeekOnly = false; txFromDate = ''; txToDate = '';
     const mn = $('txMinAmount'); if (mn) mn.value = '';
     const mx = $('txMaxAmount'); if (mx) mx.value = '';
+    resetTxLimit(); // P2-N1: cleared filters are a new list.
     refresh();
   }));
   // P1-C4 (Nov 8, 2026): the load-failure actions. "Sign in again"
@@ -1015,6 +1049,7 @@ async function refresh() {
       // Search is read straight from the input (no txSearch variable),
       // so clearing the input above is the whole clear.
       txFilter = 'all'; txMonth = 'all'; txCard = 'all'; txWeekOnly = false;
+      resetTxLimit(); // P2-N1: cleared filters are a new list.
       setVal('txMonth', 'all'); setVal('hb-tx-month', 'all'); setVal('hb-tx-card', 'all');
       txFromDate = ''; txToDate = '';
       setVal('txFromDate', ''); setVal('txToDate', '');
@@ -1185,7 +1220,7 @@ async function refresh() {
   }));
   document.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
     const req = (reqs ?? []).find((r) => r.id === b.dataset.approve);
-    const amountText = await showSheet({ title: 'Approve From the Fund', message: `Approve how much of this ${formatCents(req?.amount_cents ?? 0)} request? Enter less for a split approval.`, inputLabel: 'Amount ($)', inputValue: req ? (req.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Approve', cancelLabel: 'Cancel' });
+    const amountText = await showSheet({ title: 'Approve from the Fund', message: `Approve how much of this ${formatCents(req?.amount_cents ?? 0)} request? Enter less for a split approval.`, inputLabel: 'Amount ($)', inputValue: req ? (req.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Approve', cancelLabel: 'Cancel' });
     if (amountText === null) return;
     const cents = parseDollarsStrict(amountText);
     if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
@@ -1289,6 +1324,15 @@ async function refresh() {
       setAutoSyncSwitch(autoRow?.auto_sync_enabled === true);
     } catch (e) { console.warn('auto sync read failed:', e.message); }
     const ls = document.getElementById('lastSync'); if (ls) ls.textContent = bankLastSyncAt ? fmtDateTime(bankLastSyncAt) : 'Not synced yet';
+    // P2-C5 (Nov 8, 2026): cron staleness signal, client half. The
+    // hourly cron should sync at least every hour; if the last
+    // successful sync is over 180 minutes old, scheduled sync has
+    // not run recently and the footer says so instead of staying
+    // silent. The server half (plaid-sync/gmail-poll) reports the
+    // same gap in its response. No last sync yet means "not synced
+    // yet", not stale — the warning only fires on an old stamp.
+    const staleWarn = document.getElementById('syncStaleWarn');
+    if (staleWarn) staleWarn.hidden = !(bankLastSyncAt && (Date.now() - new Date(bankLastSyncAt).getTime() > 180 * 60 * 1000));
     const cb = $('connectBankBtn');
     // Button-card-fix: Connect stays primary and Sync stays tertiary
     // (grey) in every state. The old code stripped primary from Connect and
@@ -1445,6 +1489,9 @@ async function refresh() {
       const el = document.getElementById(id); if (el) el.innerHTML = '<p class="error">Could not load bank accounts. Try again.</p>';
     }
     const ls = document.getElementById('lastSync'); if (ls) ls.textContent = '—';
+    // P2-C5: unknown sync state (read failed) — hide the stale warning;
+    // it only fires on a known old stamp, never on an unknown one.
+    const staleWarn2 = document.getElementById('syncStaleWarn'); if (staleWarn2) staleWarn2.hidden = true;
   }
   // Email connections UI — SERVER TRUTH ONLY (email_connections_public
   // view; the refresh-token ciphertext never leaves the server).
@@ -1931,6 +1978,7 @@ async function refresh() {
       const start = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))); const end = new Date(start); end.setUTCDate(end.getUTCDate() + 6);
       const fmt = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
       txFilter = 'all'; txMonth = 'all'; txCard = 'all'; txWeekOnly = false; txFromDate = fmt(start); txToDate = fmt(end);
+      resetTxLimit(); // P2-N1: a jumped-to week is a new list.
       const fi = $('historyFromInput'); if (fi) fi.value = '';
       showView('purchases', { clearMessages: true }); await refresh(); showToast(`Showing transactions for the week of ${fmtLong(ws)}.`, false);
       document.getElementById('txList')?.scrollIntoView({ block: 'start' });
@@ -2210,6 +2258,13 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
       amount_cents: r.amountCents, card_suffix: r.suffix, source: 'csv', state: 'provisional',
       kind: classifyCsvKind(r.merchant, r.amountCents), dedupe_hash: hash });
   }
+  // P2-N4 (Nov 8, 2026): no auto-link call after this insert on
+  // purpose — auto_link_refund / link_refunds_to_purchase are
+  // granted to service_role only (refund-linking.sql), so this
+  // browser client cannot call them; a call would only 403. A
+  // refund or charge imported here links the manual way instead:
+  // Actions → Link to purchase (link_refund, granted to
+  // authenticated, with the server's fit check as the guard).
   const { data, error } = await supabase.from('transactions').insert(inserts).select('id');
   if (error) { console.warn('csv insert failed:', error.message); showToast('Could not import. Nothing was claimed as imported — try again.', true); if (confirmBtnTop) confirmBtnTop.disabled = false; return; }
   const added = data?.length ?? rows.length;
@@ -2441,6 +2496,13 @@ $('manualForm').addEventListener('submit', async (e) => {
     .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
   if ((dupes ?? []).length && !(await showConfirm('Possible Duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add anyway'))) { done(); return; }
   const hash = await sha(`${f.date.value}|${merchant}|${amount}|${suffix}`);
+  // P2-N4 (Nov 8, 2026): no auto-link call after this insert on
+  // purpose — auto_link_refund / link_refunds_to_purchase are
+  // granted to service_role only (refund-linking.sql), so this
+  // browser client cannot call them; a call would only 403. A
+  // refund or charge entered by hand links the manual way instead:
+  // Actions → Link to purchase (link_refund, granted to
+  // authenticated, with the server's fit check as the guard).
   const { error } = await supabase.from('transactions').insert({
     household_id: household.household_id, date: f.date.value, merchant,
     amount_cents: amount, card_suffix: suffix, source: 'manual',
@@ -3038,7 +3100,6 @@ document.getElementById('saveProfileEmailBtn')?.addEventListener('click', async 
 document.getElementById('profilePasswordBtn')?.addEventListener('click', changePasswordFlow);
 document.getElementById('inviteCopyBtn')?.addEventListener('click', copyInviteCode);
 document.getElementById('inviteShareBtn')?.addEventListener('click', shareInviteCode);
-document.getElementById('settingsPasswordBtn')?.addEventListener('click', changePasswordFlow);
 document.getElementById('settingsDeleteBtn')?.addEventListener('click', deleteAccountFlow);
 document.getElementById('settingsBackBtn')?.addEventListener('click', () => showView(previousView || 'week'));
 // Merged-audit B3: Past Weeks / Activity pages, linked from Transactions, Back returns to Transactions.
@@ -3115,7 +3176,18 @@ async function openWeeklySheet() {
       ['Spent', formatCents(w.chargesCents)],
       ['Balance', formatCents(w.availableCents)],
     ];
-    const weeklyResult = await showSheet({ title: 'Weekly Budget', message: 'Pending transactions are included and marked.', rows: weeklyRows, extraAction: { label: 'Show transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
+    // P2-C4 (Nov 8, 2026): unlinked_excess_cents is the part of the
+    // week's unlinked posted refunds that could NOT be netted against
+    // this week's charges, so it is invisible in Spent. Show it as a
+    // fourth row only when it is non-zero — a zero week keeps the
+    // owner-approved three rows exactly. The message says why the
+    // figure sits outside Spent.
+    const unlinkedExcess = w.unlinkedExcessCents ?? 0;
+    if (unlinkedExcess > 0) weeklyRows.push(['Unlinked refunds', formatCents(unlinkedExcess)]);
+    const weeklyMessage = unlinkedExcess > 0
+      ? 'Pending transactions are included and marked. Unlinked refunds above this week\'s spending are not counted here.'
+      : 'Pending transactions are included and marked.';
+    const weeklyResult = await showSheet({ title: 'Weekly Budget', message: weeklyMessage, rows: weeklyRows, extraAction: { label: 'Show transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
     // Weekly-sheet-simple: "Show transactions" closes the sheet and
     // opens Transactions filtered to the current week, reusing the
     // existing week-filter state (txWeekOnly) and render path — the
@@ -3381,9 +3453,10 @@ function syncScrollLock() {
 // Send-live-bundle, transaction Actions sheet: one Actions line in
 // a detail opens this list sheet (same pattern as the Add popup).
 // Exactly four actions: Charity, Extra Fund, Other, Delete.
-// Charity = old Mark as charity (whole only, admin only, posted
-// charge only). Extra Fund = old Use Extra Fund (charges only, a
-// pending fund request, never instant cover). Other = old
+// Charity = old Mark as charity (whole only, admin only, pending or
+// posted charge — a pending gift counts once it posts). Extra Fund =
+// old Use Extra Fund (charges only, a pending fund request, never
+// instant cover). Other = old
 // Reclassify (admin only, pick a type + reason). Delete:
 // hand-written rows are permanently deleted; bank/email/file rows
 // are moved to Trash (exclude_transaction + reason, toast exactly
@@ -3403,13 +3476,14 @@ async function openTxActionsSheet(row) {
   // Delete only; charity gets Delete only. Members keep Extra Fund
   // on charges only, as before.
   const actionIds = actionsForTxKind(row.kind, isAdmin, row.state === 'verified');
-  // P1-NEW1 (Nov 8, 2026): the Charity row is offered on any charge
-  // but rendered DISABLED with honest copy when it cannot act yet —
-  // admin on a pending charge ("Available once this posts"), any
-  // member ("Ask the admin to mark this as a gift"). A disabled row
-  // never fires its handler.
+  // P1-NEW1 (Nov 8, 2026), relaxed Nov 8, 2026 (pending charity
+  // marking): the Charity row is offered on any charge and is live
+  // for the admin even while pending — a pending gift counts toward
+  // Given only once it posts, so there is nothing to wait for. Only
+  // members see it disabled ("Ask the admin to mark this as a gift").
+  // A disabled row never fires its handler.
   const actions = actionIds.map((id) => id === 'charity'
-    ? { id, label: 'Charity', sub: !isAdmin ? 'Ask the admin to mark this as a gift' : row.state === 'verified' ? 'Counts it as a charity gift, out of weekly spending' : 'Available once this posts', disabled: !isAdmin || row.state !== 'verified' }
+    ? { id, label: 'Charity', sub: !isAdmin ? 'Ask the admin to mark this as a gift' : row.state === 'verified' ? 'Counts it as a charity gift, out of weekly spending' : 'Counts as a charity gift once it posts', disabled: !isAdmin }
     : id === 'linkRefund'
     ? { id, label: 'Link to purchase', sub: row.original_purchase_id ? 'Change or remove the purchase this refund is linked to' : 'Link this refund to the purchase it came from' }
     : id === 'extraFund'
@@ -3443,7 +3517,15 @@ async function openTxActionsSheet(row) {
   }));
 }
 async function doTxCharity(row) {
-  if (!row || !(await showConfirm('Mark as Charity Gift', `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`, 'Mark as charity'))) return;
+  // Pending gifts may be marked (owner, Nov 8, 2026): the row keeps
+  // its state and counts toward Given only once it posts, so the
+  // confirm says so for a pending row instead of promising it counts
+  // right away.
+  const pending = row.state !== 'verified';
+  const confirmMsg = pending
+    ? `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending. It counts as charity given once it posts. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`
+    : `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`;
+  if (!row || !(await showConfirm('Mark as Charity Gift', confirmMsg, 'Mark as charity'))) return;
   const { error } = await supabase.rpc('mark_transaction_charity', { p_transaction_id: row.id });
   if (error) {
     console.warn('mark_transaction_charity failed:', error.message);
@@ -3505,20 +3587,37 @@ async function doTxLinkRefund(row) {
   const d = new Date(`${row.date}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 90);
   const since = d.toISOString().slice(0, 10);
-  const { data: cands, error: candErr } = await supabase.from('transactions').select('id, merchant, amount_cents, date')
+  // P2-N2 (Nov 8, 2026): the old exact-string merchant match
+  // missed every spelling variant (AMAZON MARKEPLACE vs AMAZON
+  // MARKETPLACE, punctuation, case). Match on the merchant stem
+  // instead, and fall back to every same-card charge in the window
+  // when no name matches — the server's fit check in link_refund
+  // stays the guard, so a wider list cannot mis-link a refund.
+  const baseCandidates = () => supabase.from('transactions').select('id, merchant, amount_cents, date')
     .eq('household_id', household.household_id)
     .in('kind', ['charge', 'fund_charge'])
     .eq('card_suffix', row.card_suffix)
-    .eq('merchant', row.merchant)
     .lte('date', row.date).gte('date', since)
     .neq('excluded', true).neq('state', 'excluded').neq('state', 'reversed')
     .order('date', { ascending: false }).limit(20);
+  const stem = merchantStem(row.merchant);
+  let cands = null; let candErr = null; let usedFallback = false;
+  if (stem) {
+    ({ data: cands, error: candErr } = await baseCandidates().ilike('merchant', `%${stem}%`));
+  }
   if (candErr) { console.warn('refund candidates failed:', candErr.message); await showAlert('Could not look for purchases', 'Could not look for the purchase this refund came from. Try again.'); return; }
   if (!(cands ?? []).length) {
-    await showAlert('No matching purchase found', `No charge from the same place, on the same card, in the 90 days before ${displayDay(row.date)}. If the purchase was older, on another card, or under a different name, it cannot be linked from here.`);
+    // No purchase under the same name: list every charge on the
+    // same card in the window instead of sending the admin away.
+    usedFallback = true;
+    ({ data: cands, error: candErr } = await baseCandidates());
+    if (candErr) { console.warn('refund candidates failed:', candErr.message); await showAlert('Could not look for purchases', 'Could not look for the purchase this refund came from. Try again.'); return; }
+  }
+  if (!(cands ?? []).length) {
+    await showAlert('No matching purchase found', `No charge on the same card in the 90 days before ${displayDay(row.date)}. If the purchase was older, on another card, or under a different name, it cannot be linked from here.`);
     return;
   }
-  const picked = await showSheet({ title: 'Link Refund to Purchase', message: `Which purchase is this ${formatCents(row.amount_cents)} refund for? Only purchases from the same place, on the same card, in the 90 days before ${displayDay(row.date)} are listed.`, inputLabel: 'Purchase', inputOptions: cands.map((c) => ({ value: c.id, label: `${displayMerchant(c.merchant)} — ${formatCents(c.amount_cents)} · ${displayDay(c.date)}` })), confirmLabel: 'Link refund', cancelLabel: 'Cancel' });
+  const picked = await showSheet({ title: 'Link Refund to Purchase', message: usedFallback ? `Which purchase is this ${formatCents(row.amount_cents)} refund for? No purchase under the same name was found, so every charge on the same card in the 90 days before ${displayDay(row.date)} is listed.` : `Which purchase is this ${formatCents(row.amount_cents)} refund for? Only purchases from the same place, on the same card, in the 90 days before ${displayDay(row.date)} are listed.`, inputLabel: 'Purchase', inputOptions: cands.map((c) => ({ value: c.id, label: `${displayMerchant(c.merchant)} — ${formatCents(c.amount_cents)} · ${displayDay(c.date)}` })), confirmLabel: 'Link refund', cancelLabel: 'Cancel' });
   if (picked === null) return;
   const { error } = await supabase.rpc('link_refund', { p_refund_id: row.id, p_purchase_id: picked });
   if (error) { console.warn('link_refund failed:', error.message); await showAlert('Could not link refund', /different|more than|after the refund|already linked|admin only/i.test(error.message || '') ? error.message : 'Could not link this refund. Try again.'); return; }
@@ -3530,7 +3629,7 @@ async function doTxReclassify(row) {
   const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }, { value: 'income', label: 'Income' }, { value: 'charity', label: 'Charity' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
   if (newKind === null) return;
   // P1-NEW1 (Nov 8, 2026): Charity goes through the guarded
-  // mark_transaction_charity path (posted charge, unlocked week),
+  // mark_transaction_charity path (pending or posted charge, unlocked week),
   // not the raw reclassify RPC — the allow-list entry for 'charity'
   // in refund-classification-income-kind.sql is the admin override
   // only, not the client path.
@@ -3599,12 +3698,11 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     // (the button row already follows both). Two-button rule
     // (owner, Nov 4): in a two-button row the non-primary button is
     // grey tertiary, never pale — so a sheet with an extra action
-    // renders its confirm as tertiary, and a confirm+cancel sheet
-    // renders its cancel as tertiary. Single-button sheets keep
-    // their primary confirm. The pale treatment is reserved for
-    // three-button rows; a three-button sheet (cancel + extra +
-    // confirm) therefore keeps its pale cancel, with primary and
-    // grey beside it, so no two adjacent buttons share a color.
+    // renders its confirm as tertiary, and a single-button sheet
+    // keeps its primary confirm. Cancel is NEVER a button in this
+    // row: it is the top text link (sheet-top-cancel), so no
+    // three-button sheet layout exists here and the pale treatment
+    // never appears in a sheet at all.
     const extraHtml = extraAction ? `<button class="btn btn-primary" type="button" id="sheetExtra">${esc(extraAction.label)}</button>` : '';
     // Task 7: Extra Fund sheet actions (Add / Use / Ask) — each keeps
     // its own treatment (primary / pale / grey) and returns its
@@ -3698,11 +3796,13 @@ function weekRangeOf(dateStr) {
 document.getElementById('txMonth')?.addEventListener('change', (e) => {
   txMonth = e.target.value;
   localStorage.setItem('hb-tx-month', txMonth);
+  resetTxLimit(); // P2-N1: a new month is a new list.
   refresh();
 });
 document.getElementById('txCard')?.addEventListener('change', (e) => {
   txCard = e.target.value;
   localStorage.setItem('hb-tx-card', txCard);
+  resetTxLimit(); // P2-N1: a new card is a new list.
   refresh();
 });
 const applyTxSort = () => { localStorage.setItem('hb-tx-sort', txSort); refresh(); };
@@ -3889,7 +3989,7 @@ $('charityGiftForm')?.addEventListener('submit', async (e) => {
   if (amount === null || amount <= 0) { done(); setGiftError('Amount: enter a positive amount.', f.amount); return; }
   if (!f.merchant.value.trim()) { done(); setGiftError('Organization: enter a name for this gift.', f.merchant); return; }
   if (!f.date.value) { done(); setGiftError('Date: pick the date of the gift.', f.date); return; }
-  if (f.date.value < '2026-11-01') { done(); await showAlert('Charity starts November 2026', 'Gifts before November 2026 are outside the charity period.'); return; }
+  if (f.date.value < '2026-11-01') { done(); setGiftError('Date: gifts before November 2026 are outside the charity period.', f.date); return; }
   const suffix = f.suffix.value.trim();
   if (suffix && !/^\d{4}$/.test(suffix)) { done(); setGiftError('Card suffix: enter exactly 4 digits, or leave it blank for a cash gift. Never enter a full card number.', f.suffix); return; }
   const merchant = f.merchant.value.trim().toUpperCase();
@@ -4080,6 +4180,7 @@ $('txFiltersApplyBtn')?.addEventListener('click', () => {
   if (weekCheck) txWeekOnly = weekCheck.checked;
   txFromDate = document.getElementById('txFromDate')?.value ?? '';
   txToDate = document.getElementById('txToDate')?.value ?? '';
+  resetTxLimit(); // P2-N1: applied filters are a new list.
   closeTxFilters();
   refresh();
 });
@@ -4108,12 +4209,16 @@ $('txFiltersResetBtn')?.addEventListener('click', () => {
   const mx = document.getElementById('txMaxAmount'); if (mx) mx.value = '';
   txSort = 'date-desc'; localStorage.setItem('hb-tx-sort', txSort);
   txFilter = 'all'; txWeekOnly = false; txFromDate = ''; txToDate = '';
+  resetTxLimit(); // P2-N1: reset filters are a new list.
   refresh(); closeTxFilters();
 });
 let txSearchTimer = null;
 $('txSearch')?.addEventListener('input', () => {
   clearTimeout(txSearchTimer);
-  txSearchTimer = setTimeout(() => { refresh(); }, 250);
+  // P2-N1: a new search is a new list — reset the page before the
+  // debounced refresh fetches, so a raised limit from the old list
+  // never carries over.
+  txSearchTimer = setTimeout(() => { resetTxLimit(); refresh(); }, 250);
 });
 // R8 amount bounds apply live, like search (debounced, not persisted
 // like month/card/sort) — typing a bound re-filters the list.
@@ -4232,9 +4337,14 @@ let lastTopupAttempt = null; // { key, cents } for the in-flight/failed submit
 $('fundTopupForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
+  // P2-F9 (Nov 8, 2026): field + save errors sit inline beside the
+  // form, like #manualFormError / #charityFormError — not toasts.
+  const topupErr = document.getElementById('fundTopupError');
+  const setTopupError = (msg) => { if (topupErr) { topupErr.textContent = msg; topupErr.classList.remove('hidden'); } };
+  if (topupErr) topupErr.classList.add('hidden');
   const cents = parseDollarsStrict(f.amount.value);
-  if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
-  if (!$('fundTopupConfirm')?.checked) { showToast('Check the box to confirm you already put this money in checking.', true); return; }
+  if (cents === null || cents <= 0) { setTopupError('Amount: enter a positive amount.'); return; }
+  if (!$('fundTopupConfirm')?.checked) { setTopupError('Check the box to confirm you already put this money in checking.'); return; }
   const submitBtn = f.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
   const key = (lastTopupAttempt && lastTopupAttempt.cents === cents) ? lastTopupAttempt.key
@@ -4245,11 +4355,12 @@ $('fundTopupForm')?.addEventListener('submit', async (e) => {
   if (error) {
     console.warn('add_fund_money failed:', error.message);
     const notLive = /could not find|does not exist|schema cache/i.test(error.message || '');
-    showToast(notLive ? 'Add money isn\'t live yet — the database step still needs approval.' : 'Could not save this top-up. Try again.', true);
+    setTopupError(notLive ? 'Add money isn\'t live yet — the database step still needs approval.' : 'Could not save this top-up. Try again.');
     return;
   }
   lastTopupAttempt = null;
   f.reset();
+  if (topupErr) topupErr.classList.add('hidden');
   updateFundTopupPreview();
   const covered = data?.shortfall_covered_cents ?? null;
   const added = data?.fund_added_cents ?? null;
@@ -4261,8 +4372,16 @@ $('fundTopupForm')?.addEventListener('submit', async (e) => {
 $('fundAllocateForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
+  // P2-F9 (Nov 8, 2026): field + save errors sit inline in the
+  // form's own #fundAllocateMsg soft-red box — not toasts. (The
+  // insufficient-fund override stays a sheet: it asks for a reason,
+  // it does not report a failure.)
+  const allocMsg = document.getElementById('fundAllocateMsg');
+  const setAllocError = (msg) => { if (allocMsg) { allocMsg.textContent = msg; allocMsg.classList.add('error'); } };
+  const clearAllocMsg = () => { if (allocMsg) { allocMsg.textContent = ''; allocMsg.classList.remove('error'); } };
+  clearAllocMsg();
   const cents = parseDollarsStrict(f.amount.value);
-  if (cents === null || cents <= 0) { showToast('Enter a positive amount.', true); return; }
+  if (cents === null || cents <= 0) { setAllocError('Amount: enter a positive amount.'); return; }
   // R1 busy control: block repeat submits while the allocation (and
   // any override retry) is in flight, so one tap cannot spend twice.
   const submitBtn = f.querySelector('button[type="submit"]');
@@ -4274,15 +4393,21 @@ $('fundAllocateForm')?.addEventListener('submit', async (e) => {
     ({ error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: reason.trim() }));
   }
   if (submitBtn) submitBtn.disabled = false;
-  if (error) console.warn('allocate_fund failed:', error.message);
-  showToast(error ? 'Could not record fund spending. Try again.' : 'Fund spending recorded.', !!error);
-  if (!error) { f.reset(); await refresh(); }
+  if (error) { console.warn('allocate_fund failed:', error.message); setAllocError('Could not record fund spending. Try again.'); return; }
+  clearAllocMsg();
+  showToast('Fund spending recorded.');
+  f.reset(); await refresh();
 });
 $('fundRequestForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
+  // P2-F9 (Nov 8, 2026): field + save errors sit inline beside the
+  // form, like #manualFormError / #charityFormError — not dialogs.
+  const reqErr = document.getElementById('fundRequestError');
+  const setReqError = (msg) => { if (reqErr) { reqErr.textContent = msg; reqErr.classList.remove('hidden'); } };
+  if (reqErr) reqErr.classList.add('hidden');
   const cents = parseDollarsStrict(f.amount.value);
-  if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
+  if (cents === null || cents <= 0) { setReqError('Amount: enter a positive amount.'); return; }
   // R1 busy control: block repeat submits while the request is saving.
   const submitBtn = f.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
@@ -4291,9 +4416,9 @@ $('fundRequestForm').addEventListener('submit', async (e) => {
     household_id: household.household_id, requested_by: user.id,
     amount_cents: cents, note: f.note.value.trim(), status: 'pending',
   });
-  if (error) { console.warn('fund request insert failed:', error.message); await showAlert('Could not save request', 'Could not save this request. Try again.'); if (submitBtn) submitBtn.disabled = false; return; }
+  if (error) { console.warn('fund request insert failed:', error.message); setReqError('Could not save this request. Try again.'); if (submitBtn) submitBtn.disabled = false; return; }
   await audit('Extra Fund request created', `Requested ${formatCents(cents)}.`);
-  f.reset(); if (submitBtn) submitBtn.disabled = false; await refresh();
+  f.reset(); if (reqErr) reqErr.classList.add('hidden'); if (submitBtn) submitBtn.disabled = false; await refresh();
 });
 
 

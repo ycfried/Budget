@@ -51,6 +51,19 @@ export function titleCaseMerchant(name) {
     return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
   }).join('');
 }
+// P2-N2 (Nov 8, 2026): merchant stem for the refund-link picker —
+// the first word of the merchant with punctuation stripped and case
+// folded, so "AMAZON MARKEPLACE NA PA" and "Amazon Marketplace"
+// share the stem AMAZON. The stem holds letters/digits only, so it
+// is safe inside an ilike %…% pattern. The server's auto-linker
+// instead requires normalized equality (see
+// _same_normalized_merchant in refund-linking.sql); the picker is
+// the admin's judgment call, so a contains match plus the server's
+// fit check in link_refund is the guard here.
+export function merchantStem(name) {
+  const words = String(name ?? '').toUpperCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  return words.length ? words[0] : '';
+}
 export function relativeDayLabel(iso, todayIso) {
   const d = String(iso ?? '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !todayIso) return null;
@@ -369,11 +382,11 @@ export function isWeekCloseCheckDue({ lastCheckedWeekStart = null, currentWeekSt
 export function actionsForTxKind(kind, isAdmin, isVerified) {
   if (kind === 'charity') return isAdmin ? ['delete'] : [];
   if (kind === 'charge') {
-    // P1-NEW1 (Nov 8, 2026): Charity is offered on any charge,
-    // regardless of posted status — the sheet renders it disabled
-    // with honest copy when pending (admin) or for members (ask the
-    // admin). The guarded mark_transaction_charity RPC still enforces
-    // posted + unlocked week when it is actually tapped.
+    // P1-NEW1 (Nov 8, 2026), relaxed Nov 8, 2026 (pending charity
+    // marking): Charity is offered on any charge, regardless of
+    // posted status — the sheet renders it disabled only for members
+    // (ask the admin). The guarded mark_transaction_charity RPC
+    // accepts pending or posted charges in an unlocked week.
     const out = ['charity'];
     out.push('extraFund');
     if (isAdmin) out.push('other', 'delete');

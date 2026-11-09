@@ -4,10 +4,15 @@
 // a fallback for when the phone is offline. Bump CACHE when the shell
 // changes. (The repo's older sw.js caches demo-era files and must
 // NOT be registered for the live app.)
-const CACHE = 'onbudget-live-v1';
+// P2-F11 (Nov 8, 2026): the cache name carries the live.js pin
+// (v62) and MUST be bumped with it — the name sat at v1 while the
+// pins moved v50→v62, so old caches were never cleaned on activate.
+// A test pins this number equal to the live.js pin in live.html, so
+// the two cannot drift again.
+const CACHE = 'onbudget-live-v63';
 const SHELL = new Set(['live.html', 'styles.css', 'live.js', 'manifest-live.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']);
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['live.html', 'styles.css', 'live.js'])).then(() => self.skipWaiting()).catch(() => {}));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['live.html', 'styles.css', 'live.js'])).then(() => self.skipWaiting()).catch((err) => console.warn('OnBudget service worker install failed:', err)));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));

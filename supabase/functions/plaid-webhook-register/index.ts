@@ -106,12 +106,20 @@ Deno.serve(async (req) => {
           body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken, webhook }),
         });
         const data = await res.json().catch(() => ({}));
-        results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: res.ok, error: res.ok ? null : (data?.error_message ?? 'unknown') });
+        if (!res.ok) {
+          // P2-NEW5 / P2-N12 (Nov 8, 2026): the per-item error reaches
+          // the client (the toggle toast displays first.error), so it
+          // must be generic; Plaid's error_message goes to the server
+          // log only. (The catch branch below was already generic.)
+          console.error('plaid-webhook-register: item failed:', item.plaid_item_id, data?.error_code ?? data?.error_message ?? 'unknown');
+        }
+        results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: res.ok, error: res.ok ? null : 'request failed' });
       } catch (e) {
-        // P1-B3 (Nov 8, 2026): the per-item error is shown in the
-        // auto-sync toast, so it must be generic — the institution is
-        // named separately. Plaid's own error_message (kept above) is
-        // a vendor-facing string, not a DB leak. Log the detail here.
+        // P1-B3 (Nov 8, 2026) + P2-NEW5/P2-N12: the per-item error is
+        // shown in the auto-sync toast, so it must be generic — the
+        // institution is named separately and the vendor detail goes
+        // to the server log only (same rule as the non-ok response
+        // path above). Log the detail here.
         console.error('plaid-webhook-register: item failed:', item.plaid_item_id, (e as Error)?.message ?? e);
         results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: false, error: 'request failed' });
       }

@@ -166,6 +166,11 @@ Deno.serve(async (req) => {
       `Connected <strong>${esc(emailAddress)}</strong> for read-only email alerts. The app will check it for Amex purchase alerts; purchases found there stay provisional until the bank confirms them. You can return to the app now.`,
     );
   } catch (e) {
-    return page('Email connection failed', `Something went wrong: ${esc(String((e as Error)?.message ?? e))}. Nothing was stored unless the page above says connected.`);
+    // P2-B12 (Nov 8, 2026): the catch used to swallow errors with no
+    // server-side log — a failed callback left nothing in the
+    // function logs. Log the detail; the user still gets the honest
+    // failure redirect (never the raw error text).
+    console.error('gmail-oauth-callback failed:', (e as Error)?.message ?? e);
+    return page('Email connection failed', 'Something went wrong. Nothing was stored unless the page above says connected. Please try again from the app.');
   }
 });

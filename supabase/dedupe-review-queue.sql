@@ -106,7 +106,15 @@ declare
   v_nb text;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
-  select * into v_cand from duplicate_candidates where id = p_candidate_id;
+  -- P2-B9 (Nov 8, 2026): lock the candidate row for the whole RPC
+  -- transaction. The status check below ('pending') followed by the
+  -- merge/separate update is a check-then-write: without the lock,
+  -- two concurrent resolutions could both pass the check and both
+  -- write audit rows (and both exclude the duplicate). The lock
+  -- serializes resolutions of the same candidate; a second caller
+  -- blocks until the first commits, then sees status <> 'pending'
+  -- and raises.
+  select * into v_cand from duplicate_candidates where id = p_candidate_id for update;
   if not found then raise exception 'duplicate candidate not found'; end if;
   if v_cand.status <> 'pending' then raise exception 'duplicate candidate is not pending'; end if;
   if not exists (select 1 from household_members
