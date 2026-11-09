@@ -43,9 +43,9 @@ import OnBudgetKit
 /// Presents the Google consent flow in an
 /// `ASWebAuthenticationSession` and reports the callback result.
 /// The session is cancelled silently when the user dismisses it.
-/// (Not `@MainActor`: `ASWebAuthenticationSessionPresentationContextProviding`
+/// (Not `@MainActor`: `ASWebAuthenticationPresentationContextProviding`
 /// requires a nonisolated `presentationAnchor(for:)`.)
-final class GmailOAuthPresenter: NSObject, ASWebAuthenticationSessionPresentationContextProviding {
+final class GmailOAuthPresenter: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var session: ASWebAuthenticationSession?
     private var continuation: CheckedContinuation<GmailOAuthResult, Never>?
 
