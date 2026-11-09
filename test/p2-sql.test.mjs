@@ -54,14 +54,15 @@ test('P2-NEW2: n4 header no longer promises a date fallback, and names the real 
 // ---- P2-N6: "fully refunded" totals ignore trashed linked refunds ----
 
 test('P2-N6: all three linked-total counts filter out excluded/reversed refunds', () => {
-  // Auto-link subquery (was :106-108, unfiltered).
-  assert.match(linking, /where r\.original_purchase_id = c\.id\n\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/);
+  // Auto-link subquery (was :106-108, unfiltered). R4-BE-3 added
+  // the kind = 'refund' line to all four totals below.
+  assert.match(linking, /where r\.original_purchase_id = c\.id\n\s+and r\.kind = 'refund'\n\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/);
   // Reverse-link subquery (R3 claimed it filtered; at this base it did not).
-  assert.match(linking, /where x\.original_purchase_id = v_pur\.id\n\s+and x\.excluded is not true and x\.state not in \('excluded', 'reversed'\)/);
+  assert.match(linking, /where x\.original_purchase_id = v_pur\.id\n\s+and x\.kind = 'refund'\n\s+and x\.excluded is not true and x\.state not in \('excluded', 'reversed'\)/);
   // Manual link_refund total — same bug class, same fix.
-  assert.match(linking, /where original_purchase_id = p_purchase_id\n\s+and excluded is not true and state not in \('excluded', 'reversed'\)/);
+  assert.match(linking, /where original_purchase_id = p_purchase_id\n\s+and kind = 'refund'\n\s+and excluded is not true and state not in \('excluded', 'reversed'\)/);
   // The auto-link re-check after the row lock uses the same filter.
-  assert.match(linking, /where r\.original_purchase_id = v_cand_id\n\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/);
+  assert.match(linking, /where r\.original_purchase_id = v_cand_id\n\s+and r\.kind = 'refund'\n\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/);
 });
 
 // ---- P2-N7: auto-link runs on restore / reclassify ----
@@ -325,7 +326,141 @@ test('P2-B14 mirror: half-up committed cents, exact past the int4 boundary', () 
   assert.equal(committedCentsBigint(2147484, 10000), 2147484n);
 });
 
-// ---- P2-B13: compute-week unvalidated week_start — functions workstream ----
+// ---- R4-BE-1: exactly one record_charity_gift overload (8-arg) in the repo ----
+
+test('R4-BE-1: exactly one record_charity_gift overload exists in the repo — the 8-arg idempotent one', () => {
+  // Both canonical copies define the same 8-arg signature; there
+  // must be no 7-arg definition anywhere in the repo.
+  const allSql = ['r13-charity.sql', 'r13-gift-idempotency.sql', 'drop-record-charity-gift-7arg.sql']
+    .map((f) => sql(f)).join('\n');
+  const defs = allSql.match(/create or replace function public\.record_charity_gift\(/g) || [];
+  assert.equal(defs.length, 2, 'exactly two definitions, one per canonical file, both the same overload');
+  for (const f of ['r13-charity.sql', 'r13-gift-idempotency.sql']) {
+    const src = sql(f);
+    assert.match(src, /create or replace function public\.record_charity_gift\(\n  p_household_id uuid, p_merchant text, p_amount_cents integer, p_date date,\n  p_card_suffix text, p_note text, p_dedupe_hash text, p_client_key text default null\)/,
+      `${f} defines the 8-arg overload`);
+    // The 7-arg signature appears only in DROP lines, never in a
+    // definition or a grant (a CREATE OR REPLACE on it would
+    // resurrect the stale overload live, as the Nov 9 step-4 apply did).
+    assert.doesNotMatch(src, /revoke execute on function public\.record_charity_gift\(uuid, text, integer, date, text, text, text\)/);
+    assert.doesNotMatch(src, /grant execute on function public\.record_charity_gift\(uuid, text, integer, date, text, text, text\)/);
+    assert.match(src, /grant execute on function public\.record_charity_gift\(uuid, text, integer, date, text, text, text, text\) to authenticated/,
+      `${f} grants the 8-arg overload`);
+    // Replay lookup + on-conflict + drop-first line in both copies.
+    assert.match(src, /drop function if exists public\.record_charity_gift\(uuid, text, integer, date, text, text, text\);/);
+    assert.match(src, /where household_id = p_household_id and client_key = v_key/);
+    assert.match(src, /on conflict \(household_id, client_key\) where client_key is not null do nothing/);
+  }
+  // The two gift bodies agree: same guards, same replay returns.
+  const charity = sql('r13-charity.sql');
+  const idem = sql('r13-gift-idempotency.sql');
+  assert.equal((charity.match(/'replayed', true/g) || []).length, (idem.match(/'replayed', true/g) || []).length,
+    'both copies return replayed=true the same number of times');
+  // The live cleanup file holds ONLY the drop statement (plus comments).
+  const dropFile = sql('drop-record-charity-gift-7arg.sql');
+  assert.match(dropFile, /drop function if exists public\.record_charity_gift\(uuid, text, integer, date, text, text, text\);/);
+  assert.equal((dropFile.match(/^drop function/mg) || []).length, 1, 'exactly one executable statement in the drop file');
+  assert.doesNotMatch(dropFile, /create or replace function/);
+  // The client still calls with all 8 args, so it can only resolve
+  // to the 8-arg overload.
+  assert.match(liveJs, /supabase\.rpc\('record_charity_gift', \{[^}]*p_client_key: giftKey/);
+});
+
+// ---- R4-BE-2: stale "NOT APPLIED" headers record the live applies ----
+
+test('R4-BE-2: the 14 swept headers record their live apply (or never-applied) state', () => {
+  const applied = [
+    ['p2-sunday-week-start-checks.sql', /APPLIED LIVE Nov 9, 2026, step 8/],
+    ['p2-transactions-nov1-floor.sql', /APPLIED LIVE Nov 9, 2026, step 9/],
+    ['p2-revoke-dead-rpcs.sql', /APPLIED LIVE Nov 9, 2026, step 10/],
+    ['weekly-allowance-override.sql', /APPLIED LIVE\n-- \(live since before Nov 9, 2026/],
+    ['r13-charity.sql', /APPLIED LIVE Nov 9, 2026, step 4 \(RPC BODIES ONLY/],
+    ['r13-gift-idempotency.sql', /APPLIED LIVE Nov 3, 2026/],
+    ['r12-add-money.sql', /APPLIED LIVE Nov 3, 2026/],
+    ['r3-account-nicknames.sql', /APPLIED LIVE Nov 3, 2026/],
+    ['restoration-columns-migration.sql', /APPLIED LIVE Nov 3, 2026/],
+    ['delete-account-fk-migration.sql', /APPLIED LIVE Nov 3, 2026/],
+    ['amazon-merge.sql', /APPLIED LIVE Nov 3, 2026/],
+    ['remove-household-member.sql', /APPLIED LIVE Nov 8, 2026 \(PR #57/],
+    ['refund-linking.sql', /APPLIED LIVE Nov 9, 2026, step 2/],
+    ['n4-pre-exclusion-state.sql', /APPLIED LIVE Nov 8, 2026 and again\n-- Nov 9, 2026, step 1/],
+  ];
+  for (const [f, re] of applied) {
+    assert.match(sql(f), re, `${f} records its live apply`);
+  }
+  // The guard file is the honest exception: never applied live,
+  // because the guard already reached live earlier — and its header
+  // says so instead of implying a pending apply.
+  const guard = sql('merged-audit-fund-request-kind-guard.sql');
+  assert.match(guard, /was NEVER APPLIED LIVE/);
+  assert.match(guard, /must NOT be applied without a fresh\n-- re-probe/);
+  // No swept file still carries the old "NOT APPLIED BY THIS BRANCH" line.
+  for (const f of [...applied.map(([name]) => name), 'merged-audit-fund-request-kind-guard.sql']) {
+    assert.doesNotMatch(sql(f), /NOT APPLIED BY THIS BRANCH/, `${f} no longer claims NOT APPLIED BY THIS BRANCH`);
+  }
+  // n4 keeps its "do not apply 05-… in full" warning.
+  assert.match(sql('n4-pre-exclusion-state.sql'), /Do NOT apply supabase\/05-transaction-mutation-rpcs\.sql in\n-- full/);
+  assert.doesNotMatch(sql('n4-pre-exclusion-state.sql'), /Do NOT apply this file's restore as-is\n-- before the live probe/);
+});
+
+// ---- R4-BE-3: reclassify away from 'refund' leaves a stale link ----
+
+test('R4-BE-3: every linked-total subquery filters kind = refund', () => {
+  // Auto-link candidate gate (was :142-144, unfiltered by kind).
+  assert.match(linking, /where r\.original_purchase_id = c\.id\n\s+and r\.kind = 'refund'\n\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/);
+  // Auto-link P2-N9 re-check after the row lock — same total, same filter.
+  assert.match(linking, /where r\.original_purchase_id = v_cand_id\n\s+and r\.kind = 'refund'\n\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/);
+  // Reverse-link subquery (was :200-202).
+  assert.match(linking, /where x\.original_purchase_id = v_pur\.id\n\s+and x\.kind = 'refund'\n\s+and x\.excluded is not true and x\.state not in \('excluded', 'reversed'\)/);
+  // Manual link_refund total (was :267-269).
+  assert.match(linking, /where original_purchase_id = p_purchase_id\n\s+and kind = 'refund'\n\s+and excluded is not true and state not in \('excluded', 'reversed'\)/);
+  // The link itself is kept on reclassify-away (no clearing of
+  // original_purchase_id), so reclassifying back restores the room.
+  assert.doesNotMatch(linking, /set original_purchase_id = null[^;]*reclassif/i);
+  assert.doesNotMatch(reclassify, /original_purchase_id = null/);
+});
+
+// JS mirror of the R4-BE-3 rule: a linked row counts toward a
+// purchase's refund room only while it is still a refund.
+function countsTowardRefundRoom(row) {
+  return row.kind === 'refund' && row.excluded !== true && !['excluded', 'reversed'].includes(row.state);
+}
+
+test('R4-BE-3 mirror: only live refunds consume refund room', () => {
+  assert.equal(countsTowardRefundRoom({ kind: 'refund', excluded: false, state: 'verified' }), true);
+  assert.equal(countsTowardRefundRoom({ kind: 'charge', excluded: false, state: 'verified' }), false); // reclassified away
+  assert.equal(countsTowardRefundRoom({ kind: 'refund', excluded: true, state: 'verified' }), false);
+  assert.equal(countsTowardRefundRoom({ kind: 'refund', excluded: false, state: 'reversed' }), false);
+});
+
+// ---- R4 process notes: idempotent policies, kind-constraint banners, vault note ----
+
+test('R4 process note (a): drop policy if exists guards the two step-6 files', () => {
+  assert.match(sql('weekly-allowance-override.sql'),
+    /drop policy if exists "members read own weekly allowance overrides" on weekly_allowance_overrides;\ncreate policy "members read own weekly allowance overrides"/);
+  assert.match(sql('live-temp-increases.sql'),
+    /drop policy if exists "members read own temp increases" on temp_increases;\ncreate policy "members read own temp increases"/);
+  // The guarded policy is identical before and after — drop + recreate
+  // of the same policy changes nothing about the applied-live effect.
+  assert.match(sql('weekly-allowance-override.sql'), /on weekly_allowance_overrides for select\n\s+using \(household_id in \(select household_id from household_members/);
+  assert.match(sql('live-temp-increases.sql'), /on temp_increases for select\n\s+using \(household_id in \(select household_id from household_members/);
+});
+
+test('R4 process note (b): NEVER-RUN banners on the three narrow kind-constraint steps', () => {
+  assert.match(sql('r13-charity.sql'), /NEVER RUN §1 \(R4-BE-1, Nov 9, 2026/);
+  assert.match(sql('r13-charity.sql'), /re-adds a 6-kind list \(missing 'transfer' and 'income'\)/);
+  assert.match(sql('transfer-kind.sql'), /NEVER RUN §1 \(R4, Nov 9, 2026/);
+  assert.match(sql('transfer-kind.sql'), /re-adds a 7-kind list \(missing\n-- 'charity' and 'income'\)/);
+  assert.match(sql('payment-kind.sql'), /NEVER RUN §1 AGAIN \(R4, Nov 9, 2026/);
+  assert.match(sql('payment-kind.sql'), /re-adds a 5-kind list \(missing\n-- 'transfer', 'charity', and 'income'\)/);
+  // The stale "Re-running is safe" claim in transfer-kind.sql is corrected, not left.
+  assert.doesNotMatch(sql('transfer-kind.sql'), /Re-running is safe: if the constraint already includes/);
+});
+
+test('R4 process note (c): 03-plaid-vault.sql notes DROP+CREATE is required to change the view columns', () => {
+  assert.match(vault, /CREATE OR REPLACE VIEW cannot\n--    change this view's column list/);
+  assert.match(vault, /use DROP \+ CREATE instead, then re-run the grant below, because\n--    DROP \+ CREATE drops the view's grants/);
+});
 
 test('P2-B13 (functions workstream, not fixed here): compute-week still takes week_start without a format check', () => {
   const computeWeek = readFileSync(new URL('../supabase/functions/compute-week/index.ts', import.meta.url), 'utf8');

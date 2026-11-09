@@ -7,9 +7,12 @@
 -- function's header for the column corrections vs the investigation
 -- doc. Do NOT apply supabase/05-transaction-mutation-rpcs.sql in
 -- full (reintroduces the N4 date bug, loses refund checks, loses
--- reversed-row handling). Do NOT apply this file's restore as-is
--- before the live probe in the P1 batch report confirms which body
--- is live now.
+-- reversed-row handling). APPLIED LIVE Nov 8, 2026 and again
+-- Nov 9, 2026, step 1 (R4 §2; R4-BE-2, Nov 9, 2026 — the "do not
+-- apply as-is before the live probe" warning this header carried
+-- before is spent: the probe happened, and the file is verified
+-- live — column exists; restore has the locked-week check, the
+-- auto_link_refund re-offer, and original_purchase_id).
 -- Replaces the date-reconstruction rule in restore_transaction()
 -- (reaudit N4): a pending refund restored after midnight used to
 -- come back as 'verified' (posted) with no bank confirmation,
