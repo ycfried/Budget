@@ -1,7 +1,9 @@
 -- P2-B3 — revoke EXECUTE on dead-but-granted RPCs (Nov 8, 2026, R3).
--- PREPARED FOR OWNER-APPROVED APPLY — NOT APPLIED BY THIS BRANCH.
--- Do NOT apply from a merge: the parent applies it via the approved
--- browser SQL run after the owner has seen this exact file.
+-- APPLIED LIVE Nov 9, 2026, step 10 (R4 §2; R4-BE-2, Nov 9, 2026 —
+-- the "NOT APPLIED" header this file carried before is stale).
+-- Verified: applied after its STEP 0 privilege probe. Do NOT
+-- re-apply blindly: re-apply only if a live probe shows a grant
+-- has drifted from this file, and reconcile first.
 --
 -- PROBLEM (first audit P2-B3): four RPCs are granted EXECUTE to
 -- authenticated although nothing calls them. A granted-but-dead RPC

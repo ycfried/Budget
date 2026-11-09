@@ -26,6 +26,12 @@ alter table temp_increases enable row level security;
 -- with "permission denied for table" before RLS is even consulted).
 grant select on temp_increases to authenticated;
 
+-- R4 (Nov 9, 2026): drop-before-create, so re-applying this file
+-- is idempotent — the Nov 9 step-6 first attempt failed with
+-- ERROR 42710 (policy already exists) because this create had no
+-- drop. Dropping and recreating the identical policy changes
+-- nothing about the applied-live effect.
+drop policy if exists "members read own temp increases" on temp_increases;
 create policy "members read own temp increases"
   on temp_increases for select
   using (household_id in (select household_id from household_members

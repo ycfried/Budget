@@ -129,8 +129,8 @@ test('P2-N5: every mirror rule has a matching fragment in refund-linking.sql', (
   assert.match(linkSql, /c\.date >= v_ref\.date - interval '90 days'/, 'auto-link: 90-day window');
   assert.match(linkSql, /where r\.original_purchase_id = c\.id[\s\S]{0,200}?\) < c\.amount_cents/,
     'auto-link: purchase not already fully refunded');
-  assert.match(linkSql, /where r\.original_purchase_id = c\.id\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/,
-    'auto-link: fully-refunded total counts live linked refunds only (P2-N6)');
+  assert.match(linkSql, /where r\.original_purchase_id = c\.id\s+and r\.kind = 'refund'\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/,
+    'auto-link: fully-refunded total counts live linked refunds only (P2-N6, kind filter R4-BE-3)');
   assert.match(linkSql, /r\.original_purchase_id is null/, 'reverse-link: only unlinked refunds');
   assert.match(linkSql, /r\.date >= v_pur\.date/, 'reverse-link: refund on or after the purchase');
   assert.match(linkSql, /r\.date <= v_pur\.date \+ interval '90 days'/, 'reverse-link: 90-day window');

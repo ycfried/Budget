@@ -74,6 +74,10 @@ drop policy if exists "members read own plaid items" on plaid_items;
 --    the base table with the service-role key, so removing it here
 --    breaks nothing. It stays on the base table, unreadable by
 --    clients (see §1).
+--    NOTE (R4, Nov 9, 2026, step 7): CREATE OR REPLACE VIEW cannot
+--    change this view's column list — removing a column must fail;
+--    use DROP + CREATE instead, then re-run the grant below, because
+--    DROP + CREATE drops the view's grants.
 -- ---------------------------------------------------------------------
 create or replace view public.plaid_items_public as
   select

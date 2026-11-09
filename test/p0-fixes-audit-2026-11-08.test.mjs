@@ -52,8 +52,12 @@ function matchRefundCandidates(refund, purchases) {
     if (p.date > refund.date) return false;
     const days = (new Date(`${refund.date}T12:00:00Z`) - new Date(`${p.date}T12:00:00Z`)) / 86400000;
     if (days > 90) return false;
+    // R4-BE-3: only live refunds consume the room — a linked row
+    // reclassified away from 'refund' (or excluded/reversed) counts 0.
     const already = purchases
-      .filter((r) => r.original_purchase_id === p.id)
+      .filter((r) => r.original_purchase_id === p.id
+        && r.kind === 'refund' && r.excluded !== true
+        && r.state !== 'excluded' && r.state !== 'reversed')
       .reduce((s, r) => s + Math.abs(r.amount_cents), 0);
     if (already >= p.amount_cents) return false;
     return true;
@@ -81,6 +85,16 @@ test('P0-1: matcher links nothing when the match is ambiguous or inexact', () =>
   assert.equal(matchRefundCandidates(refund, [refunded, prior]), null, 'purchase already fully refunded');
   assert.equal(matchRefundCandidates({ ...refund, state: 'excluded' }, [purchase]), null, 'excluded refund');
   assert.equal(matchRefundCandidates({ ...refund, original_purchase_id: 'p1' }, [purchase]), null, 'already linked');
+});
+
+test('R4-BE-3 mirror: a linked row reclassified away from refund stops consuming refund room', () => {
+  // The old linked refund is still linked to p1, but an admin
+  // reclassified it to 'charge' — the purchase's room is free again.
+  const reclassified = { ...refund, id: 'r0', kind: 'charge', original_purchase_id: 'p1' };
+  assert.equal(matchRefundCandidates(refund, [purchase, reclassified]), 'p1');
+  // …while a still-refund linked row keeps the room consumed.
+  const prior = { ...refund, id: 'r0', original_purchase_id: 'p1' };
+  assert.equal(matchRefundCandidates(refund, [purchase, prior]), null);
 });
 
 test('P0-1: refund-linking.sql states the same rules as the mirror', () => {

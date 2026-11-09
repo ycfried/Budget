@@ -1,5 +1,10 @@
--- Refund-table column migration — PREPARED ONLY, DO NOT APPLY
--- without the owner's explicit approval ("fix everything", Nov 3).
+-- Refund-table column migration — APPLIED LIVE Nov 3, 2026
+-- (verified: all 7 expected columns present, plus the unique-per-
+-- refund guards and both indexes, no errors. R4-BE-2, Nov 9, 2026 —
+-- the "PREPARED ONLY" header this file carried before is stale).
+-- Do NOT re-apply blindly: every ADD COLUMN is IF NOT EXISTS, so
+-- re-running is a no-op — but re-apply only if a live probe shows
+-- a column missing, and reconcile first.
 --
 -- WHY: the live restoration_entries and held_refunds tables are an
 -- older shape than supabase/restoration-snapshots.sql defines. That
