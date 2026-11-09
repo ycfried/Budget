@@ -205,7 +205,7 @@ struct MembersSettingsView: View {
             if viewModel.isLoading && viewModel.members.isEmpty {
                 ProgressView()
             } else if let error = viewModel.loadError, viewModel.members.isEmpty {
-                ErrorBox(message: error)
+                ErrorBox(error)
             } else if viewModel.members.isEmpty {
                 MutedLine(text: "No members yet.")
             } else {

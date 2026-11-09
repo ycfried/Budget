@@ -172,7 +172,7 @@ final class EmailAlertsViewModel: ObservableObject {
             if warning == "expiring" {
                 return "Email access expires about 7 days after connecting — reconnect soon to keep alerts coming."
             }
-            return "Not checked since \(MoneyFormat.fmtDateTime(connection.lastPollAt ?? "")) — if new alerts stop arriving, reconnect."
+            return "Not checked since \(OnBudgetKit.MoneyFormat.fmtDateTime(connection.lastPollAt ?? "")) — if new alerts stop arriving, reconnect."
         }
     }
 
@@ -350,7 +350,7 @@ struct EmailAlertsView: View {
             if viewModel.isLoading && viewModel.connections.isEmpty {
                 ProgressView()
             } else if let error = viewModel.loadError, viewModel.connections.isEmpty {
-                ErrorBox(message: error)
+                ErrorBox(error)
             } else if viewModel.connections.isEmpty {
                 MutedLine(text: viewModel.isAdmin ? "None — connect an email below." : "None — the admin connects email alerts.")
             } else {
@@ -379,7 +379,7 @@ struct EmailAlertsView: View {
 
             if let message = viewModel.resultMessage {
                 if viewModel.resultIsError {
-                    ErrorBox(message: message)
+                    ErrorBox(message)
                 } else {
                     Text(message)
                         .font(.subheadline)
@@ -455,7 +455,7 @@ struct EmailAlertsView: View {
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }
                 if let lastPollAt = connection.lastPollAt {
-                    Text("Last checked \(MoneyFormat.fmtDateTime(lastPollAt))")
+                    Text("Last checked \(OnBudgetKit.MoneyFormat.fmtDateTime(lastPollAt))")
                         .font(.subheadline)
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }

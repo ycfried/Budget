@@ -80,7 +80,7 @@ final class ProfileSettingsViewModel: ObservableObject {
 
     func saveEmail() async {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard MoneyFormat.isValidEmail(trimmed) else {
+        guard OnBudgetKit.MoneyFormat.isValidEmail(trimmed) else {
             toast.showError("Enter a valid email address.")
             return
         }

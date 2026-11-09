@@ -110,7 +110,7 @@ struct ConnectedAccountRow: Identifiable {
     }
 
     var connectedLine: String {
-        "Connected \(MoneyFormat.fmtLong(String(item.createdAt.prefix(10))))"
+        "Connected \(OnBudgetKit.MoneyFormat.fmtLong(String(item.createdAt.prefix(10))))"
     }
 }
 
@@ -169,7 +169,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
             let syncTimes = items.compactMap { $0.lastSyncAt }.sorted()
             let householdLastSync = syncTimes.last
             if let householdLastSync {
-                syncLine = "Last synced \(MoneyFormat.fmtDateTime(householdLastSync))"
+                syncLine = "Last synced \(OnBudgetKit.MoneyFormat.fmtDateTime(householdLastSync))"
             } else {
                 syncLine = "Not synced yet."
             }
@@ -476,7 +476,7 @@ struct ConnectedAccountsView: View {
             if viewModel.isLoading && viewModel.rows.isEmpty {
                 ProgressView()
             } else if let error = viewModel.loadError {
-                ErrorBox(message: error)
+                ErrorBox(error)
             } else if viewModel.rows.isEmpty {
                 MutedLine(text: "None.")
             } else {

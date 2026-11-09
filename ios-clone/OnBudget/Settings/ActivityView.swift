@@ -78,12 +78,12 @@ final class ActivityViewModel: ObservableObject {
             var byDay: [String: [AuditDisplayEntry]] = [:]
             var dayOrder: [String] = []
             for row in filteredRows {
-                let day = MoneyFormat.newYorkDayString(row.createdAt) ?? "Unknown date"
+                let day = OnBudgetKit.MoneyFormat.newYorkDayString(row.createdAt) ?? "Unknown date"
                 let entry = AuditDisplayEntry(
                     action: AuditFormatting.formatAction(row.action),
                     detail: AuditFormatting.formatDetail(row.detail),
                     actor: AuditFormatting.formatActor(row.actorName),
-                    time: MoneyFormat.fmtDateTime(row.createdAt)
+                    time: OnBudgetKit.MoneyFormat.fmtDateTime(row.createdAt)
                 )
                 if byDay[day] == nil { dayOrder.append(day) }
                 byDay[day, default: []].append(entry)
@@ -171,7 +171,7 @@ struct ActivityView: View {
                 if viewModel.isLoading && viewModel.groups.isEmpty {
                     ProgressView()
                 } else if let error = viewModel.loadError {
-                    ErrorBox(message: error)
+                    ErrorBox(error)
                 } else if viewModel.groups.isEmpty {
                     MutedLine(text: viewModel.filter.isActive
                         ? "No entries in the selected period."
@@ -229,7 +229,7 @@ struct ActivityView: View {
 
     private func daySection(_ group: ActivityDayGroup) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(group.day == "Unknown date" ? "Unknown date" : MoneyFormat.fmtLong(group.day))
+            Text(group.day == "Unknown date" ? "Unknown date" : OnBudgetKit.MoneyFormat.fmtLong(group.day))
                 .font(.headline)
             ForEach(Array(group.entries.enumerated()), id: \.offset) { _, entry in
                 activityRow(entry)

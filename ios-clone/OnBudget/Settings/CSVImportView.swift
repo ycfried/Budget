@@ -274,7 +274,7 @@ struct CSVImportView: View {
                     }
                 }
                 ForEach(Array(viewModel.previewRows.enumerated()), id: \.offset) { index, preview in
-                    Text("\(index + 1). \(preview.row.date) · \(TitleCase.apply(to: preview.row.merchant.lowercased())) · \(MoneyFormat.formatCents(preview.row.amountCents)) · ••\(preview.row.suffix) — \(preview.isDuplicate ? "Duplicate, will be skipped" : "New")")
+                    Text("\(index + 1). \(preview.row.date) · \(TitleCase.apply(to: preview.row.merchant.lowercased())) · \(OnBudgetKit.MoneyFormat.formatCents(preview.row.amountCents)) · ••\(preview.row.suffix) — \(preview.isDuplicate ? "Duplicate, will be skipped" : "New")")
                         .font(.subheadline)
                         .foregroundStyle(preview.isDuplicate ? Color(hex: "#6b7280") : DesignTokens.ink)
                 }
@@ -282,7 +282,7 @@ struct CSVImportView: View {
 
             if let message = viewModel.resultMessage {
                 if viewModel.resultIsError {
-                    ErrorBox(message: message)
+                    ErrorBox(message)
                 } else {
                     Text(message)
                         .font(.subheadline)

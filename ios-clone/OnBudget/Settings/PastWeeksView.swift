@@ -80,10 +80,10 @@ struct PastWeekRow: Identifiable {
 
     var id: String { weekStart }
 
-    var heading: String { MoneyFormat.fmtLong(weekStart) }
+    var heading: String { OnBudgetKit.MoneyFormat.fmtLong(weekStart) }
 
     func moneyOrMissing(_ cents: Int?) -> String {
-        cents.map { MoneyFormat.formatCents($0) } ?? "not recorded"
+        cents.map { OnBudgetKit.MoneyFormat.formatCents($0) } ?? "not recorded"
     }
 }
 
@@ -235,7 +235,7 @@ struct PastWeeksView: View {
                     if viewModel.isLoading && viewModel.weeks.isEmpty {
                         ProgressView()
                     } else if let error = viewModel.loadError {
-                        ErrorBox(message: error)
+                        ErrorBox(error)
                     } else if viewModel.weeks.isEmpty {
                         MutedLine(text: viewModel.filter.isActive
                             ? "No closed weeks in the selected period."

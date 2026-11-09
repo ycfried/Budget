@@ -63,7 +63,7 @@ final class BudgetSettingsViewModel: ObservableObject {
     }
 
     func saveTapped() {
-        guard let cents = MoneyFormat.parseDollarsStrict(allowanceText), cents >= 0 else {
+        guard let cents = OnBudgetKit.MoneyFormat.parseDollarsStrict(allowanceText), cents >= 0 else {
             toast.showError("Enter a valid allowance (empty is not 0).")
             return
         }
@@ -118,7 +118,7 @@ struct BudgetSettingsView: View {
             if viewModel.isLoading {
                 ProgressView()
             } else if let error = viewModel.loadError {
-                ErrorBox(message: error)
+                ErrorBox(error)
             }
             HStack(spacing: 8) {
                 Text("$")
@@ -155,9 +155,9 @@ struct BudgetSettingsView: View {
         .alert(item: $viewModel.confirmChange) { change in
             let message: String
             if let old = change.oldCents {
-                message = "Change the weekly allowance from \(MoneyFormat.formatCents(old)) to \(MoneyFormat.formatCents(change.newCents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
+                message = "Change the weekly allowance from \(OnBudgetKit.MoneyFormat.formatCents(old)) to \(OnBudgetKit.MoneyFormat.formatCents(change.newCents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
             } else {
-                message = "Set the weekly allowance to \(MoneyFormat.formatCents(change.newCents))? (The current allowance could not be read, so no old value is shown.)\nThis applies from the current week onward. It does not rewrite closed weeks."
+                message = "Set the weekly allowance to \(OnBudgetKit.MoneyFormat.formatCents(change.newCents))? (The current allowance could not be read, so no old value is shown.)\nThis applies from the current week onward. It does not rewrite closed weeks."
             }
             return Alert(
                 title: Text("Change Allowance"),

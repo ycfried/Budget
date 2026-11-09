@@ -2,15 +2,14 @@
 //
 // Shared context, toast, button styles, cards, and the bank-logo view
 // used by every Settings / Past Weeks / Activity / CSV screen.
-// Design rules (owner): palette #2f6bff/#1d4ed8/#3b82f6/#60a5fa/
-// #bfdbfe/white/#0f172a; Title Case headings + button labels; two-
-// button rows = primary blue first + grey tertiary second; pale
-// #bfdbfe ONLY as the middle tier of a three-button row; no two
-// adjacent buttons share a colour/treatment; errors soft red
-// (bg #fef2f2, text #dc2626, border #fecaca); success/info toasts
-// brand blue, bottom only, auto-dismiss 4s; cards/fields sized to
-// what is necessary and comfortable; no explainer sentence where a
-// title already says it.
+// Shared button styles (Primary/Tertiary/Pale), BackButton, ErrorBox
+// and ToastBanner are NOT redefined here — they live in the shared
+// SharedViews.swift (Auth/Home); QuietButtonStyle lives in
+// Transactions/OnBudgetButtons.swift. Money formatting uses the kit
+// type qualified as OnBudgetKit.MoneyFormat: the app target already
+// has two unqualified MoneyFormat types (Formatting.swift and
+// Funds/OnBudgetKit.MoneyFormat.swift) — a pre-existing duplicate the coordinator
+// still needs to resolve (see report).
 
 import SwiftUI
 import UIKit
@@ -91,6 +90,13 @@ func settingsErrorMessage(_ error: Error) -> String {
 /// Bottom-only toast state. Success/info render brand blue, errors
 /// soft red. Auto-dismisses after 4s (spec §2.3); tap dismisses
 /// sooner. One toast at a time — a new toast replaces the old one.
+///
+/// NOTE (rebase, Nov 9): the button styles, BackButton, ErrorBox
+/// and ToastBanner this file used to define now live in the shared
+/// `SharedViews.swift` (Auth/Home) / `Transactions/OnBudgetButtons.swift`
+/// — this file keeps only Settings-only helpers plus the ToastState
+/// object the Settings cards share. The banner itself is the shared
+/// `ToastBanner(toast:onDismiss:)` from SharedViews.
 @MainActor
 final class ToastState: ObservableObject {
     @Published var current: Toast?
@@ -113,43 +119,16 @@ final class ToastState: ObservableObject {
     }
 }
 
-struct ToastBanner: View {
-    let toast: Toast
-
-    var body: some View {
-        Text(toast.message)
-            .font(.subheadline)
-            .fontWeight(.semibold)
-            .foregroundStyle(
-                toast.kind == .error ? DesignTokens.errorText : .white
-            )
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                toast.kind == .error ? DesignTokens.errorBackground : DesignTokens.primary
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(
-                        toast.kind == .error ? DesignTokens.errorBorder : Color.clear,
-                        lineWidth: 1
-                    )
-            )
-            .cornerRadius(12)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 120)
-    }
-}
-
 extension View {
-    /// Bottom toast overlay, floating clear of the tab bar.
+    /// Bottom toast overlay, floating clear of the tab bar. Uses the
+    /// shared `ToastBanner` (SharedViews) so there is one banner.
+    /// Overloads the shared `toastOverlay(Binding<Toast?>)` — this
+    /// one takes the shared Settings `ToastState` instead.
     func toastOverlay(_ toastState: ToastState) -> some View {
         ZStack(alignment: .bottom) {
             self
             if let toast = toastState.current {
-                ToastBanner(toast: toast)
-                    .onTapGesture { toastState.dismiss() }
+                ToastBanner(toast: toast) { toastState.dismiss() }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -158,50 +137,12 @@ extension View {
 }
 
 // MARK: - Buttons
-
-/// Primary: #2f6bff fill, white text.
-struct PrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 13)
-            .background(DesignTokens.primary)
-            .cornerRadius(14)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
-    }
-}
-
-/// Grey tertiary: #e5e7eb fill, ink text. Second button in a
-/// two-button row.
-struct TertiaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .foregroundStyle(DesignTokens.ink)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 13)
-            .background(Color(hex: "#e5e7eb"))
-            .cornerRadius(14)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
-    }
-}
-
-/// Pale: #bfdbfe fill, ink text. ONLY the middle tier of a
-/// three-button row — never beside another pale button.
-struct PaleButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .foregroundStyle(DesignTokens.ink)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 13)
-            .background(DesignTokens.pale)
-            .cornerRadius(14)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
-    }
-}
+//
+// Primary / Tertiary / Pale button styles, BackButton, ErrorBox and
+// ToastBanner live in the shared `SharedViews.swift` (Auth/Home) —
+// `QuietButtonStyle` in `Transactions/OnBudgetButtons.swift`. This
+// file defines only the Settings-only button styles below, so the
+// app target has exactly one of each shared definition.
 
 /// Danger: soft-red treatment — bg #fef2f2, text #dc2626.
 /// Never a solid red button.
@@ -233,35 +174,6 @@ struct SmallDangerButtonStyle: ButtonStyle {
     }
 }
 
-/// Quiet small button (nickname edit). No background, muted text.
-struct QuietButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline)
-            .fontWeight(.semibold)
-            .foregroundStyle(Color(hex: "#6b7280"))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .opacity(configuration.isPressed ? 0.7 : 1.0)
-    }
-}
-
-/// Back link: light blue #3b82f6, bold, no background, no border.
-/// Text is always "← Back".
-struct BackButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text("← Back")
-                .font(.headline)
-                .fontWeight(.bold)
-                .foregroundStyle(DesignTokens.mid)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 // MARK: - Cards, fields, messages
 
 /// White card, radius 20, light shadow (styles.css:388).
@@ -281,27 +193,6 @@ struct SettingsCard<Content: View>: View {
         .background(.white)
         .cornerRadius(20)
         .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
-    }
-}
-
-/// Soft-red inline error box (bg #fef2f2, text #dc2626,
-/// border #fecaca).
-struct ErrorBox: View {
-    let message: String
-
-    var body: some View {
-        Text(message)
-            .font(.subheadline)
-            .fontWeight(.semibold)
-            .foregroundStyle(DesignTokens.errorText)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(DesignTokens.errorBackground)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(DesignTokens.errorBorder, lineWidth: 1)
-            )
-            .cornerRadius(12)
     }
 }
 
