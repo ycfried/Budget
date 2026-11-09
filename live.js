@@ -399,6 +399,25 @@ async function audit(action, detail) {
   if (error) console.warn('audit insert blocked (expected until insert policies land):', error.message);
 }
 
+// B6 (Nov 9, 2026): a single PostgREST response is capped at 1000
+// rows by default, so a bare .limit(1000) silently truncates any
+// money sum past 1000 rows. Page through in 1000-row pages and
+// return every row; makeQuery receives (from, to) and must apply
+// .range(from, to) on an ordered query so pages are stable.
+// Behaviour is identical below 1000 rows. Callers pass a throwing
+// error through, so a failed page is an error state, never a
+// partial sum presented as real numbers.
+async function fetchAllPages(makeQuery) {
+  const rows = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await makeQuery(from, from + PAGE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < PAGE) return rows;
+  }
+}
+
 async function refresh() {
   if (!household) return;
   // Task 4: the page must not jump to the top after an action
@@ -1251,11 +1270,16 @@ async function refresh() {
   // the ledger-kind gap: the live write path today only attests a balance
   // (kind 'adjustment', amount 0), so transfer/withdrawal/interest totals
   // stay $0 until a write path for those kinds lands (S1).
-  const { data: sav, error: savErr } = await supabase.from('savings_ledger')
-    .select('*').eq('household_id', household.household_id)
-    .order('created_at', { ascending: false }).limit(1000);
-  if (savErr) console.warn('savings_ledger read failed:', savErr.message);
-  const savRows = savErr ? [] : (sav ?? []);
+  // B6 (Nov 9, 2026): paged whole-history read (fetchAllPages) — the
+  // old .limit(1000) silently truncated the transfer/withdrawal/
+  // interest sums past 1000 rows. A failed page keeps the old
+  // behaviour: warn and show empty, never a partial sum.
+  let savRows = []; let savErr = null;
+  try {
+    savRows = await fetchAllPages((a, b) => supabase.from('savings_ledger')
+      .select('*').eq('household_id', household.household_id)
+      .order('created_at', { ascending: false }).range(a, b));
+  } catch (e) { savErr = e; console.warn('savings_ledger read failed:', e.message); }
   const latestBalRow = savRows.find((r) => r.actual_balance_cents !== null && r.actual_balance_cents !== undefined);
   const savBalance = latestBalRow ? latestBalRow.actual_balance_cents : null;
   const savIn = savRows.filter((r) => r.kind === 'transfer_in').reduce((t, r) => t + (r.amount_cents || 0), 0);
@@ -1656,14 +1680,20 @@ async function refresh() {
   // charity rows. A read failure is an error state on the cards,
   // never zeros presented as real numbers.
   try {
-    const { data: incRows, error: incErr } = await supabase.from('charity_income')
-      .select('amount_cents, rate_bp').eq('household_id', household.household_id).eq('status', 'active').limit(1000);
+    // B6 (Nov 9, 2026): paged whole-history reads (fetchAllPages) —
+    // the old .limit(1000) silently truncated Committed past 1000
+    // active income rows and Given past 1000 verified gifts. A failed
+    // page throws into this try's catch (error state, never zeros).
+    const incRows = await fetchAllPages((a, b) => supabase.from('charity_income')
+      .select('amount_cents, rate_bp').eq('household_id', household.household_id).eq('status', 'active')
+      .order('created_at', { ascending: true }).range(a, b));
     const { data: setRow, error: setErr } = await supabase.from('charity_settings')
       .select('default_rate_bp').eq('household_id', household.household_id).maybeSingle();
-    const { data: giftRows, error: giftErr } = await supabase.from('transactions')
+    const giftRows = await fetchAllPages((a, b) => supabase.from('transactions')
       .select('amount_cents').eq('household_id', household.household_id).eq('kind', 'charity')
-      .eq('state', 'verified').eq('excluded', false).gte('date', '2026-11-01').limit(1000);
-    if (incErr || setErr || giftErr) throw (incErr || setErr || giftErr);
+      .eq('state', 'verified').eq('excluded', false).gte('date', '2026-11-01')
+      .order('created_at', { ascending: true }).range(a, b));
+    if (setErr) throw setErr;
     const committed = (incRows ?? []).reduce((s, r) => s + charityCommittedCents(r.amount_cents ?? 0, r.rate_bp ?? 1000), 0);
     const given = (giftRows ?? []).reduce((s, r) => s + (r.amount_cents ?? 0), 0);
     const remaining = committed - given;
