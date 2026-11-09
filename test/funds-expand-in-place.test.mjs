@@ -46,7 +46,7 @@ test('Extra Fund expands in place: three rows + three buttons, in order and trea
   assert.ok(detail.includes('<span>Pending</span><strong>$375.00</strong>'));
   assert.ok(detail.includes('<span>Total</span><strong>$442.11</strong>'));
   // Mockup labels, in order: Add money / Spend from fund / Request money.
-  assert.deepEqual(btnLabels(detail), ['Add Money', 'Spend From Fund', 'Request Money']);
+  assert.deepEqual(btnLabels(detail), ['Add Money', 'Spend from Fund', 'Request Money']);
   // Treatments: primary blue, pale middle, grey tertiary.
   assert.deepEqual(btnClasses(detail), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
   assert.deepEqual([...detail.matchAll(/data-fund-action="([^"]+)"/g)].map((m) => m[1]), ['add', 'use', 'ask']);
@@ -65,7 +65,7 @@ test('Extra Fund expansion for a member is Request money only, grey tertiary', (
 });
 
 test('fundExpandActions returns the same three actions (admin) / one (member)', () => {
-  assert.deepEqual(admin.fundExpandActions(true).map((a) => a.label), ['Add Money', 'Spend From Fund', 'Request Money']);
+  assert.deepEqual(admin.fundExpandActions(true).map((a) => a.label), ['Add Money', 'Spend from Fund', 'Request Money']);
   assert.deepEqual(member.fundExpandActions(false).map((a) => a.label), ['Request Money']);
 });
 
@@ -134,7 +134,7 @@ test('sync passes withActions=false for Home cards, true for Funds cards', () =>
 
 test('Funds page default keeps the full buttons (withActions defaults true)', () => {
   const detail = admin.fundExpandDetailHtml('fund', fundData, true);
-  assert.deepEqual(btnLabels(detail), ['Add Money', 'Spend From Fund', 'Request Money']);
+  assert.deepEqual(btnLabels(detail), ['Add Money', 'Spend from Fund', 'Request Money']);
   const charity = admin.fundExpandDetailHtml('charity', charityData, true);
   assert.deepEqual(btnLabels(charity), ['Record Income', 'Close']);
 });

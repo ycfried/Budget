@@ -288,16 +288,9 @@ test('NEW-P2-6: service-worker cache-write failure logs instead of swallowing', 
 // 'Mark as Charity' ('as' lower, matching its dialog title 'Mark as Charity
 // Gift'; 'Join As Member' capitalizes 'As' the other way — owner call if
 // it ever matters). The rule is the standing minor-words list (a, an, the,
-// and, but, or, of, for, to, in lower unless first — 'from' is NOT minor
-// for buttons, see the NOTE at MINOR_WORDS below).
-const MINOR_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'of', 'for', 'to', 'in']);
-// NOTE: 'from' is deliberately NOT in this set. The headline rule pins
-// 'from' lower (P2-F6: 'Import Transactions from a CSV File'), and R5 §3's
-// parenthetical claims it for buttons too — but the task for this batch
-// lists the minor words WITHOUT 'from' and gives 'Spend from fund' →
-// 'Spend From Fund' as the example, so buttons keep capital F here. If
-// the owner wants headline-style lowercase 'from' on buttons as well,
-// that is a one-word change ('Spend from Fund').
+// and, but, or, of, for, to, in, from lower unless first — owner added
+// 'from' Nov 9, 2026, so buttons now match the headline rule).
+const MINOR_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'of', 'for', 'to', 'in', 'from']);
 const TITLE_CASE_EXCEPTIONS = new Set(['Sign In', 'Sign In Again', 'Mark as Charity']);
 function isTitleCaseLabel(label) {
   if (TITLE_CASE_EXCEPTIONS.has(label)) return true;

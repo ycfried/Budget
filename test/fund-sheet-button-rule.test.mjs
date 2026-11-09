@@ -128,7 +128,7 @@ test('B: three-button middles still pale; pale definition untouched', () => {
   // Spend plain pale middle, Request tertiary) live in the expanded
   // Extra Fund card, not a sheet and not a card.
   assert.match(js, /label: 'Add Money', result: 'add', btnClass: 'btn btn-primary'/);
-  assert.match(js, /label: 'Spend From Fund', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Spend from Fund', result: 'use', btnClass: 'btn'/);
   assert.match(js, /label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary'/);
   // Filters: Apply primary, Reset plain (pale middle), Cancel tertiary.
   assert.match(html, /class="btn btn-primary" id="txFiltersApplyBtn"/);

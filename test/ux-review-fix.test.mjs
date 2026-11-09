@@ -72,7 +72,7 @@ test('button levels are solid colors, no pale tint or white outline', () => {
   // expanded Extra Fund card, not a sheet and not a card.
   assert.equal(html.includes('id="section-fund-actions"'), false);
   assert.match(js, /label: 'Add Money', result: 'add', btnClass: 'btn btn-primary'/);
-  assert.match(js, /label: 'Spend From Fund', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Spend from Fund', result: 'use', btnClass: 'btn'/);
   assert.match(js, /label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary'/);
   assert.equal(html.includes('fundActionIncomeBtn'), false);
   // Detail: send-live-bundle replaced the button row with one

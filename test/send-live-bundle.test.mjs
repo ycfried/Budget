@@ -47,7 +47,7 @@ test('2. Pale option B: fill stays #bfdbfe, wording is ink #0f172a', () => {
   // (now in the expanded Extra Fund card, Task 7) and Filters Reset. Bank
   // Sync is no longer a pale middle (settings-bank-buttons, Nov 4):
   // the bank row is two buttons, Connect primary + Sync tertiary.
-  assert.match(js, /label: 'Spend From Fund', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Spend from Fund', result: 'use', btnClass: 'btn'/);
   assert.ok(html.includes('<button class="btn" id="txFiltersResetBtn"'));
   assert.ok(html.includes('<button id="syncBankBtn" class="btn btn-tertiary"'));
 });

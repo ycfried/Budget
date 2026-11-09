@@ -229,7 +229,7 @@ test('Task 7: Review count shows only when something needs review', () => {
 
 test('Task 7: three fund actions live in the expanded Extra Fund card, original order/treatments/gating', () => {
   const sheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request Money'"));
-  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add Money', 'Spend From Fund', 'Request Money']);
+  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add Money', 'Spend from Fund', 'Request Money']);
   assert.deepEqual([...sheet.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
   assert.deepEqual([...sheet.matchAll(/result: '([^']+)'/g)].map((m) => m[1]), ['add', 'use', 'ask']);
   // Members see Request only, in the same tertiary treatment.

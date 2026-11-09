@@ -3320,7 +3320,7 @@ heroWeeklyTarget?.addEventListener('keydown', (e) => {
 // The Weekly sheet, alerts, and transaction Action sheets are
 // untouched and still use showSheet.
 // Buttons (mockup labels) live ONLY on the Funds page: Extra Fund —
-// "Add Money" primary blue, "Spend From Fund" pale #bfdbfe/ink
+// "Add Money" primary blue, "Spend from Fund" pale #bfdbfe/ink
 // (middle tier), "Request Money" grey tertiary; members see "Request
 // money" only. Charity — "Record Income" primary blue, "Close" grey
 // tertiary; members see "Close" only. Home is the overview
@@ -3337,7 +3337,7 @@ function fundExpandActions(isAdmin) {
   return isAdmin
     ? [
         { label: 'Add Money', result: 'add', btnClass: 'btn btn-primary' },
-        { label: 'Spend From Fund', result: 'use', btnClass: 'btn' },
+        { label: 'Spend from Fund', result: 'use', btnClass: 'btn' },
         { label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary' },
       ]
     : [{ label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary' }];

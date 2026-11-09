@@ -20,7 +20,7 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 test('Funds actions row is exactly Add / Spend / Request, in order (now in the expanded Extra Fund card)', () => {
   assert.equal(html.includes('id="section-fund-actions"'), false);
   const actions = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request Money'"));
-  assert.deepEqual([...actions.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add Money', 'Spend From Fund', 'Request Money']);
+  assert.deepEqual([...actions.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add Money', 'Spend from Fund', 'Request Money']);
   assert.deepEqual([...actions.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
   assert.deepEqual([...actions.matchAll(/result: '([^']+)'/g)].map((m) => m[1]), ['add', 'use', 'ask']);
 });
