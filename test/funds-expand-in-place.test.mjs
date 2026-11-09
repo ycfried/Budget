@@ -46,7 +46,7 @@ test('Extra Fund expands in place: three rows + three buttons, in order and trea
   assert.ok(detail.includes('<span>Pending</span><strong>$375.00</strong>'));
   assert.ok(detail.includes('<span>Total</span><strong>$442.11</strong>'));
   // Mockup labels, in order: Add money / Spend from fund / Request money.
-  assert.deepEqual(btnLabels(detail), ['Add money', 'Spend from fund', 'Request money']);
+  assert.deepEqual(btnLabels(detail), ['Add Money', 'Spend from Fund', 'Request Money']);
   // Treatments: primary blue, pale middle, grey tertiary.
   assert.deepEqual(btnClasses(detail), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
   assert.deepEqual([...detail.matchAll(/data-fund-action="([^"]+)"/g)].map((m) => m[1]), ['add', 'use', 'ask']);
@@ -59,14 +59,14 @@ test('Extra Fund expands in place: three rows + three buttons, in order and trea
 
 test('Extra Fund expansion for a member is Request money only, grey tertiary', () => {
   const detail = member.fundExpandDetailHtml('fund', fundData, false);
-  assert.deepEqual(btnLabels(detail), ['Request money']);
+  assert.deepEqual(btnLabels(detail), ['Request Money']);
   assert.deepEqual(btnClasses(detail), ['btn btn-tertiary']);
   assert.ok(detail.includes('<span>Available to request</span>'));
 });
 
 test('fundExpandActions returns the same three actions (admin) / one (member)', () => {
-  assert.deepEqual(admin.fundExpandActions(true).map((a) => a.label), ['Add money', 'Spend from fund', 'Request money']);
-  assert.deepEqual(member.fundExpandActions(false).map((a) => a.label), ['Request money']);
+  assert.deepEqual(admin.fundExpandActions(true).map((a) => a.label), ['Add Money', 'Spend from Fund', 'Request Money']);
+  assert.deepEqual(member.fundExpandActions(false).map((a) => a.label), ['Request Money']);
 });
 
 // --- Charity expands in place ------------------------------------------
@@ -78,7 +78,7 @@ test('Charity expands in place: three rows + Record income blue + Close grey', (
   assert.ok(detail.includes('<span>Given</span><strong>$30.00</strong>'));
   assert.ok(detail.includes('<span>Total</span><strong>$80.00</strong>'));
   assert.ok(detail.includes('November 2026 onward'), 'period kept in the expansion');
-  assert.deepEqual(btnLabels(detail), ['Record income', 'Close']);
+  assert.deepEqual(btnLabels(detail), ['Record Income', 'Close']);
   assert.deepEqual(btnClasses(detail), ['btn btn-primary', 'btn btn-tertiary']);
   assert.deepEqual([...detail.matchAll(/data-charity-action="([^"]+)"/g)].map((m) => m[1]), ['record-income', 'close']);
 });
@@ -90,7 +90,7 @@ test('Charity expansion for a member is Close only', () => {
 });
 
 test('charityExpandActions returns Record income + Close (admin) / Close only (member)', () => {
-  assert.deepEqual(admin.charityExpandActions(true).map((a) => a.label), ['Record income', 'Close']);
+  assert.deepEqual(admin.charityExpandActions(true).map((a) => a.label), ['Record Income', 'Close']);
   assert.deepEqual(member.charityExpandActions(false).map((a) => a.label), ['Close']);
 });
 
@@ -134,9 +134,9 @@ test('sync passes withActions=false for Home cards, true for Funds cards', () =>
 
 test('Funds page default keeps the full buttons (withActions defaults true)', () => {
   const detail = admin.fundExpandDetailHtml('fund', fundData, true);
-  assert.deepEqual(btnLabels(detail), ['Add money', 'Spend from fund', 'Request money']);
+  assert.deepEqual(btnLabels(detail), ['Add Money', 'Spend from Fund', 'Request Money']);
   const charity = admin.fundExpandDetailHtml('charity', charityData, true);
-  assert.deepEqual(btnLabels(charity), ['Record income', 'Close']);
+  assert.deepEqual(btnLabels(charity), ['Record Income', 'Close']);
 });
 
 // --- No sheet is opened by a card tap -----------------------------------
@@ -234,8 +234,8 @@ test('More card is unchanged', () => {
   assert.ok(html.includes('id="moreFundActivityBtn"'));
   assert.ok(html.includes('id="moreReviewBtn"'));
   assert.ok(html.includes('id="moreSavingsBtn"'));
-  assert.ok(html.includes('Fund activity'));
-  assert.ok(html.includes('Past savings records'));
+  assert.ok(html.includes('Fund Activity'));
+  assert.ok(html.includes('Past Savings Records'));
 });
 
 test('refresh re-renders an open card so it never shows stale numbers', () => {
@@ -245,7 +245,7 @@ test('refresh re-renders an open card so it never shows stale numbers', () => {
 
 // --- Pins -----------------------------------------------------------------
 
-test('pins bumped to v52/v62', () => {
+test('pins bumped to v53/v65', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=64/);
+  assert.match(html, /live\.js\?v=65/);
 });

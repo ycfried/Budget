@@ -71,9 +71,9 @@ test('button levels are solid colors, no pale tint or white outline', () => {
   // Funds expand-in-place (owner, Nov 6): fund actions live in the
   // expanded Extra Fund card, not a sheet and not a card.
   assert.equal(html.includes('id="section-fund-actions"'), false);
-  assert.match(js, /label: 'Add money', result: 'add', btnClass: 'btn btn-primary'/);
-  assert.match(js, /label: 'Spend from fund', result: 'use', btnClass: 'btn'/);
-  assert.match(js, /label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary'/);
+  assert.match(js, /label: 'Add Money', result: 'add', btnClass: 'btn btn-primary'/);
+  assert.match(js, /label: 'Spend from Fund', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary'/);
   assert.equal(html.includes('fundActionIncomeBtn'), false);
   // Detail: send-live-bundle replaced the button row with one
   // Actions line (see send-live-bundle tests); the old Mark/Use
@@ -155,7 +155,7 @@ test('Show/Hide toggle exists on every password field', () => {
   assert.ok(html.includes('id="togglePasswordBtn"'));
   // Change-password sheet (generic showSheet password branch).
   assert.match(js, /safeType === 'password'/);
-  assert.match(js, /aria-label', showing \? 'Hide password' : 'Show password'/);
+  assert.match(js, /aria-label', showing \? 'Hide Password' : 'Show Password'/);
   // Reset page: both fields.
   assert.ok(reset.includes('id="toggleNewPasswordBtn"'));
   assert.ok(reset.includes('id="toggleConfirmPasswordBtn"'));

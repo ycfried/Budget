@@ -127,6 +127,6 @@ test('generic sheets: Escape, focus trap, and focus return; filter sheet untouch
 });
 
 test('verify-then-decide trivial fixes: history scope label, footer hidden off-app', () => {
-  assert.match(liveHtml, /Load more activity/);
+  assert.match(liveHtml, />Load More Activity</);
   assert.match(liveJs, /footer\.foot.*classList\.toggle\('hidden', view !== 'app'\)/);
 });

@@ -47,7 +47,7 @@ test('number row is vertically centered and kicker row is full width', () => {
 });
 
 test('sync button keeps its identity, treatment hook, and the number keeps its target', () => {
-  assert.match(hero, /id="homeSyncBtn"[^>]*aria-label="Sync bank"/);
+  assert.match(hero, /id="homeSyncBtn"[^>]*aria-label="Sync Bank"/);
   assert.match(hero, /id="weeklyAvailable"[^>]*role="button"[^>]*tabindex="0"/);
   assert.match(hero, /id="weeklyAvailable"[^>]*aria-label="Show Weekly Budget Breakdown"/);
   assert.match(css, /\.hero-number-row \.hero-sync-btn \{[^}]*width: 44px; height: 44px/);
@@ -72,6 +72,6 @@ test('Funds Charity panel heading is untouched (already just Charity)', () => {
   assert.match(html, /data-fund-card="charity"[^>]*>\s*<div class="fund-balance-head"><h2>Charity<\/h2><\/div>/);
 });
 
-test('version pins: styles v52, live.js v62 after the PR #32 merge', () => {
+test('version pins: styles v53, live.js v65 after the PR #32 merge', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=64/);});
+  assert.match(html, /live\.js\?v=65/);});

@@ -1,7 +1,7 @@
 // Weekly-sheet-trim (owner correction, Nov 3, ~9:59 PM, supersedes
 // the PR #21 disclosure design), as narrowed by weekly-left-only
 // (owner approval, Nov 3, ~11:20 PM): the Weekly popup contains
-// EXACTLY one row — Left — plus the "Show transactions" button.
+// EXACTLY one row — Left — plus the "Show Transactions" button.
 // Spent and Allowance were removed from the popup: balances, not
 // spent totals, are what shows, and allowance lives in Settings
 // for the admin. The "Show how this adds up" disclosure and every
@@ -57,7 +57,7 @@ test('no disclosure element exists in the Weekly sheet at all', () => {
 });
 
 test('Show transactions button exists and opens the week-filtered Transactions view', () => {
-  assert.match(sheetFn, /extraAction: \{ label: 'Show transactions', result: 'show-transactions' \}/);
+  assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /if \(weeklyResult === 'show-transactions'\) \{\s*txWeekOnly = true;\s*showView\('purchases'\);\s*await refresh\(\);/);
   // Focus lands on the Filters button at the top of the Transactions
   // view, next to the "This week" pill and count line.

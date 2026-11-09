@@ -23,9 +23,9 @@ test('P2-F1: gift form pre-Nov date uses setGiftError, not a dialog', () => {
 
 // ---- P2-F2: lone submits are primary blue, never pale ----
 test('P2-F2: the three lone submits are btn-primary', () => {
-  assert.ok(html.includes('<button class="btn btn-primary" type="submit" aria-label="Save the default charity rate">Save default rate</button>'), 'Save default rate is primary');
-  assert.ok(html.includes('<button class="btn btn-primary" type="submit" aria-label="Record spending from the Extra Fund">Record it</button>'), 'Record it is primary');
-  assert.ok(html.includes('<label class="btn btn-primary csv-file-btn" for="csvFile">Choose file</label>'), 'Choose file is primary');
+  assert.ok(html.includes('<button class="btn btn-primary" type="submit" aria-label="Save the default charity rate">Save Default Rate</button>'), 'Save Default Rate is primary');
+  assert.ok(html.includes('<button class="btn btn-primary" type="submit" aria-label="Record spending from the Extra Fund">Record It</button>'), 'Record It is primary');
+  assert.ok(html.includes('<label class="btn btn-primary csv-file-btn" for="csvFile">Choose File</label>'), 'Choose File is primary');
 });
 
 // ---- P2-F3: sort row has no two adjacent pale controls ----
@@ -189,7 +189,7 @@ test('P2-N4: both insert sites document manual-Link-only and never call the auto
   assert.equal(js.includes("supabase.rpc('auto_link_refund'"), false, 'client never calls auto_link_refund');
   assert.equal(js.includes("supabase.rpc('link_refunds_to_purchase'"), false, 'client never calls link_refunds_to_purchase');
   assert.equal((js.match(/P2-N4/g) ?? []).length, 2, 'both insert sites carry the P2-N4 note');
-  assert.ok(js.includes('Actions → Link to purchase'), 'manual path is named at the insert sites');
+  assert.ok(js.includes('Actions → Link to Purchase'), 'manual path is named at the insert sites');
 });
 
 // ---- P2-C4: unlinked_excess_cents is displayed ----
@@ -230,14 +230,15 @@ test('NEW-P2-3: stale-sync footer names where Sync lives', () => {
 });
 
 // ---- NEW-P2-4 (R4, Nov 9, 2026): SW comment cites the current pin ----
-// The live.js pin moved v63 -> v64 in this batch, so the comment now says
-// (v64) to match the bumped cache name.
+// The live.js pin moved v64 -> v65 in this batch, so the comment now says
+// (v65) to match the bumped cache name.
 test('NEW-P2-4: service-worker comment cites the current cache version', () => {
   const cache = /const CACHE = 'onbudget-live-v(\d+)'/.exec(sw)?.[1];
   assert.ok(cache, 'cache version found');
   assert.ok(sw.includes(`(${`v${cache}`})`), 'comment cites the same version as CACHE');
   assert.equal(sw.includes('(v62)'), false, 'stale v62 comment is gone');
   assert.equal(sw.includes('(v63)'), false, 'stale v63 comment is gone');
+  assert.equal(sw.includes('(v64)'), false, 'stale v64 comment is gone');
 });
 
 // ---- NEW-P2-5 (R4, Nov 9, 2026): showSheet actions branch deleted ----
@@ -264,18 +265,112 @@ test('NEW-P2-6: service-worker cache-write failure logs instead of swallowing', 
   assert.equal(sw.includes('.catch(() => {})'), false, 'no silent empty catch remains in the service worker');
 });
 
-// ---- NEW-P2-7 (R4, Nov 9, 2026): button labels are Title Case platform-wide ----
+// ---- R5-NEW1 (Nov 9, 2026): Title Case for ALL button labels, pinned platform-wide ----
 // Owner delegated the call Nov 9 ("whatever you chose"): Title Case for
 // all button labels, the same rule already standing for headlines/headers.
-// The five sentence-case labels found by R4 are fixed here; the rule is
-// pinned so a new sentence-case button cannot drift back in.
-test('NEW-P2-7: button labels are Title Case (owner-delegated Nov 9)', () => {
-  for (const label of ['Add Transaction', 'Save Name', 'Save Email', 'Check Email Now', 'Apply Filter']) {
-    assert.ok(html.includes(`>${label}<`), `button label is Title Case: ${label}`);
+// R4 fixed only the 5 labels it named; R5 found ~30 more across live.html
+// and live.js, and the scan for this test found 8 R5 missed (Sign Out,
+// Choose File, Same Purchase, Keep It / Keep Current, Add / Connect Anyway,
+// Yes Delete Everything, Mark as Charity, Oldest / Newest First). This test
+// scans every button label the suite can see, so a new sentence-case button
+// cannot drift back in:
+//   (a) every visible <button> label + the label-as-button file picker in
+//       live.html (glyphs stripped, icon-only buttons have no text to scan);
+//   (b) every button-label literal in live.js — `label:`, confirmLabel,
+//       cancelLabel — plus the showConfirm confirm labels and the
+//       textContent-set button labels, pinned by the explicit list below.
+//   (c) aria-labels that duplicate the visible label must match it exactly
+//       (the R4 precedent: aria-label="Add Transaction").
+// Descriptive aria-label sentences are NOT button labels (R5 §3 exclusion)
+// and are not scanned. Two labels are explicit exceptions, asserted as-is
+// because the repo's own precedents conflict on them: 'Sign In' /
+// 'Sign In Again' (particle 'In' capital, pinned by feedback-bundle) and
+// 'Mark as Charity' ('as' lower, matching its dialog title 'Mark as Charity
+// Gift'; 'Join As Member' capitalizes 'As' the other way — owner call if
+// it ever matters). The rule is the standing minor-words list (a, an, the,
+// and, but, or, of, for, to, in, from lower unless first — owner added
+// 'from' Nov 9, 2026, so buttons now match the headline rule).
+const MINOR_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'of', 'for', 'to', 'in', 'from']);
+const TITLE_CASE_EXCEPTIONS = new Set(['Sign In', 'Sign In Again', 'Mark as Charity']);
+function isTitleCaseLabel(label) {
+  if (TITLE_CASE_EXCEPTIONS.has(label)) return true;
+  const words = label.replace(/^[↓←›×•\s]+/, '').replace(/[↓←›×•\s]+$/, '')
+    .split(/[\s-]+/).map((w) => w.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '')).filter(Boolean);
+  return words.length > 0 && words.every((w, i) => {
+    const lower = w.toLowerCase();
+    if (i > 0 && MINOR_WORDS.has(lower)) return w === lower;
+    return w[0] === w[0].toUpperCase() && w.slice(1) === w.slice(1).toLowerCase();
+  });
+}
+test('R5-NEW1: every button label is Title Case, platform-wide', () => {
+  // (a) live.html visible button labels + label-as-button file picker.
+  // The Add-option buttons carry a description span under the title
+  // ("Add a transaction by hand") — descriptions, not labels (R5 §3
+  // exclusion), so the .muted.small spans are dropped before stripping tags.
+  const stripDesc = (inner) => inner.replace(/<span class="muted small">[\s\S]*?<\/span>/g, '')
+    .replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  const htmlLabels = [
+    ...[...html.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map((m) => stripDesc(m[1])),
+    ...[...html.matchAll(/<label class="btn[^"]*"[^>]*>([\s\S]*?)<\/label>/g)].map((m) => stripDesc(m[1])),
+  ].filter(Boolean);
+  assert.ok(htmlLabels.length > 30, `scanned ${htmlLabels.length} HTML button labels`);
+  for (const label of htmlLabels) {
+    assert.ok(isTitleCaseLabel(label), `HTML button label is Title Case: ${label}`);
   }
-  for (const old of ['>Add transaction<', '>Save name<', '>Save email<', '>Check email now<', '>Apply filter<']) {
-    assert.equal(html.includes(old), false, `no sentence-case button label remains: ${old}`);
+  // (b) live.js button-label literals in label roles.
+  const jsLabels = [
+    ...[...js.matchAll(/label: '([^']+)'/g)].map((m) => m[1]),
+    ...[...js.matchAll(/(?:confirmLabel|cancelLabel): '([^']+)'/g)].map((m) => m[1]),
+  ];
+  assert.ok(jsLabels.length > 20, `scanned ${jsLabels.length} JS button-label literals`);
+  for (const label of jsLabels) {
+    assert.ok(isTitleCaseLabel(label), `JS button-label literal is Title Case: ${label}`);
   }
+  // (b, continued) showConfirm confirm labels + textContent-set buttons,
+  // pinned explicitly — the full corrected list, R5 §3 plus the scan finds.
+  for (const label of ['Disconnect', 'Release', 'Same Purchase', 'Separate',
+    'Add Anyway', 'Connect Anyway', 'Remove', 'Mark as Charity', 'Unlink',
+    'Delete', 'Record Anyway', 'Delete Account', 'Yes, Delete Everything',
+    'Sign In Again', 'Try Again', 'Clear Search and Filters', '↑ Oldest First',
+    '↓ Newest First']) {
+    assert.ok(js.includes(`'${label}'`) || js.includes(`>${label}<`),
+      `JS button label present: ${label}`);
+  }
+  for (const label of ['Sign Out', 'Choose File', 'Confirm Import', 'Record Gift',
+    '↓ Newest First', 'Load More', 'Change Password', 'Connect Email',
+    'Save Allowance', 'Set New Total', 'Delete Account', 'Fund Activity',
+    'Past Savings Records', 'Save Top-Up', 'Save Default Rate', 'Save Income',
+    'Cancel Correction', 'Record It', 'Send Request', 'Clear Date Filter',
+    'Load More Activity', 'Add Transaction', 'Save Name', 'Save Email',
+    'Check Email Now', 'Apply Filter']) {
+    assert.ok(html.includes(`>${label}<`) || html.includes(`<span>${label}</span>`),
+      `HTML button label present: ${label}`);
+  }
+  // Old sentence-case forms must be gone as button labels (quoted literals
+  // in JS, visible text in HTML). Non-label prose is out of scope here.
+  for (const old of ["'Add money'", "'Spend from fund'", "'Request money'",
+    "'Record income'", "'Show transactions'", "'Link to purchase'",
+    "'Approve anyway'", "'Send reset link'", "'Add anyway'", "'Connect anyway'",
+    "'Delete account'", "'Yes, delete everything'", "'Mark as charity'",
+    "'Send request'", "'Link refund'", "'Fund charge'", "'Change password'",
+    "'Change allowance'", "'Record anyway'", "'Keep it'", "'Keep current'",
+    "'Same purchase'", "'Clear search and filters'", "'Sign in again'",
+    "'Try again'", "'↑ Oldest first'", "'↓ Newest first'"]) {
+    assert.equal(js.includes(old), false, `no sentence-case JS button label remains: ${old}`);
+  }
+  for (const old of ['>Sign out<', '>Choose file<', '>Confirm import<', '>Record gift<',
+    '>Load more<', '>Change password<', '>Connect email<', '>Save allowance<',
+    '>Set new total<', '>Delete account<', '>Save top-up<', '>Save default rate<',
+    '>Save income<', '>Cancel correction<', '>Record it<', '>Send request<',
+    '>Clear date filter<', '>Load more activity<', '↓ Newest first']) {
+    assert.equal(html.includes(old), false, `no sentence-case HTML button label remains: ${old}`);
+  }
+  // (c) aria-labels that duplicate the visible label match it exactly.
   assert.match(html, /aria-label="Add Transaction"/);
   assert.match(html, /aria-label="Check Email Now"/);
+  assert.match(html, /aria-label="Connect Email"/);
+  assert.match(html, /aria-label="Sync Bank"/);
+  assert.match(html, /aria-label="Show Password"/);
+  assert.match(js, /setAttribute\('aria-label', 'Sync Bank'\)/);
+  assert.match(js, /setAttribute\('aria-label', 'Syncing Bank'\)/);
 });

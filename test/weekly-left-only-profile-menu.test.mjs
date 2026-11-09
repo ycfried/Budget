@@ -46,7 +46,7 @@ test('Weekly sheet rows are exactly Allowance, Spent, Balance', () => {
   assert.deepEqual(labels, ['Allowance', 'Spent', 'Balance']);
   assert.ok(visible.includes("['Balance', formatCents(w.availableCents)]"));
   assert.ok(visible.includes("['Spent', formatCents(w.chargesCents)]"));
-  assert.match(sheetFn, /extraAction: \{ label: 'Show transactions', result: 'show-transactions' \}/);
+  assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
 });
 
@@ -241,7 +241,7 @@ test('no two adjacent buttons share a treatment after the tertiary change', () =
   // income left the row for the Charity expansion, funds-actions-three).
   // Funds expand-in-place (owner, Nov 6): fund actions live in
   // fundExpandActions, rendered inside the expanded card.
-  const fundSheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request money'"));
+  const fundSheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request Money'"));
   const fundBtns = [...fundSheet.matchAll(/btnClass: 'btn([^']*)'/g)].map((m) => m[1].trim());
   assert.deepEqual(fundBtns, ['btn-primary', '', 'btn-tertiary']);
   // Settings Account card: invite Copy (primary blue) + Share

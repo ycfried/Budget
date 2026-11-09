@@ -84,7 +84,7 @@ test('C: charity negative remaining stays a signed number and still adds up', ()
 
 test('C: charity expansion keeps the period; Record income action stays; rate card stays', () => {
   assert.match(js, /fund-expand-period">November 2026 onward/);
-  assert.match(js, /label: 'Record income', result: 'record-income', btnClass: 'btn btn-primary'/);
+  assert.match(js, /label: 'Record Income', result: 'record-income', btnClass: 'btn btn-primary'/);
   assert.match(js, /label: 'Close', result: 'close', btnClass: 'btn btn-tertiary'/);
   assert.ok(html.includes('id="charityRateCurrent"'), 'Funds Charity income & rate card keeps the default rate line');
 });
@@ -102,7 +102,7 @@ test('B: every audited two-button row uses grey tertiary for its non-primary but
     ['manual Cancel', /class="btn btn-tertiary" id="manualCancelBtn"/],
     ['Transactions Filters', /id="txFiltersToggle" class="btn btn-tertiary"/],
     ['email Check now', /id="pollEmailBtn" class="btn btn-tertiary"/],
-    ['charity income Cancel correction', /class="btn btn-tertiary" id="charityIncomeCancelBtn"/],
+    ['charity income Cancel Correction', /class="btn btn-tertiary" id="charityIncomeCancelBtn"/],
     ['history Clear filter', /class="btn btn-tertiary" id="historyFilterClearBtn"/],
     ['dedupe Separate', /sepBtn\.className = 'btn btn-small btn-tertiary'/],
   ];
@@ -127,9 +127,9 @@ test('B: three-button middles still pale; pale definition untouched', () => {
   // Funds expand-in-place (owner, Nov 6): Funds actions (Add primary,
   // Spend plain pale middle, Request tertiary) live in the expanded
   // Extra Fund card, not a sheet and not a card.
-  assert.match(js, /label: 'Add money', result: 'add', btnClass: 'btn btn-primary'/);
-  assert.match(js, /label: 'Spend from fund', result: 'use', btnClass: 'btn'/);
-  assert.match(js, /label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary'/);
+  assert.match(js, /label: 'Add Money', result: 'add', btnClass: 'btn btn-primary'/);
+  assert.match(js, /label: 'Spend from Fund', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary'/);
   // Filters: Apply primary, Reset plain (pale middle), Cancel tertiary.
   assert.match(html, /class="btn btn-primary" id="txFiltersApplyBtn"/);
   assert.match(html, /class="btn" id="txFiltersResetBtn"/);

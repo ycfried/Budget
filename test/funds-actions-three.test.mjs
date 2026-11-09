@@ -19,8 +19,8 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 
 test('Funds actions row is exactly Add / Spend / Request, in order (now in the expanded Extra Fund card)', () => {
   assert.equal(html.includes('id="section-fund-actions"'), false);
-  const actions = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request money'"));
-  assert.deepEqual([...actions.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Spend from fund', 'Request money']);
+  const actions = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request Money'"));
+  assert.deepEqual([...actions.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add Money', 'Spend from Fund', 'Request Money']);
   assert.deepEqual([...actions.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
   assert.deepEqual([...actions.matchAll(/result: '([^']+)'/g)].map((m) => m[1]), ['add', 'use', 'ask']);
 });
@@ -39,7 +39,7 @@ test('Charity expansion offers Record income for admin, via one shared toggle', 
   assert.equal(js.includes("title: 'Charity · November 2026 Onward'"), false);
   // Admin-gated actions: Record income primary, Close grey tertiary.
   const actions = js.slice(js.indexOf('function charityExpandActions'), js.indexOf(": [{ label: 'Close'"));
-  assert.deepEqual([...actions.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Record income', 'Close']);
+  assert.deepEqual([...actions.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Record Income', 'Close']);
   assert.deepEqual([...actions.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn btn-tertiary']);
   // Rows (fund-sheet-button-rule, owner Nov 4): Available / Given / Total.
   assert.match(js, /\['Available', formatCents\(c\.remaining\)\]/);
@@ -64,7 +64,7 @@ test('Member visibility in Funds actions is unchanged', () => {
   // Task 7: Add/Spend stay admin-only, Request stays for everyone —
   // now as the expansion's member branch (Request only, tertiary); no
   // income button exists for either role to see in the fund card.
-  assert.ok(js.includes(": [{ label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary' }]"));
+  assert.ok(js.includes(": [{ label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary' }]"));
   assert.ok(js.includes("setBtn('moreFundActivityBtn', !!isAdmin)"));
   assert.ok(js.includes("setBtn('moreReviewBtn', !!isAdmin)"));
   assert.ok(js.includes("setBtn('moreSavingsBtn', true)"));

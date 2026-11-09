@@ -43,8 +43,8 @@ test('Funds actions row: exactly three buttons, three different treatments', () 
   // and Record income is still not among them.
   assert.equal(html.includes('id="section-fund-actions"'), false);
   assert.equal(html.includes('fundActionIncomeBtn'), false);
-  const sheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request money'"));
-  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Spend from fund', 'Request money']);
+  const sheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request Money'"));
+  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add Money', 'Spend from Fund', 'Request Money']);
   assert.deepEqual([...sheet.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
 });
 
