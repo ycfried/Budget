@@ -1,0 +1,316 @@
+// OnBudget — Settings shared UI (Settings workstream, live web v66).
+//
+// Shared context, toast, button styles, cards, and the bank-logo view
+// used by every Settings / Past Weeks / Activity / CSV screen.
+// Shared button styles (Primary/Tertiary/Pale), BackButton, ErrorBox
+// and ToastBanner are NOT redefined here — they live in the shared
+// SharedViews.swift (Auth/Home); QuietButtonStyle lives in
+// Transactions/OnBudgetButtons.swift. Money formatting uses the kit
+// type qualified as OnBudgetKit.MoneyFormat: the app target already
+// has two unqualified MoneyFormat types (Formatting.swift and
+// Funds/OnBudgetKit.MoneyFormat.swift) — a pre-existing duplicate the coordinator
+// still needs to resolve (see report).
+
+import SwiftUI
+import UIKit
+import OnBudgetKit
+
+// MARK: - Context
+
+/// Everything a Settings-family screen needs, handed in by the app
+/// coordinator (Auth/Home own the session + household loading).
+/// Views never fetch the session themselves and never touch the real
+/// household unless the coordinator passes it in.
+struct SettingsContext {
+    let client: SupabaseClient
+    let householdId: UUID
+    let isAdmin: Bool
+    let currentUserId: UUID?
+    let displayName: String?
+    let email: String?
+    let householdName: String?
+
+    /// Called after a successful sign-out (Profile menu / Settings).
+    var onSignOut: () -> Void
+    /// Called after a successful account deletion, with the message
+    /// the auth screen should show ("Your account was deleted.").
+    var onAccountDeleted: (String) -> Void
+    /// Called when a Past Week is tapped: the Transactions agent
+    /// opens Transactions filtered to that Sun–Sat week.
+    var onShowWeekTransactions: (String) -> Void
+    /// Called from Budget when the owner taps Temporary Allowance.
+    /// The Temporary Allowance box itself is owned by the Funds
+    /// agent — Settings only links to it. Nil hides the link.
+    var onOpenTemporaryAllowance: (() -> Void)?
+    /// Best-effort push-token unregister (APNS_DESIGN §3: fire-and-
+    /// forget on sign-out / account deletion). Nil = no token store
+    /// wired yet; deletion still proceeds.
+    var unregisterPushToken: (() async -> Void)?
+
+    init(
+        client: SupabaseClient,
+        householdId: UUID,
+        isAdmin: Bool,
+        currentUserId: UUID? = nil,
+        displayName: String? = nil,
+        email: String? = nil,
+        householdName: String? = nil,
+        onSignOut: @escaping () -> Void = {},
+        onAccountDeleted: @escaping (String) -> Void = { _ in },
+        onShowWeekTransactions: @escaping (String) -> Void = { _ in },
+        onOpenTemporaryAllowance: (() -> Void)? = nil,
+        unregisterPushToken: (() async -> Void)? = nil
+    ) {
+        self.client = client
+        self.householdId = householdId
+        self.isAdmin = isAdmin
+        self.currentUserId = currentUserId
+        self.displayName = displayName
+        self.email = email
+        self.householdName = householdName
+        self.onSignOut = onSignOut
+        self.onAccountDeleted = onAccountDeleted
+        self.onShowWeekTransactions = onShowWeekTransactions
+        self.onOpenTemporaryAllowance = onOpenTemporaryAllowance
+        self.unregisterPushToken = unregisterPushToken
+    }
+}
+
+// MARK: - Errors
+
+/// The exact text a screen should show for a backend failure: the
+/// server's own text, unchanged, for `OnBudgetError`.
+func settingsErrorMessage(_ error: Error) -> String {
+    if let budgetError = error as? OnBudgetError { return budgetError.userMessage }
+    return error.localizedDescription
+}
+
+// MARK: - Toast
+
+/// Bottom-only toast state. Success/info render brand blue, errors
+/// soft red. Auto-dismisses after 4s (spec §2.3); tap dismisses
+/// sooner. One toast at a time — a new toast replaces the old one.
+///
+/// NOTE (rebase, Nov 9): the button styles, BackButton, ErrorBox
+/// and ToastBanner this file used to define now live in the shared
+/// `SharedViews.swift` (Auth/Home) / `Transactions/OnBudgetButtons.swift`
+/// — this file keeps only Settings-only helpers plus the ToastState
+/// object the Settings cards share. The banner itself is the shared
+/// `ToastBanner(toast:onDismiss:)` from SharedViews.
+@MainActor
+final class ToastState: ObservableObject {
+    @Published var current: Toast?
+    private var dismissTask: Task<Void, Never>?
+
+    func show(_ message: String, kind: ToastStyle.Kind = .info) {
+        dismissTask?.cancel()
+        current = Toast(message: message, kind: kind)
+        dismissTask = Task {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            current = nil
+        }
+    }
+
+    func showError(_ message: String) { show(message, kind: .error) }
+    func dismiss() {
+        dismissTask?.cancel()
+        current = nil
+    }
+}
+
+extension View {
+    /// Bottom toast overlay, floating clear of the tab bar. Uses the
+    /// shared `ToastBanner` (SharedViews) so there is one banner.
+    /// Overloads the shared `toastOverlay(Binding<Toast?>)` — this
+    /// one takes the shared Settings `ToastState` instead.
+    func toastOverlay(_ toastState: ToastState) -> some View {
+        ZStack(alignment: .bottom) {
+            self
+            if let toast = toastState.current {
+                ToastBanner(toast: toast) { toastState.dismiss() }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: toastState.current?.id)
+    }
+}
+
+// MARK: - Buttons
+//
+// Primary / Tertiary / Pale button styles, BackButton, ErrorBox and
+// ToastBanner live in the shared `SharedViews.swift` (Auth/Home) —
+// `QuietButtonStyle` in `Transactions/OnBudgetButtons.swift`. This
+// file defines only the Settings-only button styles below, so the
+// app target has exactly one of each shared definition.
+
+/// Danger: soft-red treatment — bg #fef2f2, text #dc2626.
+/// Never a solid red button.
+struct DangerButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline)
+            .foregroundStyle(DesignTokens.errorText)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 13)
+            .background(DesignTokens.errorBackground)
+            .cornerRadius(14)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+    }
+}
+
+/// Small danger button (member Remove, per-account Disconnect).
+struct SmallDangerButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .foregroundStyle(DesignTokens.errorText)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(DesignTokens.errorBackground)
+            .cornerRadius(10)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+    }
+}
+
+// MARK: - Cards, fields, messages
+
+/// White card, radius 20, light shadow (styles.css:388).
+struct SettingsCard<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(TitleCase.apply(to: title))
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundStyle(DesignTokens.ink)
+            content
+        }
+        .padding(16)
+        .background(.white)
+        .cornerRadius(20)
+        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+    }
+}
+
+/// Muted small line (secondary labels, #6b7280).
+struct MutedLine: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(Color(hex: "#6b7280"))
+    }
+}
+
+/// A labelled field, sized to what it can hold — money inputs are
+/// capped, not full-width (owner card-sizing rule).
+struct LabeledField: View {
+    let label: String
+    @Binding var text: String
+    var placeholder: String = ""
+    var maxWidth: CGFloat? = nil
+    var isSecure: Bool = false
+    var keyboardType: UIKeyboardType = .default
+    var autocapitalization: TextInputAutocapitalization = .sentences
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(TitleCase.apply(to: label))
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignTokens.ink)
+            Group {
+                if isSecure {
+                    SecureField(placeholder, text: $text)
+                } else {
+                    TextField(placeholder, text: $text)
+                        .keyboardType(keyboardType)
+                        .textInputAutocapitalization(autocapitalization)
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+            .frame(maxWidth: maxWidth)
+        }
+    }
+}
+
+/// Role pill: "Admin" / "Member".
+struct RolePill: View {
+    let role: HouseholdRole
+
+    var body: some View {
+        Text(role == .admin ? "Admin" : "Member")
+            .font(.caption)
+            .fontWeight(.semibold)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color(hex: "#eef4ff"))
+            .foregroundStyle(DesignTokens.ink)
+            .cornerRadius(999)
+    }
+}
+
+// MARK: - Bank logo
+
+/// Bank favicon (Google favicon service, sz=128) with a
+/// brand-coloured monogram fallback. Never Clearbit (dead Nov 4,
+/// 2026). Unmapped banks fall back to a slate monogram tile.
+struct BankLogoView: View {
+    let institutionName: String?
+    var size: CGFloat = 40
+
+    @State private var imageFailed = false
+
+    var body: some View {
+        Group {
+            if let url = BankBranding.faviconURL(for: institutionName), !imageFailed {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: size, height: size)
+                            .cornerRadius(8)
+                    default:
+                        monogram
+                            .onAppear {
+                                if case .failure = phase { imageFailed = true }
+                            }
+                    }
+                }
+            } else {
+                monogram
+            }
+        }
+        .frame(width: size, height: size)
+    }
+
+    private var monogram: some View {
+        Text(BankBranding.initial(for: institutionName))
+            .font(.headline)
+            .fontWeight(.bold)
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(Color(hex: BankBranding.brandHex(for: institutionName)))
+            .cornerRadius(8)
+    }
+}
+
+// MARK: - Share sheet
+
+/// Native iOS share sheet (UIActivityViewController).
+struct ShareSheet: UIViewControllerRepresentable {
+    let text: String
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [text], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
