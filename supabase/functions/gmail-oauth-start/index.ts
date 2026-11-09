@@ -4,10 +4,16 @@
 //
 // Contract:
 //   Request (POST, caller JWT required): {} — no body fields are
-//     trusted. The household comes from the caller's own membership:
-//     the caller must be an ADMIN of exactly one household (the app
-//     allows one household per user). A caller-supplied household_id
-//     is IGNORED, never trusted.
+//     trusted, EXCEPT household_id for a multi-household admin (see
+//     below). The household comes from the caller's own membership:
+//     the caller must be an ADMIN of a household (the app allows one
+//     household per user, but a user can admin more than one —
+//     P2-C6, Nov 8, 2026: the old .maybeSingle() errored on two admin
+//     rows and the caller got a bare 403). With exactly one admin
+//     household it is used and any body household_id is IGNORED,
+//     never trusted. With several, the caller must name one of their
+//     own admin households in the body; anything else gets an honest
+//     409 naming the problem, not a 403.
 //   Response: { auth_url } — the Google authorization URL. The client
 //     redirects the browser there (full navigation, not a popup).
 //   Scope is ONLY https://www.googleapis.com/auth/gmail.readonly.
@@ -49,13 +55,31 @@ Deno.serve(async (req) => {
     if (userErr || !user) return json({ error: 'unauthorized' }, 401);
 
     // Admin household DERIVED from the JWT identity, never from the body.
-    const { data: membership } = await supabase
+    // P2-C6 (Nov 8, 2026): the old .maybeSingle() errored (data null)
+    // when a user admins two or more households, so a multi-household
+    // admin got a bare 403. Read the whole list instead: one admin
+    // household → use it (body ignored, as before); several → the
+    // caller must name one of their own admin households in the body,
+    // and anything else gets an honest 409, not a 403.
+    const body = await req.json().catch(() => ({}));
+    const { data: memberships } = await supabase
       .from('household_members')
       .select('household_id, role')
       .eq('user_id', user.id)
-      .eq('role', 'admin')
-      .maybeSingle();
-    if (!membership) return json({ error: 'admin only' }, 403);
+      .eq('role', 'admin');
+    const adminHouseholds = (memberships ?? []).map((m: { household_id: string }) => m.household_id);
+    if (adminHouseholds.length === 0) return json({ error: 'admin only' }, 403);
+    let householdId: string;
+    if (adminHouseholds.length === 1) {
+      householdId = adminHouseholds[0];
+    } else {
+      const requested = String(body.household_id ?? '');
+      if (requested && adminHouseholds.includes(requested)) {
+        householdId = requested;
+      } else {
+        return json({ error: 'multiple admin households: pass household_id of the household to connect' }, 409);
+      }
+    }
 
     const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
     if (!clientId) return json({ error: 'gmail oauth not configured' }, 503);
@@ -67,7 +91,7 @@ Deno.serve(async (req) => {
     const nonce = crypto.randomUUID();
     const { error: stateErr } = await supabaseAdmin.from('gmail_oauth_states').insert({
       nonce,
-      household_id: membership.household_id,
+      household_id: householdId,
     });
     if (stateErr) return json({ error: 'could not start oauth flow' }, 500);
 
