@@ -51,6 +51,19 @@ export function titleCaseMerchant(name) {
     return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
   }).join('');
 }
+// P2-N2 (Nov 8, 2026): merchant stem for the refund-link picker —
+// the first word of the merchant with punctuation stripped and case
+// folded, so "AMAZON MARKEPLACE NA PA" and "Amazon Marketplace"
+// share the stem AMAZON. The stem holds letters/digits only, so it
+// is safe inside an ilike %…% pattern. The server's auto-linker
+// instead requires normalized equality (see
+// _same_normalized_merchant in refund-linking.sql); the picker is
+// the admin's judgment call, so a contains match plus the server's
+// fit check in link_refund is the guard here.
+export function merchantStem(name) {
+  const words = String(name ?? '').toUpperCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  return words.length ? words[0] : '';
+}
 export function relativeDayLabel(iso, todayIso) {
   const d = String(iso ?? '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !todayIso) return null;
