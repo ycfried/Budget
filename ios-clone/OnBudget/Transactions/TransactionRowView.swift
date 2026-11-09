@@ -45,8 +45,8 @@ public struct TransactionRowView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 10) {
                         TransactionIconView(
-                            institutionName: institutionName,
-                            merchant: transaction.merchant
+                            merchant: transaction.merchant,
+                            institutionName: institutionName
                         )
                         Text(TransactionFormatting.displayMerchant(transaction.merchant))
                             .font(.system(size: 16, weight: .bold))

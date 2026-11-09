@@ -162,7 +162,7 @@ public struct TransactionsView: View {
                     Button(viewModel.isSyncing ? "Syncing…" : "Sync Transactions") {
                         Task { await viewModel.runSync() }
                     }
-                    .buttonStyle(viewModel.allowanceSet ? SmallPrimaryButtonStyle() : SmallTertiaryButtonStyle())
+                    .buttonStyle(viewModel.allowanceSet ? AnyButtonStyle(SmallPrimaryButtonStyle()) : AnyButtonStyle(SmallTertiaryButtonStyle()))
                     .disabled(viewModel.isSyncing)
                     Spacer()
                 }

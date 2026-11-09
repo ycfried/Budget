@@ -20,7 +20,7 @@ import OnBudgetKit
 /// Plus the note under the sheet for transfer/payment/cashback/
 /// fund_charge: "This row does not count toward weekly spending."
 public struct TransactionActionsSheet: View {
-    enum Flow {
+    enum Flow: Equatable {
         case list
         case charityConfirm
         case extraFund
