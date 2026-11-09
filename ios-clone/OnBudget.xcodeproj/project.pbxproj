@@ -13,6 +13,16 @@
 		B4B4B4B4B4B4B4B4B4B4B4B4 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = E2E2E2E2E2E2E2E2E2E2E2E2 /* OnBudgetKit */; };
 		B5B5B5B5B5B5B5B5B5B5B5B5 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */; };
 		B6B6B6B6B6B6B6B6B6B6B6B6 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = E3E3E3E3E3E3E3E3E3E3E3E3 /* OnBudgetKit */; };
+		B70101010101010101010101 /* TransactionFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70101010101010101010101 /* TransactionFormatting.swift */; };
+		B70202020202020202020202 /* TransactionIconLookup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70202020202020202020202 /* TransactionIconLookup.swift */; };
+		B70303030303030303030303 /* OnBudgetButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70303030303030303030303 /* OnBudgetButtons.swift */; };
+		B70404040404040404040404 /* TransactionIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70404040404040404040404 /* TransactionIconView.swift */; };
+		B70505050505050505050505 /* TransactionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70505050505050505050505 /* TransactionsViewModel.swift */; };
+		B70606060606060606060606 /* TransactionRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70606060606060606060606 /* TransactionRowView.swift */; };
+		B70707070707070707070707 /* TransactionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70707070707070707070707 /* TransactionsView.swift */; };
+		B70808080808080808080808 /* TransactionActionsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70808080808080808080808 /* TransactionActionsSheet.swift */; };
+		B70909090909090909090909 /* AddTransactionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70909090909090909090909 /* AddTransactionView.swift */; };
+		B70A0A0A0A0A0A0A0A0A0A0A /* TrashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70A0A0A0A0A0A0A0A0A0A0A /* TrashView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +42,16 @@
 		A4A4A4A4A4A4A4A4A4A4A4A4 /* OnBudget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OnBudget.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
 		A6A6A6A6A6A6A6A6A6A6A6A6 /* OnBudgetTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OnBudgetTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A70101010101010101010101 /* TransactionFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionFormatting.swift; sourceTree = "<group>"; };
+		A70202020202020202020202 /* TransactionIconLookup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionIconLookup.swift; sourceTree = "<group>"; };
+		A70303030303030303030303 /* OnBudgetButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnBudgetButtons.swift; sourceTree = "<group>"; };
+		A70404040404040404040404 /* TransactionIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionIconView.swift; sourceTree = "<group>"; };
+		A70505050505050505050505 /* TransactionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionsViewModel.swift; sourceTree = "<group>"; };
+		A70606060606060606060606 /* TransactionRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionRowView.swift; sourceTree = "<group>"; };
+		A70707070707070707070707 /* TransactionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionsView.swift; sourceTree = "<group>"; };
+		A70808080808080808080808 /* TransactionActionsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionActionsSheet.swift; sourceTree = "<group>"; };
+		A70909090909090909090909 /* AddTransactionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionView.swift; sourceTree = "<group>"; };
+		A70A0A0A0A0A0A0A0A0A0A0A /* TrashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,8 +89,26 @@
 				A1A1A1A1A1A1A1A1A1A1A1A1 /* OnBudgetApp.swift */,
 				A2A2A2A2A2A2A2A2A2A2A2A2 /* ContentView.swift */,
 				A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */,
+				555555555555555555555556 /* Transactions */,
 			);
 			path = OnBudget;
+			sourceTree = "<group>";
+		};
+		555555555555555555555556 /* Transactions */ = {
+			isa = PBXGroup;
+			children = (
+				A70101010101010101010101 /* TransactionFormatting.swift */,
+				A70202020202020202020202 /* TransactionIconLookup.swift */,
+				A70303030303030303030303 /* OnBudgetButtons.swift */,
+				A70404040404040404040404 /* TransactionIconView.swift */,
+				A70505050505050505050505 /* TransactionsViewModel.swift */,
+				A70606060606060606060606 /* TransactionRowView.swift */,
+				A70707070707070707070707 /* TransactionsView.swift */,
+				A70808080808080808080808 /* TransactionActionsSheet.swift */,
+				A70909090909090909090909 /* AddTransactionView.swift */,
+				A70A0A0A0A0A0A0A0A0A0A0A /* TrashView.swift */,
+			);
+			path = Transactions;
 			sourceTree = "<group>";
 		};
 		666666666666666666666666 /* OnBudgetTests */ = {
@@ -190,6 +228,16 @@
 			files = (
 				B1B1B1B1B1B1B1B1B1B1B1B1 /* OnBudgetApp.swift in Sources */,
 				B2B2B2B2B2B2B2B2B2B2B2B2 /* ContentView.swift in Sources */,
+				B70101010101010101010101 /* TransactionFormatting.swift in Sources */,
+				B70202020202020202020202 /* TransactionIconLookup.swift in Sources */,
+				B70303030303030303030303 /* OnBudgetButtons.swift in Sources */,
+				B70404040404040404040404 /* TransactionIconView.swift in Sources */,
+				B70505050505050505050505 /* TransactionsViewModel.swift in Sources */,
+				B70606060606060606060606 /* TransactionRowView.swift in Sources */,
+				B70707070707070707070707 /* TransactionsView.swift in Sources */,
+				B70808080808080808080808 /* TransactionActionsSheet.swift in Sources */,
+				B70909090909090909090909 /* AddTransactionView.swift in Sources */,
+				B70A0A0A0A0A0A0A0A0A0A0A /* TrashView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
