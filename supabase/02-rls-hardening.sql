@@ -175,11 +175,16 @@ create trigger trg_fund_request_validate
 --    forgery is closed by the trigger in 04-admin-rpcs.sql, which
 --    overwrites actor/actor_name from the caller's JWT on every
 --    insert. That ordering matters: this file intentionally does NOT
---    revoke audit_log INSERT, because two live writers depend on it
---    with the caller's JWT — week-close's audit inserts and the
---    live.js audit() helper. Removing direct INSERT entirely is the
+--    revoke audit_log INSERT, because a live writer depends on it
+--    with the caller's JWT — the live.js audit() helper
+--    (live.js:381 inserts audit rows directly). Week-close also
+--    writes audit rows, but via the service-role client
+--    (supabaseAdmin), which bypasses RLS and does not need this
+--    grant — an earlier draft of this note named week-close as a
+--    second dependent writer; corrected P2-B2, Nov 8, 2026.
+--    Removing direct INSERT entirely is the
 --    audit's stricter fix (P1-12) and remains owed work: it requires
---    week-close + live.js to write audit rows through an RPC first.
+--    live.js to write audit rows through an RPC first.
 --    RESIDUAL RISK (flagged, not hidden): until that RPC exists, a
 --    member can still insert an audit row with arbitrary action /
 --    detail TEXT, but it is now attributable to them — they cannot

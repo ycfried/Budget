@@ -26,9 +26,25 @@
 -- (household_id uuid, shortfall_cents integer), body references
 -- household_id throughout, p_household_id appears nowhere. P0-3 is
 -- therefore verify-only: no SQL fix is needed live. This file is the
--- canonical repo copy of what live runs; re-applying it is a safe
--- no-op, needed only if live ever drifts from it. If a future probe
--- shows a different live body, stop and reconcile before applying.
+-- canonical repo copy of what live runs; re-applying it is safe (it
+-- re-runs CREATE OR REPLACE with the same body) and is needed only
+-- if live ever drifts from it. If a future probe shows a different
+-- live body, stop and reconcile before applying.
+--
+-- P2-N13 (Nov 8, 2026): an earlier header called re-applying this
+-- file "a safe no-op" — that was inaccurate. Relative to the
+-- pre-Nov-5 live body, this canonical version is NOT a no-op: it
+-- ADDS the admin check, the FOR UPDATE row lock, and the audit_log
+-- insert. DECISION (documented, not silent): the audit_log insert
+-- stays FATAL — if it fails, the whole RPC fails and the shortfall
+-- update rolls back. The audit row is the accountability record
+-- for a money-adjacent write; a shortfall change with no audit
+-- trail (a silent loss) is worse than a loud RPC failure, and
+-- week-close already treats an update_fund_shortfall failure as a
+-- loud 500 via check(), so a failure surfaces instead of
+-- vanishing. Making the insert non-fatal (swallowing its error)
+-- was considered and rejected for exactly that reason. Do NOT
+-- change week-close behaviour silently on the back of this file.
 -- STEP 0 (only if re-applying): select pg_get_functiondef(oid) from
 -- pg_proc where proname = 'update_fund_shortfall'; expect the alias
 -- version below (hm.household_id = household_id, audit_log insert,

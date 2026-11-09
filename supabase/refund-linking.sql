@@ -42,6 +42,42 @@
 -- restoration entry already exists for the refund (a posted
 -- restoration cannot be undone by unlinking).
 --
+-- P2 FIXES (Nov 8, 2026, R3):
+--   * P2-N6 "fully refunded" totals count only live linked refunds:
+--     every linked-total subquery filters `excluded is not true and
+--     state not in ('excluded','reversed')`, so a trashed or
+--     reversed linked refund no longer makes its purchase look
+--     fully refunded and block a real refund from linking.
+--   * P2-N8 card suffixes must match EXACTLY in manual link,
+--     including NULL on either side: a NULL suffix is never a
+--     match (the old `<>` test passed on NULL, because NULL <>
+--     anything is NULL, not true). Auto-link stays strict the
+--     other way: `c.card_suffix = v_ref.card_suffix` can never
+--     match a NULL suffix, so auto-link never links a row with
+--     an unknown card.
+--   * P2-N9 row locks: the candidate purchase row is locked
+--     (SELECT ... FOR UPDATE) before the linked total it gates is
+--     trusted, and the total is RE-CHECKED after the lock — the
+--     B10 pattern. The purchase row is the single serialization
+--     point for all three link paths (auto, reverse, manual), so
+--     two refunds racing for the same purchase cannot both see
+--     "not yet fully refunded" and both link. The refund row
+--     itself is deliberately NOT locked first: locking refund-
+--     then-purchase in one path and purchase-then-refund in
+--     another could deadlock; the over-refund race is on the
+--     purchase, and that is what the lock covers.
+--   * P2-N14 unlink refuses when a PENDING held_refunds row exists
+--     for the refund (a held row with no restoration entry yet):
+--     unlinking first would orphan the held row — it would point
+--     at a refund that no longer has a purchase, and the release
+--     path could never resolve it.
+--   * P2-N7 (call sites): restore_transaction and
+--     reclassify_transaction call auto_link_refund /
+--     link_refunds_to_purchase best-effort at the end (see
+--     n4-pre-exclusion-state.sql and
+--     refund-classification-income-kind.sql), so a restored or
+--     reclassified pair links without waiting for a re-delivery.
+--
 -- STEP 0 — VERIFY LIVE FIRST (read-only): none of these four functions
 -- exists live yet. If any does, stop and reconcile before applying.
 --   select proname from pg_proc where proname in
@@ -85,6 +121,8 @@ declare
   v_ref transactions%rowtype;
   v_cand_id uuid;
   v_cand_count integer;
+  v_cand_amount integer;
+  v_linked_total integer;
 begin
   select * into v_ref from transactions where id = p_refund_id;
   if not found then return null; end if;
@@ -104,9 +142,21 @@ begin
     and c.date <= v_ref.date
     and c.date >= v_ref.date - interval '90 days'
     and (select coalesce(sum(abs(r.amount_cents)), 0) from transactions r
-         where r.original_purchase_id = c.id) < c.amount_cents;
+         where r.original_purchase_id = c.id
+           and r.excluded is not true and r.state not in ('excluded', 'reversed')) < c.amount_cents;
 
   if v_cand_count <> 1 then return null; end if;
+  -- P2-N9: lock the candidate purchase row before trusting the
+  -- count above, then re-check the linked total after the lock.
+  -- Two refunds for the same purchase racing here could otherwise
+  -- both see "not yet fully refunded" and both link. The lock is
+  -- held to end of transaction, so the re-check cannot be raced.
+  select amount_cents into v_cand_amount from transactions where id = v_cand_id for update;
+  if not found then return null; end if;
+  select coalesce(sum(abs(r.amount_cents)), 0) into v_linked_total from transactions r
+    where r.original_purchase_id = v_cand_id
+      and r.excluded is not true and r.state not in ('excluded', 'reversed');
+  if v_linked_total >= v_cand_amount then return null; end if;
   update transactions set original_purchase_id = v_cand_id where id = p_refund_id;
   return v_cand_id;
 end;
@@ -130,7 +180,11 @@ declare
   v_cand_id uuid;
   v_cand_count integer;
 begin
-  select * into v_pur from transactions where id = p_purchase_id;
+  -- P2-N9: lock the purchase row BEFORE counting linked refunds
+  -- against it — this row is the serialization point shared with
+  -- auto_link_refund and link_refund, so a concurrent linker for
+  -- the same purchase blocks here instead of racing the count.
+  select * into v_pur from transactions where id = p_purchase_id for update;
   if not found then return null; end if;
   if v_pur.kind not in ('charge', 'fund_charge') then return null; end if;
   if v_pur.excluded is true or v_pur.state in ('excluded', 'reversed') then return null; end if;
@@ -148,7 +202,8 @@ begin
     and r.date >= v_pur.date
     and r.date <= v_pur.date + interval '90 days'
     and (select coalesce(sum(abs(x.amount_cents)), 0) from transactions x
-         where x.original_purchase_id = v_pur.id) < v_pur.amount_cents;
+         where x.original_purchase_id = v_pur.id
+           and x.excluded is not true and x.state not in ('excluded', 'reversed')) < v_pur.amount_cents;
 
   if v_cand_count <> 1 then return null; end if;
   update transactions set original_purchase_id = p_purchase_id where id = v_cand_id;
@@ -194,10 +249,24 @@ begin
     if v_ref.original_purchase_id = p_purchase_id then return p_purchase_id; end if;
     raise exception 'refund is already linked — unlink it first';
   end if;
-  if v_ref.card_suffix <> v_pur.card_suffix then raise exception 'refund and purchase are on different cards'; end if;
+  -- P2-N8: the suffixes must match exactly, and a NULL suffix on
+  -- either side is a mismatch, not a match. The old `<>` test
+  -- passed on NULL (NULL <> anything is NULL, not true), so a
+  -- refund with an unknown card could be linked to any purchase.
+  if v_ref.card_suffix is null or v_pur.card_suffix is null
+     or v_ref.card_suffix <> v_pur.card_suffix then
+    raise exception 'refund and purchase are on different cards';
+  end if;
   if v_pur.date > v_ref.date then raise exception 'purchase is after the refund'; end if;
+  -- P2-N9 (same class as the auto-link lock): lock the purchase row
+  -- before reading the linked total it gates, so two concurrent
+  -- manual links to the same purchase cannot both pass the fit
+  -- check. P2-N6: the total counts only live linked refunds —
+  -- trashed/reversed ones no longer consume the purchase's room.
+  perform 1 from transactions where id = p_purchase_id for update;
   select coalesce(sum(abs(amount_cents)), 0) into v_linked_total from transactions
-    where original_purchase_id = p_purchase_id;
+    where original_purchase_id = p_purchase_id
+      and excluded is not true and state not in ('excluded', 'reversed');
   if abs(v_ref.amount_cents) + v_linked_total > v_pur.amount_cents then
     raise exception 'refund is more than the purchase has left to refund';
   end if;
@@ -210,8 +279,10 @@ grant execute on function public.link_refund(uuid, uuid) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- unlink_refund(p_refund_id) — admin-only manual unlink. Refuses when
--- a restoration entry already exists for the refund: a posted
--- restoration cannot be undone by unlinking.
+-- a restoration entry already exists for the refund (a posted
+-- restoration cannot be undone by unlinking), and refuses when a
+-- PENDING held_refunds row exists for it (P2-N14 — unlinking would
+-- orphan the held row).
 -- ---------------------------------------------------------------------
 create or replace function public.unlink_refund(p_refund_id uuid)
 returns void
@@ -233,6 +304,16 @@ begin
   if v_ref.original_purchase_id is null then raise exception 'refund is not linked'; end if;
   if exists (select 1 from restoration_entries where refund_transaction_id = p_refund_id) then
     raise exception 'this refund already restored a week — it cannot be unlinked';
+  end if;
+  -- P2-N14: refuse while a PENDING held_refunds row exists for this
+  -- refund, even though no restoration entry exists yet. A held row
+  -- is excess refund money queued for release/write-off against
+  -- the linked purchase; unlinking first would orphan it — it
+  -- would point at a refund with no purchase, and the release path
+  -- could never resolve it. Resolve (release/write off) the held
+  -- row first, then unlink.
+  if exists (select 1 from held_refunds where refund_transaction_id = p_refund_id and status = 'pending') then
+    raise exception 'this refund has a pending held amount — resolve the held refund first';
   end if;
   update transactions set original_purchase_id = null where id = p_refund_id;
 end;

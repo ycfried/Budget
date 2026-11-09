@@ -64,10 +64,16 @@ drop policy if exists "members read own plaid items" on plaid_items;
 
 -- ---------------------------------------------------------------------
 -- 2. Public view: every plaid_items column EXCEPT
---    access_token_encrypted. Column list is explicit (never SELECT
---    *) so a future column added to plaid_items is NOT silently
---    exposed — a new sensitive column would need a deliberate view
---    change to appear.
+--    access_token_encrypted AND sync_cursor. Column list is explicit
+--    (never SELECT *) so a future column added to plaid_items is NOT
+--    silently exposed — a new sensitive column would need a
+--    deliberate view change to appear. sync_cursor is sync state,
+--    not client display data (P2-B17 / P2-C7, Nov 8, 2026): no
+--    client code reads it from this view (live.js selects explicit
+--    column lists without it), and plaid-sync reads the cursor from
+--    the base table with the service-role key, so removing it here
+--    breaks nothing. It stays on the base table, unreadable by
+--    clients (see §1).
 -- ---------------------------------------------------------------------
 create or replace view public.plaid_items_public as
   select
@@ -77,7 +83,6 @@ create or replace view public.plaid_items_public as
     institution_name,
     institution_id,
     status,
-    sync_cursor,
     last_sync_at,
     created_at
   from plaid_items
@@ -124,12 +129,12 @@ revoke execute on function public.update_plaid_sync(uuid, text, text) from anon;
 
 -- =====================================================================
 -- VERIFICATION (commented — run manually after deploy):
---   -- View exposes no ciphertext column:
+--   -- View exposes no ciphertext column and no sync cursor:
 --   select column_name from information_schema.columns
 --     where table_name = 'plaid_items_public' order by ordinal_position;
---     -- must NOT include access_token_encrypted; must include id,
---     -- household_id, plaid_item_id, institution_name, sync_cursor,
---     -- last_sync_at, created_at.
+--     -- must NOT include access_token_encrypted or sync_cursor;
+--     -- must include id, household_id, plaid_item_id,
+--     -- institution_name, last_sync_at, created_at.
 --   -- Base table unreadable by clients:
 --   select has_table_privilege('authenticated', 'plaid_items',
 --     'SELECT');  -- false
