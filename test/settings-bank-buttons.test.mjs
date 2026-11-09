@@ -56,7 +56,7 @@ test('switch toggles for real: enable and disable via the edge function, state s
 
 test('pins bumped to v52/v62', () => {
   assert.ok(html.includes('styles.css\?v=53'));
-  assert.ok(html.includes('live.js\?v=63'));
+  assert.ok(html.includes('live.js\?v=64'));
 });
 
 test('untouched copy: look-only sentence, last synced line, connected list', () => {

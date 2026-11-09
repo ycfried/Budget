@@ -28,7 +28,7 @@ const register = readFileSync(new URL('../supabase/functions/plaid-webhook-regis
 
 test('pins are styles v52 / live.js v62', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=63/);
+  assert.match(html, /live\.js\?v=64/);
 });
 
 // --- P0-1. Refund linking -----------------------------------------------
