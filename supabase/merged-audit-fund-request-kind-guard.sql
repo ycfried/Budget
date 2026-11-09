@@ -3,10 +3,15 @@
 -- 2026). PREPARED FOR OWNER-APPROVED APPLY — NOT APPLIED BY THIS
 -- BRANCH. Do NOT apply from a merge: the parent applies it via the
 -- approved browser SQL run after the owner has seen this exact file.
--- LIVE PROBE (Nov 4, 2026, 10:12–10:18 PM, read-only): the trigger
--- trg_fund_request_validate EXISTS live, but its function body
--- contains NO 'kind' mention — the guard is ABSENT live and is
--- still needed. Apply this file (owner approval) to install it.
+-- LIVE STATE (Nov 8, 2026, read-only probe, R3 §3 P1-B6): the live
+-- trigger body CONTAINS the kind guard — the guard reached live
+-- earlier, so the Nov 4 probe that found it ABSENT is superseded
+-- and the old "guard is absent, apply this file" note below is
+-- stale as a live-state claim (P2-NEW4). This file itself was NOT
+-- among the six files applied Nov 8, 6:52–7:31 PM. One
+-- pg_get_functiondef re-probe closes this definitively; do NOT
+-- re-apply this file without that probe, and if the probe shows
+-- the guard absent, apply this file (owner approval) to install it.
 --
 -- SCOPE, EXACT: a linked fund request (transaction_id not null)
 -- requires the linked transaction's kind to be 'charge'. The

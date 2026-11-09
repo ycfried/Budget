@@ -1,8 +1,12 @@
 -- merged-audit-held-release-atomic.sql — Merged audit B10
 -- CANONICAL DEFINITION of resolve_held_refund (P1-B4, Nov 8, 2026).
--- PREPARED FOR OWNER-APPROVED APPLY — NOT APPLIED BY THIS BRANCH.
--- Do NOT apply from a merge: the parent applies it via the approved
--- browser SQL run after the owner has seen this exact file.
+-- APPLIED LIVE Nov 8, 2026, 6:52–7:31 PM (R3 §2, recorded) and
+-- verified: the live body contains the households FOR UPDATE
+-- shortfall line and no decline/spend branches (marker checks:
+-- elsif 0, decline 0, spend 0). The "NOT APPLIED BY THIS BRANCH"
+-- note this header carried before is stale — P2-NEW4, Nov 8, 2026.
+-- Do NOT re-apply blindly: re-apply only if a live probe shows the
+-- live body has drifted from this file, and reconcile first.
 -- P1-B4 follow-up (Nov 8, 2026): the households row is now locked
 -- before the shortfall read (see the release branch), closing the
 -- shortfall race the first atomic version kept.

@@ -4,7 +4,15 @@
 -- nowhere, and the members list could only show the signed-in member
 -- (household_members read policy: user_id = auth.uid()).
 --
--- WHAT THIS FILE DOES (branch only, NOT applied live):
+-- WHAT THIS FILE DOES (APPLIED LIVE Nov 8, 2026 — recorded in
+-- MEMORY.md and verified that morning: join rate limit 5 failed
+-- attempts/hour in all three buckets, new joiners' names stored,
+-- list_household_members() live, Members list shows all members.
+-- The "(branch only, NOT applied live)" note this header carried
+-- before is stale — P2-B19, Nov 8, 2026. Do NOT re-apply this file
+-- blindly: it DROPs and recreates create_household/join; re-apply
+-- only if a live probe shows the live bodies have drifted from it,
+-- and reconcile first.)
 -- 1. create_household(p_name) and join_household_by_code(code) now
 --    store the caller's auth-metadata name (full_name, then name) in
 --    household_members.display_name when the member row is created.
