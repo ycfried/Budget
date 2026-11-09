@@ -160,7 +160,7 @@
 
     <div class="card" id="section-csv">
       <div class="btn-row"><button class="back-link" id="csvBackBtn" type="button" aria-label="Back to Add Options">← Back</button></div>
-      <h2>Import Transactions From a CSV File</h2>
+      <h2>Import Transactions from a CSV File</h2>
       <p class="muted small">Expected columns: Date, Description, Amount, Card Ending.</p>
       <p class="muted small">Preview first — nothing is added until you confirm.</p>
       <!-- Delta3: styled file control — the native input stays the
@@ -169,7 +169,7 @@
            chosen file name shows beside it. The change handler reads
            e.target.files, so the label's "for" must match the input. -->
       <div class="csv-file-row">
-        <label class="btn csv-file-btn" for="csvFile">Choose file</label>
+        <label class="btn btn-primary csv-file-btn" for="csvFile">Choose file</label>
         <span class="muted small csv-file-name" id="csvFileName">No file selected</span>
         <input id="csvFile" class="csv-file-input" type="file" accept=".csv,text/csv" aria-label="CSV file to import">
       </div>
@@ -260,7 +260,7 @@
             <label>Sort by
               <select id="txSortField" aria-label="Sort transactions by"><option value="date">Date</option><option value="amount">Amount</option></select>
             </label>
-            <button id="txSortDirBtn" class="btn" type="button" aria-label="Sort direction">↓ Newest first</button>
+            <button id="txSortDirBtn" class="btn btn-tertiary" type="button" aria-label="Sort direction">↓ Newest first</button>
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="txFiltersApplyBtn" type="button" aria-label="Apply filters">Apply</button>
@@ -445,6 +445,7 @@
         <label>Note (optional) <input name="note" maxlength="120"></label>
         <label class="check-label"><input id="fundTopupConfirm" type="checkbox"> I have already put this money in checking</label>
         <p id="fundTopupPreview" class="muted small">Enter an amount to see the split.</p>
+        <p id="fundTopupError" class="error hidden" role="alert"></p>
         <button class="btn btn-primary" type="submit" aria-label="Save this Extra Fund top-up">Save top-up</button>
       </form>
       <p class="muted small">Log each deposit only once.</p>
@@ -457,7 +458,7 @@
       <p class="muted small" id="charityRateCurrent">Current default rate: 10%.</p>
       <form id="charityRateForm">
         <label>Default rate (%) <input name="rate" type="number" step="0.01" min="0" max="100" required></label>
-        <button class="btn" type="submit" aria-label="Save the default charity rate">Save default rate</button>
+        <button class="btn btn-primary" type="submit" aria-label="Save the default charity rate">Save default rate</button>
       </form>
       <p class="muted small">Affects future incomes only.</p>
       <h3>Record Income</h3>
@@ -483,7 +484,7 @@
       <form id="fundAllocateForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
         <label>Note (optional) <input name="note" maxlength="120"></label>
-        <button class="btn" type="submit" aria-label="Record spending from the Extra Fund">Record it</button>
+        <button class="btn btn-primary" type="submit" aria-label="Record spending from the Extra Fund">Record it</button>
       </form>
       <div id="fundAllocateMsg" class="result"></div>
     </div>
@@ -495,6 +496,7 @@
       <form id="fundRequestForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
         <label>Note (optional) <input name="note" maxlength="120"></label>
+        <p id="fundRequestError" class="error hidden" role="alert"></p>
         <button class="btn btn-primary" type="submit" aria-label="Send this Extra Fund request">Send request</button>
       </form>
       <details class="activity-disclosure">
@@ -524,7 +526,7 @@
       <ul id="trashList" class="plain"><li class="muted small">Loading…</li></ul>
     </div>
     <div class="card past-weeks-section" id="section-history-filter">
-      <h2>Past Weeks</h2>
+      <h2>Filter by Date</h2>
       <div class="form-row-2">
         <label>From
           <input id="historyFromInput" type="date" aria-label="From">
@@ -565,7 +567,7 @@
 <script type="module" src="live.js?v=62"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('live-sw.js').catch(() => {});
+      navigator.serviceWorker.register('live-sw.js').catch((err) => console.warn('Service worker registration failed:', err));
     });
   }
 </script>
