@@ -14,14 +14,11 @@ public struct TransactionIconView: View {
     let merchant: String
     let size: CGFloat
 
-    public init(institutionName: String? = nil, merchant: String, size: CGFloat = 40) {
-        self.institutionName = institutionName
-        self.merchant = merchant
-        self.size = size
-    }
-
-    /// Merchant-first spelling, used by Home + Trash call sites
-    /// (kept from the deleted SharedViews copy so they need no edit).
+    /// Single initializer (merchant-first, the spelling every call
+    /// site uses). A second institutionName-first init existed here
+    /// and made a merchant-only call ambiguous — both inits matched
+    /// it — so it was removed (CI run 42721951443); the one
+    /// institutionName-first call site was reordered instead.
     public init(merchant: String, institutionName: String? = nil, size: CGFloat = 40) {
         self.institutionName = institutionName
         self.merchant = merchant

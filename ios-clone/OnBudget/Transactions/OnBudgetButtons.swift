@@ -35,6 +35,23 @@ public struct SmallPrimaryButtonStyle: ButtonStyle {
     }
 }
 
+/// Type-erased button style — lets a conditional pick between two
+/// concrete styles (a ternary requires both branches to share one
+/// type, so `.buttonStyle(cond ? A() : B())` cannot compile when A
+/// and B are different ButtonStyle types). Visual result is exactly
+/// the wrapped style's; the wrapper adds no rendering of its own.
+public struct AnyButtonStyle: ButtonStyle {
+    private let makeBodyClosure: (ButtonStyle.Configuration) -> AnyView
+
+    public init<S: ButtonStyle>(_ style: S) {
+        makeBodyClosure = { configuration in AnyView(style.makeBody(configuration: configuration)) }
+    }
+
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        makeBodyClosure(configuration)
+    }
+}
+
 /// Quiet text button (no bg, muted grey) — e.g. "See all", page links.
 public struct QuietButtonStyle: ButtonStyle {
     public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
