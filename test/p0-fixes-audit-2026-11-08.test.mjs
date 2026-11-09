@@ -26,7 +26,7 @@ const ingestAlert = readFileSync(new URL('../supabase/functions/ingest-amex-aler
 const gmailPoll = readFileSync(new URL('../supabase/functions/gmail-poll/index.ts', import.meta.url), 'utf8');
 const register = readFileSync(new URL('../supabase/functions/plaid-webhook-register/index.ts', import.meta.url), 'utf8');
 
-test('pins are styles v50 / live.js v61', () => {
+test('pins are styles v52 / live.js v62', () => {
   assert.match(html, /styles\.css\?v=52/);
   assert.match(html, /live\.js\?v=62/);
 });

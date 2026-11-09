@@ -470,8 +470,15 @@ async function refresh() {
           const name = memberDisplayName(m, me);
           const role = m.role === 'admin' ? 'Admin' : 'Member';
           const you = me && m.user_id === me.id ? ' (you)' : '';
-          return `<div class="member-row"><span class="member-name">${esc(name + you)}</span><span class="role-pill">${role}</span></div>`;
+          const isMe = !!(me && m.user_id === me.id);
+          return memberRowHtml({ name: name + you, role, userId: m.user_id, isMe, isAdmin: household.role === 'admin' }, esc);
         }).join('');
+        // Admin remove-member (owner-found bug, Nov 8, 2026: the admin
+        // could not remove other members — no control existed). The
+        // buttons are rendered by memberRowHtml above, admin + other
+        // members only; each tap runs removeMemberFlow, which confirms
+        // first and refreshes the list after a removal.
+        ml.querySelectorAll('[data-remove-member]').forEach((b) => b.addEventListener('click', () => removeMemberFlow(b.dataset.removeMember, b.dataset.memberName)));
       }
     }
   } catch (e) { console.warn('household members read failed:', e); }
@@ -2932,6 +2939,30 @@ async function copyInviteCode() {
   if (!currentInviteCode) return;
   try { await navigator.clipboard.writeText(currentInviteCode); } catch (e) { /* clipboard may be unavailable; the code stays visible */ }
   if (btn) { const label = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = label; }, 2000); }
+}
+// Admin remove-member (owner-found bug, Nov 8, 2026): one row of the
+// Members list, in the Account & Household card. An admin sees a
+// Remove button on every OTHER member's row; never on their own row
+// (an admin cannot remove themselves) and never for a non-admin
+// viewer. The button is the small destructive treatment, like the
+// Disconnect buttons — same red soft treatment, same size.
+function memberRowHtml({ name, role, userId, isMe, isAdmin }, esc) {
+  const remove = isAdmin && !isMe
+    ? ` <button class="btn btn-small btn-danger" data-remove-member="${esc(userId)}" data-member-name="${esc(name)}" type="button" aria-label="Remove ${esc(name)} from the household">Remove</button>`
+    : '';
+  return `<div class="member-row"><span class="member-name">${esc(name)}</span><span class="role-pill">${role}</span>${remove}</div>`;
+}
+async function removeMemberFlow(userId, name) {
+  if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
+  const label = (name || 'this member').trim() || 'this member';
+  // One confirm step — no accidental one-tap removal. The server
+  // (remove_household_member RPC) re-checks everything: admin-only,
+  // own household only, never yourself, never the last admin.
+  if (!(await showConfirm('Remove Member', `Remove ${label} from the household? They will lose access to the household's data.`, 'Remove'))) return;
+  const { error } = await supabase.rpc('remove_household_member', { p_user_id: userId });
+  if (error) { console.warn('remove_household_member failed:', error.message); await showAlert('Could not remove member', 'Could not remove this member. Try again.'); return; }
+  showToast(`${label} was removed from the household.`);
+  await refresh();
 }
 async function deleteAccountFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');

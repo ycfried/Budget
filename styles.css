@@ -1180,6 +1180,9 @@ body.live .invite-code-btns { margin-top: 12px; }
 body.live .member-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eef1f6; }
 body.live .member-row:last-child { border-bottom: 0; }
 body.live .member-name { flex: 1; min-width: 0; font-weight: 600; color: #0f172a; }
+/* Admin remove-member (Nov 8, 2026): the Remove button sits at the
+   right edge of the row, after the role pill. */
+body.live .member-row .btn-small { margin-left: auto; flex: 0 0 auto; }
 body.live .activity-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; }
 body.live .activity-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; }
 body.live .activity-dot-money { background: #2f6bff; }
