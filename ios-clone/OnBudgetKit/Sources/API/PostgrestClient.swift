@@ -528,22 +528,26 @@ public struct PostgrestClient {
     }
 
     /// Refund rows for the Refund Links review (live.js:2053-2055):
-    /// refunds on/after Nov 1 (columns id, merchant, amount, date,
-    /// card_suffix, source). The caller pairs them with purchases.
+    /// refunds on/after Nov 1. Selects `*`: `Transaction` has
+    /// non-optional fields (state, kind, excluded, dedupe_hash, …)
+    /// that a narrow column list cannot decode — see the funds
+    /// workstream note, Nov 9, 2026. The caller pairs them with
+    /// purchases and filters client-side.
     public func refundRows(householdId: UUID) async throws -> [Transaction] {
         try await fetch(PostgrestQuery(
             table: "transactions",
-            columns: "id,merchant,amount_cents,date,card_suffix,source",
+            columns: "*",
             filters: [.householdId(householdId), .equal("kind", "refund"), .onOrAfterNov1()],
             orders: [PostgrestOrder("date", ascending: false)]
         ))
     }
 
     /// Purchase rows for the Refund Links review (live.js:2077-2079).
+    /// Selects `*` for the same decode reason as `refundRows` above.
     public func purchaseRowsForRefundReview(householdId: UUID) async throws -> [Transaction] {
         try await fetch(PostgrestQuery(
             table: "transactions",
-            columns: "id,merchant,amount_cents,date,card_suffix,source",
+            columns: "*",
             filters: [.householdId(householdId), .in("kind", ["charge", "fund_charge"]), .onOrAfterNov1()],
             orders: [PostgrestOrder("date", ascending: false)]
         ))
@@ -650,7 +654,7 @@ public struct PostgrestClient {
     public func fundTopups(householdId: UUID) async throws -> [FundTopup] {
         try await fetch(PostgrestQuery(
             table: "fund_topups",
-            columns: "amount_cents,shortfall_covered_cents,fund_added_cents,shortfall_after_cents,note,created_at",
+            columns: "household_id,client_key,amount_cents,shortfall_covered_cents,fund_added_cents,shortfall_after_cents,note,created_at",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("created_at", ascending: false)]
         ))
@@ -793,7 +797,7 @@ public struct PostgrestClient {
     public func charityIncomeHistory(householdId: UUID) async throws -> [CharityIncome] {
         try await fetch(PostgrestQuery(
             table: "charity_income",
-            columns: "id,source_label,amount_cents,income_date,rate_bp,status,note",
+            columns: "id,household_id,source_label,amount_cents,income_date,rate_bp,status,note",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("income_date", ascending: false)],
             limit: 50
@@ -838,7 +842,7 @@ public struct PostgrestClient {
     public func pendingDuplicateCandidates(householdId: UUID) async throws -> [DuplicateCandidate] {
         try await fetch(PostgrestQuery(
             table: "duplicate_candidates",
-            columns: "id,canonical_transaction_id,duplicate_transaction_id,reason,merchant_a,merchant_b",
+            columns: "id,household_id,canonical_transaction_id,duplicate_transaction_id,reason,merchant_a,merchant_b,status,created_at",
             filters: [.householdId(householdId), .equal("status", "pending")]
         ))
     }
@@ -847,7 +851,7 @@ public struct PostgrestClient {
     public func resolvedDuplicateCandidates(householdId: UUID) async throws -> [DuplicateCandidate] {
         try await fetch(PostgrestQuery(
             table: "duplicate_candidates",
-            columns: "id,merchant_a,merchant_b,status,resolved_at",
+            columns: "id,household_id,canonical_transaction_id,duplicate_transaction_id,reason,merchant_a,merchant_b,status,created_at,resolved_at",
             filters: [.householdId(householdId), .notEqual("status", "pending")]
         ))
     }
@@ -856,7 +860,7 @@ public struct PostgrestClient {
     public func merchantAliases(householdId: UUID) async throws -> [MerchantAlias] {
         try await fetch(PostgrestQuery(
             table: "merchant_aliases",
-            columns: "name_a,name_b",
+            columns: "household_id,name_a,name_b",
             filters: [.householdId(householdId)]
         ))
     }
@@ -865,7 +869,7 @@ public struct PostgrestClient {
     public func refundLinkDismissals(householdId: UUID) async throws -> [RefundLinkDismissal] {
         try await fetch(PostgrestQuery(
             table: "refund_link_dismissals",
-            columns: "refund_id,purchase_id",
+            columns: "household_id,refund_id,purchase_id",
             filters: [.householdId(householdId)]
         ))
     }
@@ -874,7 +878,7 @@ public struct PostgrestClient {
     public func restorationEntries(householdId: UUID) async throws -> [RestorationEntry] {
         try await fetch(PostgrestQuery(
             table: "restoration_entries",
-            columns: "week_start,restored_surplus_cents,debt_reduction_cents,fund_credit_cents,created_at",
+            columns: "household_id,week_start,refund_transaction_id,restored_surplus_cents,debt_reduction_cents,fund_credit_cents,created_at",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("created_at", ascending: false)],
             limit: 100
@@ -885,7 +889,7 @@ public struct PostgrestClient {
     public func heldRefunds(householdId: UUID) async throws -> [HeldRefund] {
         try await fetch(PostgrestQuery(
             table: "held_refunds",
-            columns: "id,held_cents,status,resolution_note,created_at",
+            columns: "id,household_id,refund_transaction_id,held_cents,status,resolution_note,created_at",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("created_at", ascending: false)],
             limit: 100

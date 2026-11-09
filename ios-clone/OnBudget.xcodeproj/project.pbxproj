@@ -9,6 +9,16 @@
 /* Begin PBXBuildFile section */
 		B1B1B1B1B1B1B1B1B1B1B1B1 /* OnBudgetApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1A1A1A1A1A1A1A1A1A1A1 /* OnBudgetApp.swift */; };
 		B2B2B2B2B2B2B2B2B2B2B2B2 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A2A2A2A2A2A2A2A2A2A2A2 /* ContentView.swift */; };
+		F20000000000000000000001 /* MoneyFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* MoneyFormat.swift */; };
+		F20000000000000000000002 /* FundsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* FundsShared.swift */; };
+		F20000000000000000000003 /* RefundSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* RefundSuggestions.swift */; };
+		F20000000000000000000004 /* FundsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000004 /* FundsViewModel.swift */; };
+		F20000000000000000000005 /* FundsForms.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000005 /* FundsForms.swift */; };
+		F20000000000000000000006 /* CharityIncomeForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000006 /* CharityIncomeForm.swift */; };
+		F20000000000000000000007 /* TemporaryAllowanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000007 /* TemporaryAllowanceView.swift */; };
+		F20000000000000000000008 /* ReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000008 /* ReviewView.swift */; };
+		F20000000000000000000009 /* TrashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000009 /* TrashView.swift */; };
+		F20000000000000000000010 /* FundsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000010 /* FundsView.swift */; };
 		B3B3B3B3B3B3B3B3B3B3B3B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */; };
 		B4B4B4B4B4B4B4B4B4B4B4B4 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = E2E2E2E2E2E2E2E2E2E2E2E2 /* OnBudgetKit */; };
 		B5B5B5B5B5B5B5B5B5B5B5B5 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */; };
@@ -35,6 +45,16 @@
 /* Begin PBXFileReference section */
 		A1A1A1A1A1A1A1A1A1A1A1A1 /* OnBudgetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnBudgetApp.swift; sourceTree = "<group>"; };
 		A2A2A2A2A2A2A2A2A2A2A2A2 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		F10000000000000000000001 /* MoneyFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyFormat.swift; sourceTree = "<group>"; };
+		F10000000000000000000002 /* FundsShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsShared.swift; sourceTree = "<group>"; };
+		F10000000000000000000003 /* RefundSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefundSuggestions.swift; sourceTree = "<group>"; };
+		F10000000000000000000004 /* FundsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsViewModel.swift; sourceTree = "<group>"; };
+		F10000000000000000000005 /* FundsForms.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsForms.swift; sourceTree = "<group>"; };
+		F10000000000000000000006 /* CharityIncomeForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharityIncomeForm.swift; sourceTree = "<group>"; };
+		F10000000000000000000007 /* TemporaryAllowanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryAllowanceView.swift; sourceTree = "<group>"; };
+		F10000000000000000000008 /* ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewView.swift; sourceTree = "<group>"; };
+		F10000000000000000000009 /* TrashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashView.swift; sourceTree = "<group>"; };
+		F10000000000000000000010 /* FundsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsView.swift; sourceTree = "<group>"; };
 		A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A4A4A4A4A4A4A4A4A4A4A4A4 /* OnBudget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OnBudget.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
@@ -90,8 +110,26 @@
 				C9F4D0951A49AF8D74DC7EDF /* HouseholdViews.swift */,
 				31D3DD86A75C3F15F49CF64D /* HomeView.swift */,
 				B7BB5F7C35A36F6EACB66200 /* AppShellView.swift */,
+				F30000000000000000000001 /* Funds */,
 			);
 			path = OnBudget;
+			sourceTree = "<group>";
+		};
+		F30000000000000000000001 /* Funds */ = {
+			isa = PBXGroup;
+			children = (
+				F10000000000000000000001 /* MoneyFormat.swift */,
+				F10000000000000000000002 /* FundsShared.swift */,
+				F10000000000000000000003 /* RefundSuggestions.swift */,
+				F10000000000000000000004 /* FundsViewModel.swift */,
+				F10000000000000000000005 /* FundsForms.swift */,
+				F10000000000000000000006 /* CharityIncomeForm.swift */,
+				F10000000000000000000007 /* TemporaryAllowanceView.swift */,
+				F10000000000000000000008 /* ReviewView.swift */,
+				F10000000000000000000009 /* TrashView.swift */,
+				F10000000000000000000010 /* FundsView.swift */,
+			);
+			path = Funds;
 			sourceTree = "<group>";
 		};
 		666666666666666666666666 /* OnBudgetTests */ = {
@@ -218,6 +256,16 @@
 				9051A85E7352EDDD7DD458C5 /* HouseholdViews.swift in Sources */,
 				CBA111F13C502EA3D22E33D9 /* HomeView.swift in Sources */,
 				328FAC8708AF8A36C0C524B3 /* AppShellView.swift in Sources */,
+				F20000000000000000000001 /* MoneyFormat.swift in Sources */,
+				F20000000000000000000002 /* FundsShared.swift in Sources */,
+				F20000000000000000000003 /* RefundSuggestions.swift in Sources */,
+				F20000000000000000000004 /* FundsViewModel.swift in Sources */,
+				F20000000000000000000005 /* FundsForms.swift in Sources */,
+				F20000000000000000000006 /* CharityIncomeForm.swift in Sources */,
+				F20000000000000000000007 /* TemporaryAllowanceView.swift in Sources */,
+				F20000000000000000000008 /* ReviewView.swift in Sources */,
+				F20000000000000000000009 /* TrashView.swift in Sources */,
+				F20000000000000000000010 /* FundsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
