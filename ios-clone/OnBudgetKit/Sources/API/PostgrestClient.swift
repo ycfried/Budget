@@ -623,20 +623,25 @@ public struct PostgrestClient {
         return id
     }
 
-    /// Fund ledger kinds + amounts (live.js:1609).
+    /// Fund ledger kinds + amounts (live.js:1609). The select must
+    /// include every non-optional `FundLedgerEntry` field
+    /// (household_id, note) — a narrower select fails decoding
+    /// (found by the Auth+Home builder, Nov 9, 2026).
     public func fundLedger(householdId: UUID) async throws -> [FundLedgerEntry] {
         try await fetch(PostgrestQuery(
             table: "fund_ledger",
-            columns: "kind,amount_cents",
+            columns: "id,household_id,kind,amount_cents,week_start,request_id,note,created_by,created_at",
             filters: [.householdId(householdId)]
         ))
     }
 
-    /// Surplus releases (live.js:1610, 2173-2175).
+    /// Surplus releases (live.js:1610, 2173-2175). Same rule as
+    /// fundLedger: all non-optional `SurplusRelease` fields are
+    /// selected (household_id, week_start, release_date).
     public func surplusReleases(householdId: UUID) async throws -> [SurplusRelease] {
         try await fetch(PostgrestQuery(
             table: "surplus_releases",
-            columns: "surplus_cents,released_cents,status",
+            columns: "id,household_id,week_start,surplus_cents,release_date,status,released_cents,created_at,closed_at",
             filters: [.householdId(householdId)]
         ))
     }
@@ -666,10 +671,13 @@ public struct PostgrestClient {
     // MARK: Bank & email connections
 
     /// Plaid items via the public view (live.js:1315-1317).
+    /// Selects every non-optional `PlaidItemPublic` field
+    /// (household_id was missing and broke decoding — found by the
+    /// Auth+Home builder, Nov 9, 2026).
     public func plaidItems(householdId: UUID) async throws -> [PlaidItemPublic] {
         try await fetch(PostgrestQuery(
             table: "plaid_items_public",
-            columns: "id,plaid_item_id,institution_name,institution_id,status,last_sync_at,created_at",
+            columns: "id,household_id,plaid_item_id,institution_name,institution_id,status,last_sync_at,created_at",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("created_at", ascending: false)]
         ))
@@ -771,7 +779,10 @@ public struct PostgrestClient {
     public func activeCharityIncome(householdId: UUID) async throws -> [CharityIncome] {
         try await fetchAllPages(PostgrestQuery(
             table: "charity_income",
-            columns: "amount_cents,rate_bp",
+            // All non-optional CharityIncome fields: the previous
+            // "amount_cents,rate_bp" select failed decoding (found
+            // by the Auth+Home builder, Nov 9, 2026).
+            columns: "id,household_id,source_label,amount_cents,income_date,rate_bp,status,replaces_id,note,created_by,created_at",
             filters: [.householdId(householdId), .equal("status", "active")],
             orders: [PostgrestOrder("created_at", ascending: true)]
         ))
@@ -790,10 +801,13 @@ public struct PostgrestClient {
     }
 
     /// The household's charity default rate (live.js:1703-1704).
+    /// Selects household_id too: `CharitySettings.householdId` is
+    /// non-optional, so the previous select failed decoding (found
+    /// by the Auth+Home builder, Nov 9, 2026).
     public func charitySettings(householdId: UUID) async throws -> CharitySettings? {
         try await fetchOne(PostgrestQuery(
             table: "charity_settings",
-            columns: "default_rate_bp",
+            columns: "household_id,default_rate_bp,updated_at",
             filters: [.householdId(householdId)]
         ))
     }

@@ -482,6 +482,55 @@ public final class SupabaseClient: @unchecked Sendable {
         }
     }
 
+    /// Exchange a PKCE recovery code from a password-reset deep link
+    /// for a session (`reset.html:43-67` calls
+    /// `exchangeCodeForSession(code)`). The native reset link is
+    /// `onbudget://reset-password?code=…` (see AppDeepLinks). A bad
+    /// code throws; the caller shows "This reset link could not be
+    /// used. Request a new one from the sign-in screen."
+    @discardableResult
+    public func exchangeRecoveryCode(_ code: String) async throws -> AuthSession {
+        let body: [String: Any] = ["auth_code": code]
+        let request = try Self.authRequest(
+            configuration: configuration,
+            path: "token",
+            queryItems: [URLQueryItem(name: "grant_type", value: "pkce")],
+            method: "POST",
+            accessToken: nil,
+            jsonBody: body
+        )
+        let session: AuthSession = try await performAuthRequest(request)
+        setSession(session)
+        return session
+    }
+
+    /// Adopt a recovery session from a hash-style link
+    /// (`#access_token=…&refresh_token=…`): fetch the user with the
+    /// supplied token and store the resulting session, so
+    /// `changePassword(_:)` can run as the recovering user.
+    public func adoptRecoverySession(accessToken: String, refreshToken: String, expiresIn: TimeInterval) async throws {
+        let request = try Self.authRequest(
+            configuration: configuration,
+            path: "user",
+            method: "GET",
+            accessToken: accessToken,
+            jsonBody: nil
+        )
+        let (data, response) = try await transport.send(request)
+        guard (200...299).contains(response.statusCode) else {
+            throw OnBudgetError.fromAuthResponse(status: response.statusCode, data: data)
+        }
+        do {
+            let user = try JSONDecoder().decode(AuthUser.self, from: data)
+            setSession(AuthSession(
+                accessToken: accessToken, refreshToken: refreshToken,
+                tokenType: "bearer",
+                expiresAt: Date().addingTimeInterval(expiresIn), user: user))
+        } catch {
+            throw OnBudgetError.decodingError("Could not read the signed-in user.")
+        }
+    }
+
     /// Change the password for the signed-in user (live.js:3342-3355).
     /// Minimum 8 characters — enforced by the caller before this call,
     /// matching the web UI.
