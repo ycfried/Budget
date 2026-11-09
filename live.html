@@ -10,7 +10,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=52"></head><body class="live"><header class="topbar" id="liveTopbar">
+<link rel="stylesheet" href="styles.css?v=53"></head><body class="live"><header class="topbar" id="liveTopbar">
   <div class="topbar-left"></div>
   <div class="topbar-title"><strong aria-label="OnBudget"><img class="wordmark-logo" src="icon-192.png" alt="" aria-hidden="true">nBudget</strong></div>
   <div class="topbar-right">
@@ -559,12 +559,12 @@
 </main>
 
 <footer class="foot muted small">
-  OnBudget · Last bank sync <span id="lastSync">—</span>
+  OnBudget · Last bank sync <span id="lastSync">—</span><span id="syncStaleWarn" class="sync-stale-warn" hidden> Scheduled sync hasn't run in a while — tap Sync to check now.</span>
 </footer>
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=62"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
+<script type="module" src="live.js?v=63"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('live-sw.js').catch((err) => console.warn('Service worker registration failed:', err));

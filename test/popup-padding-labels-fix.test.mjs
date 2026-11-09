@@ -133,5 +133,5 @@ test('bank card heading and sentence are the short versions, nothing else retitl
 });
 
 test('version pins: styles v52, live.js v62', () => {
-  assert.match(html, /styles\.css\?v=52/);
-  assert.match(html, /live\.js\?v=62/);});
+  assert.match(html, /styles\.css\?v=53/);
+  assert.match(html, /live\.js\?v=63/);});

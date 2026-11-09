@@ -239,11 +239,11 @@ test('P2-B11: restoration runs after the walk, and compute-week applies cuts liv
     'compute-week reads restoration cuts live, so displayed figures are correct immediately');
 });
 
-// --- P2-C7: view still exposes sync_cursor (SQL workstream owns the fix) --
+// --- P2-C7: view no longer exposes sync_cursor (fixed by the SQL workstream) --
 // No Edge Function reads the public view (they use plaid_items directly),
 // and live.js never selects sync_cursor — dropping the column is safe.
-// The view itself lives in supabase/03-plaid-vault.sql (root SQL, outside
-// the functions workstream): prepared SQL is in the branch report.
+// The view lives in supabase/03-plaid-vault.sql; the SQL workstream
+// removed sync_cursor from its select list (Nov 9, 2026).
 test('P2-C7: no function or client select reads sync_cursor from the public view', () => {
   for (const f of ['plaid-sync', 'plaid-link', 'plaid-webhook-register', 'plaid-webhook']) {
     const src = read(`../supabase/functions/${f}/index.ts`);
@@ -252,16 +252,15 @@ test('P2-C7: no function or client select reads sync_cursor from the public view
   const live = read('../live.js');
   assert.ok(!/\.select\([^)]*sync_cursor/.test(live), 'live.js must not select sync_cursor');
   const vault = read('../supabase/03-plaid-vault.sql');
-  assert.ok(vault.includes('sync_cursor,'), 'view still exposes sync_cursor — prepared SQL, not yet applied');
+  assert.ok(!vault.includes('sync_cursor,'), 'view no longer exposes sync_cursor (P2-C7 fixed)');
 });
 
-// --- P2-B14: charity int overflow (prepared SQL, SQL workstream owns it) --
-// record_charity_income / correct_charity_income compute
+// --- P2-B14: charity int overflow (fixed by the SQL workstream) --
+// record_charity_income / correct_charity_income computed
 // (amount_cents * rate_bp + 5000) / 10000 in int4. At $214k income
 // (21,400,000 cents) and the 10% default rate the intermediate product
 // is 21,400,000,000 — far past the int4 max 2,147,483,647. The fix is a
-// ::bigint cast in r13-charity.sql (root SQL, outside this workstream):
-// prepared SQL is in the branch report. This test pins the arithmetic.
+// ::bigint cast in r13-charity.sql (Nov 9, 2026); this test pins it.
 test('P2-B14: charity committed-cents product overflows int4 above ~$21k at 10% (bigint is exact)', () => {
   const amountCents = 21400000; // $214,000 income
   const rateBp = 1000; // 10% default
@@ -270,8 +269,10 @@ test('P2-B14: charity committed-cents product overflows int4 above ~$21k at 10% 
   const exact = (BigInt(amountCents) * BigInt(rateBp) + 5000n) / 10000n;
   assert.equal(exact, 2140000n, 'bigint committed cents are exact');
   const sql = read('../supabase/r13-charity.sql');
-  assert.equal((sql.match(/\(p_amount_cents \* v_rate \+ 5000\) \/ 10000/g) ?? []).length, 2,
-    'both RPCs still use int arithmetic — prepared ::bigint SQL, not yet applied');
+  assert.equal((sql.match(/\(p_amount_cents \* v_rate \+ 5000\) \/ 10000/g) ?? []).length, 0,
+    'no RPC still uses int arithmetic for the committed-cents product');
+  assert.equal((sql.match(/\(p_amount_cents::bigint \* v_rate \+ 5000\) \/ 10000/g) ?? []).length, 2,
+    'both RPCs compute the product in bigint (P2-B14 fixed)');
 });
 
 // --- P2-B15: cron service key is placeholders only, no real secret --------

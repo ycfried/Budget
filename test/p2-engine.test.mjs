@@ -117,19 +117,20 @@ test('P2-M3: restoration.mjs no longer asks for owner confirmation of fund-first
 // test/p0-fixes-audit-2026-11-08.test.mjs implements must have a
 // matching fragment in the shipped SQL. A SQL edit that drops a rule
 // while keeping the old regexes now fails here.
-// NOTE (P2-N6, still open, not fixed here): the auto-link
-// fully-refunded subquery below does NOT filter excluded/reversed
-// linked refunds — the mirror pins the SQL as-written, including
-// that gap; the reverse-link subquery was fixed to filter them
-// (refund-linking.sql:142-143 per R3).
+// NOTE (P2-N6, fixed Nov 9, 2026 by the SQL workstream): the auto-link
+// fully-refunded subquery now filters excluded/reversed linked refunds
+// (refund-linking.sql:146-147), as do the reverse-link and manual totals.
+// The mirror below pins the filtered form, not the old unfiltered one.
 test('P2-N5: every mirror rule has a matching fragment in refund-linking.sql', () => {
   assert.match(linkSql, /c\.household_id = v_ref\.household_id/, 'auto-link: same household');
   assert.match(linkSql, /c\.card_suffix = v_ref\.card_suffix/, 'auto-link: same card suffix');
   assert.match(linkSql, /c\.amount_cents = -v_ref\.amount_cents/, 'auto-link: exact full amount');
   assert.match(linkSql, /c\.date <= v_ref\.date/, 'auto-link: purchase on or before the refund');
   assert.match(linkSql, /c\.date >= v_ref\.date - interval '90 days'/, 'auto-link: 90-day window');
-  assert.match(linkSql, /where r\.original_purchase_id = c\.id\) < c\.amount_cents/,
+  assert.match(linkSql, /where r\.original_purchase_id = c\.id[\s\S]{0,200}?\) < c\.amount_cents/,
     'auto-link: purchase not already fully refunded');
+  assert.match(linkSql, /where r\.original_purchase_id = c\.id\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/,
+    'auto-link: fully-refunded total counts live linked refunds only (P2-N6)');
   assert.match(linkSql, /r\.original_purchase_id is null/, 'reverse-link: only unlinked refunds');
   assert.match(linkSql, /r\.date >= v_pur\.date/, 'reverse-link: refund on or after the purchase');
   assert.match(linkSql, /r\.date <= v_pur\.date \+ interval '90 days'/, 'reverse-link: 90-day window');

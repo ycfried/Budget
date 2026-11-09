@@ -1321,6 +1321,15 @@ async function refresh() {
       setAutoSyncSwitch(autoRow?.auto_sync_enabled === true);
     } catch (e) { console.warn('auto sync read failed:', e.message); }
     const ls = document.getElementById('lastSync'); if (ls) ls.textContent = bankLastSyncAt ? fmtDateTime(bankLastSyncAt) : 'Not synced yet';
+    // P2-C5 (Nov 8, 2026): cron staleness signal, client half. The
+    // hourly cron should sync at least every hour; if the last
+    // successful sync is over 180 minutes old, scheduled sync has
+    // not run recently and the footer says so instead of staying
+    // silent. The server half (plaid-sync/gmail-poll) reports the
+    // same gap in its response. No last sync yet means "not synced
+    // yet", not stale — the warning only fires on an old stamp.
+    const staleWarn = document.getElementById('syncStaleWarn');
+    if (staleWarn) staleWarn.hidden = !(bankLastSyncAt && (Date.now() - new Date(bankLastSyncAt).getTime() > 180 * 60 * 1000));
     const cb = $('connectBankBtn');
     // Button-card-fix: Connect stays primary and Sync stays tertiary
     // (grey) in every state. The old code stripped primary from Connect and
@@ -1477,6 +1486,9 @@ async function refresh() {
       const el = document.getElementById(id); if (el) el.innerHTML = '<p class="error">Could not load bank accounts. Try again.</p>';
     }
     const ls = document.getElementById('lastSync'); if (ls) ls.textContent = '—';
+    // P2-C5: unknown sync state (read failed) — hide the stale warning;
+    // it only fires on a known old stamp, never on an unknown one.
+    const staleWarn2 = document.getElementById('syncStaleWarn'); if (staleWarn2) staleWarn2.hidden = true;
   }
   // Email connections UI — SERVER TRUTH ONLY (email_connections_public
   // view; the refresh-token ciphertext never leaves the server).

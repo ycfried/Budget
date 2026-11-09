@@ -13,8 +13,8 @@ const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
 test('version pins: styles v52, live.js v62', () => {
-  assert.match(html, /styles\.css\?v=52/);
-  assert.match(html, /live\.js\?v=62/);});// ---- Task 1: removed sentences are gone ----
+  assert.match(html, /styles\.css\?v=53/);
+  assert.match(html, /live\.js\?v=63/);});// ---- Task 1: removed sentences are gone ----
 const REMOVED = [
   'Weekly summaries below are the financial record',
   'Closed weeks, read-only — week start, surplus, debt carried',
@@ -162,7 +162,10 @@ test('Task 5: live.js persists every view incl. Settings, plus scroll (Trash is 
 
 // ---- Task 6: footer never shows Updating ----
 test('Task 6: footer is the last-sync line only, in every state', () => {
-  assert.match(html, /OnBudget · Last bank sync <span id="lastSync">—<\/span>\s*\n<\/footer>/);
+  // P2-C5 (Nov 9, 2026): the footer may also carry the hidden
+  // syncStaleWarn span — it is part of the same last-sync line (hidden
+  // unless scheduled sync is stale) and adds no other content.
+  assert.match(html, /OnBudget · Last bank sync <span id="lastSync">—<\/span>(<span id="syncStaleWarn" class="sync-stale-warn" hidden>[^<]*<\/span>)?\s*\n<\/footer>/);
   assert.equal(html.includes('refreshState'), false);
   assert.equal(js.includes('refreshState'), false);
   assert.equal(js.includes("textContent = 'Updating"), false);

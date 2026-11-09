@@ -182,7 +182,8 @@ with an exception — see §6. Admin-only, SECURITY DEFINER.
 3. Split fund/normal purchase refund ordering: S2 applies the refund
    to the fund portion first, remainder to normal (tested). The
    FINAL acceptance cases cover only fully-fund purchases; the split
-   ordering needs owner confirmation.
+   ordering is owner-confirmed (Nov 5, 2026 — N1 Option A, fund-first
+   counted once).
 4. `update_fund_shortfall` argument names: S2 calls
    `rpc('update_fund_shortfall', { household_id, shortfall_cents })`
    per the brief's signature. If S1 defines different parameter

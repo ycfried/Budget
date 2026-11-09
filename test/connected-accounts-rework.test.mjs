@@ -17,8 +17,8 @@ const config = readFileSync(new URL('../supabase/config.toml', import.meta.url),
 const acctSql = readFileSync(new URL('../supabase/plaid-account-disconnect.sql', import.meta.url), 'utf8');
 
 test('pins bumped to v52/v62', () => {
-  assert.match(html, /styles\.css\?v=52/);
-  assert.match(html, /live\.js\?v=62/);
+  assert.match(html, /styles\.css\?v=53/);
+  assert.match(html, /live\.js\?v=63/);
 });
 
 test('Previously connected is gone from the UI, no rows deleted', () => {

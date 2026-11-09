@@ -293,6 +293,9 @@ label { font-size: 14px; font-weight: 600; }
 .hidden { display: none !important; }
 .inline-form { margin-bottom: 12px; }
 .foot { text-align: center; padding: 16px; }
+/* P2-C5: scheduled-sync staleness warning in the footer — dark red
+   text on the plain footer, same error colour as other warnings. */
+.sync-stale-warn { color: #dc2626; }
 @media (max-width: 480px) {
   .grid { grid-template-columns: 1fr 1fr; }
   .hero .big { font-size: 36px; }

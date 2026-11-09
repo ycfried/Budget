@@ -27,8 +27,8 @@ const gmailPoll = readFileSync(new URL('../supabase/functions/gmail-poll/index.t
 const register = readFileSync(new URL('../supabase/functions/plaid-webhook-register/index.ts', import.meta.url), 'utf8');
 
 test('pins are styles v52 / live.js v62', () => {
-  assert.match(html, /styles\.css\?v=52/);
-  assert.match(html, /live\.js\?v=62/);
+  assert.match(html, /styles\.css\?v=53/);
+  assert.match(html, /live\.js\?v=63/);
 });
 
 // --- P0-1. Refund linking -----------------------------------------------
