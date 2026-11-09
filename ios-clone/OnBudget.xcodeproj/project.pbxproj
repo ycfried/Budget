@@ -183,6 +183,8 @@
 				A70A0A0A0A0A0A0A0A0A0A0A /* TrashView.swift */,
 			);
 			path = Transactions;
+			sourceTree = "<group>";
+		};
 		C100C100C100C100C100C100 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
