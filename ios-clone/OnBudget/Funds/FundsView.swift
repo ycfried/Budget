@@ -153,7 +153,7 @@ public struct FundsView: View {
                     }
                 }
             } else {
-                FundsMuted(text: "Loading fund balance…")
+                FundsMuted("Loading fund balance…")
             }
         }
     }
@@ -193,7 +193,7 @@ public struct FundsView: View {
                 FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents), isNegative: summary.remainingCents < 0)
                 FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
                 FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.committedCents))
-                FundsMuted(text: "November 2026 onward")
+                FundsMuted("November 2026 onward")
                 HStack(spacing: 12) {
                     if isAdmin {
                         FundsPrimaryButton("Record Income") {
@@ -206,7 +206,7 @@ public struct FundsView: View {
                     }
                 }
             } else {
-                FundsMuted(text: "Loading charity…")
+                FundsMuted("Loading charity…")
             }
         }
     }
@@ -352,7 +352,7 @@ public struct SavingsSection: View {
             if let error = viewModel.savingsError {
                 FundsErrorBox(error)
             } else if viewModel.savings.isEmpty {
-                FundsMuted(text: "No past savings records.")
+                FundsMuted("No past savings records.")
             } else {
                 FundsBreakdownRow(
                     "Balance",
@@ -369,7 +369,7 @@ public struct SavingsSection: View {
                     )
                 )
                 if latestBalance == nil {
-                    FundsMuted(text: "Past savings records exist, but no balance was ever recorded for them — that is a missing balance, not $0.")
+                    FundsMuted("Past savings records exist, but no balance was ever recorded for them — that is a missing balance, not $0.")
                 }
                 Divider()
                 let latest = Array(viewModel.savings.prefix(20))
@@ -379,7 +379,7 @@ public struct SavingsSection: View {
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }
                 if viewModel.savings.count > 20 {
-                    FundsMuted(text: "Showing the latest 20 records.")
+                    FundsMuted("Showing the latest 20 records.")
                 }
             }
         }
