@@ -683,7 +683,7 @@ public struct HomeView: View {
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(DesignTokens.ink)
                     HStack(spacing: 6) {
-                        StatePill(label: stateLabel(row))
+                        StatePill(row)
                         Text("\(AppDates.relativeDay(row.date)) · \(cardLabel(row))")
                             .font(.system(size: 13))
                             .foregroundStyle(Color(hex: "#6b7280"))
@@ -697,16 +697,6 @@ public struct HomeView: View {
             .padding(.vertical, 6)
         }
         .buttonStyle(.plain)
-    }
-
-    private func stateLabel(_ row: Transaction) -> String {
-        if row.isInTrash { return "Excluded" }
-        switch row.state {
-        case .provisional: return "Pending"
-        case .verified: return "Posted"
-        case .reversed: return "Reversed"
-        case .excluded: return "Excluded"
-        }
     }
 
     private func cardLabel(_ row: Transaction) -> String {

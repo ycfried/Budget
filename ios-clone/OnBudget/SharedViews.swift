@@ -245,108 +245,13 @@ public struct Card<Content: View>: View {
     }
 }
 
-// MARK: - Transaction icons
 
-/// Merchant / bank icon (live.js:55-177, Nov 4 Google-favicon rule).
-/// Bank rows use the bank favicon when the card suffix maps to a
-/// connected institution; otherwise the merchant favicon; any load
-/// failure or unmapped name falls back to a brand-coloured monogram
-/// tile (white initial, slate #475569 when unmapped). Never
-/// Clearbit, never a flat grey box alone.
-public struct TransactionIconView: View {
-    private let merchant: String
-    private let institutionName: String?
-
-    public init(merchant: String, institutionName: String? = nil) {
-        self.merchant = merchant
-        self.institutionName = institutionName
-    }
-
-    private static let bankDomains: [(String, String)] = [
-        ("american express", "americanexpress.com"), ("bank of america", "bankofamerica.com"),
-        ("capital one", "capitalone.com"), ("chase", "chase.com"), ("citi", "citibank.com"),
-        ("discover", "discover.com"), ("pnc", "pnc.com"), ("td", "td.com"),
-        ("us bank", "usbank.com"), ("wells fargo", "wellsfargo.com"),
-    ]
-
-    private static let bankColors: [(String, String)] = [
-        ("american express", "#2e77bc"), ("bank of america", "#e31837"),
-        ("capital one", "#004977"), ("chase", "#117aca"), ("citi", "#003b70"),
-        ("discover", "#f48120"), ("pnc", "#f58025"), ("td", "#00a651"),
-        ("us bank", "#0c2074"), ("wells fargo", "#d71e28"),
-    ]
-
-    private static let merchantDomains: [(String, String)] = [
-        ("trader joe", "traderjoes.com"), ("whole foods", "wholefoodsmarket.com"),
-        ("home depot", "homedepot.com"), ("lowe", "lowes.com"), ("shoprite", "shoprite.com"),
-        ("mcdonald", "mcdonalds.com"), ("starbucks", "starbucks.com"), ("chipotle", "chipotle.com"),
-        ("amazon", "amazon.com"), ("walmart", "walmart.com"), ("target", "target.com"),
-        ("costco", "costco.com"), ("apple", "apple.com"), ("cvs", "cvs.com"),
-        ("walgreens", "walgreens.com"), ("exxon", "exxon.com"), ("shell", "shell.com"),
-        ("uber", "uber.com"), ("lyft", "lyft.com"), ("netflix", "netflix.com"), ("spotify", "spotify.com"),
-    ]
-
-    private static let merchantColors: [(String, String)] = [
-        ("amazon", "#ff9900"), ("walmart", "#0071dc"), ("target", "#cc0000"),
-        ("costco", "#005daa"), ("starbucks", "#00704a"), ("chipotle", "#a81623"),
-        ("mcdonald", "#da291c"), ("trader joe", "#d2232a"), ("whole foods", "#00674b"),
-        ("home depot", "#f96302"), ("lowe", "#004990"), ("shoprite", "#d71920"),
-        ("cvs", "#cc0000"), ("walgreens", "#e31837"), ("exxon", "#ed1c24"),
-        ("shell", "#fbce07"), ("uber", "#000000"), ("lyft", "#ff00bf"),
-        ("netflix", "#e50914"), ("spotify", "#1db954"), ("apple", "#000000"),
-    ]
-
-    private func match(_ name: String, in table: [(String, String)]) -> String? {
-        let lower = name.lowercased()
-        for (key, value) in table where lower.contains(key) { return value }
-        return nil
-    }
-
-    public var body: some View {
-        let name = institutionName ?? merchant
-        let initial = String(name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
-        let domain = institutionName.map { match($0, in: Self.bankDomains) }
-            ?? match(merchant, in: Self.merchantDomains)
-        let brandHex = institutionName.map { match($0, in: Self.bankColors) ?? "#475569" }
-            ?? (match(merchant, in: Self.merchantColors) ?? "#475569")
-        ZStack {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(hex: brandHex))
-                .frame(width: 40, height: 40)
-            if let domain, let url = URL(string: "https://www.google.com/s2/favicons?domain=\(domain)&sz=128") {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFit()
-                            .frame(width: 28, height: 28)
-                    default:
-                        Text(initial.isEmpty ? "?" : initial)
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                }
-            } else {
-                Text(initial.isEmpty ? "?" : initial)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-        }
-        .accessibilityHidden(true)
-    }
-}
-
-/// State pill: Posted / Pending / Reversed / Excluded (live.js:199-220).
-/// "Reversed" renders as Reversed, never Posted.
-public struct StatePill: View {
-    public let label: String
-    public init(label: String) { self.label = label }
-    public var body: some View {
-        Text(label)
-            .font(.system(size: 12, weight: .semibold))
-            .padding(.vertical, 3)
-            .padding(.horizontal, 8)
-            .background(Color(hex: "#eef4ff"))
-            .foregroundStyle(DesignTokens.ink)
-            .clipShape(Capsule())
-    }
-}
+// MARK: - Transaction icons / state pills
+//
+// `TransactionIconView` + `StatePill` live in
+// Transactions/TransactionIconView.swift (integration, Nov 9, 2026):
+// that copy has the state-based pill colours (live.js:199-220) and
+// the size parameter + `TransactionIconLookup` icon maps, so the
+// simpler SharedViews copies were deleted. `SourcePill` lives there
+// too. Call sites use `TransactionIconView(merchant:institutionName:)`
+// or `StatePill(_ transaction:)`.

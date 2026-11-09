@@ -34,6 +34,10 @@ import OnBudgetKit
 ///   "Try Again".
 public struct TransactionsView: View {
     @Bindable var viewModel: TransactionsViewModel
+    /// The app shell, for the handoffs it owns: `pendingWeekFilter`
+    /// (Past Weeks / Weekly sheet) and `pendingTransactionJump`
+    /// (Home recent-row tap). Consumed on appear and on change.
+    @ObservedObject var appState: AppViewModel
 
     /// Wired by the app shell once the Past Weeks / Activity screens
     /// land. The links are hidden until a handler is supplied, so
@@ -49,10 +53,12 @@ public struct TransactionsView: View {
 
     public init(
         viewModel: TransactionsViewModel,
+        appState: AppViewModel,
         onShowPastWeeks: (() -> Void)? = nil,
         onShowActivity: (() -> Void)? = nil
     ) {
         self.viewModel = viewModel
+        self.appState = appState
         self.onShowPastWeeks = onShowPastWeeks
         self.onShowActivity = onShowActivity
     }
@@ -86,7 +92,10 @@ public struct TransactionsView: View {
             if case .idle = viewModel.loadState {
                 await viewModel.load()
             }
+            consumeHandoffs()
         }
+        .onChange(of: appState.pendingWeekFilter) { _, _ in consumeHandoffs() }
+        .onChange(of: appState.pendingTransactionJump) { _, _ in consumeHandoffs() }
         .sheet(isPresented: $showingFilters) {
             TransactionsFilterSheet(viewModel: viewModel, onDismiss: { showingFilters = false })
         }
@@ -115,6 +124,22 @@ public struct TransactionsView: View {
         }
         .onChange(of: searchText) { _, new in
             viewModel.applySearch(new)
+        }
+    }
+
+    // MARK: - Handoffs from the app shell
+
+    /// Past Weeks / Weekly sheet (`pendingWeekFilter`) and Home
+    /// recent-row tap (`pendingTransactionJump`): apply to the list,
+    /// then clear the flag so a later tab switch does not re-apply.
+    private func consumeHandoffs() {
+        if let week = appState.pendingWeekFilter {
+            appState.pendingWeekFilter = nil
+            viewModel.applyWeekFilter(weekStart: week)
+        }
+        if let jump = appState.pendingTransactionJump {
+            appState.pendingTransactionJump = nil
+            viewModel.applyTransactionJump(jump)
         }
     }
 

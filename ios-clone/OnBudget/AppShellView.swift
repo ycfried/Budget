@@ -9,12 +9,22 @@
 // right (white bg, dark icon, light-grey border, no blue fill).
 // The profile menu offers Settings and Sign Out.
 //
-// Transactions / Funds screens are owned by other builders; the
-// placeholders here only carry the handoffs this workstream wires
-// (recent-row jump, weekly-sheet week filter) so the receiving
-// screens can consume them. The Settings placeholder is likewise
-// owned by the Settings builder; the shell only owns how it is
-// reached (profile menu → full-screen cover).
+// Wiring (integration, Nov 9, 2026 — the placeholders are gone):
+// - Home: `HomeView(appState:householdId:)` (Auth/Home builder).
+// - Transactions: `TransactionsView(viewModel:appState:)`; the view
+//   model is created here once the household is known and consumes
+//   the shell handoffs `pendingWeekFilter` / `pendingTransactionJump`.
+//   Trash is reached from the Transactions "Trash (N)" link only
+//   (CLONE_SPEC §11; admin-only, hidden at 0).
+// - Funds: `FundsView(context:appState:)`; shares `expandedCard`
+//   with Home and opens Temporary Allowance on
+//   `pendingTemporaryAllowance` (Settings Budget link).
+// - Settings: `SettingsView` in a full-screen cover; its context
+//   carries `onShowWeekTransactions` → `showTransactionsForWeek`
+//   (Past Weeks tap opens Transactions filtered to that week) and
+//   `onOpenTemporaryAllowance` → `openTemporaryAllowance`.
+// Toasts render at the ContentView root so they also show on the
+// Auth screen (account-created / account-deleted notices).
 //
 // Clone basis: live web v66.
 
@@ -23,6 +33,7 @@ import OnBudgetKit
 
 public struct AppShellView: View {
     @ObservedObject var appState: AppViewModel
+    @State private var transactionsViewModel: TransactionsViewModel?
 
     public init(appState: AppViewModel) { self.appState = appState }
 
@@ -35,18 +46,12 @@ public struct AppShellView: View {
                         Label("Home", systemImage: "house")
                     }
                     .tag(AppTab.home)
-                PlaceholderScreen(
-                    title: "Transactions",
-                    note: "Owned by the Transactions builder.",
-                    appState: appState)
+                transactionsTab
                     .tabItem {
                         Label("Transactions", systemImage: "list.bullet")
                     }
                     .tag(AppTab.transactions)
-                PlaceholderScreen(
-                    title: "Funds",
-                    note: "Owned by the Funds builder.",
-                    appState: appState)
+                fundsTab
                     .tabItem {
                         Label("Funds", systemImage: "banknote")
                     }
@@ -54,27 +59,51 @@ public struct AppShellView: View {
             }
             .tint(DesignTokens.primary)
         }
-        .toastOverlay($appState.toast)
         .fullScreenCover(isPresented: $appState.showSettings) {
             settingsCover
         }
+        .task { ensureTransactionsViewModel() }
+        .onChange(of: appState.householdId) { _, _ in ensureTransactionsViewModel() }
     }
 
     /// Settings as a full-screen cover (CLONE_SPEC §2.2 — not a
-    /// tab). The placeholder is owned by the Settings builder; the
-    /// Done button is the shell's way back to the tab underneath.
+    /// tab). The tab underneath is left alone so dismissing Settings
+    /// returns to where the user was; the "Open Temporary Allowance"
+    /// link is the one exception — it closes Settings and switches
+    /// to Funds (see `AppViewModel.openTemporaryAllowance`).
     private var settingsCover: some View {
         NavigationStack {
-            PlaceholderScreen(
-                title: "Settings",
-                note: "Owned by the Settings builder.",
-                appState: appState)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { appState.showSettings = false }
-                    }
-                }
+            if let context = settingsContext() {
+                SettingsView(context: context, onBack: { appState.showSettings = false })
+            } else {
+                LoadingView()
+            }
         }
+    }
+
+    /// The Settings context the shell owns: session + household from
+    /// AppViewModel, handoffs back into the shell. Past Weeks taps
+    /// land on Transactions filtered to that week; the Budget card's
+    /// Temporary Allowance link lands on the Funds form.
+    private func settingsContext() -> SettingsContext? {
+        guard let householdId = appState.householdId,
+              let role = appState.role else { return nil }
+        return SettingsContext(
+            client: appState.client,
+            householdId: householdId,
+            isAdmin: appState.isAdmin,
+            currentUserId: appState.client.currentSession?.user.id,
+            displayName: appState.displayName,
+            email: appState.client.currentSession?.user.email,
+            householdName: appState.householdName,
+            onSignOut: { Task { await appState.signOut() } },
+            onAccountDeleted: { message in
+                Task { await appState.signOut() }
+                appState.showToast(message, kind: .info)
+            },
+            onShowWeekTransactions: { appState.showTransactionsForWeek($0) },
+            onOpenTemporaryAllowance: { appState.openTemporaryAllowance() }
+        )
     }
 
     private var topBar: some View {
@@ -122,44 +151,52 @@ public struct AppShellView: View {
             LoadingView()
         }
     }
-}
 
-/// Temporary placeholder for screens owned by other builders. It
-/// surfaces the handoffs this workstream wires so the receiving
-/// screen can consume them, and never pretends to be the screen.
-public struct PlaceholderScreen: View {
-    let title: String
-    let note: String
-    @ObservedObject var appState: AppViewModel
-
-    public init(title: String, note: String, appState: AppViewModel) {
-        self.title = title
-        self.note = note
-        self.appState = appState
+    @ViewBuilder
+    private var transactionsTab: some View {
+        if let viewModel = transactionsViewModel {
+            TransactionsView(viewModel: viewModel, appState: appState)
+        } else {
+            LoadingView()
+        }
     }
 
-    public var body: some View {
-        VStack(spacing: 12) {
-            Text(TitleCase.apply(to: title))
-                .font(.system(size: 22, weight: .bold))
-            Text(note)
-                .font(.system(size: 15))
-                .foregroundStyle(Color(hex: "#6b7280"))
-            if title == "Transactions" {
-                if let jump = appState.pendingTransactionJump {
-                    Text("Jump to transaction \(jump.uuidString) — expand its detail; clear search and filters first. If the row is not in the loaded page, toast: \"That transaction is not in the loaded list — tap Load more for older ones.\"")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color(hex: "#6b7280"))
-                }
-                if let week = appState.pendingWeekFilter {
-                    Text("Week filter: \(AppDates.long(week)) (Sun–Sat).")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color(hex: "#6b7280"))
-                }
-            }
-            Spacer()
+    @ViewBuilder
+    private var fundsTab: some View {
+        if let householdId = appState.householdId,
+           let role = appState.role,
+           let userId = appState.client.currentSession?.user.id {
+            FundsView(
+                context: FundsContext(
+                    client: appState.client,
+                    householdId: householdId,
+                    role: role,
+                    userId: userId
+                ),
+                appState: appState
+            )
+        } else {
+            LoadingView()
         }
-        .padding(20)
-        .background(DesignTokens.background)
+    }
+
+    /// The Transactions view model is owned by the shell (one per
+    /// household session) so the tab keeps its loaded page + filters
+    /// across tab switches. A dead session routes to the expired
+    /// screen ("Sign In Again").
+    private func ensureTransactionsViewModel() {
+        guard let householdId = appState.householdId,
+              let userId = appState.client.currentSession?.user.id else { return }
+        // Recreate when the household changes (sign-out + sign-in as
+        // a different household must not reuse the old page).
+        guard transactionsViewModel?.householdId != householdId else { return }
+        let viewModel = TransactionsViewModel(
+            client: appState.client,
+            householdId: householdId,
+            isAdmin: appState.isAdmin,
+            currentUserId: userId
+        )
+        viewModel.onSignInAgain = { appState.showSessionExpired() }
+        transactionsViewModel = viewModel
     }
 }

@@ -106,7 +106,7 @@ final class ToastState: ObservableObject {
         dismissTask?.cancel()
         current = Toast(message: message, kind: kind)
         dismissTask = Task {
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            try? await Task.sleep(for: .seconds(ToastStyle.autoDismissSeconds))
             guard !Task.isCancelled else { return }
             current = nil
         }

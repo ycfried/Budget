@@ -326,8 +326,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
 // Bottom only, floating clear of the tab bar, auto-dismiss 4s, tap
 // dismisses sooner, tab switch clears it. Success/info: brand blue
 // #2f6bff, white text. Error: soft red bg/text/border.
-// NOTE: OnBudgetKit's ToastStyle.autoDismissSeconds is 3.0s; the spec
-// (§2.3) and the task brief both say 4s — this modifier uses 4s.
+// NOTE (integration, Nov 9, 2026): the auto-dismiss sleeps on the
+// one shared value `ToastStyle.autoDismissSeconds` (4.0, spec §2.3);
+// the stale note claiming the kit value was 3.0s is removed —
+// fixes-1 set it to 4.0 and this modifier no longer keeps its own 4s.
 
 public struct FundsToastOverlay: ViewModifier {
     @Binding public var toast: Toast?
@@ -369,7 +371,7 @@ public struct FundsToastOverlay: ViewModifier {
                 dismissTask?.cancel()
                 guard newValue != nil else { return }
                 dismissTask = Task {
-                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    try? await Task.sleep(for: .seconds(ToastStyle.autoDismissSeconds))
                     guard !Task.isCancelled else { return }
                     await MainActor.run { toast = nil }
                 }

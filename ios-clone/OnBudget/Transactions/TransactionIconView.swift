@@ -20,6 +20,14 @@ public struct TransactionIconView: View {
         self.size = size
     }
 
+    /// Merchant-first spelling, used by Home + Trash call sites
+    /// (kept from the deleted SharedViews copy so they need no edit).
+    public init(merchant: String, institutionName: String? = nil, size: CGFloat = 40) {
+        self.institutionName = institutionName
+        self.merchant = merchant
+        self.size = size
+    }
+
     public var body: some View {
         ZStack {
             monogram

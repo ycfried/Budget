@@ -329,9 +329,12 @@ public struct PostgrestClient {
 
     /// The household row's name (live.js:458).
     public func householdName(householdId: UUID) async throws -> String? {
+        // All non-optional Household fields: decoding a full
+        // Household from a "name"-only select fails (missing keys
+        // are decoding errors, not nils) — fixed Nov 9, 2026.
         let row: Household? = try await fetchOne(PostgrestQuery(
             table: "households",
-            columns: "name",
+            columns: "id,name,base_allowance_cents,fund_shortfall_cents,auto_sync_enabled,created_at",
             filters: [.householdId(householdId)]
         ))
         return row?.name
@@ -398,9 +401,11 @@ public struct PostgrestClient {
     /// live.js:2948).
     public func householdNames(ids: [UUID]) async throws -> [Household] {
         guard !ids.isEmpty else { return [] }
+        // All non-optional Household fields (same latent bug as
+        // householdName: "id,name" cannot decode a full Household).
         return try await fetch(PostgrestQuery(
             table: "households",
-            columns: "id,name",
+            columns: "id,name,base_allowance_cents,fund_shortfall_cents,auto_sync_enabled,created_at",
             filters: [.in("id", ids.map(\.uuidString))]
         ))
     }
@@ -520,7 +525,11 @@ public struct PostgrestClient {
         }
         return try await fetch(PostgrestQuery(
             table: "transactions",
-            columns: "id,merchant,amount_cents,date",
+            // All non-optional Transaction fields: the previous
+            // "id,merchant,amount_cents,date" select could not decode
+            // full Transaction rows (fixed Nov 9, 2026; the
+            // Transactions view model no longer works around it).
+            columns: "id,household_id,date,merchant,amount_cents,card_suffix,source,state,kind,fund_allocation_cents,excluded,exclude_reason,late,dedupe_hash,created_at",
             filters: filters,
             orders: [PostgrestOrder("date", ascending: false)],
             limit: 20
@@ -780,7 +789,9 @@ public struct PostgrestClient {
         guard !itemIds.isEmpty else { return false }
         let rows: [WebhookEvent] = try await fetch(PostgrestQuery(
             table: "webhook_events",
-            columns: "id",
+            // All non-optional WebhookEvent fields: an "id"-only
+            // select cannot decode (missing webhook_code/processed).
+            columns: "id,webhook_code,processed",
             filters: [.in("plaid_item_id", itemIds), .equal("processed", "false")],
             limit: 1
         ))
@@ -913,7 +924,9 @@ public struct PostgrestClient {
     public func weekCloses(householdId: UUID) async throws -> [WeekClose] {
         try await fetch(PostgrestQuery(
             table: "week_closes",
-            columns: "week_start,surplus_cents,outgoing_debt_cents",
+            // All non-optional WeekClose fields: the previous select
+            // omitted household_id and could not decode.
+            columns: "household_id,week_start,surplus_cents,outgoing_debt_cents",
             filters: [.householdId(householdId)]
         ))
     }
@@ -922,7 +935,10 @@ public struct PostgrestClient {
     public func surplusReleasesForHistory(householdId: UUID) async throws -> [SurplusRelease] {
         try await fetch(PostgrestQuery(
             table: "surplus_releases",
-            columns: "week_start,surplus_cents,released_cents,status",
+            // All non-optional SurplusRelease fields: the previous
+            // select omitted household_id and release_date and could
+            // not decode.
+            columns: "household_id,week_start,surplus_cents,release_date,status,released_cents",
             filters: [.householdId(householdId)]
         ))
     }
