@@ -3,15 +3,27 @@
 // Run with: node --test test/refund-classification-fix.test.mjs
 // All amounts are integer cents. $1 = 100.
 //
-// The week Nov 1–7, 2026, real shape (live probe Nov 5, 11:04 AM):
-// charges $3,949.52 (19 provisional $255.66 + 16 verified $3,693.86),
-// four "refund" rows totalling -$8,521.76. Owner confirmed:
+// The week Nov 1–7, 2026, real shape (live truth per FULL_AUDIT_
+// 2026-11-08_R2.md §1, from recorded live probes Nov 8, 2:19/2:36 PM):
+// gross charges $4,762.30; the four rows below were reclassified by
+// the owner Nov 8 (2:16–2:19 PM) and leave week math entirely —
 //   MOBILE CHECK DEPOSIT -$7,000.00 = income
 //   ONLINE TRANSFER / PAYMENT: CREDIT -$1,012.79 = CC payment
 //   PRIME STRATEGIC CORPORATION -$350.00 = transfer (friend's money)
 //   NORDSTROM -$158.97 = genuine refund, stays refund
-// After correction: remaining refund $158.97 only, spent $3,790.55,
-// Purchases 31, charity $700 recorded for the $7,000 income.
+// After correction: the Nordstrom refund nets against the week's
+// charges, so net spent C = $4,762.30 − $158.97 = $4,603.33, against
+// the week's stored snapshot B = $5,000 (temporary increase /
+// override, not the $375 base) — surplus / Extra Fund pending
+// $396.67, cross-proven from two independent readings. Charity $700
+// recorded for the $7,000 income.
+// SUPERSEDED (P2-N15): the Nov 5, 11:04 AM probe behind the first
+// audit (charges $3,949.52, spent $3,790.55) was stale — rows kept
+// arriving after that probe. Do not restore those figures.
+// The charge rows below are synthetic aggregates: only the totals
+// ($4,762.30 gross, $4,603.33 net) are the live truth, not the split
+// and not the row count (the first audit's "31 purchases" count came
+// from the same stale probe and is not re-proven in the records).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,6 +33,7 @@ import {
   isExcludedFromMath,
   chargeContribution,
   charityCommittedCents,
+  applyUnlinkedRefundCap,
 } from '../engine.mjs';
 import { classifyCsvKind } from '../filterState.mjs';
 
@@ -114,41 +127,60 @@ test('engine: income is excluded from week math and contributes $0', () => {
 });
 
 // --- Synthetic week: the corrected Nov 1–7 week ----------------------------
-test('synthetic week: corrected rows give spent $3,790.55, Purchases 31, charity $700', () => {
+test('synthetic week: corrected rows give net spent $4,603.33, surplus $396.67, charity $700', () => {
   const rows = [
-    { kind: 'charge', state: 'provisional', amount_cents: 25566, fund_allocation_cents: 0 },
-    { kind: 'charge', state: 'verified', amount_cents: 369386, fund_allocation_cents: 0 },
+    { kind: 'charge', state: 'verified', amount_cents: 476230, fund_allocation_cents: 0 },
     { kind: 'income', state: 'verified', amount_cents: -700000 },   // check deposit
     { kind: 'payment', state: 'verified', amount_cents: -101279 },  // CC payment
     { kind: 'transfer', state: 'verified', amount_cents: -35000 },  // friend's money
     { kind: 'refund', state: 'verified', amount_cents: -15897, original_purchase_id: null }, // Nordstrom, genuine
   ];
   const chargesNet = rows.reduce((s, t) => s + chargeContribution(t), 0);
-  assert.equal(chargesNet, 394952, 'charges $3,949.52; income/payment/transfer contribute $0');
+  assert.equal(chargesNet, 476230, 'gross charges $4,762.30; income/payment/transfer contribute $0');
   // Unlinked-refund cap: the one remaining refund nets in full because
   // it is smaller than the week's charges; excess is $0.
-  const unlinkedAbs = 15897;
-  const netted = Math.min(unlinkedAbs, Math.max(0, chargesNet));
-  const C = Math.max(0, chargesNet - netted);
-  assert.equal(C, 379055, 'spent $3,790.55');
+  const cap = applyUnlinkedRefundCap(15897, chargesNet, false);
+  assert.deepEqual(cap, { nettedCents: 15897, excessCents: 0, chargesAfterCents: 460333 });
+  const C = cap.chargesAfterCents;
+  assert.equal(C, 460333, 'net spent $4,603.33');
   const purchases = rows.filter((t) => t.kind === 'charge').length;
-  assert.equal(purchases, 2, 'charge rows in this fixture (31 in the real week)');
+  assert.equal(purchases, 1, 'one synthetic aggregate charge row (the real-week row count is not re-proven — see the header)');
   // Charity: recording the $7,000 income at the 10% default commits $700.
   assert.equal(charityCommittedCents(700000, 1000), 70000);
-  // And computeWeek itself: $3,790.55 spent against a $375 allowance.
-  const w = computeWeek({ B: 37500, C });
-  assert.equal(w.available, 37500 - 379055);
+  // And computeWeek itself: $4,603.33 spent against the week's stored
+  // snapshot B of $5,000 leaves $396.67 — the recorded pending surplus.
+  const w = computeWeek({ B: 500000, C });
+  assert.equal(w.available, 39667);
+  assert.equal(w.earnedSurplus, 39667);
 });
 
 // --- Unlinked-refund cap: charges $100 + refund $250 -----------------------
+// P2-M5 (Nov 8, 2026): the old test re-implemented Math.min inline and
+// never executed any real code, so it passed even with the cap broken.
+// It now calls the real helper, applyUnlinkedRefundCap, against
+// independently hand-computed expectations — every case below fails
+// if the helper's arithmetic, the lock gate, or the excess changes.
 test('cap: an unlinked refund bigger than the week nets only up to the charges', () => {
-  const chargesNet = 10000;
-  const unlinkedAbs = 25000;
-  const netted = Math.min(unlinkedAbs, Math.max(0, chargesNet));
-  const excess = unlinkedAbs - netted;
-  assert.equal(netted, 10000);
-  assert.equal(excess, 15000);
-  assert.equal(Math.max(0, chargesNet - netted), 0);
+  assert.deepEqual(applyUnlinkedRefundCap(25000, 10000, false),
+    { nettedCents: 10000, excessCents: 15000, chargesAfterCents: 0 });
+  // Live case: Nov 1–7 gross charges $4,762.30, Nordstrom refund
+  // $158.97, open week — nets in full, nothing in excess.
+  assert.deepEqual(applyUnlinkedRefundCap(15897, 476230, false),
+    { nettedCents: 15897, excessCents: 0, chargesAfterCents: 460333 });
+  // Same week once locked: the refund nets $0 and the whole amount is
+  // excess (restoration handles locked-week refunds instead).
+  assert.deepEqual(applyUnlinkedRefundCap(15897, 476230, true),
+    { nettedCents: 0, excessCents: 15897, chargesAfterCents: 476230 });
+  // Boundaries: refund exactly the charges; no refund; no charges.
+  assert.deepEqual(applyUnlinkedRefundCap(10000, 10000, false),
+    { nettedCents: 10000, excessCents: 0, chargesAfterCents: 0 });
+  assert.deepEqual(applyUnlinkedRefundCap(0, 10000, false),
+    { nettedCents: 0, excessCents: 0, chargesAfterCents: 10000 });
+  assert.deepEqual(applyUnlinkedRefundCap(5000, 0, false),
+    { nettedCents: 0, excessCents: 5000, chargesAfterCents: 0 });
+  // The deployed functions still inline this formula (they cannot
+  // import the root file) — pin their text to the same rule so a
+  // server-side edit that breaks the cap fails here too.
   assert.match(computeWeekTs, /const unlinkedNetted = weekLocked \? 0 : Math\.min\(unlinkedRefundAbs, Math\.max\(0, chargesNet\)\);/);
   assert.match(computeWeekTs, /unlinked_excess_cents: unlinkedExcessCents/);
   assert.match(weekCloseTs, /const unlinkedExcessInWeek = \(ws: string\) => \{/);
