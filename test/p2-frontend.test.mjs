@@ -252,7 +252,10 @@ test('NEW-P2-5: showSheet actions param/branch is deleted', () => {
   assert.equal(js.includes("actions ? ' btn-quiet'"), false, 'actions confirm-button branch is gone');
   assert.ok(js.includes('function showSheet({'), 'showSheet itself still exists');
   assert.ok(js.includes('extraAction'), 'the live extra-action path is untouched');
-  assert.equal((js.match(/showSheet\(\{/g) ?? []).length, 16, 'definition + 15 call sites still present, none passing actions');
+  // The count is not pinned: later call sites (e.g. the C2 household
+  // picker) legitimately add more. The invariant is that no call site
+  // passes `actions:` — the deleted param has no callers to resurrect.
+  assert.equal((js.match(/showSheet\(\{[^}]*actions:/g) ?? []).length, 0, 'no call site passes actions');
 });
 
 // ---- NEW-P2-6 (R4, Nov 9, 2026): SW cache-write failure is logged ----
