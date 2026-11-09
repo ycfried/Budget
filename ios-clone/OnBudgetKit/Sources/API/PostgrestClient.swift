@@ -650,11 +650,14 @@ public struct PostgrestClient {
         ))
     }
 
-    /// Fund top-ups for the history view (live.js:1668-1670).
+    /// Fund top-ups for the history view (live.js:1668-1670). The
+    /// select must include every non-optional `FundTopup` field
+    /// (household_id, client_key) — a narrower select fails decoding
+    /// (same class as the five reads fixed Nov 9, 2026).
     public func fundTopups(householdId: UUID) async throws -> [FundTopup] {
         try await fetch(PostgrestQuery(
             table: "fund_topups",
-            columns: "household_id,client_key,amount_cents,shortfall_covered_cents,fund_added_cents,shortfall_after_cents,note,created_at",
+            columns: "id,household_id,client_key,amount_cents,shortfall_covered_cents,fund_added_cents,shortfall_after_cents,note,created_by,created_at",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("created_at", ascending: false)]
         ))
@@ -688,20 +691,27 @@ public struct PostgrestClient {
     }
 
     /// Active Plaid items only (duplicate-warning check, live.js:2798-2799).
+    /// Same rule as plaidItems: every non-optional `PlaidItemPublic`
+    /// field is selected (id, household_id, status, created_at) — the
+    /// previous two-column select failed decoding (same class as the
+    /// five reads fixed Nov 9, 2026).
     public func activePlaidItems(householdId: UUID) async throws -> [PlaidItemPublic] {
         try await fetch(PostgrestQuery(
             table: "plaid_items_public",
-            columns: "plaid_item_id,institution_name",
+            columns: "id,household_id,plaid_item_id,institution_name,institution_id,status,last_sync_at,created_at",
             filters: [.householdId(householdId), .equal("status", "active")]
         ))
     }
 
-    /// Plaid accounts for a set of items (live.js:1322-1324).
+    /// Plaid accounts for a set of items (live.js:1322-1324). The
+    /// select must include every non-optional `PlaidAccount` field
+    /// (id, household_id) — the previous select failed decoding
+    /// (same class as the five reads fixed Nov 9, 2026).
     public func plaidAccounts(itemIds: [String]) async throws -> [PlaidAccount] {
         guard !itemIds.isEmpty else { return [] }
         return try await fetch(PostgrestQuery(
             table: "plaid_accounts",
-            columns: "plaid_item_id,plaid_account_id,name,mask,type,subtype,disconnected_at",
+            columns: "id,household_id,plaid_item_id,plaid_account_id,name,mask,type,subtype,disconnected_at,created_at,updated_at",
             filters: [.in("plaid_item_id", itemIds)]
         ))
     }
@@ -793,11 +803,14 @@ public struct PostgrestClient {
     }
 
     /// All charity income rows for the history view, newest first,
-    /// max 50 (live.js:1764-1766).
+    /// max 50 (live.js:1764-1766). Same rule as activeCharityIncome:
+    /// every non-optional `CharityIncome` field is selected
+    /// (household_id) — the previous select failed decoding (same
+    /// class as the five reads fixed Nov 9, 2026).
     public func charityIncomeHistory(householdId: UUID) async throws -> [CharityIncome] {
         try await fetch(PostgrestQuery(
             table: "charity_income",
-            columns: "id,household_id,source_label,amount_cents,income_date,rate_bp,status,note",
+            columns: "id,household_id,source_label,amount_cents,income_date,rate_bp,status,replaces_id,note,created_by,created_at",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("income_date", ascending: false)],
             limit: 50

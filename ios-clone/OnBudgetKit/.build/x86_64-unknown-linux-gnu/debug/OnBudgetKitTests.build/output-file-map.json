@@ -1,0 +1,47 @@
+{
+  "": {
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/master.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Tests/OnBudgetKitTests/APIDecodingTests.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIDecodingTests.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIDecodingTests.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIDecodingTests~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIDecodingTests.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Tests/OnBudgetKitTests/APIErrorMappingTests.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIErrorMappingTests.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIErrorMappingTests.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIErrorMappingTests~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIErrorMappingTests.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Tests/OnBudgetKitTests/APIRequestTests.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIRequestTests.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIRequestTests.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIRequestTests~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APIRequestTests.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Tests/OnBudgetKitTests/APISelectShapeTests.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APISelectShapeTests.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APISelectShapeTests.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APISelectShapeTests~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APISelectShapeTests.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Tests/OnBudgetKitTests/APISummaryAndHashTests.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APISummaryAndHashTests.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APISummaryAndHashTests.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APISummaryAndHashTests~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/APISummaryAndHashTests.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Tests/OnBudgetKitTests/FundsReadDecodingTests.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/FundsReadDecodingTests.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/FundsReadDecodingTests.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/FundsReadDecodingTests~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/FundsReadDecodingTests.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Tests/OnBudgetKitTests/OnBudgetKitTests.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/OnBudgetKitTests.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/OnBudgetKitTests.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/OnBudgetKitTests~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitTests.build/OnBudgetKitTests.swiftdeps"
+  }
+}

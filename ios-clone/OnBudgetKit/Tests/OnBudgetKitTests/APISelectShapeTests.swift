@@ -9,7 +9,9 @@
 // live screen. Added by the Auth+Home builder, Nov 9, 2026, after
 // five reads (fundLedger, surplusReleases, plaidItems,
 // activeCharityIncome, charitySettings) were found to select too
-// few columns to decode. No network.
+// few columns to decode. Four more of the same class (fundTopups,
+// activePlaidItems, plaidAccounts, charityIncomeHistory) were
+// widened and pinned the same day. No network.
 
 import Foundation
 import XCTest
@@ -102,5 +104,84 @@ final class APISelectShapeTests: XCTestCase {
         }
         """, as: CharitySettings.self)
         XCTAssertEqual(row.defaultRateBp, 1000)
+    }
+
+    func testFundTopupDecodesFromSelectedColumns() throws {
+        let row = try decode("""
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "household_id": "22222222-2222-2222-2222-222222222222",
+          "client_key": "topup-1",
+          "amount_cents": 10000,
+          "shortfall_covered_cents": 4000,
+          "fund_added_cents": 6000,
+          "shortfall_after_cents": 0,
+          "note": "Top-up",
+          "created_by": null,
+          "created_at": "2026-11-09T00:00:00Z"
+        }
+        """, as: FundTopup.self)
+        XCTAssertEqual(row.amountCents, 10000)
+        XCTAssertEqual(row.clientKey, "topup-1")
+        XCTAssertEqual(row.shortfallCoveredCents, 4000)
+        XCTAssertEqual(row.fundAddedCents, 6000)
+    }
+
+    func testActivePlaidItemDecodesFromSelectedColumns() throws {
+        let row = try decode("""
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "household_id": "22222222-2222-2222-2222-222222222222",
+          "plaid_item_id": "item-1",
+          "institution_name": "Chase",
+          "institution_id": "ins_1",
+          "status": "active",
+          "last_sync_at": "2026-11-09T12:00:00Z",
+          "created_at": "2026-11-01T00:00:00Z"
+        }
+        """, as: PlaidItemPublic.self)
+        XCTAssertTrue(row.isActive)
+        XCTAssertEqual(row.plaidItemId, "item-1")
+    }
+
+    func testPlaidAccountDecodesFromSelectedColumns() throws {
+        let row = try decode("""
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "household_id": "22222222-2222-2222-2222-222222222222",
+          "plaid_item_id": "item-1",
+          "plaid_account_id": "acc-1",
+          "name": "Checking",
+          "mask": "1234",
+          "type": "depository",
+          "subtype": "checking",
+          "disconnected_at": null,
+          "created_at": "2026-11-01T00:00:00Z",
+          "updated_at": "2026-11-01T00:00:00Z"
+        }
+        """, as: PlaidAccount.self)
+        XCTAssertEqual(row.plaidAccountId, "acc-1")
+        XCTAssertFalse(row.isDisconnected)
+        XCTAssertEqual(row.plainType, "Checking")
+    }
+
+    func testCharityIncomeHistoryDecodesFromSelectedColumns() throws {
+        let row = try decode("""
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "household_id": "22222222-2222-2222-2222-222222222222",
+          "source_label": "Paycheck",
+          "amount_cents": 100000,
+          "income_date": "2026-11-06",
+          "rate_bp": 1000,
+          "status": "active",
+          "replaces_id": null,
+          "note": "",
+          "created_by": null,
+          "created_at": "2026-11-06T00:00:00Z"
+        }
+        """, as: CharityIncome.self)
+        XCTAssertEqual(row.committedCents, 10000)
+        XCTAssertEqual(row.sourceLabel, "Paycheck")
     }
 }

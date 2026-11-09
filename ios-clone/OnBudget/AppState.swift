@@ -28,14 +28,12 @@ public enum AppPhase: Equatable {
 }
 
 /// Tabs. The web has 3 tabs + Settings via the profile menu
-/// (CLONE_SPEC §2.2); the task brief for this build specifies a
-/// 4-tab bar — Home, Transactions, Funds, Settings — so Settings is
-/// a tab here as well as a profile-menu destination.
+/// (CLONE_SPEC §2.2) — Settings is NOT a tab. It is presented as a
+/// full-screen cover from the profile menu (`showSettings`).
 public enum AppTab: String, CaseIterable {
     case home = "Home"
     case transactions = "Transactions"
     case funds = "Funds"
-    case settings = "Settings"
 }
 
 /// Which stat card is expanded. Home and Funds share one expanded
@@ -62,6 +60,9 @@ public final class AppViewModel: ObservableObject {
 
     @Published public var phase: AppPhase = .loading
     @Published public var selectedTab: AppTab = .home
+    /// Settings is not a tab (CLONE_SPEC §2.2): the profile menu
+    /// opens it as a full-screen cover over the current tab.
+    @Published public var showSettings = false
     @Published public var toast: Toast?
 
     /// The signed-in user's membership, once known.
@@ -109,6 +110,7 @@ public final class AppViewModel: ObservableObject {
     public func boot() async {
         phase = .loading
         selectedTab = .home
+        showSettings = false
         guard let session = client.currentSession else {
             phase = .auth
             return
@@ -186,6 +188,7 @@ public final class AppViewModel: ObservableObject {
         expandedCard = nil
         pendingTransactionJump = nil
         pendingWeekFilter = nil
+        showSettings = false
         weekCloseAttempted = false
         selectedTab = .home
         phase = .auth
@@ -201,6 +204,14 @@ public final class AppViewModel: ObservableObject {
     }
 
     // MARK: - Navigation handoffs
+
+    /// Settings (CLONE_SPEC §2.2): not a tab — opened from the
+    /// profile menu (or a Home link) as a full-screen cover over
+    /// the current tab. The tab underneath is left alone so
+    /// dismissing Settings returns to where the user was.
+    public func openSettings() {
+        showSettings = true
+    }
 
     /// Recent-row tap (live.js:1040-1110): clear Transactions
     /// filters/search first (the Transactions screen does this when

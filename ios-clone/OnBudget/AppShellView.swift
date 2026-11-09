@@ -2,15 +2,19 @@
 //
 // App shell + tab bar (CLONE_SPEC §0.1–0.2, §2.2).
 // Home on EVERY fresh load (app start, login, reopen), never on
-// in-app navigation. Tab bar: Home, Transactions, Funds, Settings.
+// in-app navigation. Tab bar: Home, Transactions, Funds.
+// Settings is NOT a tab — reached from the profile menu only, as a
+// full-screen cover over the current tab.
 // Top bar: white, bottom hairline, title centred, profile button
 // right (white bg, dark icon, light-grey border, no blue fill).
 // The profile menu offers Settings and Sign Out.
 //
-// Transactions / Funds / Settings screens are owned by other
-// builders; the placeholders here only carry the handoffs this
-// workstream wires (recent-row jump, weekly-sheet week filter) so
-// the receiving screens can consume them.
+// Transactions / Funds screens are owned by other builders; the
+// placeholders here only carry the handoffs this workstream wires
+// (recent-row jump, weekly-sheet week filter) so the receiving
+// screens can consume them. The Settings placeholder is likewise
+// owned by the Settings builder; the shell only owns how it is
+// reached (profile menu → full-screen cover).
 //
 // Clone basis: live web v66.
 
@@ -47,18 +51,30 @@ public struct AppShellView: View {
                         Label("Funds", systemImage: "banknote")
                     }
                     .tag(AppTab.funds)
-                PlaceholderScreen(
-                    title: "Settings",
-                    note: "Owned by the Settings builder.",
-                    appState: appState)
-                    .tabItem {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .tag(AppTab.settings)
             }
             .tint(DesignTokens.primary)
         }
         .toastOverlay($appState.toast)
+        .fullScreenCover(isPresented: $appState.showSettings) {
+            settingsCover
+        }
+    }
+
+    /// Settings as a full-screen cover (CLONE_SPEC §2.2 — not a
+    /// tab). The placeholder is owned by the Settings builder; the
+    /// Done button is the shell's way back to the tab underneath.
+    private var settingsCover: some View {
+        NavigationStack {
+            PlaceholderScreen(
+                title: "Settings",
+                note: "Owned by the Settings builder.",
+                appState: appState)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { appState.showSettings = false }
+                    }
+                }
+        }
     }
 
     private var topBar: some View {
@@ -70,7 +86,7 @@ public struct AppShellView: View {
                 .foregroundStyle(DesignTokens.ink)
             Spacer()
             Menu {
-                Button("Settings") { appState.selectedTab = .settings }
+                Button("Settings") { appState.openSettings() }
                 Button("Sign Out", role: .destructive) {
                     Task { await appState.signOut() }
                 }

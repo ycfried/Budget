@@ -167,8 +167,8 @@ public struct LoadingView: View {
 
 /// Bottom toast, floating clear of the tab bar. Success/info are
 /// brand blue with white text; errors are soft red. Auto-dismiss
-/// 4s; tap dismisses sooner. (ToastStyle in OnBudgetKit records 3s;
-/// the live spec §2.3 and the task brief say 4s — 4s is used here.)
+/// 4s (ToastStyle.autoDismissSeconds, CLONE_SPEC §2.3); tap
+/// dismisses sooner.
 public struct ToastBanner: View {
     public let toast: Toast
     public let onDismiss: () -> Void
@@ -205,7 +205,8 @@ public struct ToastBanner: View {
 }
 
 /// Overlays the current toast at the bottom of any screen, with the
-/// 4-second auto-dismiss.
+/// 4-second auto-dismiss (ToastStyle.autoDismissSeconds — the one
+/// shared value, CLONE_SPEC §2.3).
 public struct ToastOverlayModifier: ViewModifier {
     @Binding public var toast: Toast?
     public init(toast: Binding<Toast?>) { self._toast = toast }
@@ -214,7 +215,7 @@ public struct ToastOverlayModifier: ViewModifier {
             if let toast {
                 ToastBanner(toast: toast) { self.toast = nil }
                     .task(id: toast.id) {
-                        try? await Task.sleep(for: .seconds(4))
+                        try? await Task.sleep(for: .seconds(ToastStyle.autoDismissSeconds))
                         if self.toast?.id == toast.id { self.toast = nil }
                     }
             }

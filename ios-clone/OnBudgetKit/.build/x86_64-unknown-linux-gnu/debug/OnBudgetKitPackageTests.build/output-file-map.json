@@ -1,0 +1,11 @@
+{
+  "": {
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageTests.build/master.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageTests.derived/runner.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageTests.build/runner.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageTests.build/runner.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageTests.build/runner~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageTests.build/runner.swiftdeps"
+  }
+}
