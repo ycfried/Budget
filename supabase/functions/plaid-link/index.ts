@@ -76,7 +76,8 @@ Deno.serve(async (req) => {
     if (!res.ok) return json({ error: 'plaid link token failed', detail: data?.error_message ?? 'unknown' }, 502);
     return json({ link_token: data.link_token, expiration: data.expiration });
   } catch (e) {
-    return json({ error: String(e?.message ?? e) }, 500);
+    console.error('plaid-link failed:', e?.message ?? e);
+    return json({ error: 'could not create bank link' }, 500);
   }
 });
 

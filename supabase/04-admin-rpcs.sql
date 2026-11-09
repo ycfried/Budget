@@ -1,6 +1,11 @@
 -- =====================================================================
 -- S1 migration 04 — Admin RPCs: safe approval, shortfall path,
 -- server-side audit identity, allowance history, one approval path
+-- DO NOT APPLY IN FULL (P1-B9, Nov 8, 2026): §1 approve_and_allocate
+-- below has ambiguous parameter names (re-applying it makes every
+-- Approve fail — see the §1 banner; canonical is
+-- supabase/approve-ambiguity-fix.sql). Apply individual sections
+-- only from their canonical files, never this file whole.
 -- Deploy order: FOURTH of the five S1 files (01..05).
 -- Depends on: schema.sql, fund-ledger.sql (fund_requests,
 --   fund_ledger, transactions, households, audit_log exist;
@@ -66,6 +71,15 @@ alter table fund_requests
 
 -- ---------------------------------------------------------------------
 -- 1. approve_and_allocate — full replacement
+--    DO NOT RE-APPLY THIS SECTION (P1-B1, Nov 8, 2026). Its
+--    parameters are named request_id / amount_cents / override_reason
+--    and amount_cents COLLIDES with the amount_cents column of
+--    fund_requests / fund_ledger — applying this version makes every
+--    Approve fail with Postgres "column reference amount_cents is
+--    ambiguous" (audit A finding 1, Nov 3). The body is otherwise
+--    the correct strong version; the CANONICAL definition is
+--    supabase/approve-ambiguity-fix.sql (same body, p_-prefixed
+--    parameters). Apply that file instead.
 --    approve_and_allocate(request_id uuid, amount_cents int,
 --                         override_reason text) returns void
 --    Rules, in order:

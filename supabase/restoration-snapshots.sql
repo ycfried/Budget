@@ -132,6 +132,14 @@ grant select on restoration_entries to authenticated;
 grant select on held_refunds to authenticated;
 
 -- resolve_held_refund: admin-only, SECURITY DEFINER.
+-- DO NOT RE-APPLY THE DEFINITION BELOW (P1-B4, Nov 8, 2026). It is
+-- the NON-ATOMIC version: no FOR UPDATE on the held row, an
+-- unconditional resolving UPDATE, and a plain shortfall read — two
+-- concurrent releases can both post fund-ledger rows (double
+-- release). The CANONICAL definition is
+-- supabase/merged-audit-held-release-atomic.sql (row lock +
+-- conditional update + 'held refund already resolved' + households
+-- row lock for the shortfall). Apply that file instead.
 -- Semantics (exact — see S2_NOTES.md for the flagged 'release' item):
 -- - action 'write_off' or 'resolve': closes the held row WITHOUT
 --   moving any money (status -> 'resolved', resolved_at = now(),

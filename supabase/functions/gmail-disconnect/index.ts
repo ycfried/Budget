@@ -119,7 +119,8 @@ Deno.serve(async (req) => {
 
     return json({ disconnected: true, connection_id: connectionId });
   } catch (e) {
-    return json({ error: String((e as Error)?.message ?? e) }, 500);
+    console.error('gmail-disconnect failed:', (e as Error)?.message ?? e);
+    return json({ error: 'could not disconnect email' }, 500);
   }
 });
 

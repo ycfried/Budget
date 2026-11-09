@@ -267,14 +267,17 @@ Deno.serve(async (req) => {
     // $0 silently. The excess is exposed as unlinked_excess_cents
     // instead of being dropped. The cap is a visibility guard, not the
     // fix for a misclassification — the classifier is what must label
-    // the row right. The locked-week guard below is preserved: a refund
-    // that arrived AFTER this week's close was recorded does not
-    // rewrite it.
+    // the row right. P1-M1 (Nov 8, 2026): the LOCK rule replaces the
+    // old created_at guard — an open week recomputes (so a refund
+    // arriving after the close DOES count on the next recompute, which
+    // is how the Nov 1–7 week corrected itself to $396.67 surplus),
+    // while a locked week never nets unlinked refunds (restoration
+    // handles locked-week refunds instead). The excess stays exposed
+    // in both cases, so a late locked-week refund is visible, not lost.
     const unlinkedRefundAbs = windowRows
-      .filter((t: any) => postedRefund(t) && (!hasLinkage || !t.original_purchase_id)
-        && !(thisClose && t.created_at && thisClose.created_at && t.created_at > thisClose.created_at))
+      .filter((t: any) => postedRefund(t) && (!hasLinkage || !t.original_purchase_id))
       .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
-    const unlinkedNetted = Math.min(unlinkedRefundAbs, Math.max(0, chargesNet));
+    const unlinkedNetted = weekLocked ? 0 : Math.min(unlinkedRefundAbs, Math.max(0, chargesNet));
     chargesNet -= unlinkedNetted;
     const unlinkedExcessCents = unlinkedRefundAbs - unlinkedNetted;
 
@@ -359,7 +362,10 @@ Deno.serve(async (req) => {
       unlinked_excess_cents: unlinkedExcessCents,
     });
   } catch (e) {
-    return json({ error: String((e as any)?.message ?? e) }, 500);
+    // P1-B3 (Nov 8, 2026): never leak a raw DB/server error to the
+    // client — log the detail server-side, return a generic string.
+    console.error('compute-week failed:', (e as any)?.message ?? e);
+    return json({ error: 'could not compute week' }, 500);
   }
 });
 

@@ -27,8 +27,8 @@ const gmailPoll = readFileSync(new URL('../supabase/functions/gmail-poll/index.t
 const register = readFileSync(new URL('../supabase/functions/plaid-webhook-register/index.ts', import.meta.url), 'utf8');
 
 test('pins are styles v50 / live.js v61', () => {
-  assert.match(html, /styles\.css\?v=51/);
-  assert.match(html, /live\.js\?v=61/);
+  assert.match(html, /styles\.css\?v=52/);
+  assert.match(html, /live\.js\?v=62/);
 });
 
 // --- P0-1. Refund linking -----------------------------------------------
@@ -143,7 +143,9 @@ test('P0-1: a linked posted refund is selected for restoration; an unlinked one 
   // (compute-week floors C at 0) — the fallback is still there for
   // refunds no purchase could be found for.
   const cw = readFileSync(new URL('../supabase/functions/compute-week/index.ts', import.meta.url), 'utf8');
-  assert.match(cw, /const unlinkedNetted = Math\.min\(unlinkedRefundAbs, Math\.max\(0, chargesNet\)\);/, 'unlinked netting capped at charges');
+  // P1-M1 (Nov 8, 2026): the lock gates the netting — an open week
+  // still caps at charges, a locked week nets nothing.
+  assert.match(cw, /const unlinkedNetted = weekLocked \? 0 : Math\.min\(unlinkedRefundAbs, Math\.max\(0, chargesNet\)\);/, 'unlinked netting capped at charges in open weeks, zero in locked weeks');
   assert.equal(computeWeek({ B: 37500, T: 0, D: 0, C: 0 }).available, 37500, 'a week floored at zero charges keeps its full allowance');
 });
 
@@ -218,7 +220,10 @@ test('P0-3: the p_ rename exists only in the quarantined file', () => {
 test('P0-4: plaid-webhook-register skips disconnected items and isolates per-item failures', () => {
   assert.match(register, /filter\(\(i\) => \(i\.status \?\? 'active'\) !== 'disconnected'\)/, 'disconnected items are skipped');
   assert.match(register, /try \{\s*\n\s*const \{ data: ct \} = await supabaseAdmin\.rpc\('get_plaid_ciphertext'/, 'per-item work is inside try/catch');
-  assert.match(register, /catch \(e\) \{\s*\n\s*results\.push\(\{ item: item\.plaid_item_id, institution: item\.institution_name \?\? null, ok: false, error: String/, 'a failed item yields ok:false instead of a 500');
+  // P1-B3 (Nov 8, 2026): the per-item error is the generic string
+  // 'request failed' — the raw exception text is logged server-side
+  // only, because the toast displays this error.
+  assert.match(register, /catch \(e\) \{[\s\S]*?results\.push\(\{ item: item\.plaid_item_id, institution: item\.institution_name \?\? null, ok: false, error: 'request failed' \}\)/, 'a failed item yields ok:false instead of a 500');
   assert.match(register, /institution: item\.institution_name \?\? null, ok: res\.ok/, 'every result names its institution');
   assert.match(register, /if \(\(items \?\? \[\]\)\.length && results\.every\(\(r\) => r\.ok\)\) \{/, 'switch state is stored only on a fully successful run');
 });

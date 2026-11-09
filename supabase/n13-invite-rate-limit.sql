@@ -10,12 +10,12 @@
 --
 -- NOTE: this file is now APPLIED LIVE (verified Nov 6, 2026) and the
 -- companion live.js join-handler fix (NULL = failed join) is live
--- too. Do NOT re-apply this file blind: it would overwrite the
--- display_name handling added by supabase/signup-display-name.sql
--- (§1b, which is the same N13 body with the display_name insert
--- and the threshold of 5). That file is the live-apply source from
--- here on; this file stays as the N13 reference with the same
--- threshold of 5.
+-- too. DO NOT RE-APPLY THIS FILE (P1-B9, Nov 8, 2026): it would
+-- overwrite the display_name handling added by
+-- supabase/signup-display-name.sql (§1b, which is the same N13 body
+-- with the display_name insert and the threshold of 5). That file is
+-- the live-apply source from here on; this file stays as the N13
+-- reference with the same threshold of 5.
 --
 -- WHY THE INVALID-CODE PATH RETURNS NULL INSTEAD OF RAISING:
 -- A Postgres exception aborts the whole RPC transaction, so an

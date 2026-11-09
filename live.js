@@ -26,7 +26,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind, emailConnectionWarnings } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -697,13 +697,29 @@ async function refresh() {
   // load (not only after a later refresh). Best-effort; a failed
   // read leaves merchant icons in place.
   await loadInstitutionBySuffix();
+  // P1-C1 (Nov 8, 2026): the app starts Nov 1, 2026 — the list never
+  // shows pre-Nov rows. The server already deletes re-pulled pre-Nov
+  // Plaid rows (plaid-sync B6 guard) and entry rejects pre-Nov dates,
+  // but a legacy pre-Nov row would otherwise show here while being
+  // excluded from week math. This floor covers Home, Transactions
+  // and Trash, which all render from this one load.
   const { data: txns, error: txErr } = await supabase.from('transactions')
     .select('*').eq('household_id', household.household_id)
+    .gte('date', '2026-11-01')
     .order('date', { ascending: false }).limit(txLimit);
   // Read failures are an ERROR STATE, never a silent empty list or stale
   // numbers: txReadFailed overrides the lists below.
   const txReadFailed = !!txErr;
-  if (txErr) console.warn('transactions read failed:', txErr.message);
+  // P1-C4 (Nov 8, 2026): name the failure kind. A dead session used
+  // to show the same generic line as a server failure, and the owner
+  // could not tell them apart. PostgREST surfaces a 401 as code
+  // PGRST301 / 'JWT expired'; a missing session confirms it.
+  let txReadErrorKind = null;
+  if (txErr) {
+    console.warn('transactions read failed:', txErr.message);
+    const { data: { session: readSession } } = await supabase.auth.getSession();
+    txReadErrorKind = (!readSession || /jwt expired|invalid jwt|unauthorized|PGRST301/i.test(`${txErr.code ?? ''} ${txErr.message ?? ''}`)) ? 'auth' : 'server';
+  }
   const all = txReadFailed ? [] : (txns ?? []);
   txLoaded = true;
   const q = ($('txSearch')?.value ?? '').trim().toLowerCase();
@@ -815,7 +831,7 @@ async function refresh() {
       ? shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && t.kind === 'charity').reduce((s, t) => s + t.amount_cents, 0)
       : shown.filter((t) => !(t.excluded === true || t.state === 'excluded') && t.state !== 'reversed' && (t.kind === 'charge' || t.kind === 'fund_charge' || t.kind === 'refund')).reduce((s, t) => s + (t.kind === 'refund' ? -Math.abs(t.amount_cents ?? 0) : (t.amount_cents ?? 0)), 0);
     const capped = all.length >= txLimit ? ' of loaded transactions — tap Load more for older ones' : ' of loaded transactions';
-    countEl.textContent = txReadFailed ? 'Could not load transactions — try again.' : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : (shown.length === 0 && searchOrFilterActive ? 'No matching transactions — try a different search, or clear the search and filters.' : `${shown.length} transactions · Total shown ${formatCents(shownTotal)}${all.length >= txLimit ? ' · of loaded transactions — tap Load more for older ones' : ''}`); // Merged-audit A7: short count + separately labelled total; recovery message outranks a zero total.
+    countEl.textContent = txReadFailed ? (txReadErrorKind === 'auth' ? 'Sign-in expired — sign in again to see transactions.' : 'Could not load transactions — try again.') : amountRangeInvalid ? 'Minimum amount is above the maximum amount — change one of them to see transactions.' : (shown.length === 0 && searchOrFilterActive ? 'No matching transactions — try a different search, or clear the search and filters.' : `${shown.length} transactions · Total shown ${formatCents(shownTotal)}${all.length >= txLimit ? ' · of loaded transactions — tap Load more for older ones' : ''}`); // Merged-audit A7: short count + separately labelled total; recovery message outranks a zero total.
   }
   const loadMore = $('txLoadMore');
   if (loadMore) loadMore.classList.toggle('hidden', all.length < txLimit);
@@ -891,7 +907,9 @@ async function refresh() {
     ? `<li class="tx-empty">${emptyHint} <button class="btn btn-small" data-clear-search-filters type="button" aria-label="Clear search and filters">Clear search and filters</button></li>`
     : `<li class="tx-empty">${emptyHint}</li>`;
   $('txList').innerHTML = txReadFailed
-    ? `<li class="tx-empty error">Could not load transactions. Check your connection and try again — nothing here is a complete list.</li>`
+    ? txReadErrorKind === 'auth'
+      ? `<li class="tx-empty error">Your sign-in expired — sign in again to see transactions. <button class="btn btn-small" data-tx-signin-again type="button" aria-label="Sign in again">Sign in again</button></li>`
+      : `<li class="tx-empty error">Could not load transactions — the server did not answer. Nothing here is a complete list. <button class="btn btn-small" data-tx-retry-load type="button" aria-label="Try loading transactions again">Try again</button></li>`
     : shown.length
     ? shown.map((t) => {
         const excluded = t.excluded === true || t.state === 'excluded';
@@ -949,6 +967,11 @@ async function refresh() {
     const mx = $('txMaxAmount'); if (mx) mx.value = '';
     refresh();
   }));
+  // P1-C4 (Nov 8, 2026): the load-failure actions. "Sign in again"
+  // reuses the sign-out button's handler (sign-out + sign-in panel);
+  // "Try again" just re-runs the load.
+  document.querySelectorAll('[data-tx-signin-again]').forEach((b) => b.addEventListener('click', () => { $('signOutBtn')?.click(); }));
+  document.querySelectorAll('[data-tx-retry-load]').forEach((b) => b.addEventListener('click', async () => { await refresh(); }));
   // Home preview: the 6 newest transactions, tapping one jumps to Transactions.
   // Design-questions (owner, Nov 5): 4 rows left a large dead gap
   // above the footer on a phone-height Home; 6 rows + the footer
@@ -1135,7 +1158,7 @@ async function refresh() {
         return `<li><div data-fund-head="${r.id}" role="button" tabindex="0" aria-label="Show detail for this Extra Fund request">${formatCents(r.amount_cents)} · ${esc(statusLabel)} · ${esc(r.note || '')}</div>
         <div class="tx-detail hidden" id="fund-detail-${r.id}">
           <p class="small muted">Requested: ${formatCents(r.amount_cents)} · Status: ${esc(statusLabel)}<br>
-          Fund available now: ${currentFundData ? formatCents(currentFundData.available) : 'not loaded'}<br>
+          Fund available now: <span data-fund-available-now>${currentFundData ? formatCents(currentFundData.available) : '…'}</span><br>
           ${approvedCents !== null ? `Approved: ${formatCents(approvedCents)}${r.status === 'split' ? ` of ${formatCents(r.amount_cents)} requested — ${formatCents(r.remainder_cents)} is still unapproved and needs a new request.` : ' (in full).'}` : ''}<br>
           Note: ${esc(r.note || '—')}<br>
           Requested: ${fmtDateTime(r.created_at)}<br>
@@ -1145,7 +1168,13 @@ async function refresh() {
       }).join('')
     : '<li>No fund requests yet.</li>';
   document.querySelectorAll('[data-fund-head]').forEach((el) => el.addEventListener('click', () => {
-    document.getElementById(`fund-detail-${el.dataset.fundHead}`)?.classList.toggle('hidden');
+    const det = document.getElementById(`fund-detail-${el.dataset.fundHead}`);
+    det?.classList.toggle('hidden');
+    // P1-F3 (Nov 8, 2026): the fund aggregates load AFTER this list
+    // renders in refresh(), so the baked "Fund available now" line
+    // was 'not loaded' on first load. Fill it lazily at tap time,
+    // when currentFundData is set (refresh has completed by then).
+    if (det && !det.classList.contains('hidden')) det.querySelectorAll('[data-fund-available-now]').forEach((s) => { s.textContent = currentFundData ? formatCents(currentFundData.available) : 'not loaded'; });
   }));
   document.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
     const req = (reqs ?? []).find((r) => r.id === b.dataset.approve);
@@ -1425,7 +1454,7 @@ async function refresh() {
   {
     try {
       const { data: conns, error: connErr } = await supabase.from('email_connections_public')
-        .select('id, provider, email_address, status, last_poll_at, last_error')
+        .select('id, provider, email_address, status, last_poll_at, last_error, created_at, connected_at')
         .eq('household_id', household.household_id).order('created_at', { ascending: false });
       if (connErr) throw connErr;
       const rows = conns ?? [];
@@ -1448,6 +1477,10 @@ async function refresh() {
           // a line — the reconnect warning. "Last checked" stays as
           // the one small grey line under the email.
           if (c.status === 'error') { const st = document.createElement('div'); st.className = 'muted small'; st.textContent = 'Needs reconnect — access was revoked or expired.'; info.appendChild(st); }
+          // P1-R2 (Nov 8, 2026): warn BEFORE the Testing-mode token
+          // dies (~7 days after the grant), and say so plainly when
+          // the last check is stale. The grant clock is connected_at.
+          for (const w of emailConnectionWarnings(c)) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = w === 'expiring' ? 'Email access expires about 7 days after connecting — reconnect soon to keep alerts coming.' : `Not checked since ${fmtDateTime(c.last_poll_at)} — if new alerts stop arriving, reconnect.`; info.appendChild(l); }
           if (c.last_poll_at) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = `Last checked ${fmtDateTime(c.last_poll_at)}`; info.appendChild(l); }
           if (c.last_error) { const l = document.createElement('div'); l.className = 'muted small'; l.textContent = c.last_error; info.appendChild(l); }
           wrap.appendChild(info);
@@ -2413,12 +2446,26 @@ $('manualForm').addEventListener('submit', async (e) => {
 
 async function callFn(name, body) {
   const { data: { session: s } } = await supabase.auth.getSession();
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token ?? ''}`, apikey: SUPABASE_ANON_KEY },
-    body: JSON.stringify(body),
-  });
-  return res.json();
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token ?? ''}`, apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    // P1-C4 (Nov 8, 2026): a network failure used to throw out of
+    // every caller. Return it like any other failure instead, so
+    // callers show their error toast rather than crashing.
+    return { error: 'network error — check your connection', status: 0 };
+  }
+  const data = await res.json().catch(() => ({}));
+  // P1-C4: callers only ever saw res.json() — a 401/500 body was
+  // indistinguishable from a success body. Surface the status so a
+  // dead session (401) can be told apart from a server failure, and
+  // keep the generic error string the function returned (P1-B3).
+  if (!res.ok) return { ...data, error: data.error ?? `request failed (${res.status})`, status: res.status };
+  return data;
 }
 
 $('connectBankBtn')?.addEventListener('click', async () => {
@@ -2456,7 +2503,9 @@ $('connectBankBtn')?.addEventListener('click', async () => {
       });
       showToast(ex.connected
         ? 'Connected. Tap "Sync Transactions" to pull transactions.'
-        : `Connection could not be finished: ${ex.error ?? 'unknown error'}`, !ex.connected);
+        : ex.duplicate
+          ? 'This bank is already connected — the duplicate connection was removed. Past transactions stay.'
+          : `Connection could not be finished: ${ex.error ?? 'unknown error'}`, !ex.connected);
       if (ex.connected) { await refresh(); } // connection state now comes from plaid_items on refresh, not localStorage
     },
     onExit: (err) => {
@@ -2481,8 +2530,12 @@ async function runBankSync() {
   try {
     showToast('Syncing bank transactions…');
     const out = await callFn('plaid-sync', { household_id: household.household_id });
+    // P1-C1 (Nov 8, 2026): name the failed connection(s) — a bare
+    // 'plaid sync failed' never said which bank, or that a failed
+    // cursor persist would make every later sync a full pull.
+    const failedNames = Array.isArray(out.failed_institutions) ? out.failed_institutions.filter(Boolean) : [];
     const text = out.error
-      ? `Sync failed: ${out.error}`
+      ? `Sync failed: ${out.error}${failedNames.length ? ` — ${failedNames.join(', ')}` : ''}`
       : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).${(out.duplicate_removed ?? []).length ? ` A duplicate bank connection was removed because those accounts are already connected on another connection. Past transactions stay.` : ''}`;
     showToast(text, !!out.error);
     // No localStorage sync/connection state: refresh() re-reads last_sync_at
@@ -2566,9 +2619,18 @@ $('connectEmailBtn')?.addEventListener('click', async () => {
 $('pollEmailBtn')?.addEventListener('click', async () => {
   setResultMsg('emailMsg', 'Checking email…', false);
   const out = await callFn('gmail-poll', { household_id: household.household_id });
-  setResultMsg('emailMsg', out.error
-    ? `Email check failed: ${out.error}`
-    : `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`, !!out.error);
+  // P1-R2 (Nov 8, 2026): gmail-poll returns per-connection failures
+  // in errors[] with NO top-level error — the old code read only
+  // out.error and reported false success ("Email checked: 0 added…")
+  // after the token died. Surface the first per-connection failure.
+  const firstErr = Array.isArray(out.errors) && out.errors.length ? out.errors[0] : null;
+  const failed = out.error || firstErr;
+  const failText = firstErr && /reauthorization/i.test(firstErr.error || '')
+    ? 'access expired — reconnect your email.'
+    : (firstErr?.error ?? out.error);
+  setResultMsg('emailMsg', failed
+    ? `Email check failed: ${failText}`
+    : `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`, !!failed);
   await refresh();
 });
 
@@ -3310,8 +3372,13 @@ async function openTxActionsSheet(row) {
   // Delete only; charity gets Delete only. Members keep Extra Fund
   // on charges only, as before.
   const actionIds = actionsForTxKind(row.kind, isAdmin, row.state === 'verified');
+  // P1-NEW1 (Nov 8, 2026): the Charity row is offered on any charge
+  // but rendered DISABLED with honest copy when it cannot act yet —
+  // admin on a pending charge ("Available once this posts"), any
+  // member ("Ask the admin to mark this as a gift"). A disabled row
+  // never fires its handler.
   const actions = actionIds.map((id) => id === 'charity'
-    ? { id, label: 'Charity', sub: 'Counts it as a charity gift, out of weekly spending' }
+    ? { id, label: 'Charity', sub: !isAdmin ? 'Ask the admin to mark this as a gift' : row.state === 'verified' ? 'Counts it as a charity gift, out of weekly spending' : 'Available once this posts', disabled: !isAdmin || row.state !== 'verified' }
     : id === 'linkRefund'
     ? { id, label: 'Link to purchase', sub: row.original_purchase_id ? 'Change or remove the purchase this refund is linked to' : 'Link this refund to the purchase it came from' }
     : id === 'extraFund'
@@ -3325,7 +3392,7 @@ async function openTxActionsSheet(row) {
   overlay.id = 'sheetOverlay';
   overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Actions for ${esc(displayMerchant(row.merchant))}"><span class="sheet-handle" aria-hidden="true"></span>
     <div class="sheet-top"><button class="sheet-top-cancel" type="button" id="txActionsCancel">Cancel</button><h3>Actions</h3><span class="sheet-top-spacer"></span></div><p class="muted small">${esc(displayMerchant(row.merchant))} — ${formatCents(row.amount_cents)}</p>${['transfer', 'payment', 'cashback', 'fund_charge'].includes(row.kind) ? '<p class="muted small">This row does not count toward weekly spending.</p>' : ''}
-    ${actions.map((a) => `<button class="tx-action-row" data-tx-action="${a.id}" type="button"><span><strong>${a.label}</strong><br><span class="muted small">${esc(a.sub)}</span></span><span aria-hidden="true">›</span></button>`).join('')}</div>`;
+    ${actions.map((a) => `<button class="tx-action-row" data-tx-action="${a.id}" type="button"${a.disabled ? ' disabled' : ''}><span><strong>${a.label}</strong><br><span class="muted small">${esc(a.sub)}</span></span><span aria-hidden="true">›</span></button>`).join('')}</div>`;
   document.body.appendChild(overlay);
   syncScrollLock();
   const close = () => { document.removeEventListener('keydown', escHandler); overlay.remove(); syncScrollLock(); };
@@ -3335,6 +3402,7 @@ async function openTxActionsSheet(row) {
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
   overlay.querySelectorAll('[data-tx-action]').forEach((btn) => btn.addEventListener('click', async () => {
     const id = btn.dataset.txAction;
+    if (btn.disabled) return;
     close();
     if (id === 'charity') await doTxCharity(row);
     else if (id === 'extraFund') await doTxExtraFund(row);
@@ -3371,7 +3439,7 @@ async function doTxExtraFund(row) {
     household_id: household.household_id, requested_by: user.id,
     amount_cents: cents, note: '', status: 'pending', transaction_id: row.id,
   });
-  if (error) { console.warn('fund request (use-fund) failed:', error.message); await showAlert('Could not send request', 'Could not send this request. Try again.'); return; }
+  if (error) { console.warn('fund request (use-fund) failed:', error.message); await showAlert('Could not send request', /must be a charge|different household/i.test(error.message || '') ? error.message : 'Could not send this request. Try again.'); return; }
   await audit('Extra Fund request created', `Requested ${formatCents(cents)} for ${row?.merchant ?? 'a transaction'}.`);
   await refresh();
 }
@@ -3428,13 +3496,22 @@ async function doTxLinkRefund(row) {
   await refresh();
 }
 async function doTxReclassify(row) {
-  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }, { value: 'income', label: 'Income' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }, { value: 'income', label: 'Income' }, { value: 'charity', label: 'Charity' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
   if (newKind === null) return;
+  // P1-NEW1 (Nov 8, 2026): Charity goes through the guarded
+  // mark_transaction_charity path (posted charge, unlocked week),
+  // not the raw reclassify RPC — the allow-list entry for 'charity'
+  // in refund-classification-income-kind.sql is the admin override
+  // only, not the client path.
+  if (newKind === 'charity') { await doTxCharity(row); return; }
   const reason = await showSheet({ title: 'Reclassify Transaction', message: 'Why reclassify this transaction?', inputLabel: 'Reason (required)', confirmLabel: 'Reclassify', cancelLabel: 'Cancel' });
   if (reason === null) return;
   if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for reclassifying this transaction.'); return; }
   const { error } = await supabase.rpc('reclassify_transaction', { txn_id: row.id, new_kind: newKind, reason: reason.trim() });
-  if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', 'Could not reclassify this transaction. Try again.'); return; }
+  // P1-M2 (Nov 8, 2026): a locked-week refusal names the reason —
+  // the generic "Try again" would invite an admin to retry a change
+  // the server will never accept. Same pattern as doTxCharity.
+  if (error) { console.warn('reclassify_transaction failed:', error.message); await showAlert('Could not reclassify', /locked/i.test(error.message || '') ? error.message : 'Could not reclassify this transaction. Try again.'); return; }
   await audit('Transaction reclassified', `${row ? row.merchant : 'Transaction'} reclassified to ${newKind} — reason: ${reason.trim()}.`);
   await refresh();
 }
@@ -3454,7 +3531,9 @@ async function doTxDelete(row) {
   if (reason === null) return;
   if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for moving this transaction to the Trash.'); return; }
   const { error } = await supabase.rpc('exclude_transaction', { txn_id: row.id, reason: reason.trim() });
-  if (error) { console.warn('exclude_transaction (trash) failed:', error.message); await showAlert('Could not delete', 'Could not delete this transaction. Try again.'); return; }
+  // P1-M2 (Nov 8, 2026): surface a locked-week refusal by name
+  // instead of the generic "Try again" (see doTxReclassify).
+  if (error) { console.warn('exclude_transaction (trash) failed:', error.message); await showAlert('Could not delete', /locked/i.test(error.message || '') ? error.message : 'Could not delete this transaction. Try again.'); return; }
   await audit('Transaction moved to trash', `${row.merchant} ${formatCents(row.amount_cents)} moved to trash — reason: ${reason.trim()}.`);
   showToast('Moved to trash bin.');
   await refresh();

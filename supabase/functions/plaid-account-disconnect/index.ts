@@ -167,7 +167,8 @@ Deno.serve(async (req) => {
     if (flagError) return json({ error: 'could not mark account disconnected' }, 500);
     return json({ disconnected: true, plaid_account_id: plaidAccountId, item_disconnected: isLastActive });
   } catch (e) {
-    return json({ error: String((e as Error)?.message ?? e) }, 500);
+    console.error('plaid-account-disconnect failed:', (e as Error)?.message ?? e);
+    return json({ error: 'could not disconnect account' }, 500);
   }
 });
 

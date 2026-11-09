@@ -1,4 +1,9 @@
 -- Refund misclassification fix — add 'income' as an 8th transaction kind.
+-- CANONICAL KIND CONSTRAINT (P1-B5, Nov 8, 2026): this file holds the
+-- single authoritative transactions_kind_check (8 kinds). No other
+-- file's kind list may be applied — merged-audit-kind-constraint.sql
+-- (7 kinds, no income) and schema.sql's original 3-kind list are both
+-- superseded and bannered never-reapply.
 -- Owner-approved Nov 5, 2026. DO NOT APPLY LIVE without the owner's
 -- explicit approval of the statements in the branch HANDOFF addendum
 -- (HANDOFF.md, "Refund classification fix — live correction, owner
@@ -38,11 +43,16 @@ alter table transactions
   add constraint transactions_kind_check
   check (kind in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer', 'income'));
 
--- STEP 2 — Extend reclassify_transaction to allow 'income'.
--- Identical to supabase/05-transaction-mutation-rpcs.sql except the
--- allow-list and the error message gain 'income'. Admin-only and the
--- audit row are unchanged. Do NOT apply the 05 file in full (its §1
--- Approve is outdated and would break Approve).
+-- STEP 2 — Extend reclassify_transaction to allow 'income' AND
+-- 'charity' ('charity' added Nov 8, 2026, P1-NEW1). The 'charity'
+-- entry is the ADMIN OVERRIDE only: it lets reclassify_transaction
+-- set kind='charity' directly, bypassing mark_transaction_charity's
+-- posted/unlocked-week guards. The client never calls it that way —
+-- doTxReclassify dispatches Charity to mark_transaction_charity
+-- (guarded path). Identical to supabase/05-transaction-mutation-rpcs.sql
+-- except the allow-list and the error message gain 'income' and
+-- 'charity'. Admin-only and the audit row are unchanged. Do NOT apply
+-- the 05 file in full (its §1 Approve is outdated and would break Approve).
 create or replace function public.reclassify_transaction(txn_id uuid, new_kind text, reason text)
 returns void
 language plpgsql
@@ -51,16 +61,29 @@ set search_path = public
 as $$
 declare
   v_row transactions%rowtype;
+  v_now date;
+  v_cur_week date;
+  v_tx_week date;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
-  if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'transfer', 'income') then
-    raise exception 'invalid kind: must be charge, refund, fund_charge, payment, cashback, transfer, or income';
+  if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'transfer', 'income', 'charity') then
+    raise exception 'invalid kind: must be charge, refund, fund_charge, payment, cashback, transfer, income, or charity';
   end if;
   select * into v_row from transactions where id = txn_id;
   if not found then raise exception 'transaction not found'; end if;
   if not exists (select 1 from household_members
                  where household_id = v_row.household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';
+  end if;
+  -- P1-M2 (Nov 8, 2026): a locked week's transactions are immutable
+  -- through the mutation RPCs — the same 35-day rule as
+  -- mark_transaction_charity (r13-charity.sql). Locked-week
+  -- corrections go through restoration, never a direct edit.
+  v_now := (now() at time zone 'America/New_York')::date;
+  v_cur_week := v_now - extract(dow from v_now)::int;
+  v_tx_week := v_row.date - extract(dow from v_row.date)::int;
+  if v_cur_week > v_tx_week + 35 then
+    raise exception 'week is locked: a locked-week transaction cannot be changed here';
   end if;
   update transactions set kind = new_kind where id = txn_id;
   insert into audit_log (household_id, actor, actor_name, action, detail)

@@ -23,15 +23,21 @@ const heldSql = readFileSync(new URL('../supabase/merged-audit-held-release-atom
 const manifest = readFileSync(new URL('../supabase/APPLY_MANIFEST_MERGED_AUDIT.md', import.meta.url), 'utf8');
 const mockup = readFileSync(new URL('../card-standardization-mockup.html', import.meta.url), 'utf8');
 
-test('pins: styles v50, live.js v60, matching live.html', () => {
-  assert.match(html, /styles\.css\?v=51/);
-  assert.match(html, /live\.js\?v=61/);});// ---- A1: merged kind constraint (file only, not applied) ----
-test('A1: kind-constraint SQL lists exactly the seven kinds, transfer included', () => {
-  assert.match(kindSql, /PREPARED FOR OWNER-APPROVED APPLY/);
-  for (const k of ['charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer']) {
-    assert.ok(kindSql.includes(`'${k}'`), `kind ${k} in list`);
+test('pins: styles v52, live.js v62, matching live.html', () => {
+  assert.match(html, /styles\.css\?v=52/);
+  assert.match(html, /live\.js\?v=62/);});// ---- A1: merged kind constraint (file only, not applied) ----
+// P1-B5 (Nov 8, 2026): the 7-kind file is SUPERSEDED — live runs the
+// 8-kind list (income added Nov 5). The canonical constraint is
+// refund-classification-income-kind.sql; the old file stays only as
+// the Nov 4 record, bannered never-reapply.
+test('A1: kind-constraint SQL is the canonical 8-kind list; the 7-kind file is superseded', () => {
+  assert.match(kindSql, /SUPERSEDED — DO NOT APPLY \(P1-B5/);
+  assert.match(kindSql, /THE CANONICAL KIND CONSTRAINT IS\n-- supabase\/refund-classification-income-kind\.sql/);
+  const canonSql = readFileSync(new URL('../supabase/refund-classification-income-kind.sql', import.meta.url), 'utf8');
+  for (const k of ['charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer', 'income']) {
+    assert.ok(canonSql.includes(`'${k}'`), `kind ${k} in canonical list`);
   }
-  assert.match(kindSql, /transactions_kind_check/);
+  assert.match(canonSql, /transactions_kind_check/);
 });
 
 // ---- A2: Approve signature is live-proven, not changed here ----
@@ -269,7 +275,13 @@ test('B10: held row queued before the entry; unique violations swallowed as idem
 // ---- B11: detail actions by kind ----
 test('B11: actionsForTxKind restricts by kind exactly as decided', () => {
   assert.deepEqual(actionsForTxKind('charge', true, true), ['charity', 'extraFund', 'other', 'delete']);
-  assert.deepEqual(actionsForTxKind('charge', false, true), ['extraFund']);
+  // P1-NEW1 (Nov 8, 2026): Charity is offered on any charge — the
+  // sheet renders it disabled with honest copy when pending (admin)
+  // or for members (ask the admin). The guarded RPC still enforces
+  // posted + unlocked week when tapped.
+  assert.deepEqual(actionsForTxKind('charge', true, false), ['charity', 'extraFund', 'other', 'delete']);
+  assert.deepEqual(actionsForTxKind('charge', false, true), ['charity', 'extraFund']);
+  assert.deepEqual(actionsForTxKind('charge', false, false), ['charity', 'extraFund']);
   assert.deepEqual(actionsForTxKind('transfer', true, true), ['other', 'delete']);
   assert.deepEqual(actionsForTxKind('payment', true, false), ['other', 'delete']);
   assert.deepEqual(actionsForTxKind('cashback', true, true), ['other', 'delete']);

@@ -19,8 +19,15 @@ const liveJs = readFileSync(path.join(root, 'live.js'), 'utf8');
 const liveHtml = readFileSync(path.join(root, 'live.html'), 'utf8');
 const stylesCss = readFileSync(path.join(root, 'styles.css'), 'utf8');
 const sql = readFileSync(path.join(root, 'supabase/approve-ambiguity-fix.sql'), 'utf8');
-const section1 = readFileSync(path.join(root, 'supabase/04-admin-rpcs.sql'), 'utf8')
-  .split('\n').slice(109, 202).join('\n');
+// §1 is located by markers, not fixed line numbers (P1-B1, Nov 8,
+// 2026: the never-reapply banners added header lines, which broke
+// the old slice(109, 202) — the comparison itself is unchanged).
+const s04 = readFileSync(path.join(root, 'supabase/04-admin-rpcs.sql'), 'utf8');
+const section1 = s04.slice(
+  s04.indexOf('drop function if exists public.approve_and_allocate'),
+  s04.indexOf('grant execute on function public.approve_and_allocate(uuid, integer, text) to authenticated;')
+    + 'grant execute on function public.approve_and_allocate(uuid, integer, text) to authenticated;'.length,
+);
 
 test('approve: RPC calls use the renamed p_ parameters, never the old names', () => {
   const calls = [...liveJs.matchAll(/supabase\.rpc\('approve_and_allocate', \{([^}]*)\}\)/g)];

@@ -1,5 +1,16 @@
 -- =====================================================================
 -- S1 migration 05 — Transaction mutation RPCs (admin-only, audited)
+-- SUPERSEDED — DO NOT APPLY IN FULL (P1-B9, Nov 8, 2026). The three
+-- RPCs here are all stale: exclude_transaction has no pre-exclusion
+-- snapshot and no locked-week guard (canonical:
+-- supabase/n4-pre-exclusion-state.sql); restore_transaction is the
+-- date-guess version that restores pending rows as posted after
+-- midnight, accepts 'excluded' only, and has no refund checks
+-- (canonical: the merged version in the same n4 file, P1-M3);
+-- reclassify_transaction has a 7-kind allow-list with no 'income'
+-- or 'charity' and no locked-week guard (canonical:
+-- supabase/refund-classification-income-kind.sql, P1-NEW1 + P1-M2).
+-- Applying this file reintroduces all three bugs at once.
 -- Deploy order: FIFTH of the five S1 files (01..05).
 -- Depends on: schema.sql (transactions, household_members,
 --   audit_log) and 02-rls-hardening.sql (which revoked direct member

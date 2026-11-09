@@ -90,10 +90,25 @@ Deno.serve(async (req) => {
     // so the app reported "Connected" even when the item row never
     // landed — which is exactly why a later sync saw 0 items. A failed
     // store is a failed connection, and must be reported as such.
-    if (upsertError) return json({ error: `could not store plaid item: ${upsertError.message}` }, 500);
+    if (upsertError) { console.error('plaid-exchange: could not store plaid item:', upsertError.message); return json({ error: 'could not store plaid item' }, 500); }
+    // P1-C2 (Nov 8, 2026): duplicate guard AT CONNECT, not only at
+    // sync. Re-linking a bank whose accounts are already carried by
+    // an older ACTIVE connection at the same institution (mask + name)
+    // used to return { connected: true } and leave a duplicate item
+    // until the next sync removed it. The check mirrors plaid-sync's
+    // findDuplicateKeeper (same rule: every candidate account covered
+    // by an older keeper at the same institution). Any failure fails
+    // OPEN — the item stays connected and the sync-path guard catches
+    // a real duplicate on the next sync. A confirmed duplicate is
+    // removed at Plaid, marked disconnected, and reported as
+    // { connected: false, duplicate: true } so the client never says
+    // "Connected" for it.
+    const dup = await checkDuplicateAtConnect(supabaseAdmin, householdId, data.item_id, body.institution_name ?? null, data.access_token, clientId, secret, env);
+    if (dup) return json({ item_id: data.item_id, connected: false, duplicate: true, duplicate_of: dup });
     return json({ item_id: data.item_id, connected: true });
   } catch (e) {
-    return json({ error: String(e?.message ?? e) }, 500);
+    console.error('plaid-exchange failed:', e?.message ?? e);
+    return json({ error: 'could not complete bank connection' }, 500);
   }
 });
 
@@ -102,4 +117,81 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+// Duplicate-connection check at connect time (P1-C2). Same rule as
+// plaid-sync's findDuplicateKeeper — keep the two in step (see
+// duplicateConnection.mjs): a candidate is a duplicate when every
+// one of its accounts (mask + name) is already carried by an older
+// ACTIVE item at the same institution. Returns the keeper's item id,
+// or null when the item is not a duplicate (or the check could not
+// run — fail open). Removes a confirmed duplicate at Plaid and marks
+// the stored row disconnected before returning the keeper id.
+function normDup(v: unknown): string {
+  return String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+async function checkDuplicateAtConnect(
+  admin: any, householdId: string, itemId: string, institutionName: string | null,
+  accessToken: string, clientId: string, secret: string, env: string,
+): Promise<string | null> {
+  try {
+    const base = `https://${env === 'production' ? 'production' : env}.plaid.com`;
+    const accRes = await fetch(`${base}/accounts/get`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken }),
+    });
+    if (!accRes.ok) return null;
+    const accData = await accRes.json().catch(() => ({}));
+    const candAccts: { mask?: string | null; name?: string | null }[] = [];
+    for (const acc of accData.accounts ?? []) {
+      if (acc.account_id && acc.mask) candAccts.push({ mask: String(acc.mask), name: acc.name ? String(acc.name) : null });
+    }
+    if (!candAccts.length || !normDup(institutionName)) return null;
+    for (const a of candAccts) if (!normDup(a.mask) || !normDup(a.name)) return null;
+    const { data: items } = await admin.from('plaid_items')
+      .select('plaid_item_id, institution_name, created_at, status').eq('household_id', householdId);
+    const keepers = (items ?? []).filter((i: any) => i.plaid_item_id !== itemId && i.status !== 'disconnected');
+    if (!keepers.length) return null;
+    const { data: acctRows } = await admin.from('plaid_accounts')
+      .select('plaid_item_id, name, mask, disconnected_at').eq('household_id', householdId);
+    const byItem = new Map<string, { mask?: string | null; name?: string | null }[]>();
+    for (const row of acctRows ?? []) {
+      if (row.disconnected_at) continue;
+      const list = byItem.get(row.plaid_item_id) ?? [];
+      list.push({ mask: row.mask, name: row.name });
+      byItem.set(row.plaid_item_id, list);
+    }
+    const candidateCreated = new Date().toISOString();
+    for (const keeper of keepers) {
+      if (normDup(keeper.institution_name) !== normDup(institutionName)) continue;
+      if (!keeper.created_at || !(String(keeper.created_at) < candidateCreated)) continue;
+      const kAccts = byItem.get(keeper.plaid_item_id) ?? [];
+      const covered = candAccts.every((acct) =>
+        kAccts.some((k) => normDup(k.mask) === normDup(acct.mask) && normDup(k.name) === normDup(acct.name)));
+      if (!covered) continue;
+      // Confirmed duplicate: remove at Plaid, mark disconnected.
+      try {
+        const rm = await fetch(`${base}/item/remove`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken }),
+        });
+        const rmData = await rm.json().catch(() => ({}));
+        if (!rm.ok && String(rmData?.error_code ?? '') !== 'ITEM_NOT_FOUND') return null;
+      } catch {
+        return null;
+      }
+      const { error: markErr } = await admin.from('plaid_items')
+        .update({ status: 'disconnected', disconnected_at: new Date().toISOString() })
+        .eq('household_id', householdId).eq('plaid_item_id', itemId);
+      if (markErr) return null;
+      console.warn(`plaid-exchange: removed duplicate item ${itemId} at connect (accounts already on ${keeper.plaid_item_id}); past transactions kept`);
+      return keeper.plaid_item_id;
+    }
+    return null;
+  } catch (e) {
+    console.warn('plaid-exchange: duplicate check failed open:', (e as Error)?.message ?? e);
+    return null;
+  }
 }

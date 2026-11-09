@@ -245,7 +245,7 @@ test('refresh re-renders an open card so it never shows stale numbers', () => {
 
 // --- Pins -----------------------------------------------------------------
 
-test('pins bumped to v51/v61', () => {
-  assert.match(html, /styles\.css\?v=51/);
-  assert.match(html, /live\.js\?v=61/);
+test('pins bumped to v52/v62', () => {
+  assert.match(html, /styles\.css\?v=52/);
+  assert.match(html, /live\.js\?v=62/);
 });

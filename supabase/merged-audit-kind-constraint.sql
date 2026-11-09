@@ -1,7 +1,14 @@
 -- merged-audit-kind-constraint.sql — Merged audit A1
--- PREPARED FOR OWNER-APPROVED APPLY — NOT APPLIED BY THIS BRANCH.
--- Do NOT apply from a merge: the parent applies it via the approved
--- browser SQL run after the owner has seen this exact file.
+-- SUPERSEDED — DO NOT APPLY (P1-B5, Nov 8, 2026). This file's
+-- 7-kind list (no 'income') would REGRESS live, which already runs
+-- the 8-kind list including 'income' (applied Nov 5, 2026 — the
+-- $7,000 MOBILE CHECK DEPOSIT row holds kind='income' and the
+-- apply would fail on it, or drop it from the allowed list).
+-- THE CANONICAL KIND CONSTRAINT IS
+-- supabase/refund-classification-income-kind.sql (8 kinds:
+-- charge, refund, fund_charge, payment, cashback, charity,
+-- transfer, income). No other file's kind list may be applied.
+-- This file stays as the Nov 4 record of the transfer fix only.
 --
 -- WHY: live Transfer reclassification fails with "invalid kind"
 -- (Fresh audit finding 1, reproduced twice live). The repo SQL

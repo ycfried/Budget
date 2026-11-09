@@ -1,5 +1,15 @@
 -- =====================================================================
--- N4 migration — stored pre-exclusion state (NOT YET APPLIED LIVE)
+-- N4 migration — stored pre-exclusion state.
+-- CANONICAL FILE for exclude_transaction + restore_transaction
+-- (P1-M3, Nov 8, 2026). The merged restore (snapshot + reversed +
+-- refund checks, admin-only) was recorded applied live Nov 5, 2026;
+-- this file is the corrected canonical copy — see the restore
+-- function's header for the column corrections vs the investigation
+-- doc. Do NOT apply supabase/05-transaction-mutation-rpcs.sql in
+-- full (reintroduces the N4 date bug, loses refund checks, loses
+-- reversed-row handling). Do NOT apply this file's restore as-is
+-- before the live probe in the P1 batch report confirms which body
+-- is live now.
 -- Replaces the date-reconstruction rule in restore_transaction()
 -- (reaudit N4): a pending refund restored after midnight used to
 -- come back as 'verified' (posted) with no bank confirmation,
@@ -58,6 +68,9 @@ set search_path = public
 as $$
 declare
   v_row transactions%rowtype;
+  v_now date;
+  v_cur_week date;
+  v_tx_week date;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_row from transactions where id = txn_id;
@@ -65,6 +78,16 @@ begin
   if not exists (select 1 from household_members
                  where household_id = v_row.household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';
+  end if;
+  -- P1-M2 (Nov 8, 2026): a locked week's transactions are immutable
+  -- through the mutation RPCs — the same 35-day rule as
+  -- mark_transaction_charity (r13-charity.sql). Locked-week
+  -- corrections go through restoration, never a direct edit.
+  v_now := (now() at time zone 'America/New_York')::date;
+  v_cur_week := v_now - extract(dow from v_now)::int;
+  v_tx_week := v_row.date - extract(dow from v_row.date)::int;
+  if v_cur_week > v_tx_week + 35 then
+    raise exception 'week is locked: a locked-week transaction cannot be changed here';
   end if;
   update transactions
     set excluded = true, state = 'excluded',
@@ -86,10 +109,31 @@ grant execute on function public.exclude_transaction(uuid, text) to authenticate
 
 -- ---------------------------------------------------------------------
 -- restore_transaction(txn_id uuid) returns void
---   Same as supabase/05-transaction-mutation-rpcs.sql, except the
---   restore target comes from the stored snapshot (N4 fix). The
---   date rule survives ONLY as the fallback for rows excluded
---   before this migration (snapshot NULL).
+--   MERGED version (Nov 5, 2026; P1-M3 canonical, Nov 8, 2026):
+--   N4's snapshot restore + live's reversed-restore + live's refund
+--   checks, admin-only throughout (the only callers are admin-only
+--   already, and spec A7 requires admin-only mutations).
+--   Accepts state 'excluded' OR 'reversed'; restores the stored
+--   pre_exclusion_state; clears excluded / reason / snapshot.
+--
+--   CORRECTIONS vs SQL_RESTORE_SHORTFALL_INVESTIGATION.md §7 (the
+--   doc's verbatim SQL references columns that DO NOT EXIST in the
+--   schema — live or repo — and would fail every restore at runtime:
+--   refund_of_transaction_id, source_transaction_id, excluded_at,
+--   excluded_by, excluded_reason, exclusion_note. None appears in
+--   supabase/schema.sql or in the live 21-column probe of Nov 7).
+--   The refund check now uses the real linkage column
+--   original_purchase_id (P0-1); the UPDATE clears only real
+--   columns. If the live body still matches the doc verbatim, it
+--   must be replaced with THIS file — probe first, see the
+--   live-apply order in the P1 batch report.
+--
+--   Deliberate (kept from the doc): NO date fallback for a NULL
+--   snapshot — raises 'cannot restore: no prior state recorded'
+--   instead. The N4 date fallback is the exact bug N4 was written
+--   to kill (a pending row restored as posted after midnight). A
+--   pre-N4 excluded row needs re-exclude/re-restore, or a one-off
+--   fallback added explicitly. Do NOT silently re-add the fallback.
 -- ---------------------------------------------------------------------
 create or replace function public.restore_transaction(txn_id uuid)
 returns void
@@ -100,7 +144,7 @@ as $$
 declare
   v_row transactions%rowtype;
   v_state text;
-  v_today date;
+  v_original_kind text;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_row from transactions where id = txn_id;
@@ -109,13 +153,23 @@ begin
                  where household_id = v_row.household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';
   end if;
-  if v_row.state <> 'excluded' then
-    raise exception 'transaction is not excluded';
+  if v_row.state <> 'excluded' and v_row.state <> 'reversed' then
+    raise exception 'transaction is not excluded or reversed';
   end if;
-  v_today := (now() at time zone 'America/New_York')::date;
-  v_state := coalesce(
-    v_row.pre_exclusion_state,
-    case when v_row.date < v_today then 'verified' else 'provisional' end);
+  if v_row.pre_exclusion_state is null then
+    raise exception 'cannot restore: no prior state recorded';
+  end if;
+  -- Refund check (live's rule, via the real linkage column): a
+  -- linked refund restores only while its original purchase still
+  -- exists. Unlinked refunds (original_purchase_id null) restore
+  -- without this check.
+  if v_row.kind = 'refund' and v_row.original_purchase_id is not null then
+    select kind into v_original_kind from transactions where id = v_row.original_purchase_id;
+    if v_original_kind is null then
+      raise exception 'cannot restore refund: original transaction is missing';
+    end if;
+  end if;
+  v_state := v_row.pre_exclusion_state;
   update transactions
     set excluded = false, state = v_state, exclude_reason = '',
         pre_exclusion_state = null

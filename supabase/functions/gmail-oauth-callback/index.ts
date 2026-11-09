@@ -146,6 +146,10 @@ Deno.serve(async (req) => {
       refresh_token_encrypted: encrypted,
       status: 'active',
       last_error: null,
+      // P1-R2 (Nov 8, 2026): stamp the grant time on every
+      // (re)connect — Testing-mode tokens expire ~7 days after the
+      // grant, and created_at never moves on an upsert.
+      connected_at: new Date().toISOString(),
     }, { onConflict: 'household_id,provider,email_address' });
     if (upsertErr) return page('Email connection failed', 'Could not save the connection. Nothing was stored. Please try again from the app.');
 

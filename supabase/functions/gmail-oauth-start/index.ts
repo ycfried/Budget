@@ -83,7 +83,8 @@ Deno.serve(async (req) => {
     });
     return json({ auth_url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
   } catch (e) {
-    return json({ error: String((e as Error)?.message ?? e) }, 500);
+    console.error('gmail-oauth-start failed:', (e as Error)?.message ?? e);
+    return json({ error: 'could not start email connection' }, 500);
   }
 });
 

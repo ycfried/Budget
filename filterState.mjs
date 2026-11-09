@@ -369,8 +369,12 @@ export function isWeekCloseCheckDue({ lastCheckedWeekStart = null, currentWeekSt
 export function actionsForTxKind(kind, isAdmin, isVerified) {
   if (kind === 'charity') return isAdmin ? ['delete'] : [];
   if (kind === 'charge') {
-    const out = [];
-    if (isAdmin && isVerified) out.push('charity');
+    // P1-NEW1 (Nov 8, 2026): Charity is offered on any charge,
+    // regardless of posted status — the sheet renders it disabled
+    // with honest copy when pending (admin) or for members (ask the
+    // admin). The guarded mark_transaction_charity RPC still enforces
+    // posted + unlocked week when it is actually tapped.
+    const out = ['charity'];
     out.push('extraFund');
     if (isAdmin) out.push('other', 'delete');
     return out;
@@ -386,6 +390,24 @@ export function actionsForTxKind(kind, isAdmin, isVerified) {
   }
   return isAdmin ? ['other', 'delete'] : [];
 }
+// P1-R2 (Nov 8, 2026): Gmail Testing-mode tokens expire ~7 days
+// after the grant, with no pre-expiry warning anywhere. Returns the
+// warning keys for one email_connections_public row: 'expiring' when
+// the grant (connected_at, falling back to created_at) is more than
+// 5 days old, 'stale' when last_poll_at is more than 24h old. The
+// card already shows "Needs reconnect" for status='error', so that
+// case returns nothing here.
+export function emailConnectionWarnings(c, nowMs = Date.now()) {
+  if (!c || c.status === 'error') return [];
+  const out = [];
+  const grantRaw = c.connected_at ?? c.created_at;
+  const grantMs = grantRaw ? Date.parse(grantRaw) : NaN;
+  if (!Number.isNaN(grantMs) && nowMs - grantMs > 5 * 24 * 3600 * 1000) out.push('expiring');
+  const lastMs = c.last_poll_at ? Date.parse(c.last_poll_at) : NaN;
+  if (!Number.isNaN(lastMs) && nowMs - lastMs > 24 * 3600 * 1000) out.push('stale');
+  return out;
+}
+
 export function classifyCsvKind(merchant, amountCents) {
   // Deep audit Nov 5: was transfer-or-sign only, so a CSV
   // "PAYMENT - THANK YOU" or "CASH BACK" row imported as kind='refund'.
@@ -400,5 +422,8 @@ export function classifyCsvKind(merchant, amountCents) {
   if (amountCents < 0 && /CHECK DEPOSIT|MOBILE DEPOSIT|\bDEPOSIT\b/i.test(name)) return 'income';
   if (/MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT|PAYMENT\s*:\s*CREDIT|PAYMENT CREDIT|\/ ?PAYMENT|EPAYMENT|E-PAYMENT|ACH PAYMENT/i.test(name)) return 'payment';
   if (/CASH BACK|CASHBACK|REWARD/i.test(name)) return 'cashback';
+  // P1-NEW1 (Nov 8, 2026): charity auto-detect, money-out only —
+  // same conservative list as canonical.ts CHARITY_PATTERN.
+  if (amountCents > 0 && /\b(CHARITY|DONATION|DONATE|TZEDAKA|TZEDAKAH|KEREN|CHABAD|TOIREMORG|COLEL)\b/i.test(name)) return 'charity';
   return amountCents < 0 ? 'refund' : 'charge';
 }

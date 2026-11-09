@@ -1,25 +1,24 @@
 -- merged-audit-fund-request-kind-guard.sql — Merged audit A16
--- PREPARED FOR OWNER-APPROVED APPLY — NOT APPLIED BY THIS BRANCH.
--- Do NOT apply from a merge: the parent applies it via the approved
--- browser SQL run after the owner has seen this exact file.
---
--- WHY: the server trigger validate_fund_request_txn() checks only
--- status=pending and transaction-household equality, never kind.
--- Client gating is the only kind check today, so a linked fund
--- request against a refund/transfer/payment row could be approved
--- against money that is not a charge. This guard closes it server-side.
---
+-- CANONICAL DEFINITION of validate_fund_request_txn() (P1-B6, Nov 8,
+-- 2026). PREPARED FOR OWNER-APPROVED APPLY — NOT APPLIED BY THIS
+-- BRANCH. Do NOT apply from a merge: the parent applies it via the
+-- approved browser SQL run after the owner has seen this exact file.
 -- LIVE PROBE (Nov 4, 2026, 10:12–10:18 PM, read-only): the trigger
 -- trg_fund_request_validate EXISTS live, but its function body
 -- contains NO 'kind' mention — the guard is ABSENT live and is
--- still needed. This file replaces only that function body; the
--- trigger itself is re-created idempotently below.
+-- still needed. Apply this file (owner approval) to install it.
 --
 -- SCOPE, EXACT: a linked fund request (transaction_id not null)
 -- requires the linked transaction's kind to be 'charge'. The
 -- unlinked fund-form path (transaction_id null) is UNTOUCHED —
 -- it never reaches the kind check. Existing status and household
--- checks are preserved verbatim.
+-- checks are preserved verbatim. 'charge'-only is intended (P1-B6):
+-- a fund_charge is already paid from the fund, so a request against
+-- it would double-pay; refund/transfer/payment/income/cashback/
+-- charity rows are not weekly spending, so there is nothing for
+-- the fund to cover. The client gates the same way (doTxExtraFund
+-- refuses non-charge rows before sending), so this trigger is
+-- defence in depth for a stale or direct caller.
 create or replace function public.validate_fund_request_txn()
 returns trigger
 language plpgsql

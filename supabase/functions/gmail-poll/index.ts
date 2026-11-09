@@ -303,7 +303,8 @@ Deno.serve(async (req) => {
 
     return json({ ...totals, errors });
   } catch (e) {
-    return json({ error: String((e as Error)?.message ?? e) }, 500);
+    console.error('gmail-poll failed:', (e as Error)?.message ?? e);
+    return json({ error: 'email check failed' }, 500);
   }
 });
 
