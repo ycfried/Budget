@@ -23,7 +23,7 @@ import OnBudgetKit
 /// public inits). Only the Transactions-only helpers below remain.
 
 public struct SmallPrimaryButtonStyle: ButtonStyle {
-    public func makeBody(configuration: Configuration) -> some View {
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(.white)
@@ -37,7 +37,7 @@ public struct SmallPrimaryButtonStyle: ButtonStyle {
 
 /// Quiet text button (no bg, muted grey) — e.g. "See all", page links.
 public struct QuietButtonStyle: ButtonStyle {
-    public func makeBody(configuration: Configuration) -> some View {
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(Color(hex: "#6b7280"))
@@ -47,7 +47,7 @@ public struct QuietButtonStyle: ButtonStyle {
 
 /// Back link: light blue #3b82f6, bold 700, 15px, no bg, no border.
 public struct BackButtonStyle: ButtonStyle {
-    public func makeBody(configuration: Configuration) -> some View {
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(DesignTokens.mid)

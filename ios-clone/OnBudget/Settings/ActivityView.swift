@@ -74,7 +74,12 @@ final class ActivityViewModel: ObservableObject {
             )
             filter.auditShown = filteredRows.count
             filter.auditTotal = total
-            hasMore = !filtered && (total.map { filteredRows.count < $0 } ?? rows.count >= fetchLimit)
+            // `??` binds TIGHTER than `>=` in Swift, so the RHS of
+            // `??` needs explicit parens: without them this parsed
+            // as `(total.map { ... } ?? rows.count) >= fetchLimit`
+            // and the closure was expected to return Int
+            // (compile-fixes, Nov 9, 2026).
+            hasMore = !filtered && (total.map { filteredRows.count < $0 } ?? (rows.count >= fetchLimit))
             var byDay: [String: [AuditDisplayEntry]] = [:]
             var dayOrder: [String] = []
             for row in filteredRows {

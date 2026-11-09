@@ -147,7 +147,7 @@ extension View {
 /// Danger: soft-red treatment — bg #fef2f2, text #dc2626.
 /// Never a solid red button.
 struct DangerButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
+    func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label
             .font(.headline)
             .foregroundStyle(DesignTokens.errorText)
@@ -161,7 +161,7 @@ struct DangerButtonStyle: ButtonStyle {
 
 /// Small danger button (member Remove, per-account Disconnect).
 struct SmallDangerButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
+    func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label
             .font(.subheadline)
             .fontWeight(.semibold)

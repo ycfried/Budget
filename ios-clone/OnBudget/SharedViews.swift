@@ -18,7 +18,7 @@ import OnBudgetKit
 /// Primary: #2f6bff fill, white text.
 public struct PrimaryButtonStyle: ButtonStyle {
     public init() {}
-    public func makeBody(configuration: Configuration) -> some View {
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(.white)
@@ -35,7 +35,7 @@ public struct PrimaryButtonStyle: ButtonStyle {
 /// two-button rows.
 public struct TertiaryButtonStyle: ButtonStyle {
     public init() {}
-    public func makeBody(configuration: Configuration) -> some View {
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(DesignTokens.ink)
@@ -52,7 +52,7 @@ public struct TertiaryButtonStyle: ButtonStyle {
 /// of a three-button row — never beside another pale button.
 public struct PaleButtonStyle: ButtonStyle {
     public init() {}
-    public func makeBody(configuration: Configuration) -> some View {
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(DesignTokens.ink)
@@ -68,7 +68,7 @@ public struct PaleButtonStyle: ButtonStyle {
 /// Small variant of the tertiary style for in-row actions.
 public struct SmallTertiaryButtonStyle: ButtonStyle {
     public init() {}
-    public func makeBody(configuration: Configuration) -> some View {
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(DesignTokens.ink)
