@@ -421,6 +421,83 @@ export function emailConnectionWarnings(c, nowMs = Date.now()) {
   return out;
 }
 
+// NEW-R4-C1 (Nov 9, 2026): the API staleness/skip fields are read by
+// the client now, not dead data. plaid-sync returns stale +
+// minutes_since_previous_sync + skipped_by_reason; gmail-poll returns
+// stale + minutes_since_previous_poll. These pure builders turn a
+// response into the toast/result text live.js shows, using the API
+// fields where present and falling back to the counts alone when they
+// are absent (an older deployed function). The footer warning keeps
+// its local computation from last_sync_at as the fallback — refresh()
+// has no API response in hand — but it now uses the STALEST active
+// item's stamp (NEW-R4-C3 semantics), not the freshest, so one
+// healthy item no longer hides a dead one.
+export function skipReasonsText(skippedByReason) {
+  if (!skippedByReason || typeof skippedByReason !== 'object') return '';
+  return Object.entries(skippedByReason)
+    .filter(([, n]) => Number(n) > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, n]) => `${String(reason).replace(/-/g, ' ')} ×${n}`)
+    .join(', ');
+}
+
+// Bank-sync toast from a plaid-sync response. The success text is
+// unchanged when the API fields are absent; with them, a stale flag
+// adds one honest sentence (the gap is measured BEFORE this sync ran,
+// so after a successful sync the footer correctly clears) and a
+// non-empty skipped_by_reason adds the per-reason breakdown.
+export function bankSyncToast(out) {
+  const failedNames = Array.isArray(out.failed_institutions) ? out.failed_institutions.filter(Boolean) : [];
+  if (out.error) {
+    return { text: `Sync failed: ${out.error}${failedNames.length ? ` — ${failedNames.join(', ')}` : ''}`, isError: true };
+  }
+  let text = `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).`;
+  if ((out.duplicate_removed ?? []).length) text += ' A duplicate bank connection was removed because those accounts are already connected on another connection. Past transactions stay.';
+  if (out.stale === true) {
+    const mins = Number.isFinite(out.minutes_since_previous_sync) ? out.minutes_since_previous_sync : null;
+    text += ` Scheduled sync hadn't run in a while before this sync${mins !== null ? ` (${mins} minutes since the last one)` : ''}.`;
+  }
+  const reasons = skipReasonsText(out.skipped_by_reason);
+  if (reasons) text += ` Skipped: ${reasons}.`;
+  return { text, isError: false };
+}
+
+// Email-check result message from a gmail-poll response. The failure
+// text is unchanged (incl. the reauthorization wording); a stale flag
+// adds one sentence with the pre-check gap where the API reports it.
+export function emailCheckMessage(out) {
+  const firstErr = Array.isArray(out.errors) && out.errors.length ? out.errors[0] : null;
+  const failed = out.error || firstErr;
+  if (failed) {
+    const failText = firstErr && /reauthorization/i.test(firstErr.error || '')
+      ? 'access expired — reconnect your email.'
+      : (firstErr?.error ?? out.error);
+    return { text: `Email check failed: ${failText}`, isError: true };
+  }
+  let text = `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`;
+  if (out.stale === true) {
+    const mins = Number.isFinite(out.minutes_since_previous_poll) ? out.minutes_since_previous_poll : null;
+    text += ` Email hadn't been checked in a while before this check${mins !== null ? ` (${mins} minutes since the last one)` : ''}.`;
+  }
+  return { text, isError: false };
+}
+
+// NEW-R4-C2 (Nov 9, 2026): household-picker options for a
+// multi-household admin. Pure so it is unit-testable; live.js does
+// the reads (own admin memberships + household names) and the retry.
+// The current household comes first; a household with no stored name
+// reads 'Household'. Duplicate membership rows collapse to one option.
+export function adminHouseholdOptions(memberships, households, currentHouseholdId) {
+  const ids = [...new Set((memberships ?? []).map((m) => m.household_id).filter(Boolean))];
+  const nameById = new Map((households ?? []).map((h) => [h.id, h.name]));
+  const ordered = [...ids];
+  if (currentHouseholdId) {
+    const at = ordered.indexOf(currentHouseholdId);
+    if (at > 0) { ordered.splice(at, 1); ordered.unshift(currentHouseholdId); }
+  }
+  return ordered.map((id) => ({ value: id, label: (nameById.get(id) ?? '').trim() || 'Household' }));
+}
+
 export function classifyCsvKind(merchant, amountCents) {
   // Deep audit Nov 5: was transfer-or-sign only, so a CSV
   // "PAYMENT - THANK YOU" or "CASH BACK" row imported as kind='refund'.

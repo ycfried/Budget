@@ -27,7 +27,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, merchantStem, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind, emailConnectionWarnings } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, merchantStem, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind, emailConnectionWarnings, bankSyncToast, emailCheckMessage, adminHouseholdOptions } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -1331,8 +1331,18 @@ async function refresh() {
     // silent. The server half (plaid-sync/gmail-poll) reports the
     // same gap in its response. No last sync yet means "not synced
     // yet", not stale — the warning only fires on an old stamp.
+    // NEW-R4-C1/C3 (Nov 9, 2026): the footer warning is the local
+    // fallback for the API stale flag — refresh() has no plaid-sync
+    // response in hand, so it computes from last_sync_at. It uses
+    // the STALEST active item's stamp, not the freshest: the old
+    // max-stamp check hid a dead item behind a healthy one (the same
+    // masking NEW-R4-C3 fixes server-side). Disconnected items are
+    // excluded (their stamps are frozen forever) and a never-synced
+    // item contributes no stamp, so "not synced yet" never warns.
     const staleWarn = document.getElementById('syncStaleWarn');
-    if (staleWarn) staleWarn.hidden = !(bankLastSyncAt && (Date.now() - new Date(bankLastSyncAt).getTime() > 180 * 60 * 1000));
+    const activeSyncTimes = itemRows.filter((i) => (i.status ?? 'active') !== 'disconnected').map((i) => i.last_sync_at).filter(Boolean).sort();
+    const stalestSyncAt = activeSyncTimes.length ? activeSyncTimes[0] : null;
+    if (staleWarn) staleWarn.hidden = !(stalestSyncAt && (Date.now() - new Date(stalestSyncAt).getTime() > 180 * 60 * 1000));
     const cb = $('connectBankBtn');
     // Button-card-fix: Connect stays primary and Sync stays tertiary
     // (grey) in every state. The old code stripped primary from Connect and
@@ -2602,11 +2612,11 @@ async function runBankSync() {
     // P1-C1 (Nov 8, 2026): name the failed connection(s) — a bare
     // 'plaid sync failed' never said which bank, or that a failed
     // cursor persist would make every later sync a full pull.
-    const failedNames = Array.isArray(out.failed_institutions) ? out.failed_institutions.filter(Boolean) : [];
-    const text = out.error
-      ? `Sync failed: ${out.error}${failedNames.length ? ` — ${failedNames.join(', ')}` : ''}`
-      : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).${(out.duplicate_removed ?? []).length ? ` A duplicate bank connection was removed because those accounts are already connected on another connection. Past transactions stay.` : ''}`;
-    showToast(text, !!out.error);
+    // NEW-R4-C1 (Nov 9, 2026): the toast text is built by
+    // bankSyncToast, which also reads the API's stale flag and
+    // skipped_by_reason where the deployed function returns them.
+    const { text, isError } = bankSyncToast(out);
+    showToast(text, isError);
     // No localStorage sync/connection state: refresh() re-reads last_sync_at
     // from plaid_items, which is the server truth.
     return out;
@@ -2675,9 +2685,56 @@ $('autoSyncSwitch')?.addEventListener('click', async () => {
 // is sent (and none would be trusted). A successful start redirects
 // the whole page to Google; after consent the callback page links back
 // to the app. This never touches the Apps Script email path.
+// NEW-R4-C2 (Nov 9, 2026): a multi-household admin gets a 409 from
+// gmail-oauth-start when no household_id is named. The old handler
+// showed that text with no way forward in-app. Now the client offers
+// the caller's own admin households in a sheet and retries with the
+// chosen household_id. The picker reads only the caller's own
+// membership rows (a member can read their own rows) plus household
+// names; a failed list read falls back to the plain 409 message, so
+// nothing is hidden and a single-household admin never sees a picker.
+async function pickAdminHousehold() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data: memberships, error: mErr } = await supabase.from('household_members')
+      .select('household_id').eq('user_id', user.id).eq('role', 'admin');
+    if (mErr) throw mErr;
+    const options = adminHouseholdOptions(memberships, null, household?.household_id);
+    if (options.length < 2) return null;
+    // Names are a label-only nicety: a failed name read still offers
+    // the choice (rows read 'Household'), never blocks the retry.
+    try {
+      const { data: rows } = await supabase.from('households').select('id, name').in('id', options.map((o) => o.value));
+      const named = adminHouseholdOptions(memberships, rows ?? [], household?.household_id);
+      options.splice(0, options.length, ...named);
+    } catch (e) { console.warn('household name read failed:', e); }
+    const picked = await showSheet({
+      title: 'Choose Household',
+      message: 'You administer more than one household. Choose which household this email connection belongs to.',
+      inputLabel: 'Household',
+      inputOptions: options,
+      confirmLabel: 'Continue',
+      cancelLabel: 'Cancel',
+    });
+    return typeof picked === 'string' && options.some((o) => o.value === picked) ? picked : null;
+  } catch (e) {
+    console.warn('household picker failed:', e);
+    return null;
+  }
+}
+
 $('connectEmailBtn')?.addEventListener('click', async () => {
   setResultMsg('emailMsg', 'Getting a secure email connection…', false);
-  const out = await callFn('gmail-oauth-start', {});
+  let out = await callFn('gmail-oauth-start', {});
+  if (out.status === 409) {
+    const picked = await pickAdminHousehold();
+    if (!picked) {
+      setResultMsg('emailMsg', `Could not start the email connection: ${out.error ?? 'multiple admin households'}. You administer more than one household — pick which household to connect this email to.`, true);
+      return;
+    }
+    out = await callFn('gmail-oauth-start', { household_id: picked });
+  }
   if (!out.auth_url) {
     setResultMsg('emailMsg', `Could not start the email connection: ${out.error ?? 'unknown error'}. If it says "not configured," the email connection is not set up on the server yet.`, true);
     return;
@@ -2692,14 +2749,11 @@ $('pollEmailBtn')?.addEventListener('click', async () => {
   // in errors[] with NO top-level error — the old code read only
   // out.error and reported false success ("Email checked: 0 added…")
   // after the token died. Surface the first per-connection failure.
-  const firstErr = Array.isArray(out.errors) && out.errors.length ? out.errors[0] : null;
-  const failed = out.error || firstErr;
-  const failText = firstErr && /reauthorization/i.test(firstErr.error || '')
-    ? 'access expired — reconnect your email.'
-    : (firstErr?.error ?? out.error);
-  setResultMsg('emailMsg', failed
-    ? `Email check failed: ${failText}`
-    : `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`, !!failed);
+  // NEW-R4-C1 (Nov 9, 2026): the message is built by
+  // emailCheckMessage, which also reads the API's stale flag where
+  // the deployed function returns it.
+  const { text, isError } = emailCheckMessage(out);
+  setResultMsg('emailMsg', text, isError);
   await refresh();
 });
 

@@ -15,11 +15,21 @@
 //      Constant-time compare (no early-exit .every()).
 //   2. Replay protection: timestamp within 10 minutes + one-time nonce
 //      recorded in ingest_nonces (unique(household_id, nonce)). The
-//      nonce is claimed AFTER the quarantine checks (step 3/4) and
-//      BEFORE the transaction insert (P2-B8, Nov 8, 2026: claiming it
-//      first burned the nonce of every quarantined delivery, so a
-//      legitimate retry of the same alert then failed as a replay).
-//      A reused nonce is rejected with the same generic 401.
+//      nonce is claimed AFTER the quarantine checks (step 3/4), AFTER
+//      the messageId dedupe check (step 5), and BEFORE the transaction
+//      insert (P2-B8, Nov 8, 2026: claiming it first burned the nonce
+//      of every quarantined delivery, so a legitimate retry of the
+//      same alert then failed as a replay). A reused nonce is
+//      rejected with the same generic 401.
+//      NEW-R4-C4 (Nov 9, 2026): the dedupe check precedes the nonce
+//      claim, so a legitimate re-delivery of an already-stored alert
+//      returns stored:true + duplicate:true instead of a 401. This
+//      cannot let a replayed nonce be reused for a DIFFERENT message:
+//      the HMAC canonical string binds nonce + messageId + amount +
+//      merchant + date, so the same signed nonce cannot be presented
+//      with another messageId without invalidating the signature —
+//      and a replay of the exact same delivery only ever returns
+//      duplicate:true, never a second row.
 //   3. Require the verbatim Authentication-Results header to show a
 //      pass for americanexpress.com (see INGEST_CONTRACT.md for the
 //      exact rule). Anything else is quarantined (202, stored:false),
@@ -181,26 +191,25 @@ Deno.serve(async (req) => {
     const merchant = normalizeMerchant(merchantRaw).slice(0, 80);
     const dedupeHash = await canonicalHash(merchant, date, amountCents, cardSuffix);
 
-    // 2. Replay: claim the nonce AFTER the quarantine checks above
-    // and BEFORE the insert. A unique-violation here means this exact
-    // signed delivery was already processed. (P2-B8: claiming before
-    // quarantine burned the nonce of quarantined deliveries.)
-    const { error: nonceError } = await supabase.from('ingest_nonces').insert({
-      household_id: householdId, nonce,
-    });
-    if (nonceError) return json({ error: AUTH_FAILED }, 401);
-
-    // 5. Dedupe by message identity, NOT by hash alone. Two deliveries
-    //    of the same Gmail message share messageId, so a row with
-    //    external_id = messageId means this alert is already stored
-    //    (stored:true + duplicate:true — the purchase IS in
-    //    transactions from the earlier delivery — so the script can
-    //    safely label the message processed). Two REAL identical
-    //    purchases have different messageIds and MUST both insert
-    //    (spec test 20); the canonical hash is stored on the row so
-    //    plaid-sync can later MATCH the Plaid version to this row
-    //    (its step-3 hash match) instead of double-counting. The hash
-    //    is never, on its own, a reason to drop a Gmail alert.
+    // 5. Dedupe by message identity, NOT by hash alone — checked
+    //    BEFORE the nonce claim (NEW-R4-C4, Nov 9, 2026): a
+    //    re-delivery of an already-stored alert returns stored:true
+    //    + duplicate:true here instead of hitting the nonce
+    //    unique-violation below and getting a generic 401. Two
+    //    deliveries of the same Gmail message share messageId, so a
+    //    row with external_id = messageId means this alert is
+    //    already stored (the purchase IS in transactions from the
+    //    earlier delivery — so the script can safely label the
+    //    message processed). Two REAL identical purchases have
+    //    different messageIds and MUST both insert (spec test 20);
+    //    the canonical hash is stored on the row so plaid-sync can
+    //    later MATCH the Plaid version to this row (its step-3 hash
+    //    match) instead of double-counting. The hash is never, on
+    //    its own, a reason to drop a Gmail alert. Skipping the nonce
+    //    claim on this path is safe: the nonce is bound to this
+    //    messageId by the signed canonical string, so it cannot be
+    //    replayed for a different message, and replaying this exact
+    //    delivery only returns duplicate:true again.
     const messageId = String(body.messageId ?? '');
     if (messageId) {
       const { data: existing } = await supabase.from('transactions')
@@ -208,6 +217,18 @@ Deno.serve(async (req) => {
         .limit(1).maybeSingle();
       if (existing) return json({ stored: true, duplicate: true, state: 'provisional' });
     }
+
+    // 2. Replay: claim the nonce AFTER the quarantine checks and
+    // the dedupe check above, and BEFORE the insert. A
+    // unique-violation here means this exact signed delivery was
+    // already processed and its message is NOT already stored (an
+    // already-stored message returned duplicate:true above, before
+    // any nonce was claimed). (P2-B8: claiming before quarantine
+    // burned the nonce of quarantined deliveries.)
+    const { error: nonceError } = await supabase.from('ingest_nonces').insert({
+      household_id: householdId, nonce,
+    });
+    if (nonceError) return json({ error: AUTH_FAILED }, 401);
 
     const kind = classifyMerchantOnly(merchantRaw, amountCents);
     const { data: inserted, error } = await supabase.from('transactions').insert({
