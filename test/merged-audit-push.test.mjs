@@ -23,9 +23,9 @@ const heldSql = readFileSync(new URL('../supabase/merged-audit-held-release-atom
 const manifest = readFileSync(new URL('../supabase/APPLY_MANIFEST_MERGED_AUDIT.md', import.meta.url), 'utf8');
 const mockup = readFileSync(new URL('../card-standardization-mockup.html', import.meta.url), 'utf8');
 
-test('pins: styles v53, live.js v66, matching live.html', () => {
+test('pins: styles v53, live.js v67, matching live.html', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=66/);});// ---- A1: merged kind constraint (file only, not applied) ----
+  assert.match(html, /live\.js\?v=67/);});// ---- A1: merged kind constraint (file only, not applied) ----
 // P1-B5 (Nov 8, 2026): the 7-kind file is SUPERSEDED — live runs the
 // 8-kind list (income added Nov 5). The canonical constraint is
 // refund-classification-income-kind.sql; the old file stays only as
@@ -268,7 +268,7 @@ test('B9: week-close persists shortfall via fresh-read delta, never an absolute 
 test('B10: held row queued before the entry; unique violations swallowed as idempotent; release RPC is conditional', () => {
   assert.match(weekClose, /held_refunds'\)\.insert/);
   assert.match(weekClose, /isUniqueViolation/);
-  assert.match(heldSql, /where id = p_held_id and status = 'pending'/);
+  assert.match(heldSql, /where id = p_held_id and status = 'held'/);
   assert.match(heldSql, /held refund already resolved/);
 });
 

@@ -313,7 +313,7 @@ grant execute on function public.link_refund(uuid, uuid) to authenticated;
 -- unlink_refund(p_refund_id) — admin-only manual unlink. Refuses when
 -- a restoration entry already exists for the refund (a posted
 -- restoration cannot be undone by unlinking), and refuses when a
--- PENDING held_refunds row exists for it (P2-N14 — unlinking would
+-- HELD held_refunds row exists for it (P2-N14 — unlinking would
 -- orphan the held row).
 -- ---------------------------------------------------------------------
 create or replace function public.unlink_refund(p_refund_id uuid)
@@ -337,15 +337,18 @@ begin
   if exists (select 1 from restoration_entries where refund_transaction_id = p_refund_id) then
     raise exception 'this refund already restored a week — it cannot be unlinked';
   end if;
-  -- P2-N14: refuse while a PENDING held_refunds row exists for this
+  -- P2-N14: refuse while a HELD held_refunds row exists for this
   -- refund, even though no restoration entry exists yet. A held row
   -- is excess refund money queued for release/write-off against
   -- the linked purchase; unlinking first would orphan it — it
   -- would point at a refund with no purchase, and the release path
   -- could never resolve it. Resolve (release/write off) the held
   -- row first, then unlink.
-  if exists (select 1 from held_refunds where refund_transaction_id = p_refund_id and status = 'pending') then
-    raise exception 'this refund has a pending held amount — resolve the held refund first';
+  -- (Nov 9, 2026 — live defect 2: the guard previously matched
+  -- status='pending', which no live row can hold, so it never
+  -- fired. The releasable state is 'held'.)
+  if exists (select 1 from held_refunds where refund_transaction_id = p_refund_id and status = 'held') then
+    raise exception 'this refund has a held amount — resolve the held refund first';
   end if;
   update transactions set original_purchase_id = null where id = p_refund_id;
 end;

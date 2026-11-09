@@ -125,10 +125,10 @@ test('privacy + terms: linked from the sign-in footer, Settings, and both landin
 
 // --- Pins -----------------------------------------------------------------
 
-test('pins: live.js v66 / styles v53, service-worker cache tracks live.js', () => {
-  assert.ok(html.includes('live.js?v=66'), 'live.html pins live.js v66');
+test('pins: live.js v67 / styles v53, service-worker cache tracks live.js', () => {
+  assert.ok(html.includes('live.js?v=67'), 'live.html pins live.js v67');
   assert.ok(html.includes('styles.css?v=53'), 'live.html pins styles v53');
   const sw = read('../live-sw.js');
-  assert.ok(sw.includes("CACHE = 'onbudget-live-v66'"), 'service-worker cache tracks the live.js pin');
-  assert.ok(sw.includes('(v66)'), 'service-worker comment names the current pin');
+  assert.ok(sw.includes("CACHE = 'onbudget-live-v67'"), 'service-worker cache tracks the live.js pin');
+  assert.ok(sw.includes('(v67)'), 'service-worker comment names the current pin');
 });

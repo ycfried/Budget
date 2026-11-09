@@ -1809,9 +1809,12 @@ async function refresh() {
   // Delta C3: these live in the Funds Review area, which showView
   // gates to admins and which starts collapsed; members never see
   // the section and no read is attempted for them, mirroring the
-  // email card. Pending held rows get a Release button calling the
+  // email card. Held rows get a Release button calling the
   // resolve_held_refund RPC with action 'release' (owner decision 2:
   // release goes to spendable surplus, shortfall first).
+  // (Nov 9, 2026 — live defect 2: the releasable state is 'held'.
+  // The old 'pending' checks matched no live row, so held rows
+  // showed as "Resolved" with no Release button.)
   if (household.role === 'admin') {
     try {
       const { data: restRows, error: restErr } = await supabase.from('restoration_entries')
@@ -1832,7 +1835,7 @@ async function refresh() {
         }
         rl.replaceChildren(frag);
       }
-      reviewNeedsCount = (heldRows2 ?? []).filter((h) => h.status === 'pending').length;
+      reviewNeedsCount = (heldRows2 ?? []).filter((h) => h.status === 'held').length;
       updateMoreReviewLabel();
       const hl = $('heldList');
       if (hl) {
@@ -1843,10 +1846,10 @@ async function refresh() {
           const info = document.createElement('div'); info.className = 'bank-info';
           const amt = document.createElement('strong'); amt.textContent = formatCents(h.held_cents); info.appendChild(amt);
           const st = document.createElement('div'); st.className = 'muted small';
-          st.textContent = h.status === 'pending' ? 'Held for review' : `Resolved${h.resolution_note ? ` — ${h.resolution_note}` : ''}`;
+          st.textContent = h.status === 'held' ? 'Held for review' : `Resolved${h.resolution_note ? ` — ${h.resolution_note}` : ''}`;
           info.appendChild(st);
           wrap.appendChild(info);
-          if (h.status === 'pending') {
+          if (h.status === 'held') {
             const btn = document.createElement('button'); btn.className = 'btn btn-small btn-primary'; btn.type = 'button';
             btn.textContent = 'Release';
             btn.setAttribute('aria-label', `Release held refund ${formatCents(h.held_cents)} to spendable surplus`);

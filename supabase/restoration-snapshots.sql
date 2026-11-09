@@ -89,13 +89,20 @@ create index if not exists restoration_entries_household_purchase_idx
   on restoration_entries (household_id, purchase_transaction_id);
 
 -- 4. Held excess refunds.
+-- Status vocabulary (Nov 9, 2026 — live defect 2): the releasable
+-- state is 'held', matching the LIVE constraint. The repo previously
+-- said ('pending','resolved') with default 'pending', but no live
+-- row can hold 'pending' — week-close and the release function now
+-- use 'held' throughout, and this definition was aligned to match.
+-- 'written_off' stays allowed-but-unused: no code path writes it
+-- (write_off/resolve close as 'resolved', the documented semantics).
 create table if not exists held_refunds (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references households(id) on delete cascade,
   refund_transaction_id uuid not null,
   purchase_transaction_id uuid,
   held_cents integer not null check (held_cents > 0),
-  status text not null default 'pending' check (status in ('pending', 'resolved')),
+  status text not null default 'held' check (status in ('held', 'written_off', 'resolved')),
   resolution_note text,
   created_at timestamptz not null default now(),
   resolved_at timestamptz,
@@ -140,6 +147,9 @@ grant select on held_refunds to authenticated;
 -- supabase/merged-audit-held-release-atomic.sql (row lock +
 -- conditional update + 'held refund already resolved' + households
 -- row lock for the shortfall). Apply that file instead.
+-- (Nov 9, 2026: the status vocabulary below was aligned from
+-- 'pending' to 'held' to match the live constraint, but this body
+-- is STILL superseded — do not apply it.)
 -- Semantics (exact — see S2_NOTES.md for the flagged 'release' item):
 -- - action 'write_off' or 'resolve': closes the held row WITHOUT
 --   moving any money (status -> 'resolved', resolved_at = now(),
@@ -153,7 +163,7 @@ grant select on held_refunds to authenticated;
 --   fund_ledger as kind='release' (immediately spendable — no 7-day
 --   pending, because the admin explicitly released it). Then the held
 --   row resolves with its own audit record stating the amounts.
--- - any other action, a missing row, a non-pending row, or a
+-- - any other action, a missing row, a non-held row, or a
 --   non-admin caller: exception, no change.
 create or replace function public.resolve_held_refund(p_held_id uuid, p_action text, p_note text)
 returns void
@@ -171,7 +181,7 @@ begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_row from held_refunds where id = p_held_id;
   if not found then raise exception 'held refund not found'; end if;
-  if v_row.status <> 'pending' then raise exception 'held refund is not pending'; end if;
+  if v_row.status <> 'held' then raise exception 'held refund is not held'; end if;
   if not exists (select 1 from household_members
                  where household_id = v_row.household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';

@@ -13,9 +13,9 @@ const webhookRegister = readFileSync(new URL('../supabase/functions/plaid-webhoo
 const plaidSync = readFileSync(new URL('../supabase/functions/plaid-sync/index.ts', import.meta.url), 'utf8');
 const gmailPoll = readFileSync(new URL('../supabase/functions/gmail-poll/index.ts', import.meta.url), 'utf8');
 
-test('pins bumped to v53/v66', () => {
+test('pins bumped to v53/v67', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=66/);
+  assert.match(html, /live\.js\?v=67/);
 });
 
 test('loadMembership failure uses setResultMsg soft red, not a direct blue box write', () => {
@@ -46,8 +46,14 @@ test('classifyCsvKind mirrors canonical: payment/cashback before sign fallback',
   assert.equal(classifyCsvKind('SOME TRANSFER TO A FRIEND', 5000), 'charge');
 });
 
-test('merge sets state=excluded so Trash restore can succeed', () => {
-  assert.match(mergeSql, /update transactions set excluded = true, state = 'excluded' where id = v_cand\.duplicate_transaction_id/);
+test('merge sets state=excluded AND records pre_exclusion_state so Trash restore can succeed', () => {
+  // Nov 9, 2026 (live defect 1): the old single-line UPDATE set
+  // excluded/state only, so the merged duplicate carried a NULL
+  // snapshot and restore_transaction refused it. The merge now
+  // records the snapshot, mirroring exclude_transaction.
+  assert.match(mergeSql, /update transactions set excluded = true, state = 'excluded',\s*\n\s*pre_exclusion_state = case/);
+  assert.match(mergeSql, /when v_dup\.state <> 'excluded' then v_dup\.state/);
+  assert.match(mergeSql, /else v_dup\.pre_exclusion_state/);
 });
 
 test('update_fund_shortfall: p_ rename file is quarantined DO-NOT-APPLY; canonical file keeps the household_id parameter with a table alias', () => {

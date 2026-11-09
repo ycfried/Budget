@@ -12,9 +12,9 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
-test('version pins: styles v53, live.js v66', () => {
+test('version pins: styles v53, live.js v67', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=66/);});// ---- Task 1: removed sentences are gone ----
+  assert.match(html, /live\.js\?v=67/);});// ---- Task 1: removed sentences are gone ----
 const REMOVED = [
   'Weekly summaries below are the financial record',
   'Closed weeks, read-only — week start, surplus, debt carried',
@@ -220,7 +220,7 @@ test('Task 7: one quiet More card with › rows, no triangles', () => {
 });
 
 test('Task 7: Review count shows only when something needs review', () => {
-  assert.match(js, /reviewNeedsCount = \(heldRows2 \?\? \[\]\)\.filter\(\(h\) => h\.status === 'pending'\)\.length;/);
+  assert.match(js, /reviewNeedsCount = \(heldRows2 \?\? \[\]\)\.filter\(\(h\) => h\.status === 'held'\)\.length;/);
   assert.match(js, /reviewNeedsCount \+= \(candRows \?\? \[\]\)\.length;/);
   assert.match(js, /lbl\.textContent = reviewNeedsCount > 0 \? `Review \(\$\{reviewNeedsCount\}\)` : 'Review';/);
   // Restorations (already posted history) do not feed the count.

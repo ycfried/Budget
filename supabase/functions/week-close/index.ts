@@ -907,9 +907,14 @@ Deno.serve(async (req) => {
             // losing its held amount behind a completed entry.
             const isUniqueViolation = (e: any) => e?.code === '23505';
             if (inc.heldCents > 0) {
+              // Nov 9, 2026 (live defect 2): the releasable state is
+              // 'held' — the live held_refunds CHECK allows only
+              // ('held','written_off','resolved'). Inserting
+              // 'pending' made the row unreleasable (the RPC and the
+              // UI both keyed on a value no live row could hold).
               const heldRes = await supabaseAdmin.from('held_refunds').insert({
                 household_id: householdId, refund_transaction_id: refund.id,
-                purchase_transaction_id: purchaseId, held_cents: inc.heldCents, status: 'pending',
+                purchase_transaction_id: purchaseId, held_cents: inc.heldCents, status: 'held',
               });
               if (heldRes.error && !isUniqueViolation(heldRes.error)) {
                 check(heldRes, 'held_refunds insert');

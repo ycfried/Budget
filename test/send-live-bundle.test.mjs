@@ -20,9 +20,9 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v53, live.js v66', () => {
+test('version pins: styles v53, live.js v67', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=66/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
+  assert.match(html, /live\.js\?v=67/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
   const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = ['), sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')));
   assert.deepEqual([...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]), ['Allowance', 'Spent', 'Balance']);
   assert.match(sheetFn, /weeklyAllowanceCents = \(w\.baseAvailableCents \?\? w\.baseRoomCents \?\? 0\) \+ \(w\.tempCents \?\? 0\)/);

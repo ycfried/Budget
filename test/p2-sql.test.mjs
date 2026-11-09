@@ -120,11 +120,11 @@ test('P2-N9: manual link locks the purchase row before reading the linked total'
   assert.match(linking, /perform 1 from transactions where id = p_purchase_id for update;/);
 });
 
-// ---- P2-N14: unlink refuses on a pending held row ----
+// ---- P2-N14: unlink refuses on a held row ----
 
-test('P2-N14: unlink_refund refuses when a pending held_refunds row exists for the refund', () => {
-  assert.match(linking, /if exists \(select 1 from held_refunds where refund_transaction_id = p_refund_id and status = 'pending'\) then/);
-  assert.match(linking, /this refund has a pending held amount — resolve the held refund first/);
+test('P2-N14: unlink_refund refuses when a held held_refunds row exists for the refund', () => {
+  assert.match(linking, /if exists \(select 1 from held_refunds where refund_transaction_id = p_refund_id and status = 'held'\) then/);
+  assert.match(linking, /this refund has a held amount — resolve the held refund first/);
   // The restoration-entry refusal is still there too.
   assert.match(linking, /this refund already restored a week — it cannot be unlinked/);
 });
