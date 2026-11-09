@@ -1,0 +1,5 @@
+# ios-clone build outputs (local/CI scratch, never committed)
+CloudResults/
+DerivedData/
+*.xcresult
+__pycache__/
