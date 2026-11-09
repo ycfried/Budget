@@ -50,11 +50,13 @@
 //   If later weeks already absorbed the debt, this is $0.
 // - fundCreditCents: refund of a fund purchase credits the fund
 //   directly and does not change surplus. Fund-first ordering for a
-//   SPLIT purchase (part fund, part normal) is an S2 interpretation,
-//   flagged in S2_NOTES.md: the refund is applied to the fund
-//   portion first, the remainder to the normal portion. The FINAL
-//   spec's acceptance cases cover only fully-fund purchases; a split
-//   ordering needs an owner confirmation at integration.
+//   SPLIT purchase (part fund, part normal) is owner-confirmed
+//   (Nov 5, 2026 — N1 Option A, fund-first counted once;
+//   MATH_DECISIONS_N1_N2.md; engine.mjs
+//   linkedRefundNormalPortionCents implements the same split in the
+//   walk, so the two agree). The FINAL spec's acceptance cases cover
+//   only fully-fund purchases; the split ordering itself is settled
+//   by that owner decision, not pending confirmation.
 // - heldCents: refund amount beyond the original charge. It restores
 //   nothing and is queued for admin review (held_refunds table).
 //
@@ -137,7 +139,8 @@ export function computeRestorationTotal(args) {
 
   const heldCents = Math.max(0, totalRefunded - purchaseAmount);
   const refundableCents = Math.min(totalRefunded, purchaseAmount);
-  // Fund-first ordering for split purchases (see header note).
+  // Fund-first ordering for split purchases (owner-confirmed Nov 5,
+  // 2026 — N1 Option A; see the header note).
   const fundCreditCents = Math.min(refundableCents, fundAllocation);
   const normalRefundCents = refundableCents - fundCreditCents;
 

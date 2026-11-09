@@ -137,7 +137,11 @@ function m1Net(chargesNet, unlinkedAbs, weekLocked) {
 }
 
 test('P1-M1: (a) open week with a post-close unlinked refund nets it; (b) locked week does not', () => {
-  // (a) Open week, charges $4,603.33, post-close unlinked refund $158.97 → nets.
+  // (a) Open week: cap arithmetic only — the $4,603.33 input is the
+  // Nov 1–7 NET spent C (R2 §1; gross charges $4,762.30, Nordstrom
+  // $158.97 already netted), used here as the charges figure for the
+  // cap example. Live C stays $4,603.33; this case double-nets it
+  // only as an arithmetic example, not as a live claim (P2-B19).
   assert.deepEqual(m1Net(460333, 15897, false), { c: 444436, excess: 0 });
   // (b) Same week once locked → refund nets $0, full amount is excess.
   assert.deepEqual(m1Net(460333, 15897, true), { c: 460333, excess: 15897 });

@@ -150,8 +150,12 @@ export function chargeContribution(t) {
 // N1 + N2 shared helpers (Nov 5, 2026, owner-approved math fixes).
 // Both live in this engine file — the single shared math source both
 // compute-week and week-close import — so the two functions cannot
-// drift apart again. Keep every copy of engine.mjs in sync when
-// changing these (root, compute-week, week-close, _shared).
+// drift apart again. CANONICAL DIRECTION: this root file is the
+// canonical copy; the three deployed copies (supabase/functions/
+// compute-week/engine.mjs, week-close/engine.mjs, _shared/engine.mjs)
+// are synced FROM root, never the other way. test/p2-engine.test.mjs
+// asserts all four files are byte-identical, so any drift fails the
+// suite (P2-M1).
 // ---------------------------------------------------------------------------
 
 // N1 Option A — fund-first, counted once. The NORMAL portion of a
@@ -193,6 +197,29 @@ export function restorationDebtCutsAfterClose(entries, latestCloseWeekStart, wee
     .filter((r) => (latestCloseWeekStart == null || r.week_start > latestCloseWeekStart)
       && (weekStart == null || r.week_start <= weekStart))
     .reduce((s, r) => s + (r.debt_reduction_cents ?? 0), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Unlinked-refund cap (P2-M5, Nov 8, 2026).
+// An unlinked posted refund nets against the week's charges only up to
+// the charges, and nets nothing in a locked week (the excess is exposed
+// as unlinked_excess_cents, never silently dropped). This is a pure
+// extraction of the inline formula in compute-week/index.ts:280-282 —
+// same arithmetic, no behaviour change. The Deno functions still inline
+// it (they cannot import the root file); this helper is the executable
+// pin the tests assert, and the TS text is regex-pinned to the same
+// formula (see test/p2-engine.test.mjs). Inputs are floored at 0, as
+// the callers only ever pass absolute refund totals and floored
+// charges, so for every reachable input this matches the TS exactly.
+export function applyUnlinkedRefundCap(unlinkedRefundAbsCents, chargesNetCents, weekLocked) {
+  const abs = Math.max(0, Math.floor(unlinkedRefundAbsCents ?? 0));
+  const charges = Math.max(0, Math.floor(chargesNetCents ?? 0));
+  const nettedCents = weekLocked ? 0 : Math.min(abs, charges);
+  return {
+    nettedCents,
+    excessCents: abs - nettedCents,
+    chargesAfterCents: charges - nettedCents,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +315,14 @@ export function applyShortfallToRelease(releaseAmountCents, shortfallCents) {
   };
 }
 
+// R13 charity: committed per income, half-up rounded, in integer cents.
+// rateBp is basis points (1000 = 10%). An override REPLACES the
+// default, so the caller passes the single effective rate for that
+// income — never default + override.
+export function charityCommittedCents(amountCents, rateBp) {
+  return Math.floor((amountCents * rateBp + 5000) / 10000);
+}
+
 // A late charge reduces already-released surplus: fund goes to at most zero,
 // any remainder becomes a shortfall (never a negative fund, never a clawback
 // from the normal weekly budget).
@@ -315,5 +350,6 @@ export function isWeekLocked(weekStart, currentWeekStart) {
 export function formatCents(cents) {
   const sign = cents < 0 ? '-' : '';
   const abs = Math.abs(cents);
-  return `${sign}$${(abs / 100).toFixed(2)}`;
+  const dollars = Math.floor(abs / 100).toLocaleString('en-US');
+  return `${sign}$${dollars}.${String(abs % 100).padStart(2, '0')}`;
 }
