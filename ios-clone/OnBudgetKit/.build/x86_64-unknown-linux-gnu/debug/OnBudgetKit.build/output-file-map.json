@@ -1,0 +1,77 @@
+{
+  "": {
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/master.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/API/EdgeFunctions.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/EdgeFunctions.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/EdgeFunctions.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/EdgeFunctions~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/EdgeFunctions.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/API/Errors.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Errors.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Errors.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Errors~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Errors.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/API/Models.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Models.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Models.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Models.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/API/PostgrestClient.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/PostgrestClient.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/PostgrestClient.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/PostgrestClient~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/PostgrestClient.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/API/RPCs.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/RPCs.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/RPCs.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/RPCs~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/RPCs.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/API/SHA256.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/SHA256.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/SHA256.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/SHA256~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/SHA256.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/API/SupabaseClient.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/SupabaseClient.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/SupabaseClient.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/SupabaseClient~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/SupabaseClient.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/OnBudgetKit/Configuration.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Configuration.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Configuration.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Configuration~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Configuration.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/OnBudgetKit/DesignTokens.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/DesignTokens.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/DesignTokens.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/DesignTokens~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/DesignTokens.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/OnBudgetKit/OnBudgetKit.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/OnBudgetKit.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/OnBudgetKit.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/OnBudgetKit~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/OnBudgetKit.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/OnBudgetKit/TitleCase.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/TitleCase.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/TitleCase.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/TitleCase~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/TitleCase.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/Sources/OnBudgetKit/Toast.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Toast.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Toast.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Toast~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKit.build/Toast.swiftdeps"
+  }
+}

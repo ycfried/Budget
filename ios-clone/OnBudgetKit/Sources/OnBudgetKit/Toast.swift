@@ -40,7 +40,9 @@ public enum ToastStyle {
     public static let placement = "bottom"
 
     /// Toasts are transient: they dismiss on their own after this long.
-    public static let autoDismissSeconds = 3.0
+    /// 4s per CLONE_SPEC §2.3 — the single shared value; the SwiftUI
+    /// overlay sleeps on this, never on its own literal.
+    public static let autoDismissSeconds = 4.0
 }
 
 /// A toast message, as produced by app actions and shown per `ToastStyle`.

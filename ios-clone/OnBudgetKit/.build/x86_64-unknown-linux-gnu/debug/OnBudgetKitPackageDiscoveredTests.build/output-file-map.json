@@ -1,0 +1,17 @@
+{
+  "": {
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.build/master.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.derived/OnBudgetKitTests.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.build/OnBudgetKitTests.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.build/OnBudgetKitTests.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.build/OnBudgetKitTests~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.build/OnBudgetKitTests.swiftdeps"
+  },
+  "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.derived/all-discovered-tests.swift": {
+    "dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.build/all-discovered-tests.d",
+    "object": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.build/all-discovered-tests.swift.o",
+    "swiftmodule": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.build/all-discovered-tests~partial.swiftmodule",
+    "swift-dependencies": "/tmp/ios-clone-integrate/ios-clone/OnBudgetKit/.build/x86_64-unknown-linux-gnu/debug/OnBudgetKitPackageDiscoveredTests.build/all-discovered-tests.swiftdeps"
+  }
+}
