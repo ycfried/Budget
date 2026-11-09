@@ -60,7 +60,7 @@ test('Purchases shows N/A, never a bare dash, when transactions failed to load',
 test('Hero sync icon is a single closed refresh glyph; the old over-extended arc is gone', () => {
   assert.doesNotMatch(html, /M21 12a9 9 0 1 1-2\.64-6\.36/, 'old arc removed');
   assert.match(html, /M17\.65 6\.35C16\.2 4\.9 14\.21 4 12 4c-4\.42 0/, 'Material refresh path present');
-  assert.match(html, /id="homeSyncBtn"[^>]*aria-label="Sync bank"/, 'button kept');
+  assert.match(html, /id="homeSyncBtn"[^>]*aria-label="Sync Bank"/, 'button kept');
 });
 
 // ---- Expanded stat-card chevron clearance ----

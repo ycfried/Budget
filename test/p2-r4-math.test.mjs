@@ -160,15 +160,16 @@ test('B6: both Edge Functions page the whole transaction history (no .limit(1000
   }
 });
 
-test('B6: live.js pages the three money-sum reads (no .limit(1000) on a sum)', () => {
+test('B6: live.js pages the money-sum reads and the CSV preview dedupe (no .limit(1000) left)', () => {
   assert.match(liveJs, /async function fetchAllPages\(makeQuery\) \{/,
     'live.js must define the fetchAllPages helper');
   assert.match(liveJs, /const PAGE = 1000;/, 'fetchAllPages pages in 1000-row pages');
   assert.match(liveJs, /await makeQuery\(from, from \+ PAGE - 1\)/, 'fetchAllPages passes the page window to the query');
   // Each caller applies .range(a, b) on its ordered query — three
-  // money-sum call sites, three .range(a, b) uses.
-  assert.equal((liveJs.match(/\.range\(a, b\)/g) || []).length, 3,
-    'exactly three .range(a, b) call sites (charity income, charity gifts, savings)');
+  // money-sum call sites plus the CSV preview dedupe fetch (R5-NEW2):
+  // four .range(a, b) uses.
+  assert.equal((liveJs.match(/\.range\(a, b\)/g) || []).length, 4,
+    'exactly four .range(a, b) call sites (charity income, charity gifts, savings, CSV dedupe)');
   assert.match(liveJs, /if \(\(data \?\? \[\]\)\.length < PAGE\) return rows;/, 'fetchAllPages stops on a short page');
   // Charity Committed: active income rows.
   assert.match(liveJs, /const incRows = await fetchAllPages\(\(a, b\) => supabase\.from\('charity_income'\)/,
@@ -179,13 +180,13 @@ test('B6: live.js pages the three money-sum reads (no .limit(1000) on a sum)', (
   // Savings transfer/withdrawal/interest sums.
   assert.match(liveJs, /savRows = await fetchAllPages\(\(a, b\) => supabase\.from\('savings_ledger'\)/,
     'savings sums must page all savings_ledger rows');
-  // The only .limit(1000) call left in live.js is the CSV preview
-  // dedupe guard — not a money figure (see the note at the bottom of
-  // this file). Comments may still name the old cap; count calls.
+  // R5-NEW2 (Nov 9, 2026): the CSV preview dedupe fetch pages too —
+  // no .limit(1000) call remains anywhere in live.js. Comments may
+  // still name the old cap; count calls, not words.
   const caps = liveJs.match(/\.limit\(1000\);/g) || [];
-  assert.equal(caps.length, 1, 'exactly one .limit(1000) call may remain in live.js (the CSV dedupe guard)');
-  assert.match(liveJs, /Existing rows for client-side preview dedupe[\s\S]{0,500}?\.limit\(1000\)/,
-    'the remaining .limit(1000) is the CSV preview dedupe fetch');
+  assert.equal(caps.length, 0, 'no .limit(1000) call may remain in live.js');
+  assert.match(liveJs, /const existing = await fetchAllPages\(\(a, b\) => supabase\.from\('transactions'\)/,
+    'CSV preview dedupe must page all existing transactions');
   assert.doesNotMatch(liveJs, /\.limit\(10000\)/, 'no .limit(10000) in live.js');
 });
 
@@ -229,11 +230,41 @@ test('B6: paging-loop mirror — a failed page throws, never a partial sum', asy
   assert.deepEqual(empty, [], 'an empty store returns [] after one page');
 });
 
+// ---- R5-NEW2 (Nov 9, 2026): CSV preview dedupe sees the whole history ----
+// Executes the SHIPPED fetchAllPages + csvRowKey (sliced out of live.js,
+// like the fund builders) against a 2,500-row store, then runs the
+// preview's own dedupe over the returned rows: a CSV row duplicating
+// store row #1501 — past the first 1000-row page, invisible to the old
+// bare .limit(1000) fetch — must be flagged Duplicate, and a genuinely
+// new row must stay New.
+test('R5-NEW2: CSV preview dedupe catches a duplicate past row 1000', async () => {
+  const slice = (start, end) => liveJs.slice(liveJs.indexOf(start), liveJs.indexOf(end));
+  const helpers = new Function(`${slice('const normalizeMerchant', 'function parseAmountLive')}
+${slice('async function fetchAllPages(makeQuery)', 'async function refresh()')}; return { csvRowKey, fetchAllPages };`)();
+  const store = Array.from({ length: 2500 }, (_, i) => ({
+    merchant: `MERCHANT ${i + 1}`, amount_cents: 100 + i, date: '2026-11-02', card_suffix: '1005',
+  }));
+  const calls = [];
+  const existing = await helpers.fetchAllPages(async (a, b) => {
+    calls.push([a, b]);
+    return { data: store.slice(a, b + 1), error: null };
+  });
+  assert.equal(existing.length, 2500, 'all 2500 existing rows returned');
+  assert.deepEqual(calls, [[0, 999], [1000, 1999], [2000, 2999]], 'three 1000-row pages');
+  const existingKeys = new Set(existing.map((t) => helpers.csvRowKey({
+    merchant: t.merchant, date: t.date, amountCents: t.amount_cents, suffix: t.card_suffix,
+  })));
+  const dupePast1000 = { merchant: 'MERCHANT 1501', date: '2026-11-02', amountCents: 1600, suffix: '1005' };
+  assert.equal(existingKeys.has(helpers.csvRowKey(dupePast1000)), true,
+    'a CSV row duplicating store row #1501 (past the first page) is a Duplicate');
+  const fresh = { merchant: 'BRAND NEW SHOP', date: '2026-11-02', amountCents: 99999, suffix: '1005' };
+  assert.equal(existingKeys.has(helpers.csvRowKey(fresh)), false, 'a genuinely new row stays New');
+});
+
 // ---- Limits deliberately LEFT in place (documented safe, not fixed) ----
-//   * live.js CSV preview dedupe fetch (.limit(1000), live.js ~2250):
-//     a dedupe GUARD, not a money figure — the in-code comment already
-//     says rows beyond the fetch are caught by the Possible-duplicates
-//     review queue, and the preview counts only what it fetched.
+//   * (R5-NEW2, Nov 9, 2026: the CSV preview dedupe fetch used to be
+//     here — it now pages the whole history with fetchAllPages, so it
+//     is no longer a deliberate limit.)
 //   * Display lists (live.js .limit(50)/.limit(100), week_closes
 //     .limit(100), audit_log 1000 when date-filtered): lists the user
 //     scrolls, not figures — every money total on those pages comes

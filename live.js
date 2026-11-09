@@ -822,10 +822,10 @@ async function refresh() {
   const sortDirBtn = $('txSortDirBtn');
   if (sortDirBtn) {
     // Delta A2: the approved arrow design — arrow AND words together.
-    const dirLabel = txSort === 'date-asc' ? '↑ Oldest first'
+    const dirLabel = txSort === 'date-asc' ? '↑ Oldest First'
       : txSort === 'amount-desc' ? '↓ Largest first'
       : txSort === 'amount-asc' ? '↑ Smallest first'
-      : '↓ Newest first';
+      : '↓ Newest First';
     sortDirBtn.textContent = dirLabel;
     sortDirBtn.setAttribute('aria-label', `Sort direction: ${dirLabel}. Tap to reverse.`);
   }
@@ -895,7 +895,7 @@ async function refresh() {
   // the page is exactly full (exactly txLimit rows used to show the
   // button and waste one tap refetching the same rows).
   if (loadMore && lastFetchedCount <= txLimit) loadMore.classList.add('hidden');
-  // P0-2 (Nov 8, 2026): Load more was dead — the button existed and
+  // P0-2 (Nov 8, 2026): Load More was dead — the button existed and
   // the count line told users to tap it, but no handler ever raised
   // txLimit. Bound once (refresh re-runs; the dataset flag stops the
   // listener stacking). Mirrors the Activity pattern (auditLimit += 50).
@@ -967,18 +967,18 @@ async function refresh() {
     ? 'No charity gifts in this list yet — record one from Add, or mark a posted donation as a gift.'
     : 'No transactions here yet — add one by hand above, or connect a bank account and sync.';
   const emptyLi = searchOrFilterActive
-    ? `<li class="tx-empty">${emptyHint} <button class="btn btn-small" data-clear-search-filters type="button" aria-label="Clear search and filters">Clear search and filters</button></li>`
+    ? `<li class="tx-empty">${emptyHint} <button class="btn btn-small" data-clear-search-filters type="button" aria-label="Clear Search and Filters">Clear Search and Filters</button></li>`
     : `<li class="tx-empty">${emptyHint}</li>`;
   $('txList').innerHTML = txReadFailed
     ? txReadErrorKind === 'auth'
-      ? `<li class="tx-empty error">Your sign-in expired — sign in again to see transactions. <button class="btn btn-small" data-tx-signin-again type="button" aria-label="Sign in again">Sign in again</button></li>`
-      : `<li class="tx-empty error">Could not load transactions — the server did not answer. Nothing here is a complete list. <button class="btn btn-small" data-tx-retry-load type="button" aria-label="Try loading transactions again">Try again</button></li>`
+      ? `<li class="tx-empty error">Your sign-in expired — sign in again to see transactions. <button class="btn btn-small" data-tx-signin-again type="button" aria-label="Sign In Again">Sign In Again</button></li>`
+      : `<li class="tx-empty error">Could not load transactions — the server did not answer. Nothing here is a complete list. <button class="btn btn-small" data-tx-retry-load type="button" aria-label="Try loading transactions again">Try Again</button></li>`
     : shown.length
     ? shown.map((t) => {
         const excluded = t.excluded === true || t.state === 'excluded';
         const isAdmin = household.role === 'admin';
         // Send-live-bundle, detail Actions sheet: the old five-button
-        // row (Exclude, Mark as charity, Use Extra Fund, Reclassify,
+        // row (Exclude, Mark as Charity, Use Extra Fund, Reclassify,
         // Remove/Delete) is replaced by one Actions line. Tapping it
         // opens openTxActionsSheet (below, after the list render),
         // which lists exactly Charity, Extra Fund, Other, Delete.
@@ -1031,9 +1031,9 @@ async function refresh() {
     resetTxLimit(); // P2-N1: cleared filters are a new list.
     refresh();
   }));
-  // P1-C4 (Nov 8, 2026): the load-failure actions. "Sign in again"
+  // P1-C4 (Nov 8, 2026): the load-failure actions. "Sign In Again"
   // reuses the sign-out button's handler (sign-out + sign-in panel);
-  // "Try again" just re-runs the load.
+  // "Try Again" just re-runs the load.
   document.querySelectorAll('[data-tx-signin-again]').forEach((b) => b.addEventListener('click', () => { $('signOutBtn')?.click(); }));
   document.querySelectorAll('[data-tx-retry-load]').forEach((b) => b.addEventListener('click', async () => { await refresh(); }));
   // Home preview: the 6 newest transactions, tapping one jumps to Transactions.
@@ -1252,7 +1252,7 @@ async function refresh() {
     if (req && cents > req.amount_cents) { await showAlert('Too much', `You cannot approve more than the requested ${formatCents(req.amount_cents)}.`); return; }
     let { error } = await supabase.rpc('approve_and_allocate', { p_request_id: b.dataset.approve, p_amount_cents: cents, p_override_reason: null });
     if (error && /insufficient fund/i.test(error.message)) {
-      const reason = await showSheet({ title: 'Fund Is Short', message: `The fund does not cover ${formatCents(cents)}. You can still approve with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Approve anyway', cancelLabel: 'Cancel' });
+      const reason = await showSheet({ title: 'Fund Is Short', message: `The fund does not cover ${formatCents(cents)}. You can still approve with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Approve Anyway', cancelLabel: 'Cancel' });
       if (reason === null) return;
       ({ error } = await supabase.rpc('approve_and_allocate', { p_request_id: b.dataset.approve, p_amount_cents: cents, p_override_reason: reason.trim() }));
     }
@@ -1867,7 +1867,7 @@ async function refresh() {
   // Possible duplicates (admin only, Funds tab, inside the Review
   // area). Reads pending duplicate_candidates + all their transactions in ONE query
   // (Nov 3 fix round: it used to query one pair at a time, up to
-  // 100 queries). Same purchase and Separate both go through
+  // 100 queries). Same Purchase and Separate both go through
   // resolve_duplicate_candidate, which never deletes a row.
   if (household.role === 'admin') {
     try {
@@ -1939,9 +1939,9 @@ async function refresh() {
           const aliasLabel = document.createElement('label'); aliasLabel.className = 'dedupe-alias';
           const aliasBox = document.createElement('input'); aliasBox.type = 'checkbox'; aliasBox.setAttribute('aria-label', 'Remember these merchant names as the same merchant for future review');
           aliasLabel.appendChild(aliasBox); aliasLabel.appendChild(document.createTextNode(' Remember as same merchant — remembers these two merchant names as the same for future review, so similar pairs are treated as the same merchant next time.'));
-          const sameBtn = document.createElement('button'); sameBtn.className = 'btn btn-small btn-primary'; sameBtn.type = 'button'; sameBtn.textContent = 'Same purchase';
+          const sameBtn = document.createElement('button'); sameBtn.className = 'btn btn-small btn-primary'; sameBtn.type = 'button'; sameBtn.textContent = 'Same Purchase';
           sameBtn.addEventListener('click', async () => {
-            if (!(await showConfirm('Same Purchase', 'Keep one transaction and exclude the other from counts? Neither row is deleted.', 'Same purchase'))) return;
+            if (!(await showConfirm('Same Purchase', 'Keep one transaction and exclude the other from counts? Neither row is deleted.', 'Same Purchase'))) return;
             sameBtn.disabled = true;
             const { error } = await supabase.rpc('resolve_duplicate_candidate', { p_candidate_id: c.id, p_action: 'merge', p_note: '', p_remember_alias: aliasBox.checked });
             if (error) { console.warn('resolve_duplicate_candidate failed:', error.message); sameBtn.disabled = false; await showAlert('Could not resolve', 'Could not resolve this pair. Try again.'); } else await refresh();
@@ -2036,7 +2036,7 @@ async function refresh() {
   }
 
   showView(currentView, { preserveScroll: true });
-  // Delta B1: unfiltered activity pages by auditLimit (Load more
+  // Delta B1: unfiltered activity pages by auditLimit (Load More
   // raises it); a filtered view fetches up to 1000 newest rows so
   // the period is not silently cut off by the page size.
   const auditFetchLimit = (historyFilter.from || historyFilter.to) ? 1000 : auditLimit;
@@ -2200,7 +2200,7 @@ async function boot() {
 $('forgotPasswordBtn')?.addEventListener('click', async () => {
   let email = ($('authEmail')?.value ?? '').trim();
   if (!email) {
-    const typed = await showSheet({ title: 'Forgot Password?', message: 'Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.', inputLabel: 'Email', inputType: 'email', confirmLabel: 'Send reset link', cancelLabel: 'Cancel' });
+    const typed = await showSheet({ title: 'Forgot Password?', message: 'Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.', inputLabel: 'Email', inputType: 'email', confirmLabel: 'Send Reset Link', cancelLabel: 'Cancel' });
     if (typed === null) return;
     email = typed.trim();
   }
@@ -2259,9 +2259,17 @@ $('csvFile')?.addEventListener('change', async (e) => {
   // Existing rows for client-side preview dedupe (normalized key). The
   // No server unique (household_id, dedupe_hash) constraint exists
   // live (proven Nov 3, 2026); the preview + review queue are the
-  // guards for any row this preview misses (e.g. beyond the 1000-row fetch).
-  const { data: existing } = await supabase.from('transactions')
-    .select('merchant, amount_cents, date, card_suffix').eq('household_id', household.household_id).limit(1000);
+  // guards for a row this preview misses (e.g. a transaction that
+  // lands between the preview fetch and Confirm).
+  // R5-NEW2 (Nov 9, 2026): paged whole-history read (fetchAllPages,
+  // same B6 pattern as the charity aggregates) — the old bare
+  // .limit(1000) silently truncated the dedupe set past 1000 rows,
+  // so a CSV row duplicating an older transaction was marked New.
+  // A failed page throws into this handler's catch (loud error,
+  // never a silently all-New preview).
+  const existing = await fetchAllPages((a, b) => supabase.from('transactions')
+    .select('merchant, amount_cents, date, card_suffix').eq('household_id', household.household_id)
+    .order('created_at', { ascending: true }).range(a, b));
   const existingKeys = new Set((existing ?? []).map((t) => csvRowKey({ merchant: t.merchant, date: t.date, amountCents: t.amount_cents, suffix: t.card_suffix })));
   const seen = new Set(); let dupes = 0;
   const previewRows = parsed.rows.map((r) => {
@@ -2307,7 +2315,7 @@ $('csvConfirmBtn')?.addEventListener('click', async () => {
   // granted to service_role only (refund-linking.sql), so this
   // browser client cannot call them; a call would only 403. A
   // refund or charge imported here links the manual way instead:
-  // Actions → Link to purchase (link_refund, granted to
+  // Actions → Link to Purchase (link_refund, granted to
   // authenticated, with the server's fit check as the guard).
   const { data, error } = await supabase.from('transactions').insert(inserts).select('id');
   if (error) { console.warn('csv insert failed:', error.message); showToast('Could not import. Nothing was claimed as imported — try again.', true); if (confirmBtnTop) confirmBtnTop.disabled = false; return; }
@@ -2335,7 +2343,7 @@ $('togglePasswordBtn')?.addEventListener('click', (e) => {
   const showing = input.type === 'password';
   input.type = showing ? 'text' : 'password';
   e.currentTarget.innerHTML = showing ? eyeSlashSvg : eyeOpenSvg;
-  e.currentTarget.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
+  e.currentTarget.setAttribute('aria-label', showing ? 'Hide Password' : 'Show Password');
   e.currentTarget.setAttribute('aria-pressed', showing ? 'true' : 'false');
 });
 // Auth-card-cleanup, two-step sign-up (owner correction, Nov 4,
@@ -2538,14 +2546,14 @@ $('manualForm').addEventListener('submit', async (e) => {
   const { data: dupes } = await supabase.from('transactions')
     .select('merchant, amount_cents, date').eq('household_id', household.household_id)
     .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
-  if ((dupes ?? []).length && !(await showConfirm('Possible Duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add anyway'))) { done(); return; }
+  if ((dupes ?? []).length && !(await showConfirm('Possible Duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Add it again anyway?`, 'Add Anyway'))) { done(); return; }
   const hash = await sha(`${f.date.value}|${merchant}|${amount}|${suffix}`);
   // P2-N4 (Nov 8, 2026): no auto-link call after this insert on
   // purpose — auto_link_refund / link_refunds_to_purchase are
   // granted to service_role only (refund-linking.sql), so this
   // browser client cannot call them; a call would only 403. A
   // refund or charge entered by hand links the manual way instead:
-  // Actions → Link to purchase (link_refund, granted to
+  // Actions → Link to Purchase (link_refund, granted to
   // authenticated, with the server's fit check as the guard).
   const { error } = await supabase.from('transactions').insert({
     household_id: household.household_id, date: f.date.value, merchant,
@@ -2586,7 +2594,7 @@ $('connectBankBtn')?.addEventListener('click', async () => {
   // has an ACTIVE connection, list it and warn that connecting the
   // same account again creates a duplicate. Cancel is the safe path
   // (the sheet's Cancel button comes first); only an explicit
-  // "Connect anyway" proceeds. A failed read fails OPEN — it must
+  // "Connect Anyway" proceeds. A failed read fails OPEN — it must
   // never block a first or legitimate connection.
   try {
     const { data: activeItems } = await supabase.from('plaid_items_public')
@@ -2595,7 +2603,7 @@ $('connectBankBtn')?.addEventListener('click', async () => {
       const { data: activeAccts } = await supabase.from('plaid_accounts')
         .select('plaid_item_id, name, mask').in('plaid_item_id', activeItems.map((i) => i.plaid_item_id));
       const lines = activeItems.map((item) => describeConnection(item, (activeAccts ?? []).filter((a) => a.plaid_item_id === item.plaid_item_id)));
-      const proceed = await showConfirm('Already Connected?', `You already have ${activeItems.length === 1 ? 'this bank connection' : 'these bank connections'}:\n${lines.join('\n')}\n\nConnecting the same account again will create a duplicate. You do not need to reconnect an account that is already syncing — only continue if you are connecting a different account.`, 'Connect anyway');
+      const proceed = await showConfirm('Already Connected?', `You already have ${activeItems.length === 1 ? 'this bank connection' : 'these bank connections'}:\n${lines.join('\n')}\n\nConnecting the same account again will create a duplicate. You do not need to reconnect an account that is already syncing — only continue if you are connecting a different account.`, 'Connect Anyway');
       if (!proceed) return;
     }
   } catch (e) { console.warn('duplicate-warning read failed, proceeding:', e); }
@@ -2639,7 +2647,7 @@ async function runBankSync() {
   const homeBtn = $('homeSyncBtn');
   const savedSyncText = syncBtn ? syncBtn.textContent : '';
   if (syncBtn) { syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; }
-  if (homeBtn) { homeBtn.disabled = true; homeBtn.classList.add('syncing'); homeBtn.setAttribute('aria-label', 'Syncing bank'); }
+  if (homeBtn) { homeBtn.disabled = true; homeBtn.classList.add('syncing'); homeBtn.setAttribute('aria-label', 'Syncing Bank'); }
   try {
     showToast('Syncing bank transactions…');
     const out = await callFn('plaid-sync', { household_id: household.household_id });
@@ -2656,7 +2664,7 @@ async function runBankSync() {
     return out;
   } finally {
     if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = savedSyncText; }
-    if (homeBtn) { homeBtn.disabled = false; homeBtn.classList.remove('syncing'); homeBtn.setAttribute('aria-label', 'Sync bank'); }
+    if (homeBtn) { homeBtn.disabled = false; homeBtn.classList.remove('syncing'); homeBtn.setAttribute('aria-label', 'Sync Bank'); }
     syncGuard.finish();
   }
 }
@@ -2916,13 +2924,13 @@ function showView(name, opts = {}) {
   // Task 7 (owner, Nov 4, Option A): the Funds actions card, Review
   // card, and Past savings card are gone as cards. Their functions
   // live on: the three fund actions moved into the expanded Extra Fund card
-  // (see fundExpandActions), and Review / Fund activity / Past savings
+  // (see fundExpandActions), and Review / Fund Activity / Past savings
   // are quiet › rows on one More card, each toggling its section
   // below (no ▶ triangles, no explainer sentences). The More card
   // shows when no form is open, like the old actions card; each
   // form shows only when chosen. Admin gating stays: members see
   // only the Ask action in the sheet and only the Past savings row
-  // here (Fund activity and Review content are admin-only reads).
+  // here (Fund Activity and Review content are admin-only reads).
   if (name === 'money') {
     const isAdmin = household && household.role === 'admin';
     const more = document.getElementById('section-fund-more');
@@ -3006,7 +3014,7 @@ function showView(name, opts = {}) {
   if (homeSync) homeSync.style.display = (household && household.role === 'admin') ? '' : 'none';
   // Task 4: refresh() re-renders the same page, so it passes
   // preserveScroll and must not jump to the top. A real page change
-  // (tab tap, Settings Back, sheet "Show transactions") still
+  // (tab tap, Settings Back, sheet "Show Transactions") still
   // scrolls to the top, as before.
   if (!opts.preserveScroll) window.scrollTo(0, 0);
 }
@@ -3117,9 +3125,9 @@ async function removeMemberFlow(userId, name) {
 async function deleteAccountFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
-  // TWO-STEP confirmation: "Delete account" then "Yes, delete everything".
-  if (!(await showConfirm('Delete Account', 'Delete your account and remove yourself from this household? If you are the last member, the household is deleted too. This cannot be undone.', 'Delete account'))) return;
-  if (!(await showConfirm('Delete Everything?', 'This permanently deletes your account and, if you are the last member, the whole household. Are you sure?', 'Yes, delete everything'))) return;
+  // TWO-STEP confirmation: "Delete Account" then "Yes, Delete Everything".
+  if (!(await showConfirm('Delete Account', 'Delete your account and remove yourself from this household? If you are the last member, the household is deleted too. This cannot be undone.', 'Delete Account'))) return;
+  if (!(await showConfirm('Delete Everything?', 'This permanently deletes your account and, if you are the last member, the whole household. Are you sure?', 'Yes, Delete Everything'))) return;
   const out = await callFn('delete-account', {});
   if (out.error || !out.deleted) {
     console.warn('delete-account failed:', out.error, out.step);
@@ -3138,7 +3146,7 @@ async function deleteAccountFlow() {
 async function changePasswordFlow() {
   document.getElementById('profileMenu')?.classList.add('hidden');
   if (!household) { await showAlert('Not signed in', 'Sign in first.'); return; }
-  const pw = await showSheet({ title: 'Change Password', message: 'Enter a new password for this account. Password requirement: at least 8 characters.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change password', cancelLabel: 'Cancel' });
+  const pw = await showSheet({ title: 'Change Password', message: 'Enter a new password for this account. Password requirement: at least 8 characters.', inputLabel: 'New password', inputType: 'password', confirmLabel: 'Change Password', cancelLabel: 'Cancel' });
   if (!pw) return;
   if (pw.length < 8) { await showAlert('Password too short', 'Enter a password of at least 8 characters.'); return; }
   const { error } = await supabase.auth.updateUser({ password: pw });
@@ -3275,8 +3283,8 @@ async function openWeeklySheet() {
     const weeklyMessage = unlinkedExcess > 0
       ? 'Pending transactions are included and marked. Unlinked refunds above this week\'s spending are not counted here.'
       : 'Pending transactions are included and marked.';
-    const weeklyResult = await showSheet({ title: 'Weekly Budget', message: weeklyMessage, rows: weeklyRows, extraAction: { label: 'Show transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
-    // Weekly-sheet-simple: "Show transactions" closes the sheet and
+    const weeklyResult = await showSheet({ title: 'Weekly Budget', message: weeklyMessage, rows: weeklyRows, extraAction: { label: 'Show Transactions', result: 'show-transactions' }, confirmLabel: 'Close' });
+    // Weekly-sheet-simple: "Show Transactions" closes the sheet and
     // opens Transactions filtered to the current week, reusing the
     // existing week-filter state (txWeekOnly) and render path — the
     // count line gains "· this week" and the removable "This week"
@@ -3312,9 +3320,9 @@ heroWeeklyTarget?.addEventListener('keydown', (e) => {
 // The Weekly sheet, alerts, and transaction Action sheets are
 // untouched and still use showSheet.
 // Buttons (mockup labels) live ONLY on the Funds page: Extra Fund —
-// "Add money" primary blue, "Spend from fund" pale #bfdbfe/ink
-// (middle tier), "Request money" grey tertiary; members see "Request
-// money" only. Charity — "Record income" primary blue, "Close" grey
+// "Add Money" primary blue, "Spend From Fund" pale #bfdbfe/ink
+// (middle tier), "Request Money" grey tertiary; members see "Request
+// money" only. Charity — "Record Income" primary blue, "Close" grey
 // tertiary; members see "Close" only. Home is the overview
 // (assistant decision, Nov 6, 2026, on the owner's "whatever you
 // think is better"): its stat cards expand in place to the rows
@@ -3328,16 +3336,16 @@ let expandedFundCard = null; // 'fund' | 'charity' | null — at most one card e
 function fundExpandActions(isAdmin) {
   return isAdmin
     ? [
-        { label: 'Add money', result: 'add', btnClass: 'btn btn-primary' },
-        { label: 'Spend from fund', result: 'use', btnClass: 'btn' },
-        { label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary' },
+        { label: 'Add Money', result: 'add', btnClass: 'btn btn-primary' },
+        { label: 'Spend From Fund', result: 'use', btnClass: 'btn' },
+        { label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary' },
       ]
-    : [{ label: 'Request money', result: 'ask', btnClass: 'btn btn-tertiary' }];
+    : [{ label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary' }];
 }
 function charityExpandActions(isAdmin) {
   return isAdmin
     ? [
-        { label: 'Record income', result: 'record-income', btnClass: 'btn btn-primary' },
+        { label: 'Record Income', result: 'record-income', btnClass: 'btn btn-primary' },
         { label: 'Close', result: 'close', btnClass: 'btn btn-tertiary' },
       ]
     : [{ label: 'Close', result: 'close', btnClass: 'btn btn-tertiary' }];
@@ -3551,7 +3559,7 @@ function syncScrollLock() {
 // 'Moved to trash bin.'). Charity automatically excludes Extra
 // Fund: charity rows list Delete only, and Extra Fund refuses
 // charity rows outright. Members list Extra Fund only, on charges.
-// P0-1 (Nov 8, 2026): refund rows list Link to purchase first
+// P0-1 (Nov 8, 2026): refund rows list Link to Purchase first
 // (admin only) — linking a refund to its purchase is what makes
 // refund restoration reachable for a locked week.
 async function openTxActionsSheet(row) {
@@ -3573,7 +3581,7 @@ async function openTxActionsSheet(row) {
   const actions = actionIds.map((id) => id === 'charity'
     ? { id, label: 'Charity', sub: !isAdmin ? 'Ask the admin to mark this as a gift' : row.state === 'verified' ? 'Counts it as a charity gift, out of weekly spending' : 'Counts as a charity gift once it posts', disabled: !isAdmin }
     : id === 'linkRefund'
-    ? { id, label: 'Link to purchase', sub: row.original_purchase_id ? 'Change or remove the purchase this refund is linked to' : 'Link this refund to the purchase it came from' }
+    ? { id, label: 'Link to Purchase', sub: row.original_purchase_id ? 'Change or remove the purchase this refund is linked to' : 'Link this refund to the purchase it came from' }
     : id === 'extraFund'
     ? { id, label: 'Extra Fund', sub: 'Ask for this charge to be covered from the fund' }
     : id === 'other'
@@ -3613,7 +3621,7 @@ async function doTxCharity(row) {
   const confirmMsg = pending
     ? `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending. It counts as charity given once it posts. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`
     : `"${row.merchant}" ${formatCents(row.amount_cents)} — this moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet.`;
-  if (!row || !(await showConfirm('Mark as Charity Gift', confirmMsg, 'Mark as charity'))) return;
+  if (!row || !(await showConfirm('Mark as Charity Gift', confirmMsg, 'Mark as Charity'))) return;
   const { error } = await supabase.rpc('mark_transaction_charity', { p_transaction_id: row.id });
   if (error) {
     console.warn('mark_transaction_charity failed:', error.message);
@@ -3631,7 +3639,7 @@ async function doTxExtraFund(row) {
   // this action from its sheet, and a stale call is refused.
   if (row.kind === 'charity') { await showAlert('Does not qualify', 'Charity gifts cannot be covered by the Extra Fund.'); return; }
   if (row.kind !== 'charge') { await showAlert('Does not qualify', 'Only a charge can be covered by the Extra Fund. This row does not count toward weekly spending, so there is nothing for the fund to cover.'); return; }
-  const amountText = await showSheet({ title: 'Use Extra Fund', message: `Ask the admin to cover "${row?.merchant ?? 'this transaction'}" (${formatCents(row?.amount_cents ?? 0)}) from the Extra Fund?`, inputLabel: 'Amount ($)', inputValue: row ? (row.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Send request', cancelLabel: 'Cancel' });
+  const amountText = await showSheet({ title: 'Use Extra Fund', message: `Ask the admin to cover "${row?.merchant ?? 'this transaction'}" (${formatCents(row?.amount_cents ?? 0)}) from the Extra Fund?`, inputLabel: 'Amount ($)', inputValue: row ? (row.amount_cents / 100).toFixed(2) : '', confirmLabel: 'Send Request', cancelLabel: 'Cancel' });
   if (amountText === null) return;
   const cents = parseDollarsStrict(amountText);
   if (cents === null || cents <= 0) { await showAlert('Invalid amount', 'Enter a positive amount.'); return; }
@@ -3705,7 +3713,7 @@ async function doTxLinkRefund(row) {
     await showAlert('No matching purchase found', `No charge on the same card in the 90 days before ${displayDay(row.date)}. If the purchase was older, on another card, or under a different name, it cannot be linked from here.`);
     return;
   }
-  const picked = await showSheet({ title: 'Link Refund to Purchase', message: usedFallback ? `Which purchase is this ${formatCents(row.amount_cents)} refund for? No purchase under the same name was found, so every charge on the same card in the 90 days before ${displayDay(row.date)} is listed.` : `Which purchase is this ${formatCents(row.amount_cents)} refund for? Only purchases from the same place, on the same card, in the 90 days before ${displayDay(row.date)} are listed.`, inputLabel: 'Purchase', inputOptions: cands.map((c) => ({ value: c.id, label: `${displayMerchant(c.merchant)} — ${formatCents(c.amount_cents)} · ${displayDay(c.date)}` })), confirmLabel: 'Link refund', cancelLabel: 'Cancel' });
+  const picked = await showSheet({ title: 'Link Refund to Purchase', message: usedFallback ? `Which purchase is this ${formatCents(row.amount_cents)} refund for? No purchase under the same name was found, so every charge on the same card in the 90 days before ${displayDay(row.date)} is listed.` : `Which purchase is this ${formatCents(row.amount_cents)} refund for? Only purchases from the same place, on the same card, in the 90 days before ${displayDay(row.date)} are listed.`, inputLabel: 'Purchase', inputOptions: cands.map((c) => ({ value: c.id, label: `${displayMerchant(c.merchant)} — ${formatCents(c.amount_cents)} · ${displayDay(c.date)}` })), confirmLabel: 'Link Refund', cancelLabel: 'Cancel' });
   if (picked === null) return;
   const { error } = await supabase.rpc('link_refund', { p_refund_id: row.id, p_purchase_id: picked });
   if (error) { console.warn('link_refund failed:', error.message); await showAlert('Could not link refund', /different|more than|after the refund|already linked|admin only/i.test(error.message || '') ? error.message : 'Could not link this refund. Try again.'); return; }
@@ -3714,7 +3722,7 @@ async function doTxLinkRefund(row) {
   await refresh();
 }
 async function doTxReclassify(row) {
-  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }, { value: 'income', label: 'Income' }, { value: 'charity', label: 'Charity' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
+  const newKind = await showSheet({ title: 'Reclassify Transaction', message: 'Change how this transaction counts. Pick the new type, then give a reason.', inputLabel: 'New type', inputOptions: [{ value: 'charge', label: 'Charge' }, { value: 'refund', label: 'Refund' }, { value: 'fund_charge', label: 'Fund Charge' }, { value: 'transfer', label: 'Transfer' }, { value: 'payment', label: 'Payment' }, { value: 'cashback', label: 'Cashback' }, { value: 'income', label: 'Income' }, { value: 'charity', label: 'Charity' }], confirmLabel: 'Continue', cancelLabel: 'Cancel' });
   if (newKind === null) return;
   // P1-NEW1 (Nov 8, 2026): Charity goes through the guarded
   // mark_transaction_charity path (pending or posted charge, unlocked week),
@@ -3745,7 +3753,7 @@ async function doTxDelete(row) {
   // exclusion with a reason, never a true erase — the bank would
   // re-sync it). The row leaves the main list and is restored from
   // the Trash link above the list.
-  const reason = await showSheet({ title: 'Move to Trash', message: `"${row?.merchant ?? 'This transaction'}" ${formatCents(row?.amount_cents ?? 0)} — this moves it to the Trash. The admin can bring it back from the Trash. Give a reason to continue.`, inputLabel: 'Reason (required)', confirmLabel: 'Delete', cancelLabel: 'Keep it' });
+  const reason = await showSheet({ title: 'Move to Trash', message: `"${row?.merchant ?? 'This transaction'}" ${formatCents(row?.amount_cents ?? 0)} — this moves it to the Trash. The admin can bring it back from the Trash. Give a reason to continue.`, inputLabel: 'Reason (required)', confirmLabel: 'Delete', cancelLabel: 'Keep It' });
   if (reason === null) return;
   if (!reason.trim()) { await showAlert('Reason required', 'Enter a reason for moving this transaction to the Trash.'); return; }
   const { error } = await supabase.rpc('exclude_transaction', { txn_id: row.id, reason: reason.trim() });
@@ -3805,7 +3813,7 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     syncScrollLock();
     // UX-review-fix, Show password (owner, Nov 3, 7:53 PM): every
     // password input gets a Show/Hide toggle. The sheet's only
-    // password field is Change password; the toggle switches the
+    // password field is Change Password; the toggle switches the
     // input type only, never logs or displays the value elsewhere,
     // and changes no auth logic or password policy.
     const sheetInputEl = document.getElementById('sheetInput');
@@ -3813,12 +3821,12 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
       const wrap = document.createElement('span'); wrap.className = 'password-row';
       sheetInputEl.replaceWith(wrap); wrap.appendChild(sheetInputEl);
       const tog = document.createElement('button'); tog.type = 'button'; tog.className = 'btn btn-quiet';
-      tog.textContent = 'Show'; tog.setAttribute('aria-label', 'Show password'); tog.setAttribute('aria-pressed', 'false');
+      tog.textContent = 'Show'; tog.setAttribute('aria-label', 'Show Password'); tog.setAttribute('aria-pressed', 'false');
       tog.addEventListener('click', () => {
         const showing = sheetInputEl.type === 'password';
         sheetInputEl.type = showing ? 'text' : 'password';
         tog.textContent = showing ? 'Hide' : 'Show';
-        tog.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
+        tog.setAttribute('aria-label', showing ? 'Hide Password' : 'Show Password');
         tog.setAttribute('aria-pressed', showing ? 'true' : 'false');
       });
       wrap.appendChild(tog);
@@ -4026,7 +4034,7 @@ $('charityIncomeBackBtn')?.addEventListener('click', () => setFundForm(null));
 // Task 7: past savings records are the More › row above (toggleMore
 // 'savings'); the old Past savings toggle button is gone with its
 // card. Records stay read-only; the database rows are untouched.
-// Delta B1: History date filter + Load more.
+// Delta B1: History date filter + Load More.
 $('historyFilterApplyBtn')?.addEventListener('click', async () => {
   historyFilter = { from: $('historyFromInput')?.value ?? '', to: $('historyToInput')?.value ?? '' };
   auditLimit = 50;
@@ -4078,7 +4086,7 @@ $('charityGiftForm')?.addEventListener('submit', async (e) => {
   const { data: dupes } = await supabase.from('transactions')
     .select('merchant, amount_cents, date').eq('household_id', household.household_id)
     .eq('merchant', merchant).eq('amount_cents', amount).eq('date', f.date.value).limit(1);
-  if ((dupes ?? []).length && !(await showConfirm('Possible Duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Record this gift anyway?`, 'Record anyway'))) { done(); return; }
+  if ((dupes ?? []).length && !(await showConfirm('Possible Duplicate', `A transaction already exists for ${merchant} ${formatCents(amount)} on ${fmtLong(f.date.value)}. Record this gift anyway?`, 'Record Anyway'))) { done(); return; }
   // The gift hash carries a per-submit nonce: two real identical
   // gifts on one day (the Nov 3 case: three $2 gifts to one org) must
   // not collide on another gift's dedupe hash, or the second gift
@@ -4385,7 +4393,7 @@ $('saveAllowanceBtn')?.addEventListener('click', async (e) => {
   }
   const confirmed = await showSheet({ title: 'Change Allowance', message: oldCents === null
     ? `Set the weekly allowance to ${formatCents(cents)}? (The current allowance could not be read, so no old value is shown.)\nThis applies from the current week onward (${currentWeekData?.weekStart ? `week of ${fmtLong(currentWeekData.weekStart)}` : 'this week'}). It does not rewrite closed weeks.`
-    : `Change the weekly allowance from ${formatCents(oldCents)} to ${formatCents(cents)}?\nThis applies from the current week onward (${currentWeekData?.weekStart ? `week of ${fmtLong(currentWeekData.weekStart)}` : 'this week'}). It does not rewrite closed weeks.`, confirmLabel: 'Change allowance', cancelLabel: 'Keep current' });
+    : `Change the weekly allowance from ${formatCents(oldCents)} to ${formatCents(cents)}?\nThis applies from the current week onward (${currentWeekData?.weekStart ? `week of ${fmtLong(currentWeekData.weekStart)}` : 'this week'}). It does not rewrite closed weeks.`, confirmLabel: 'Change Allowance', cancelLabel: 'Keep Current' });
   if (!confirmed) return;
   // R1 busy control: block repeat taps while the allowance is saving.
   if (btn) btn.disabled = true;
@@ -4470,7 +4478,7 @@ $('fundAllocateForm')?.addEventListener('submit', async (e) => {
   if (submitBtn) submitBtn.disabled = true;
   let { error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: null });
   if (error && /insufficient fund/i.test(error.message)) {
-    const reason = await showSheet({ title: 'Fund Is Short', message: `The fund does not cover ${formatCents(cents)}. Record it anyway with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Record anyway', cancelLabel: 'Cancel' });
+    const reason = await showSheet({ title: 'Fund Is Short', message: `The fund does not cover ${formatCents(cents)}. Record it anyway with a typed reason — it will be logged.`, inputLabel: 'Reason for overriding', confirmLabel: 'Record Anyway', cancelLabel: 'Cancel' });
     if (reason === null) { if (submitBtn) submitBtn.disabled = false; return; }
     ({ error } = await supabase.rpc('allocate_fund', { p_household_id: household.household_id, p_amount_cents: cents, p_note: f.note.value.trim(), p_override_reason: reason.trim() }));
   }

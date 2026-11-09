@@ -128,7 +128,7 @@ test('D. Trash is its own page, like Past Weeks and Activity', () => {
   assert.match(js, /currentView === 'trash'\) return \(\) => showView\('purchases'\)/);
 });
 
-test('version pins: styles v52, live.js v62', () => {
+test('version pins: styles v53, live.js v65', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=64/);
+  assert.match(html, /live\.js\?v=65/);
 });

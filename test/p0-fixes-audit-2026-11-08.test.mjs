@@ -26,9 +26,9 @@ const ingestAlert = readFileSync(new URL('../supabase/functions/ingest-amex-aler
 const gmailPoll = readFileSync(new URL('../supabase/functions/gmail-poll/index.ts', import.meta.url), 'utf8');
 const register = readFileSync(new URL('../supabase/functions/plaid-webhook-register/index.ts', import.meta.url), 'utf8');
 
-test('pins are styles v52 / live.js v62', () => {
+test('pins are styles v53 / live.js v65', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=64/);
+  assert.match(html, /live\.js\?v=65/);
 });
 
 // --- P0-1. Refund linking -----------------------------------------------
@@ -187,11 +187,11 @@ test('P0-1: the merge/re-delivery path preserves an existing link (never overwri
   assert.doesNotMatch(mergeSql, /original_purchase_id\s*=/, 'dedupe merge never writes the link');
 });
 
-test('P0-1: refund rows offer Link to purchase (admin only); detail shows the link state', () => {
+test('P0-1: refund rows offer Link to Purchase (admin only); detail shows the link state', () => {
   assert.deepEqual(actionsForTxKind('refund', true, true), ['linkRefund', 'other', 'delete']);
   assert.deepEqual(actionsForTxKind('refund', false, true), [], 'members get no refund actions');
-  assert.match(js, /id === 'linkRefund'\s*\n\s*\? \{ id, label: 'Link to purchase'/, 'Actions sheet lists Link to purchase');
-  assert.match(js, /else if \(id === 'linkRefund'\) await doTxLinkRefund\(row\);/, 'Link to purchase dispatches to doTxLinkRefund');
+  assert.match(js, /id === 'linkRefund'\s*\n\s*\? \{ id, label: 'Link to Purchase'/, 'Actions sheet lists Link to Purchase');
+  assert.match(js, /else if \(id === 'linkRefund'\) await doTxLinkRefund\(row\);/, 'Link to Purchase dispatches to doTxLinkRefund');
   assert.match(js, /async function doTxLinkRefund\(row\) \{/, 'doTxLinkRefund exists');
   assert.match(js, /supabase\.rpc\('link_refund', \{ p_refund_id: row\.id, p_purchase_id: picked \}\)/, 'manual link calls link_refund');
   assert.match(js, /supabase\.rpc\('unlink_refund', \{ p_refund_id: row\.id \}\)/, 'unlink calls unlink_refund');

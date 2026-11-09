@@ -61,7 +61,7 @@ test('Weekly sheet rows and buttons are otherwise unchanged', () => {
   assert.match(sheetFn, /\['Allowance', formatCents\(weeklyAllowanceCents\)\]/);
   assert.match(sheetFn, /\['Spent', formatCents\(w\.chargesCents\)\]/);
   assert.match(sheetFn, /\['Balance', formatCents\(w\.availableCents\)\]/);
-  assert.match(sheetFn, /extraAction: \{ label: 'Show transactions', result: 'show-transactions' \}/);
+  assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
 });
 

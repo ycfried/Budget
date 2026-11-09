@@ -124,7 +124,7 @@ test('Remove button sits at the right edge of the member row', () => {
   assert.match(css, /body\.live \.member-row \.btn-small \{ margin-left: auto; flex: 0 0 auto; \}/);
 });
 
-test('pins bumped to v52/v62', () => {
+test('pins bumped to v53/v65', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=64/);
+  assert.match(html, /live\.js\?v=65/);
 });

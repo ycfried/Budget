@@ -20,16 +20,16 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v52, live.js v62', () => {
+test('version pins: styles v53, live.js v65', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=64/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
+  assert.match(html, /live\.js\?v=65/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
   const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = ['), sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')));
   assert.deepEqual([...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]), ['Allowance', 'Spent', 'Balance']);
   assert.match(sheetFn, /weeklyAllowanceCents = \(w\.baseAvailableCents \?\? w\.baseRoomCents \?\? 0\) \+ \(w\.tempCents \?\? 0\)/);
   assert.match(sheetFn, /\['Allowance', formatCents\(weeklyAllowanceCents\)\]/);
   assert.match(sheetFn, /\['Spent', formatCents\(w\.chargesCents\)\]/);
   assert.match(sheetFn, /\['Balance', formatCents\(w\.availableCents\)\]/);
-  assert.match(sheetFn, /extraAction: \{ label: 'Show transactions', result: 'show-transactions' \}/);
+  assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
   // Equation, via the engine: Allowance (base room + temp) - Spent = Balance.
   const r = computeWeek({ B: 42500, T: 0, D: 10000, C: 5000 });
@@ -47,7 +47,7 @@ test('2. Pale option B: fill stays #bfdbfe, wording is ink #0f172a', () => {
   // (now in the expanded Extra Fund card, Task 7) and Filters Reset. Bank
   // Sync is no longer a pale middle (settings-bank-buttons, Nov 4):
   // the bank row is two buttons, Connect primary + Sync tertiary.
-  assert.match(js, /label: 'Spend from fund', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Spend From Fund', result: 'use', btnClass: 'btn'/);
   assert.ok(html.includes('<button class="btn" id="txFiltersResetBtn"'));
   assert.ok(html.includes('<button id="syncBankBtn" class="btn btn-tertiary"'));
 });

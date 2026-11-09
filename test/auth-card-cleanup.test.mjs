@@ -63,7 +63,7 @@ test('password eye sits inside the field; both inputs the same width', () => {
   // The toggle still flips type + aria-label + aria-pressed.
   assert.match(js, /togglePasswordBtn.*addEventListener\('click'/);
   assert.match(js, /input\.type = showing \? 'text' : 'password'/);
-  assert.match(js, /setAttribute\('aria-label', showing \? 'Hide password' : 'Show password'\)/);
+  assert.match(js, /setAttribute\('aria-label', showing \? 'Hide Password' : 'Show Password'\)/);
   assert.match(js, /eyeSlashSvg : eyeOpenSvg/);
 });
 

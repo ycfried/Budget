@@ -58,4 +58,4 @@ test('version pins match live.html', () => {
   // (live.js v42) and this branch (styles v33), live.js moves to v45
   // so two different files never share one version number.
   assert.match(html, /styles\.css\?v=53/, 'styles.css bumped to v36');
-  assert.match(html, /live\.js\?v=64/, 'live.js bumped to v46');});
+  assert.match(html, /live\.js\?v=65/, 'live.js bumped to v46');});

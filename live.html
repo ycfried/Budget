@@ -24,7 +24,7 @@
       </div>
       <div class="profile-menu-rows">
         <button id="menuSettingsBtn" class="profile-menu-row" type="button" aria-label="Open Settings">Settings</button>
-        <button id="signOutBtn" class="profile-menu-row profile-menu-row-danger" type="button" aria-label="Sign out of the live app">Sign out</button>
+        <button id="signOutBtn" class="profile-menu-row profile-menu-row-danger" type="button" aria-label="Sign out of the live app">Sign Out</button>
       </div>
     </div>
   </div>
@@ -52,7 +52,7 @@
          step. Sign-in never shows the name step. -->
     <div id="authSigninPanel">
       <label>Email <input id="authEmail" type="email" autocomplete="email" required></label>
-      <label>Password <span class="password-row"><input id="authPassword" type="password" autocomplete="current-password" required><button id="togglePasswordBtn" class="auth-eye-btn" type="button" aria-label="Show password" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
+      <label>Password <span class="password-row"><input id="authPassword" type="password" autocomplete="current-password" required><button id="togglePasswordBtn" class="auth-eye-btn" type="button" aria-label="Show Password" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
       <div class="btn-row auth-btn-row">
         <button id="signInBtn" class="btn btn-primary" type="button" aria-label="Sign In to the Live App">Sign In</button>
         <button id="signUpBtn" class="btn btn-tertiary" type="button" aria-label="Create a New Live Account">Create Account</button>
@@ -114,7 +114,7 @@
       <div class="hero-number-row">
         <button id="heroSetAllowanceBtn" class="btn btn-primary hidden" type="button" aria-label="Set Your Weekly Allowance">Set Your Weekly Allowance</button>
         <div id="weeklyAvailable" class="big" role="button" tabindex="0" aria-label="Show Weekly Budget Breakdown" aria-busy="true"><span class="skel skel-figure" aria-hidden="true"></span><span class="sr-only">Loading</span></div>
-        <button class="hero-sync-btn" id="homeSyncBtn" type="button" aria-label="Sync bank"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></button>
+        <button class="hero-sync-btn" id="homeSyncBtn" type="button" aria-label="Sync Bank"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></button>
       </div>
       <div class="hero-progress" aria-hidden="true"><div id="weekProgressBar"></div></div>
       <p class="muted small" id="weekProgressText"></p>
@@ -169,12 +169,12 @@
            chosen file name shows beside it. The change handler reads
            e.target.files, so the label's "for" must match the input. -->
       <div class="csv-file-row">
-        <label class="btn btn-primary csv-file-btn" for="csvFile">Choose file</label>
+        <label class="btn btn-primary csv-file-btn" for="csvFile">Choose File</label>
         <span class="muted small csv-file-name" id="csvFileName">No file selected</span>
         <input id="csvFile" class="csv-file-input" type="file" accept=".csv,text/csv" aria-label="CSV file to import">
       </div>
       <div id="csvPreview"></div>
-      <button id="csvConfirmBtn" class="btn btn-primary" type="button" disabled aria-label="Confirm CSV import">Confirm import</button>
+      <button id="csvConfirmBtn" class="btn btn-primary" type="button" disabled aria-label="Confirm CSV import">Confirm Import</button>
       <p id="csvMsg" class="result"></p>
     </div>
 
@@ -191,7 +191,7 @@
         </div>
         <label>Note (optional) <input name="note" maxlength="120"></label>
         <p id="charityFormError" class="error hidden" role="alert"></p>
-        <button class="btn btn-primary" type="submit" aria-label="Record this charity gift">Record gift</button>
+        <button class="btn btn-primary" type="submit" aria-label="Record this charity gift">Record Gift</button>
       </form>
       <p class="muted small">Leave the card suffix blank for a cash gift. Never enter a full card number.</p>
     </div>
@@ -260,7 +260,7 @@
             <label>Sort by
               <select id="txSortField" aria-label="Sort transactions by"><option value="date">Date</option><option value="amount">Amount</option></select>
             </label>
-            <button id="txSortDirBtn" class="btn btn-tertiary" type="button" aria-label="Sort direction">↓ Newest first</button>
+            <button id="txSortDirBtn" class="btn btn-tertiary" type="button" aria-label="Sort direction">↓ Newest First</button>
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="txFiltersApplyBtn" type="button" aria-label="Apply Filters">Apply</button>
@@ -272,7 +272,7 @@
       <p id="txCount" class="muted small tx-count"></p>
       <p class="trash-link-row"><button id="txTrashBtn" class="quiet-link trash-link" type="button" style="display:none" aria-label="Open trash bin">Trash<span id="txTrashCount"></span></button></p>
       <ul id="txList" class="plain"><li class="muted small">Loading…</li></ul>
-      <button id="txLoadMore" class="btn hidden" type="button">Load more</button>
+      <button id="txLoadMore" class="btn hidden" type="button">Load More</button>
     </div>
 
     <!-- Add popup (owner design Nov 3, 9:49 PM): the Transactions
@@ -306,7 +306,7 @@
       <label class="profile-email-label">Email <input id="profileEmailInput" type="email" autocomplete="email"></label>
       <button id="saveProfileEmailBtn" class="btn btn-primary" type="button" aria-label="Save Your New Email Address">Save Email</button>
       <h3>Password</h3>
-      <button id="profilePasswordBtn" class="btn btn-tertiary" type="button" aria-label="Change your password">Change password</button>
+      <button id="profilePasswordBtn" class="btn btn-tertiary" type="button" aria-label="Change your password">Change Password</button>
     </div>
 
     <div class="card" id="section-bank">
@@ -334,7 +334,7 @@
       <div id="emailConnectionsList"><p class="muted small">Loading…</p></div>
       <p class="muted small" id="emailStatusLine"></p>
       <div class="btn-row">
-        <button id="connectEmailBtn" class="btn btn-primary" type="button" aria-label="Connect email">Connect email</button>
+        <button id="connectEmailBtn" class="btn btn-primary" type="button" aria-label="Connect Email">Connect Email</button>
         <button id="pollEmailBtn" class="btn btn-tertiary" type="button" aria-label="Check Email Now">Check Email Now</button>
       </div>
       <div id="emailMsg" class="result"></div>
@@ -345,7 +345,7 @@
       <p class="muted small">Only the admin can change these.</p>
       <h3>Weekly Allowance</h3>
       <div class="money-input-row"><span class="money-prefix" aria-hidden="true">$</span><input id="baseAllowanceInput" type="number" step="0.01" min="0" inputmode="decimal" aria-label="Weekly allowance amount in dollars"></div>
-      <button id="saveAllowanceBtn" class="btn btn-primary" type="button" aria-label="Save the weekly allowance">Save allowance</button>
+      <button id="saveAllowanceBtn" class="btn btn-primary" type="button" aria-label="Save the weekly allowance">Save Allowance</button>
       <div id="settingsMsg" class="result"></div>
       <h3 class="temp-increase-heading">Temporary Allowance</h3>
       <div class="temp-increase-row">
@@ -356,7 +356,7 @@
           <select id="tempIncreaseWeeks" aria-label="Number of weeks the new total lasts"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
         </label>
       </div>
-      <button id="addTempBtn" class="btn btn-primary" type="button" aria-label="Set the new total allowance for the chosen weeks">Set new total</button>
+      <button id="addTempBtn" class="btn btn-primary" type="button" aria-label="Set the new total allowance for the chosen weeks">Set New Total</button>
       <p id="tempPreview" class="muted small"></p>
       <div id="tempMsg" class="result"></div>
     </div>
@@ -379,7 +379,7 @@
       <div class="danger-area">
         <h3>Delete Account</h3>
         <p class="muted small">Deleting removes you from this household. If you are the last member, the household is deleted too. This cannot be undone.</p>
-        <button id="settingsDeleteBtn" class="btn btn-danger" type="button" aria-label="Delete your account">Delete account</button>
+        <button id="settingsDeleteBtn" class="btn btn-danger" type="button" aria-label="Delete your account">Delete Account</button>
       </div>
     </div>
 
@@ -408,9 +408,9 @@
     <div class="card" id="section-fund-more">
       <h2>More</h2>
       <div class="more-list">
-        <button class="more-row" id="moreFundActivityBtn" type="button" aria-expanded="false"><span>Fund activity</span><span aria-hidden="true">›</span></button>
+        <button class="more-row" id="moreFundActivityBtn" type="button" aria-expanded="false"><span>Fund Activity</span><span aria-hidden="true">›</span></button>
         <button class="more-row" id="moreReviewBtn" type="button" aria-expanded="false"><span id="moreReviewLabel">Review</span><span aria-hidden="true">›</span></button>
-        <button class="more-row" id="moreSavingsBtn" type="button" aria-expanded="false"><span>Past savings records</span><span aria-hidden="true">›</span></button>
+        <button class="more-row" id="moreSavingsBtn" type="button" aria-expanded="false"><span>Past Savings Records</span><span aria-hidden="true">›</span></button>
       </div>
     </div>
 
@@ -446,7 +446,7 @@
         <label class="check-label"><input id="fundTopupConfirm" type="checkbox"> I have already put this money in checking</label>
         <p id="fundTopupPreview" class="muted small">Enter an amount to see the split.</p>
         <p id="fundTopupError" class="error hidden" role="alert"></p>
-        <button class="btn btn-primary" type="submit" aria-label="Save this Extra Fund top-up">Save top-up</button>
+        <button class="btn btn-primary" type="submit" aria-label="Save this Extra Fund top-up">Save Top-Up</button>
       </form>
       <p class="muted small">Log each deposit only once.</p>
     </div>
@@ -458,7 +458,7 @@
       <p class="muted small" id="charityRateCurrent">Current default rate: 10%.</p>
       <form id="charityRateForm">
         <label>Default rate (%) <input name="rate" type="number" step="0.01" min="0" max="100" required></label>
-        <button class="btn btn-primary" type="submit" aria-label="Save the default charity rate">Save default rate</button>
+        <button class="btn btn-primary" type="submit" aria-label="Save the default charity rate">Save Default Rate</button>
       </form>
       <p class="muted small">Affects future incomes only.</p>
       <h3>Record Income</h3>
@@ -472,8 +472,8 @@
         </div>
         <label>Note (optional) <input name="note" maxlength="120"></label>
         <p id="charityIncomePreview" class="muted small">Enter an amount to see what it commits.</p>
-        <button class="btn btn-primary" type="submit" aria-label="Save this charity income">Save income</button>
-        <button class="btn btn-tertiary" id="charityIncomeCancelBtn" type="button" style="display:none" aria-label="Stop correcting and add new income instead">Cancel correction</button>
+        <button class="btn btn-primary" type="submit" aria-label="Save this charity income">Save Income</button>
+        <button class="btn btn-tertiary" id="charityIncomeCancelBtn" type="button" style="display:none" aria-label="Stop correcting and add new income instead">Cancel Correction</button>
       </form>
     </div>
 
@@ -484,7 +484,7 @@
       <form id="fundAllocateForm">
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
         <label>Note (optional) <input name="note" maxlength="120"></label>
-        <button class="btn btn-primary" type="submit" aria-label="Record spending from the Extra Fund">Record it</button>
+        <button class="btn btn-primary" type="submit" aria-label="Record spending from the Extra Fund">Record It</button>
       </form>
       <div id="fundAllocateMsg" class="result"></div>
     </div>
@@ -497,7 +497,7 @@
         <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
         <label>Note (optional) <input name="note" maxlength="120"></label>
         <p id="fundRequestError" class="error hidden" role="alert"></p>
-        <button class="btn btn-primary" type="submit" aria-label="Send this Extra Fund request">Send request</button>
+        <button class="btn btn-primary" type="submit" aria-label="Send this Extra Fund request">Send Request</button>
       </form>
       <details class="activity-disclosure">
         <summary>View activity · Fund requests</summary>
@@ -537,7 +537,7 @@
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="historyFilterApplyBtn" type="button" aria-label="Apply History Date Filter">Apply Filter</button>
-        <button class="btn btn-tertiary" id="historyFilterClearBtn" type="button" aria-label="Clear history date filter">Clear date filter</button>
+        <button class="btn btn-tertiary" id="historyFilterClearBtn" type="button" aria-label="Clear history date filter">Clear Date Filter</button>
       </div>
       <p id="historyPeriodLine" class="muted small"></p>
       <p id="historyCountLine" class="muted small"></p>
@@ -552,7 +552,7 @@
       <!-- Deep audit Nov 5: page-head above already says Activity;
            the second identical heading on this screen is removed. -->
       <ul id="auditList" class="plain"><li class="muted small">Loading…</li></ul>
-      <button id="historyLoadMoreBtn" class="btn hidden" type="button" aria-label="Load more activity entries">Load more activity</button>
+      <button id="historyLoadMoreBtn" class="btn hidden" type="button" aria-label="Load more activity entries">Load More Activity</button>
     </div>
 
   </section>
@@ -564,7 +564,7 @@
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=64"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
+<script type="module" src="live.js?v=65"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('live-sw.js').catch((err) => console.warn('Service worker registration failed:', err));
