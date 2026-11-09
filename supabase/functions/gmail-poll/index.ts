@@ -24,9 +24,9 @@
 //        last_error='reauthorization required' and is skipped until
 //        the admin reconnects. Transient failures leave the status
 //        alone and only record last_error.
-//     2. List messages matching buildAlertQuery() (first page, 50 max
-//        — documented limitation; a household's alert volume fits this
-//        for a manual/scheduled poll cadence).
+//     2. List messages matching buildAlertQuery(), paginated with
+//        pageToken (50 per page, up to 20 pages — P2-C1, Nov 8, 2026)
+//        so a burst of alerts is processed, not just the first page.
 //     3. Skip message ids already in processed_email_ids for this
 //        connection. NO Gmail labels are read or written — dedupe is
 //        server-side, so only the gmail.readonly scope is ever needed.
@@ -93,6 +93,32 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+// P2-C5 (Nov 8, 2026): staleness signal. The client already shows
+// "Last checked" from email_connections.last_poll_at; this response
+// also reports how long it had been since the previous successful
+// poll, so a dead scheduled job is visible instead of silent. The
+// cron runs every 5 minutes; a gap over 60 minutes means scheduled
+// polling has not run recently. The client warning itself is a
+// live.js follow-up — these fields are the API half.
+const STALE_POLL_MINUTES = 60;
+function minutesSince(iso: string | null, nowMs: number): number | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.floor((nowMs - t) / 60000));
+}
+
+// P2-N11 (Nov 8, 2026): refund linking is best-effort and must never
+// fail the poll — but a missing-SQL deploy used to be swallowed
+// silently (supabase-js returns { error }, it does not throw, so the
+// old bare catch never even saw it). The rpc invocations stay inline
+// at the call sites (the P0-1 test pins that shape); this helper only
+// centralises the server-side log line, so a missed apply is
+// observable in function logs.
+function logLinkError(error: unknown): void {
+  if (error) console.error('gmail-poll: refund linking failed (best-effort):', (error as { message?: unknown })?.message ?? error);
+}
+
 async function decryptToken(keyHex: string, b64: string): Promise<string> {
   const raw = hexToBytes(keyHex);
   const key = await crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['decrypt']);
@@ -149,16 +175,24 @@ Deno.serve(async (req) => {
 
     const { data: connections, error: connErr } = await supabaseAdmin
       .from('email_connections')
-      .select('id, email_address, refresh_token_encrypted, status')
+      .select('id, email_address, refresh_token_encrypted, status, last_poll_at')
       .eq('household_id', householdId)
       .eq('status', 'active');
     if (connErr) return json({ error: 'could not load email connections' }, 500);
 
     const totals = { connections: connections?.length ?? 0, checked: 0, stored: 0, duplicates: 0, quarantined: 0, unparseable: 0 };
     const errors: { connection_id: string; error: string }[] = [];
+    // P2-C5: gap since the previous successful poll, read BEFORE
+    // this run updates last_poll_at. The worst gap across
+    // connections is reported, so one dead connection is visible.
+    const pollStartedAt = Date.now();
+    const prevGaps = (connections ?? [])
+      .map((c: { last_poll_at?: string | null }) => minutesSince(c.last_poll_at ?? null, pollStartedAt))
+      .filter((n: number | null): n is number => n !== null);
+    const minutesSincePreviousPoll = prevGaps.length ? Math.max(...prevGaps) : null;
+    const stale = minutesSincePreviousPoll !== null && minutesSincePreviousPoll > STALE_POLL_MINUTES;
 
     for (const conn of connections ?? []) {
-      let connError: string | null = null;
       try {
         const refreshToken = await decryptToken(tokenKey, conn.refresh_token_encrypted);
         // Exchange the refresh token for a short access token.
@@ -187,13 +221,33 @@ Deno.serve(async (req) => {
         const accessToken = String(tokenData.access_token);
         const gHeaders = { Authorization: `Bearer ${accessToken}` };
 
-        const listRes = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(buildAlertQuery())}&maxResults=${MAX_MESSAGES_PER_POLL}`,
-          { headers: gHeaders },
-        );
-        const listData = await listRes.json().catch(() => ({}));
-        if (!listRes.ok) throw new Error('message list failed');
-        const allIds: string[] = (listData.messages ?? []).map((m: { id?: string }) => String(m?.id ?? '')).filter(Boolean);
+        // P2-C1 (Nov 8, 2026): paginate with pageToken so a poll
+        // processes all unprocessed messages, not just the first 50.
+        // Capped at 20 pages (1,000 messages) so a runaway mailbox
+        // cannot loop forever; hitting the cap logs a warning and
+        // processes what was listed (the rest wait for the next poll).
+        const allIds: string[] = [];
+        let pageToken: string | null = null;
+        let pagesFetched = 0;
+        const MAX_PAGES_PER_POLL = 20;
+        for (;;) {
+          const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(buildAlertQuery())}&maxResults=${MAX_MESSAGES_PER_POLL}` +
+            (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
+          const listRes = await fetch(listUrl, { headers: gHeaders });
+          const listData = await listRes.json().catch(() => ({}));
+          if (!listRes.ok) throw new Error('message list failed');
+          for (const m of (listData.messages ?? [])) {
+            const id = String((m as { id?: string })?.id ?? '');
+            if (id) allIds.push(id);
+          }
+          pagesFetched += 1;
+          pageToken = listData.nextPageToken ? String(listData.nextPageToken) : null;
+          if (!pageToken) break;
+          if (pagesFetched >= MAX_PAGES_PER_POLL) {
+            console.warn(`gmail-poll: page cap of ${MAX_PAGES_PER_POLL} hit for connection ${conn.id}; remaining messages deferred to the next poll`);
+            break;
+          }
+        }
 
         const { data: processed } = await supabaseAdmin
           .from('processed_email_ids')
@@ -272,11 +326,20 @@ Deno.serve(async (req) => {
               });
               // P0-1 (Nov 8, 2026): link this row to its purchase/refund
               // so restoration can reach it (supabase/refund-linking.sql).
-              // Best-effort: never fails the poll.
+              // Best-effort: never fails the poll (P2-N11: the rpc
+              // result is checked and logged via logLinkError, so a
+              // missed SQL apply is observable instead of silent).
               try {
-                if (kind === 'refund') await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: inserted.id });
-                else if (kind === 'charge' || kind === 'fund_charge') await supabaseAdmin.rpc('link_refunds_to_purchase', { p_purchase_id: inserted.id });
-              } catch { /* linking is best-effort */ }
+                if (kind === 'refund') {
+                  const { error: linkErr } = await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: inserted.id });
+                  logLinkError(linkErr);
+                } else if (kind === 'charge' || kind === 'fund_charge') {
+                  const { error: linkErr } = await supabaseAdmin.rpc('link_refunds_to_purchase', { p_purchase_id: inserted.id });
+                  logLinkError(linkErr);
+                }
+              } catch (e) {
+                logLinkError(e);
+              }
             }
             await supabaseAdmin.from('processed_email_ids').insert({
               connection_id: conn.id, message_id: messageId, disposition: 'stored',
@@ -293,15 +356,18 @@ Deno.serve(async (req) => {
           last_error: null,
         }).eq('id', conn.id);
       } catch (e) {
-        connError = String((e as Error)?.message ?? e);
+        // P2-NEW3 (Nov 8, 2026): last_error is client-readable via
+        // email_connections_public, so it stores a generic string
+        // only; the detail goes to the server log, never the column.
+        console.error('gmail-poll: connection failed:', conn.id, (e as Error)?.message ?? e);
         errors.push({ connection_id: conn.id, error: 'poll failed' });
         await supabaseAdmin.from('email_connections').update({
-          last_error: connError,
+          last_error: 'poll failed',
         }).eq('id', conn.id);
       }
     }
 
-    return json({ ...totals, errors });
+    return json({ ...totals, errors, minutes_since_previous_poll: minutesSincePreviousPoll, stale });
   } catch (e) {
     console.error('gmail-poll failed:', (e as Error)?.message ?? e);
     return json({ error: 'email check failed' }, 500);

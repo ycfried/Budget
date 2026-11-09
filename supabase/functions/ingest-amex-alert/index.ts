@@ -8,11 +8,18 @@
 //   1. Per-household HMAC-SHA256 signature (header 'x-budget-signature')
 //      over the canonical string defined in INGEST_CONTRACT.md, using
 //      that household's secret from household_ingest_secrets. Anything
-//      unverified is rejected (401). Constant-time compare (no
-//      early-exit .every()).
+//      unverified is rejected with ONE generic 401 — the response
+//      never distinguishes "unknown household" from "bad signature"
+//      from "stale timestamp" from "reused nonce" (P2-B8, Nov 8, 2026:
+//      distinct 401 messages were a household-existence oracle).
+//      Constant-time compare (no early-exit .every()).
 //   2. Replay protection: timestamp within 10 minutes + one-time nonce
-//      recorded in ingest_nonces (unique(household_id, nonce)), claimed
-//      BEFORE the transaction insert. A reused nonce is rejected (401).
+//      recorded in ingest_nonces (unique(household_id, nonce)). The
+//      nonce is claimed AFTER the quarantine checks (step 3/4) and
+//      BEFORE the transaction insert (P2-B8, Nov 8, 2026: claiming it
+//      first burned the nonce of every quarantined delivery, so a
+//      legitimate retry of the same alert then failed as a replay).
+//      A reused nonce is rejected with the same generic 401.
 //   3. Require the verbatim Authentication-Results header to show a
 //      pass for americanexpress.com (see INGEST_CONTRACT.md for the
 //      exact rule). Anything else is quarantined (202, stored:false),
@@ -63,6 +70,22 @@ const corsHeaders = {
 };
 
 const REPLAY_WINDOW_SECONDS = 600; // 10 minutes
+
+// P2-B8 (Nov 8, 2026): every auth failure returns this one generic
+// message — unknown household, bad signature, stale timestamp, and
+// reused nonce are indistinguishable from outside.
+const AUTH_FAILED = 'authentication failed';
+
+// P2-N11 (Nov 8, 2026): refund linking is best-effort and must never
+// fail ingest — but a missing-SQL deploy used to be swallowed
+// silently (supabase-js returns { error }, it does not throw, so the
+// old bare catch never even saw it). The rpc invocations stay inline
+// at the call sites (the P0-1 test pins that shape); this helper only
+// centralises the server-side log line, so a missed apply is
+// observable in function logs.
+function logLinkError(error: unknown): void {
+  if (error) console.error('ingest-amex-alert: refund linking failed (best-effort):', (error as { message?: unknown })?.message ?? error);
+}
 
 // Canonical string (exact — see INGEST_CONTRACT.md):
 //   timestamp + '.' + nonce + '.' + household_id + '.' + messageId
@@ -117,7 +140,7 @@ Deno.serve(async (req) => {
     if (!Number.isInteger(timestamp)) return json({ error: 'timestamp must be epoch seconds' }, 400);
     const nowSeconds = Math.floor(Date.now() / 1000);
     if (Math.abs(nowSeconds - timestamp) > REPLAY_WINDOW_SECONDS) {
-      return json({ error: 'timestamp outside replay window' }, 401);
+      return json({ error: AUTH_FAILED }, 401);
     }
 
     // Service key with the documented fallback order. No legacy-key
@@ -134,19 +157,12 @@ Deno.serve(async (req) => {
       .select('secret')
       .eq('household_id', householdId)
       .maybeSingle();
-    if (!secretRow?.secret) return json({ error: 'unknown household or ingest not configured' }, 401);
+    if (!secretRow?.secret) return json({ error: AUTH_FAILED }, 401);
 
     // 1. Signature verify (constant-time).
     const sig = (req.headers.get('x-budget-signature') ?? '').toLowerCase();
     const expected = await hmacSha256Hex(String(secretRow.secret), canonicalString(body));
-    if (!timingSafeEqualHex(sig, expected)) return json({ error: 'bad signature' }, 401);
-
-    // 2. Replay: claim the nonce before any insert. A unique-violation
-    //    here means this exact signed delivery was already processed.
-    const { error: nonceError } = await supabase.from('ingest_nonces').insert({
-      household_id: householdId, nonce,
-    });
-    if (nonceError) return json({ error: 'nonce already used' }, 401);
+    if (!timingSafeEqualHex(sig, expected)) return json({ error: AUTH_FAILED }, 401);
 
     // 3. Authentication-Results (verbatim header value, as sent).
     const authResults = String(body.auth_results ?? '');
@@ -164,6 +180,15 @@ Deno.serve(async (req) => {
     }
     const merchant = normalizeMerchant(merchantRaw).slice(0, 80);
     const dedupeHash = await canonicalHash(merchant, date, amountCents, cardSuffix);
+
+    // 2. Replay: claim the nonce AFTER the quarantine checks above
+    // and BEFORE the insert. A unique-violation here means this exact
+    // signed delivery was already processed. (P2-B8: claiming before
+    // quarantine burned the nonce of quarantined deliveries.)
+    const { error: nonceError } = await supabase.from('ingest_nonces').insert({
+      household_id: householdId, nonce,
+    });
+    if (nonceError) return json({ error: AUTH_FAILED }, 401);
 
     // 5. Dedupe by message identity, NOT by hash alone. Two deliveries
     //    of the same Gmail message share messageId, so a row with
@@ -207,11 +232,20 @@ Deno.serve(async (req) => {
       });
       // P0-1 (Nov 8, 2026): link this row to its purchase/refund so
       // restoration can reach it (supabase/refund-linking.sql).
-      // Best-effort: never fails ingest.
+      // Best-effort: never fails ingest (P2-N11: the rpc result is
+      // checked and logged via logLinkError, so a missed SQL apply
+      // is observable instead of silent).
       try {
-        if (kind === 'refund') await supabase.rpc('auto_link_refund', { p_refund_id: inserted.id });
-        else if (kind === 'charge' || kind === 'fund_charge') await supabase.rpc('link_refunds_to_purchase', { p_purchase_id: inserted.id });
-      } catch { /* linking is best-effort */ }
+        if (kind === 'refund') {
+          const { error: linkErr } = await supabase.rpc('auto_link_refund', { p_refund_id: inserted.id });
+          logLinkError(linkErr);
+        } else if (kind === 'charge' || kind === 'fund_charge') {
+          const { error: linkErr } = await supabase.rpc('link_refunds_to_purchase', { p_purchase_id: inserted.id });
+          logLinkError(linkErr);
+        }
+      } catch (e) {
+        logLinkError(e);
+      }
     }
     // stored:true ONLY after a successful insert (or a proven
     // duplicate above). Never on 401/202/500.

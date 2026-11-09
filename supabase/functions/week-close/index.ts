@@ -604,14 +604,19 @@ Deno.serve(async (req) => {
               fundAvailable -= applied;
             }
             shortfall += reduction - applied;
+            // P2-M4 (Nov 8, 2026): the fund was debited by `applied`
+            // above, so the released total must fall by the same
+            // amount — keeping the old released_cents overstated
+            // what the fund received from this week.
+            const newReleasedCents = Math.max(0, (existingRelease.released_cents ?? 0) - applied);
             await upsertRelease({
               household_id: householdId, week_start: ws,
               surplus_cents: result.earnedSurplus,
               release_date: existingRelease.release_date,
               status: 'released',
-              released_cents: existingRelease.released_cents ?? 0,
+              released_cents: newReleasedCents,
             });
-            releaseByWeek.set(ws, { ...existingRelease, surplus_cents: result.earnedSurplus });
+            releaseByWeek.set(ws, { ...existingRelease, surplus_cents: result.earnedSurplus, released_cents: newReleasedCents });
           } else if (result.earnedSurplus > oldSurplus) {
             // Increase after release (P1-7): release the delta net
             // of shortfall. Re-read the fund first (design-questions,
@@ -750,6 +755,17 @@ Deno.serve(async (req) => {
           const purchase: any = txnById.get(purchaseId);
           if (!purchase) {
             restorationsSkipped.push({ purchase_transaction_id: purchaseId, reason: 'purchase row not found' });
+            continue;
+          }
+          // P2-N10 (Nov 8, 2026): auto-link accepts provisional
+          // purchases, so a linked refund can point at a purchase
+          // that is now excluded, reversed, or not a charge at all
+          // (e.g. reclassified to payment). Restoration re-checks
+          // the purchase's CURRENT state/kind before restoring
+          // against it; the linker itself is left alone.
+          if (purchase.excluded === true || purchase.state === 'excluded' || purchase.state === 'reversed'
+            || (purchase.kind !== 'charge' && purchase.kind !== 'fund_charge')) {
+            restorationsSkipped.push({ purchase_transaction_id: purchaseId, reason: 'purchase not restorable (excluded, reversed, or not a charge)' });
             continue;
           }
           const purchaseWeek = weekStartOf(purchase.date);

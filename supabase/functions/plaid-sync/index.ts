@@ -193,6 +193,17 @@ async function plaidPost(
   return { ok: res.ok, data };
 }
 
+// P2-N11 (Nov 8, 2026): refund linking is best-effort and must never
+// fail the sync — but a missing-SQL deploy used to be swallowed
+// silently (supabase-js returns { error }, it does not throw, so the
+// old bare catch never even saw it). The rpc invocations stay inline
+// at the call sites (the P0-1 test pins that shape); this helper only
+// centralises the server-side log line, so a missed apply is
+// observable in function logs.
+function logLinkError(error: unknown): void {
+  if (error) console.error('plaid-sync: refund linking failed (best-effort):', (error as { message?: unknown })?.message ?? error);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
@@ -247,7 +258,7 @@ Deno.serve(async (req) => {
     const base = plaidBase(env);
 
     const { data: items } = await supabaseAdmin.from('plaid_items')
-      .select('plaid_item_id, institution_name, institution_id, sync_cursor, status, created_at')
+      .select('plaid_item_id, institution_name, institution_id, sync_cursor, status, created_at, last_sync_at')
       .eq('household_id', householdId);
     const allItems = items ?? [];
     // Oldest first: the duplicate guard keeps the oldest connection
@@ -286,6 +297,31 @@ Deno.serve(async (req) => {
 
     let added = 0, updated = 0, reversed = 0, skipped = 0;
     let truncated = false;
+    // P2-B7 (Nov 8, 2026): skipped rows are now visible — every skip
+    // is logged server-side with its reason, and the response carries
+    // a per-reason breakdown (skipped_by_reason) alongside the total,
+    // so the client can show it. Which rows are skipped is unchanged.
+    const skipReasons: Record<string, number> = {};
+    const logSkip = (itemId: string, reason: string) => {
+      skipped += 1;
+      skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+      console.warn(`plaid-sync: skipped (item ${itemId}): ${reason}`);
+    };
+    // P2-C5 (Nov 8, 2026): staleness signal. The client already shows
+    // "Last bank sync" from plaid_items_public.last_sync_at; this
+    // response also reports how long it had been since the previous
+    // successful sync, so a dead hourly cron is visible instead of
+    // silent. The cron runs hourly; a gap over 180 minutes means
+    // scheduled sync has not run recently. The client warning itself
+    // is a live.js follow-up — these fields are the API half.
+    const syncStartedAt = Date.now();
+    const prevSyncTimes = allItems
+      .map((i: any) => { const t = i.last_sync_at ? new Date(i.last_sync_at).getTime() : NaN; return Number.isFinite(t) ? t : null; })
+      .filter((t: number | null): t is number => t !== null);
+    const minutesSincePreviousSync = prevSyncTimes.length
+      ? Math.max(0, Math.floor((syncStartedAt - Math.max(...prevSyncTimes)) / 60000))
+      : null;
+    const stale = minutesSincePreviousSync !== null && minutesSincePreviousSync > 180;
     // Deep audit Nov 5: Plaid failures on one item used to return 502
     // immediately, aborting all remaining items and skipping the
     // full-pull cleanup. Collect failures and keep going; the
@@ -305,12 +341,12 @@ Deno.serve(async (req) => {
       const { data: ct } = await supabaseAdmin.rpc('get_plaid_ciphertext', {
         p_household_id: householdId, p_item_id: item.plaid_item_id,
       });
-      if (!ct) { skipped++; continue; }
+      if (!ct) { logSkip(item.plaid_item_id, 'missing-token'); continue; }
       let accessToken: string;
       try {
         accessToken = await decryptToken(tokenKey, ct);
       } catch {
-        skipped++;
+        logSkip(item.plaid_item_id, 'token-decrypt-failed');
         continue;
       }
 
@@ -343,7 +379,7 @@ Deno.serve(async (req) => {
                 type: acc.type ? String(acc.type) : null,
                 subtype: acc.subtype ? String(acc.subtype) : null,
               }, { onConflict: 'household_id,plaid_account_id' });
-              if (accErr) skipped++;
+              if (accErr) logSkip(item.plaid_item_id, 'account-upsert-failed');
             }
           }
         }
@@ -461,13 +497,11 @@ Deno.serve(async (req) => {
           // disconnected account's new/changed transactions are
           // ignored entirely. Past transactions already in the
           // database are untouched.
-          if (tx.account_id && disconnectedAccounts.has(String(tx.account_id))) { skipped++; continue; }
-          const isModified = (data.modified ?? []).includes(tx);
-          const result = await upsertPlaidTx(supabaseAdmin, householdId, tx, maskByAccount, typeByAccount);
-          if (result === 'added') added++;
-          else if (result === 'updated') updated++;
-          else skipped++;
-          void isModified;
+          if (tx.account_id && disconnectedAccounts.has(String(tx.account_id))) { logSkip(item.plaid_item_id, 'account-disconnected'); continue; }
+          const upsert = await upsertPlaidTx(supabaseAdmin, householdId, tx, maskByAccount, typeByAccount);
+          if (upsert.result === 'added') added++;
+          else if (upsert.result === 'updated') updated++;
+          else logSkip(item.plaid_item_id, upsert.reason ?? 'upsert-skipped');
         }
 
         // removed[] (P1-3): mark reversed + excluded, never delete.
@@ -481,11 +515,11 @@ Deno.serve(async (req) => {
             .eq('household_id', householdId)
             .or(`external_id.eq.${removedId},plaid_transaction_id.eq.${removedId},plaid_pending_transaction_id.eq.${removedId}`)
             .maybeSingle();
-          if (!row) { skipped++; continue; }
+          if (!row) { logSkip(item.plaid_item_id, 'removed-not-found'); continue; }
           const { error } = await supabaseAdmin.from('transactions')
             .update({ state: 'reversed', excluded: true })
             .eq('id', row.id).eq('household_id', householdId);
-          if (error) skipped++; else reversed++;
+          if (error) logSkip(item.plaid_item_id, 'removed-update-failed'); else reversed++;
         }
 
         if (!data.has_more) break;
@@ -541,10 +575,11 @@ Deno.serve(async (req) => {
     }
 
     if (failedItems.length) {
-      return json({ error: 'plaid sync failed', failed_items: failedItems, failed_institutions: failedInstitutions, added, updated, reversed, skipped }, 502);
+      return json({ error: 'plaid sync failed', failed_items: failedItems, failed_institutions: failedInstitutions, added, updated, reversed, skipped, skipped_by_reason: skipReasons, minutes_since_previous_sync: minutesSincePreviousSync, stale }, 502);
     }
     return json({
-      added, updated, reversed, skipped,
+      added, updated, reversed, skipped, skipped_by_reason: skipReasons,
+      minutes_since_previous_sync: minutesSincePreviousSync, stale,
       duplicate_removed: duplicateRemoved,
       items: allItems.length,
       connected_items: activeItems.length,
@@ -559,7 +594,8 @@ Deno.serve(async (req) => {
 });
 
 // Upsert order: external_id -> pending_transaction_id -> canonical-hash
-// match -> insert. Returns 'added' | 'updated' | 'skipped'.
+// match -> insert. Returns { result, reason? } — the reason is the
+// P2-B7 skip visibility (the caller logs each skip with its reason).
 async function upsertPlaidTx(
   // deno-lint-ignore no-explicit-any
   supabaseAdmin: any,
@@ -567,13 +603,13 @@ async function upsertPlaidTx(
   tx: Record<string, any>,
   maskByAccount: Map<string, string>,
   typeByAccount?: Map<string, string>,
-): Promise<'added' | 'updated' | 'skipped'> {
+): Promise<{ result: 'added' | 'updated' | 'skipped'; reason?: string }> {
   const signed = Math.round(Number(tx.amount) * 100);
-  if (!Number.isFinite(signed)) return 'skipped';
+  if (!Number.isFinite(signed)) return { result: 'skipped', reason: 'invalid-amount' };
   const merchantRaw = String(tx.merchant_name ?? tx.name ?? 'UNKNOWN');
   const merchant = normalizeMerchant(merchantRaw).slice(0, 80);
   const date = String(tx.date ?? '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'skipped';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { result: 'skipped', reason: 'invalid-date' };
   const suffix = maskByAccount.get(tx.account_id) ?? '0000';
   const hash = await canonicalHash(merchant, date, signed, suffix);
   const kind = classifyKind(tx, merchantRaw, signed, typeByAccount?.get(tx.account_id));
@@ -638,25 +674,42 @@ async function upsertPlaidTx(
     if (!trashed) update.state = state;
     const { error } = await supabaseAdmin.from('transactions').update(update)
       .eq('id', existing.id).eq('household_id', householdId);
-    if (error) return 'skipped';
+    if (error) return { result: 'skipped', reason: 'update-failed' };
     // P0-1 (Nov 8, 2026): a refund re-delivered after the purchase (or
     // after refund-linking.sql went live) gets its link now. Idempotent
-    // — auto_link_refund returns null when already linked. Best-effort.
+    // — auto_link_refund returns null when already linked. Best-effort:
+    // never fails the sync (P2-N11: the rpc result is checked and
+    // logged via logLinkError, so a missed SQL apply is observable
+    // instead of silent).
     if (kind === 'refund') {
-      try { await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: existing.id }); } catch { /* best-effort */ }
+      try {
+        const { error: linkErr } = await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: existing.id });
+        logLinkError(linkErr);
+      } catch (e) {
+        logLinkError(e);
+      }
     }
-    return 'updated';
+    return { result: 'updated' };
   }
   const { data: inserted, error } = await supabaseAdmin.from('transactions').insert(row).select('id, created_at').single();
-  if (error || !inserted) return 'skipped';
+  if (error || !inserted) return { result: 'skipped', reason: 'insert-failed' };
   // P0-1 (Nov 8, 2026): link this row to its purchase/refund so
   // restoration can reach it (supabase/refund-linking.sql). A refund
   // auto-links to its one exact-amount purchase; a charge links any
-  // earlier unlinked refund to itself. Best-effort: never fails sync.
+  // earlier unlinked refund to itself. Best-effort: never fails sync
+  // (P2-N11: the rpc result is checked and logged via logLinkError,
+  // so a missed SQL apply is observable instead of silent).
   try {
-    if (kind === 'refund') await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: inserted.id });
-    else if (kind === 'charge' || kind === 'fund_charge') await supabaseAdmin.rpc('link_refunds_to_purchase', { p_purchase_id: inserted.id });
-  } catch { /* linking is best-effort */ }
+    if (kind === 'refund') {
+      const { error: linkErr } = await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: inserted.id });
+      logLinkError(linkErr);
+    } else if (kind === 'charge' || kind === 'fund_charge') {
+      const { error: linkErr } = await supabaseAdmin.rpc('link_refunds_to_purchase', { p_purchase_id: inserted.id });
+      logLinkError(linkErr);
+    }
+  } catch (e) {
+    logLinkError(e);
+  }
   // Lookalike review (Nov 3 Amazon case): a same-date/amount/suffix
   // row with a related merchant name is flagged for admin review,
   // never auto-merged. Best-effort: never fails the sync.
@@ -664,7 +717,7 @@ async function upsertPlaidTx(
     id: inserted.id, merchant, date, amount_cents: signed,
     card_suffix: suffix, source: 'plaid', created_at: inserted.created_at,
   });
-  return 'added';
+  return { result: 'added' };
 }
 
 function json(body: unknown, status = 200) {
