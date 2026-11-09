@@ -149,7 +149,7 @@ test('P2-N1b: the page resets whenever the filter set changes', () => {
   const calls = (js.match(/resetTxLimit\(\);/g) ?? []).length;
   assert.ok(calls >= 9, `reset is called at the filter/search change sites (found ${calls})`);
   for (const site of [
-    "if (key === 'status' || key === 'month' || key === 'card') resetTxLimit();",
+    "if (key === 'status' || key === 'month' || key === 'card' || key === 'min' || key === 'max' || key === 'week' || key === 'from' || key === 'to') resetTxLimit();",
     'resetTxLimit(); // P2-N1: applied filters are a new list.',
     'resetTxLimit(); // P2-N1: reset filters are a new list.',
     'resetTxLimit(); // P2-N1: a new month is a new list.',
@@ -198,4 +198,65 @@ test('P2-C4: compute-week unlinked excess is stored and shown in the Weekly Budg
   assert.ok(js.includes("weeklyRows.push(['Unlinked refunds', formatCents(unlinkedExcess)])"), 'fourth row only when the excess is non-zero');
   assert.ok(js.includes("Unlinked refunds above this week\\'s spending are not counted here."), 'sheet message explains the figure');
   assert.ok(js.includes("'Pending transactions are included and marked.'"), 'zero-excess sheet message unchanged');
+});
+
+// ---- NEW-P2-1 (R4, Nov 9, 2026): clearWeekNumbers writes N/A for Purchases ----
+// The hero's initial value is N/A (live.html:124) and the normal failure
+// path writes N/A (live.js:848); the clear-week fallback must agree, or
+// a refresh that aborts before :848 leaves a bare dash in Purchases.
+test('NEW-P2-1: clearWeekNumbers writes N/A for heroPurchaseCount, dash for the rest', () => {
+  const fn = js.slice(js.indexOf('const clearWeekNumbers'), js.indexOf('const loadWeekNumbers'));
+  assert.ok(fn.length > 0, 'clearWeekNumbers found');
+  assert.ok(fn.includes("id === 'heroPurchaseCount' ? 'N/A' : '—'"), 'Purchases gets N/A on compute-week failure');
+  assert.ok(fn.includes("'heroPurchaseCount'"), 'heroPurchaseCount is still cleared with the rest');
+});
+
+// ---- NEW-P2-2 (R4, Nov 9, 2026): chip removal resets the page for ALL keys ----
+test('NEW-P2-2: removing any of the seven filter chips resets txLimit', () => {
+  const line = "if (key === 'status' || key === 'month' || key === 'card' || key === 'min' || key === 'max' || key === 'week' || key === 'from' || key === 'to') resetTxLimit();";
+  assert.ok(js.includes(line), 'all seven chip keys reset the page');
+  assert.equal(js.includes("if (key === 'status' || key === 'month' || key === 'card') resetTxLimit();"), false, 'old three-key condition is gone');
+});
+
+// ---- NEW-P2-3 (R4, Nov 9, 2026): stale-sync footer names where Sync lives ----
+// Chosen fix: reword, not per-view hiding — the footer is global and the
+// warning is computed in refresh() without view state, so hiding it on
+// Transactions would couple the global footer to view routing. The copy
+// now names the two places that have a Sync button (Home hero, Bank & Funds).
+test('NEW-P2-3: stale-sync footer names where Sync lives', () => {
+  assert.ok(html.includes("Scheduled sync hasn't run in a while — tap Sync on Home or Bank &amp; Funds to check now."), 'footer names Home and Bank & Funds');
+  assert.equal(html.includes('tap Sync to check now.'), false, 'old copy pointing at a Sync button that is not on every page is gone');
+  assert.ok(html.includes('id="syncStaleWarn"'), 'warning element itself is unchanged');
+});
+
+// ---- NEW-P2-4 (R4, Nov 9, 2026): SW comment cites the current pin ----
+// The live.js pin moved v63 -> v64 in this batch, so the comment now says
+// (v64) to match the bumped cache name.
+test('NEW-P2-4: service-worker comment cites the current cache version', () => {
+  const cache = /const CACHE = 'onbudget-live-v(\d+)'/.exec(sw)?.[1];
+  assert.ok(cache, 'cache version found');
+  assert.ok(sw.includes(`(${`v${cache}`})`), 'comment cites the same version as CACHE');
+  assert.equal(sw.includes('(v62)'), false, 'stale v62 comment is gone');
+  assert.equal(sw.includes('(v63)'), false, 'stale v63 comment is gone');
+});
+
+// ---- NEW-P2-5 (R4, Nov 9, 2026): showSheet actions branch deleted ----
+// Decision: DELETE, not documented dead code. Zero of the 16 showSheet call
+// sites passes actions; the Task 7 sheet actions it served are now the
+// expand-in-place buttons. Deleting removes a second button-row path that
+// could silently reappear; git history keeps the code if it is ever needed.
+test('NEW-P2-5: showSheet actions param/branch is deleted', () => {
+  assert.equal(js.includes('actions = null'), false, 'actions param is gone from the signature');
+  assert.equal(js.includes('actionsHtml'), false, 'actions rendering is gone');
+  assert.equal(js.includes('data-sheet-action'), false, 'actions click wiring is gone');
+  assert.equal(js.includes("actions ? ' btn-quiet'"), false, 'actions confirm-button branch is gone');
+  assert.ok(js.includes('function showSheet({'), 'showSheet itself still exists');
+  assert.ok(js.includes('extraAction'), 'the live extra-action path is untouched');
+  assert.equal((js.match(/showSheet\(\{/g) ?? []).length, 16, 'definition + 15 call sites still present, none passing actions');
+});
+
+// ---- NEW-P2-6 (R4, Nov 9, 2026): SW cache-write failure is logged ----
+test('NEW-P2-6: service-worker cache-write failure logs instead of swallowing', () => {
+  assert.ok(sw.includes("console.warn('OnBudget service worker cache write failed:'"), 'cache-write failure is logged like the install catch');
+  assert.equal(sw.includes('.catch(() => {})'), false, 'no silent empty catch remains in the service worker');
 });

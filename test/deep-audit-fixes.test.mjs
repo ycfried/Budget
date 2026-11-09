@@ -15,7 +15,7 @@ const gmailPoll = readFileSync(new URL('../supabase/functions/gmail-poll/index.t
 
 test('pins bumped to v52/v62', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=63/);
+  assert.match(html, /live\.js\?v=64/);
 });
 
 test('loadMembership failure uses setResultMsg soft red, not a direct blue box write', () => {

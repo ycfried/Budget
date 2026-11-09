@@ -73,7 +73,9 @@ test('generic sheet renders an extra primary action without duplicating button t
   // With an extra action, confirm drops to the grey tertiary
   // treatment (fund-sheet-button-rule, owner Nov 4: two-button rows
   // are primary + grey, never pale).
-  assert.match(js, /class="btn\$\{actions \? ' btn-quiet' : extraAction \? ' btn-tertiary' : ' btn-primary'\}"/);
+  // NEW-P2-5 (Nov 9, 2026): the dead `actions` branch is deleted, so the
+  // confirm ternary is now extraAction-only.
+  assert.match(js, /class="btn\$\{extraAction \? ' btn-tertiary' : ' btn-primary'\}"/);
 });
 
 test('Extra Fund / Charity cards expand in place; no sheet opener remains; rows unchanged', () => {

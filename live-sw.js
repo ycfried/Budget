@@ -5,11 +5,11 @@
 // changes. (The repo's older sw.js caches demo-era files and must
 // NOT be registered for the live app.)
 // P2-F11 (Nov 8, 2026): the cache name carries the live.js pin
-// (v62) and MUST be bumped with it — the name sat at v1 while the
-// pins moved v50→v62, so old caches were never cleaned on activate.
+// (v64) and MUST be bumped with it — the name sat at v1 while the
+// pins moved v50→v64, so old caches were never cleaned on activate.
 // A test pins this number equal to the live.js pin in live.html, so
 // the two cannot drift again.
-const CACHE = 'onbudget-live-v63';
+const CACHE = 'onbudget-live-v64';
 const SHELL = new Set(['live.html', 'styles.css', 'live.js', 'manifest-live.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']);
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['live.html', 'styles.css', 'live.js'])).then(() => self.skipWaiting()).catch((err) => console.warn('OnBudget service worker install failed:', err)));
@@ -27,7 +27,10 @@ self.addEventListener('fetch', (e) => {
   if (!isShell && !isNav) return; // API + everything else passes through untouched
   e.respondWith(fetch(e.request).then((res) => {
     const copy = res.clone();
-    caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+    // NEW-P2-6 (Nov 9, 2026): a failed cache write logs like the
+    // install catch instead of being swallowed silently — network-first
+    // still serves fresh, but a dead cache is no longer invisible.
+    caches.open(CACHE).then((c) => c.put(e.request, copy)).catch((err) => console.warn('OnBudget service worker cache write failed:', err));
     return res;
   }).catch(() => caches.match(e.request).then((hit) => hit || caches.match('live.html'))));
 });

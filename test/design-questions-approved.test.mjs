@@ -130,5 +130,5 @@ test('D. Trash is its own page, like Past Weeks and Activity', () => {
 
 test('version pins: styles v52, live.js v62', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=63/);
+  assert.match(html, /live\.js\?v=64/);
 });

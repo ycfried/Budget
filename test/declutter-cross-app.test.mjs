@@ -14,7 +14,7 @@ const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
 test('version pins: styles v52, live.js v62', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=63/);});// ---- Task 1: removed sentences are gone ----
+  assert.match(html, /live\.js\?v=64/);});// ---- Task 1: removed sentences are gone ----
 const REMOVED = [
   'Weekly summaries below are the financial record',
   'Closed weeks, read-only — week start, surplus, debt carried',
