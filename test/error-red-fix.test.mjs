@@ -84,5 +84,5 @@ test('sign-in button row has the standard 14px gap from the password field', () 
 
 test('pins bumped to v52/v62', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=63/);
+  assert.match(html, /live\.js\?v=64/);
 });

@@ -568,7 +568,10 @@ async function refresh() {
     if (bar) { bar.style.width = '0%'; bar.parentElement?.classList.remove('over'); }
     const pt = document.getElementById('weekProgressText');
     if (pt) pt.textContent = '';
-    for (const id of ['heroSpentLine', 'heroUsedPct', 'heroAllowance', 'heroPurchaseCount']) { const el = document.getElementById(id); if (el) el.textContent = '—'; }
+    // NEW-P2-1 (Nov 9, 2026): Purchases shows N/A on failure, matching
+    // the hero's initial value (live.html) and the :848 failure path —
+    // a bare dash here would disagree with both.
+    for (const id of ['heroSpentLine', 'heroUsedPct', 'heroAllowance', 'heroPurchaseCount']) { const el = document.getElementById(id); if (el) el.textContent = id === 'heroPurchaseCount' ? 'N/A' : '—'; }
     currentWeekData = null;
   };
   // Delta3: week figures load through this helper so a week-close that
@@ -920,8 +923,9 @@ async function refresh() {
       else if (key === 'week') txWeekOnly = false;
       else if (key === 'from') txFromDate = '';
       else if (key === 'to') txToDate = '';
-      // P2-N1: removing a status/month/card filter is a new list.
-      if (key === 'status' || key === 'month' || key === 'card') resetTxLimit();
+      // P2-N1 / NEW-P2-2 (Nov 9, 2026): removing ANY filter chip is a
+      // new list — all seven keys reset the page, not just status/month/card.
+      if (key === 'status' || key === 'month' || key === 'card' || key === 'min' || key === 'max' || key === 'week' || key === 'from' || key === 'to') resetTxLimit();
       refresh();
     }));
   }
@@ -3668,7 +3672,7 @@ async function doTxDelete(row) {
   showToast('Moved to trash bin.');
   await refresh();
 }
-function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null, actions = null, kind = null }) {
+function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null, kind = null }) {
   // SECURITY: EVERY interpolated value is escaped with esc() — title,
   // message, input label/value, option labels/values, and button labels.
   // No raw caller value reaches innerHTML through any showSheet path.
@@ -3704,10 +3708,6 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     // three-button sheet layout exists here and the pale treatment
     // never appears in a sheet at all.
     const extraHtml = extraAction ? `<button class="btn btn-primary" type="button" id="sheetExtra">${esc(extraAction.label)}</button>` : '';
-    // Task 7: Extra Fund sheet actions (Add / Use / Ask) — each keeps
-    // its own treatment (primary / pale / grey) and returns its
-    // result; Close is quiet so it cannot read as a money action.
-    const actionsHtml = actions ? actions.map((a) => `<button class="${esc(a.btnClass)}" type="button" data-sheet-action="${esc(a.result)}">${esc(a.label)}</button>`).join('') : '';
     // Design item 4 (owner, Nov 5): failure dialogs use the soft-red
     // error style (class sheet-error), success/info sheets stay white.
     overlay.innerHTML = `<div class="sheet${kind === 'error' ? ' sheet-error' : ''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><span class="sheet-handle" aria-hidden="true"></span>
@@ -3715,8 +3715,7 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
       ${inputHtml}
       <div class="sheet-btns">
         ${extraHtml}
-        ${actionsHtml}
-        <button class="btn${actions ? ' btn-quiet' : extraAction ? ' btn-tertiary' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
+        <button class="btn${extraAction ? ' btn-tertiary' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
       </div></div>`;
     document.body.appendChild(overlay);
     syncScrollLock();
@@ -3774,7 +3773,6 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     overlay.addEventListener('click', (e) => { if (e.target === overlay) done(inputLabel ? null : false); });
     overlay.querySelector('#sheetCancelTop')?.addEventListener('click', () => done(inputLabel ? null : false));
     overlay.querySelector('#sheetExtra')?.addEventListener('click', () => done(extraAction.result ?? 'extra'));
-    overlay.querySelectorAll('[data-sheet-action]').forEach((b) => b.addEventListener('click', () => done(b.dataset.sheetAction)));
     overlay.querySelector('#sheetConfirm').addEventListener('click', () => {
       done(inputLabel ? document.getElementById('sheetInput').value : true);
     });

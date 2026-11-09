@@ -117,7 +117,7 @@ test('B: sheet buttons follow the two-button rule; single-button sheets keep pri
   // (Weekly / Charity sheets: primary action + grey Close); the
   // no-extra path keeps the primary confirm, so single-button
   // sheets (alerts, fund sheet) still close on a primary button.
-  assert.match(js, /<button class="btn\$\{actions \? ' btn-quiet' : extraAction \? ' btn-tertiary' : ' btn-primary'\}" type="button" id="sheetConfirm">/);
+  assert.match(js, /<button class="btn\$\{extraAction \? ' btn-tertiary' : ' btn-primary'\}" type="button" id="sheetConfirm">/);
   // Cancel moved to the sheet top (native-style-live bottom sheet):
   // a quiet top-left Cancel, not a bottom button, same semantics.
   assert.match(js, /<button class="sheet-top-cancel" type="button" id="sheetCancelTop">/);
