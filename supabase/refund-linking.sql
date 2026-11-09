@@ -77,6 +77,13 @@
 --     room. The link itself is kept (original_purchase_id is
 --     untouched), so reclassifying back restores the room
 --     automatically; no money math changes beyond this filter.
+--   * BUG FIX (Nov 9, 2026): `max(uuid)` does not exist in
+--     Postgres (ERROR 42883 live) — both candidate picks used
+--     `select count(*), max(<alias>.id)`, so EVERY auto-link call
+--     errored and live auto-linking never worked (ingestion calls
+--     it best-effort, so the error was swallowed). Both picks now
+--     use `(array_agg(<alias>.id))[1]`, uuid-safe; the id is only
+--     used when the count is exactly 1. Matching rules unchanged.
 --   * P2-N7 (call sites): restore_transaction and
 --     reclassify_transaction call auto_link_refund /
 --     link_refunds_to_purchase best-effort at the end (see
@@ -141,7 +148,14 @@ begin
   if v_ref.excluded is true or v_ref.state in ('excluded', 'reversed') then return null; end if;
   if v_ref.original_purchase_id is not null then return null; end if;
 
-  select count(*), max(c.id) into v_cand_count, v_cand_id
+  -- BUG FIX (Nov 9, 2026): max(uuid) does not exist in Postgres
+  -- (ERROR 42883 live) — the old `max(c.id)` made EVERY call to
+  -- this function error out, so live auto-linking never worked;
+  -- ingestion calls it best-effort, so the error was swallowed and
+  -- refunds arrived unlinked. array_agg is uuid-safe; the picked id
+  -- is only used when the count is exactly 1, so the arbitrary
+  -- element of the array is never trusted.
+  select count(*), (array_agg(c.id))[1] into v_cand_count, v_cand_id
   from transactions c
   where c.household_id = v_ref.household_id
     and c.kind in ('charge', 'fund_charge')
@@ -202,7 +216,10 @@ begin
   if v_pur.kind not in ('charge', 'fund_charge') then return null; end if;
   if v_pur.excluded is true or v_pur.state in ('excluded', 'reversed') then return null; end if;
 
-  select count(*), max(r.id) into v_cand_count, v_cand_id
+  -- BUG FIX (Nov 9, 2026): same max(uuid) 42883 bug as
+  -- auto_link_refund above — array_agg is uuid-safe; the picked id
+  -- is only used when the count is exactly 1.
+  select count(*), (array_agg(r.id))[1] into v_cand_count, v_cand_id
   from transactions r
   where r.household_id = v_pur.household_id
     and r.kind = 'refund'

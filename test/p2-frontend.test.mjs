@@ -239,6 +239,7 @@ test('NEW-P2-4: service-worker comment cites the current cache version', () => {
   assert.equal(sw.includes('(v62)'), false, 'stale v62 comment is gone');
   assert.equal(sw.includes('(v63)'), false, 'stale v63 comment is gone');
   assert.equal(sw.includes('(v64)'), false, 'stale v64 comment is gone');
+  assert.equal(sw.includes('(v65)'), false, 'stale v65 comment is gone');
 });
 
 // ---- NEW-P2-5 (R4, Nov 9, 2026): showSheet actions branch deleted ----
