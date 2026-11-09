@@ -24,10 +24,20 @@ test('P2-C5 (client): footer carries a stale-sync warning element', () => {
   assert.match(css, /\.sync-stale-warn\s*\{[^}]*color:\s*#dc2626/, 'warning is dark red like other errors');
 });
 
-test('P2-C5 (client): staleness is a 180-minute threshold on the last sync stamp', () => {
+test('P2-C5 (client): staleness is a 180-minute threshold on the stalest active item', () => {
   assert.match(liveJs, /180 \* 60 \* 1000/, '180-minute threshold in live.js');
-  assert.ok(liveJs.includes("staleWarn.hidden = !(bankLastSyncAt && (Date.now() - new Date(bankLastSyncAt).getTime() > 180 * 60 * 1000))"),
-    'warning shows only when a known stamp is older than the threshold');
+  // NEW-R4-C1/C3 (Nov 9, 2026): the footer warning is the local
+  // fallback for the API stale flag and uses the STALEST active
+  // item's stamp — the old max-stamp check hid a dead item behind a
+  // healthy one. Disconnected items are excluded; a never-synced item
+  // contributes no stamp.
+  assert.ok(liveJs.includes("const stalestSyncAt = activeSyncTimes.length ? activeSyncTimes[0] : null;"),
+    'warning reads the stalest active sync stamp');
+  assert.ok(liveJs.includes("staleWarn.hidden = !(stalestSyncAt && (Date.now() - new Date(stalestSyncAt).getTime() > 180 * 60 * 1000))"),
+    'warning shows only when a known stalest stamp is older than the threshold');
+  assert.ok(liveJs.includes("(i.status ?? 'active') !== 'disconnected'"), 'disconnected items excluded from the stale check');
+  assert.ok(!liveJs.includes("staleWarn.hidden = !(bankLastSyncAt && (Date.now() - new Date(bankLastSyncAt).getTime() > 180 * 60 * 1000))"),
+    'old freshest-stamp check is gone');
   assert.ok(liveJs.includes("staleWarn2.hidden = true"),
     'unknown sync state (read failed) hides the warning');
 });
@@ -58,4 +68,5 @@ test('Integration: pins are v64/v53 and the service-worker cache tracks live.js'
   assert.ok(liveHtml.includes('styles.css?v=53'), 'live.html pins styles v53');
   const sw = read('../live-sw.js');
   assert.ok(sw.includes("CACHE = 'onbudget-live-v64'"), 'service-worker cache tracks the live.js pin');
+  assert.ok(sw.includes('(v64)'), 'service-worker comment names the current pin (NEW-P2-4)');
 });

@@ -314,13 +314,25 @@ Deno.serve(async (req) => {
     // silent. The cron runs hourly; a gap over 180 minutes means
     // scheduled sync has not run recently. The client warning itself
     // is a live.js follow-up — these fields are the API half.
+    // NEW-R4-C3 (Nov 9, 2026): report the STALEST gap, not the
+    // freshest. The old code took Math.max over last_sync_at (the
+    // most recently synced item), so one healthy item hid a dead
+    // one. gmail-poll already reports the max gap; this mirrors it.
+    // Only active (non-disconnected) items count: a disconnected
+    // item never syncs again, so its frozen stamp would pin stale
+    // true forever. A never-synced item (null stamp) contributes no
+    // gap, same as gmail-poll.
     const syncStartedAt = Date.now();
-    const prevSyncTimes = allItems
-      .map((i: any) => { const t = i.last_sync_at ? new Date(i.last_sync_at).getTime() : NaN; return Number.isFinite(t) ? t : null; })
-      .filter((t: number | null): t is number => t !== null);
-    const minutesSincePreviousSync = prevSyncTimes.length
-      ? Math.max(0, Math.floor((syncStartedAt - Math.max(...prevSyncTimes)) / 60000))
-      : null;
+    const minutesSinceSync = (iso: string | null): number | null => {
+      if (!iso) return null;
+      const t = new Date(iso).getTime();
+      if (!Number.isFinite(t)) return null;
+      return Math.max(0, Math.floor((syncStartedAt - t) / 60000));
+    };
+    const prevGaps = activeItems
+      .map((i: any) => minutesSinceSync(i.last_sync_at ?? null))
+      .filter((n: number | null): n is number => n !== null);
+    const minutesSincePreviousSync = prevGaps.length ? Math.max(...prevGaps) : null;
     const stale = minutesSincePreviousSync !== null && minutesSincePreviousSync > 180;
     // Deep audit Nov 5: Plaid failures on one item used to return 502
     // immediately, aborting all remaining items and skipping the

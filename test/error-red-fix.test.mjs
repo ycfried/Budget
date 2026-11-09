@@ -52,7 +52,11 @@ test('converted failures now use the lighter red error style', () => {
   assert.match(js, /setResultMsg\('authNameMsg', error \? 'Could not create the account\. Try again\.'[\s\S]*?, !!error\)/);
   // Email connect / check failures.
   assert.match(js, /setResultMsg\('emailMsg', `Could not start the email connection:[\s\S]*?, true\)/);
-  assert.match(js, /setResultMsg\('emailMsg', failed\n    \? `Email check failed: \$\{failText\}`[\s\S]*?, !!failed\)/);
+  // NEW-R4-C1 (Nov 9, 2026): the check message + error flag now come
+  // from emailCheckMessage (filterState.mjs); the handler still
+  // routes failures through setResultMsg with the error flag.
+  assert.match(js, /const \{ text, isError \} = emailCheckMessage\(out\);/);
+  assert.match(js, /setResultMsg\('emailMsg', text, isError\)/);
   // CSV failures.
   assert.match(js, /setResultMsg\('csvMsg', 'No file reached the app from the picker\.[\s\S]*?, true\)/);
   assert.match(js, /setResultMsg\('csvMsg', `Could not read this file \([\s\S]*?, true\)/);
