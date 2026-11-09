@@ -230,7 +230,7 @@ test('Home stat cards are Title + Amount only, words in aria-labels', () => {
 test('Add is a blue + button opening an options popup, no choice card', () => {
   assert.doesNotMatch(html, /section-add-choice/);
   assert.doesNotMatch(html, /Add \/ Import transaction/);
-  assert.match(html, /id="txAddBtn"[^>]*aria-label="Add transaction">/);
+  assert.match(html, /id="txAddBtn"[^>]*aria-label="Add Transaction">/);
   assert.match(html, /id="addPopupOverlay"/);
   assert.match(html, /id="addOptionPurchaseBtn"/);
   assert.match(html, /id="addOptionDonationBtn"/);

@@ -71,6 +71,12 @@
 --     unlinking first would orphan the held row — it would point
 --     at a refund that no longer has a purchase, and the release
 --     path could never resolve it.
+--   * R4-BE-3 (Nov 9, 2026): every linked-total subquery also
+--     filters kind = 'refund', so a linked refund reclassified
+--     away from 'refund' stops consuming its purchase's refund
+--     room. The link itself is kept (original_purchase_id is
+--     untouched), so reclassifying back restores the room
+--     automatically; no money math changes beyond this filter.
 --   * P2-N7 (call sites): restore_transaction and
 --     reclassify_transaction call auto_link_refund /
 --     link_refunds_to_purchase best-effort at the end (see
@@ -78,8 +84,13 @@
 --     refund-classification-income-kind.sql), so a restored or
 --     reclassified pair links without waiting for a re-delivery.
 --
--- STEP 0 — VERIFY LIVE FIRST (read-only): none of these four functions
--- exists live yet. If any does, stop and reconcile before applying.
+-- APPLIED LIVE Nov 9, 2026, step 2 (R4 §2; R4-BE-2, Nov 9, 2026 —
+-- the STEP 0 claim below that none of these four functions exists
+-- live yet is stale: all four exist live now, verified with the
+-- P2-N6/N8/N9/N14 markers).
+-- STEP 0 — VERIFY LIVE FIRST (read-only): all four functions exist
+-- live. If a re-probe shows any missing or drifted, stop and
+-- reconcile before re-applying.
 --   select proname from pg_proc where proname in
 --     ('auto_link_refund', 'link_refunds_to_purchase', 'link_refund', 'unlink_refund');
 -- STEP 1 — Apply this file in the SQL editor, in order. No other file.
@@ -143,6 +154,7 @@ begin
     and c.date >= v_ref.date - interval '90 days'
     and (select coalesce(sum(abs(r.amount_cents)), 0) from transactions r
          where r.original_purchase_id = c.id
+           and r.kind = 'refund'
            and r.excluded is not true and r.state not in ('excluded', 'reversed')) < c.amount_cents;
 
   if v_cand_count <> 1 then return null; end if;
@@ -155,6 +167,7 @@ begin
   if not found then return null; end if;
   select coalesce(sum(abs(r.amount_cents)), 0) into v_linked_total from transactions r
     where r.original_purchase_id = v_cand_id
+      and r.kind = 'refund'
       and r.excluded is not true and r.state not in ('excluded', 'reversed');
   if v_linked_total >= v_cand_amount then return null; end if;
   update transactions set original_purchase_id = v_cand_id where id = p_refund_id;
@@ -203,6 +216,7 @@ begin
     and r.date <= v_pur.date + interval '90 days'
     and (select coalesce(sum(abs(x.amount_cents)), 0) from transactions x
          where x.original_purchase_id = v_pur.id
+           and x.kind = 'refund'
            and x.excluded is not true and x.state not in ('excluded', 'reversed')) < v_pur.amount_cents;
 
   if v_cand_count <> 1 then return null; end if;
@@ -266,6 +280,7 @@ begin
   perform 1 from transactions where id = p_purchase_id for update;
   select coalesce(sum(abs(amount_cents)), 0) into v_linked_total from transactions
     where original_purchase_id = p_purchase_id
+      and kind = 'refund'
       and excluded is not true and state not in ('excluded', 'reversed');
   if abs(v_ref.amount_cents) + v_linked_total > v_pur.amount_cents then
     raise exception 'refund is more than the purchase has left to refund';

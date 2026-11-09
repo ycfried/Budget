@@ -95,6 +95,35 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+
+// B6 (Nov 9, 2026): the old .limit(10000) silently dropped rows past
+// 10,000 — and a single PostgREST response is capped at 1000 rows by
+// default, so the cap could bite far earlier, on whichever rows the
+// unordered query happened to return. Page through the whole
+// household history in 1000-row pages, ordered so pages are stable;
+// behaviour is identical below the old cap. withLinkage=false is the
+// pre-migration fallback (no original_purchase_id column yet).
+async function fetchHouseholdTxns(
+  client: any, householdId: string, withLinkage: boolean,
+): Promise<{ rows: any[]; error: any }> {
+  const cols = withLinkage
+    ? 'id, date, amount_cents, kind, state, excluded, fund_allocation_cents, original_purchase_id, created_at'
+    : 'id, date, amount_cents, kind, state, excluded, fund_allocation_cents, created_at';
+  const rows: any[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client.from('transactions')
+      .select(cols)
+      .eq('household_id', householdId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) return { rows, error };
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < PAGE) return { rows, error: null };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -143,22 +172,14 @@ Deno.serve(async (req) => {
     // except the explicitly optional restoration tables). ----
     let txns: any[] = [];
     let hasLinkage = true;
-    const txRes = await supabase
-      .from('transactions')
-      .select('id, date, amount_cents, kind, state, excluded, fund_allocation_cents, original_purchase_id, created_at')
-      .eq('household_id', householdId)
-      .limit(10000);
+    const txRes = await fetchHouseholdTxns(supabase, householdId, true);
     if (txRes.error) {
-      const retry = await supabase
-        .from('transactions')
-        .select('id, date, amount_cents, kind, state, excluded, fund_allocation_cents, created_at')
-        .eq('household_id', householdId)
-        .limit(10000);
+      const retry = await fetchHouseholdTxns(supabase, householdId, false);
       if (retry.error) return json({ error: 'transaction read failed' }, 500);
-      txns = (retry.data ?? []).map((t: any) => ({ ...t, original_purchase_id: null }));
+      txns = retry.rows.map((t: any) => ({ ...t, original_purchase_id: null }));
       hasLinkage = false;
     } else {
-      txns = txRes.data ?? [];
+      txns = txRes.rows;
     }
     // Merged-audit B6 floor: a slipped pre-November row can never
     // stamp an old week or chain debt into November. The app starts

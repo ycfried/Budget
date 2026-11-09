@@ -1,5 +1,9 @@
--- Delete-account FK migration — PREPARED ONLY, DO NOT APPLY
--- without the owner's explicit approval ("fix everything", Nov 3).
+-- Delete-account FK migration — APPLIED LIVE Nov 3, 2026
+-- (verified: all 8 history references ON DELETE SET NULL. R4-BE-2,
+-- Nov 9, 2026 — the "PREPARED ONLY" header this file carried
+-- before is stale). Do NOT re-apply blindly: re-apply only if a
+-- live probe shows a reference has drifted from this file, and
+-- reconcile first.
 --
 -- WHY (Round 3, bug 9): a non-last member's deletion failed
 -- partway — membership removed, auth account orphaned — because

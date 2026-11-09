@@ -152,7 +152,7 @@
           <label>Card suffix <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
         </div>
         <p id="manualFormError" class="error hidden" role="alert"></p>
-        <button class="btn btn-primary" type="submit" aria-label="Add this transaction">Add transaction</button>
+        <button class="btn btn-primary" type="submit" aria-label="Add This Transaction">Add Transaction</button>
         <button class="btn btn-tertiary" id="manualCancelBtn" type="button" aria-label="Cancel and clear this draft">Cancel</button>
       </form>
       <p class="muted small">Never enter a full card number.</p>
@@ -200,7 +200,7 @@
       <div class="tx-head-row">
         <h2>Transactions</h2>
         <div class="tx-head-actions">
-          <button class="btn btn-primary add-plus-btn" id="txAddBtn" type="button" aria-label="Add transaction"><span aria-hidden="true">+</span><span class="add-label-desktop">Add transaction</span></button>
+          <button class="btn btn-primary add-plus-btn" id="txAddBtn" type="button" aria-label="Add Transaction"><span aria-hidden="true">+</span><span class="add-label-desktop">Add Transaction</span></button>
           <button id="txFiltersToggle" class="btn btn-tertiary" type="button" aria-expanded="false" aria-label="Open filters">Filters</button>
         </div>
       </div>
@@ -263,7 +263,7 @@
             <button id="txSortDirBtn" class="btn btn-tertiary" type="button" aria-label="Sort direction">↓ Newest first</button>
           </div>
           <div class="btn-row">
-            <button class="btn btn-primary" id="txFiltersApplyBtn" type="button" aria-label="Apply filters">Apply</button>
+            <button class="btn btn-primary" id="txFiltersApplyBtn" type="button" aria-label="Apply Filters">Apply</button>
             <button class="btn" id="txFiltersResetBtn" type="button" aria-label="Reset filters and sort to defaults">Reset</button>
             <button class="btn btn-tertiary" id="txFiltersCancelBtn" type="button" aria-label="Close filters without applying changes">Cancel</button>
           </div>
@@ -302,9 +302,9 @@
     <div class="card" id="section-profile">
       <h2>Profile</h2>
       <label>Name <input id="profileNameInput" type="text" maxlength="80" autocomplete="name"></label>
-      <button id="saveProfileNameBtn" class="btn btn-primary" type="button" aria-label="Save your profile name">Save name</button>
+      <button id="saveProfileNameBtn" class="btn btn-primary" type="button" aria-label="Save Your Profile Name">Save Name</button>
       <label class="profile-email-label">Email <input id="profileEmailInput" type="email" autocomplete="email"></label>
-      <button id="saveProfileEmailBtn" class="btn btn-primary" type="button" aria-label="Save your new email address">Save email</button>
+      <button id="saveProfileEmailBtn" class="btn btn-primary" type="button" aria-label="Save Your New Email Address">Save Email</button>
       <h3>Password</h3>
       <button id="profilePasswordBtn" class="btn btn-tertiary" type="button" aria-label="Change your password">Change password</button>
     </div>
@@ -335,7 +335,7 @@
       <p class="muted small" id="emailStatusLine"></p>
       <div class="btn-row">
         <button id="connectEmailBtn" class="btn btn-primary" type="button" aria-label="Connect email">Connect email</button>
-        <button id="pollEmailBtn" class="btn btn-tertiary" type="button" aria-label="Check email now">Check email now</button>
+        <button id="pollEmailBtn" class="btn btn-tertiary" type="button" aria-label="Check Email Now">Check Email Now</button>
       </div>
       <div id="emailMsg" class="result"></div>
     </div>
@@ -536,7 +536,7 @@
         </label>
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="historyFilterApplyBtn" type="button" aria-label="Apply history date filter">Apply filter</button>
+        <button class="btn btn-primary" id="historyFilterApplyBtn" type="button" aria-label="Apply History Date Filter">Apply Filter</button>
         <button class="btn btn-tertiary" id="historyFilterClearBtn" type="button" aria-label="Clear history date filter">Clear date filter</button>
       </div>
       <p id="historyPeriodLine" class="muted small"></p>
@@ -559,12 +559,12 @@
 </main>
 
 <footer class="foot muted small">
-  OnBudget · Last bank sync <span id="lastSync">—</span><span id="syncStaleWarn" class="sync-stale-warn" hidden> Scheduled sync hasn't run in a while — tap Sync to check now.</span>
+  OnBudget · Last bank sync <span id="lastSync">—</span><span id="syncStaleWarn" class="sync-stale-warn" hidden> Scheduled sync hasn't run in a while — tap Sync on Home or Bank &amp; Funds to check now.</span>
 </footer>
 
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script type="module" src="live.js?v=63"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
+<script type="module" src="live.js?v=64"></script><script>  // Live service worker (network-first app shell, offline fallback).  // Registered late so it never blocks the first paint.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('live-sw.js').catch((err) => console.warn('Service worker registration failed:', err));

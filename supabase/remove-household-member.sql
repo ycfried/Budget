@@ -5,8 +5,11 @@
 -- be removed. This is launch-blocking: an admin must be able to
 -- remove a member.
 --
--- PREPARED ONLY — apply live only with the owner's explicit approval.
--- Whole file, once, in the Supabase SQL editor.
+-- APPLIED LIVE Nov 8, 2026 (PR #57, merged 8:26 PM; R4-BE-2,
+-- Nov 9, 2026 — the "PREPARED ONLY" header this file carried
+-- before is stale). Whole file, once, in the Supabase SQL editor.
+-- Do NOT re-apply blindly: re-apply only if a live probe shows the
+-- live body has drifted from this file, and reconcile first.
 --
 -- What remove_household_member(p_user_id uuid) does:
 --   * Admin-only, caller's own household only (same pattern as the

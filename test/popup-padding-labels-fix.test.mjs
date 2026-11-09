@@ -97,7 +97,7 @@ test('profile intro, Email h3, and email explainer are gone; field and button st
   assert.equal(profile.includes('Changing your email sends a confirmation'), false, 'email explainer deleted');
   assert.ok(profile.includes('class="profile-email-label">Email'), 'Email field label present');
   assert.ok(profile.includes('id="profileEmailInput"'), 'Email input present');
-  assert.ok(profile.includes('id="saveProfileEmailBtn" class="btn btn-primary"'), 'Save email button now primary blue, matching Save name (final little things)');
+  assert.ok(profile.includes('id="saveProfileEmailBtn" class="btn btn-primary"'), 'Save Email button now primary blue, matching Save Name (final little things)');
 });
 
 test('password note moved out of the profile card into the change-password sheet', () => {
@@ -134,4 +134,4 @@ test('bank card heading and sentence are the short versions, nothing else retitl
 
 test('version pins: styles v52, live.js v62', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=63/);});
+  assert.match(html, /live\.js\?v=64/);});

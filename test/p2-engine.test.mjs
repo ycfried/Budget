@@ -53,6 +53,20 @@ test('P2-M1: all four engine.mjs copies are byte-identical to root', () => {
   }
 });
 
+// --- MATH-NEW2 (R4): restoration.mjs copy drift --------------------------------
+// Same whole-file rule as M1, extended to restoration.mjs: the deployed
+// week-close copy missed the Nov 5 fund-first fix (comment drift) because
+// no test covered it. Root restoration.mjs is canonical; the deployed
+// copy is synced FROM root, never the other way.
+test('MATH-NEW2 (R4): week-close restoration.mjs is byte-identical to root', () => {
+  const deployed = readFileSync(new URL('../supabase/functions/week-close/restoration.mjs', import.meta.url), 'utf8');
+  assert.equal(deployed, restoration, 'week-close/restoration.mjs must be byte-identical to root restoration.mjs');
+  assert.equal(deployed.includes('needs an owner confirmation'), false,
+    'the stale "needs an owner confirmation at integration" flag is gone from the deployed copy too');
+  assert.ok(deployed.includes('owner-confirmed Nov 5,'),
+    'the deployed copy records the Nov 5 owner confirmation');
+});
+
 test('P2-M1: the previously-drifted symbols exist in every copy', () => {
   for (const copy of ['compute-week', 'week-close', '_shared']) {
     const other = readFileSync(new URL(`../supabase/functions/${copy}/engine.mjs`, import.meta.url), 'utf8');
@@ -129,8 +143,8 @@ test('P2-N5: every mirror rule has a matching fragment in refund-linking.sql', (
   assert.match(linkSql, /c\.date >= v_ref\.date - interval '90 days'/, 'auto-link: 90-day window');
   assert.match(linkSql, /where r\.original_purchase_id = c\.id[\s\S]{0,200}?\) < c\.amount_cents/,
     'auto-link: purchase not already fully refunded');
-  assert.match(linkSql, /where r\.original_purchase_id = c\.id\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/,
-    'auto-link: fully-refunded total counts live linked refunds only (P2-N6)');
+  assert.match(linkSql, /where r\.original_purchase_id = c\.id\s+and r\.kind = 'refund'\s+and r\.excluded is not true and r\.state not in \('excluded', 'reversed'\)/,
+    'auto-link: fully-refunded total counts live linked refunds only (P2-N6, kind filter R4-BE-3)');
   assert.match(linkSql, /r\.original_purchase_id is null/, 'reverse-link: only unlinked refunds');
   assert.match(linkSql, /r\.date >= v_pur\.date/, 'reverse-link: refund on or after the purchase');
   assert.match(linkSql, /r\.date <= v_pur\.date \+ interval '90 days'/, 'reverse-link: 90-day window');

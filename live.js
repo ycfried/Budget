@@ -27,7 +27,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { formatCents, weekStartOf, nyTodayString, applyShortfallToRelease, charityCommittedCents } from './engine.mjs';
-import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, merchantStem, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind, emailConnectionWarnings } from './filterState.mjs';
+import { activeFilterLabels, createSyncGuard, historyPeriodLabel, filterRowsByDate, weeklyReconciliation, groupDayActivity, householdActivityText, simplifyActivityDetail, titleCaseMerchant, merchantStem, relativeDayLabel, scrollStorageKey, VIEW_STORAGE_KEY, PREV_VIEW_STORAGE_KEY, isWeekCloseCheckDue, classifyCsvKind, activityDotClass, activityTitle, actionsForTxKind, emailConnectionWarnings, bankSyncToast, emailCheckMessage, adminHouseholdOptions } from './filterState.mjs';
 import { describeConnection } from './duplicateConnection.mjs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -399,6 +399,25 @@ async function audit(action, detail) {
   if (error) console.warn('audit insert blocked (expected until insert policies land):', error.message);
 }
 
+// B6 (Nov 9, 2026): a single PostgREST response is capped at 1000
+// rows by default, so a bare .limit(1000) silently truncates any
+// money sum past 1000 rows. Page through in 1000-row pages and
+// return every row; makeQuery receives (from, to) and must apply
+// .range(from, to) on an ordered query so pages are stable.
+// Behaviour is identical below 1000 rows. Callers pass a throwing
+// error through, so a failed page is an error state, never a
+// partial sum presented as real numbers.
+async function fetchAllPages(makeQuery) {
+  const rows = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await makeQuery(from, from + PAGE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < PAGE) return rows;
+  }
+}
+
 async function refresh() {
   if (!household) return;
   // Task 4: the page must not jump to the top after an action
@@ -568,7 +587,10 @@ async function refresh() {
     if (bar) { bar.style.width = '0%'; bar.parentElement?.classList.remove('over'); }
     const pt = document.getElementById('weekProgressText');
     if (pt) pt.textContent = '';
-    for (const id of ['heroSpentLine', 'heroUsedPct', 'heroAllowance', 'heroPurchaseCount']) { const el = document.getElementById(id); if (el) el.textContent = '—'; }
+    // NEW-P2-1 (Nov 9, 2026): Purchases shows N/A on failure, matching
+    // the hero's initial value (live.html) and the :848 failure path —
+    // a bare dash here would disagree with both.
+    for (const id of ['heroSpentLine', 'heroUsedPct', 'heroAllowance', 'heroPurchaseCount']) { const el = document.getElementById(id); if (el) el.textContent = id === 'heroPurchaseCount' ? 'N/A' : '—'; }
     currentWeekData = null;
   };
   // Delta3: week figures load through this helper so a week-close that
@@ -920,8 +942,9 @@ async function refresh() {
       else if (key === 'week') txWeekOnly = false;
       else if (key === 'from') txFromDate = '';
       else if (key === 'to') txToDate = '';
-      // P2-N1: removing a status/month/card filter is a new list.
-      if (key === 'status' || key === 'month' || key === 'card') resetTxLimit();
+      // P2-N1 / NEW-P2-2 (Nov 9, 2026): removing ANY filter chip is a
+      // new list — all seven keys reset the page, not just status/month/card.
+      if (key === 'status' || key === 'month' || key === 'card' || key === 'min' || key === 'max' || key === 'week' || key === 'from' || key === 'to') resetTxLimit();
       refresh();
     }));
   }
@@ -1247,11 +1270,16 @@ async function refresh() {
   // the ledger-kind gap: the live write path today only attests a balance
   // (kind 'adjustment', amount 0), so transfer/withdrawal/interest totals
   // stay $0 until a write path for those kinds lands (S1).
-  const { data: sav, error: savErr } = await supabase.from('savings_ledger')
-    .select('*').eq('household_id', household.household_id)
-    .order('created_at', { ascending: false }).limit(1000);
-  if (savErr) console.warn('savings_ledger read failed:', savErr.message);
-  const savRows = savErr ? [] : (sav ?? []);
+  // B6 (Nov 9, 2026): paged whole-history read (fetchAllPages) — the
+  // old .limit(1000) silently truncated the transfer/withdrawal/
+  // interest sums past 1000 rows. A failed page keeps the old
+  // behaviour: warn and show empty, never a partial sum.
+  let savRows = []; let savErr = null;
+  try {
+    savRows = await fetchAllPages((a, b) => supabase.from('savings_ledger')
+      .select('*').eq('household_id', household.household_id)
+      .order('created_at', { ascending: false }).range(a, b));
+  } catch (e) { savErr = e; console.warn('savings_ledger read failed:', e.message); }
   const latestBalRow = savRows.find((r) => r.actual_balance_cents !== null && r.actual_balance_cents !== undefined);
   const savBalance = latestBalRow ? latestBalRow.actual_balance_cents : null;
   const savIn = savRows.filter((r) => r.kind === 'transfer_in').reduce((t, r) => t + (r.amount_cents || 0), 0);
@@ -1331,8 +1359,18 @@ async function refresh() {
     // silent. The server half (plaid-sync/gmail-poll) reports the
     // same gap in its response. No last sync yet means "not synced
     // yet", not stale — the warning only fires on an old stamp.
+    // NEW-R4-C1/C3 (Nov 9, 2026): the footer warning is the local
+    // fallback for the API stale flag — refresh() has no plaid-sync
+    // response in hand, so it computes from last_sync_at. It uses
+    // the STALEST active item's stamp, not the freshest: the old
+    // max-stamp check hid a dead item behind a healthy one (the same
+    // masking NEW-R4-C3 fixes server-side). Disconnected items are
+    // excluded (their stamps are frozen forever) and a never-synced
+    // item contributes no stamp, so "not synced yet" never warns.
     const staleWarn = document.getElementById('syncStaleWarn');
-    if (staleWarn) staleWarn.hidden = !(bankLastSyncAt && (Date.now() - new Date(bankLastSyncAt).getTime() > 180 * 60 * 1000));
+    const activeSyncTimes = itemRows.filter((i) => (i.status ?? 'active') !== 'disconnected').map((i) => i.last_sync_at).filter(Boolean).sort();
+    const stalestSyncAt = activeSyncTimes.length ? activeSyncTimes[0] : null;
+    if (staleWarn) staleWarn.hidden = !(stalestSyncAt && (Date.now() - new Date(stalestSyncAt).getTime() > 180 * 60 * 1000));
     const cb = $('connectBankBtn');
     // Button-card-fix: Connect stays primary and Sync stays tertiary
     // (grey) in every state. The old code stripped primary from Connect and
@@ -1652,14 +1690,20 @@ async function refresh() {
   // charity rows. A read failure is an error state on the cards,
   // never zeros presented as real numbers.
   try {
-    const { data: incRows, error: incErr } = await supabase.from('charity_income')
-      .select('amount_cents, rate_bp').eq('household_id', household.household_id).eq('status', 'active').limit(1000);
+    // B6 (Nov 9, 2026): paged whole-history reads (fetchAllPages) —
+    // the old .limit(1000) silently truncated Committed past 1000
+    // active income rows and Given past 1000 verified gifts. A failed
+    // page throws into this try's catch (error state, never zeros).
+    const incRows = await fetchAllPages((a, b) => supabase.from('charity_income')
+      .select('amount_cents, rate_bp').eq('household_id', household.household_id).eq('status', 'active')
+      .order('created_at', { ascending: true }).range(a, b));
     const { data: setRow, error: setErr } = await supabase.from('charity_settings')
       .select('default_rate_bp').eq('household_id', household.household_id).maybeSingle();
-    const { data: giftRows, error: giftErr } = await supabase.from('transactions')
+    const giftRows = await fetchAllPages((a, b) => supabase.from('transactions')
       .select('amount_cents').eq('household_id', household.household_id).eq('kind', 'charity')
-      .eq('state', 'verified').eq('excluded', false).gte('date', '2026-11-01').limit(1000);
-    if (incErr || setErr || giftErr) throw (incErr || setErr || giftErr);
+      .eq('state', 'verified').eq('excluded', false).gte('date', '2026-11-01')
+      .order('created_at', { ascending: true }).range(a, b));
+    if (setErr) throw setErr;
     const committed = (incRows ?? []).reduce((s, r) => s + charityCommittedCents(r.amount_cents ?? 0, r.rate_bp ?? 1000), 0);
     const given = (giftRows ?? []).reduce((s, r) => s + (r.amount_cents ?? 0), 0);
     const remaining = committed - given;
@@ -2602,11 +2646,11 @@ async function runBankSync() {
     // P1-C1 (Nov 8, 2026): name the failed connection(s) — a bare
     // 'plaid sync failed' never said which bank, or that a failed
     // cursor persist would make every later sync a full pull.
-    const failedNames = Array.isArray(out.failed_institutions) ? out.failed_institutions.filter(Boolean) : [];
-    const text = out.error
-      ? `Sync failed: ${out.error}${failedNames.length ? ` — ${failedNames.join(', ')}` : ''}`
-      : `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).${(out.duplicate_removed ?? []).length ? ` A duplicate bank connection was removed because those accounts are already connected on another connection. Past transactions stay.` : ''}`;
-    showToast(text, !!out.error);
+    // NEW-R4-C1 (Nov 9, 2026): the toast text is built by
+    // bankSyncToast, which also reads the API's stale flag and
+    // skipped_by_reason where the deployed function returns them.
+    const { text, isError } = bankSyncToast(out);
+    showToast(text, isError);
     // No localStorage sync/connection state: refresh() re-reads last_sync_at
     // from plaid_items, which is the server truth.
     return out;
@@ -2675,9 +2719,56 @@ $('autoSyncSwitch')?.addEventListener('click', async () => {
 // is sent (and none would be trusted). A successful start redirects
 // the whole page to Google; after consent the callback page links back
 // to the app. This never touches the Apps Script email path.
+// NEW-R4-C2 (Nov 9, 2026): a multi-household admin gets a 409 from
+// gmail-oauth-start when no household_id is named. The old handler
+// showed that text with no way forward in-app. Now the client offers
+// the caller's own admin households in a sheet and retries with the
+// chosen household_id. The picker reads only the caller's own
+// membership rows (a member can read their own rows) plus household
+// names; a failed list read falls back to the plain 409 message, so
+// nothing is hidden and a single-household admin never sees a picker.
+async function pickAdminHousehold() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data: memberships, error: mErr } = await supabase.from('household_members')
+      .select('household_id').eq('user_id', user.id).eq('role', 'admin');
+    if (mErr) throw mErr;
+    const options = adminHouseholdOptions(memberships, null, household?.household_id);
+    if (options.length < 2) return null;
+    // Names are a label-only nicety: a failed name read still offers
+    // the choice (rows read 'Household'), never blocks the retry.
+    try {
+      const { data: rows } = await supabase.from('households').select('id, name').in('id', options.map((o) => o.value));
+      const named = adminHouseholdOptions(memberships, rows ?? [], household?.household_id);
+      options.splice(0, options.length, ...named);
+    } catch (e) { console.warn('household name read failed:', e); }
+    const picked = await showSheet({
+      title: 'Choose Household',
+      message: 'You administer more than one household. Choose which household this email connection belongs to.',
+      inputLabel: 'Household',
+      inputOptions: options,
+      confirmLabel: 'Continue',
+      cancelLabel: 'Cancel',
+    });
+    return typeof picked === 'string' && options.some((o) => o.value === picked) ? picked : null;
+  } catch (e) {
+    console.warn('household picker failed:', e);
+    return null;
+  }
+}
+
 $('connectEmailBtn')?.addEventListener('click', async () => {
   setResultMsg('emailMsg', 'Getting a secure email connection…', false);
-  const out = await callFn('gmail-oauth-start', {});
+  let out = await callFn('gmail-oauth-start', {});
+  if (out.status === 409) {
+    const picked = await pickAdminHousehold();
+    if (!picked) {
+      setResultMsg('emailMsg', `Could not start the email connection: ${out.error ?? 'multiple admin households'}. You administer more than one household — pick which household to connect this email to.`, true);
+      return;
+    }
+    out = await callFn('gmail-oauth-start', { household_id: picked });
+  }
   if (!out.auth_url) {
     setResultMsg('emailMsg', `Could not start the email connection: ${out.error ?? 'unknown error'}. If it says "not configured," the email connection is not set up on the server yet.`, true);
     return;
@@ -2692,14 +2783,11 @@ $('pollEmailBtn')?.addEventListener('click', async () => {
   // in errors[] with NO top-level error — the old code read only
   // out.error and reported false success ("Email checked: 0 added…")
   // after the token died. Surface the first per-connection failure.
-  const firstErr = Array.isArray(out.errors) && out.errors.length ? out.errors[0] : null;
-  const failed = out.error || firstErr;
-  const failText = firstErr && /reauthorization/i.test(firstErr.error || '')
-    ? 'access expired — reconnect your email.'
-    : (firstErr?.error ?? out.error);
-  setResultMsg('emailMsg', failed
-    ? `Email check failed: ${failText}`
-    : `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`, !!failed);
+  // NEW-R4-C1 (Nov 9, 2026): the message is built by
+  // emailCheckMessage, which also reads the API's stale flag where
+  // the deployed function returns it.
+  const { text, isError } = emailCheckMessage(out);
+  setResultMsg('emailMsg', text, isError);
   await refresh();
 });
 
@@ -3668,7 +3756,7 @@ async function doTxDelete(row) {
   showToast('Moved to trash bin.');
   await refresh();
 }
-function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null, actions = null, kind = null }) {
+function showSheet({ title, message, rows = null, disclosure = null, inputLabel, inputValue = '', inputType = 'text', inputOptions = null, confirmLabel = 'OK', cancelLabel = null, extraAction = null, kind = null }) {
   // SECURITY: EVERY interpolated value is escaped with esc() — title,
   // message, input label/value, option labels/values, and button labels.
   // No raw caller value reaches innerHTML through any showSheet path.
@@ -3704,10 +3792,6 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     // three-button sheet layout exists here and the pale treatment
     // never appears in a sheet at all.
     const extraHtml = extraAction ? `<button class="btn btn-primary" type="button" id="sheetExtra">${esc(extraAction.label)}</button>` : '';
-    // Task 7: Extra Fund sheet actions (Add / Use / Ask) — each keeps
-    // its own treatment (primary / pale / grey) and returns its
-    // result; Close is quiet so it cannot read as a money action.
-    const actionsHtml = actions ? actions.map((a) => `<button class="${esc(a.btnClass)}" type="button" data-sheet-action="${esc(a.result)}">${esc(a.label)}</button>`).join('') : '';
     // Design item 4 (owner, Nov 5): failure dialogs use the soft-red
     // error style (class sheet-error), success/info sheets stay white.
     overlay.innerHTML = `<div class="sheet${kind === 'error' ? ' sheet-error' : ''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><span class="sheet-handle" aria-hidden="true"></span>
@@ -3715,8 +3799,7 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
       ${inputHtml}
       <div class="sheet-btns">
         ${extraHtml}
-        ${actionsHtml}
-        <button class="btn${actions ? ' btn-quiet' : extraAction ? ' btn-tertiary' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
+        <button class="btn${extraAction ? ' btn-tertiary' : ' btn-primary'}" type="button" id="sheetConfirm">${esc(confirmLabel)}</button>
       </div></div>`;
     document.body.appendChild(overlay);
     syncScrollLock();
@@ -3774,7 +3857,6 @@ function showSheet({ title, message, rows = null, disclosure = null, inputLabel,
     overlay.addEventListener('click', (e) => { if (e.target === overlay) done(inputLabel ? null : false); });
     overlay.querySelector('#sheetCancelTop')?.addEventListener('click', () => done(inputLabel ? null : false));
     overlay.querySelector('#sheetExtra')?.addEventListener('click', () => done(extraAction.result ?? 'extra'));
-    overlay.querySelectorAll('[data-sheet-action]').forEach((b) => b.addEventListener('click', () => done(b.dataset.sheetAction)));
     overlay.querySelector('#sheetConfirm').addEventListener('click', () => {
       done(inputLabel ? document.getElementById('sheetInput').value : true);
     });

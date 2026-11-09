@@ -74,4 +74,4 @@ test('Funds Charity panel heading is untouched (already just Charity)', () => {
 
 test('version pins: styles v52, live.js v62 after the PR #32 merge', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=63/);});
+  assert.match(html, /live\.js\?v=64/);});

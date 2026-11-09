@@ -9,6 +9,17 @@
 -- across six rows) that were wrongly counted in a -$2,370.24
 -- purchases total. Card payments are NOT refunds.
 --
+-- NEVER RUN §1 AGAIN (R4, Nov 9, 2026 — same treatment as
+-- supabase/create-household-name.sql, which is marked SUPERSEDED,
+-- NEVER APPLY, and as r13-charity.sql §1). §1 drops the live
+-- transactions kind constraint and re-adds a 5-kind list (missing
+-- 'transfer', 'charity', and 'income'): running it today would fail
+-- outright if any transfer/charity/income rows exist, or silently
+-- narrow the live 8-kind constraint. The live 8-kind constraint is
+-- owned by supabase/refund-classification-income-kind.sql (applied
+-- live Nov 9, 2026, step 3). §1 ran once, long ago, when the live
+-- list was these 5 kinds; it must never re-run.
+--
 -- SECTION 1 (required): extend the transactions kind check constraint
 -- to include 'payment' and 'cashback'. The original schema.sql check
 -- constraint is anonymous, so its generated name is looked up from

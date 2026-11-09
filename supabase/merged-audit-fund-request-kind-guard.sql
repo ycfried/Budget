@@ -1,8 +1,13 @@
 -- merged-audit-fund-request-kind-guard.sql — Merged audit A16
 -- CANONICAL DEFINITION of validate_fund_request_txn() (P1-B6, Nov 8,
--- 2026). PREPARED FOR OWNER-APPROVED APPLY — NOT APPLIED BY THIS
--- BRANCH. Do NOT apply from a merge: the parent applies it via the
--- approved browser SQL run after the owner has seen this exact file.
+-- 2026). PREPARED FOR OWNER-APPROVED APPLY — but this file itself
+-- was NEVER APPLIED LIVE, and must NOT be applied without a fresh
+-- re-probe: the live trigger body already CONTAINS the kind guard
+-- (read-only probe, Nov 8, 2026, R3 §3 P1-B6), so the guard reached
+-- live by an earlier path and this file's "not applied yet" framing
+-- above the LIVE STATE paragraph is stale (R4-BE-2, Nov 9, 2026).
+-- Do NOT apply from a merge: the parent applies it via the approved
+-- browser SQL run only after a probe shows the guard absent.
 -- LIVE STATE (Nov 8, 2026, read-only probe, R3 §3 P1-B6): the live
 -- trigger body CONTAINS the kind guard — the guard reached live
 -- earlier, so the Nov 4 probe that found it ABSENT is superseded

@@ -25,7 +25,7 @@ const mockup = readFileSync(new URL('../card-standardization-mockup.html', impor
 
 test('pins: styles v52, live.js v62, matching live.html', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=63/);});// ---- A1: merged kind constraint (file only, not applied) ----
+  assert.match(html, /live\.js\?v=64/);});// ---- A1: merged kind constraint (file only, not applied) ----
 // P1-B5 (Nov 8, 2026): the 7-kind file is SUPERSEDED — live runs the
 // 8-kind list (income added Nov 5). The canonical constraint is
 // refund-classification-income-kind.sql; the old file stays only as

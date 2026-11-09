@@ -90,8 +90,14 @@ test('P1-R2: client reads the grant clock, warns before expiry, surfaces poll er
   assert.match(liveJs, /select\('id, provider, email_address, status, last_poll_at, last_error, created_at, connected_at'\)/);
   assert.match(liveJs, /Email access expires about 7 days after connecting — reconnect soon to keep alerts coming\./);
   assert.match(liveJs, /Not checked since /);
-  assert.match(liveJs, /const firstErr = Array\.isArray\(out\.errors\) && out\.errors\.length \? out\.errors\[0\] : null;/);
-  assert.match(liveJs, /access expired — reconnect your email\./);
+  // NEW-R4-C1 (Nov 9, 2026): the first-error read + reauthorization
+  // wording moved from an inline poll-handler block into
+  // emailCheckMessage (filterState.mjs), which the handler calls;
+  // the behaviour is unchanged.
+  const fs = readFileSync(new URL('../filterState.mjs', import.meta.url), 'utf8');
+  assert.match(fs, /const firstErr = Array\.isArray\(out\.errors\) && out\.errors\.length \? out\.errors\[0\] : null;/);
+  assert.match(fs, /access expired — reconnect your email\./);
+  assert.match(liveJs, /const \{ text, isError \} = emailCheckMessage\(out\);/);
   const cb = readFileSync(new URL('../supabase/functions/gmail-oauth-callback/index.ts', import.meta.url), 'utf8');
   assert.match(cb, /connected_at: new Date\(\)\.toISOString\(\)/);
   const mig = readFileSync(new URL('../supabase/gmail-connected-at.sql', import.meta.url), 'utf8');
@@ -364,7 +370,12 @@ test('P1-C1: plaid-sync checks the cursor persist and names failed institutions;
   assert.match(ps, /failed_institutions: failedInstitutions/);
   const live = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
   assert.match(live, /\.gte\('date', '2026-11-01'\)/);
-  assert.match(live, /failedNames\.length \? ` — \$\{failedNames\.join\(', '\)\}` : ''/);
+  // NEW-R4-C1 (Nov 9, 2026): the failed-institution naming moved
+  // from an inline toast into bankSyncToast (filterState.mjs), which
+  // runBankSync calls; the behaviour is unchanged.
+  const fs = readFileSync(new URL('../filterState.mjs', import.meta.url), 'utf8');
+  assert.match(fs, /failedNames\.length \? ` — \$\{failedNames\.join\(', '\)\}` : ''/);
+  assert.match(live, /const \{ text, isError \} = bankSyncToast\(out\);/);
 });
 
 // ---- P1-C2: duplicate guard at connect ----
