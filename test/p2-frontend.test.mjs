@@ -263,3 +263,19 @@ test('NEW-P2-6: service-worker cache-write failure logs instead of swallowing', 
   assert.ok(sw.includes("console.warn('OnBudget service worker cache write failed:'"), 'cache-write failure is logged like the install catch');
   assert.equal(sw.includes('.catch(() => {})'), false, 'no silent empty catch remains in the service worker');
 });
+
+// ---- NEW-P2-7 (R4, Nov 9, 2026): button labels are Title Case platform-wide ----
+// Owner delegated the call Nov 9 ("whatever you chose"): Title Case for
+// all button labels, the same rule already standing for headlines/headers.
+// The five sentence-case labels found by R4 are fixed here; the rule is
+// pinned so a new sentence-case button cannot drift back in.
+test('NEW-P2-7: button labels are Title Case (owner-delegated Nov 9)', () => {
+  for (const label of ['Add Transaction', 'Save Name', 'Save Email', 'Check Email Now', 'Apply Filter']) {
+    assert.ok(html.includes(`>${label}<`), `button label is Title Case: ${label}`);
+  }
+  for (const old of ['>Add transaction<', '>Save name<', '>Save email<', '>Check email now<', '>Apply filter<']) {
+    assert.equal(html.includes(old), false, `no sentence-case button label remains: ${old}`);
+  }
+  assert.match(html, /aria-label="Add Transaction"/);
+  assert.match(html, /aria-label="Check Email Now"/);
+});
