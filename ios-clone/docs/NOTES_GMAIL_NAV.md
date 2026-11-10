@@ -6,17 +6,19 @@ Server diff (prepare only, NOT merged, NOT deployed): branch
 
 ## 1. Gmail — URL scheme registration (app side, DONE)
 
-- `onbudget` is registered in the app target via
-  `INFOPLIST_KEY_CFBundleURLTypes` (CFBundleURLName
-  `com.onbudget.app`, CFBundleURLSchemes `(onbudget)`), in BOTH the
-  Debug and Release build configurations of `project.pbxproj`. The
-  project uses a generated Info.plist, so this is the only place
-  the scheme can be registered — there is no Info.plist file.
+- `onbudget` is registered in `ios-clone/OnBudget/Info.plist`
+  (CFBundleURLTypes: CFBundleURLName `com.onbudget.app`,
+  CFBundleURLSchemes `(onbudget)`), the app target's real Info.plist
+  file (INFOPLIST_FILE, GENERATE_INFOPLIST_FILE = NO). The scheme
+  was previously set via `INFOPLIST_KEY_CFBundleURLTypes` on the
+  generated plist, but Xcode silently dropped that
+  array-of-dictionaries value from the built plist (CI run
+  42730528742), so the file is now the only registration place.
 - One registration covers both deep links:
   `onbudget://gmail-callback` and `onbudget://reset-password`.
 - `ios-clone/scripts/validate_project.py` now asserts the scheme is
-  present in every app-target config (a Debug-only registration
-  would silently break Release deep links).
+  present in the app's Info.plist file and that every app-target
+  config points at that file.
 
 ## 2. Gmail — in-app handling (DONE)
 

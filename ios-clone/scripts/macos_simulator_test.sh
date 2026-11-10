@@ -107,7 +107,13 @@ import plistlib
 import sys
 info = plistlib.load(open(sys.argv[1], 'rb'))
 schemes = [s for t in info.get('CFBundleURLTypes', []) for s in t.get('CFBundleURLSchemes', [])]
-assert 'onbudget' in schemes, f"onbudget scheme missing from built Info.plist: {info.get('CFBundleURLTypes')!r}"
+if 'onbudget' not in schemes:
+    # Dump what the built plist actually contains before failing, so
+    # the next failure shows the real state instead of just None.
+    print(f"FAIL: onbudget scheme missing from built Info.plist; top-level keys: {sorted(info)}", file=sys.stderr)
+    print(f"CFBundleURLTypes value: {info.get('CFBundleURLTypes')!r}", file=sys.stderr)
+    print(f"Full built Info.plist: {info!r}", file=sys.stderr)
+    raise SystemExit(1)
 print(f"Built Info.plist URL schemes: {schemes}")
 PY
 
