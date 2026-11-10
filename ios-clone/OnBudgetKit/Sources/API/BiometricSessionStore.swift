@@ -241,7 +241,6 @@ public final class BiometricSessionStore: SessionStore {
 
     public func load() -> AuthSession? {
         guard let data = try? keychain.load(authenticatedContext: nil) else { return nil }
-        guard let data else { return nil }
         return try? JSONDecoder().decode(AuthSession.self, from: data)
     }
 
