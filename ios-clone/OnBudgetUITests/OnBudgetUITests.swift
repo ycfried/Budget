@@ -16,6 +16,9 @@
 //   4. Assert Home renders (Weekly Budget card), Transactions loads
 //      rows (the test household holds ~1000 rows — assert non-empty,
 //      not an exact count), and Funds renders (Extra Fund + Charity).
+//   `testPastWeeksAndActivitySubpages` reuses the same preamble
+//   (steps 1–5) and proves the Transactions "Past Weeks" / "Activity"
+//   links push their subpages and Back returns to the list.
 //
 // Each CI run creates exactly one fresh synthetic test member in the
 // test household; that is the accepted cost of a live proof, the same
@@ -42,6 +45,92 @@ final class OnBudgetUITests: XCTestCase {
     }
 
     func testSignUpJoinAndBrowse() throws {
+        signUpAndJoinTestHousehold()
+
+        // -- 6. Transactions loads rows ----------------------------------
+        tapTab(identifier: "tab.transactions", label: "Transactions")
+        let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
+        XCTAssertTrue(
+            firstRow.waitForExistence(timeout: 120),
+            "Transactions did not load any rows within 120s (test household should hold ~1000 rows)"
+        )
+        let rowCount = app.buttons.matching(identifier: "transaction.row").count
+        XCTAssertGreaterThan(rowCount, 0, "Transactions list is empty")
+        attachScreenshot(named: "05-transactions")
+
+        // -- 7. Funds renders --------------------------------------------
+        tapTab(identifier: "tab.funds", label: "Funds")
+        XCTAssertTrue(
+            app.staticTexts["Extra Fund"].waitForExistence(timeout: 90),
+            "Funds did not render (no Extra Fund card)"
+        )
+        XCTAssertTrue(
+            app.staticTexts["Charity"].waitForExistence(timeout: 30),
+            "Funds did not render (no Charity card)"
+        )
+        attachScreenshot(named: "06-funds")
+    }
+
+    /// Past Weeks / Activity (Nov 9, 2026): the Transactions page
+    /// links push PastWeeksView / ActivityView as subpages in the
+    /// Transactions NavigationStack — the native equivalent of the
+    /// web's full pages. The explainer line under each heading is
+    /// the assertion (it is unique to the subpage; the title text
+    /// alone could also match the link's label).
+    func testPastWeeksAndActivitySubpages() throws {
+        signUpAndJoinTestHousehold()
+
+        tapTab(identifier: "tab.transactions", label: "Transactions")
+        let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
+        XCTAssertTrue(
+            firstRow.waitForExistence(timeout: 120),
+            "Transactions did not load any rows within 120s"
+        )
+
+        // -- Past Weeks pushes -------------------------------------------
+        let pastWeeksLink = app.buttons["Past Weeks"]
+        XCTAssertTrue(
+            pastWeeksLink.waitForExistence(timeout: 15),
+            "Past Weeks link missing on Transactions (shell did not supply the handler)"
+        )
+        pastWeeksLink.tap()
+        XCTAssertTrue(
+            app.staticTexts["Closed weeks, read-only. Tap a week to see its summary and its transactions."]
+                .waitForExistence(timeout: 60),
+            "Past Weeks subpage did not open"
+        )
+        attachScreenshot(named: "07-past-weeks")
+
+        // -- Back returns to the Transactions list -----------------------
+        app.buttons["Back"].tap()
+        XCTAssertTrue(
+            app.buttons.matching(identifier: "transaction.row").firstMatch
+                .waitForExistence(timeout: 30),
+            "Back from Past Weeks did not return to the Transactions list"
+        )
+
+        // -- Activity pushes ---------------------------------------------
+        let activityLink = app.buttons["Activity"]
+        XCTAssertTrue(
+            activityLink.waitForExistence(timeout: 15),
+            "Activity link missing on Transactions (shell did not supply the handler)"
+        )
+        activityLink.tap()
+        XCTAssertTrue(
+            app.staticTexts["Who did what, and when — not the transaction list."]
+                .waitForExistence(timeout: 60),
+            "Activity subpage did not open"
+        )
+        attachScreenshot(named: "08-activity")
+    }
+
+    // MARK: - Shared preamble
+
+    /// Steps 1–5 of the milestone proof: launch → auth screen →
+    /// sign up a fresh account → name step → join Proof Household 2
+    /// as a member → Home renders. Shared by both tests; each test
+    /// method gets its own fresh launch (and its own fresh account).
+    private func signUpAndJoinTestHousehold() {
         // -- 1. Auth screen renders -------------------------------------
         let emailField = app.textFields["auth.email"]
         XCTAssertTrue(
@@ -107,29 +196,6 @@ final class OnBudgetUITests: XCTestCase {
             "Tab bar missing on Home"
         )
         attachScreenshot(named: "04-home")
-
-        // -- 6. Transactions loads rows ----------------------------------
-        tapTab(identifier: "tab.transactions", label: "Transactions")
-        let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
-        XCTAssertTrue(
-            firstRow.waitForExistence(timeout: 120),
-            "Transactions did not load any rows within 120s (test household should hold ~1000 rows)"
-        )
-        let rowCount = app.buttons.matching(identifier: "transaction.row").count
-        XCTAssertGreaterThan(rowCount, 0, "Transactions list is empty")
-        attachScreenshot(named: "05-transactions")
-
-        // -- 7. Funds renders --------------------------------------------
-        tapTab(identifier: "tab.funds", label: "Funds")
-        XCTAssertTrue(
-            app.staticTexts["Extra Fund"].waitForExistence(timeout: 90),
-            "Funds did not render (no Extra Fund card)"
-        )
-        XCTAssertTrue(
-            app.staticTexts["Charity"].waitForExistence(timeout: 30),
-            "Funds did not render (no Charity card)"
-        )
-        attachScreenshot(named: "06-funds")
     }
 
     // MARK: - Helpers

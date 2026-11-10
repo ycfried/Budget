@@ -99,17 +99,28 @@ def main():
                 f"{name}: no unapproved entitlements"
             )
         if name == "OnBudget":
-            settings = objects[
-                objects[target["buildConfigurationList"]][
+            app_configs = [
+                objects[c]["buildSettings"]
+                for c in objects[target["buildConfigurationList"]][
                     "buildConfigurations"
-                ][0]
-            ]["buildSettings"]
+                ]
+            ]
+            settings = app_configs[0]
             assert settings["GENERATE_INFOPLIST_FILE"] == "YES", (
                 "App target uses a generated Info.plist"
             )
             assert settings["ASSETCATALOG_COMPILER_APPICON_NAME"] == "AppIcon", (
                 "App target must name the AppIcon asset"
             )
+            # The onbudget URL scheme (gmail-callback + reset-password
+            # deep links) must be registered in EVERY app config —
+            # a Debug-only registration would silently break the
+            # Release deep links.
+            for app_settings in app_configs:
+                assert "onbudget" in url_schemes(app_settings), (
+                    "App target must register the onbudget URL scheme "
+                    "in every config (INFOPLIST_KEY_CFBundleURLTypes)"
+                )
         if name == "OnBudgetUITests":
             assert target["productType"] == (
                 "com.apple.product-type.bundle.ui-testing"
@@ -126,6 +137,16 @@ def main():
     print("validate_project.py: project graph OK "
           "(OnBudget + OnBudgetTests + OnBudgetUITests, OnBudgetKit local package, no signing)")
     return 0
+
+
+def url_schemes(settings):
+    """All CFBundleURLSchemes from the INFOPLIST_KEY_CFBundleURLTypes
+    build setting (a list of {CFBundleURLSchemes: [...]} dicts)."""
+    schemes = []
+    for url_type in settings.get("INFOPLIST_KEY_CFBundleURLTypes", []):
+        if isinstance(url_type, dict):
+            schemes.extend(url_type.get("CFBundleURLSchemes", []))
+    return schemes
 
 
 if __name__ == "__main__":
