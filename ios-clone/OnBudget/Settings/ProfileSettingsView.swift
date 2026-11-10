@@ -32,6 +32,21 @@ final class ProfileSettingsViewModel: ObservableObject {
     @Published var showNewPassword = false
     @Published var passwordAlert: PasswordAlert?
 
+    /// Face ID unlock (native v1, opt-in): shown only when the
+    /// device can evaluate biometrics. Hidden entirely on devices
+    /// without enrolled biometrics — including the simulator, so the
+    /// UI tests' Sign Out button never moves.
+    @Published var faceIDAvailable = false
+    @Published var faceIDEnabled = false
+
+    /// "Unlock with Face ID" / "Unlock with Touch ID", from the
+    /// enrolled biometry kind.
+    var faceIDLabel: String { "Unlock with \(faceIDBiometryName)" }
+    /// "Face ID" / "Touch ID", for the explainer line.
+    var faceIDBiometryName: String {
+        biometricUnlock.biometryKind == .touchID ? "Touch ID" : "Face ID"
+    }
+
     enum PasswordAlert: Identifiable {
         case tooShort
         case changed
@@ -48,12 +63,58 @@ final class ProfileSettingsViewModel: ObservableObject {
 
     private let context: SettingsContext
     private let toast: ToastState
+    private let biometricUnlock: BiometricUnlock
 
-    init(context: SettingsContext, toast: ToastState) {
+    init(context: SettingsContext, toast: ToastState, biometricUnlock: BiometricUnlock = BiometricUnlock()) {
         self.context = context
         self.toast = toast
+        self.biometricUnlock = biometricUnlock
         self.name = context.displayName ?? ""
         self.email = context.email ?? ""
+        refreshFaceIDState()
+    }
+
+    // MARK: - Face ID unlock
+
+    /// Re-read the toggle state from the Keychain (the source of
+    /// truth) and whether biometrics can evaluate. Non-prompting.
+    func refreshFaceIDState() {
+        faceIDAvailable = biometricUnlock.canEvaluate
+        faceIDEnabled = biometricUnlock.isEnabled
+    }
+
+    /// Toggle handler. Turning ON evaluates Face ID once, then
+    /// moves the live session into the biometric Keychain store;
+    /// turning OFF deletes the Keychain item and swaps the client
+    /// back to the UserDefaults store (no prompt needed to turn it
+    /// off). A failed or cancelled opt-in leaves the toggle off.
+    func setFaceID(_ enabled: Bool) async {
+        if enabled {
+            do {
+                try await biometricUnlock.enable(client: context.client)
+                toast.show("Face ID unlock is on. You can unlock with Face ID instead of typing your password.")
+            } catch let error as BiometricUnlockError {
+                if error == .cancelled {
+                    // Silent: the user backed out of the prompt.
+                } else {
+                    toast.showError(error.userMessage)
+                }
+            } catch {
+                toast.showError("Could not turn on Face ID unlock. Try again.")
+            }
+        } else {
+            // Silent when nothing was enabled: flipping the toggle
+            // back off after a failed opt-in re-fires this handler,
+            // and it must not overwrite the real error toast with an
+            // "is off" message.
+            guard biometricUnlock.isEnabled else {
+                refreshFaceIDState()
+                return
+            }
+            biometricUnlock.disable(client: context.client)
+            toast.show("Face ID unlock is off. Your saved unlock was removed.")
+        }
+        refreshFaceIDState()
     }
 
     // MARK: - Save Name
@@ -164,6 +225,23 @@ struct ProfileSettingsView: View {
                 viewModel.showChangePassword = true
             }
             .buttonStyle(TertiaryButtonStyle())
+
+            // Face ID unlock (native v1, opt-in, default off): hidden
+            // entirely when the device cannot evaluate biometrics
+            // (no Face ID/Touch ID enrolled, including the simulator),
+            // so the Sign Out button below never moves for the UI
+            // tests. Toggling on evaluates Face ID once, then stores
+            // the session behind biometrics; toggling off deletes it.
+            if viewModel.faceIDAvailable {
+                Toggle(viewModel.faceIDLabel, isOn: $viewModel.faceIDEnabled)
+                    .accessibilityIdentifier("settings.faceIDToggle")
+                    .onChange(of: viewModel.faceIDEnabled) { _, newValue in
+                        Task { await viewModel.setFaceID(newValue) }
+                    }
+                Text("Unlock OnBudget with \(viewModel.faceIDBiometryName) instead of typing your password.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
 
             Button(viewModel.isSigningOut ? "Signing Out…" : "Sign Out") {
                 Task { await viewModel.signOut() }
