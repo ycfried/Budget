@@ -163,8 +163,7 @@ final class OnBudgetUITests: XCTestCase {
             "Household screen did not appear after sign-up (account creation or boot failed)"
         )
         attachScreenshot(named: "03-household-join")
-        inviteField.tap()
-        inviteField.typeText(testInviteCode)
+        tapAndTypeText(inviteField, testInviteCode, fieldName: "household.inviteCode")
         dismissKeyboardIfPresent(focusedField: inviteField)
         app.buttons["household.joinAsMember"].tap()
 
@@ -199,8 +198,7 @@ final class OnBudgetUITests: XCTestCase {
             nameField.waitForExistence(timeout: 30),
             "Household name panel did not appear after Create Household"
         )
-        nameField.tap()
-        nameField.typeText("Plaid Test")
+        tapAndTypeText(nameField, "Plaid Test", fieldName: "household.nameField")
         dismissKeyboardIfPresent(focusedField: nameField)
         app.buttons["household.createConfirm"].tap()
         XCTAssertTrue(
@@ -291,15 +289,13 @@ final class OnBudgetUITests: XCTestCase {
         // >= 8 chars (AuthValidation.createAccountError); mixed case +
         // digits + symbol so it also satisfies any server-side rule.
         let password = "Uitests-\(runId)-2026!"
-        emailField.tap()
-        emailField.typeText(email)
+        tapAndTypeText(emailField, email, fieldName: "auth.email")
         let passwordField = app.secureTextFields["auth.password"]
         XCTAssertTrue(
             passwordField.waitForExistence(timeout: 10),
             "Password field missing on the auth screen"
         )
-        passwordField.tap()
-        passwordField.typeText(password)
+        tapAndTypeText(passwordField, password, fieldName: "auth.password")
         dismissKeyboardIfPresent(focusedField: passwordField)
         attachScreenshot(named: "02-auth-filled")
 
@@ -311,8 +307,7 @@ final class OnBudgetUITests: XCTestCase {
             nameField.waitForExistence(timeout: 60),
             "Name step did not appear after Create Account (sign-up may have failed)"
         )
-        nameField.tap()
-        nameField.typeText("UI Test")
+        tapAndTypeText(nameField, "UI Test", fieldName: "auth.name")
         dismissKeyboardIfPresent(focusedField: nameField)
         app.buttons["auth.createAccountConfirm"].tap()
     }
@@ -342,8 +337,7 @@ final class OnBudgetUITests: XCTestCase {
         guard searchField.waitForExistence(timeout: 60) else {
             return .noSearchField
         }
-        searchField.tap()
-        searchField.typeText("First Platypus Bank")
+        tapAndTypeText(searchField, "First Platypus Bank", fieldName: "plaid.search")
         let institution = app.webViews.buttons.matching(
             NSPredicate(format: "label CONTAINS[c] 'Platypus'")
         ).firstMatch
@@ -365,10 +359,8 @@ final class OnBudgetUITests: XCTestCase {
         }
         let usernameField = app.webViews.textFields.firstMatch
         let passwordField = app.webViews.secureTextFields.firstMatch
-        usernameField.tap()
-        usernameField.typeText("user_good")
-        passwordField.tap()
-        passwordField.typeText("pass_good")
+        tapAndTypeText(usernameField, "user_good", fieldName: "plaid.username")
+        tapAndTypeText(passwordField, "pass_good", fieldName: "plaid.password")
         dismissKeyboardIfPresent(focusedField: passwordField)
         attachScreenshot(named: "plaid-06-credentials")
 
@@ -439,18 +431,74 @@ final class OnBudgetUITests: XCTestCase {
         byLabel.tap()
     }
 
+    /// Tap a field and type into it only once it actually holds
+    /// keyboard focus. A bare tap() + typeText() is racy: the tap can
+    /// land while the field is still becoming first responder, and
+    /// typeText then fails with "Neither element nor any descendant
+    /// has keyboard focus", burning ~60s on XCTest's internal event
+    /// retry before failing. So: tap, poll hasKeyboardFocus, retry
+    /// the tap, and only then type. Fails fast with a clear message
+    /// when focus never arrives. Focus (first-responder status) is
+    /// what matters here, not whether the software keyboard is
+    /// visible — the same code works when the simulator's hardware
+    /// keyboard is connected and the software keyboard never shows.
+    private func tapAndTypeText(_ field: XCUIElement, _ text: String, fieldName: String) {
+        for _ in 1...3 {
+            field.tap()
+            if waitForKeyboardFocus(field, timeout: 5) {
+                field.typeText(text)
+                return
+            }
+        }
+        XCTFail("Field \(fieldName) never gained keyboard focus after 3 taps — cannot type")
+    }
+
+    /// Polls `hasKeyboardFocus` until true or `timeout` elapses.
+    private func waitForKeyboardFocus(_ field: XCUIElement, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if field.hasKeyboardFocus { return true }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        return field.hasKeyboardFocus
+    }
+
     /// Tap Return if the software keyboard is up, so it cannot cover
     /// the button the test needs next. No-op when no keyboard shows.
     /// If Return did not dismiss it, typing a newline into the
     /// focused field submits it, which dismisses the keyboard.
+    ///
+    /// The newline fallback MUST only fire while the field still
+    /// holds keyboard focus: tapping Return usually resigns the
+    /// field, so by the time the keyboard is animating away the
+    /// field is already unfocused — and typing into it fails event
+    /// synthesis ("Neither element nor any descendant has keyboard
+    /// focus"). That unguarded typeText("\n") is what killed all
+    /// three UI tests in CI run 42733065258: the name field had
+    /// already been typed into successfully ("UI Test"), then
+    /// Return resigned it and the fallback typed into a field
+    /// without focus.
     private func dismissKeyboardIfPresent(focusedField: XCUIElement? = nil) {
         guard app.keyboards.element.exists else { return }
+        var attemptedDismiss = false
         let returnKey = app.keyboards.buttons["Return"]
         if returnKey.exists {
             returnKey.tap()
+            attemptedDismiss = true
         }
-        if app.keyboards.element.exists, let focusedField {
+        if let focusedField,
+           focusedField.hasKeyboardFocus,
+           app.keyboards.element.exists {
             focusedField.typeText("\n")
+            attemptedDismiss = true
+        }
+        guard attemptedDismiss else { return }
+        // Give the keyboard a moment to finish dismissing before
+        // the caller taps the next button; a bounded wait for the
+        // condition, not a fixed sleep.
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline, app.keyboards.element.exists {
+            Thread.sleep(forTimeInterval: 0.2)
         }
     }
 
