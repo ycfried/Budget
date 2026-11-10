@@ -229,6 +229,8 @@ final class BiometricToggleTests: XCTestCase {
             XCTFail("enable with no session must throw")
         } catch let error as BiometricUnlockError {
             XCTAssertEqual(error, .noSession)
+        } catch {
+            XCTFail("unexpected error: \(error)")
         }
         XCTAssertFalse(authenticator.evaluateCalled, "must not prompt Face ID with no session to protect")
         XCTAssertNil(keychain.stored)
@@ -248,6 +250,8 @@ final class BiometricToggleTests: XCTestCase {
             XCTFail("cancelled opt-in must throw")
         } catch let error as BiometricUnlockError {
             XCTAssertEqual(error, .cancelled)
+        } catch {
+            XCTFail("unexpected error: \(error)")
         }
         XCTAssertNil(keychain.stored, "a cancelled opt-in must store nothing")
         XCTAssertFalse(unlock.isEnabled)
@@ -268,6 +272,8 @@ final class BiometricToggleTests: XCTestCase {
             XCTFail("opt-in without biometrics must throw")
         } catch let error as BiometricUnlockError {
             XCTAssertEqual(error, .notEnrolled)
+        } catch {
+            XCTFail("unexpected error: \(error)")
         }
         XCTAssertFalse(authenticator.evaluateCalled, "must not prompt when biometrics cannot evaluate")
         XCTAssertNil(keychain.stored)
@@ -322,6 +328,8 @@ final class BiometricUnlockFlowTests: XCTestCase {
             XCTFail("unlock with nothing stored must throw")
         } catch let error as BiometricUnlockError {
             XCTAssertEqual(error, .noStoredSession)
+        } catch {
+            XCTFail("unexpected error: \(error)")
         }
         XCTAssertFalse(
             authenticator.evaluateCalled,
@@ -341,6 +349,8 @@ final class BiometricUnlockFlowTests: XCTestCase {
             XCTFail("unlock with changed biometrics must throw")
         } catch let error as BiometricUnlockError {
             XCTAssertEqual(error, .biometricsChanged)
+        } catch {
+            XCTFail("unexpected error: \(error)")
         }
         XCTAssertNil(keychain.stored, "the invalidated item must be deleted")
         XCTAssertFalse(unlock.isEnabled)
@@ -370,6 +380,8 @@ final class BiometricUnlockFlowTests: XCTestCase {
             XCTFail("unlock with a dead refresh token must throw")
         } catch let error as BiometricUnlockError {
             XCTAssertEqual(error, .sessionExpired)
+        } catch {
+            XCTFail("unexpected error: \(error)")
         }
         XCTAssertNil(keychain.stored, "the dead session must be dropped from the Keychain")
         XCTAssertFalse(unlock.isEnabled)
@@ -390,6 +402,8 @@ final class BiometricUnlockFlowTests: XCTestCase {
             XCTFail("unlock with biometrics removed must throw")
         } catch let error as BiometricUnlockError {
             XCTAssertEqual(error, .notEnrolled)
+        } catch {
+            XCTFail("unexpected error: \(error)")
         }
         XCTAssertFalse(authenticator.evaluateCalled, "must not prompt when biometrics cannot evaluate")
         XCTAssertNil(keychain.stored, "the now-unreadable item must be deleted")
@@ -408,6 +422,8 @@ final class BiometricUnlockFlowTests: XCTestCase {
             XCTFail("cancelled unlock must throw")
         } catch let error as BiometricUnlockError {
             XCTAssertEqual(error, .cancelled)
+        } catch {
+            XCTFail("unexpected error: \(error)")
         }
         XCTAssertNotNil(keychain.stored, "a cancelled unlock must keep the item so the user can retry")
         XCTAssertTrue(unlock.isEnabled)
