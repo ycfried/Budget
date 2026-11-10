@@ -68,3 +68,10 @@ branch.
   `OnBudgetKit/Sources/OnBudgetKit/Configuration.swift` are client keys
   designed to ship (same values as web `config.js`). The service-role
   key must NEVER appear here.
+
+## Simulator milestone (Nov 10, 2026)
+
+- **Run 42738502867 (02:12 UTC) — FAILURE, but the app now RUNS on the simulator against the live test backend.** TEST BUILD SUCCEEDED; kit tests 118/118; UI tests 1/3. ✅ `testPastWeeksAndActivitySubpages` PASSED (216s): fresh sign-up, joined Proof Household 2, Home rendered, Past Weeks + Activity pushed as subpages. ❌ `testSignUpJoinAndBrowse` and `testPlaidSandboxConnect` both failed in setUp — "Auth screen did not appear: no email field within 60s of launch": the first test's Supabase session persisted across test launches, so the app opened straight into Home. **Fix landed:** setUp signs out any leftover session so every test starts on auth (685726c, merged into ios-clone as d696c91, scaffold 89a8f2f). **Next run 42746242404 queued.**
+- **Screenshots from run 42738502867** (extracted to `~/workspace/ios-clone-run42738502867/shots/`): auth, auth-filled (`ios-clone-uitest-a271501c@example.com`), household join, Home (cards still "Loading…" at capture — data values not yet proven on screen), Past Weeks ("0 shown of 0 total", "No closed weeks yet" — correct for the test household), Activity with REAL backend rows (UI Test joined; $10.15 Extra Fund request for Proof11 Bulk 015; charity mark on Proof1 Pending Market -$12.00). One auth shot shows the iOS "Open in 'OnBudget'?" prompt — the `onbudget` scheme is registered at OS level; which step produced the prompt is unconfirmed (no `simctl` line in the run log).
+- **Still never run:** the Gmail callback check (`simctl openurl onbudget://gmail-callback…` — aborted at exit 65 both times) and the Plaid Link sheet opening (`testPlaidSandboxConnect` never reached its body). Both ride on the next green UI run.
+- **Milestone (a) verdict so far:** PARTIAL — sign-up + Home render + Past Weeks/Activity proven; Transactions + Funds tab loading, the Link sheet, and the Gmail callback check still unproven.
