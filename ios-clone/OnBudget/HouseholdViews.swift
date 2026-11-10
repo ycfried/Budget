@@ -183,6 +183,7 @@ public struct HouseholdNamePanel: View {
             Text("Household Name")
                 .font(.system(size: 14, weight: .bold))
             TextField("Household", text: $householdName)
+                .accessibilityIdentifier("household.nameField")
                 .onChange(of: householdName) { _, newValue in
                     if newValue.count > 80 { householdName = String(newValue.prefix(80)) }
                 }
@@ -195,6 +196,7 @@ public struct HouseholdNamePanel: View {
                 BackButton(action: onBack)
                 Button(busy ? "Creating…" : "Create Household") { Task { await create() } }
                     .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("household.createConfirm")
                     .disabled(busy)
             }
         }

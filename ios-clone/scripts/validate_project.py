@@ -9,8 +9,10 @@ and checks the invariants the scaffold must hold:
 - project configs disable code signing, name no development team,
   and pin the iOS 18.0 deployment target
 - exactly one local Swift package reference, pointing at OnBudgetKit
-- no remote package references, no shell-script build phases,
-  no code-sign entitlements anywhere
+- exactly one remote Swift package reference: Plaid's
+  plaid-link-ios-spm (LinkKit), Up to Next Major Version from 7.0.0,
+  linked to the OnBudget app target only — no other remote packages
+- no shell-script build phases, no code-sign entitlements anywhere
 - the UI test target is a ui-testing bundle whose TEST_TARGET_NAME
   is the app, so `test-without-building` launches the real app
 No network, no Xcode build, no signing.
@@ -74,9 +76,52 @@ def main():
         )
 
     assert not any(
-        o.get("isa") in ("XCRemoteSwiftPackageReference", "PBXShellScriptBuildPhase")
+        o.get("isa") == "PBXShellScriptBuildPhase" for o in objects.values()
+    ), "Shell-script phases are not allowed"
+
+    remote_packages = [
+        o
         for o in objects.values()
-    ), "Remote packages and shell-script phases are not allowed"
+        if o.get("isa") == "XCRemoteSwiftPackageReference"
+    ]
+    assert len(remote_packages) == 1, (
+        f"Expected exactly one remote package (Plaid LinkKit), found {len(remote_packages)}"
+    )
+    remote = remote_packages[0]
+    assert remote["repositoryURL"] == "https://github.com/plaid/plaid-link-ios-spm.git", (
+        f"Remote package must be plaid-link-ios-spm, got {remote.get('repositoryURL')}"
+    )
+    requirement = remote.get("requirement", {})
+    assert requirement.get("kind") == "upToNextMajorVersion", (
+        f"Plaid requirement must be upToNextMajorVersion, got {requirement}"
+    )
+    assert requirement.get("minimumVersion") == "7.0.0", (
+        f"Plaid minimumVersion must be 7.0.0, got {requirement}"
+    )
+    linkkit_deps = [
+        (ref, o)
+        for ref, o in objects.items()
+        if o.get("isa") == "XCSwiftPackageProductDependency"
+        and o.get("productName") == "LinkKit"
+    ]
+    assert len(linkkit_deps) == 1, (
+        f"Expected exactly one LinkKit product dependency, found {len(linkkit_deps)}"
+    )
+    linkkit_ref, linkkit_dep = linkkit_deps[0]
+    remote_ref = next(
+        ref for ref, o in objects.items() if o is remote
+    )
+    assert linkkit_dep["package"] == remote_ref, (
+        "LinkKit must come from the plaid-link-ios-spm package"
+    )
+    app_target = targets["OnBudget"]
+    assert linkkit_ref in app_target.get("packageProductDependencies", []), (
+        "LinkKit must be a dependency of the OnBudget app target"
+    )
+    tests_target = targets["OnBudgetTests"]
+    assert linkkit_ref not in tests_target.get("packageProductDependencies", []), (
+        "LinkKit must NOT be linked into the OnBudgetTests target"
+    )
 
     packages = [
         o
@@ -135,7 +180,8 @@ def main():
             )
 
     print("validate_project.py: project graph OK "
-          "(OnBudget + OnBudgetTests + OnBudgetUITests, OnBudgetKit local package, no signing)")
+          "(OnBudget + OnBudgetTests + OnBudgetUITests, OnBudgetKit local package, "
+          "LinkKit remote package on app target only, no signing)")
     return 0
 
 
