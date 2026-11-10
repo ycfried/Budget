@@ -4,12 +4,15 @@
 Parses ios-clone/OnBudget.xcodeproj/project.pbxproj with plutil (macOS)
 and checks the invariants the scaffold must hold:
 - every 24-hex object reference resolves
-- exactly the two expected targets exist (OnBudget, OnBudgetTests)
+- exactly the three expected targets exist
+  (OnBudget, OnBudgetTests, OnBudgetUITests)
 - project configs disable code signing, name no development team,
   and pin the iOS 18.0 deployment target
 - exactly one local Swift package reference, pointing at OnBudgetKit
 - no remote package references, no shell-script build phases,
   no code-sign entitlements anywhere
+- the UI test target is a ui-testing bundle whose TEST_TARGET_NAME
+  is the app, so `test-without-building` launches the real app
 No network, no Xcode build, no signing.
 """
 import json
@@ -50,7 +53,7 @@ def main():
         for o in objects.values()
         if o.get("isa") == "PBXNativeTarget"
     }
-    assert set(targets) == {"OnBudget", "OnBudgetTests"}, (
+    assert set(targets) == {"OnBudget", "OnBudgetTests", "OnBudgetUITests"}, (
         f"Unexpected targets: {sorted(targets)}"
     )
 
@@ -107,9 +110,21 @@ def main():
             assert settings["ASSETCATALOG_COMPILER_APPICON_NAME"] == "AppIcon", (
                 "App target must name the AppIcon asset"
             )
+        if name == "OnBudgetUITests":
+            assert target["productType"] == (
+                "com.apple.product-type.bundle.ui-testing"
+            ), "UITests must be a ui-testing bundle"
+            settings = objects[
+                objects[target["buildConfigurationList"]][
+                    "buildConfigurations"
+                ][0]
+            ]["buildSettings"]
+            assert settings.get("TEST_TARGET_NAME") == "OnBudget", (
+                "UITests must test the OnBudget app target"
+            )
 
     print("validate_project.py: project graph OK "
-          "(OnBudget + OnBudgetTests, OnBudgetKit local package, no signing)")
+          "(OnBudget + OnBudgetTests + OnBudgetUITests, OnBudgetKit local package, no signing)")
     return 0
 
 

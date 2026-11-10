@@ -124,6 +124,7 @@ public struct AuthView: View {
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .accessibilityIdentifier("auth.email")
                 .padding(12)
                 .background(.white)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
@@ -135,8 +136,10 @@ public struct AuthView: View {
                 Group {
                     if showPassword {
                         TextField("Password", text: $password)
+                            .accessibilityIdentifier("auth.password")
                     } else {
                         SecureField("Password", text: $password)
+                            .accessibilityIdentifier("auth.password")
                     }
                 }
                 .textContentType(.password)
@@ -158,9 +161,11 @@ public struct AuthView: View {
             HStack(spacing: 12) {
                 Button(busy == "signIn" ? "Signing in…" : "Sign In") { Task { await signIn() } }
                     .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("auth.signIn")
                     .disabled(busy != nil)
                 Button("Create Account") { createAccountTapped() }
                     .buttonStyle(TertiaryButtonStyle())
+                    .accessibilityIdentifier("auth.createAccount")
                     .disabled(busy != nil)
             }
 
@@ -279,6 +284,7 @@ public struct NameStepView: View {
                 .font(.system(size: 14, weight: .bold))
             TextField("Name", text: $name)
                 .textContentType(.name)
+                .accessibilityIdentifier("auth.name")
                 .padding(12)
                 .background(.white)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
@@ -288,6 +294,7 @@ public struct NameStepView: View {
                 BackButton(action: onBack)
                 Button(busy ? "Creating account…" : "Create Account") { Task { await createAccount() } }
                     .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("auth.createAccountConfirm")
                     .disabled(busy)
             }
         }

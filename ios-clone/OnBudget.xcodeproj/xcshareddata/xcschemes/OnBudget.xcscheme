@@ -35,6 +35,20 @@
                ReferencedContainer = "container:OnBudget.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "9E9E9E9E9E9E9E9E9E9E9E9E"
+               BuildableName = "OnBudgetUITests.xctest"
+               BlueprintName = "OnBudgetUITests"
+               ReferencedContainer = "container:OnBudget.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -52,6 +66,17 @@
                BlueprintIdentifier = "333333333333333333333333"
                BuildableName = "OnBudgetTests.xctest"
                BlueprintName = "OnBudgetTests"
+               ReferencedContainer = "container:OnBudget.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "9E9E9E9E9E9E9E9E9E9E9E9E"
+               BuildableName = "OnBudgetUITests.xctest"
+               BlueprintName = "OnBudgetUITests"
                ReferencedContainer = "container:OnBudget.xcodeproj">
             </BuildableReference>
          </TestableReference>

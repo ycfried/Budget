@@ -107,3 +107,15 @@ assert summary.get('skippedTests') == 0, 'Skipped tests or unknown result schema
 assert summary.get('passedTests', 0) >= 2, 'No positive pass count'
 print(json.dumps(summary, indent=2))
 PY
+
+# Export the UI-test screenshots/attachments out of the test result
+# bundle so they are visible without opening the xcresult. Best
+# effort only: the whole tests.xcresult is uploaded as the workflow
+# artifact too, so a failed export must not fail the run.
+mkdir -p ios-clone/CloudResults/Attachments
+if xcrun xcresulttool export attachments --path ios-clone/CloudResults/tests.xcresult --output-path ios-clone/CloudResults/Attachments; then
+  echo "Attachments exported to ios-clone/CloudResults/Attachments:"
+  find ios-clone/CloudResults/Attachments -type f | head -50
+else
+  echo "WARNING: xcresulttool export attachments failed; the full tests.xcresult is still uploaded as the artifact." >&2
+fi
