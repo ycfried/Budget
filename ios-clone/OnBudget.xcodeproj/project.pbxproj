@@ -54,13 +54,13 @@
 
 /* Begin PBXContainerItemProxy section */
 		D2D2D2D2D2D2D2D2D2D2D2D2 /* PBXContainerItemProxy */ = {
-		8D8D8D8D8D8D8D8D8D8D8D8D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 111111111111111111111111 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 222222222222222222222222;
 			remoteInfo = OnBudget;
 		};
+		8D8D8D8D8D8D8D8D8D8D8D8D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 111111111111111111111111 /* Project object */;
 			proxyType = 1;

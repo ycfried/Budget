@@ -74,6 +74,21 @@ files brace-balanced, and `validate_project.py` logic reviewed by
 hand. **CI is the only type-check** — the first run of this branch
 is the real verification of the pbxproj/scheme/test code.
 
+## Run history
+
+- **Run 42727052431 (FAILED, 11s)**: `validate_project.py` failed with
+  `Missing PBX reference: 8D8D8D8D8D8D8D8D8D8D8D8D`. Root cause: the
+  `add_uitests_target.py` script inserted the new `PBXContainerItemProxy`
+  object immediately after the opening line of the existing proxy object,
+  nesting it *inside* that object instead of as a sibling — so `plutil`
+  never saw it as a top-level object. Fixed by moving the proxy block
+  after the existing object's closing `};`. Lesson: the local
+  line-regex reference check could not catch nesting — the project is
+  now also checked with a brace-depth scan asserting every object
+  entry sits at depth 2 inside `objects {}`. The upload-artifact step
+  ran on this failed run and warned (correctly) that no result files
+  existed yet.
+
 ## Test-data note
 
 Each CI run creates exactly one fresh synthetic member in Proof
