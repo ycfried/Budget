@@ -133,7 +133,16 @@ public final class AppViewModel: ObservableObject {
     /// scheme is registered, and `GmailOAuthPresenter` reports it.
     /// This records a callback that arrives outside an active
     /// session so it is visible instead of silently dropped.
+    /// Persisted (see `lastGmailCallbackDefaultsKey`): a callback
+    /// delivered to one launch is still visible after the next
+    /// launch, and the CI script can assert it from the app
+    /// container after the tests.
     @Published public var gmailCallbackResult: GmailCallbackResult?
+
+    /// UserDefaults key for the last recorded Gmail callback
+    /// ("connected" / "failed"). Read by the CI script from the
+    /// app's Preferences plist.
+    static let lastGmailCallbackDefaultsKey = "onbudget.lastGmailCallback"
 
     /// Week-close runs once per session, admin only (live.js:724).
     private var weekCloseAttempted = false
@@ -149,6 +158,15 @@ public final class AppViewModel: ObservableObject {
         // previews) is used as-is.
         self.client = client ?? SupabaseClient(store: BiometricUnlock.sessionStoreForLaunch())
         self.biometricUnlock = biometricUnlock
+        // A Gmail callback recorded by an earlier launch (e.g. the
+        // CI script's simctl openurl, delivered to the previous app
+        // instance) is still the last one received: restore it so
+        // Settings → Email Alerts can show it.
+        switch UserDefaults.standard.string(forKey: Self.lastGmailCallbackDefaultsKey) {
+        case "connected": gmailCallbackResult = .connected
+        case "failed": gmailCallbackResult = .failed
+        default: break
+        }
     }
 
     public var isAdmin: Bool { role == .admin }
@@ -342,6 +360,13 @@ public final class AppViewModel: ObservableObject {
     public func handleGmailDeepLink(_ url: URL) -> Bool {
         guard let result = OnBudgetKit.GmailCallback.result(from: url) else { return false }
         gmailCallbackResult = result
+        // Persist the record: the UI-test delivery happens in one
+        // app instance and the CI script asserts it from the app
+        // container after the tests, in a later instance.
+        UserDefaults.standard.set(
+            result == .connected ? "connected" : "failed",
+            forKey: Self.lastGmailCallbackDefaultsKey
+        )
         return true
     }
 

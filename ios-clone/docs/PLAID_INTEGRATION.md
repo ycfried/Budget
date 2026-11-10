@@ -81,6 +81,44 @@ the type-check for this (no Xcode on the Linux VM).
   record how far it got. If the drive completes, the test also
   asserts the "Connected" toast, Sync Transactions finishing
   ("Last synced"), and transaction rows appearing.
+
+## Run 42746242404 diagnosis (Nov 10, 2026) — sheet never visible, test failed on a screenshot
+
+- **What happened:** TEST BUILD SUCCEEDED, kit 118/118,
+  SmokeTests 6/6, UI 2/3. `testPlaidSandboxConnect` failed after
+  687s. The Link webview existed in the AX tree ~2s after tapping
+  Connect, but the `plaid-04-link-open` screenshot still showed
+  Settings ("Connecting…") 8s later — the sheet never became
+  visible. Every existence poll on the webview's descendants then
+  blocked ~60s on a snapshot of the WebContent process, and the
+  recorded failure was `attachScreenshot` itself
+  (`OnBudgetUITests.swift:583`, `app.screenshot()` — "Failed to
+  get matching snapshot ... XCTPerformOnMainRunLoop work timed out
+  after 60.0s"), after the drive had already returned its
+  diagnostic outcome.
+- **What changed (branch `ios-clone-v66/plaid-gmail-fix`):**
+  screenshots go through `XCUIScreen.main.screenshot()` (no AX
+  snapshot, so a wedged webview can no longer fail the test from
+  a screenshot); the drive probes presentation FIRST (Settings
+  still visible 30s after the webview appeared →
+  `.sheetNotPresented`, without touching the webview interior)
+  and polls the first pane in short 5s slices over several
+  plausible queries (search text field / search field /
+  already-listed Platypus button) instead of one 60s blind wait;
+  `PlaidLinkKitLauncher` now logs LinkKit `onEvent`/`onLoad` via
+  `os_log` (subsystem `com.onbudget.app`, category `PlaidLink`)
+  so the next run's xcresult diagnostics can tell "Link never
+  opened/loaded" from "Link loaded but the sheet never
+  presented".
+- **Still open:** whether the sheet never presented (app/LinkKit
+  presentation) or the page never loaded (Plaid CDN / simulator
+  slowness) — one run is not enough to tell, and the app's Link
+  wiring is not proven wrong (token fetch worked, the webview
+  appeared, `present()` was in flight). Needs the next CI run's
+  Link event logs + XCUIScreen screenshots. Also observed in the
+  same run: ~60s of main-thread non-idle after tapping Profile
+  before Settings appeared — the test survived it; cause not yet
+  diagnosed (needs the app's syslogs).
 - **Still needs a real device / owner run:** a full Sandbox
   connect on a physical device (simulator proof covers the sheet
   opening and, if the drive completes, the whole flow), and any
