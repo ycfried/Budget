@@ -77,6 +77,7 @@ public struct HouseholdView: View {
                 message = nil
             }
             .buttonStyle(PrimaryButtonStyle())
+            .accessibilityIdentifier("household.createHousehold")
             .disabled(busy != nil)
 
             Text("Or Join a Household")
@@ -85,6 +86,7 @@ public struct HouseholdView: View {
             TextField("Invite Code from the Owner", text: $joinCode)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .accessibilityIdentifier("household.inviteCode")
                 .padding(12)
                 .background(.white)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
@@ -92,6 +94,7 @@ public struct HouseholdView: View {
 
             Button(busy == "join" ? "Joining…" : "Join As Member") { Task { await join() } }
                 .buttonStyle(TertiaryButtonStyle())
+                .accessibilityIdentifier("household.joinAsMember")
                 .disabled(busy != nil)
         }
     }

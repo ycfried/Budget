@@ -44,16 +44,19 @@ public struct AppShellView: View {
                 homeTab
                     .tabItem {
                         Label("Home", systemImage: "house")
+                            .accessibilityIdentifier("tab.home")
                     }
                     .tag(AppTab.home)
                 transactionsTab
                     .tabItem {
                         Label("Transactions", systemImage: "list.bullet")
+                            .accessibilityIdentifier("tab.transactions")
                     }
                     .tag(AppTab.transactions)
                 fundsTab
                     .tabItem {
                         Label("Funds", systemImage: "banknote")
+                            .accessibilityIdentifier("tab.funds")
                     }
                     .tag(AppTab.funds)
             }

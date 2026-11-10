@@ -233,6 +233,7 @@ public struct TransactionsView: View {
         Text(viewModel.countLine)
             .font(.system(size: 14))
             .foregroundStyle(Color(hex: "#6b7280"))
+            .accessibilityIdentifier("transactions.countLine")
     }
 
     @ViewBuilder
