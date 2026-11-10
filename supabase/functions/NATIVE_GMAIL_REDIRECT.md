@@ -52,11 +52,16 @@ Two Edge Functions, and only them:
 
 1. Review this diff.
 2. Merge to main.
-3. Deploy both functions:
-   `supabase functions deploy gmail-oauth-start gmail-oauth-callback`
-   (or deploy from the dashboard).
-4. Supabase dashboard → Auth → URL Configuration → Redirect URLs →
-   add `onbudget://reset-password` and `onbudget://gmail-callback`.
+3. Deploy both functions: merging to main triggers the Supabase
+   GitHub integration, which redeploys only the changed functions
+   (`supabase functions deploy gmail-oauth-start gmail-oauth-callback`
+   from the CLI is the fallback — do not paste code in the dashboard
+   editor, that route is disproven for function deploys).
+4. No Supabase dashboard Auth Redirect URL entry is needed for
+   `onbudget://gmail-callback` — that allowlist governs Supabase Auth
+   flows, not an Edge Function's `Response.redirect` (adding it is
+   harmless). `onbudget://reset-password` is a separate pre-existing
+   item for the password-reset flow, unrelated to this branch.
 5. Test a real native connect from a device (admin, test
    household): Connect Email → Google consent → app returns with
    the "Email connected" toast; verify in `email_connections`.
