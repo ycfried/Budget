@@ -29,14 +29,15 @@
 //   `plaid-exchange` (public token + institution name).
 //
 // PLAID LINK INTEGRATION POINT: the official Plaid iOS SDK
-// (LinkKit) is NOT linked in this build — there is no Xcode on this
-// VM to verify the SDK wiring against, and an unverified SDK call
-// would break the CI build. `PlaidLinkLauncher` is the seam: the
-// token fetch, the Already-Connected guard, and the exchange are all
-// wired; the launcher itself is `PlaidLinkNotLinkedLauncher` until
-// the SDK is added. See `ios-clone/docs/PLAID_INTEGRATION.md` for the
-// exact remaining steps. The Connect button NEVER fakes a connected
-// state: without the SDK it shows an honest error toast.
+// (LinkKit 7.x) IS linked in this build — see
+// `OnBudget/Settings/PlaidLinkKitLauncher.swift` (the real
+// `PlaidLinkLauncher`, session-based API) and
+// `ios-clone/docs/PLAID_INTEGRATION.md`. The app coordinator
+// (`AppShellView`) passes the real launcher into `SettingsView`;
+// `PlaidLinkNotLinkedLauncher` below remains only as the default
+// for previews / call sites that have no SDK session. The Connect
+// button NEVER fakes a connected state: without a successful Link
+// session it shows an honest error toast (or nothing on cancel).
 
 import SwiftUI
 import OnBudgetKit
@@ -63,11 +64,16 @@ protocol PlaidLinkLauncher {
 enum PlaidLinkError: Error, LocalizedError {
     /// The LinkKit package is not linked in this build yet.
     case sdkNotLinked
+    /// Link was asked to open but there is no view controller to
+    /// present it from.
+    case presentationUnavailable
 
     var errorDescription: String? {
         switch self {
         case .sdkNotLinked:
             return "Plaid Link isn't linked in this build yet — the LinkKit package still needs adding (see ios-clone/docs/PLAID_INTEGRATION.md)."
+        case .presentationUnavailable:
+            return "Could not open the bank connection — there is no screen to present it from."
         }
     }
 }

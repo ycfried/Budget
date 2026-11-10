@@ -102,7 +102,7 @@ public struct AppShellView: View {
     private var settingsCover: some View {
         NavigationStack {
             if let context = settingsContext() {
-                SettingsView(context: context, onBack: { appState.showSettings = false })
+                SettingsView(context: context, onBack: { appState.showSettings = false }, plaidLauncher: PlaidLinkKitLauncher())
             } else {
                 LoadingView()
             }

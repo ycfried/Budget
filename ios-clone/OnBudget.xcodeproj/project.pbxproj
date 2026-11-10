@@ -27,9 +27,11 @@
 		D108D108D108D108D108D108 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C108C108C108C108C108C108 /* ActivityView.swift */; };
 		D109D109D109D109D109D109 /* CSVImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C109C109C109C109C109C109 /* CSVImportView.swift */; };
 		D110D110D110D110D110D110 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C110C110C110C110C110C110 /* SettingsView.swift */; };
+		D112D112D112D112D112D112 /* PlaidLinkKitLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D111D111D111D111D111D111 /* PlaidLinkKitLauncher.swift */; };
 		B3B3B3B3B3B3B3B3B3B3B3B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */; };
 		B4B4B4B4B4B4B4B4B4B4B4B4 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = E2E2E2E2E2E2E2E2E2E2E2E2 /* OnBudgetKit */; };
 		3B3B3B3B3B3B3B3B3B3B3B3B /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A3A3A3A3A3A3A3A3A3A3A3A /* AuthenticationServices.framework */; };
+		E6E6E6E6E6E6E6E6E6E6E6E6 /* LinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5E5E5E5E5E5E5E5E5E5E5E5 /* LinkKit */; };
 		B5B5B5B5B5B5B5B5B5B5B5B5 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */; };
 		9C9C9C9C9C9C9C9C9C9C9C9C /* OnBudgetUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9A9A9A9A9A9A9A9A9A9A9A /* OnBudgetUITests.swift */; };
 		B6B6B6B6B6B6B6B6B6B6B6B6 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = E3E3E3E3E3E3E3E3E3E3E3E3 /* OnBudgetKit */; };
@@ -91,6 +93,7 @@
 		C108C108C108C108C108C108 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
 		C109C109C109C109C109C109 /* CSVImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVImportView.swift; sourceTree = "<group>"; };
 		C110C110C110C110C110C110 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		D111D111D111D111D111D111 /* PlaidLinkKitLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaidLinkKitLauncher.swift; sourceTree = "<group>"; };
 		A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A4A4A4A4A4A4A4A4A4A4A4A4 /* OnBudget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OnBudget.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
@@ -123,6 +126,7 @@
 			files = (
 				B4B4B4B4B4B4B4B4B4B4B4B4 /* OnBudgetKit in Frameworks */,
 				3B3B3B3B3B3B3B3B3B3B3B3B /* AuthenticationServices.framework in Frameworks */,
+				E6E6E6E6E6E6E6E6E6E6E6E6 /* LinkKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -219,6 +223,7 @@
 				C108C108C108C108C108C108 /* ActivityView.swift */,
 				C109C109C109C109C109C109 /* CSVImportView.swift */,
 				C110C110C110C110C110C110 /* SettingsView.swift */,
+				D111D111D111D111D111D111 /* PlaidLinkKitLauncher.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -267,6 +272,7 @@
 			name = OnBudget;
 			packageProductDependencies = (
 				E2E2E2E2E2E2E2E2E2E2E2E2 /* OnBudgetKit */,
+				E5E5E5E5E5E5E5E5E5E5E5E5 /* LinkKit */,
 			);
 			productName = OnBudget;
 			productReference = A4A4A4A4A4A4A4A4A4A4A4A4 /* OnBudget.app */;
@@ -340,6 +346,7 @@
 			mainGroup = 444444444444444444444444;
 			packageReferences = (
 				E1E1E1E1E1E1E1E1E1E1E1E1 /* OnBudgetKit */,
+				E4E4E4E4E4E4E4E4E4E4E4E4 /* XCRemoteSwiftPackageReference "plaid-link-ios-spm" */,
 			);
 			productRefGroup = 777777777777777777777777 /* Products */;
 			projectDirPath = "";
@@ -405,6 +412,7 @@
 				D108D108D108D108D108D108 /* ActivityView.swift in Sources */,
 				D109D109D109D109D109D109 /* CSVImportView.swift in Sources */,
 				D110D110D110D110D110D110 /* SettingsView.swift in Sources */,
+				D112D112D112D112D112D112 /* PlaidLinkKitLauncher.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -780,12 +788,29 @@
 			relativePath = OnBudgetKit;
 		};
 /* End XCLocalSwiftPackageReference section */
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E4E4E4E4E4E4E4E4E4E4E4E4 /* XCRemoteSwiftPackageReference "plaid-link-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/plaid/plaid-link-ios-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		E2E2E2E2E2E2E2E2E2E2E2E2 /* OnBudgetKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E1E1E1E1E1E1E1E1E1E1E1E1 /* OnBudgetKit */;
 			productName = OnBudgetKit;
+		};
+		E5E5E5E5E5E5E5E5E5E5E5E5 /* LinkKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E4E4E4E4E4E4E4E4E4E4E4E4 /* XCRemoteSwiftPackageReference "plaid-link-ios-spm" */;
+			productName = LinkKit;
 		};
 		E3E3E3E3E3E3E3E3E3E3E3E3 /* OnBudgetKit */ = {
 			isa = XCSwiftPackageProductDependency;
