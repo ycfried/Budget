@@ -169,6 +169,7 @@ struct ProfileSettingsView: View {
                 Task { await viewModel.signOut() }
             }
             .buttonStyle(TertiaryButtonStyle())
+            .accessibilityIdentifier("settings.signOut")
             .disabled(viewModel.isSigningOut)
             .padding(.top, 4)
         }
