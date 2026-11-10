@@ -19,6 +19,7 @@ No network, no Xcode build, no signing.
 """
 import json
 import pathlib
+import plistlib
 import re
 import subprocess
 import sys
@@ -151,21 +152,39 @@ def main():
                 ]
             ]
             settings = app_configs[0]
-            assert settings["GENERATE_INFOPLIST_FILE"] == "YES", (
-                "App target uses a generated Info.plist"
-            )
+            # The app target uses a REAL Info.plist, not a generated
+            # one: INFOPLIST_KEY_CFBundleURLTypes silently drops the
+            # array-of-dictionaries value from the generated plist
+            # (CI run 42730528742 — the built plist had no
+            # CFBundleURLTypes key at all), so the onbudget scheme
+            # must live in the file. Every app config must point at
+            # it, and no INFOPLIST_KEY_* leftovers may sit alongside.
+            for app_settings in app_configs:
+                assert app_settings.get("GENERATE_INFOPLIST_FILE") == "NO", (
+                    "App target must use a real Info.plist "
+                    "(GENERATE_INFOPLIST_FILE = NO)"
+                )
+                assert app_settings.get("INFOPLIST_FILE") == "OnBudget/Info.plist", (
+                    "App target must point at OnBudget/Info.plist "
+                    "in every config"
+                )
+                assert not any(
+                    k.startswith("INFOPLIST_KEY_") for k in app_settings
+                ), (
+                    "App target must not carry INFOPLIST_KEY_* settings "
+                    "alongside the real Info.plist"
+                )
             assert settings["ASSETCATALOG_COMPILER_APPICON_NAME"] == "AppIcon", (
                 "App target must name the AppIcon asset"
             )
             # The onbudget URL scheme (gmail-callback + reset-password
-            # deep links) must be registered in EVERY app config —
-            # a Debug-only registration would silently break the
-            # Release deep links.
-            for app_settings in app_configs:
-                assert "onbudget" in url_schemes(app_settings), (
-                    "App target must register the onbudget URL scheme "
-                    "in every config (INFOPLIST_KEY_CFBundleURLTypes)"
-                )
+            # deep links) must be registered in the app's Info.plist.
+            # The file is shared by Debug and Release, so one check
+            # covers both configs.
+            assert "onbudget" in url_schemes_from_info_plist(), (
+                "OnBudget/Info.plist must register the onbudget URL "
+                "scheme under CFBundleURLTypes"
+            )
         if name == "OnBudgetUITests":
             assert target["productType"] == (
                 "com.apple.product-type.bundle.ui-testing"
@@ -185,11 +204,15 @@ def main():
     return 0
 
 
-def url_schemes(settings):
-    """All CFBundleURLSchemes from the INFOPLIST_KEY_CFBundleURLTypes
-    build setting (a list of {CFBundleURLSchemes: [...]} dicts)."""
+def url_schemes_from_info_plist():
+    """All CFBundleURLSchemes from the app target's real Info.plist
+    (ios-clone/OnBudget/Info.plist)."""
+    info_path = CLONE / "OnBudget" / "Info.plist"
+    assert info_path.is_file(), f"App Info.plist missing: {info_path}"
+    with open(info_path, "rb") as f:
+        info = plistlib.load(f)
     schemes = []
-    for url_type in settings.get("INFOPLIST_KEY_CFBundleURLTypes", []):
+    for url_type in info.get("CFBundleURLTypes", []):
         if isinstance(url_type, dict):
             schemes.extend(url_type.get("CFBundleURLSchemes", []))
     return schemes

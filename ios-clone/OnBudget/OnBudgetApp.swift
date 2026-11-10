@@ -15,7 +15,7 @@ struct OnBudgetApp: App {
                 .environmentObject(appState)
                 .onOpenURL { url in
                     // Deep links on the `onbudget` scheme (registered
-                    // in the app target's INFOPLIST_KEY_CFBundleURLTypes):
+                    // in ios-clone/OnBudget/Info.plist):
                     // - onbudget://reset-password?code=… → recovery
                     // - onbudget://gmail-callback?gmail=connected|failed
                     //   → recorded on AppViewModel. The live Gmail
