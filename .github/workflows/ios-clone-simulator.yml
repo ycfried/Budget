@@ -17,7 +17,7 @@ jobs:
       github.event.repository.private == false &&
       startsWith(github.event.head_commit.message, 'ci(ios-clone): approved cloud build')
     runs-on: macos-15-intel
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -27,3 +27,15 @@ jobs:
         env:
           ONBUDGET_APPROVED_WORKFLOW: '1'
         run: bash ios-clone/scripts/macos_simulator_test.sh
+      - name: Upload simulator results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onbudget-simulator-results
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ios-clone/CloudResults/Attachments
+            ios-clone/CloudResults/tests.xcresult
+            ios-clone/CloudResults/test-summary.json
+            ios-clone/CloudResults/runtimes.json
