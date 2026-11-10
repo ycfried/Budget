@@ -1,0 +1,52 @@
+name: OnBudget iOS clone device .ipa (sideload)
+# Builds an UNSIGNED device .ipa for sideloading with Sideloadly/AltStore
+# under a free Apple ID (7-day expiry; push notifications will not work).
+# Manual trigger only: gh workflow run ios-clone-device-ipa.yml --ref ios-clone
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  device-ipa:
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select Xcode 16.4
+        run: |
+          if [ -d /Applications/Xcode_16.4.app/Contents/Developer ]; then
+            echo "DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer" >> "$GITHUB_ENV"
+          fi
+          xcodebuild -version
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project ios-clone/OnBudget.xcodeproj
+      - name: Build device .app (unsigned)
+        run: |
+          xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -sdk iphoneos -configuration Release -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - name: Package OnBudget.ipa
+        run: |
+          APP_PATH="DerivedData/Build/Products/Release-iphoneos/OnBudget.app"
+          test -d "$APP_PATH" || { echo "FAIL: $APP_PATH missing"; exit 1; }
+          mkdir -p Payload
+          ditto "$APP_PATH" "Payload/OnBudget.app"
+          /usr/bin/zip -r -y OnBudget.ipa Payload
+          echo "--- arch check (must be arm64, not simulator) ---"
+          lipo -info Payload/OnBudget.app/OnBudget
+          file Payload/OnBudget.app/OnBudget
+          echo "--- bundle info ---"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" Payload/OnBudget.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Payload/OnBudget.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Payload/OnBudget.app/Info.plist
+          echo "--- signing (expected: unsigned) ---"
+          codesign -dv Payload/OnBudget.app 2>&1 || true
+          ls -la OnBudget.ipa
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnBudget-device-ipa
+          if-no-files-found: error
+          retention-days: 30
+          path: OnBudget.ipa
