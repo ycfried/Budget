@@ -446,11 +446,13 @@ struct ConnectedAccountsView: View {
                         Task { await viewModel.connectTapped() }
                     }
                     .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("bank.connect")
                     .disabled(viewModel.isConnecting)
                     Button(viewModel.isSyncing ? "Syncing…" : "Sync Transactions") {
                         Task { await viewModel.syncTapped() }
                     }
                     .buttonStyle(TertiaryButtonStyle())
+                    .accessibilityIdentifier("bank.sync")
                     .disabled(viewModel.isSyncing)
                 }
 
