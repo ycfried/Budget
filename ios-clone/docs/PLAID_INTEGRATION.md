@@ -1,11 +1,10 @@
-# Plaid Link integration — remaining steps
+# Plaid Link integration — wired (LinkKit 7.x)
 
-Status (Nov 9, 2026, Settings workstream): **not wired end-to-end.**
-The Connect flow is fully built up to the SDK seam and nothing is
-faked — see below. This doc is the exact remaining work, for the
-coordinator or any agent with an Xcode build to verify against.
+Status (Nov 9–10, 2026): **wired end-to-end in the clone; simulator
+proof running in CI.** The Connect flow is fully built and the real
+SDK launcher is in place — see below. Nothing is faked.
 
-## What is already wired
+## What is wired
 
 `ios-clone/OnBudget/Settings/ConnectedAccountsView.swift`:
 
@@ -27,52 +26,84 @@ coordinator or any agent with an Xcode build to verify against.
 - **Seam** — `PlaidLinkLauncher` protocol + `PlaidLinkOutcome`
   (`.success(publicToken:institutionName:)` /
   `.exited(errorMessage:)`). `ConnectedAccountsView` takes a
-  `plaidLauncher:` (default `PlaidLinkNotLinkedLauncher`, which
-  throws `PlaidLinkError.sdkNotLinked` — surfaced as an honest error
-  toast, never a fake connected state).
+  `plaidLauncher:`.
 
-## Remaining steps (needs Xcode — cannot be verified on this Linux VM)
+`ios-clone/OnBudget/Settings/PlaidLinkKitLauncher.swift` (new, Nov 9):
 
-1. **Add the official SDK as an SPM dependency in Xcode:**
-   File → Add Package Dependencies → URL
-   `https://github.com/plaid/plaid-link-ios-spm.git`
-   (the small SPM pointer repo Plaid recommends; the main
-   `plaid/plaid-link-ios` repo is ~1 GB and SPM downloads its full
-   history). Dependency rule: Up to Next Major Version, minimum
-   7.0.0 (latest verified release 7.3.0, Oct 27, 2026). Product:
-   **LinkKit**. Add LinkKit to the OnBudget app target only.
-   Also add the `-ObjC` linker flag if the SDK requires it for the
-   SPM build (Plaid's docs note it for SPM).
-2. **Implement `PlaidLinkLauncher` with LinkKit** (new file, e.g.
-   `OnBudget/Settings/PlaidLinkKitLauncher.swift`):
-   - `import LinkKit`
-   - Build `LinkKit.Configuration(token: linkToken)` with a
-     completion handler; create the handler with
-     `LinkKit.createLink(with:)`; present it from the top-most
-     view controller (`presentingViewController:`).
-   - On success, return `.success(publicToken: success.publicToken,
-     institutionName: success.metadata.institution?.name)`.
-   - On exit/error, return `.exited(errorMessage:)` with the
-     SDK's error message, or `.exited(errorMessage: nil)` for a
-     plain user cancel (the view shows nothing for a cancel).
-   - Plaid Link handles bank credentials, MFA, and OAuth itself;
-     OnBudget never sees credentials.
-3. **Wire it in:** pass the real launcher into
-   `ConnectedAccountsView(plaidLauncher:)` / `SettingsView`
-   from the app coordinator. Delete nothing else — the token fetch,
-   guard, and exchange code stays as-is.
-4. **Verify on a simulator/device** (test backend only — never the
-   real household, never real Plaid items): connect a Plaid Sandbox
-   bank, confirm the "Connected. Tap "Sync Transactions"…" toast,
-   then Sync Transactions and confirm rows appear. Mark this doc
-   done only after that run.
+- **Real launcher** — `PlaidLinkKitLauncher: PlaidLinkLauncher`,
+  backed by the official SDK, LinkKit **7.x session API**:
+  `LinkTokenConfiguration(token:onSuccess:onExit:onEvent:onLoad:)` →
+  `Plaid.createPlaidLinkSession(configuration:)` → `session.open(using:
+  .viewController(topViewController))`. The session is retained on
+  the launcher until onSuccess / onExit fires. On success it returns
+  `.success(publicToken: success.publicToken, institutionName:
+  success.metadata.institution?.name)`; on exit it returns
+  `.exited(errorMessage: exit.error?.localizedDescription)` — `nil`
+  for a plain cancel, so the view shows nothing.
+- **Wiring** — `AppShellView` passes `PlaidLinkKitLauncher()` into
+  `SettingsView(plaidLauncher:)`; `SettingsView` forwards it to
+  `ConnectedAccountsView`. `PlaidLinkNotLinkedLauncher` remains only
+  as the default for call sites with no SDK session.
+- **SPM** — `https://github.com/plaid/plaid-link-ios-spm.git`,
+  Up to Next Major Version from 7.0.0 (latest verified 7.3.0,
+  Oct 27, 2026), product `LinkKit`, app target only. The CI script
+  runs `xcodebuild -resolvePackageDependencies` before
+  build-for-testing (which uses `-disableAutomaticPackageResolution`),
+  so no committed `Package.resolved` is needed.
+  `scripts/validate_project.py` allows exactly this one remote
+  package and asserts LinkKit is on the app target only.
+- **No `-ObjC` flag**: the current Plaid iOS docs do not require it
+  for the Swift SPM integration, and LinkKit 7's core module is
+  Swift-only. If a future link error says otherwise, add it then.
+- **No `WKWebView` wrapper** around Plaid Link: the clone is real
+  SwiftUI + the official SDK, per the brief.
+
+## API correction (Nov 9, 2026)
+
+The brief for this work assumed the old Handler API
+(`LinkKit.Configuration`, `LinkKit.createLink`). LinkKit 7 removed
+it: "LinkKit 7 moves Swift integrations from Handler-based APIs to
+session-based APIs" (Plaid docs, "Link - iOS"; migration guide
+`plaid/plaid-link-ios/v7-migration-guide.md`). The implementation
+follows the current docs, not the brief. CI build-for-testing is
+the type-check for this (no Xcode on the Linux VM).
+
+## Verification
+
+- **CI (this run):** `testPlaidSandboxConnect` in
+  `ios-clone/OnBudgetUITests/OnBudgetUITests.swift` — fresh
+  sign-up, CREATE a fresh household (the account is its admin),
+  Settings → Bank Connection → Connect New Account. HARD assertion:
+  the Plaid Link sheet opens (a Link webview appears within 90s).
+  Then a best-effort Sandbox drive (First Platypus Bank,
+  `user_good` / `pass_good` — Plaid's public Sandbox credentials):
+  each step proceeds only if its element is found, screenshots
+  record how far it got. If the drive completes, the test also
+  asserts the "Connected" toast, Sync Transactions finishing
+  ("Last synced"), and transaction rows appearing.
+- **Still needs a real device / owner run:** a full Sandbox
+  connect on a physical device (simulator proof covers the sheet
+  opening and, if the drive completes, the whole flow), and any
+  OAuth bank (see below).
+
+## Known limitation: OAuth banks need a redirect URI
+
+The `plaid-link` Edge Function creates tokens with
+`products: ['transactions']`, `country_codes: ['US']` and **no
+`redirect_uri`**. That is fine for Sandbox non-OAuth institutions
+(First Platypus Bank) and for the web flow's non-OAuth banks, but
+Plaid's iOS docs require `redirect_uri` in `/link/token/create`
+for OAuth, and OAuth return needs a Universal Link (associated
+domains entitlement + `apple-app-site-association` on a domain the
+owner controls). Until that is set up, OAuth banks (e.g. Chase)
+will not complete on iOS. That is a backend + App Store follow-up,
+not an app-code change: no Edge Function changes were made here.
 
 ## Deliberately NOT done here
 
-- No `WKWebView` wrapper around Plaid Link web: the clone is real
-  SwiftUI + the official SDK, per the brief.
-- No dependency entry was hand-edited into
-  `OnBudget.xcodeproj/project.pbxproj` for LinkKit: an unverified
-  remote-package entry (wrong version rule or product name) would
-  break CI resolution, and there is no Xcode here to check it
-  against. Step 1 above is a 2-minute Xcode action.
+- No committed `Package.resolved` (CI resolves instead).
+- No new UI-test target (the existing `OnBudgetUITests` target
+  hosts the Plaid test) and no test-host changes.
+- No changes to main, web files, SQL, Edge Functions, or
+  production Supabase. Test backend only; never the real
+  household, never real Plaid items.

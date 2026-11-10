@@ -51,6 +51,12 @@ fi
 
 mkdir -p ios-clone/CloudResults
 python3 ios-clone/scripts/validate_project.py
+# Resolve remote Swift packages (Plaid LinkKit) BEFORE the build:
+# build-for-testing runs with -disableAutomaticPackageResolution, so
+# a newly-added remote package with no Package.resolved would fail
+# there. This writes OnBudget.xcodeproj/project.xcworkspace/
+# xcshareddata/swiftpm/Package.resolved for this checkout.
+xcodebuild -resolvePackageDependencies -project ios-clone/OnBudget.xcodeproj
 xcodebuild -list -project ios-clone/OnBudget.xcodeproj
 xcrun swift test --package-path ios-clone/OnBudgetKit --scratch-path ios-clone/CloudResults/CoreBuild --jobs 4
 
