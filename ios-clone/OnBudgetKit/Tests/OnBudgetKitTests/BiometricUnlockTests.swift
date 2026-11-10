@@ -81,6 +81,39 @@ func testAuthSession(expiresIn: TimeInterval = 3600) -> AuthSession {
     )
 }
 
+/// Compare two sessions after one of them crossed a JSON round-trip
+/// (Keychain / UserDefaults persistence). The persisted form stores
+/// `expiresAt` as unix seconds in JSON text, and exact `Date`
+/// equality is stricter than that format guarantees — two sessions
+/// that print identically can differ by a fraction of a millisecond
+/// after the round-trip (run 42758177387: 3 failures, all on
+/// identical-looking descriptions). Every other field must match
+/// exactly; `expiresAt` must match within 1ms. Production never
+/// relies on exact session equality — expiry checks use
+/// second-scale leeways — so this tolerance is test-only.
+func assertSessionsEqual(
+    _ actual: AuthSession?,
+    _ expected: AuthSession,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    guard let actual else {
+        XCTFail("expected a session, got nil", file: file, line: line)
+        return
+    }
+    XCTAssertEqual(actual.accessToken, expected.accessToken, file: file, line: line)
+    XCTAssertEqual(actual.refreshToken, expected.refreshToken, file: file, line: line)
+    XCTAssertEqual(actual.tokenType, expected.tokenType, file: file, line: line)
+    XCTAssertEqual(actual.user, expected.user, file: file, line: line)
+    XCTAssertEqual(
+        actual.expiresAt.timeIntervalSince1970,
+        expected.expiresAt.timeIntervalSince1970,
+        accuracy: 0.001,
+        "expiresAt must survive the JSON round-trip within 1ms",
+        file: file, line: line
+    )
+}
+
 /// A client whose store is the given `store`, holding `session` when
 /// one is passed. The transport answers nothing by default; tests
 /// that need a refresh pass their own stub.
@@ -122,7 +155,7 @@ final class BiometricSessionStoreTests: XCTestCase {
 
         // The unlock-path read, with a context, decodes the session.
         let loaded = try store.loadAuthenticated(authenticatedContext: "mock-authenticated")
-        XCTAssertEqual(loaded, session)
+        assertSessionsEqual(loaded, session)
     }
 
     func testSaveNilDeletesItem() {
@@ -312,8 +345,8 @@ final class BiometricUnlockFlowTests: XCTestCase {
 
         let restored = try await unlock.unlock(client: client)
 
-        XCTAssertEqual(restored, session)
-        XCTAssertEqual(client.currentSession, session)
+        assertSessionsEqual(restored, session)
+        assertSessionsEqual(client.currentSession, session)
         XCTAssertTrue(authenticator.evaluateCalled)
     }
 
