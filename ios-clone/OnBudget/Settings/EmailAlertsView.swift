@@ -349,6 +349,12 @@ final class EmailAlertsViewModel: ObservableObject {
 
 struct EmailAlertsView: View {
     @StateObject private var viewModel: EmailAlertsViewModel
+    /// The last Gmail callback recorded at the app level
+    /// (onbudget://gmail-callback arriving outside an active
+    /// ASWebAuthenticationSession). Shown below so such a return is
+    /// visible on the card that owns the Gmail connection instead
+    /// of being silently dropped.
+    @EnvironmentObject private var appState: AppViewModel
 
     init(context: SettingsContext, toast: ToastState) {
         _viewModel = StateObject(wrappedValue: EmailAlertsViewModel(context: context, toast: toast))
@@ -376,6 +382,9 @@ struct EmailAlertsView: View {
             }
             if !viewModel.statusLine.isEmpty {
                 MutedLine(text: viewModel.statusLine)
+            }
+            if let callback = appState.gmailCallbackResult {
+                MutedLine(text: callback == .connected ? "Gmail return: Connected" : "Gmail return: Failed")
             }
 
             if viewModel.isAdmin {

@@ -42,6 +42,25 @@
 // Sync Transactions finishing ("Last synced"), and transaction rows
 // appearing — that is the full-connect proof.
 //
+//   Run 42746242404 (Nov 10, 2026) diagnosis — the drive stopped
+//   BEFORE any Sandbox step, and the recorded failure was a
+//   screenshot, not the search wait: the Link webview existed in
+//   the AX tree ~2s after tapping Connect, but the plaid-04
+//   screenshot still showed Settings ("Connecting…") 8s later —
+//   the sheet never became visible — and every existence poll on
+//   the webview's descendants then blocked ~60s on a snapshot of
+//   the WebContent process. The drive now probes presentation
+//   first (the webview never becomes hittable within 30s of
+//   appearing → .sheetNotPresented, without touching the webview
+//   interior),
+//   polls the first pane in short slices over several plausible
+//   queries, and screenshots via XCUIScreen so a wedged webview
+//   can no longer fail the test from a screenshot. Whether the
+//   sheet never presented (app/LinkKit) or the page never loaded
+//   (Plaid CDN / simulator) is still open — the launcher now logs
+//   Link open/load events (see PlaidLinkKitLauncher) so the next
+//   run's diagnostics can tell them apart.
+//
 // Each CI run creates fresh synthetic test accounts/households; that
 // is the accepted cost of a live proof, the same as the prior web
 // proofs. Screenshots are attached at every step with lifetime
@@ -63,6 +82,22 @@ final class OnBudgetUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        // The CI script opens onbudget://gmail-callback before the
+        // tests (Gmail scheme check). iOS answers with a SpringBoard
+        // "Open in 'OnBudget'?" alert, and XCTest's default
+        // interruption handler taps Cancel — so the URL never
+        // reaches the app (CI run 42746242404: the alert sat on the
+        // auth screen and was cancelled at t=36s of the first
+        // test). Answer Open instead, so the callback is delivered
+        // and the app records it; testGmailCallbackDeepLink asserts
+        // the record. The handler only claims that one alert.
+        addUIInterruptionMonitor(withDescription: "Open in OnBudget") { alert in
+            if alert.buttons["Open"].exists {
+                alert.buttons["Open"].tap()
+                return true
+            }
+            return false
+        }
         app.launch()
         // A previous test in this run may have left a session behind:
         // XCTest runs tests alphabetically, so the first test signs
@@ -145,6 +180,45 @@ final class OnBudgetUITests: XCTestCase {
             "Funds did not render (no Charity card)"
         )
         attachScreenshot(named: "06-funds")
+    }
+
+    /// Gmail callback deep link (CI run 42746242404 finding): the
+    /// script opens onbudget://gmail-callback?gmail=connected
+    /// before the tests, which raises a SpringBoard "Open in
+    /// 'OnBudget'?" alert. setUp's interruption monitor taps Open,
+    /// so the URL is delivered and AppViewModel records it
+    /// (persisted across launches). This test runs first
+    /// (alphabetical), signs up + joins the test household, opens
+    /// Settings → Email Alerts, and asserts the recorded callback
+    /// line is shown. If iOS ever delivers the URL without the
+    /// alert, the persisted record from the script-launched
+    /// instance covers the same assertion.
+    func testGmailCallbackDeepLink() throws {
+        signUpAndJoinTestHousehold()
+
+        app.buttons["Profile"].tap()
+        let settingsItem = app.buttons["Settings"]
+        XCTAssertTrue(
+            settingsItem.waitForExistence(timeout: 15),
+            "Profile menu did not offer Settings"
+        )
+        settingsItem.tap()
+        XCTAssertTrue(
+            app.staticTexts["Bank Connection"].waitForExistence(timeout: 30),
+            "Settings did not render (no Bank Connection card)"
+        )
+        let callbackLine = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH 'Gmail return:'")
+        ).firstMatch
+        XCTAssertTrue(
+            callbackLine.waitForExistence(timeout: 30),
+            "Email Alerts did not show the recorded Gmail callback (onbudget://gmail-callback was not delivered or not recorded)"
+        )
+        XCTAssertTrue(
+            callbackLine.label.contains("Connected"),
+            "Recorded Gmail callback is not 'Connected': \(callbackLine.label)"
+        )
+        attachScreenshot(named: "gmail-callback")
     }
 
     /// Past Weeks / Activity (Nov 9, 2026): the Transactions page
@@ -374,8 +448,16 @@ final class OnBudgetUITests: XCTestCase {
     /// the Link sheet closed after the flow — the caller then checks
     /// the toast/sync/rows. Anything else is a diagnostic stop, not
     /// a test failure: the sheet-open assertion above already passed.
+    /// `.sheetNotPresented` is the run-42746242404 stop: the Link
+    /// webview existed in the AX tree but never became visible
+    /// (Settings still showing, "Connecting…" still showing) and
+    /// the webview's AX tree then wedged — every existence poll on
+    /// its descendants blocked ~60s on a snapshot of the WebContent
+    /// process, and app.screenshot() hung on the same tree
+    /// (line 583).
     private enum PlaidSandboxOutcome: String {
         case connected
+        case sheetNotPresented
         case noSearchField
         case noInstitutionResult
         case noCredentialFields
@@ -387,13 +469,78 @@ final class OnBudgetUITests: XCTestCase {
     /// credentials (First Platypus Bank, user_good / pass_good).
     /// Each step proceeds only if its element is found; a missing
     /// element stops the drive with the matching outcome.
+    ///
+    /// Two defences from run 42746242404, where the drive burned
+    /// 687s and then failed on a screenshot:
+    /// 1. Presentation is probed FIRST, on the webview leaf only
+    ///    (never a descendant): if the webview never becomes
+    ///    hittable within 30s of appearing, the sheet never
+    ///    presented — stop there instead of querying a tree that
+    ///    may be wedged.
+    /// 2. The first-pane probe polls for ANY of several plausible
+    ///    elements in short 5s slices (search text field, search
+    ///    field, or an already-listed Platypus button) instead of
+    ///    one 60s blind wait on a single query: on a wedged tree a
+    ///    single waitForExistence never returns on time (each poll
+    ///    blocked ~60s in that run). A slice can still block on a
+    ///    wedged tree — public API offers no hard timeout — but the
+    ///    test can no longer FAIL on it: screenshots now go through
+    ///    XCUIScreen (see attachScreenshot), so the drive just
+    ///    returns its diagnostic outcome.
     private func drivePlaidSandbox() -> PlaidSandboxOutcome {
-        // Institution search: Link's first pane has a search field.
-        let searchField = app.webViews.textFields.firstMatch
-        guard searchField.waitForExistence(timeout: 60) else {
+        // -- 1. Is the Link sheet actually visible? -------------------
+        // In run 42746242404 the webview existed in the AX tree but
+        // nothing Plaid was on screen (Settings still visible,
+        // "Connecting…" still showing), and every existence poll on
+        // the webview's descendants then blocked ~60s on a snapshot
+        // of the WebContent process. So probe the webview LEAF
+        // only — never a descendant: poll up to 30s for the
+        // webview to become hittable (i.e. presented and on
+        // screen). If it never does, the sheet never presented —
+        // stop here instead of querying a tree that may be wedged.
+        // (Do NOT probe this via the Settings texts: covered
+        // elements stay in the AX tree, so their `.exists` says
+        // nothing about what is on screen.)
+        let presentedDeadline = Date().addingTimeInterval(30)
+        while Date() < presentedDeadline {
+            if app.webViews.firstMatch.isHittable { break }
+            Thread.sleep(forTimeInterval: 2)
+        }
+        if !app.webViews.firstMatch.isHittable {
+            return .sheetNotPresented
+        }
+
+        // -- 2. First pane: search field, or institution already ----
+        // listed (no search needed). Poll in short slices.
+        let searchDeadline = Date().addingTimeInterval(90)
+        var searchFieldFound = false
+        var institutionListed = false
+        while Date() < searchDeadline {
+            if app.webViews.textFields.firstMatch.waitForExistence(timeout: 5) {
+                searchFieldFound = true
+                break
+            }
+            if app.webViews.searchFields.firstMatch.waitForExistence(timeout: 5) {
+                searchFieldFound = true
+                break
+            }
+            if app.webViews.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Platypus'")
+            ).firstMatch.waitForExistence(timeout: 5) {
+                institutionListed = true
+                break
+            }
+        }
+        guard searchFieldFound || institutionListed else {
             return .noSearchField
         }
-        tapAndTypeText(searchField, "First Platypus Bank", fieldName: "plaid.search")
+        if searchFieldFound {
+            // Institution search: Link's first pane has a search field.
+            let searchField = app.webViews.textFields.firstMatch.exists
+                ? app.webViews.textFields.firstMatch
+                : app.webViews.searchFields.firstMatch
+            tapAndTypeText(searchField, "First Platypus Bank", fieldName: "plaid.search")
+        }
         let institution = app.webViews.buttons.matching(
             NSPredicate(format: "label CONTAINS[c] 'Platypus'")
         ).firstMatch
@@ -579,8 +726,18 @@ final class OnBudgetUITests: XCTestCase {
         }
     }
 
+    /// Screenshots go through XCUIScreen, NOT app.screenshot():
+    /// app.screenshot() resolves the app's accessibility snapshot,
+    /// and a wedged WKWebView (Plaid Link, CI run 42746242404)
+    /// hangs that snapshot for 60s+ per try — the test then failed
+    /// AT this line (OnBudgetUITests.swift:583, "Failed to get
+    /// matching snapshot ... XCTPerformOnMainRunLoop work timed out
+    /// after 60.0s") after the drive had already returned its
+    /// diagnostic outcome. The screen capture does not need the
+    /// AX tree, so a stuck webview can no longer fail the test
+    /// from a screenshot.
     private func attachScreenshot(named name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)

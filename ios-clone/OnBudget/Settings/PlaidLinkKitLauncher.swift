@@ -16,6 +16,7 @@
 // CI (build-for-testing) is the type-check: there is no Xcode here.
 
 import LinkKit
+import os
 import UIKit
 
 /// Real `PlaidLinkLauncher` backed by the official Plaid LinkKit SDK.
@@ -23,6 +24,19 @@ final class PlaidLinkKitLauncher: PlaidLinkLauncher {
     /// Retained for the duration of the Link flow; cleared when the
     /// flow ends (success, exit, or setup failure).
     private var activeSession: PlaidLinkSession?
+
+    /// Link lifecycle, for CI diagnosis only (no UI impact): LinkKit
+    /// fires onEvent for every Link event (OPEN, LOADED, pane
+    /// changes, errors) and onLoad once the Link pane has loaded.
+    /// CI run 42746242404: the Link webview existed in the AX tree
+    /// but the sheet never became visible and the webview's AX tree
+    /// wedged — with these logs the next run can tell "Link never
+    /// opened/loaded" (no events at all) from "Link loaded but the
+    /// sheet never presented" (OPEN/LOADED fired, still no sheet).
+    /// The events land in the app's console log, captured in the
+    /// xcresult diagnostics. The event is logged via
+    /// String(describing:) so no LinkEvent member is assumed.
+    private static let log = Logger(subsystem: "com.onbudget.app", category: "PlaidLink")
 
     func present(linkToken: String) async throws -> PlaidLinkOutcome {
         try await withCheckedThrowingContinuation { continuation in
@@ -46,8 +60,12 @@ final class PlaidLinkKitLauncher: PlaidLinkLauncher {
                             continuation: continuation
                         )
                     },
-                    onEvent: nil,
-                    onLoad: nil
+                    onEvent: { event in
+                        Self.log.debug("Link event: \(String(describing: event), privacy: .public)")
+                    },
+                    onLoad: {
+                        Self.log.debug("Link loaded")
+                    }
                 )
                 do {
                     let session = try Plaid.createPlaidLinkSession(configuration: configuration)
