@@ -436,12 +436,15 @@ final class OnBudgetUITests: XCTestCase {
     /// land while the field is still becoming first responder, and
     /// typeText then fails with "Neither element nor any descendant
     /// has keyboard focus", burning ~60s on XCTest's internal event
-    /// retry before failing. So: tap, poll hasKeyboardFocus, retry
-    /// the tap, and only then type. Fails fast with a clear message
-    /// when focus never arrives. Focus (first-responder status) is
-    /// what matters here, not whether the software keyboard is
-    /// visible — the same code works when the simulator's hardware
-    /// keyboard is connected and the software keyboard never shows.
+    /// retry before failing. So: tap, poll for the software keyboard
+    /// to appear, retry the tap, and only then type. Fails fast with
+    /// a clear message when focus never arrives.
+    ///
+    /// Focus is checked via the software keyboard, not via
+    /// `hasKeyboardFocus`: that property does not exist on
+    /// XCUIElement in this toolchain (Xcode 16.4) — the compiler
+    /// rejects it (CI run 42736133920). A visible software keyboard
+    /// means the tapped field holds focus.
     private func tapAndTypeText(_ field: XCUIElement, _ text: String, fieldName: String) {
         for _ in 1...3 {
             field.tap()
@@ -453,14 +456,18 @@ final class OnBudgetUITests: XCTestCase {
         XCTFail("Field \(fieldName) never gained keyboard focus after 3 taps — cannot type")
     }
 
-    /// Polls `hasKeyboardFocus` until true or `timeout` elapses.
+    /// Polls for the software keyboard to appear until `timeout`
+    /// elapses. A visible keyboard means the tapped field holds
+    /// keyboard focus. (`hasKeyboardFocus` does not exist on
+    /// XCUIElement in this toolchain, so the keyboard is the only
+    /// public-API proxy for focus. No KVC / private API is used.)
     private func waitForKeyboardFocus(_ field: XCUIElement, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if field.hasKeyboardFocus { return true }
+            if app.keyboards.element.exists { return true }
             Thread.sleep(forTimeInterval: 0.2)
         }
-        return field.hasKeyboardFocus
+        return app.keyboards.element.exists
     }
 
     /// Tap Return if the software keyboard is up, so it cannot cover
@@ -485,10 +492,24 @@ final class OnBudgetUITests: XCTestCase {
         if returnKey.exists {
             returnKey.tap()
             attemptedDismiss = true
+            // Return usually resigns the field, but the keyboard
+            // takes a moment to animate away. Give it a brief grace
+            // period to disappear before deciding the field is still
+            // focused: typing "\n" into a field that already resigned
+            // fails event synthesis. Only if the keyboard is STILL up
+            // after that grace period is the field still first
+            // responder — a visible keyboard is the public-API proxy
+            // for focus (`hasKeyboardFocus` does not exist on
+            // XCUIElement in this toolchain) — and only then is the
+            // newline fallback safe. If the keyboard went away, the
+            // dismiss already worked and there is nothing more to do.
+            let graceDeadline = Date().addingTimeInterval(1)
+            while Date() < graceDeadline, app.keyboards.element.exists {
+                Thread.sleep(forTimeInterval: 0.2)
+            }
+            guard app.keyboards.element.exists else { return }
         }
-        if let focusedField,
-           focusedField.hasKeyboardFocus,
-           app.keyboards.element.exists {
+        if let focusedField, app.keyboards.element.exists {
             focusedField.typeText("\n")
             attemptedDismiss = true
         }
