@@ -33,7 +33,7 @@ final class PlaidLinkKitLauncher: PlaidLinkLauncher {
                         self.complete(
                             .success(
                                 publicToken: success.publicToken,
-                                institutionName: success.metadata.institution?.name
+                                institutionName: success.metadata.institution.name
                             ),
                             continuation: continuation
                         )
