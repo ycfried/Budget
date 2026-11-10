@@ -43,6 +43,18 @@ public enum ExpandedCard: Equatable {
     case fund
 }
 
+/// The outcome of a Face ID unlock attempt from the auth screen.
+public enum BiometricUnlockOutcome {
+    /// Face ID passed and the stored session is live; the caller boots.
+    case unlocked
+    /// The user cancelled the Face ID prompt. Silent — stay on the
+    /// password screen with no error.
+    case cancelled
+    /// Face ID failed; the message goes in the auth screen's inline
+    /// error box. The password screen is always the fallback.
+    case failed(String)
+}
+
 /// The password-reset deep link. The native app passes this URL as
 /// `redirectTo` on the reset request (API_CLIENT.md ambiguity 5);
 /// it must be allow-listed in Supabase Auth → URL Configuration →
@@ -63,6 +75,20 @@ public enum AppDeepLinks {
 public final class AppViewModel: ObservableObject {
 
     public let client: SupabaseClient
+
+    /// Face ID unlock (native v1, owner-approved): opt-in biometric
+    /// unlock for returning users. The coordinator holds no session
+    /// itself — the Keychain is the source of truth — so the
+    /// Settings toggle and the auth screen can each hold their own
+    /// instance, but the app state keeps one for the auth screen.
+    public let biometricUnlock: BiometricUnlock
+
+    /// True when the auth screen may offer "Unlock with Face ID":
+    /// a protected session exists AND biometrics can evaluate.
+    /// Refreshed whenever the app lands on the auth screen and
+    /// after sign-out; never true during the UI tests (they never
+    /// opt in, and the simulator has no enrolled biometrics).
+    @Published public var biometricUnlockAvailable = false
 
     @Published public var phase: AppPhase = .loading
     @Published public var selectedTab: AppTab = .home
@@ -112,8 +138,17 @@ public final class AppViewModel: ObservableObject {
     /// Week-close runs once per session, admin only (live.js:724).
     private var weekCloseAttempted = false
 
-    public init(client: SupabaseClient = SupabaseClient()) {
-        self.client = client
+    public init(
+        client: SupabaseClient? = nil,
+        biometricUnlock: BiometricUnlock = BiometricUnlock()
+    ) {
+        // The launch store is biometric when a protected session
+        // exists (its load() returns nil without prompting, so boot
+        // lands on the auth screen and offers Face ID), else the
+        // plain UserDefaults store. An explicit client (tests,
+        // previews) is used as-is.
+        self.client = client ?? SupabaseClient(store: BiometricUnlock.sessionStoreForLaunch())
+        self.biometricUnlock = biometricUnlock
     }
 
     public var isAdmin: Bool { role == .admin }
@@ -133,6 +168,7 @@ public final class AppViewModel: ObservableObject {
         showSettings = false
         guard let session = client.currentSession else {
             phase = .auth
+            refreshBiometricUnlockAvailability()
             return
         }
         do {
@@ -213,6 +249,7 @@ public final class AppViewModel: ObservableObject {
         weekCloseAttempted = false
         selectedTab = .home
         phase = .auth
+        refreshBiometricUnlockAvailability()
     }
 
     /// Any screen that catches `.sessionExpired` routes here.
@@ -222,6 +259,38 @@ public final class AppViewModel: ObservableObject {
 
     public func signInAgain() {
         phase = .auth
+        refreshBiometricUnlockAvailability()
+    }
+
+    // MARK: - Face ID unlock
+
+    /// Recompute whether the auth screen may offer Face ID unlock.
+    /// Cheap and non-prompting (a Keychain existence check plus
+    /// `canEvaluatePolicy`); call it whenever the auth screen may
+    /// appear, never in a loop.
+    public func refreshBiometricUnlockAvailability() {
+        biometricUnlockAvailable = biometricUnlock.isEnabled && biometricUnlock.canEvaluate
+    }
+
+    /// Run the Face ID unlock from the auth screen. `.unlocked`
+    /// means the stored session is live and the caller should boot;
+    /// `.cancelled` stays silent; `.failed` carries the message for
+    /// the auth screen's inline error box. The Face ID prompt only
+    /// ever fires from this call — never on appear, never at boot —
+    /// so the UI tests (which never opt in) can never see it.
+    public func unlockWithBiometrics() async -> BiometricUnlockOutcome {
+        do {
+            _ = try await biometricUnlock.unlock(client: client)
+            refreshBiometricUnlockAvailability()
+            return .unlocked
+        } catch let error as BiometricUnlockError {
+            refreshBiometricUnlockAvailability()
+            if error == .cancelled { return .cancelled }
+            return .failed(error.userMessage)
+        } catch {
+            refreshBiometricUnlockAvailability()
+            return .failed("Face ID did not work. Sign in with your password.")
+        }
     }
 
     // MARK: - Navigation handoffs

@@ -112,7 +112,17 @@ public struct AuthView: View {
                 password = ""
                 message = nil
             }
+            // Offer Face ID unlock when a protected session exists
+            // and biometrics can evaluate. This only recomputes a
+            // flag — the Face ID prompt fires only from the button.
+            appState.refreshBiometricUnlockAvailability()
         }
+    }
+
+    /// "Unlock with Face ID" / "Unlock with Touch ID", from the
+    /// enrolled biometry kind.
+    private var biometricUnlockLabel: String {
+        appState.biometricUnlock.label
     }
 
     private var signInPanel: some View {
@@ -181,6 +191,21 @@ public struct AuthView: View {
             .underline()
             .frame(maxWidth: .infinity)
             .padding(.top, 4)
+
+            // Face ID unlock (native v1, opt-in only): shown only
+            // when a protected session exists AND biometrics can
+            // evaluate — never during the UI tests (they never opt
+            // in) and never on a device without enrolled biometrics.
+            // Tapping it is the ONLY place the Face ID prompt fires.
+            if appState.biometricUnlockAvailable {
+                Button(busy == "faceID" ? "Waiting…" : biometricUnlockLabel) {
+                    Task { await unlockWithBiometrics() }
+                }
+                .buttonStyle(TertiaryButtonStyle())
+                .accessibilityIdentifier("auth.unlockWithFaceID")
+                .disabled(busy != nil)
+                .frame(maxWidth: .infinity)
+            }
         }
     }
 
@@ -194,6 +219,25 @@ public struct AuthView: View {
     }
 
     // MARK: Actions
+
+    /// Face ID unlock: on success boot into the app; on cancel stay
+    /// silent on the password screen; on failure show the message in
+    /// the inline error box (the password screen is the fallback).
+    private func unlockWithBiometrics() async {
+        busy = "faceID"
+        message = nil
+        switch await appState.unlockWithBiometrics() {
+        case .unlocked:
+            busy = nil
+            await appState.boot()
+        case .cancelled:
+            busy = nil
+        case .failed(let text):
+            message = text
+            messageIsError = true
+            busy = nil
+        }
+    }
 
     private func signIn() async {
         if let error = AuthValidation.signInError(email: email, password: password) {

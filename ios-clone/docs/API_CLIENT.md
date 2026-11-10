@@ -148,8 +148,10 @@ Never client-invoked (server-to-server only, modelled or noted, not exposed):
   Xcode target with a `.pbxproj` edit if desired.
 * **Configuration**: `SupabaseConfiguration.live` derives its URL/key from
   the scaffold's `Configuration` (same module) instead of duplicating them.
-* **Session store**: the shipped default is UserDefaults. Swap in a
-  Keychain-backed `SessionStore` before shipping (one initializer argument).
+* **Session store**: the shipped default is UserDefaults. Face ID
+  unlock (`BiometricUnlock` / `BiometricSessionStore`) swaps in the
+  biometric Keychain store via `SupabaseClient.replaceSessionStore`
+  on opt-in, and back on opt-out — see PROGRESS.md "Face ID unlock".
 * **Platforms**: the scaffold manifest targets iOS 18 / macOS 14; the API
   code uses Foundation only and compiles under those.
 
