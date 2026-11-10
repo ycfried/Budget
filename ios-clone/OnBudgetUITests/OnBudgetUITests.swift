@@ -4,20 +4,22 @@
 // against the live TEST backend (Supabase project
 // tnkhvdkmwmwiogiienee — the same backend the app ships with).
 //
-// Flow, on a fresh simulator with no prior session:
-//   1. Launch; the auth screen renders.
-//   2. Sign up a FRESH account (random email per run, generated
-//      password) — sign-ups are ON and email confirmation is OFF in
-//      the live project, so sign-up returns a session immediately.
-//   3. Join the TEST household "Proof Household 2" as a member via
+// Flow: launch; setUp signs out first if a previous test in this
+// run left a session behind (the Supabase session persists across
+// launches in the same run), so every test starts on the auth
+// screen; then sign up a FRESH account (random email per run,
+// generated password) — sign-ups are ON and email confirmation
+// is OFF in the live project, so sign-up returns a session
+// immediately.
+//   Then join the TEST household "Proof Household 2" as a member via
 //      invite code Q6GFME. Never the real household, never the
 //      owner's account. (The test admin account's password is lost;
 //      nothing here depends on it.)
-//   4. Assert Home renders (Weekly Budget card), Transactions loads
+//   Assert Home renders (Weekly Budget card), Transactions loads
 //      rows (the test household holds ~1000 rows — assert non-empty,
 //      not an exact count), and Funds renders (Extra Fund + Charity).
 //   `testPastWeeksAndActivitySubpages` reuses the same preamble
-//   (steps 1–5) and proves the Transactions "Past Weeks" / "Activity"
+//   and proves the Transactions "Past Weeks" / "Activity"
 //   links push their subpages and Back returns to the list.
 //   `testPlaidSandboxConnect` instead CREATES a fresh household
 //   (the new account is its admin — only an admin can connect a
@@ -62,6 +64,60 @@ final class OnBudgetUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launch()
+        // A previous test in this run may have left a session behind:
+        // XCTest runs tests alphabetically, so the first test signs
+        // in and the next launches open straight into the signed-in
+        // shell (the Supabase session persists in the app sandbox
+        // across launches in the same run). Every test must still
+        // start from the auth screen with a FRESH account, so sign
+        // out through the app's own Settings sign-out and wait for
+        // the auth screen. No-op when the auth screen is already
+        // showing (first launch on a fresh simulator).
+        ensureSignedOut()
+    }
+
+    /// Leaves the app on the auth screen, signing out first when a
+    /// previous test's session is still alive. See setUpWithError.
+    private func ensureSignedOut() {
+        let emailField = app.textFields["auth.email"]
+        if emailField.waitForExistence(timeout: 10) { return }
+
+        // No auth screen: the app must be signed in. The tab bar is
+        // the proof — anything else (a stuck launch, an expired
+        // session) is a state this helper cannot recover from, so
+        // fail fast with the actual state instead of burning the
+        // 60s auth wait in signUpFreshAccount.
+        let homeTab = app.tabBars.buttons["tab.home"]
+        XCTAssertTrue(
+            homeTab.waitForExistence(timeout: 10),
+            "Neither the auth screen nor the signed-in Home appeared within ~20s of launch — cannot start from a known state"
+        )
+
+        // Profile menu → Settings → Sign Out (the app's own
+        // sign-out path; AppState.signOut dismisses Settings and
+        // lands on the auth screen). The Profile card is first in
+        // Settings, so its Sign Out button needs no scrolling.
+        app.buttons["Profile"].tap()
+        let settingsItem = app.buttons["Settings"]
+        XCTAssertTrue(
+            settingsItem.waitForExistence(timeout: 10),
+            "Profile menu did not offer Settings"
+        )
+        settingsItem.tap()
+        XCTAssertTrue(
+            app.staticTexts["Bank Connection"].waitForExistence(timeout: 30),
+            "Settings did not render (no Bank Connection card)"
+        )
+        let signOutButton = app.buttons["settings.signOut"]
+        XCTAssertTrue(
+            signOutButton.waitForExistence(timeout: 10),
+            "Settings Profile card did not offer Sign Out"
+        )
+        signOutButton.tap()
+        XCTAssertTrue(
+            emailField.waitForExistence(timeout: 60),
+            "Auth screen did not appear within 60s of signing out of the previous test's session"
+        )
     }
 
     func testSignUpJoinAndBrowse() throws {
