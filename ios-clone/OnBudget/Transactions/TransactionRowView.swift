@@ -77,6 +77,7 @@ public struct TransactionRowView: View {
             .accessibilityLabel(
                 "\(TransactionFormatting.displayMerchant(transaction.merchant)) \(TransactionFormatting.formatCents(transaction.amountCents)) \(TransactionFormatting.displayDay(transaction.date)) \(TransactionFormatting.stateWord(for: transaction)) — show detail"
             )
+            .accessibilityIdentifier("transaction.row")
 
             if isExpanded {
                 TransactionDetailView(

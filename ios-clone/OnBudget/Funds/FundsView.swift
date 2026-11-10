@@ -156,6 +156,7 @@ public struct FundsView: View {
                 FundsMuted("Loading fund balance…")
             }
         }
+        .accessibilityIdentifier("funds.extraFund")
     }
 
     private var fundFaceText: String {
@@ -209,6 +210,7 @@ public struct FundsView: View {
                 FundsMuted("Loading charity…")
             }
         }
+        .accessibilityIdentifier("funds.charity")
     }
 
     private var charityFaceText: String {

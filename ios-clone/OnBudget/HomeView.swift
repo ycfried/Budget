@@ -317,6 +317,7 @@ public struct HomeView: View {
                 .stroke(DesignTokens.primary, lineWidth: 1.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
+        .accessibilityIdentifier("home.weeklyBudget")
         // Hero exception: outline, NO shadow (styles.css:1127).
     }
 
