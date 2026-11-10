@@ -141,16 +141,16 @@ Verified on CI (run id in the landing report):
 - Built `Info.plist` lists the `onbudget` scheme; `simctl
   openurl` for `onbudget://gmail-callback?gmail=connected`
   exits 0 on the simulator.
+- NEW: `testPastWeeksAndActivitySubpages` (OnBudgetUITests) taps
+  both Transactions links against the live test backend and
+  asserts each subpage opens and Back returns to the list. The
+  sibling UI-test harness landed while this work was in progress,
+  so the UI-test proof is included in this change, not owed.
 
 Still owed (not verifiable from this VM / CI):
 
 - A real Gmail connect from a device: needs the server branch
   merged + deployed, the dashboard redirect URLs above, and a
   real Google account.
-- A UI test tapping "Past Weeks" / "Activity" and asserting the
-  push: no UI-test target exists yet in the project (only
-  `OnBudgetTests` unit tests + kit tests). Verified instead by CI
-  build + a careful read of the navigation wiring. The UI-test
-  proof is still owed once a UI-test harness exists.
 - No local type-check was possible on this VM (no Swift
   toolchain); CI is the only type-check, as before.
