@@ -18,9 +18,11 @@
 // service-role key must NEVER appear anywhere in this package.
 //
 // Session persistence: `SessionStore` is a protocol. The shipped
-// default stores the session JSON in UserDefaults; the app SHOULD
-// swap in a Keychain-backed store before shipping (one-line swap —
-// see `KeychainSessionStore` note below). Tokens are never logged.
+// default stores the session JSON in UserDefaults; opting in to
+// Face ID unlock swaps in the biometric Keychain store instead
+// (`BiometricSessionStore`, via `replaceSessionStore`) — the
+// UserDefaults copy is cleared on opt-in, so the session cannot be
+// read without a biometric match. Tokens are never logged.
 
 import Foundation
 #if canImport(FoundationNetworking)
@@ -174,9 +176,11 @@ public enum SignUpOutcome {
 }
 
 /// Where a session is persisted. The default implementation below
-/// uses UserDefaults; swap it for a Keychain-backed store in the app
-/// target before shipping — the client only ever talks to this
-/// protocol, so the swap is a single initializer argument.
+/// uses UserDefaults; Face ID unlock swaps in the biometric
+/// Keychain store (`BiometricSessionStore`) via
+/// `replaceSessionStore` — the client only ever talks to this
+/// protocol, so the swap is a single call and every later save
+/// (refresh, password change) follows the active store.
 public protocol SessionStore: AnyObject {
     func load() -> AuthSession?
     func save(_ session: AuthSession?)
@@ -290,7 +294,10 @@ public final class URLSessionTransport: HTTPTransport {
 /// created once and then read-only).
 public final class SupabaseClient: @unchecked Sendable {
     public let configuration: SupabaseConfiguration
-    public let store: SessionStore
+    /// The active persistence. Swapped only through
+    /// `replaceSessionStore`, which migrates the live session and
+    /// clears the old store — never assigned directly.
+    public private(set) var store: SessionStore
     private let transport: HTTPTransport
 
     private let lock = NSLock()
@@ -383,8 +390,47 @@ public final class SupabaseClient: @unchecked Sendable {
     }
 
     private func setSession(_ session: AuthSession?) {
-        lock.synchronized { _session = session }
-        store.save(session)
+        // Capture the store under the same lock the swap uses, so a
+        // save always lands in the store that was active when the
+        // session was set — never in one just cleared by a swap.
+        let targetStore: SessionStore = lock.synchronized {
+            _session = session
+            return store
+        }
+        targetStore.save(session)
+    }
+
+    /// Install a session obtained outside the password flow. Face ID
+    /// unlock restores the tokens it stored in the Keychain; the
+    /// session is then the live one (refresh, sign-out and expiry
+    /// all behave as if the user had just signed in).
+    public func restoreSession(_ session: AuthSession) {
+        setSession(session)
+    }
+
+    /// Swap the persistence store, migrating the live session to the
+    /// new store and clearing the old one. Face ID opt-in swaps to
+    /// the biometric Keychain store; opt-out (and dropping a dead or
+    /// invalidated protected session) swaps back to UserDefaults.
+    /// The new store is saved first, so a failure to write the new
+    /// store can never lose the session before the old copy is
+    /// cleared; swapping to the store already in use is a no-op
+    /// re-save. The swap itself is under the session lock so a
+    /// concurrent refresh cannot write to a store that has just
+    /// been cleared.
+    public func replaceSessionStore(_ newStore: SessionStore) {
+        let session = currentSession
+        let oldStore: SessionStore = lock.synchronized {
+            let old = store
+            store = newStore
+            return old
+        }
+        if oldStore === newStore {
+            newStore.save(session)
+            return
+        }
+        newStore.save(session)
+        oldStore.save(nil)
     }
 
     // MARK: - Auth flows
