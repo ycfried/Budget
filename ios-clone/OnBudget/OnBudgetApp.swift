@@ -14,9 +14,18 @@ struct OnBudgetApp: App {
             ContentView()
                 .environmentObject(appState)
                 .onOpenURL { url in
-                    // Password-reset deep link:
-                    // onbudget://reset-password?code=…
-                    Task { await appState.handleResetDeepLink(url) }
+                    // Deep links on the `onbudget` scheme (registered
+                    // in the app target's INFOPLIST_KEY_CFBundleURLTypes):
+                    // - onbudget://reset-password?code=… → recovery
+                    // - onbudget://gmail-callback?gmail=connected|failed
+                    //   → recorded on AppViewModel. The live Gmail
+                    //   connect needs no forwarding: the active
+                    //   ASWebAuthenticationSession completes by itself.
+                    if url.host == "gmail-callback" {
+                        Task { @MainActor in _ = appState.handleGmailDeepLink(url) }
+                    } else if url.host == "reset-password" {
+                        Task { await appState.handleResetDeepLink(url) }
+                    }
                 }
         }
     }

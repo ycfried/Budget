@@ -46,11 +46,17 @@ public enum ExpandedCard: Equatable {
 /// The password-reset deep link. The native app passes this URL as
 /// `redirectTo` on the reset request (API_CLIENT.md ambiguity 5);
 /// it must be allow-listed in Supabase Auth → URL Configuration →
-/// Redirect URLs, and the `onbudget` scheme registered in the Xcode
-/// target (URL Types) before the link can open the app. Until then
-/// the web reset.html flow remains the fallback.
+/// Redirect URLs. The `onbudget` scheme is registered in the Xcode
+/// target (INFOPLIST_KEY_CFBundleURLTypes, Debug + Release) so the
+/// link can open the app; until the dashboard entry is added the
+/// web reset.html flow remains the fallback.
 public enum AppDeepLinks {
     public static let resetPassword = URL(string: "onbudget://reset-password")!
+    /// The native Gmail OAuth return URL. The server redirects here
+    /// for native flows only (gmail-oauth-start encodes the client
+    /// in the OAuth state; see GmailCallback in OnBudgetKit). The
+    /// same `onbudget` scheme registration covers both deep links.
+    public static let gmailCallback = URL(string: "onbudget://gmail-callback")!
 }
 
 @MainActor
@@ -93,6 +99,15 @@ public final class AppViewModel: ObservableObject {
     /// via onbudget://reset-password?code=…).
     @Published public var pendingResetCode: String?
     @Published public var resetLinkError: String?
+
+    /// Last Gmail OAuth callback received at the app level
+    /// (`onbudget://gmail-callback?gmail=connected|failed`). The
+    /// live connect flow does NOT go through here — an active
+    /// `ASWebAuthenticationSession` completes on its own once the
+    /// scheme is registered, and `GmailOAuthPresenter` reports it.
+    /// This records a callback that arrives outside an active
+    /// session so it is visible instead of silently dropped.
+    @Published public var gmailCallbackResult: GmailCallbackResult?
 
     /// Week-close runs once per session, admin only (live.js:724).
     private var weekCloseAttempted = false
@@ -247,7 +262,19 @@ public final class AppViewModel: ObservableObject {
         selectedTab = .funds
     }
 
-    // MARK: - Password-reset deep link
+    // MARK: - Deep links
+
+    /// Handles onbudget://gmail-callback?gmail=connected|failed.
+    /// Returns true when the URL was a Gmail callback (and records
+    /// the outcome in `gmailCallbackResult`). No forwarding to
+    /// `GmailOAuthPresenter` is needed or correct: the presenter
+    /// owns the active `ASWebAuthenticationSession`, which completes
+    /// by itself once the `onbudget` scheme is registered.
+    public func handleGmailDeepLink(_ url: URL) -> Bool {
+        guard let result = OnBudgetKit.GmailCallback.result(from: url) else { return false }
+        gmailCallbackResult = result
+        return true
+    }
 
     /// Handles onbudget://reset-password?code=… (and the hash-style
     /// #access_token=… form). A bad code shows the reset page's exact

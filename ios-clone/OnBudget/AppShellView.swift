@@ -14,6 +14,12 @@
 // - Transactions: `TransactionsView(viewModel:appState:)`; the view
 //   model is created here once the household is known and consumes
 //   the shell handoffs `pendingWeekFilter` / `pendingTransactionJump`.
+//   The tab owns its own NavigationStack (neither the Settings-cover
+//   stack nor the Filters sheet's stack inside TransactionsView owns
+//   this tab): the "Past Weeks" / "Activity" links push
+//   PastWeeksView / ActivityView as subpages, the native equivalent
+//   of the web's full pages, sharing one HistoryFilterState. A Past
+//   Week tap pops back to the list and then applies the week filter.
 //   Trash is reached from the Transactions "Trash (N)" link only
 //   (CLONE_SPEC §11; admin-only, hidden at 0).
 // - Funds: `FundsView(context:appState:)`; shares `expandedCard`
@@ -31,9 +37,28 @@
 import SwiftUI
 import OnBudgetKit
 
+/// A Transactions-tab subpage (CLONE_SPEC §7 page links). Pushed
+/// onto the Transactions NavigationStack — the native equivalent of
+/// the web's full Past Weeks / Activity pages.
+enum TransactionsSubpage: Hashable {
+    case pastWeeks
+    case activity
+}
+
 public struct AppShellView: View {
     @ObservedObject var appState: AppViewModel
     @State private var transactionsViewModel: TransactionsViewModel?
+    /// The Transactions tab's navigation path. Owned by the shell
+    /// (not the tab) so it survives tab switches and the week-tap
+    /// pop in `historyContext()` can reach it.
+    @State private var transactionsPath: [TransactionsSubpage] = []
+    /// One date filter shared by Past Weeks and Activity, as on the
+    /// web (`HistoryFilterState`).
+    @StateObject private var historyFilter = HistoryFilterState()
+    /// Toasts for the history subpages (e.g. the week-tap "Showing
+    /// transactions…" line). Owned here so the toast survives the
+    /// pop back to the list.
+    @StateObject private var historyToast = ToastState()
 
     public init(appState: AppViewModel) { self.appState = appState }
 
@@ -155,13 +180,67 @@ public struct AppShellView: View {
         }
     }
 
+    /// The Transactions tab owns its own NavigationStack (neither
+    /// the Settings-cover stack above nor the Filters sheet's stack
+    /// inside TransactionsView owns this tab): the "Past Weeks" /
+    /// "Activity" links push PastWeeksView / ActivityView as
+    /// subpages. The system navigation bar stays hidden throughout
+    /// the stack — each screen renders its own "← Back" button, as
+    /// the web clone does — and the history toast overlay sits on
+    /// the stack so the week-tap toast survives the pop.
     @ViewBuilder
     private var transactionsTab: some View {
         if let viewModel = transactionsViewModel {
-            TransactionsView(viewModel: viewModel, appState: appState)
+            NavigationStack(path: $transactionsPath) {
+                TransactionsView(
+                    viewModel: viewModel,
+                    appState: appState,
+                    onShowPastWeeks: { transactionsPath.append(.pastWeeks) },
+                    onShowActivity: { transactionsPath.append(.activity) }
+                )
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: TransactionsSubpage.self) { page in
+                    transactionsSubpage(page)
+                }
+            }
+            .toastOverlay(historyToast)
         } else {
             LoadingView()
         }
+    }
+
+    @ViewBuilder
+    private func transactionsSubpage(_ page: TransactionsSubpage) -> some View {
+        if let context = historyContext() {
+            switch page {
+            case .pastWeeks:
+                PastWeeksView(context: context, toast: historyToast, filter: historyFilter, onBack: popTransactionsSubpage)
+                    .toolbar(.hidden, for: .navigationBar)
+            case .activity:
+                ActivityView(context: context, filter: historyFilter, onBack: popTransactionsSubpage)
+                    .toolbar(.hidden, for: .navigationBar)
+            }
+        } else {
+            LoadingView()
+        }
+    }
+
+    /// The Settings context for the history subpages: the shell's
+    /// own context, except a Past Week tap pops back to the list
+    /// first and THEN applies the week filter — otherwise the
+    /// filtered list would sit hidden under the subpage.
+    private func historyContext() -> SettingsContext? {
+        guard var context = settingsContext() else { return nil }
+        context.onShowWeekTransactions = { [self] week in
+            popTransactionsSubpage()
+            appState.showTransactionsForWeek(week)
+        }
+        return context
+    }
+
+    private func popTransactionsSubpage() {
+        guard !transactionsPath.isEmpty else { return }
+        transactionsPath.removeLast()
     }
 
     @ViewBuilder

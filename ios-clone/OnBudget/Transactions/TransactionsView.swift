@@ -7,9 +7,11 @@ import OnBudgetKit
 ///   Transaction" (primary) → the Add popup; "Filters" (tertiary) →
 ///   the filter sheet.
 /// - Page links under the header: "Past Weeks" · "Activity" (quiet
-///   links; the screens themselves belong to other workstreams — the
-///   links call the optional handlers below and are hidden until a
-///   handler is supplied).
+///   links). The app shell supplies both handlers, so the links
+///   push PastWeeksView / ActivityView as subpages on the
+///   Transactions NavigationStack — the native equivalent of the
+///   web's full pages. The links are hidden until a handler is
+///   supplied, so they never lead nowhere.
 /// - Search box + note "Searches loaded transactions." (loaded
 ///   transactions only; merchant / date / amount; 250ms debounce;
 ///   a new search resets the page to 100).
@@ -39,9 +41,9 @@ public struct TransactionsView: View {
     /// (Home recent-row tap). Consumed on appear and on change.
     @ObservedObject var appState: AppViewModel
 
-    /// Wired by the app shell once the Past Weeks / Activity screens
-    /// land. The links are hidden until a handler is supplied, so
-    /// they never lead nowhere.
+    /// Wired by the app shell: both handlers push the matching
+    /// subpage onto the Transactions NavigationStack. The links are
+    /// hidden until a handler is supplied, so they never lead nowhere.
     var onShowPastWeeks: (() -> Void)?
     var onShowActivity: (() -> Void)?
 

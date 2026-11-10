@@ -91,6 +91,30 @@ xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -configuration
   -destination-timeout 60 -derivedDataPath ios-clone/CloudResults/DerivedData \
   -resultBundlePath ios-clone/CloudResults/build.xcresult -disableAutomaticPackageResolution \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= build-for-testing
+
+# Prove the onbudget URL scheme landed in the built product: the
+# built app's Info.plist must list it under CFBundleURLTypes.
+# (A plain grep would pass on the bundle id alone, so parse the plist.)
+onbudget_app_path="ios-clone/CloudResults/DerivedData/Build/Products/Debug-iphonesimulator/OnBudget.app"
+python3 - "$onbudget_app_path/Info.plist" <<'PY'
+import plistlib
+import sys
+info = plistlib.load(open(sys.argv[1], 'rb'))
+schemes = [s for t in info.get('CFBundleURLTypes', []) for s in t.get('CFBundleURLSchemes', [])]
+assert 'onbudget' in schemes, f"onbudget scheme missing from built Info.plist: {info.get('CFBundleURLTypes')!r}"
+print(f"Built Info.plist URL schemes: {schemes}")
+PY
+
+# Prove the scheme opens the app on the simulator: simctl openurl
+# fails when no app handles the URL, so an exit 0 here means the
+# OS routes onbudget://gmail-callback to OnBudget. (Full Google
+# consent cannot run on CI — it needs a real Google account and the
+# not-yet-deployed server redirect change; this proves the
+# registration + the app-level deep-link route only.)
+xcrun simctl install "$onbudget_simulator_id" "$onbudget_app_path"
+xcrun simctl launch "$onbudget_simulator_id" com.onbudget.app
+xcrun simctl openurl "$onbudget_simulator_id" "onbudget://gmail-callback?gmail=connected"
+
 xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -configuration Debug \
   -destination "platform=iOS Simulator,id=$onbudget_simulator_id" \
   -derivedDataPath ios-clone/CloudResults/DerivedData -resultBundlePath ios-clone/CloudResults/tests.xcresult \

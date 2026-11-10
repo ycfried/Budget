@@ -466,9 +466,15 @@ public struct EdgeFunctionsClient {
     /// to offer the household picker. The result's `auth_url` is
     /// opened in the browser / ASWebAuthenticationSession — the page
     /// redirects to Google, and the callback links back to the app.
-    public func gmailOAuthStart(householdId: UUID? = nil) async throws -> GmailOAuthStartResult {
+    /// `client: "native"` tells the server this is the iOS app, so
+    /// the callback redirects to `onbudget://gmail-callback` instead
+    /// of live.html (server branch gmail-callback-native-redirect,
+    /// NOT deployed yet — until it ships the server ignores the
+    /// field and always returns to live.html). Omit it for the web.
+    public func gmailOAuthStart(householdId: UUID? = nil, client: String? = nil) async throws -> GmailOAuthStartResult {
         var body: [String: Any] = [:]
         if let householdId { body["household_id"] = householdId.uuidString }
+        if let client { body["client"] = client }
         return try await invoke(name: "gmail-oauth-start", body: body)
     }
 

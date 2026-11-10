@@ -24,14 +24,30 @@
 // - Disconnect (per connection, admin-only): `gmailDisconnect(
 //   householdId:connectionId:)` after a confirm.
 //
-// OPEN (coordinator/backend): the OAuth callback URL scheme. The web
-// returns to `live.html?gmail=connected`; the native app needs its
-// own allow-listed redirect (e.g. `onbudget://gmail-callback`) and
-// the `gmail-oauth-callback` function must redirect there. Until
-// that is registered, `GmailOAuthPresenter` listens for
-// `gmail=connected` / `gmail=failed` on the `onbudget` scheme and
-// reports "Email connection didn't go through — try again." when the
-// callback never arrives in that shape.
+// Gmail callback URL scheme — DONE on the app side (Nov 9, 2026),
+// still OWED on the server + dashboard:
+// - The `onbudget` scheme IS registered in the app target
+//   (INFOPLIST_KEY_CFBundleURLTypes, Debug + Release), covering
+//   both `onbudget://gmail-callback` and `onbudget://reset-password`.
+//   An active `ASWebAuthenticationSession` (callbackURLScheme
+//   "onbudget") completes on its own once the scheme is registered
+//   — no onOpenURL forwarding to `GmailOAuthPresenter` is needed.
+//   `OnBudgetApp.onOpenURL` routes `gmail-callback` URLs to
+//   `AppViewModel.handleGmailDeepLink`, which records the outcome
+//   for callbacks arriving outside an active session.
+// - The app sends `client: "native"` to `gmail-oauth-start` so the
+//   server can tell the native flow from the web flow.
+// - STILL OWED (server, NOT deployed): branch
+//   `gmail-callback-native-redirect` (off main) makes
+//   `gmail-oauth-start` encode the client in the OAuth state
+//   (`native:<nonce>`) and `gmail-oauth-callback` redirect native
+//   states to `onbudget://gmail-callback?gmail=…` instead of
+//   live.html. Until that ships + is deployed, the live flow still
+//   returns to live.html and the native connect cannot complete.
+// - STILL OWED (dashboard, parent): Supabase Auth → URL
+//   Configuration → Redirect URLs — add `onbudget://reset-password`
+//   and `onbudget://gmail-callback`. Full end-to-end Gmail connect
+//   also needs a real Google account and cannot run on CI.
 
 import SwiftUI
 import UIKit
@@ -185,7 +201,7 @@ final class EmailAlertsViewModel: ObservableObject {
         resultMessage = "Getting a secure email connection…"
         resultIsError = false
         do {
-            let start = try await context.client.functions.gmailOAuthStart()
+            let start = try await context.client.functions.gmailOAuthStart(client: "native")
             await openAuthURL(start.authUrl)
         } catch {
             // 409: the caller administers more than one household and
@@ -195,7 +211,7 @@ final class EmailAlertsViewModel: ObservableObject {
                case .serverError(let status, let message) = budgetError, status == 409 {
                 if let picked = await pickAdminHousehold() {
                     do {
-                        let retry = try await context.client.functions.gmailOAuthStart(householdId: picked)
+                        let retry = try await context.client.functions.gmailOAuthStart(householdId: picked, client: "native")
                         await openAuthURL(retry.authUrl)
                     } catch {
                         showStartFailure(settingsErrorMessage(error))
