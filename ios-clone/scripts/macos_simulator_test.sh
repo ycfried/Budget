@@ -117,23 +117,55 @@ if 'onbudget' not in schemes:
 print(f"Built Info.plist URL schemes: {schemes}")
 PY
 
-# Prove the scheme opens the app on the simulator: simctl openurl
-# fails when no app handles the URL, so an exit 0 here means the
-# OS routes onbudget://gmail-callback to OnBudget. (Full Google
-# consent cannot run on CI — it needs a real Google account and the
-# not-yet-deployed server redirect change; this proves the
-# registration + the app-level deep-link route only.)
+# Gmail callback check, part 1 — scheme + OS routing (LOUD, so the
+# run log shows it ran; run 42746242404's silent simctl lines were
+# mistaken for a missing check).
+#
+# What simctl openurl proves here — and what it does NOT prove:
+# an exit 0 means the OS routes onbudget://gmail-callback to
+# OnBudget. It does NOT prove the app received the URL: iOS
+# answers with a SpringBoard "Open in 'OnBudget'?" prompt, and
+# nothing taps it here — in run 42746242404 that prompt sat on the
+# auth screen until XCTest's default handler CANCELLED it in the
+# first UI test, so the URL never reached the app. Delivery is
+# proven by the UI tests instead: setUp's interruption monitor
+# taps Open on that prompt, the app records the callback
+# (AppViewModel.handleGmailDeepLink, persisted to UserDefaults),
+# and testGmailCallbackDeepLink asserts the record in Settings →
+# Email Alerts. Part 2 below re-asserts the persisted record
+# after the tests.
+# (Full Google consent cannot run on CI — it needs a real Google
+# account and the not-yet-deployed server redirect change.)
+echo "=== Gmail callback check, part 1: OS routing ==="
+echo "Installing OnBudget.app on $onbudget_simulator_id ..."
 xcrun simctl install "$onbudget_simulator_id" "$onbudget_app_path"
+echo "Launching com.onbudget.app ..."
 xcrun simctl launch "$onbudget_simulator_id" com.onbudget.app
+echo "Opening onbudget://gmail-callback?gmail=connected (expect a SpringBoard 'Open in ...?' prompt; the UI tests answer Open) ..."
 xcrun simctl openurl "$onbudget_simulator_id" "onbudget://gmail-callback?gmail=connected"
+echo "simctl openurl exit 0: the OS routes the onbudget scheme to OnBudget (delivery is proven by testGmailCallbackDeepLink)."
 
+# The tests run with their exit code CAPTURED, not fatal: the old
+# script ran under `set -e`, so a test failure (xcodebuild exit
+# 65) aborted the script here and nothing after it ever ran. The
+# Gmail check in part 2 must run even when the tests fail, and the
+# run must still fail overall when they do — so each phase records
+# its own status and the script exits non-zero at the end if any
+# phase failed.
+set +e
 xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -configuration Debug \
   -destination "platform=iOS Simulator,id=$onbudget_simulator_id" \
   -derivedDataPath ios-clone/CloudResults/DerivedData -resultBundlePath ios-clone/CloudResults/tests.xcresult \
   -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= test-without-building
-xcrun xcresulttool get test-results summary --path ios-clone/CloudResults/tests.xcresult > ios-clone/CloudResults/test-summary.json
-python3 - <<'PY'
+onbudget_test_status=$?
+set -e
+echo "xcodebuild test exit status: $onbudget_test_status"
+
+onbudget_summary_status=0
+if [[ -e ios-clone/CloudResults/tests.xcresult ]]; then
+  xcrun xcresulttool get test-results summary --path ios-clone/CloudResults/tests.xcresult > ios-clone/CloudResults/test-summary.json || onbudget_summary_status=1
+  python3 - <<'PY' || onbudget_summary_status=1
 import json
 from pathlib import Path
 summary = json.loads(Path('ios-clone/CloudResults/test-summary.json').read_text())
@@ -143,6 +175,52 @@ assert summary.get('skippedTests') == 0, 'Skipped tests or unknown result schema
 assert summary.get('passedTests', 0) >= 2, 'No positive pass count'
 print(json.dumps(summary, indent=2))
 PY
+else
+  echo "FAIL: tests.xcresult is missing; cannot summarise the test run." >&2
+  onbudget_summary_status=1
+fi
+
+# Gmail callback check, part 2 — the app recorded the outcome.
+# Runs ALWAYS, even when the tests failed (that is the point: a
+# failing UI run must not hide whether the deep link works). It
+# re-opens the callback URL (exit 0 re-proves OS routing; the
+# prompt it raises is unanswered and harmless — the simulator is
+# deleted next) and then reads the record the app persisted when
+# the UI-test delivery happened:
+# onbudget.lastGmailCallback in the app's Preferences plist.
+# A separate `if: always()` workflow step cannot do this: the
+# script's EXIT trap deletes this simulator, so a later step
+# would need a whole new simulator of its own.
+echo "=== Gmail callback check, part 2: the app recorded the outcome (runs even when the tests failed) ==="
+onbudget_gmail_status=0
+xcrun simctl install "$onbudget_simulator_id" "$onbudget_app_path" || onbudget_gmail_status=1
+xcrun simctl launch "$onbudget_simulator_id" com.onbudget.app || onbudget_gmail_status=1
+xcrun simctl openurl "$onbudget_simulator_id" "onbudget://gmail-callback?gmail=connected" || onbudget_gmail_status=1
+echo "Re-opened the callback URL (OS routing re-proven)."
+sleep 5
+onbudget_container="$(xcrun simctl get_app_container "$onbudget_simulator_id" com.onbudget.app data)" || onbudget_gmail_status=1
+echo "App data container: $onbudget_container"
+python3 - "$onbudget_container/Library/Preferences/com.onbudget.app.plist" <<'PY' || onbudget_gmail_status=1
+import plistlib
+import sys
+from pathlib import Path
+plist_path = Path(sys.argv[1])
+if not plist_path.exists():
+    print(f"FAIL: no app Preferences plist at {plist_path} — the app never recorded a Gmail callback", file=sys.stderr)
+    raise SystemExit(1)
+info = plistlib.load(open(plist_path, 'rb'))
+value = info.get('onbudget.lastGmailCallback')
+print(f"App-recorded Gmail callback: {value!r}")
+if value != 'connected':
+    print("FAIL: expected 'connected' — the onbudget://gmail-callback URL was not delivered to, or not recorded by, the app (see testGmailCallbackDeepLink)", file=sys.stderr)
+    raise SystemExit(1)
+print("PASS: the app recorded the Gmail callback (onbudget.lastGmailCallback == 'connected').")
+PY
+if [[ "$onbudget_gmail_status" == 0 ]]; then
+  echo "Gmail callback check: PASS."
+else
+  echo "Gmail callback check: FAIL (see above)." >&2
+fi
 
 # Export the UI-test screenshots/attachments out of the test result
 # bundle so they are visible without opening the xcresult. Best
@@ -155,3 +233,26 @@ if xcrun xcresulttool export attachments --path ios-clone/CloudResults/tests.xcr
 else
   echo "WARNING: xcresulttool export attachments failed; the full tests.xcresult is still uploaded as the artifact." >&2
 fi
+
+# Fail the run if any phase failed — tests, summary, or the Gmail
+# callback check (which already ran above even on test failure,
+# so a failing UI run no longer hides the deep-link result).
+onbudget_failed=0
+if [[ "$onbudget_test_status" != 0 ]]; then
+  echo "FAIL: UI tests failed (xcodebuild exit $onbudget_test_status)." >&2
+  onbudget_failed=1
+fi
+if [[ "$onbudget_summary_status" != 0 ]]; then
+  echo "FAIL: test-summary assertions failed." >&2
+  onbudget_failed=1
+fi
+if [[ "$onbudget_gmail_status" != 0 ]]; then
+  echo "FAIL: Gmail callback check failed." >&2
+  onbudget_failed=1
+fi
+if [[ "$onbudget_failed" == 0 ]]; then
+  echo "ALL CHECKS PASSED (tests + Gmail callback record)."
+else
+  echo "RUN FAILED (see failures above)." >&2
+fi
+exit "$onbudget_failed"
