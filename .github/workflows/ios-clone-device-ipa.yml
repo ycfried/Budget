@@ -2,8 +2,14 @@ name: OnBudget iOS clone device .ipa (sideload)
 # Builds an UNSIGNED device .ipa for sideloading with Sideloadly/AltStore
 # under a free Apple ID (7-day expiry; push notifications will not work).
 # Manual trigger only: gh workflow run ios-clone-device-ipa.yml --ref ios-clone
+# (needs the file on the default branch, so push is the working trigger:
+# any push to ios-clone that touches this file starts a build.)
 on:
   workflow_dispatch:
+  push:
+    branches: [ios-clone]
+    paths:
+      - '.github/workflows/ios-clone-device-ipa.yml'
 permissions:
   contents: read
 jobs:
