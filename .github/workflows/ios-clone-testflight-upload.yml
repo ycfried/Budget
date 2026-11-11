@@ -9,6 +9,14 @@ name: OnBudget iOS clone TestFlight upload
 # automatic signing needs Admin (creating the distribution certificate
 # / provisioning profile), the archive step fails and the key must be
 # bumped to Admin by the account holder.
+# Xcode: MUST be 26.x (iOS 26 SDK). App Store Connect has rejected
+# uploads built with Xcode 16.4 / the iOS 18.5 SDK since Apr 28, 2026
+# (409 "SDK version issue") — run 43119545461 proved it: archive +
+# export passed in ~3 min, the upload itself was rejected. The
+# macos-15-intel image ships Xcode 26.0.1–26.3 alongside 16.4, so
+# the workflow stays on that runner and picks the newest Xcode 26
+# it finds. (The simulator workflow stays on Xcode 16.4 — it never
+# uploads, so the SDK gate does not apply there.)
 # Signing: the project MUST keep its project-level
 # CODE_SIGNING_ALLOWED = NO — ios-clone/scripts/validate_project.py
 # (run by the simulator workflow) requires it, and the scaffold's
@@ -93,11 +101,14 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Select Xcode 16.4
+      - name: Select Xcode 26 (iOS 26 SDK — App Store Connect requires Xcode 26 or later for uploads since Apr 28, 2026; Xcode 16.4 / iOS 18.5 SDK is rejected with a 409)
         run: |
-          if [ -d /Applications/Xcode_16.4.app/Contents/Developer ]; then
-            echo "DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer" >> "$GITHUB_ENV"
+          XCODE26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE26" ]; then
+            echo "ERROR: no Xcode 26 found on this runner"; ls /Applications | grep -i xcode || true; exit 1
           fi
+          echo "DEVELOPER_DIR=$XCODE26/Contents/Developer" >> "$GITHUB_ENV"
+          echo "Using $XCODE26"
           xcodebuild -version
       - name: Write App Store Connect API key (never printed)
         run: |
