@@ -59,11 +59,30 @@ jobs:
           # never engaged and the first archive came out unsigned
           # ("No Team Found in Archive" at export). The App Store
           # Connect API returns the team id as the bundle id's seedId.
-          HEADER=$(printf '{"alg":"ES256","kid":"%s","typ":"JWT"}' "$ASC_KEY_ID" | openssl base64 -A | tr '+/' '-_' | tr -d '=')
-          NOW=$(date +%s)
-          PAYLOAD=$(printf '{"iss":"%s","iat":%s,"exp":%s,"aud":"appstoreconnect-v1"}' "$ASC_ISSUER_ID" "$NOW" "$((NOW + 1200))" | openssl base64 -A | tr '+/' '-_' | tr -d '=')
-          SIGNATURE=$(printf '%s.%s' "$HEADER" "$PAYLOAD" | openssl dgst -sha256 -sign "$RUNNER_TEMP/AuthKey.p8" -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
-          TOKEN="$HEADER.$PAYLOAD.$SIGNATURE"
+          # NOTE: ES256 JWT signatures must be raw R||S (64 bytes);
+          # openssl dgst -sign emits DER, so the DER is converted.
+          TOKEN=$(python3 - "$ASC_KEY_ID" "$ASC_ISSUER_ID" "$RUNNER_TEMP/AuthKey.p8" <<'PY'
+          import base64, json, subprocess, sys, time
+          def b64u(b):
+              return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+          key_id, issuer, key_path = sys.argv[1], sys.argv[2], sys.argv[3]
+          now = int(time.time())
+          header = b64u(json.dumps({"alg": "ES256", "kid": key_id, "typ": "JWT"}, separators=(",", ":")).encode())
+          payload = b64u(json.dumps({"iss": issuer, "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"}, separators=(",", ":")).encode())
+          msg = f"{header}.{payload}".encode()
+          der = subprocess.run(["openssl", "dgst", "-sha256", "-sign", key_path], input=msg, capture_output=True, check=True).stdout
+          i = 2
+          assert der[i] == 0x02; i += 1
+          len_r = der[i]; i += 1
+          r = der[i:i + len_r]; i += len_r
+          assert der[i] == 0x02; i += 1
+          len_s = der[i]; i += 1
+          s = der[i:i + len_s]
+          r = r.lstrip(b"\x00").rjust(32, b"\x00")
+          s = s.lstrip(b"\x00").rjust(32, b"\x00")
+          print(f"{header}.{payload}.{b64u(r + s)}")
+          PY
+          )
           RESP=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.appstoreconnect.apple.com/v1/bundleIds?filter%5Bidentifier%5D=com.onbudget.ios")
           TEAM_ID=$(printf '%s' "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data'][0]['attributes']['seedId'] if d.get('data') else '')")
           if [ -z "$TEAM_ID" ]; then echo "FAIL: could not resolve team id from bundleIds API: $RESP"; exit 1; fi
