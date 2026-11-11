@@ -39,23 +39,23 @@ name: OnBudget iOS clone TestFlight upload
 # returned HTTP 409 ATTRIBUTE.INVALID, not 403, so an Admin bump
 # is NOT needed):
 #   "OnBudget App Store" (IOS_APP_STORE), id 83TZ7C4533, ACTIVE,
-#   bundle com.onbudget.ios (MZ58SJMG6V),
-#   certificate 626P45U97T (DISTRIBUTION, "Mats Sellei", created
-#   2026-09-06 — the friend's current distribution certificate; the
-#   Dinner Made Easy profile was recreated against it the same day).
+#   bundle com.onbudget.ios (MZ58SJMG6V).
 # The workflow downloads this profile from the API on every run.
+# (The profile was re-pointed by the account holder on Nov 11,
+# 2026 to the new distribution certificate below; it previously
+# pointed at 626P45U97T, the friend's 2026-09-06 certificate.)
 #
-# REMAINING BLOCKER — the .p12: the team is AT the distribution
-# certificate limit (3 of 3: 626P45U97T, X775P4LLK4, XM224R3NU3),
-# so no new distribution certificate can be created. Signing can
-# only use one of the three existing ones, and their private keys
-# live on the account holder's Mac. He must export the .p12 for
-# the 2026-09-06 distribution certificate (Keychain Access) and
-# have it stored as repo secrets ASC_SIGNING_P12 (base64 of the
-# .p12 file) + ASC_SIGNING_P12_PASSWORD. The import step below is
-# guarded on the secret existing, so the next run after the secrets
-# land uses it automatically. Until then the archive fails at the
-# signing step ("no signing certificate" / private key missing).
+# Signing certificate — CSR ROUTE, DONE Nov 11, 2026 (the friend
+# has no Mac, so a .p12 export was impossible): a CSR was made
+# here (private key kept in ~/workspace/user/files/
+# onbudget-distribution.key, NEVER in the repo), the account
+# holder revoked an unused distribution certificate to free a
+# slot (NOT the July 13, 2027 one — that is his live Receipts
+# app), created a new "Apple Distribution: Mats Sellei" certificate
+# from the CSR (expires Nov 11, 2027), and sent back the .cer.
+# The .cer + private key were combined into a .p12 stored as repo
+# secrets ASC_SIGNING_P12 (base64) + ASC_SIGNING_P12_PASSWORD.
+# The import step below is guarded on the secret existing.
 # NOTE: one of the early automatic-signing runs caused Xcode to
 # create an orphaned DEVELOPMENT certificate via the API
 # (MM546R8VD9, "Created via API", 2026-11-11T18:13 UTC) whose
@@ -84,7 +84,7 @@ concurrency:
 jobs:
   testflight-upload:
     runs-on: macos-15-intel
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -120,6 +120,13 @@ jobs:
           security set-keychain-settings -lut 21600 build.keychain
           security unlock-keychain -p "" build.keychain
           security import "$RUNNER_TEMP/OnBudgetDist.p12" -P "${{ secrets.ASC_SIGNING_P12_PASSWORD }}" -A -t cert -f pkcs12 -k build.keychain
+          # -A alone is NOT enough: on the CI runner the first codesign
+          # call hangs forever waiting for a keychain-access prompt
+          # that never appears. The partition list below lets the
+          # codesign tool use the key without asking. (Run 43113765361
+          # proved it: archive stuck 39 min on the very first
+          # codesign, then the 40-min job timeout killed it.)
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           security list-keychains -d user -s build.keychain
           security default-keychain -s build.keychain
           rm -f "$RUNNER_TEMP/OnBudgetDist.p12"
