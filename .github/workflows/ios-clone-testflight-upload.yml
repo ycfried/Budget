@@ -23,6 +23,15 @@ name: OnBudget iOS clone TestFlight upload
 # attempt also proved CODE_SIGN_IDENTITY must NOT be passed with
 # CODE_SIGN_STYLE=Automatic — Xcode calls that "conflicting
 # provisioning settings". Manual + an explicit identity is fine.)
+# The profile specifier lives in the PROJECT, on the app target only
+# (PROVISIONING_PROFILE_SPECIFIER = "OnBudget App Store" in the
+# OnBudget target's Debug + Release configs): a command-line
+# specifier applies to every target, and the Swift package targets
+# (OnBudgetKit, LinkKit) reject provisioning profiles outright;
+# conversely Xcode does NOT auto-match an installed profile for the
+# archive build, so the app target must name it. The simulator
+# validator does not check this setting, and the sideload workflow
+# passes CODE_SIGNING_ALLOWED=NO, so it stays inert there.
 #
 # Provisioning profile (created Nov 11, 2026 via the App Store
 # Connect API with the "OnBudget builds" key — the key CAN create
