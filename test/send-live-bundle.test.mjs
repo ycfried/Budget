@@ -20,15 +20,18 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v53, live.js v67', () => {
+test('version pins: styles v53, live.js v68', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=67/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
-  const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = ['), sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')));
-  assert.deepEqual([...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]), ['Allowance', 'Spent', 'Balance']);
+  assert.match(html, /live\.js\?v=68/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
+  // R6-NEW-P1-1: Base allowance / Temporary increases / Carried
+  // debt lines appear above the three base rows exactly when debt
+  // or temp changes the number, so a $0 allowance explains itself.
+  const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = [];'), sheetFn.indexOf("if (unlinkedExcess > 0) weeklyRows.push"));
+  assert.deepEqual([...visible.matchAll(/weeklyRows\.push\(\['([^']+)'/g)].map((m) => m[1]), ['Base allowance', 'Temporary increases', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
   assert.match(sheetFn, /weeklyAllowanceCents = \(w\.baseAvailableCents \?\? w\.baseRoomCents \?\? 0\) \+ \(w\.tempCents \?\? 0\)/);
-  assert.match(sheetFn, /\['Allowance', formatCents\(weeklyAllowanceCents\)\]/);
-  assert.match(sheetFn, /\['Spent', formatCents\(w\.chargesCents\)\]/);
-  assert.match(sheetFn, /\['Balance', formatCents\(w\.availableCents\)\]/);
+  assert.match(sheetFn, /weeklyRows\.push\(\['Allowance', formatCents\(weeklyAllowanceCents\)\]\)/);
+  assert.match(sheetFn, /weeklyRows\.push\(\['Spent', formatCents\(w\.chargesCents\)\]\)/);
+  assert.match(sheetFn, /weeklyRows\.push\(\['Balance', formatCents\(w\.availableCents\)\]\)/);
   assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
   // Equation, via the engine: Allowance (base room + temp) - Spent = Balance.

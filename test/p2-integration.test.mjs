@@ -63,10 +63,10 @@ test('Integration: charity RPCs compute committed cents in bigint', () => {
 // Only live.js changed in this batch, so only its pin moves (v64 -> v65);
 // styles.css stays v53. The service-worker cache name tracks
 // the live.js pin so it cannot drift again (P2-F11).
-test('Integration: pins are v67/v53 and the service-worker cache tracks live.js', () => {
-  assert.ok(liveHtml.includes('live.js?v=67'), 'live.html pins live.js v67');
+test('Integration: pins are v68/v53 and the service-worker cache tracks live.js', () => {
+  assert.ok(liveHtml.includes('live.js?v=68'), 'live.html pins live.js v68');
   assert.ok(liveHtml.includes('styles.css?v=53'), 'live.html pins styles v53');
   const sw = read('../live-sw.js');
-  assert.ok(sw.includes("CACHE = 'onbudget-live-v67'"), 'service-worker cache tracks the live.js pin');
-  assert.ok(sw.includes('(v67)'), 'service-worker comment names the current pin (NEW-P2-4)');
+  assert.ok(sw.includes("CACHE = 'onbudget-live-v68'"), 'service-worker cache tracks the live.js pin');
+  assert.ok(sw.includes('(v68)'), 'service-worker comment names the current pin (NEW-P2-4)');
 });

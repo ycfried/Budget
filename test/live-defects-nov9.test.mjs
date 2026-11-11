@@ -193,9 +193,9 @@ test('defect 2: write_off closes a held row with no money moved', () => {
 
 // --- Pins --------------------------------------------------------------
 
-test('pins: live.js v67 / styles v53, service-worker cache tracks live.js', () => {
-  assert.ok(html.includes('live.js?v=67'), 'live.html pins live.js v67');
+test('pins: live.js v68 / styles v53, service-worker cache tracks live.js', () => {
+  assert.ok(html.includes('live.js?v=68'), 'live.html pins live.js v68');
   assert.ok(html.includes('styles.css?v=53'), 'live.html pins styles v53');
-  assert.ok(sw.includes("CACHE = 'onbudget-live-v67'"), 'service-worker cache tracks the live.js pin');
-  assert.ok(sw.includes('(v67)'), 'service-worker comment names the current pin');
+  assert.ok(sw.includes("CACHE = 'onbudget-live-v68'"), 'service-worker cache tracks the live.js pin');
+  assert.ok(sw.includes('(v68)'), 'service-worker comment names the current pin');
 });
