@@ -13,24 +13,47 @@ name: OnBudget iOS clone TestFlight upload
 # CODE_SIGNING_ALLOWED = NO — ios-clone/scripts/validate_project.py
 # (run by the simulator workflow) requires it, and the scaffold's
 # invariant is "no team baked into the project". Signing is therefore
-# enabled ONLY here, as command-line overrides on the archive and
-# export steps: CODE_SIGNING_ALLOWED=YES (overrides the project-level
-# NO), CODE_SIGN_IDENTITY="Apple Distribution" (without it Xcode
-# defaults to the development identity and looks for a development
-# profile), DEVELOPMENT_TEAM=H38376B6RX (the friend's team, resolved
-# once from the bundle id's seedId via the App Store Connect API).
+# set ONLY here, as command-line overrides.
 #
-# Diagnosis (Nov 11, 2026, CI probe): the App Manager key CAN create
-# certificates (a deliberately invalid CSR probe returned HTTP 409
-# ENTITY_ERROR.ATTRIBUTE.INVALID, not 403), so an Admin bump is NOT
-# needed. The team already has one distribution certificate
-# (IOS_DISTRIBUTION, "Mats Sellei", expires 2027-07-13) — but CI does
-# not have its private key, so Xcode cannot sign with it. Before the
-# first upload can succeed, the account holder must export that
-# certificate's .p12 (Keychain Access on his Mac) and have it stored
-# as repo secrets; this workflow then needs a keychain-import step.
-# Until then the archive step fails at GatherProvisioningInputs
-# ("team has no devices … No profiles for 'com.onbudget.ios'").
+# MANUAL signing (not automatic): automatic signing cannot work on
+# this team — it archives with the development identity, which needs
+# a development provisioning profile, which needs at least one
+# registered device, and the team has none. Manual signing with the
+# App Store profile below needs no devices. (An earlier automatic
+# attempt also proved CODE_SIGN_IDENTITY must NOT be passed with
+# CODE_SIGN_STYLE=Automatic — Xcode calls that "conflicting
+# provisioning settings". Manual + an explicit identity is fine.)
+#
+# Provisioning profile (created Nov 11, 2026 via the App Store
+# Connect API with the "OnBudget builds" key — the key CAN create
+# profiles, and CAN create certificates: an invalid-CSR probe
+# returned HTTP 409 ATTRIBUTE.INVALID, not 403, so an Admin bump
+# is NOT needed):
+#   "OnBudget App Store" (IOS_APP_STORE), id 83TZ7C4533, ACTIVE,
+#   bundle com.onbudget.ios (MZ58SJMG6V),
+#   certificate 626P45U97T (DISTRIBUTION, "Mats Sellei", created
+#   2026-09-06 — the friend's current distribution certificate; the
+#   Dinner Made Easy profile was recreated against it the same day).
+# The workflow downloads this profile from the API on every run.
+#
+# REMAINING BLOCKER — the .p12: the team is AT the distribution
+# certificate limit (3 of 3: 626P45U97T, X775P4LLK4, XM224R3NU3),
+# so no new distribution certificate can be created. Signing can
+# only use one of the three existing ones, and their private keys
+# live on the account holder's Mac. He must export the .p12 for
+# the 2026-09-06 distribution certificate (Keychain Access) and
+# have it stored as repo secrets ASC_SIGNING_P12 (base64 of the
+# .p12 file) + ASC_SIGNING_P12_PASSWORD. The import step below is
+# guarded on the secret existing, so the next run after the secrets
+# land uses it automatically. Until then the archive fails at the
+# signing step ("no signing certificate" / private key missing).
+# NOTE: one of the early automatic-signing runs caused Xcode to
+# create an orphaned DEVELOPMENT certificate via the API
+# (MM546R8VD9, "Created via API", 2026-11-11T18:13 UTC) whose
+# private key died with the ephemeral runner — it is harmless but
+# should be revoked in the portal when convenient. Do NOT run this
+# workflow with automatic signing again: each attempt risks another
+# orphaned certificate.
 #
 # Manual trigger: gh workflow run ios-clone-testflight-upload.yml --ref <branch>
 # Push trigger (mirrors ios-clone-device-ipa.yml — workflow_dispatch
@@ -77,7 +100,46 @@ jobs:
           echo "key file written (contents never echoed)"
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project ios-clone/OnBudget.xcodeproj
-      - name: Archive (signed, automatic signing via API key)
+      - name: Import distribution certificate (.p12, only once the secret exists)
+        if: ${{ secrets.ASC_SIGNING_P12 != '' }}
+        run: |
+          echo "${{ secrets.ASC_SIGNING_P12 }}" | base64 -d > "$RUNNER_TEMP/OnBudgetDist.p12"
+          security create-keychain -p "" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "" build.keychain
+          security import "$RUNNER_TEMP/OnBudgetDist.p12" -P "${{ secrets.ASC_SIGNING_P12_PASSWORD }}" -A -t cert -f pkcs12 -k build.keychain
+          security list-keychains -d user -s build.keychain
+          security default-keychain -s build.keychain
+          rm -f "$RUNNER_TEMP/OnBudgetDist.p12"
+          echo "distribution certificate imported into build.keychain"
+      - name: Download App Store provisioning profile
+        run: |
+          TOKEN=$(python3 - "$ASC_KEY_ID" "$ASC_ISSUER_ID" "$RUNNER_TEMP/AuthKey.p8" <<'PY'
+          import base64, json, subprocess, sys, time
+          def b64u(b):
+              return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+          key_id, issuer, key_path = sys.argv[1], sys.argv[2], sys.argv[3]
+          now = int(time.time())
+          header = b64u(json.dumps({"alg": "ES256", "kid": key_id, "typ": "JWT"}, separators=(",", ":")).encode())
+          payload = b64u(json.dumps({"iss": issuer, "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"}, separators=(",", ":")).encode())
+          msg = f"{header}.{payload}".encode()
+          der = subprocess.run(["openssl", "dgst", "-sha256", "-sign", key_path], input=msg, capture_output=True, check=True).stdout
+          i = 2
+          assert der[i] == 0x02; i += 1
+          len_r = der[i]; i += 1
+          r = der[i:i + len_r]; i += len_r
+          assert der[i] == 0x02; i += 1
+          len_s = der[i]; i += 1
+          s = der[i:i + len_s]
+          r = r.lstrip(b"\x00").rjust(32, b"\x00")
+          s = s.lstrip(b"\x00").rjust(32, b"\x00")
+          print(f"{header}.{payload}.{b64u(r + s)}")
+          PY
+          )
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          curl -s -H "Authorization: Bearer $TOKEN" "https://api.appstoreconnect.apple.com/v1/profiles/83TZ7C4533" | python3 -c "import base64,json,sys,os; d=json.load(sys.stdin); open(os.path.expanduser('~/Library/MobileDevice/Provisioning Profiles/OnBudget_AppStore.mobileprovision'),'wb').write(base64.b64decode(d['data']['attributes']['profileContent']))"
+          ls -la "$HOME/Library/MobileDevice/Provisioning Profiles/"
+      - name: Archive (signed, manual signing with the App Store profile)
         run: |
           xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -sdk iphoneos -configuration Release -derivedDataPath DerivedData -archivePath OnBudget.xcarchive archive \
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
@@ -85,7 +147,9 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             -allowProvisioningUpdates \
             CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="OnBudget App Store" \
             DEVELOPMENT_TEAM=H38376B6RX \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
       - name: Export signed .ipa
@@ -98,7 +162,12 @@ jobs:
             <key>method</key>
             <string>app-store-connect</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.onbudget.ios</key>
+              <string>OnBudget App Store</string>
+            </dict>
             <key>stripSwiftSymbols</key>
             <true/>
           </dict>
@@ -110,7 +179,9 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             -allowProvisioningUpdates \
             CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="OnBudget App Store" \
             DEVELOPMENT_TEAM=H38376B6RX
           echo "--- exported .ipa ---"
           ls -la Export/
