@@ -23,24 +23,32 @@ const sheetFn = js.slice(
 );
 assert.ok(sheetFn.length > 0, 'openWeeklySheet body found');
 
-// The visible-rows array: from "const weeklyRows" to the closing "];".
+// The rows-building block: from "const weeklyRows = [];" to the
+// Unlinked-refunds push that follows the three base rows.
 const visible = sheetFn.slice(
-  sheetFn.indexOf('const weeklyRows = ['),
-  sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')),
+  sheetFn.indexOf('const weeklyRows = [];'),
+  sheetFn.indexOf("if (unlinkedExcess > 0) weeklyRows.push"),
 );
 
-test('Weekly sheet visible rows are exactly Allowance, Spent, Balance', () => {
-  // Send-live-bundle supersedes Left-only.
-  const labels = [...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ['Allowance', 'Spent', 'Balance']);
+test('Weekly sheet rows are Allowance, Spent, Balance — plus reconciliation rows when debt/temp changes the number', () => {
+  // Send-live-bundle supersedes Left-only. Three rows is the normal
+  // week. R6-NEW-P1-1: when carried debt or a temporary increase
+  // changes the number, Base allowance / Temporary increases /
+  // Carried debt lines appear above the three base rows, so a $0
+  // allowance explains itself instead of reading as a bug.
+  const labels = [...visible.matchAll(/weeklyRows\.push\(\['([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(labels, ['Base allowance', 'Temporary increases', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
+  assert.ok(visible.includes("weeklyRows.push(['Balance', formatCents(w.availableCents)])"));
+  assert.ok(visible.includes("weeklyRows.push(['Spent', formatCents(w.chargesCents)])"));
 });
 
 test('no detail row appears anywhere in the Weekly sheet', () => {
+  // R6-NEW-P1-1: 'Carried debt' and 'Temporary increases' are now
+  // legitimate reconciliation rows (they appear only when debt or
+  // temp changes the number), so they are no longer forbidden here.
   for (const label of [
     'Dated this week',
     'Late charges from earlier locked weeks',
-    'Carried debt',
-    'Temporary increase',
     'Outgoing debt',
     'Week status',
     'Pending refunds excluded',
@@ -58,7 +66,10 @@ test('no disclosure element exists in the Weekly sheet at all', () => {
 
 test('Show transactions button exists and opens the week-filtered Transactions view', () => {
   assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
-  assert.match(sheetFn, /if \(weeklyResult === 'show-transactions'\) \{\s*txWeekOnly = true;\s*showView\('purchases'\);\s*await refresh\(\);/);
+  // R6-NEW-P1-2: the shortcut clears a leftover date range (a
+  // Past-Weeks range would AND with This week to an empty list)
+  // and resets the page limit before opening the view.
+  assert.match(sheetFn, /if \(weeklyResult === 'show-transactions'\) \{\s*txWeekOnly = true;[\s\S]*?txFromDate = '';\s*txToDate = '';\s*resetTxLimit\(\);\s*showView\('purchases'\);\s*await refresh\(\);/);
   // Focus lands on the Filters button at the top of the Transactions
   // view, next to the "This week" pill and count line.
   assert.match(sheetFn, /document\.getElementById\('txFiltersToggle'\)\?\.focus\(\)/);

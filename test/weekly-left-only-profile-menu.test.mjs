@@ -25,8 +25,8 @@ const sheetFn = js.slice(
 );
 assert.ok(sheetFn.length > 0, 'openWeeklySheet body found');
 const visible = sheetFn.slice(
-  sheetFn.indexOf('const weeklyRows = ['),
-  sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')),
+  sheetFn.indexOf('const weeklyRows = [];'),
+  sheetFn.indexOf("if (unlinkedExcess > 0) weeklyRows.push"),
 );
 
 const menuHead = html.slice(
@@ -38,14 +38,17 @@ const menuRows = html.slice(
   html.indexOf('</div>', html.indexOf('<div class="profile-menu-rows">')),
 );
 
-test('Weekly sheet rows are exactly Allowance, Spent, Balance', () => {
+test('Weekly sheet rows are Allowance, Spent, Balance — plus reconciliation rows when debt/temp changes the number', () => {
   // Send-live-bundle supersedes Left-only: Allowance is base room +
   // temp (so Allowance - Spent = Balance), Spent is the week total,
-  // Balance is availableCents (old Left).
-  const labels = [...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ['Allowance', 'Spent', 'Balance']);
-  assert.ok(visible.includes("['Balance', formatCents(w.availableCents)]"));
-  assert.ok(visible.includes("['Spent', formatCents(w.chargesCents)]"));
+  // Balance is availableCents (old Left). R6-NEW-P1-1: Base
+  // allowance / Temporary increases / Carried debt lines appear
+  // above the three base rows exactly when debt or temp changes
+  // the number, so a $0 allowance explains itself.
+  const labels = [...visible.matchAll(/weeklyRows\.push\(\['([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(labels, ['Base allowance', 'Temporary increases', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
+  assert.ok(visible.includes("weeklyRows.push(['Balance', formatCents(w.availableCents)])"));
+  assert.ok(visible.includes("weeklyRows.push(['Spent', formatCents(w.chargesCents)])"));
   assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
 });

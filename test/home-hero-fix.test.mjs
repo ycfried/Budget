@@ -51,7 +51,7 @@ test('hero sync button is primary blue via an ID-strength, ancestor-independent 
   assert.match(css, /\.hero-number-row \.hero-sync-btn \{[^}]*width: 44px; height: 44px;[^}]*border-radius: 50%/);
 });
 
-test('pins bumped to v53/v67', () => {
+test('pins bumped to v53/v68', () => {
   assert.match(html, /styles\.css\?v=53/);
-  assert.match(html, /live\.js\?v=67/);
+  assert.match(html, /live\.js\?v=68/);
 });

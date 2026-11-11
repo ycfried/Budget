@@ -443,10 +443,19 @@ async function refresh() {
   // only as an overlap counter; it drives no UI text, so there is
   // nothing that can stick, hang, or need a timeout clear.
   refreshInFlight++;
+  // R6-NEW-P1-2: whether the transaction list rendered in this
+  // refresh. The catch below uses it to tell a list that never
+  // rendered (show the load error) from one that did (leave it).
+  let txListRendered = false;
   try {
   // Webhook-triggered auto-sync happens first, so the numbers and
   // list below already include any transactions Plaid just announced.
-  await Promise.race([autoSyncIfWebhookPending(), new Promise((r) => setTimeout(r, 8000))]);
+  // R6-NEW-P1-2: a failed auto-sync must never abort the refresh —
+  // the week numbers and the transaction list still have to render.
+  // Log loudly and carry on; the sync itself retries next refresh.
+  try {
+    await Promise.race([autoSyncIfWebhookPending(), new Promise((r) => setTimeout(r, 8000))]);
+  } catch (e) { console.error('auto-sync before refresh failed:', e); }
 
   const { data: { session: s } } = await supabase.auth.getSession();
   const pe = document.getElementById('profileEmail'); if (pe && s?.user?.email) pe.textContent = s.user.email;
@@ -708,7 +717,9 @@ async function refresh() {
     clearWeekNumbers();
   } };
   await loadWeekNumbers();
-  updateTempPreview();
+  // R6-NEW-P1-2: the preview is best-effort — a throw here used to
+  // abort the whole refresh before the list rendered.
+  try { updateTempPreview(); } catch (e) { console.error('temp preview failed:', e); }
 
   // Delta3: weeks still close themselves (admin only, once per
   // session) — but only when a close can be due. The due-check reads
@@ -748,12 +759,21 @@ async function refresh() {
   // but a legacy pre-Nov row would otherwise show here while being
   // excluded from week math. This floor covers Home, Transactions
   // and Trash, which all render from this one load.
-  const { data: txns, error: txErr } = await supabase.from('transactions')
-    .select('*').eq('household_id', household.household_id)
-    .gte('date', '2026-11-01')
-    // P2-N1: ask for one probe row past the page, so the fetch
-    // itself proves whether older rows exist (see lastFetchedCount).
-    .order('date', { ascending: false }).limit(txLimit + 1);
+  // R6-NEW-P1-2: a network rejection here used to escape refresh()
+  // entirely — the error object only covers PostgREST failures — so
+  // a dead connection left stale rows on screen as if they were the
+  // filtered result. Treat a rejection as a read failure, so the
+  // guarded error state below renders instead.
+  let txns = null;
+  let txErr = null;
+  try {
+    ({ data: txns, error: txErr } = await supabase.from('transactions')
+      .select('*').eq('household_id', household.household_id)
+      .gte('date', '2026-11-01')
+      // P2-N1: ask for one probe row past the page, so the fetch
+      // itself proves whether older rows exist (see lastFetchedCount).
+      .order('date', { ascending: false }).limit(txLimit + 1));
+  } catch (e) { txErr = e; }
   // Read failures are an ERROR STATE, never a silent empty list or stale
   // numbers: txReadFailed overrides the lists below.
   const txReadFailed = !!txErr;
@@ -1022,6 +1042,9 @@ async function refresh() {
         </div></li>`;
       }).join('')
     : emptyLi;
+  // R6-NEW-P1-2: the list rendered — the catch below must not
+  // overwrite it with a load error if a later section throws.
+  txListRendered = true;
   // T2 clear action: wipes the search box and every filter back to
   // defaults, then re-renders. Status returns to All like Reset.
   document.querySelectorAll('[data-clear-search-filters]').forEach((b) => b.addEventListener('click', () => {
@@ -2224,6 +2247,12 @@ async function refresh() {
       const fmt = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
       txFilter = 'all'; txMonth = 'all'; txCard = 'all'; txWeekOnly = false; txFromDate = fmt(start); txToDate = fmt(end);
       resetTxLimit(); // P2-N1: a jumped-to week is a new list.
+      // R6-NEW-P1-2: search and amount bounds are read live from
+      // the DOM in refresh(), so a stale search or bound would
+      // silently AND with the jumped-to week. Clear them here.
+      const txSearchInput = $('txSearch'); if (txSearchInput) txSearchInput.value = '';
+      const txMinInput = $('txMinAmount'); if (txMinInput) txMinInput.value = '';
+      const txMaxInput = $('txMaxAmount'); if (txMaxInput) txMaxInput.value = '';
       const fi = $('historyFromInput'); if (fi) fi.value = '';
       showView('purchases', { clearMessages: true }); await refresh(); showToast(`Showing transactions for the week of ${fmtLong(ws)}.`, false);
       document.getElementById('txList')?.scrollIntoView({ block: 'start' });
@@ -2320,6 +2349,24 @@ async function refresh() {
           : '');
       })()
     : `<li>${(historyFilter.from || historyFilter.to) ? 'No entries in the selected period.' : 'No audit entries yet.'}</li>`;
+  } catch (e) {
+    // R6-NEW-P1-2: refresh() used to have no catch at all, so a
+    // throw anywhere in the body became a silent unhandled
+    // rejection — and whatever was on screen (old rows, old chips)
+    // stood in as the filtered result until a later Apply. The
+    // error still surfaces: a loud log, an error toast, and the
+    // inline transactions error when the list never rendered. It
+    // just never costs the list render.
+    console.error('refresh failed:', e);
+    showToast("Couldn't finish loading — check your connection and try again.", true);
+    if (!txListRendered) {
+      const countEl = $('txCount');
+      if (countEl) countEl.textContent = 'Could not load transactions — try again.';
+      const txListEl = $('txList');
+      if (txListEl) txListEl.innerHTML = '<li class="tx-empty error">Could not load transactions — try again.</li>';
+      const heroCount = document.getElementById('heroPurchaseCount');
+      if (heroCount) heroCount.textContent = 'N/A';
+    }
   } finally {
     // A failed read must not blank the page: showView already ran in
     // boot(), and re-running it here guarantees the sections stay
@@ -3467,12 +3514,25 @@ async function openWeeklySheet() {
     // − Spent = Balance always, including a temp week (base room
     // + temp − spent = availableCents, the engine's Left). Spent is
     // the week's spent total; Balance is availableCents (old Left).
+    // R6-NEW-P1-1: three rows cannot reconcile the number when
+    // carried debt or a temporary increase changes it — Settings
+    // shows the stored base, Home shows the effective allowance,
+    // and a $0 allowance with debt read as a bug. The
+    // reconciliation lines below appear exactly when they change
+    // the number (debt or temp non-zero), so a normal week keeps
+    // the approved three rows and a $0 week explains itself:
+    // Base allowance − Carried debt (floored at $0) + Temporary
+    // increases = Allowance.
     const weeklyAllowanceCents = (w.baseAvailableCents ?? w.baseRoomCents ?? 0) + (w.tempCents ?? 0);
-    const weeklyRows = [
-      ['Allowance', formatCents(weeklyAllowanceCents)],
-      ['Spent', formatCents(w.chargesCents)],
-      ['Balance', formatCents(w.availableCents)],
-    ];
+    const weeklyRows = [];
+    const hasTemp = (w.tempCents ?? 0) > 0;
+    const hasDebt = (w.carriedDebtCents ?? 0) > 0;
+    if (Number.isInteger(w.baseAllowanceCents) && (hasTemp || hasDebt)) weeklyRows.push(['Base allowance', formatCents(w.baseAllowanceCents)]);
+    if (hasTemp) weeklyRows.push(['Temporary increases', formatCents(w.tempCents)]);
+    if (hasDebt) weeklyRows.push(['Carried debt', formatCents(w.carriedDebtCents)]);
+    weeklyRows.push(['Allowance', formatCents(weeklyAllowanceCents)]);
+    weeklyRows.push(['Spent', formatCents(w.chargesCents)]);
+    weeklyRows.push(['Balance', formatCents(w.availableCents)]);
     // P2-C4 (Nov 8, 2026): unlinked_excess_cents is the part of the
     // week's unlinked posted refunds that could NOT be netted against
     // this week's charges, so it is invisible in Spent. Show it as a
@@ -3489,13 +3549,22 @@ async function openWeeklySheet() {
     // opens Transactions filtered to the current week, reusing the
     // existing week-filter state (txWeekOnly) and render path — the
     // count line gains "· this week" and the removable "This week"
-    // pill makes the filter obvious. Other active filters are left
-    // alone; the week filter combines with them as it always has.
+    // pill makes the filter obvious. A leftover date range is
+    // cleared first (a Past-Weeks jump's range would AND with This
+    // week to an empty list); other active filters are left alone
+    // and combine with the week filter as they always have.
     // Focus lands on the Filters button at the top of the
     // Transactions view (the sheet's own focus-return to the hero
     // is overridden here, since the user has moved views).
     if (weeklyResult === 'show-transactions') {
       txWeekOnly = true;
+      // R6-NEW-P1-2: a Past-Weeks jump leaves its date range
+      // behind; This week AND that range is an empty list with
+      // contradictory chips. Clear the range (and reset the page)
+      // so the shortcut shows this week's rows.
+      txFromDate = '';
+      txToDate = '';
+      resetTxLimit();
       showView('purchases');
       await refresh();
       document.getElementById('txFiltersToggle')?.focus();
