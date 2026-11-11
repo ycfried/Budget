@@ -60,6 +60,40 @@ jobs:
           echo "key file written (contents never echoed)"
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project ios-clone/OnBudget.xcodeproj
+      - name: Diagnose signing (certificates the team has; can this key create one?)
+        run: |
+          # One-time diagnosis for the archive failure: list the team's
+          # certificates, and probe certificate creation with a
+          # deliberately invalid CSR (a bad CSR can never create
+          # anything; 403 = this key may not create certificates,
+          # 400/422 = creation is allowed and the CSR was rejected).
+          TOKEN=$(python3 - "$ASC_KEY_ID" "$ASC_ISSUER_ID" "$RUNNER_TEMP/AuthKey.p8" <<'PY'
+          import base64, json, subprocess, sys, time
+          def b64u(b):
+              return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+          key_id, issuer, key_path = sys.argv[1], sys.argv[2], sys.argv[3]
+          now = int(time.time())
+          header = b64u(json.dumps({"alg": "ES256", "kid": key_id, "typ": "JWT"}, separators=(",", ":")).encode())
+          payload = b64u(json.dumps({"iss": issuer, "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"}, separators=(",", ":")).encode())
+          msg = f"{header}.{payload}".encode()
+          der = subprocess.run(["openssl", "dgst", "-sha256", "-sign", key_path], input=msg, capture_output=True, check=True).stdout
+          i = 2
+          assert der[i] == 0x02; i += 1
+          len_r = der[i]; i += 1
+          r = der[i:i + len_r]; i += len_r
+          assert der[i] == 0x02; i += 1
+          len_s = der[i]; i += 1
+          s = der[i:i + len_s]
+          r = r.lstrip(b"\x00").rjust(32, b"\x00")
+          s = s.lstrip(b"\x00").rjust(32, b"\x00")
+          print(f"{header}.{payload}.{b64u(r + s)}")
+          PY
+          )
+          echo "--- existing certificates ---"
+          curl -s -H "Authorization: Bearer $TOKEN" "https://api.appstoreconnect.apple.com/v1/certificates" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(c['attributes'].get('certificateType'), '|', c['attributes'].get('displayName'), '|', c['attributes'].get('expirationDate')) for c in d.get('data', [])] or print('(none)')"
+          echo "--- create-certificate probe (invalid CSR) ---"
+          curl -s -o /tmp/cert-probe.json -w "HTTP %{http_code}\n" -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"data":{"type":"certificates","attributes":{"certificateType":"IOS_DISTRIBUTION","csrContent":"aW52YWxpZA=="}}}' "https://api.appstoreconnect.apple.com/v1/certificates"
+          head -c 600 /tmp/cert-probe.json; echo
       - name: Archive (signed, automatic signing via API key)
         run: |
           xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -sdk iphoneos -configuration Release -derivedDataPath DerivedData -archivePath OnBudget.xcarchive archive \

@@ -15,7 +15,14 @@
 
 ## 1. App name — FLAG: clearance NOT verified
 
-- **App name: `OnBudget`.**
+- **Store name: `OnBudget: Family Budget`.** Plain `OnBudget` was
+  already taken as a store name when the app record was created
+  (Nov 11, 2026); the store name can be changed any time before
+  release. **Bundle id: `com.onbudget.ios`** — `com.onbudget.app`
+  already belongs to another account, so the friend registered
+  `com.onbudget.ios` instead. **Display name under the icon stays
+  `OnBudget`** (CFBundleDisplayName / PRODUCT_NAME, untouched by
+  the bundle-id change).
 - **FLAG — do not skip this.** The name check is crowded: no App Store
   app is literally named OnBudget, but a San Diego company literally
   named OnBudget sold a budgeting tool, and **USPTO status is NOT
