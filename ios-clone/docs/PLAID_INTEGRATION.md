@@ -106,7 +106,7 @@ the type-check for this (no Xcode on the Linux VM).
   plausible queries (search text field / search field /
   already-listed Platypus button) instead of one 60s blind wait;
   `PlaidLinkKitLauncher` now logs LinkKit `onEvent`/`onLoad` via
-  `os_log` (subsystem `com.onbudget.app`, category `PlaidLink`)
+  `os_log` (subsystem `com.onbudget.ios`, category `PlaidLink`)
   so the next run's xcresult diagnostics can tell "Link never
   opened/loaded" from "Link loaded but the sheet never
   presented".

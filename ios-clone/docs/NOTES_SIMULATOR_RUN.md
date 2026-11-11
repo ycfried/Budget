@@ -3,7 +3,7 @@
 ## What this adds
 
 - **New XCUITest target `OnBudgetUITests`** (`com.apple.product-type.bundle.ui-testing`,
-  `TEST_TARGET_NAME = OnBudget`, bundle id `com.onbudget.app.uitests`) in
+  `TEST_TARGET_NAME = OnBudget`, bundle id `com.onbudget.ios.uitests`) in
   `ios-clone/OnBudget.xcodeproj`, added to the `OnBudget` scheme's Build and
   Test actions, so the existing `test-without-building` step in
   `macos_simulator_test.sh` runs it. New object ids use the unused 8x/9x

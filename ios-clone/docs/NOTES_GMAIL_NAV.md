@@ -7,7 +7,7 @@ Server diff (prepare only, NOT merged, NOT deployed): branch
 ## 1. Gmail — URL scheme registration (app side, DONE)
 
 - `onbudget` is registered in `ios-clone/OnBudget/Info.plist`
-  (CFBundleURLTypes: CFBundleURLName `com.onbudget.app`,
+  (CFBundleURLTypes: CFBundleURLName `com.onbudget.ios`,
   CFBundleURLSchemes `(onbudget)`), the app target's real Info.plist
   file (INFOPLIST_FILE, GENERATE_INFOPLIST_FILE = NO). The scheme
   was previously set via `INFOPLIST_KEY_CFBundleURLTypes` on the
@@ -49,7 +49,7 @@ Server diff (prepare only, NOT merged, NOT deployed): branch
 
 1. Parses the built app's `Info.plist` and asserts `onbudget` is
    in `CFBundleURLTypes` (a plain grep would pass on the bundle id
-   `com.onbudget.app` alone, so this parses the plist properly).
+   `com.onbudget.ios` alone, so this parses the plist properly).
 2. Installs + launches the app on the simulator and runs
    `xcrun simctl openurl <sim> "onbudget://gmail-callback?gmail=connected"`.
    `simctl openurl` fails when no app handles the URL, so exit 0

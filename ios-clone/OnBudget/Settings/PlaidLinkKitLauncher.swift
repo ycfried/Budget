@@ -36,7 +36,7 @@ final class PlaidLinkKitLauncher: PlaidLinkLauncher {
     /// The events land in the app's console log, captured in the
     /// xcresult diagnostics. The event is logged via
     /// String(describing:) so no LinkEvent member is assumed.
-    private static let log = Logger(subsystem: "com.onbudget.app", category: "PlaidLink")
+    private static let log = Logger(subsystem: "com.onbudget.ios", category: "PlaidLink")
 
     func present(linkToken: String) async throws -> PlaidLinkOutcome {
         try await withCheckedThrowingContinuation { continuation in

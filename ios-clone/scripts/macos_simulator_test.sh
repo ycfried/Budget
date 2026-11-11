@@ -139,8 +139,8 @@ PY
 echo "=== Gmail callback check, part 1: OS routing ==="
 echo "Installing OnBudget.app on $onbudget_simulator_id ..."
 xcrun simctl install "$onbudget_simulator_id" "$onbudget_app_path"
-echo "Launching com.onbudget.app ..."
-xcrun simctl launch "$onbudget_simulator_id" com.onbudget.app
+echo "Launching com.onbudget.ios ..."
+xcrun simctl launch "$onbudget_simulator_id" com.onbudget.ios
 echo "Opening onbudget://gmail-callback?gmail=connected (expect a SpringBoard 'Open in ...?' prompt; the UI tests answer Open) ..."
 xcrun simctl openurl "$onbudget_simulator_id" "onbudget://gmail-callback?gmail=connected"
 echo "simctl openurl exit 0: the OS routes the onbudget scheme to OnBudget (delivery is proven by testGmailCallbackDeepLink)."
@@ -194,13 +194,13 @@ fi
 echo "=== Gmail callback check, part 2: the app recorded the outcome (runs even when the tests failed) ==="
 onbudget_gmail_status=0
 xcrun simctl install "$onbudget_simulator_id" "$onbudget_app_path" || onbudget_gmail_status=1
-xcrun simctl launch "$onbudget_simulator_id" com.onbudget.app || onbudget_gmail_status=1
+xcrun simctl launch "$onbudget_simulator_id" com.onbudget.ios || onbudget_gmail_status=1
 xcrun simctl openurl "$onbudget_simulator_id" "onbudget://gmail-callback?gmail=connected" || onbudget_gmail_status=1
 echo "Re-opened the callback URL (OS routing re-proven)."
 sleep 5
-onbudget_container="$(xcrun simctl get_app_container "$onbudget_simulator_id" com.onbudget.app data)" || onbudget_gmail_status=1
+onbudget_container="$(xcrun simctl get_app_container "$onbudget_simulator_id" com.onbudget.ios data)" || onbudget_gmail_status=1
 echo "App data container: $onbudget_container"
-python3 - "$onbudget_container/Library/Preferences/com.onbudget.app.plist" <<'PY' || onbudget_gmail_status=1
+python3 - "$onbudget_container/Library/Preferences/com.onbudget.ios.plist" <<'PY' || onbudget_gmail_status=1
 import plistlib
 import sys
 from pathlib import Path

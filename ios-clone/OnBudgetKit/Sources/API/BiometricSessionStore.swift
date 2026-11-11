@@ -19,7 +19,7 @@
 //
 // The item is a single generic-password entry (one signed-in account
 // per device — there is no account switch without sign-out first):
-//   service "com.onbudget.app.biometric-session", account
+//   service "com.onbudget.ios.biometric-session", account
 //   "supabase-session", payload = the `AuthSession` JSON (access +
 //   refresh tokens, never the password).
 // Access control is `.biometryCurrentSet` on
@@ -95,7 +95,7 @@ public final class KeychainBiometricStore: BiometricKeychain {
     public let account: String
 
     public init(
-        service: String = "com.onbudget.app.biometric-session",
+        service: String = "com.onbudget.ios.biometric-session",
         account: String = "supabase-session"
     ) {
         self.service = service

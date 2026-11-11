@@ -382,7 +382,7 @@ never pass through chat, a file, or a screenshot).
 | `APNS_KEY_P8` | The .p8 private-key file contents (one line, `-----BEGIN PRIVATE KEY-----…`) | Apple Developer account → Certificates, Identifiers & Profiles → Keys → create a key with Apple Push Notifications service (APNs) enabled → download the .p8 **once** (Apple shows it only once). **Owner item.** |
 | `APNS_KEY_ID` | The 10-character key id shown next to the key in the Developer portal | Same key as above. **Owner item.** |
 | `APNS_TEAM_ID` | The 10-character Team ID | Apple Developer account → Membership details. **Owner item.** |
-| `APNS_BUNDLE_ID` | The app's bundle id, e.g. `com.onbudget.app` (final value set by the scaffold workstream) | Xcode project / App ID. Must match the App ID the APNs key is bound to and the `apns-topic` header, or Apple rejects every send. |
+| `APNS_BUNDLE_ID` | The app's bundle id, e.g. `com.onbudget.ios` (final value set by the scaffold workstream) | Xcode project / App ID. Must match the App ID the APNs key is bound to and the `apns-topic` header, or Apple rejects every send. |
 
 ## 6. Deep links (notification tap → screen)
 
@@ -611,7 +611,7 @@ These are the things only the owner can supply or decide. Nothing in
    pastes the values in person (or into the Supabase dashboard
    secrets) — they must never go through chat, email, a file, or a
    screenshot.
-3. **Bundle id** — final value (e.g. `com.onbudget.app`) is set by the
+3. **Bundle id** — final value (e.g. `com.onbudget.ios`) is set by the
    scaffold workstream and confirmed by the owner; it must match the
    App ID the APNs key is bound to.
 4. **Name/trademark clearance for "OnBudget"** — `tmsearch.uspto.gov`.
