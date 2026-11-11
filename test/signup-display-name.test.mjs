@@ -158,7 +158,7 @@ test('1b. reconciled join is the N13 join plus display_name only', () => {
 
 // --- Pins ----------------------------------------------------------------------
 
-test('version pins: styles v53, live.js v68', () => {
+test('version pins: styles v53, live.js v69', () => {
   assert.ok(html.includes('styles.css\?v=53'));
-  assert.ok(html.includes('live.js\?v=68'));
+  assert.ok(html.includes('live.js\?v=69'));
 });

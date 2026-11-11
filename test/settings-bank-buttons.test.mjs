@@ -54,9 +54,9 @@ test('switch toggles for real: enable and disable via the edge function, state s
   assert.equal(js.includes("setBtn('registerWebhookBtn'"), false, 'old button gating gone');
 });
 
-test('pins bumped to v53/v68', () => {
+test('pins bumped to v53/v69', () => {
   assert.ok(html.includes('styles.css\?v=53'));
-  assert.ok(html.includes('live.js\?v=68'));
+  assert.ok(html.includes('live.js\?v=69'));
 });
 
 test('untouched copy: look-only sentence, last synced line, connected list', () => {

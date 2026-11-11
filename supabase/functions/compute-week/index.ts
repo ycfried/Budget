@@ -21,6 +21,10 @@
 //   weekly_allowance_overrides row exists for the requested week,
 //   B is that override and T is 0 (debt still comes off the top).
 //   A stored close snapshot still wins over a later override.
+//   The override is also surfaced as override_cents in the
+//   response (null when a stored close snapshot wins), so the UI
+//   can show the temporary increase/decrease: temp_cents is 0 for
+//   override weeks and cannot carry it (Nov 11, 2026).
 // - Week math counts: charges (including provisional charges) net of
 //   fund allocations; posted refunds linked to a purchase in this week
 //   (open weeks only — a locked week's refunds go through restoration,
@@ -39,13 +43,18 @@
 //   beyond the original purchase is captured by week-close's held
 //   queue, not by this function.
 //
-// RESPONSE SHAPE (exact — the UI workstream codes against these 8
+// RESPONSE SHAPE (exact — the UI workstream codes against these
 // fields and no others; do not add fields without coordinating):
 // {
 //   week_start: "YYYY-MM-DD" (Sunday; a supplied week_start must
 //     already be a Sunday, else 400 — P2-B13; omitted → current week),
 //   base_available_cents: base capacity left after incoming debt,
 //   temp_cents: active temporary increment for the week,
+//   override_cents: the weekly_allowance_overrides value for the
+//     week, or null when no override drives B for this week (no
+//     override row, or a stored close snapshot wins). The UI
+//     derives the temporary increase/decrease as override_cents
+//     minus the stored base allowance.
 //   carried_debt_cents: incoming debt D carried INTO the week
 //     (NOT the engine's carriedDebt output, which is max(0, D - B);
 //     the UI asked for "carried debt" and the dashboard's "incoming
@@ -369,6 +378,11 @@ Deno.serve(async (req) => {
     // An override set after a week closed therefore does not change
     // that week; it applies to open and future weeks, and week-close
     // stores the override as the snapshot when it closes the week.
+    // override_cents surfaces the override for the UI, and only
+    // when the override actually drives B for this week: when a
+    // stored snapshot wins, it is null, so a closed week is never
+    // re-explained from a later override.
+    const overrideForUi = (thisClose && thisClose.base_allowance_cents != null) ? null : overrideCents;
     const B = thisClose && thisClose.base_allowance_cents != null
       ? thisClose.base_allowance_cents
       : overrideCents != null
@@ -394,6 +408,7 @@ Deno.serve(async (req) => {
       week_start: weekStart,
       base_available_cents: result.baseAvailable,
       temp_cents: result.T,
+      override_cents: overrideForUi,
       carried_debt_cents: result.D,
       charges_cents: result.C,
       available_cents: result.available,

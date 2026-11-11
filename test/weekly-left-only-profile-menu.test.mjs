@@ -45,8 +45,10 @@ test('Weekly sheet rows are Allowance, Spent, Balance — plus reconciliation ro
   // allowance / Temporary increases / Carried debt lines appear
   // above the three base rows exactly when debt or temp changes
   // the number, so a $0 allowance explains itself.
+  // Temp-override reconciliation (Nov 11, 2026): a lower override
+  // shows a Temporary decrease row in the same position.
   const labels = [...visible.matchAll(/weeklyRows\.push\(\['([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ['Base allowance', 'Temporary increases', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
+  assert.deepEqual(labels, ['Base allowance', 'Temporary increases', 'Temporary decrease', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
   assert.ok(visible.includes("weeklyRows.push(['Balance', formatCents(w.availableCents)])"));
   assert.ok(visible.includes("weeklyRows.push(['Spent', formatCents(w.chargesCents)])"));
   assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
