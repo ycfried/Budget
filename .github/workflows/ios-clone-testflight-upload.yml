@@ -101,8 +101,11 @@ jobs:
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project ios-clone/OnBudget.xcodeproj
       - name: Import distribution certificate (.p12, only once the secret exists)
-        if: ${{ secrets.ASC_SIGNING_P12 != '' }}
         run: |
+          if [ -z "${{ secrets.ASC_SIGNING_P12 }}" ]; then
+            echo "ASC_SIGNING_P12 not set — skipping certificate import (the archive will fail at signing until the .p12 secret exists)"
+            exit 0
+          fi
           echo "${{ secrets.ASC_SIGNING_P12 }}" | base64 -d > "$RUNNER_TEMP/OnBudgetDist.p12"
           security create-keychain -p "" build.keychain
           security set-keychain-settings -lut 21600 build.keychain
