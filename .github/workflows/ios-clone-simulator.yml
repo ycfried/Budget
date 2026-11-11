@@ -1,0 +1,50 @@
+name: OnBudget iOS clone simulator proof (testflight branch)
+# VERIFICATION COPY for the ios-clone-testflight branch only: runs the
+# simulator suite against this branch's code so the bundle-id change
+# (com.onbudget.app -> com.onbudget.ios) is proven not to break the
+# simulator tests. Copied verbatim from
+# origin/ios-clone-v66/scaffold:.github/workflows/ios-clone-simulator.yml
+# except the trigger branch and the `if:` ref check, and a separate
+# concurrency group so it can never cancel a scaffold run.
+# DROP THIS FILE when merging to ios-clone — the scaffold branch
+# remains the simulator line.
+on:
+  push:
+    branches: [ios-clone-testflight]
+    paths:
+      - 'ios-clone/**'
+      - '.github/workflows/ios-clone-simulator.yml'
+permissions:
+  contents: read
+concurrency:
+  group: onbudget-ios-clone-simulator-testflight
+  cancel-in-progress: true
+jobs:
+  simulator:
+    if: >-
+      startsWith(github.ref, 'refs/heads/ios-clone-testflight') &&
+      github.event.repository.private == false &&
+      startsWith(github.event.head_commit.message, 'ci(ios-clone): approved cloud build')
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate, compile and test synthetic app
+        env:
+          ONBUDGET_APPROVED_WORKFLOW: '1'
+        run: bash ios-clone/scripts/macos_simulator_test.sh
+      - name: Upload simulator results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onbudget-simulator-results
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ios-clone/CloudResults/Attachments
+            ios-clone/CloudResults/tests.xcresult
+            ios-clone/CloudResults/test-summary.json
+            ios-clone/CloudResults/runtimes.json
