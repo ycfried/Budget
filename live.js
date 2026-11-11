@@ -626,6 +626,21 @@ async function refresh() {
       const weekStart = week.week_start ?? r.week_start ?? null;
       const baseAvailable = r.base_available_cents, tempC = r.temp_cents;
       const carried = r.carried_debt_cents, charges = r.charges_cents, avail = r.available_cents;
+      // Override delta (Nov 11, 2026): an override sets a NEW TOTAL,
+      // so the server reports temp_cents 0 for override weeks and
+      // the Weekly sheet's temp gate could never fire for an app-set
+      // temporary increase (a $475 override on a $375 base showed
+      // no reconciliation lines live). compute-week now surfaces the
+      // override as override_cents (null when no override drives B,
+      // or a stored close snapshot wins); the delta against the
+      // stored base is the increase/decrease the sheet shows.
+      // Locked weeks never carry a delta — a closed week is
+      // explained by its snapshot, never re-explained from a later
+      // override. When the stored base is unknown the delta cannot
+      // be computed, so no override line shows.
+      const overrideCents = Number.isInteger(r.override_cents) ? r.override_cents : null;
+      const overrideDeltaCents = overrideCents != null && Number.isInteger(baseAllowanceCents) && !r.week_locked
+        ? overrideCents - baseAllowanceCents : 0;
       // Outgoing debt follows engine.mjs computeWeek exactly (the
       // server returns incoming debt D, not the engine's carriedDebt
       // component): outgoing = debt the allowance did not cover +
@@ -660,6 +675,7 @@ async function refresh() {
         ? `Weekly Budget, over budget by ${formatCents(Math.abs(avail))}, show breakdown`
         : `Weekly Budget, ${formatCents(avail)} left this week, show breakdown`);
       currentWeekData = { weekStart, baseAvailableCents: baseAvailable, tempCents: tempC,
+        overrideDeltaCents,
         carriedDebtCents: carried, chargesCents: charges, availableCents: avail,
         outgoingDebtCents: outgoingDebt, weekLocked: !!r.week_locked,
         pendingRefundExcludedCents: r.pending_refund_excluded_cents ?? 0,
@@ -3522,13 +3538,27 @@ async function openWeeklySheet() {
     // the number (debt or temp non-zero), so a normal week keeps
     // the approved three rows and a $0 week explains itself:
     // Base allowance − Carried debt (floored at $0) + Temporary
-    // increases = Allowance.
+    // increases = Allowance. A lower override is the mirror case:
+    // Base allowance − Temporary decrease (− Carried debt) =
+    // Allowance, floored at $0 the same way.
     const weeklyAllowanceCents = (w.baseAvailableCents ?? w.baseRoomCents ?? 0) + (w.tempCents ?? 0);
     const weeklyRows = [];
-    const hasTemp = (w.tempCents ?? 0) > 0;
+    // The week's temporary adjustment comes from exactly one
+    // source. An override sets a NEW TOTAL, so the server reports
+    // temp_cents 0 for override weeks — the override delta against
+    // the stored base is the increase or decrease, and temp_cents
+    // alone could never show it (Nov 11, 2026: a $475 override on
+    // a $375 base showed no reconciliation lines live). When no
+    // override is in effect, the legacy temp_increases sum in
+    // temp_cents is the adjustment, as before.
+    const overrideDelta = w.overrideDeltaCents ?? 0;
+    const tempDelta = overrideDelta !== 0 ? overrideDelta : (w.tempCents ?? 0);
+    const hasTemp = tempDelta > 0;
+    const hasTempDecrease = tempDelta < 0;
     const hasDebt = (w.carriedDebtCents ?? 0) > 0;
-    if (Number.isInteger(w.baseAllowanceCents) && (hasTemp || hasDebt)) weeklyRows.push(['Base allowance', formatCents(w.baseAllowanceCents)]);
-    if (hasTemp) weeklyRows.push(['Temporary increases', formatCents(w.tempCents)]);
+    if (Number.isInteger(w.baseAllowanceCents) && (hasTemp || hasTempDecrease || hasDebt)) weeklyRows.push(['Base allowance', formatCents(w.baseAllowanceCents)]);
+    if (hasTemp) weeklyRows.push(['Temporary increases', formatCents(tempDelta)]);
+    if (hasTempDecrease) weeklyRows.push(['Temporary decrease', formatCents(-tempDelta)]);
     if (hasDebt) weeklyRows.push(['Carried debt', formatCents(w.carriedDebtCents)]);
     weeklyRows.push(['Allowance', formatCents(weeklyAllowanceCents)]);
     weeklyRows.push(['Spent', formatCents(w.chargesCents)]);

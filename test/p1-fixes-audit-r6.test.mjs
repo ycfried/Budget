@@ -35,23 +35,27 @@ const openWeekFn = js.slice(
 );
 assert.ok(openWeekFn.length > 0, 'openWeek body found');
 
-test('pins: live.js v68 / styles v53, service-worker cache tracks live.js', () => {
-  assert.ok(html.includes('live.js?v=68'), 'live.html pins live.js v68');
+test('pins: live.js v69 / styles v53, service-worker cache tracks live.js', () => {
+  assert.ok(html.includes('live.js?v=69'), 'live.html pins live.js v69');
   assert.ok(html.includes('styles.css?v=53'), 'live.html pins styles v53');
-  assert.ok(sw.includes("CACHE = 'onbudget-live-v68'"), 'service-worker cache tracks the live.js pin');
-  assert.ok(sw.includes('(v68)'), 'service-worker comment names the current pin');
+  assert.ok(sw.includes("CACHE = 'onbudget-live-v69'"), 'service-worker cache tracks the live.js pin');
+  assert.ok(sw.includes('(v69)'), 'service-worker comment names the current pin');
 });
 
 // ---- P1-1: reconciliation rows in the Weekly sheet ----
 
 test('P1-1: reconciliation rows exist and are gated on debt/temp changing the number', () => {
-  assert.ok(sheetFn.includes("const hasTemp = (w.tempCents ?? 0) > 0;"), 'temp flag');
+  assert.ok(sheetFn.includes("const overrideDelta = w.overrideDeltaCents ?? 0;"), 'override delta read');
+  assert.ok(sheetFn.includes("const tempDelta = overrideDelta !== 0 ? overrideDelta : (w.tempCents ?? 0);"), 'temp adjustment is the override delta when one is in effect, else the legacy temp sum');
+  assert.ok(sheetFn.includes("const hasTemp = tempDelta > 0;"), 'temp-increase flag');
+  assert.ok(sheetFn.includes("const hasTempDecrease = tempDelta < 0;"), 'temp-decrease flag');
   assert.ok(sheetFn.includes("const hasDebt = (w.carriedDebtCents ?? 0) > 0;"), 'debt flag');
-  assert.ok(sheetFn.includes("if (Number.isInteger(w.baseAllowanceCents) && (hasTemp || hasDebt)) weeklyRows.push(['Base allowance', formatCents(w.baseAllowanceCents)]);"), 'Base allowance row, only when the base is known and debt or temp applies');
-  assert.ok(sheetFn.includes("if (hasTemp) weeklyRows.push(['Temporary increases', formatCents(w.tempCents)]);"), 'Temporary increases row, only when temp > 0');
+  assert.ok(sheetFn.includes("if (Number.isInteger(w.baseAllowanceCents) && (hasTemp || hasTempDecrease || hasDebt)) weeklyRows.push(['Base allowance', formatCents(w.baseAllowanceCents)]);"), 'Base allowance row, only when the base is known and debt or temp applies');
+  assert.ok(sheetFn.includes("if (hasTemp) weeklyRows.push(['Temporary increases', formatCents(tempDelta)]);"), 'Temporary increases row, only when the adjustment is positive');
+  assert.ok(sheetFn.includes("if (hasTempDecrease) weeklyRows.push(['Temporary decrease', formatCents(-tempDelta)]);"), 'Temporary decrease row, only when the adjustment is negative, shown as a magnitude');
   assert.ok(sheetFn.includes("if (hasDebt) weeklyRows.push(['Carried debt', formatCents(w.carriedDebtCents)]);"), 'Carried debt row, only when debt > 0');
   // Reconciliation rows come first, then the three base rows.
-  const order = ["['Base allowance'", "['Temporary increases'", "['Carried debt'", "['Allowance'", "['Spent'", "['Balance'"];
+  const order = ["['Base allowance'", "['Temporary increases'", "['Temporary decrease'", "['Carried debt'", "['Allowance'", "['Spent'", "['Balance'"];
   const idx = order.map((label) => sheetFn.indexOf(label));
   for (let i = 0; i < idx.length; i++) assert.ok(idx[i] > 0, `${order[i]} present in the sheet`);
   for (let i = 1; i < idx.length; i++) assert.ok(idx[i] > idx[i - 1], `${order[i]} follows ${order[i - 1]}`);
@@ -61,10 +65,14 @@ test('P1-1: reconciliation rows exist and are gated on debt/temp changing the nu
 // the row sets per week shape are asserted as behaviour, not text.
 function sheetRowLabels(w) {
   const labels = [];
-  const hasTemp = (w.tempCents ?? 0) > 0;
+  const overrideDelta = w.overrideDeltaCents ?? 0;
+  const tempDelta = overrideDelta !== 0 ? overrideDelta : (w.tempCents ?? 0);
+  const hasTemp = tempDelta > 0;
+  const hasTempDecrease = tempDelta < 0;
   const hasDebt = (w.carriedDebtCents ?? 0) > 0;
-  if (Number.isInteger(w.baseAllowanceCents) && (hasTemp || hasDebt)) labels.push('Base allowance');
+  if (Number.isInteger(w.baseAllowanceCents) && (hasTemp || hasTempDecrease || hasDebt)) labels.push('Base allowance');
   if (hasTemp) labels.push('Temporary increases');
+  if (hasTempDecrease) labels.push('Temporary decrease');
   if (hasDebt) labels.push('Carried debt');
   labels.push('Allowance', 'Spent', 'Balance');
   return labels;
@@ -78,6 +86,9 @@ test('P1-1: row sets per week shape (mirror)', () => {
   assert.deepEqual(sheetRowLabels({ baseAllowanceCents: 37500, tempCents: 0, carriedDebtCents: 40000 }), ['Base allowance', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
   // Temporary increase only.
   assert.deepEqual(sheetRowLabels({ baseAllowanceCents: 37500, tempCents: 5000, carriedDebtCents: 0 }), ['Base allowance', 'Temporary increases', 'Allowance', 'Spent', 'Balance']);
+  // Temporary decrease only (override below the base): the decrease
+  // row explains the lower Allowance.
+  assert.deepEqual(sheetRowLabels({ baseAllowanceCents: 37500, overrideDeltaCents: -10000, tempCents: 0, carriedDebtCents: 0 }), ['Base allowance', 'Temporary decrease', 'Allowance', 'Spent', 'Balance']);
   // Both debt and temp: all six, in reconciliation order.
   assert.deepEqual(sheetRowLabels({ baseAllowanceCents: 37500, tempCents: 5000, carriedDebtCents: 10000 }), ['Base allowance', 'Temporary increases', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
   // Base unknown: the Base row is skipped, the changing lines

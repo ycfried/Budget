@@ -36,8 +36,10 @@ test('Weekly sheet rows are Allowance, Spent, Balance — plus reconciliation ro
   // changes the number, Base allowance / Temporary increases /
   // Carried debt lines appear above the three base rows, so a $0
   // allowance explains itself instead of reading as a bug.
+  // Temp-override reconciliation (Nov 11, 2026): a lower override
+  // shows a Temporary decrease row in the same position.
   const labels = [...visible.matchAll(/weeklyRows\.push\(\['([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ['Base allowance', 'Temporary increases', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
+  assert.deepEqual(labels, ['Base allowance', 'Temporary increases', 'Temporary decrease', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
   assert.ok(visible.includes("weeklyRows.push(['Balance', formatCents(w.availableCents)])"));
   assert.ok(visible.includes("weeklyRows.push(['Spent', formatCents(w.chargesCents)])"));
 });
@@ -46,6 +48,7 @@ test('no detail row appears anywhere in the Weekly sheet', () => {
   // R6-NEW-P1-1: 'Carried debt' and 'Temporary increases' are now
   // legitimate reconciliation rows (they appear only when debt or
   // temp changes the number), so they are no longer forbidden here.
+  // Same for 'Temporary decrease' (Nov 11, 2026: a lower override).
   for (const label of [
     'Dated this week',
     'Late charges from earlier locked weeks',
