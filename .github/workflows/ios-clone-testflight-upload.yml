@@ -9,11 +9,28 @@ name: OnBudget iOS clone TestFlight upload
 # automatic signing needs Admin (creating the distribution certificate
 # / provisioning profile), the archive step fails and the key must be
 # bumped to Admin by the account holder.
-# Signing: the project carries DEVELOPMENT_TEAM = H38376B6RX (resolved
-# once from the bundle id's seedId via the App Store Connect API) and
-# the project-level CODE_SIGNING_ALLOWED = NO was removed — it silently
-# disabled signing for every target, which produced an unsigned archive
-# ("No Team Found in Archive" at export) on the first runs.
+# Signing: the project MUST keep its project-level
+# CODE_SIGNING_ALLOWED = NO — ios-clone/scripts/validate_project.py
+# (run by the simulator workflow) requires it, and the scaffold's
+# invariant is "no team baked into the project". Signing is therefore
+# enabled ONLY here, as command-line overrides on the archive and
+# export steps: CODE_SIGNING_ALLOWED=YES (overrides the project-level
+# NO), CODE_SIGN_IDENTITY="Apple Distribution" (without it Xcode
+# defaults to the development identity and looks for a development
+# profile), DEVELOPMENT_TEAM=H38376B6RX (the friend's team, resolved
+# once from the bundle id's seedId via the App Store Connect API).
+#
+# Diagnosis (Nov 11, 2026, CI probe): the App Manager key CAN create
+# certificates (a deliberately invalid CSR probe returned HTTP 409
+# ENTITY_ERROR.ATTRIBUTE.INVALID, not 403), so an Admin bump is NOT
+# needed. The team already has one distribution certificate
+# (IOS_DISTRIBUTION, "Mats Sellei", expires 2027-07-13) — but CI does
+# not have its private key, so Xcode cannot sign with it. Before the
+# first upload can succeed, the account holder must export that
+# certificate's .p12 (Keychain Access on his Mac) and have it stored
+# as repo secrets; this workflow then needs a keychain-import step.
+# Until then the archive step fails at GatherProvisioningInputs
+# ("team has no devices … No profiles for 'com.onbudget.ios'").
 #
 # Manual trigger: gh workflow run ios-clone-testflight-upload.yml --ref <branch>
 # Push trigger (mirrors ios-clone-device-ipa.yml — workflow_dispatch
@@ -60,40 +77,6 @@ jobs:
           echo "key file written (contents never echoed)"
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project ios-clone/OnBudget.xcodeproj
-      - name: Diagnose signing (certificates the team has; can this key create one?)
-        run: |
-          # One-time diagnosis for the archive failure: list the team's
-          # certificates, and probe certificate creation with a
-          # deliberately invalid CSR (a bad CSR can never create
-          # anything; 403 = this key may not create certificates,
-          # 400/422 = creation is allowed and the CSR was rejected).
-          TOKEN=$(python3 - "$ASC_KEY_ID" "$ASC_ISSUER_ID" "$RUNNER_TEMP/AuthKey.p8" <<'PY'
-          import base64, json, subprocess, sys, time
-          def b64u(b):
-              return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
-          key_id, issuer, key_path = sys.argv[1], sys.argv[2], sys.argv[3]
-          now = int(time.time())
-          header = b64u(json.dumps({"alg": "ES256", "kid": key_id, "typ": "JWT"}, separators=(",", ":")).encode())
-          payload = b64u(json.dumps({"iss": issuer, "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"}, separators=(",", ":")).encode())
-          msg = f"{header}.{payload}".encode()
-          der = subprocess.run(["openssl", "dgst", "-sha256", "-sign", key_path], input=msg, capture_output=True, check=True).stdout
-          i = 2
-          assert der[i] == 0x02; i += 1
-          len_r = der[i]; i += 1
-          r = der[i:i + len_r]; i += len_r
-          assert der[i] == 0x02; i += 1
-          len_s = der[i]; i += 1
-          s = der[i:i + len_s]
-          r = r.lstrip(b"\x00").rjust(32, b"\x00")
-          s = s.lstrip(b"\x00").rjust(32, b"\x00")
-          print(f"{header}.{payload}.{b64u(r + s)}")
-          PY
-          )
-          echo "--- existing certificates ---"
-          curl -s -H "Authorization: Bearer $TOKEN" "https://api.appstoreconnect.apple.com/v1/certificates" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(c['attributes'].get('certificateType'), '|', c['attributes'].get('displayName'), '|', c['attributes'].get('expirationDate')) for c in d.get('data', [])] or print('(none)')"
-          echo "--- create-certificate probe (invalid CSR) ---"
-          curl -s -o /tmp/cert-probe.json -w "HTTP %{http_code}\n" -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"data":{"type":"certificates","attributes":{"certificateType":"IOS_DISTRIBUTION","csrContent":"aW52YWxpZA=="}}}' "https://api.appstoreconnect.apple.com/v1/certificates"
-          head -c 600 /tmp/cert-probe.json; echo
       - name: Archive (signed, automatic signing via API key)
         run: |
           xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -sdk iphoneos -configuration Release -derivedDataPath DerivedData -archivePath OnBudget.xcarchive archive \
@@ -101,6 +84,9 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             -allowProvisioningUpdates \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM=H38376B6RX \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
       - name: Export signed .ipa
         run: |
@@ -122,7 +108,10 @@ jobs:
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            -allowProvisioningUpdates
+            -allowProvisioningUpdates \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM=H38376B6RX
           echo "--- exported .ipa ---"
           ls -la Export/
       - name: Show build identity (bundle id, version, build)
