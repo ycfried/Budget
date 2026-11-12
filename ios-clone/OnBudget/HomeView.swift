@@ -237,8 +237,12 @@ public final class HomeViewModel: ObservableObject {
             case .success(let result):
                 appState.showToast(Self.syncToastText(result), kind: .success)
             case .partial(let partial):
+                // Lead with the failure (audit H-P2-7): the old text
+                // opened "Sync done:" and never said what failed.
+                // The counts still follow, so the partial progress
+                // is not lost.
                 appState.showToast(
-                    "Sync done: \(partial.result.added) added, \(partial.result.updated) updated, \(partial.result.skipped) skipped across \(partial.result.items) connected account(s). — \(partial.failedInstitutions.joined(separator: ", "))",
+                    "Couldn't sync \(partial.failedInstitutions.joined(separator: ", ")): \(partial.result.added) added, \(partial.result.updated) updated, \(partial.result.skipped) skipped across \(partial.result.items) connected account(s).",
                     kind: .error)
             }
             await refresh()
