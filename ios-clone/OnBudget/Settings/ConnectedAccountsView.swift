@@ -126,6 +126,10 @@ final class ConnectedAccountsViewModel: ObservableObject {
     @Published var syncLine = "Not synced yet."
     @Published var syncStale = false
     @Published var loadError: String?
+    /// True after a failed load until a load succeeds. The card
+    /// shows the error + Retry while this is set — never a false
+    /// "None." (audit S-P1-2).
+    @Published var loadFailed = false
     @Published var isLoading = false
     @Published var isSyncing = false
     @Published var autoSyncOn = false
@@ -225,8 +229,10 @@ final class ConnectedAccountsViewModel: ObservableObject {
             }
             rows = built
             loadError = nil
+            loadFailed = false
         } catch {
             loadError = "Could not load bank accounts."
+            loadFailed = true
         }
     }
 
@@ -520,16 +526,24 @@ struct ConnectedAccountsView: View {
             Text("Connected Accounts")
                 .font(.headline)
                 .padding(.top, 4)
+            // A failed load shows the error + Retry and stays there
+            // until a load succeeds — never a false "None." (audit
+            // S-P1-2). Stale rows still render underneath the error.
+            if viewModel.loadFailed {
+                ErrorBox(viewModel.loadError ?? "Could not load bank accounts.")
+                Button("Retry") {
+                    Task { await viewModel.load() }
+                }
+                .buttonStyle(TertiaryButtonStyle())
+            }
             if viewModel.isLoading && viewModel.rows.isEmpty {
                 ProgressView()
-            } else if let error = viewModel.loadError {
-                DismissableErrorBox(error) { viewModel.loadError = nil }
-            } else if viewModel.rows.isEmpty {
-                MutedLine(text: "None.")
-            } else {
+            } else if !viewModel.rows.isEmpty {
                 ForEach(viewModel.rows) { row in
                     accountRow(row)
                 }
+            } else if !viewModel.loadFailed {
+                MutedLine(text: "None.")
             }
         }
         .task { await viewModel.load() }

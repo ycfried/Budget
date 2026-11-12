@@ -60,6 +60,11 @@ final class MembersSettingsViewModel: ObservableObject {
     @Published var inviteCodeLoaded = false
     @Published var householdName: String?
     @Published var loadError: String?
+    /// True after a failed load until a load succeeds. The members
+    /// section shows the error + Retry while this is set — never a
+    /// false "No members yet." (audit S-P1-2: the dismissable error
+    /// box used to clear the failure into the empty state).
+    @Published var loadFailed = false
     @Published var isLoading = false
     @Published var memberToRemove: MemberListRow?
     @Published var removeFailed = false
@@ -153,8 +158,10 @@ final class MembersSettingsViewModel: ObservableObject {
             ownerId = try? await ownerTask
             householdName = try await nameTask ?? householdName
             loadError = nil
+            loadFailed = false
         } catch {
             loadError = settingsErrorMessage(error)
+            loadFailed = true
         }
         // The invite code is owner-only (owner decision, Nov 11,
         // 2026): only the owner fetches it. A failed read is
@@ -310,18 +317,25 @@ struct MembersSettingsView: View {
                 .padding(.top, 4)
             // A reload failure shows above the list even when stale
             // rows are already on screen — never a silent stale list.
-            if let error = viewModel.loadError {
-                DismissableErrorBox(error) { viewModel.loadError = nil }
+            // The error + Retry stay until a load succeeds; the
+            // empty "No members yet." line only shows when the load
+            // actually returned empty (audit S-P1-2).
+            if viewModel.loadFailed {
+                ErrorBox(viewModel.loadError ?? "Could not load members.")
+                Button("Retry") {
+                    Task { await viewModel.load() }
+                }
+                .buttonStyle(TertiaryButtonStyle())
             }
             if viewModel.isLoading && viewModel.members.isEmpty {
                 ProgressView()
-            } else if viewModel.members.isEmpty {
-                MutedLine(text: "No members yet.")
-            } else {
+            } else if !viewModel.members.isEmpty {
                 ForEach(viewModel.members) { member in
                     memberRow(member)
                 }
                 rolesLegend
+            } else if !viewModel.loadFailed {
+                MutedLine(text: "No members yet.")
             }
 
             if viewModel.isOwner {

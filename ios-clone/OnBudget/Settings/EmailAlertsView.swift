@@ -132,8 +132,11 @@ final class GmailOAuthPresenter: NSObject, ASWebAuthenticationPresentationContex
 @MainActor
 final class EmailAlertsViewModel: ObservableObject {
     @Published var connections: [EmailConnectionPublic] = []
-    @Published var statusLine = "No email connected yet."
     @Published var loadError: String?
+    /// True after a failed load until a load succeeds. The card
+    /// shows the error + Retry while this is set — never a false
+    /// "None." (audit S-P1-2).
+    @Published var loadFailed = false
     @Published var isLoading = false
     @Published var isConnecting = false
     @Published var isChecking = false
@@ -168,10 +171,11 @@ final class EmailAlertsViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             connections = try await context.client.postgrest.emailConnections(householdId: context.householdId)
-            statusLine = connections.isEmpty ? "No email connected yet." : ""
             loadError = nil
+            loadFailed = false
         } catch {
             loadError = "Could not load email connections."
+            loadFailed = true
         }
     }
 
@@ -376,20 +380,23 @@ struct EmailAlertsView: View {
             // A reload failure shows above the list even when
             // connections are already on screen — never a silent
             // stale list, and never a grey muted line for an error.
-            if let error = viewModel.loadError {
-                DismissableErrorBox(error) { viewModel.loadError = nil }
+            // The error + Retry stay until a load succeeds — never
+            // a false "None." (audit S-P1-2).
+            if viewModel.loadFailed {
+                ErrorBox(viewModel.loadError ?? "Could not load email connections.")
+                Button("Retry") {
+                    Task { await viewModel.load() }
+                }
+                .buttonStyle(TertiaryButtonStyle())
             }
             if viewModel.isLoading && viewModel.connections.isEmpty {
                 ProgressView()
-            } else if viewModel.connections.isEmpty && viewModel.loadError == nil {
-                MutedLine(text: viewModel.isAdmin ? "None — connect an email below." : "None — the admin connects email alerts.")
             } else if !viewModel.connections.isEmpty {
                 ForEach(viewModel.connections) { connection in
                     connectionRow(connection)
                 }
-            }
-            if !viewModel.statusLine.isEmpty {
-                MutedLine(text: viewModel.statusLine)
+            } else if !viewModel.loadFailed {
+                MutedLine(text: viewModel.isAdmin ? "None — connect an email below." : "None — the admin connects email alerts.")
             }
             if let callback = appState.gmailCallbackResult {
                 MutedLine(text: callback == .connected ? "Gmail return: Connected" : "Gmail return: Failed")
