@@ -160,11 +160,12 @@ public struct AppShellView: View {
 
     private var topBar: some View {
         // Title stays centred via the ZStack (the right-hand
-        // Profile control is wider than the old icon alone, so an
-        // HStack with a matching left spacer would drift it).
+        // profile icon is the only control, so an HStack with a
+        // matching left spacer would drift it).
         // Profile: bigger, easily tappable icon (28pt glyph in a
-        // 44pt hit target, plus a "Profile" text label — owner,
-        // Nov 11, 2026: the icon alone was too small and unclear).
+        // 44pt hit target, icon alone — owner, Nov 12, 2026: "No
+        // need to write profile next to the icon"; reverses the
+        // Nov 11 "Profile" text-label addition).
         // The Menu still opens Profile → Settings / Sign Out.
         ZStack {
             Text(appState.householdName ?? "OnBudget")
@@ -172,10 +173,12 @@ public struct AppShellView: View {
                 .foregroundStyle(DesignTokens.ink)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                // ~110pt per side matches the Profile control's
-                // actual width; 124pt truncated longer household
+                // 56pt per side clears the 44pt icon plus a 12pt
+                // gap (matching the bar's outer padding); the old
+                // 110pt reservation matched the icon + "Profile"
+                // label (~110pt) and truncated longer household
                 // names early on narrow phones (audit H-P2-10).
-                .padding(.horizontal, 110)
+                .padding(.horizontal, 56)
             HStack {
                 Spacer()
                 Menu {
@@ -184,22 +187,17 @@ public struct AppShellView: View {
                         Task { await appState.signOut() }
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Text("Profile")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
-                        Image(systemName: "person.circle")
-                            .font(.system(size: 28))
-                            .foregroundStyle(DesignTokens.ink)
-                            .frame(width: 44, height: 44)
-                            .background(.white)
-                            .overlay(
-                                Circle().stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                            )
-                            .clipShape(Circle())
-                    }
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
+                    Image(systemName: "person.circle")
+                        .font(.system(size: 28))
+                        .foregroundStyle(DesignTokens.ink)
+                        .frame(width: 44, height: 44)
+                        .background(.white)
+                        .overlay(
+                            Circle().stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(Circle())
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Profile")
             }
