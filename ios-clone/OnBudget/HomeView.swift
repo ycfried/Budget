@@ -601,6 +601,11 @@ public struct HomeView: View {
     /// status line under the number explains a loading or failed
     /// face, so a failed card never shows a bare "—" with no
     /// explanation; the expanded rows carry the ErrorBox + Retry.
+    /// The card body is a tap gesture, NOT a Button: the expanded
+    /// rows contain real "Try Again" Buttons, and a Button nested
+    /// inside a Button never fires (audit H-P1-3). A child Button
+    /// wins over an ancestor tap gesture, so the retry taps while
+    /// the rest of the card still toggles.
     private func statCard<Rows: View>(
         title: String,
         face: String,
@@ -611,56 +616,55 @@ public struct HomeView: View {
         onTap: @escaping () -> Void,
         @ViewBuilder rows: () -> Rows
     ) -> some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title)
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(DesignTokens.ink)
-                        Text(face)
-                            .font(.system(size: 22, weight: .heavy))
-                            .foregroundStyle(DesignTokens.ink)
-                        if let statusText {
-                            HStack(spacing: 6) {
-                                if !statusIsError {
-                                    ProgressView()
-                                        .progressViewStyle(.circular)
-                                        .scaleEffect(0.8)
-                                }
-                                Text(statusText)
-                                    .font(.system(size: 13, weight: statusIsError ? .semibold : .regular))
-                                    .foregroundStyle(statusIsError ? DesignTokens.errorText : Color(hex: "#6b7280"))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(DesignTokens.ink)
+                    Text(face)
+                        .font(.system(size: 22, weight: .heavy))
+                        .foregroundStyle(DesignTokens.ink)
+                    if let statusText {
+                        HStack(spacing: 6) {
+                            if !statusIsError {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .scaleEffect(0.8)
                             }
+                            Text(statusText)
+                                .font(.system(size: 13, weight: statusIsError ? .semibold : .regular))
+                                .foregroundStyle(statusIsError ? DesignTokens.errorText : Color(hex: "#6b7280"))
                         }
                     }
-                    Spacer()
                 }
-                if isExpanded {
-                    VStack(alignment: .leading, spacing: 6) { rows() }
-                        .padding(.top, 4)
-                        .transition(ExpandAnimation.transition)
-                }
-                HStack {
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(DesignTokens.primary)
-                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                        .animation(ExpandAnimation.animation, value: isExpanded)
-                }
+                Spacer()
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-            .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 40 / 255, opacity: 0.05),
-                    radius: 2, x: 0, y: 1)
-            .contentShape(Rectangle())
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 6) { rows() }
+                    .padding(.top, 4)
+                    .transition(ExpandAnimation.transition)
+            }
+            HStack {
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(DesignTokens.primary)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                    .animation(ExpandAnimation.animation, value: isExpanded)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 40 / 255, opacity: 0.05),
+                radius: 2, x: 0, y: 1)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
         .animation(ExpandAnimation.animation, value: isExpanded)
         .accessibilityLabel(ariaLabel)
+        .accessibilityAddTraits(.isButton)
     }
 
     /// Row labels are the web's exact wording (live.js:3560-3600),
