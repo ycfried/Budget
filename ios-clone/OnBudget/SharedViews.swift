@@ -205,8 +205,12 @@ public struct LoadingView: View {
 /// opening/closing effect"): Charity / Extra Fund cards, transaction
 /// detail rows, fund rows, sheets' inner expands — all share the same
 /// smooth ease-in-out, 0.25s. No abrupt snaps, no per-screen timing.
-/// Apply with `.animation(ExpandAnimation.animation, value: <the
-/// expanded flag>)` at the toggle site and
+/// Owner rule, Nov 12 2026 — NO FADE: the words must stay fully
+/// visible while a card opens or closes; the fading text was
+/// disorienting. The only motion is the dropdown/collapse itself
+/// (`.move(edge: .top)`), the words arriving with it, never fading
+/// in or out. Apply with `.animation(ExpandAnimation.animation,
+/// value: <the expanded flag>)` at the toggle site and
 /// `.transition(ExpandAnimation.transition)` on the expanding content;
 /// chevrons rotate 180° with the same animation (down when collapsed,
 /// up when expanded). Sheets keep the system presentation animation.
@@ -214,7 +218,7 @@ public enum ExpandAnimation {
     public static let duration = 0.25
     public static var animation: Animation { .easeInOut(duration: duration) }
     public static var transition: AnyTransition {
-        .opacity.combined(with: .move(edge: .top))
+        .move(edge: .top)
     }
 }
 
