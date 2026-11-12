@@ -52,6 +52,12 @@ final class MembersSettingsViewModel: ObservableObject {
     @Published var ownerId: UUID?
     @Published var inviteCode: String?
     @Published var inviteCodeLoadFailed = false
+    /// True once the invite-code fetch has resolved (success or
+    /// failure). Until then the section shows a spinner — never the
+    /// "No invite code is set up" line for an unknown state (audit
+    /// S-P1-1: the line flashed on every load while the fetch was
+    /// still in flight).
+    @Published var inviteCodeLoaded = false
     @Published var householdName: String?
     @Published var loadError: String?
     @Published var isLoading = false
@@ -147,25 +153,30 @@ final class MembersSettingsViewModel: ObservableObject {
             ownerId = try? await ownerTask
             householdName = try await nameTask ?? householdName
             loadError = nil
-            // The invite code is owner-only (owner decision, Nov 11,
-            // 2026): only the owner fetches it. A failed read is
-            // tracked separately — it must NOT fall through to the
-            // "No invite code is set up" line (owner report, Nov 11:
-            // the app said that while PJM2HG existed).
-            inviteCodeLoadFailed = false
-            if context.isOwner {
-                do {
-                    inviteCode = try await context.client.postgrest.inviteCode(householdId: context.householdId)
-                } catch {
-                    inviteCode = nil
-                    inviteCodeLoadFailed = true
-                }
-            } else {
-                inviteCode = nil
-            }
         } catch {
             loadError = settingsErrorMessage(error)
         }
+        // The invite code is owner-only (owner decision, Nov 11,
+        // 2026): only the owner fetches it. A failed read is
+        // tracked separately — it must NOT fall through to the
+        // "No invite code is set up" line (owner report, Nov 11:
+        // the app said that while PJM2HG existed). The fetch runs
+        // even when the members fetch failed, so a members error
+        // never leaves the invite section showing a false "not set
+        // up" line either (audit S-P1-1).
+        inviteCodeLoaded = false
+        inviteCodeLoadFailed = false
+        if context.isOwner {
+            do {
+                inviteCode = try await context.client.postgrest.inviteCode(householdId: context.householdId)
+            } catch {
+                inviteCode = nil
+                inviteCodeLoadFailed = true
+            }
+        } else {
+            inviteCode = nil
+        }
+        inviteCodeLoaded = true
     }
 
     // MARK: - Change role (promote / demote)
@@ -440,7 +451,9 @@ struct MembersSettingsView: View {
             Text("Members join with the invite code below.")
                 .font(.subheadline)
                 .foregroundStyle(Color(hex: "#6b7280"))
-            if viewModel.inviteCodeLoadFailed {
+            if !viewModel.inviteCodeLoaded {
+                ProgressView()
+            } else if viewModel.inviteCodeLoadFailed {
                 ErrorBox("Could not load the invite code. Try again.")
             } else if let code = viewModel.inviteCode, !code.isEmpty {
                 Text(code)
