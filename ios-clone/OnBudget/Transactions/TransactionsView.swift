@@ -17,12 +17,15 @@ import OnBudgetKit
 ///   native equivalent of the web's full pages. The links are hidden
 ///   until a handler is supplied, so they never lead nowhere. Trash is
 ///   admin-only, only when trashed rows exist.
-/// - Search box + note "Searches loaded transactions." (loaded
-///   transactions only; merchant / date / amount; 250ms debounce;
-///   a new search resets the page to 100).
+/// - Search box (owner, Nov 12, 2026): standard iOS search look —
+///   system-grey filled field, magnifier inside on the left, short
+///   "Search transactions" placeholder, no explainer underneath.
+///   Searches loaded transactions only (merchant / date / amount;
+///   250ms debounce; a new search resets the page to 100).
 /// - Active-filter chips: one removable chip per applied filter.
-/// - Count line: "`N` transactions · Total shown `$X`" (+ the
-///   older-rows suffix when the probe row came back).
+/// - Count line: "`N` transactions · Total `$X`" (+ the
+///   older-rows suffix when the probe row came back) — one quiet
+///   muted line.
 /// - List: pages of 100. Fetch asks for `txLimit + 1`; the probe row
 ///   decides whether Load More shows — a page of exactly 100 with no
 ///   probe row does NOT show the button. Load More raises the limit
@@ -244,15 +247,40 @@ public struct TransactionsView: View {
     // MARK: - Search + chips + count
 
     private var searchBox: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            TextField("Search transactions (merchant, amount, date)", text: $searchText)
-                .textFieldStyle(.roundedBorder)
+        // Owner, Nov 12, 2026: standard modern iOS search look —
+        // light grey filled field (system grey, no hard border),
+        // magnifier inside on the left, short placeholder. The old
+        // `.roundedBorder` field with its "(merchant, amount, date)"
+        // placeholder read as ugly and wordy, and the "Searches
+        // loaded transactions." explainer underneath it is deleted
+        // outright (owner: unnecessary; standing declutter rule).
+        // The × clear button is the standard search affordance:
+        // clearing the box flows through the existing `onChange`
+        // → `applySearch("")` path, and T-P1-1 (searchResetNonce)
+        // still clears the box when filters clear.
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color(hex: "#6b7280"))
+            TextField("Search transactions", text: $searchText)
+                .font(.system(size: 17))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            Text("Searches loaded transactions.")
-                .font(.system(size: 13))
-                .foregroundStyle(Color(hex: "#6b7280"))
+            if !searchText.isEmpty {
+                Button { searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color(hex: "#9ca3af"))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(.systemGray5))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
@@ -296,8 +324,12 @@ public struct TransactionsView: View {
     }
 
     private var countLine: some View {
+        // Owner, Nov 12, 2026: one quiet muted line, tighter wording
+        // ("Total", not "Total shown"), smaller than before; the
+        // VStack's 14pt spacing gives it air from the field above
+        // and the list below.
         Text(viewModel.countLine)
-            .font(.system(size: 14))
+            .font(.system(size: 13))
             .foregroundStyle(Color(hex: "#6b7280"))
             .accessibilityIdentifier("transactions.countLine")
     }
