@@ -48,13 +48,17 @@ public struct AuthBrandHeader: View {
             // circular picture the web app uses), not the "S"
             // placeholder ring the clone shipped with (owner, Nov 11,
             // 2026).
+            // Logo 72pt / wordmark 30pt (owner, Nov 12, 2026): the
+            // sign-in header sat in a lot of empty space — the bump
+            // fills it without crowding the fields. Same centered
+            // layout and spacing as before.
             Image("AppLogo")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 56, height: 56)
+                .frame(width: 72, height: 72)
                 .clipShape(Circle())
             Text("OnBudget")
-                .font(.system(size: 26, weight: .bold))
+                .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
         }
         // Centered as a unit (owner, Nov 11, 2026): the header was
