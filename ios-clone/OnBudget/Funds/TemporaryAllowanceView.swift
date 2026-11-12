@@ -120,6 +120,13 @@ public struct TemporaryAllowanceView: View {
                 // was accepted silently.
                 showConfirm = true
             }
+            // F-P2-2: remove the override for the current week
+            // onward, so the base allowance applies again. Until
+            // supabase/remove-weekly-allowance-override.sql is
+            // applied live this fails with a plain-language error.
+            FundsQuietButton("Remove Override", isBusy: viewModel.busyAction == "remove-temp") {
+                Task { await viewModel.removeTemporaryAllowance() }
+            }
         }
         .confirmationDialog(
             "Set New Total",

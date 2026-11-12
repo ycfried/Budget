@@ -467,6 +467,40 @@ extension RPCClient {
         }
     }
 
+    /// Remove one week's override row (see
+    /// `supabase/remove-weekly-allowance-override.sql`). Deleting a
+    /// week with no override is a silent no-op server-side.
+    public func removeWeeklyAllowanceOverride(
+        pHouseholdId: UUID,
+        pWeekStart: String
+    ) async throws {
+        try await callVoid(name: "remove_weekly_allowance_override", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_week_start": pWeekStart,
+        ])
+    }
+
+    /// Remove the override for `weeks` (1–4) consecutive Sunday
+    /// weeks starting at `firstWeekStart` — the mirror of the
+    /// multi-week set helper above, covering the Temporary
+    /// Allowance range. Stops at the first failure and throws it.
+    public func removeWeeklyAllowanceOverride(
+        pHouseholdId: UUID,
+        firstWeekStart: String,
+        weeks: Int
+    ) async throws {
+        let count = min(4, max(1, weeks))
+        guard let first = Self.sunday(from: firstWeekStart) else {
+            throw OnBudgetError.validationFailed("week_start must be a Sunday date (YYYY-MM-DD)")
+        }
+        for index in 0..<count {
+            let weekStart = Self.dateString(from: first.addingTimeInterval(TimeInterval(index * 7 * 24 * 3600)))
+            try await removeWeeklyAllowanceOverride(
+                pHouseholdId: pHouseholdId, pWeekStart: weekStart
+            )
+        }
+    }
+
     private static func sunday(from dateString: String) -> Date? {
         // Week dates are plain calendar dates (no time, no zone).
         // Parse and take the weekday in UTC: parsing as UTC midnight

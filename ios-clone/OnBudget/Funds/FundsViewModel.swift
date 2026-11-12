@@ -539,6 +539,25 @@ public final class FundsViewModel: ObservableObject {
         return succeeded
     }
 
+    /// Remove the weekly allowance override(s) for the current week
+    /// onward (up to 4 weeks — the Temporary Allowance range) via
+    /// `remove_weekly_allowance_override`, so the base allowance
+    /// applies again for those weeks.
+    /// NOTE: until `supabase/remove-weekly-allowance-override.sql`
+    /// is applied live the RPC does not exist and this fails with a
+    /// plain-language error; nothing is changed.
+    public func removeTemporaryAllowance(weeks: Int = 4) async {
+        await guarded("remove-temp", title: "Could Not Remove Override") {
+            try await context.client.rpcs.removeWeeklyAllowanceOverride(
+                pHouseholdId: context.householdId,
+                firstWeekStart: MoneyFormat.currentSundayNY(),
+                weeks: weeks
+            )
+            succeed("Weekly allowance override removed — the base allowance applies again.")
+            await refresh()
+        }
+    }
+
     // MARK: - Review: held refunds
 
     /// Release a held refund via `resolve_held_refund`
