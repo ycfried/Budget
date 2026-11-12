@@ -324,6 +324,11 @@ public struct FundRequestQueue: View {
                             Divider()
                         }
                     }
+                    // The fetch caps at 50 (PostgrestClient); say so
+                    // when the cap binds (F-P2-8).
+                    if viewModel.fundRequests.count >= 50 {
+                        FundsMuted("Showing the latest 50 fund requests.")
+                    }
                 }
             }
         }
