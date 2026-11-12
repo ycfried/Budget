@@ -805,7 +805,7 @@ public struct HomeView: View {
                 Text("Recent Transactions")
                     .font(.system(size: 22, weight: .bold))
                 Spacer()
-                Button("See All") { appState.selectedTab = .transactions }
+                Button("See All") { appState.showAllTransactions() }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.primary)
             }

@@ -102,6 +102,7 @@ public struct TransactionsView: View {
         }
         .onChange(of: appState.pendingWeekFilter) { _, _ in consumeHandoffs() }
         .onChange(of: appState.pendingTransactionJump) { _, _ in consumeHandoffs() }
+        .onChange(of: appState.pendingClearTransactionFilters) { _, _ in consumeHandoffs() }
         .sheet(isPresented: $showingFilters) {
             TransactionsFilterSheet(viewModel: viewModel, onDismiss: { showingFilters = false })
         }
@@ -138,6 +139,8 @@ public struct TransactionsView: View {
     /// Past Weeks / Weekly sheet (`pendingWeekFilter`) and Home
     /// recent-row tap (`pendingTransactionJump`): apply to the list,
     /// then clear the flag so a later tab switch does not re-apply.
+    /// Home "See All" (`pendingClearTransactionFilters`) clears
+    /// search/filters first, same as the jump (audit H-P2-8).
     private func consumeHandoffs() {
         if let week = appState.pendingWeekFilter {
             appState.pendingWeekFilter = nil
@@ -146,6 +149,13 @@ public struct TransactionsView: View {
         if let jump = appState.pendingTransactionJump {
             appState.pendingTransactionJump = nil
             viewModel.applyTransactionJump(jump)
+        }
+        if appState.pendingClearTransactionFilters {
+            appState.pendingClearTransactionFilters = false
+            viewModel.clearSearchAndFilters()
+            // The search box is local state: clear it too, or it
+            // would keep showing text the list no longer filters by.
+            searchText = ""
         }
     }
 
