@@ -399,27 +399,44 @@ public struct Card<Content: View>: View {
 // the value is genuinely unset) — never a bare bold "—" in amount
 // type, never a sentence in amount type.
 
-// MARK: - Stat-card themes (owner direction, Nov 12 2026)
+// MARK: - Stat-card themes (owner direction, Nov 12 2026,
+// corrected ~2:02 PM the same day)
 //
 // The Home + Funds Charity / Extra Fund cards share ONE theme each
-// (same tint, icon, amount size on both screens). Charity is soft
+// (same outline, icon, amount size on both screens). Charity is
 // green (giving/growth — green is already the native success
-// colour); Extra Fund is soft blue (savings). Tints are very light
-// so text stays dark and readable; amounts are the deep tint colour,
-// never mid-tone on tint. While loading the card shows NO colour —
-// a white card with grey skeleton blocks in the same bigger shape.
+// colour); Extra Fund is brand blue (savings). NOT a wash: the
+// card is white inside, exactly like the Weekly Budget hero, with
+// a 2px coloured outline. Amounts are the deep tint colour, never
+// mid-tone. The hero stays the anchor by size and by the thickest
+// outline (2.5px). While loading the card shows NO colour — a
+// white card with a muted grey outline and grey skeleton blocks
+// in the same bigger shape.
 
-/// The shared tint/identity of a Charity or Extra Fund stat card.
+/// The shared outline/identity of a Charity or Extra Fund stat card.
 public enum StatCardTheme {
     case charity
     case fund
 
-    /// Soft background wash for the loaded/failed card.
-    public var background: Color {
+    /// Coloured outline of the loaded/failed card: green #16a34a
+    /// (the native success green) for Charity, brand blue #2f6bff
+    /// for Extra Fund. White inside — never a wash.
+    public var outline: Color {
         switch self {
-        case .charity: return DesignTokens.charityTint
-        case .fund: return DesignTokens.fundTint
+        case .charity: return DesignTokens.success
+        case .fund: return DesignTokens.primary
         }
+    }
+
+    /// Outline width: 2px for both stat cards. The hero's is
+    /// thicker (2.5px), so the hero stays the anchor card.
+    public var outlineWidth: CGFloat { 2 }
+
+    /// Muted grey outline while loading — no colour until the
+    /// numbers arrive. Shared by Home + Funds so the skeleton
+    /// looks the same on both screens.
+    public static var loadingOutline: Color {
+        DesignTokens.muted.opacity(0.4)
     }
 
     /// Deep tint colour of the amount (and the icon).
@@ -427,14 +444,6 @@ public enum StatCardTheme {
         switch self {
         case .charity: return DesignTokens.charityDeep
         case .fund: return DesignTokens.fundDeep
-        }
-    }
-
-    /// Slightly deeper wash behind the icon chip.
-    public var chip: Color {
-        switch self {
-        case .charity: return DesignTokens.charityChip
-        case .fund: return DesignTokens.fundChip
         }
     }
 

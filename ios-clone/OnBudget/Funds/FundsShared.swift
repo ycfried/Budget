@@ -195,24 +195,36 @@ public struct FundsQuietButton: View {
 // MARK: - Cards, rows, error boxes
 
 /// A white card, radius 20, hairline shadow (spec §1.2). `background`
-/// / `padding` are overridable for the tinted stat cards (owner,
-/// Nov 12, 2026 — Charity soft green, Extra Fund soft blue, 20pt
-/// padding); everything else stays the default white / 16pt.
+/// / `padding` are overridable for the outlined stat cards (owner,
+/// Nov 12, 2026, corrected ~2:02 PM — Charity green / Extra Fund
+/// brand-blue 2px outline, white inside, never a wash); `outline`
+/// is nil for the plain white cards, which stay outline-free.
+/// Everything else stays the default white / 16pt.
 public struct FundsCard<Content: View>: View {
     public let content: Content
     public let background: Color
     public let padding: CGFloat
+    public let outline: Color?
+    public let outlineWidth: CGFloat
 
-    public init(background: Color = .white, padding: CGFloat = 16, @ViewBuilder content: () -> Content) {
+    public init(background: Color = .white, padding: CGFloat = 16, outline: Color? = nil, outlineWidth: CGFloat = 2, @ViewBuilder content: () -> Content) {
         self.content = content()
         self.background = background
         self.padding = padding
+        self.outline = outline
+        self.outlineWidth = outlineWidth
     }
 
     public var body: some View {
         content
             .padding(padding)
             .background(background)
+            .overlay {
+                if let outline {
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(outline, lineWidth: outlineWidth)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
     }
@@ -270,14 +282,16 @@ public struct FundsBreakdownRow: View {
 
 /// A Title + Amount face that expands in place (no sheet, no overlay —
 /// spec §6.2/§9.1). Chevron `⌄` bottom-right, brand blue, flips to `⌃`.
-/// Bigger and tinted when a `theme` is given (owner, Nov 12, 2026 —
-/// the same StatCardTheme as Home: Charity soft green, Extra Fund
-/// soft blue; 20pt padding, 18pt title, 28pt amount, icon chip),
-/// so Home and Funds match. Loading shows the same bigger shape in
-/// muted grey shimmer with NO colour and no "Loading…" text
-/// (`isLoading`); a failed face is a STATIC grey block, never a bare
-/// "—" in amount type — the expanded content carries the error box
-/// (F-P2-13 / owner loading language, Nov 12, 2026).
+/// Bigger and outlined when a `theme` is given (owner, Nov 12, 2026,
+/// corrected ~2:02 PM — the same StatCardTheme as Home: Charity green
+/// #16a34a outline, Extra Fund brand-blue #2f6bff outline, both 2px,
+/// white inside, never a wash; 20pt padding, 18pt title, 28pt amount,
+/// icon chip), so Home and Funds match. Loading shows the same bigger
+/// shape with a muted grey outline and muted grey shimmer, with NO
+/// colour and no "Loading…" text (`isLoading`); a failed face is a
+/// STATIC grey block, never a bare "—" in amount type — the expanded
+/// content carries the error box (F-P2-13 / owner loading language,
+/// Nov 12, 2026).
 public struct FundsExpandableCard<Expanded: View>: View {
     public let title: String
     public let amountText: String
@@ -291,7 +305,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
     /// True only while loading (shimmer skeleton). False with
     /// `amountIsStatus` true means failed (static grey block).
     public let isLoading: Bool
-    /// The card's tint/identity; nil keeps the plain white card.
+    /// The card's outline identity; nil keeps the plain white card.
     public let theme: StatCardTheme?
     public let accessibilityLabel: String
     public let onToggle: () -> Void
@@ -323,8 +337,9 @@ public struct FundsExpandableCard<Expanded: View>: View {
 
     public var body: some View {
         FundsCard(
-            background: isLoading ? .white : (theme?.background ?? .white),
-            padding: theme == nil ? 16 : 20
+            background: .white,
+            padding: theme == nil ? 16 : 20,
+            outline: theme == nil ? nil : (isLoading ? StatCardTheme.loadingOutline : theme?.outline)
         ) {
             VStack(alignment: .leading, spacing: 10) {
                 // Whole-area tap target (owner rule, Nov 11 2026):
@@ -346,8 +361,12 @@ public struct FundsExpandableCard<Expanded: View>: View {
                                         .font(.system(size: 18, weight: .semibold))
                                         .foregroundStyle(theme.deep)
                                         .frame(width: 36, height: 36)
-                                        .background(theme.chip)
+                                        .background(.white)
                                         .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(theme.outline, lineWidth: 1)
+                                        )
                                 }
                             }
                             Text(TitleCase.apply(to: title))
