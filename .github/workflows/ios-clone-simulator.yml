@@ -35,6 +35,11 @@ jobs:
       - name: Validate, compile and test synthetic app
         env:
           ONBUDGET_APPROVED_WORKFLOW: '1'
+          # Service-role key for the UI tests' Admin-API confirm path
+          # (email confirmation is ON since Nov 12, 2026). Empty until
+          # the repo secret SUPABASE_SERVICE_ROLE_KEY exists — the
+          # helper then fails fast naming the missing secret.
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: bash ios-clone/scripts/macos_simulator_test.sh
       - name: Upload simulator results
         if: always()

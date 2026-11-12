@@ -9,8 +9,13 @@
 // launches in the same run), so every test starts on the auth
 // screen; then sign up a FRESH account (random email per run,
 // generated password) — sign-ups are ON and email confirmation
-// is OFF in the live project, so sign-up returns a session
-// immediately.
+// is ON in the live project (owner, Nov 12, 2026), so sign-up
+// returns .needsConfirmation and the app shows "Check Your Email".
+// The helper then confirms the fresh account via the Supabase Auth
+// Admin API (service-role key from the SUPABASE_SERVICE_ROLE_KEY
+// environment variable — never logged, never hard-coded) and signs
+// in with the same credentials; the @example.com address can never
+// receive the confirmation email, so there is no other path.
 //   Then join the TEST household "Proof Household 2" as a member via
 //      invite code Q6GFME. Never the real household, never the
 //      owner's account. (The test admin account's password is lost;
@@ -494,7 +499,25 @@ final class OnBudgetUITests: XCTestCase {
 
     /// Steps 1–3 of the proof: auth screen → fresh sign-up → name
     /// step. Leaves the test on the household choice screen.
+    ///
+    /// Email confirmation is ON (owner, Nov 12, 2026): sign-up
+    /// returns .needsConfirmation, so after the name step the helper
+    /// confirms the fresh account via the Supabase Auth Admin API
+    /// and signs in with the same credentials. The service-role key
+    /// comes ONLY from the SUPABASE_SERVICE_ROLE_KEY environment
+    /// variable; when it is absent the test fails fast here instead
+    /// of burning its 60–90s waits before failing at the same gate.
     private func signUpFreshAccount() {
+        guard let serviceKey = ProcessInfo.processInfo.environment["SUPABASE_SERVICE_ROLE_KEY"],
+              !serviceKey.isEmpty else {
+            XCTFail(
+                "SUPABASE_SERVICE_ROLE_KEY is not set in the test runner environment — "
+                + "add it as a CI secret and pass it to the simulator step. "
+                + "Email confirmation is ON, so a fresh test account cannot sign in without being confirmed first."
+            )
+            return
+        }
+
         // -- 1. Auth screen renders -------------------------------------
         let emailField = app.textFields["auth.email"]
         XCTAssertTrue(
@@ -505,8 +528,9 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- 2. Sign up a fresh account ---------------------------------
         // Random email per run so re-runs never collide with a previous
-        // run's account. example.com is unroutable, which is fine: no
-        // confirmation email is ever sent (confirmation is OFF).
+        // run's account. example.com is unroutable, which is fine:
+        // the account is confirmed via the Admin API below, never by
+        // email.
         let runId = UUID().uuidString.lowercased().prefix(8)
         let email = "ios-clone-uitest-\(runId)@example.com"
         // >= 8 chars (AuthValidation.createAccountError); mixed case +
@@ -533,6 +557,109 @@ final class OnBudgetUITests: XCTestCase {
         tapAndTypeText(nameField, "UI Test", fieldName: "auth.name")
         dismissKeyboardIfPresent(focusedField: nameField)
         app.buttons["auth.createAccountConfirm"].tap()
+
+        // -- 4. Confirm via the Admin API, then sign in -----------------
+        // Sign-up with confirmation ON lands on the persistent
+        // "Check Your Email" state (NameStepView.confirmationSent).
+        XCTAssertTrue(
+            app.staticTexts["Check Your Email"].waitForExistence(timeout: 60),
+            "Check Your Email did not appear after Create Account (sign-up may have failed or confirmation may be off)"
+        )
+        guard confirmTestAccount(email: email, serviceKey: serviceKey) else { return }
+        app.buttons["auth.backToSignIn"].tap()
+
+        let signInEmail = app.textFields["auth.email"]
+        XCTAssertTrue(
+            signInEmail.waitForExistence(timeout: 30),
+            "Sign-in screen did not appear after confirming the test account"
+        )
+        tapAndTypeText(signInEmail, email, fieldName: "auth.email")
+        let signInPassword = app.secureTextFields["auth.password"]
+        XCTAssertTrue(
+            signInPassword.waitForExistence(timeout: 10),
+            "Password field missing on the sign-in screen"
+        )
+        tapAndTypeText(signInPassword, password, fieldName: "auth.password")
+        dismissKeyboardIfPresent(focusedField: signInPassword)
+        app.buttons["auth.signIn"].tap()
+    }
+
+    // MARK: - Admin-API confirmation (email confirmation is ON)
+
+    /// Supabase Auth Admin API base for the live project (public
+    /// URL, same project as the app's Configuration.supabaseURL).
+    private static let supabaseAuthAdminBase = "https://tnkhvdkmwmwiogiienee.supabase.co/auth/v1/admin"
+
+    /// Confirms the freshly signed-up test account: list users,
+    /// match the email locally, then PUT email_confirm: true. The
+    /// listUsers pattern (never getUserByEmail — it does not exist
+    /// on supabase-js v2) is the same one the check-email-exists
+    /// Edge Function uses. Returns false on failure (the caller
+    /// returns early; the test is already marked failed). The key
+    /// is never logged.
+    private func confirmTestAccount(email: String, serviceKey: String) -> Bool {
+        guard let userId = adminUserId(forEmail: email, serviceKey: serviceKey) else {
+            XCTFail("Admin API: no user found for \(email) after sign-up — cannot confirm the test account")
+            return false
+        }
+        var request = URLRequest(url: URL(string: "\(Self.supabaseAuthAdminBase)/users/\(userId)")!)
+        request.httpMethod = "PUT"
+        request.setValue(serviceKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(serviceKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["email_confirm": true])
+        let (status, _) = performAdminRequest(request)
+        guard status == 200 else {
+            XCTFail("Admin API confirm failed for \(email) (HTTP \(status))")
+            return false
+        }
+        return true
+    }
+
+    /// Finds the fresh account's id via the Admin API list endpoint,
+    /// polling briefly: the user row is created by sign-up, but the
+    /// list must see it before the confirm can run. Returns nil when
+    /// the user never appears.
+    private func adminUserId(forEmail email: String, serviceKey: String) -> String? {
+        let wanted = email.lowercased()
+        for _ in 0..<15 {
+            var request = URLRequest(url: URL(string: "\(Self.supabaseAuthAdminBase)/users?per_page=1000")!)
+            request.setValue(serviceKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(serviceKey)", forHTTPHeaderField: "Authorization")
+            let (status, data) = performAdminRequest(request)
+            if status == 200, let data,
+               let json = try? JSONSerialization.jsonObject(with: data) {
+                let users: [[String: Any]]?
+                if let dict = json as? [String: Any] {
+                    users = dict["users"] as? [[String: Any]]
+                } else {
+                    users = json as? [[String: Any]]
+                }
+                if let users,
+                   let match = users.first(where: { ($0["email"] as? String)?.lowercased() == wanted }),
+                   let id = match["id"] as? String {
+                    return id
+                }
+            }
+            Thread.sleep(forTimeInterval: 2)
+        }
+        return nil
+    }
+
+    /// Synchronous Admin API call (XCTest is synchronous): returns
+    /// the HTTP status and body data, or (0, nil) on a transport
+    /// error. The request — including the key in its headers — is
+    /// never logged.
+    private func performAdminRequest(_ request: URLRequest, timeout: TimeInterval = 15) -> (status: Int, data: Data?) {
+        var result: (Int, Data?) = (0, nil)
+        let semaphore = DispatchSemaphore(value: 0)
+        let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+            result = ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+            semaphore.signal()
+        }
+        task.resume()
+        _ = semaphore.wait(timeout: .now() + timeout)
+        return result
     }
 
     // MARK: - Plaid Sandbox drive
