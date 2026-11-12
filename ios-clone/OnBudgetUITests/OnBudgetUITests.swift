@@ -332,7 +332,7 @@ final class OnBudgetUITests: XCTestCase {
         )
         activityLink.tap()
         XCTAssertTrue(
-            app.staticTexts["Who did what, and when — not the transaction list."]
+            app.staticTexts["General Activity"]
                 .waitForExistence(timeout: 60),
             "Activity subpage did not open"
         )
