@@ -1,8 +1,10 @@
 // OnBudget — Activity (live web v66, §13).
 //
-// Who did what, and when — not the transaction list. Grouped by day
-// (newest day first), each entry: small coloured dot per type, short
-// bold title, one plain detail line, muted "Actor · Mon D, h:mm AM".
+// General Activity: who did what, and when — not the transaction
+// list. Grouped by day (newest day first), each entry: small
+// coloured dot per type, short bold title, one plain detail line
+// (only when it adds something the title does not say), muted
+// "Actor · Mon D, h:mm AM".
 //
 // Wiring (exact API calls):
 // - `PostgrestClient.auditLogPage(householdId:limit:from:to:)` —
@@ -15,11 +17,17 @@
 //   (`AuditFormatting.formatAuditDetail` / `formatAuditAction` /
 //   `formatAuditActor`): UUIDs stripped, ISO dates -> long dates,
 //   "N cents" -> $X, "N basis points" -> N%, "as provisional" ->
-//   "as pending". Stored rows are never edited.
+//   "as pending". Stored rows are never edited. Row wording is
+//   shortened display-side only (owner, Nov 12 2026): the title
+//   says the thing once, the detail adds only new information, a
+//   no-op "changed from $X to $X" never renders as a change.
 // - Repeated weekly-processing rows collapse into one line with a
 //   count ("N weeks closed"); user actions never collapse.
-// - Shares the History date filter with Past Weeks
-//   (`HistoryFilterState`); applying the filter resets the page to 50.
+// - The date filter is the shared one-button + one-calendar range
+//   picker (`HistoryDateFilterCard`, same calendar as
+//   Transactions); the type filter is a chip row of the types
+//   actually present in the log (single-select, combines with the
+//   date filter). Reset Filters clears both.
 
 import SwiftUI
 import OnBudgetKit
@@ -40,6 +48,10 @@ final class ActivityViewModel: ObservableObject {
     @Published var hasMore = false
     @Published var draftFrom = ""
     @Published var draftTo = ""
+    /// Type filter: nil = All. Chips show only the types actually
+    /// present in the (date-filtered) log, in canonical order.
+    @Published var selectedType: AuditFormatting.ActivityType?
+    @Published var availableTypes: [AuditFormatting.ActivityType] = []
 
     private let context: SettingsContext
     let filter: HistoryFilterState
@@ -49,6 +61,16 @@ final class ActivityViewModel: ObservableObject {
         self.filter = filter
         self.draftFrom = filter.fromDate
         self.draftTo = filter.toDate
+    }
+
+    /// Empty-state copy: the type filter names itself when it is
+    /// what emptied the list; otherwise the existing lines stay
+    /// (audit X-P2-2: "No activity yet.").
+    var emptyText: String {
+        if let type = selectedType {
+            return "No \(type.label) entries in this view."
+        }
+        return filter.isActive ? "No entries in the selected period." : "No activity yet."
     }
 
     func load() async {
@@ -72,8 +94,6 @@ final class ActivityViewModel: ObservableObject {
                 from: filter.fromDate.isEmpty ? nil : filter.fromDate,
                 to: filter.toDate.isEmpty ? nil : filter.toDate
             )
-            filter.auditShown = filteredRows.count
-            filter.auditTotal = total
             // `??` binds TIGHTER than `>=` in Swift, so the RHS of
             // `??` needs explicit parens: without them this parsed
             // as `(total.map { ... } ?? rows.count) >= fetchLimit`
@@ -93,11 +113,28 @@ final class ActivityViewModel: ObservableObject {
                 if byDay[day] == nil { dayOrder.append(day) }
                 byDay[day, default: []].append(entry)
             }
-            groups = dayOrder.map { day in
-                ActivityDayGroup(
-                    day: day,
-                    entries: AuditFormatting.groupDayActivity(byDay[day] ?? [])
-                )
+            // Type chips: only the types actually present in the
+            // date-filtered log, in canonical order. The chip list
+            // is derived BEFORE the type filter applies, so picking
+            // a chip never shrinks the chips themselves.
+            let allEntries = byDay.values.flatMap { $0 }
+            availableTypes = AuditFormatting.ActivityType.allCases.filter { type in
+                allEntries.contains { $0.type == type }
+            }
+            // The type filter combines with the date filter (both
+            // apply together); "All" (nil) shows everything.
+            let shownByDay: [String: [AuditDisplayEntry]]
+            if let type = selectedType {
+                shownByDay = byDay.mapValues { $0.filter { $0.type == type } }
+            } else {
+                shownByDay = byDay
+            }
+            filter.auditShown = shownByDay.values.flatMap { $0 }.count
+            filter.auditTotal = total
+            groups = dayOrder.compactMap { day in
+                let entries = AuditFormatting.groupDayActivity(shownByDay[day] ?? [])
+                guard !entries.isEmpty else { return nil }
+                return ActivityDayGroup(day: day, entries: entries)
             }
             loadError = nil
         } catch {
@@ -125,6 +162,24 @@ final class ActivityViewModel: ObservableObject {
         auditLimit = 50
         await load()
     }
+
+    /// A type chip is single-select and applies on tap (no Apply
+    /// step); it combines with the date filter, which stays as is.
+    func selectType(_ type: AuditFormatting.ActivityType?) async {
+        selectedType = type
+        await load()
+    }
+
+    /// Reset Filters clears BOTH filters (owner, Nov 12 2026): the
+    /// date range and the type chip.
+    func resetAllFilters() async {
+        draftFrom = ""
+        draftTo = ""
+        filter.clear()
+        selectedType = nil
+        auditLimit = 50
+        await load()
+    }
 }
 
 struct ActivityView: View {
@@ -143,19 +198,21 @@ struct ActivityView: View {
                     BackButton(action: onBack)
                     Spacer()
                 }
-                Text("Activity")
+                Text("General Activity")
                     .font(.largeTitle)
                     .fontWeight(.bold)
-                Text("Who did what, and when — not the transaction list.")
-                    .font(.subheadline)
-                    .foregroundStyle(DesignTokens.muted)
+                // No subtitle (owner, Nov 12 2026): the title + the
+                // list speak for themselves.
+
+                typeFilterChips
 
                 HistoryDateFilterCard(
                     draftFrom: $viewModel.draftFrom,
                     draftTo: $viewModel.draftTo,
                     filter: viewModel.filter,
                     onApply: { Task { await viewModel.applyFilter() } },
-                    onClear: { Task { await viewModel.clearFilter() } }
+                    onClear: { Task { await viewModel.clearFilter() } },
+                    onResetAll: { Task { await viewModel.resetAllFilters() } }
                 )
 
                 if viewModel.isLoading && viewModel.groups.isEmpty {
@@ -163,9 +220,7 @@ struct ActivityView: View {
                 } else if let error = viewModel.loadError {
                     DismissableErrorBox(error) { viewModel.loadError = nil }
                 } else if viewModel.groups.isEmpty {
-                    MutedLine(text: viewModel.filter.isActive
-                        ? "No entries in the selected period."
-                        : "No activity yet.")
+                    MutedLine(text: viewModel.emptyText)
                 } else {
                     ForEach(viewModel.groups) { group in
                         daySection(group)
@@ -184,6 +239,46 @@ struct ActivityView: View {
             .padding()
         }
         .task { await viewModel.load() }
+    }
+
+    /// Type filter (owner, Nov 12 2026): a horizontal chip row
+    /// under the title — "All" first and selected by default, then
+    /// one chip per type actually present in the log. Single-select
+    /// only; combines with the date-range filter. Squarish chips,
+    /// never round pills: selected is brand-blue fill with white
+    /// text, unselected is a white chip with a light outline.
+    private var typeFilterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                typeChip(label: "All", selected: viewModel.selectedType == nil) {
+                    Task { await viewModel.selectType(nil) }
+                }
+                ForEach(viewModel.availableTypes, id: \.self) { type in
+                    typeChip(label: type.label, selected: viewModel.selectedType == type) {
+                        Task { await viewModel.selectType(type) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func typeChip(label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(selected ? DesignTokens.primary : .white)
+                .foregroundStyle(selected ? .white : DesignTokens.ink)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(selected ? DesignTokens.primary : Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(label) filter\(selected ? ", selected" : "")")
     }
 
     private func daySection(_ group: ActivityDayGroup) -> some View {
@@ -206,11 +301,23 @@ struct ActivityView: View {
                 Text(AuditFormatting.activityTitle(action: entry.action, count: entry.count))
                     .font(.subheadline)
                     .fontWeight(.bold)
-                Text(entry.detail)
-                    .font(.subheadline)
+                    // Wrap, never truncate at the right edge: the
+                    // row must read in full at narrow phone widths
+                    // (owner, Nov 12 2026).
+                    .fixedSize(horizontal: false, vertical: true)
+                // The detail line renders only when it adds
+                // something the title does not say — a detail that
+                // restates the title is empty by now (see
+                // AuditFormatting.simplifyDetail) and stays hidden.
+                if !entry.detail.isEmpty {
+                    Text(entry.detail)
+                        .font(.subheadline)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Text("\(entry.actor) · \(entry.time)")
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

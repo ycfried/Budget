@@ -252,25 +252,79 @@ struct MutedLine: View {
 /// including the same today-as-default bug in both. Both screens
 /// now render this one component, bound to their view model's
 /// drafts and the shared `HistoryFilterState`.
+///
+/// Redesign (owner, Nov 12 2026): the same one-button + one-calendar
+/// range picker as the Transactions redesign (build 15) — one button
+/// shows the range ("Choose Dates" with no filter set, never today's
+/// date — audit X-P1-1), one calendar picks a start date then an end
+/// date. The calendar is the shared `DateRangeCalendarView`; picking
+/// only changes the DRAFT — nothing applies until Apply. Cancel
+/// restores the drafts to the applied filter; Reset Filters (a small
+/// plain link, not a third button) clears the filters. `onResetAll`
+/// clears every filter on the page (Activity: date + type); when nil
+/// (Past Weeks) Reset clears the date filter only.
 struct HistoryDateFilterCard: View {
     @Binding var draftFrom: String
     @Binding var draftTo: String
     let filter: HistoryFilterState
     let onApply: () -> Void
     let onClear: () -> Void
+    var onResetAll: (() -> Void)? = nil
+
+    @State private var showingCalendar = false
+    @State private var calendarSelection: WhenSelection = .allTime
+    /// True once the calendar actually picked something (Done, a
+    /// quick pick, or Clear). Backing out without picking leaves
+    /// the drafts untouched — in particular a one-sided draft the
+    /// range calendar cannot represent is never clobbered.
+    @State private var calendarChose = false
+
+    /// "Choose Dates" with no filter set, else the range
+    /// ("Nov 8 – Nov 14", "Nov 8", "From Nov 8" / "To Nov 14").
+    private var rangeLabel: String {
+        TransactionFormatting.dateRangeChipLabel(from: draftFrom, to: draftTo) ?? "Choose Dates"
+    }
 
     var body: some View {
         SettingsCard(title: "Filter by Date") {
-            HStack(spacing: 12) {
-                HistoryDateField(label: "From", text: $draftFrom)
-                HistoryDateField(label: "To", text: $draftTo)
+            Button { openCalendar() } label: {
+                HStack {
+                    Image(systemName: "calendar")
+                    Text(rangeLabel)
+                        .font(.system(size: 15))
+                        .foregroundStyle(DesignTokens.ink)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
-            HStack(spacing: 12) {
-                Button("Apply Filter") { onApply() }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Choose dates, \(rangeLabel)")
+
+            TwoButtonRow {
+                Button("Apply") { onApply() }
                     .buttonStyle(PrimaryButtonStyle())
-                Button("Clear Date Filter") { onClear() }
+            } secondary: {
+                Button("Cancel") { cancelDrafts() }
                     .buttonStyle(TertiaryButtonStyle())
             }
+
+            HStack {
+                Spacer()
+                Button("Reset Filters") { (onResetAll ?? onClear)() }
+                    .buttonStyle(QuietButtonStyle())
+                Spacer()
+            }
+
             if !filter.periodLine.isEmpty {
                 MutedLine(text: filter.periodLine)
             }
@@ -278,73 +332,64 @@ struct HistoryDateFilterCard: View {
                 MutedLine(text: filter.countLine)
             }
         }
-    }
-}
-
-/// One side of the History date filter. From/To are `YYYY-MM-DD`
-/// strings; blank means no limit on that side. A blank side shows
-/// a "Select date" placeholder, NEVER today's date (audit X-P1-1,
-/// Nov 12 2026 — the old per-screen `dateField` fell back to
-/// `Date()` when the draft was empty, so both screens opened
-/// showing today). Tapping the placeholder sets today, revealing
-/// the picker; the × clears that side back to blank.
-struct HistoryDateField: View {
-    let label: String
-    @Binding var text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            if text.isEmpty {
-                Button {
-                    text = Self.string(from: Date())
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "calendar")
-                        Text("Select date")
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(DesignTokens.muted)
-                }
-                .frame(maxWidth: 160, alignment: .leading)
-                .padding(.vertical, 6)
-            } else {
-                HStack(spacing: 6) {
-                    DatePicker("", selection: Binding(
-                        get: { Self.date(from: text) ?? Date() },
-                        set: { text = Self.string(from: $0) }
-                    ), displayedComponents: .date)
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-                    Button {
-                        text = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(DesignTokens.muted)
-                    }
-                    .accessibilityLabel("Clear \(label) date")
-                }
-                .frame(maxWidth: 160, alignment: .leading)
+        .sheet(isPresented: $showingCalendar, onDismiss: commitCalendarSelection) {
+            NavigationStack {
+                DateRangeCalendarView(selection: calendarBinding)
             }
         }
     }
 
-    private static func date(from string: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter.date(from: string)
+    /// The calendar binding: any set counts as a pick, so Back
+    /// without picking commits nothing.
+    private var calendarBinding: Binding<WhenSelection> {
+        Binding(
+            get: { calendarSelection },
+            set: { calendarSelection = $0; calendarChose = true }
+        )
     }
 
-    private static func string(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter.string(from: date)
+    private func openCalendar() {
+        calendarChose = false
+        if draftFrom.isEmpty, draftTo.isEmpty {
+            calendarSelection = .allTime
+        } else if !draftFrom.isEmpty, !draftTo.isEmpty {
+            calendarSelection = .custom(from: draftFrom, to: draftTo)
+        } else {
+            // A one-sided draft has no range form: open unfiltered
+            // so the calendar starts blank rather than inventing a
+            // range; Back leaves the draft as it was.
+            calendarSelection = .allTime
+        }
+        showingCalendar = true
+    }
+
+    /// Commit the calendar's pick into the drafts (still
+    /// unapplied until Apply). Quick picks become concrete bounds.
+    private func commitCalendarSelection() {
+        guard calendarChose else { return }
+        switch calendarSelection {
+        case .allTime:
+            draftFrom = ""
+            draftTo = ""
+        case .thisWeek:
+            let bounds = TransactionFormatting.currentWeekBounds()
+            draftFrom = bounds.start
+            draftTo = bounds.end
+        case .thisMonth:
+            let bounds = TransactionFormatting.currentMonthBounds()
+            draftFrom = bounds.start
+            draftTo = bounds.end
+        case .custom(let from, let to):
+            draftFrom = from
+            draftTo = to
+        }
+    }
+
+    /// Cancel restores the drafts to the applied filter; the list
+    /// is untouched (no reload).
+    private func cancelDrafts() {
+        draftFrom = filter.fromDate
+        draftTo = filter.toDate
     }
 }
 

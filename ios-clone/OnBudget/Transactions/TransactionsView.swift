@@ -774,13 +774,20 @@ public struct TransactionsFilterSheet: View {
 /// range. The chosen range feeds the one date-range chip on the
 /// Transactions page ("Nov 8 – Nov 14").
 ///
+/// Shared (owner, Nov 12, 2026): the History date filter
+/// (`HistoryDateFilterCard`, Past Weeks + Activity) presents this
+/// same calendar in a sheet, bound to a `WhenSelection` it commits
+/// into From/To drafts — there is exactly one range calendar.
+/// Not private: SettingsShared.swift uses it; its internals stay
+/// private to the struct.
+///
 /// Reworked Nov 12, 2026 (owner): the system graphical DatePicker
 /// cannot render a range fill, so this is a custom month grid —
 /// start and end are solid blue circles, the days between carry a
 /// light-blue band, hotel-style. All Time is gone (Clear does that
 /// job); Clear lives in the toolbar top-right, by the back arrow,
 /// so Done is full-width and centered at the bottom.
-private struct DateRangeCalendarView: View {
+struct DateRangeCalendarView: View {
     @Binding var selection: WhenSelection
     @Environment(\.dismiss) private var dismiss
 

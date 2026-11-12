@@ -132,10 +132,66 @@ final class SettingsFormattingTests: XCTestCase {
     }
 
     func testSimplifyWeeksClosedDropsZeroParts() {
+        // Owner, Nov 12 2026: the TITLE carries the week count, so
+        // the detail never restates it — only the new information
+        // (releases / restorations / held) stays.
         XCTAssertEqual(
             AuditFormatting.simplifyDetail("2 weeks closed, 1 surplus released, 0 refunds restored, 0 refunds held for review."),
-            "2 weeks closed · 1 surplus released."
+            "1 surplus released."
         )
+        XCTAssertEqual(
+            AuditFormatting.simplifyDetail("1 week closed, 0 surpluses released, 0 refunds restored, 0 refunds held for review."),
+            ""
+        )
+        XCTAssertEqual(AuditFormatting.simplifyDetail("2 weeks closed."), "")
+    }
+
+    func testSimplifyNoOpAllowanceNeverRendersAsAChange() {
+        // The no-op row is written server-side by set_base_allowance
+        // with no old==new guard; the display side renders it as the
+        // plain value (owner, Nov 12 2026). A real change keeps only
+        // the values — the title already says it changed.
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Base allowance changed from 40000 cents to 40000 cents."),
+            "Base allowance: $400.00."
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Base allowance changed from 37500 cents to 40000 cents."),
+            "From $375.00 to $400.00."
+        )
+    }
+
+    func testSimplifyCharityMarkIsOneShortLine() {
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Walmart 5634 cents on 2026-11-10 marked as a charity gift (now outside weekly spending)."),
+            "Walmart $56.34 — marked as a charity gift."
+        )
+    }
+
+    func testSimplifyRestatementsAreEmpty() {
+        // The title says the thing once; a detail that adds nothing
+        // renders empty and the row hides the line (owner, Nov 12
+        // 2026).
+        XCTAssertEqual(AuditFormatting.simplifyDetail("Joined the household."), "")
+        XCTAssertEqual(AuditFormatting.simplifyDetail("Household created."), "")
+        XCTAssertEqual(AuditFormatting.simplifyDetail("Request approved."), "")
+        XCTAssertEqual(AuditFormatting.simplifyDetail("Request approved for $50.00."), "$50.00.")
+    }
+
+    func testActivityTypeClassification() {
+        typealias ActivityType = AuditFormatting.ActivityType
+        XCTAssertEqual(ActivityType.classify(action: "Weeks processed", detail: "1 surplus released."), .weekCloses)
+        XCTAssertEqual(ActivityType.classify(action: "Household joined", detail: "Joined the household."), .members)
+        XCTAssertEqual(ActivityType.classify(action: "Member promoted", detail: ""), .members)
+        XCTAssertEqual(ActivityType.classify(action: "Base allowance changed", detail: "Base allowance: $400.00."), .allowance)
+        XCTAssertEqual(ActivityType.classify(action: "Temporary increase added", detail: ""), .allowance)
+        XCTAssertEqual(ActivityType.classify(action: "Transaction marked as charity gift", detail: "Walmart $56.34 — marked as a charity gift."), .charity)
+        XCTAssertEqual(ActivityType.classify(action: "Income recorded", detail: "Income $700.00 — $70.00 to charity."), .charity)
+        XCTAssertEqual(ActivityType.classify(action: "Duplicate merged", detail: "Counted once: TOIREMORG CHARITY $1.00."), .duplicates)
+        XCTAssertEqual(ActivityType.classify(action: "Transaction excluded", detail: "Removed from the week: TRADER JOES $12.00."), .trash)
+        XCTAssertEqual(ActivityType.classify(action: "Transaction deleted", detail: "Deleted for good: X $1.00."), .trash)
+        XCTAssertEqual(ActivityType.classify(action: "CSV import", detail: "3 added."), .other)
+        XCTAssertEqual(ActivityType.classify(action: "Extra Fund request approved", detail: "$50.00."), .other)
     }
 
     func testSimplifySurplusReleased() {
@@ -162,8 +218,8 @@ final class SettingsFormattingTests: XCTestCase {
         XCTAssertEqual(AuditFormatting.activityTitle(action: "CSV import", count: 2), "CSV Import")
         XCTAssertEqual(AuditFormatting.activityTitle(action: "Transaction added by hand", count: 1), "Transaction Added by Hand")
         let entries = [
-            AuditDisplayEntry(action: "Weeks processed", detail: "2 weeks closed.", actor: "Admin", time: "Nov 8, 9:00 AM"),
-            AuditDisplayEntry(action: "Weeks processed", detail: "2 weeks closed.", actor: "Admin", time: "Nov 8, 9:00 AM"),
+            AuditDisplayEntry(action: "Weeks processed", detail: "1 surplus released.", actor: "Admin", time: "Nov 8, 9:00 AM"),
+            AuditDisplayEntry(action: "Weeks processed", detail: "1 surplus released.", actor: "Admin", time: "Nov 8, 9:00 AM"),
             AuditDisplayEntry(action: "CSV import", detail: "3 added.", actor: "Admin", time: "Nov 8, 9:01 AM"),
         ]
         let grouped = AuditFormatting.groupDayActivity(entries)
