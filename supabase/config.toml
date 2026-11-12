@@ -17,6 +17,8 @@
 #   browser here, no JWT) and gmail-poll (dual auth verified inside
 #   the function: admin JWT or service-key bearer, so a future
 #   scheduled trigger can call it without a user session).
+#   check-email-exists (native sign-in failure check: no session and
+#   no JWT by design; validates the email itself, returns one boolean).
 # - true for everything the app calls with the signed-in user's JWT;
 #   each of those functions also verifies the caller itself.
 
@@ -64,3 +66,6 @@ verify_jwt = false
 
 [functions.gmail-disconnect]
 verify_jwt = true
+
+[functions.check-email-exists]
+verify_jwt = false
