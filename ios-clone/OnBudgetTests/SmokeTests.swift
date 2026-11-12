@@ -38,9 +38,12 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(Configuration.supabaseAnonKey.hasPrefix("sb_publishable_"))
     }
 
-    func testToastStyleIsBrandBlue() {
+    func testToastStyleColours() {
         XCTAssertEqual(ToastStyle.backgroundHex(for: .info), DesignTokens.primaryHex)
-        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), DesignTokens.primaryHex)
+        // Success is GREEN on native (owner, Nov 11, 2026: "green like
+        // all success messages") — the old brand-blue rule for success
+        // toasts is superseded for native only; the web app keeps blue.
+        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), DesignTokens.successHex)
         XCTAssertEqual(ToastStyle.backgroundHex(for: .error), DesignTokens.errorBackgroundHex)
         XCTAssertEqual(ToastStyle.textHex(for: .error), DesignTokens.errorTextHex)
         XCTAssertEqual(ToastStyle.placement, "bottom")
