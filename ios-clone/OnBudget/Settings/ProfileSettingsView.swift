@@ -288,7 +288,7 @@ struct ProfileSettingsView: View {
                 )
             case .failed:
                 return Alert(
-                    title: Text("Could not change password"),
+                    title: Text("Could Not Change Password"),
                     message: Text("Could not change your password. Try again."),
                     dismissButton: .default(Text("Close"))
                 )

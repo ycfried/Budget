@@ -331,7 +331,7 @@ struct MembersSettingsView: View {
                 secondaryButton: .cancel()
             )
         }
-        .alert("Could not remove member", isPresented: $viewModel.removeFailed) {
+        .alert("Could Not Remove Member", isPresented: $viewModel.removeFailed) {
             Button("Close", role: .cancel) {}
         } message: {
             Text("Could not remove this member. Try again.")
@@ -350,7 +350,7 @@ struct MembersSettingsView: View {
                 secondaryButton: .cancel()
             )
         }
-        .alert("Could not change role", isPresented: $viewModel.roleChangeFailed) {
+        .alert("Could Not Change Role", isPresented: $viewModel.roleChangeFailed) {
             Button("Close", role: .cancel) {}
         } message: {
             Text("Could not change this member's role. Try again.")
@@ -378,7 +378,7 @@ struct MembersSettingsView: View {
             }
         }
         .alert(
-            "Could not delete account",
+            "Could Not Delete Account",
             isPresented: $viewModel.deleteFailed
         ) {
             Button("Close", role: .cancel) {
