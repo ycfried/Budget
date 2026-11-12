@@ -32,19 +32,38 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Write UI-test service key file
+      - name: Write UI-test service key source
         # The UI test runner process does NOT inherit the step's
         # environment (run 43247037525 proved it: the step env held
         # the key, logged masked as ***, yet the runner saw nothing),
-        # so the helper reads the key from this file when the env var
-        # is absent. Outside the repo, mode 600, runner-ephemeral;
-        # the value is never printed.
+        # and it runs inside the simulator, so it cannot read a file
+        # from the Mac runner's $HOME either (the 4bcad72 key file
+        # was also uncompilable: 'homeDirectoryForCurrentUser' is
+        # unavailable in iOS, run 43256312047). The key therefore
+        # travels inside the test bundle: this step overwrites the
+        # committed empty placeholder
+        # ios-clone/OnBudgetUITests/UITestSecrets.swift — a real
+        # source of the OnBudgetUITests target, so build-for-testing
+        # compiles it into the .xctest — with a generated copy
+        # carrying the key. The value is never printed (and GitHub
+        # masks the secret in logs); the checkout is
+        # runner-ephemeral and never committed. When the secret is
+        # absent the placeholder stays empty and the helper fails
+        # fast naming the missing secret.
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" > "$HOME/.onbudget-uitest-service-key"
-            chmod 600 "$HOME/.onbudget-uitest-service-key"
+            escaped_key="${SUPABASE_SERVICE_ROLE_KEY//\\/\\\\}"
+            escaped_key="${escaped_key//\"/\\\"}"
+            {
+              printf '%s\n' '// OnBudget - UITestSecrets.swift (generated in CI; never commit a real key here)'
+              printf '%s\n' '// Service-role key for the UI tests Admin API confirm path,'
+              printf '%s\n' '// written by the simulator workflow from the SUPABASE_SERVICE_ROLE_KEY secret.'
+              printf '%s\n' 'enum UITestSecrets {'
+              printf '%s\n' "    static let serviceRoleKey = \"$escaped_key\""
+              printf '%s\n' '}'
+            } > ios-clone/OnBudgetUITests/UITestSecrets.swift
           fi
       - name: Validate, compile and test synthetic app
         env:

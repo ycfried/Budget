@@ -12,9 +12,10 @@
 // is ON in the live project (owner, Nov 12, 2026), so sign-up
 // returns .needsConfirmation and the app shows "Check Your Email".
 // The helper then confirms the fresh account via the Supabase Auth
-// Admin API (service-role key from the SUPABASE_SERVICE_ROLE_KEY
-// environment variable — never logged, never hard-coded) and signs
-// in with the same credentials; the @example.com address can never
+// Admin API (service-role key baked into the test bundle at build
+// time — UITestSecrets.swift, generated in CI from the
+// SUPABASE_SERVICE_ROLE_KEY secret; never logged, never hard-coded)
+// and signs in with the same credentials; the @example.com address can never
 // receive the confirmation email, so there is no other path.
 //   Then join the TEST household "Proof Household 2" as a member via
 //      invite code Q6GFME. Never the real household, never the
@@ -504,17 +505,20 @@ final class OnBudgetUITests: XCTestCase {
     /// returns .needsConfirmation, so after the name step the helper
     /// confirms the fresh account via the Supabase Auth Admin API
     /// and signs in with the same credentials. The service-role key
-    /// comes from the SUPABASE_SERVICE_ROLE_KEY environment variable
-    /// when present, otherwise from ~/.onbudget-uitest-service-key
-    /// (see uiTestServiceKey — the UI test runner does not inherit
-    /// the step's environment); when neither exists the test fails
-    /// fast here instead of burning its 60–90s waits before failing
-    /// at the same gate.
+    /// comes from UITestSecrets.serviceRoleKey (CI generates
+    /// UITestSecrets.swift from the SUPABASE_SERVICE_ROLE_KEY secret
+    /// before building — the UI test runner inherits neither the
+    /// step's environment nor the Mac runner's $HOME, so the key
+    /// must travel inside the test bundle), falling back to the
+    /// environment variable when present; when neither exists the
+    /// test fails fast here instead of burning its 60–90s waits
+    /// before failing at the same gate.
     private func signUpFreshAccount() {
         guard let serviceKey = Self.uiTestServiceKey(), !serviceKey.isEmpty else {
             XCTFail(
-                "SUPABASE_SERVICE_ROLE_KEY is not set in the test runner environment and no key file was found — "
-                + "add it as a CI secret and pass it to the simulator step. "
+                "No service-role key reached the UI test runner: UITestSecrets.serviceRoleKey is empty and "
+                + "SUPABASE_SERVICE_ROLE_KEY is not set in the test runner environment — "
+                + "add it as a CI secret so the simulator workflow can generate UITestSecrets.swift. "
                 + "Email confirmation is ON, so a fresh test account cannot sign in without being confirmed first."
             )
             return
@@ -589,23 +593,25 @@ final class OnBudgetUITests: XCTestCase {
     /// Service-role key for the Admin-API confirm path. The UI test
     /// runner process does NOT inherit the xcodebuild shell's
     /// environment (proven by run 43247037525: the step env held the
-    /// key — logged masked as *** — yet the runner saw nothing), so
-    /// the key comes from the environment when present and otherwise
-    /// from a file the workflow writes outside the repo
-    /// (~/.onbudget-uitest-service-key, mode 600, runner-ephemeral).
-    /// The key is never logged.
+    /// key — logged masked as *** — yet the runner saw nothing),
+    /// and it runs inside the simulator, so it cannot read a file
+    /// from the Mac runner's $HOME either (the 4bcad72 key file was
+    /// also uncompilable: 'homeDirectoryForCurrentUser' is
+    /// unavailable in iOS, run 43256312047). The key therefore
+    /// travels inside the test bundle: CI overwrites the committed
+    /// empty UITestSecrets.swift placeholder with a generated copy
+    /// before building (see .github/workflows/ios-clone-simulator.yml).
+    /// The environment variable stays as a fallback for a local run
+    /// that injects it another way. The key is never logged.
     private static func uiTestServiceKey() -> String? {
+        if !UITestSecrets.serviceRoleKey.isEmpty {
+            return UITestSecrets.serviceRoleKey
+        }
         if let fromEnv = ProcessInfo.processInfo.environment["SUPABASE_SERVICE_ROLE_KEY"],
            !fromEnv.isEmpty {
             return fromEnv
         }
-        let path = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".onbudget-uitest-service-key")
-        guard let contents = try? String(contentsOf: path, encoding: .utf8) else {
-            return nil
-        }
-        let trimmed = contents.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        return nil
     }
 
     // MARK: - Admin-API confirmation (email confirmation is ON)
