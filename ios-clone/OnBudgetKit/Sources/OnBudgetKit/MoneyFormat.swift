@@ -69,6 +69,28 @@ public enum MoneyFormat {
     /// (a charity "ahead by" reads as a negative remaining figure).
     public static func signedString(cents: Int) -> String { string(cents: cents) }
 
+    /// Display text for a transaction amount under the one shared
+    /// kind rule (owner, Nov 12, 2026): money-in kinds (income /
+    /// refund / cashback) render "+$X" — the stored negative sign
+    /// is flipped to a "+" at the display layer, never in the
+    /// model; every other kind renders its stored sign ("$X" /
+    /// "-$X"). Zero is "$0.00" for every kind. Week math is
+    /// untouched: this is text only, computed from the same cents
+    /// as before.
+    public static func amountText(cents: Int, isMoneyIn: Bool) -> String {
+        if cents == 0 { return formatCents(0) }
+        if isMoneyIn { return "+" + formatCents(abs(cents)) }
+        return formatCents(cents)
+    }
+
+    /// Signed-sum display (Transactions list total): a negative net
+    /// total is money in overall, so it reads "+$X". The count line
+    /// stays muted — only the sign changes, because the total is a
+    /// summary, not a row.
+    public static func netTotalText(cents: Int) -> String {
+        cents < 0 ? "+" + formatCents(abs(cents)) : formatCents(cents)
+    }
+
     /// Percent from basis points, no trailing zeros: 1000 → "10",
     /// 1050 → "10.5" (live.js rate formatting, spec §9.3).
     public static func formatRateBp(_ basisPoints: Int) -> String {
