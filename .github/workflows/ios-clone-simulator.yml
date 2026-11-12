@@ -8,13 +8,9 @@ name: OnBudget iOS clone simulator proof (testflight branch)
 # concurrency group so it can never cancel a scaffold run.
 # DROP THIS FILE when merging to ios-clone — the scaffold branch
 # remains the simulator line.
-# TEMPORARY (fix-branch CI only — REVERT before merge): the trigger
-# below points at native-fixes-phone-feedback so the simulator suite
-# runs on this fix branch. The parent merges the fix without this
-# commit's workflow change; ios-clone-testflight keeps its own trigger.
 on:
   push:
-    branches: [native-fixes-phone-feedback]
+    branches: [ios-clone-testflight]
     paths:
       - 'ios-clone/**'
       - '.github/workflows/ios-clone-simulator.yml'
@@ -26,7 +22,7 @@ concurrency:
 jobs:
   simulator:
     if: >-
-      startsWith(github.ref, 'refs/heads/native-fixes-phone-feedback') &&
+      startsWith(github.ref, 'refs/heads/ios-clone-testflight') &&
       github.event.repository.private == false &&
       startsWith(github.event.head_commit.message, 'ci(ios-clone): approved cloud build')
     runs-on: macos-15-intel
