@@ -51,10 +51,10 @@ public struct AuthBrandHeader: View {
             Image("AppLogo")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 40, height: 40)
+                .frame(width: 56, height: 56)
                 .clipShape(Circle())
             Text("OnBudget")
-                .font(.system(size: 22, weight: .bold))
+                .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
         }
         // Centered as a unit (owner, Nov 11, 2026): the header was
@@ -69,11 +69,19 @@ public struct AuthFooter: View {
         VStack(spacing: 4) {
             Text("Your household budget, shared in one place.")
             Text("Bank and email are read-only — nothing is ever moved or changed.")
+            // Privacy / Terms look like links now (owner, Nov 12,
+            // 2026): brand blue + underlined, like "Forgot
+            // Password?" — the grey text did not read as tappable.
             HStack(spacing: 4) {
                 Link("Privacy", destination: URL(string: "https://ycfried.github.io/Budget/privacy.html")!)
+                    .foregroundStyle(DesignTokens.primary)
+                    .underline()
                 Text("·")
                 Link("Terms", destination: URL(string: "https://ycfried.github.io/Budget/terms.html")!)
+                    .foregroundStyle(DesignTokens.primary)
+                    .underline()
             }
+            .padding(.top, 8)
         }
         .font(.system(size: 13))
         .foregroundStyle(Color(hex: "#6b7280"))
@@ -193,7 +201,7 @@ public struct AuthView: View {
 
             Text("Password")
                 .font(.system(size: 14, weight: .bold))
-            HStack {
+            HStack(spacing: 12) {
                 Group {
                     if showPassword {
                         TextField("Password", text: $password)
@@ -204,10 +212,15 @@ public struct AuthView: View {
                     }
                 }
                 .textContentType(.password)
-                Button(showPassword ? "Hide" : "Show") { showPassword.toggle() }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
-                    .accessibilityLabel(showPassword ? "Hide Password" : "Show Password")
+                // Eye icon, not "Show"/"Hide" text (owner, Nov 12,
+                // 2026). The 12pt spacing keeps it clear of the
+                // biometric icon next to it.
+                Button { showPassword.toggle() } label: {
+                    Image(systemName: showPassword ? "eye.slash" : "eye")
+                        .font(.system(size: 18))
+                        .foregroundStyle(DesignTokens.primary)
+                }
+                .accessibilityLabel(showPassword ? "Hide Password" : "Show Password")
                 // Biometric unlock as a small icon in the password
                 // row (owner, Nov 11, 2026) — the manual trigger,
                 // next to the field it unlocks. Shown only when a
@@ -249,28 +262,41 @@ public struct AuthView: View {
             // Remember me (owner, Nov 11, 2026): ticked (the
             // default) keeps the session across launches; unticked
             // signs in into memory only, so closing the app signs
-            // the user out. When biometric unlock is on, the session
-            // is already kept for that — the box is checked and
-            // disabled rather than pretending to control it.
-            Button {
-                rememberMe.toggle()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: rememberMeEffective ? "checkmark.square.fill" : "square")
-                        .font(.system(size: 18))
-                        .foregroundStyle(rememberMeDisabled ? Color(hex: "#9ca3af") : DesignTokens.primary)
-                    Text("Remember me")
-                        .font(.system(size: 15))
-                        .foregroundStyle(DesignTokens.ink)
+            // the user out. The row only shows when biometric
+            // unlock is OFF (owner, Nov 12, 2026): with biometrics
+            // on, the session is already kept, so there is nothing
+            // to choose — the old disabled row read as broken. The
+            // checkbox is ONE rounded square (the app's squarish
+            // style), the whole row is the tap target.
+            if !appState.biometricUnlockAvailable {
+                Button {
+                    rememberMe.toggle()
+                } label: {
+                    HStack(spacing: 8) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(rememberMe ? DesignTokens.primary : .white)
+                                .frame(width: 22, height: 22)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(
+                                            rememberMe ? DesignTokens.primary : Color(hex: "#9ca3af"),
+                                            lineWidth: 1.5
+                                        )
+                                )
+                            if rememberMe {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        Text("Remember me")
+                            .font(.system(size: 15))
+                            .foregroundStyle(DesignTokens.ink)
+                    }
                 }
-            }
-            .disabled(rememberMeDisabled)
-            .accessibilityIdentifier("auth.rememberMe")
-            .padding(.top, 4)
-            if rememberMeDisabled {
-                Text("Biometric unlock is on — it keeps you signed in.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                .accessibilityIdentifier("auth.rememberMe")
+                .padding(.top, 4)
             }
 
             // Forgot password (owner, Nov 12, 2026): always opens
@@ -296,18 +322,6 @@ public struct AuthView: View {
         // messages must not stay for good).
         .onChange(of: email) { message = nil }
         .onChange(of: password) { message = nil }
-    }
-
-    /// The effective Remember-me state: biometric unlock implies a
-    /// kept session, so the box reads checked while it is on.
-    private var rememberMeEffective: Bool {
-        rememberMe || appState.biometricUnlockAvailable
-    }
-
-    /// Biometric unlock already keeps the session — the box must not
-    /// pretend to control that.
-    private var rememberMeDisabled: Bool {
-        appState.biometricUnlockAvailable
     }
 
     private var nameStep: some View {
