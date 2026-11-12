@@ -33,6 +33,14 @@ public enum DesignTokens {
 
     public static let successHex = "#16a34a"
 
+    // Soft-green inline success box (owner decision, Nov 12, 2026:
+    // inline success states are GREEN like the success toasts):
+    // pale background, dark green text, soft border — the green
+    // mirror of the soft-red error tokens above.
+    public static let successBackgroundHex = "#f0fdf4"
+    public static let successTextHex = "#15803d"
+    public static let successBorderHex = "#bbf7d0"
+
     // MARK: - SwiftUI colours
 
     #if canImport(SwiftUI)
@@ -47,6 +55,9 @@ public enum DesignTokens {
     public static var errorText: Color { Color(hex: errorTextHex) }
     public static var errorBorder: Color { Color(hex: errorBorderHex) }
     public static var success: Color { Color(hex: successHex) }
+    public static var successBackground: Color { Color(hex: successBackgroundHex) }
+    public static var successText: Color { Color(hex: successTextHex) }
+    public static var successBorder: Color { Color(hex: successBorderHex) }
     #endif
 }
 

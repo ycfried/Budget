@@ -477,7 +477,9 @@ public struct NameStepView: View {
                 Text("Check Your Email")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
-                InfoBox("Account created. Check your email to confirm it, then sign in.")
+                // Inline success is GREEN (owner decision, Nov 12,
+                // 2026), like the success toasts — not the blue InfoBox.
+                SuccessBox("Account created. Check your email to confirm it, then sign in.")
                 Text("The confirmation link opens the OnBudget app. If it doesn't open, tap it on the iPhone or iPad where OnBudget is installed — the email is confirmed either way, then just sign in.")
                     .font(.system(size: 15))
                     .foregroundStyle(Color(hex: "#6b7280"))
@@ -732,7 +734,10 @@ public struct ResetPasswordView: View {
                         passwordField(label: "Confirm New Password", text: $confirmPassword, showing: $showConfirm)
                             .onChange(of: confirmPassword) { message = nil }
                         if let message {
-                            if messageIsError { DismissableErrorBox(message) { self.message = nil } } else { InfoBox(message) }
+                            // Inline success is GREEN (owner decision,
+                            // Nov 12, 2026): "Password saved…" renders
+                            // in a SuccessBox, not the blue InfoBox.
+                            if messageIsError { DismissableErrorBox(message) { self.message = nil } } else { SuccessBox(message) }
                         }
                         Button(busy ? "Saving…" : "Save New Password") { Task { await save() } }
                             .buttonStyle(PrimaryButtonStyle())

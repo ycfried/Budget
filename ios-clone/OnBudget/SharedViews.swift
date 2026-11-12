@@ -163,6 +163,27 @@ public struct InfoBox: View {
     }
 }
 
+/// Inline soft-green success box: the green mirror of ErrorBox.
+/// Inline success states are GREEN, like the success toasts (owner
+/// decision, Nov 12, 2026) — never the blue InfoBox.
+public struct SuccessBox: View {
+    public let message: String
+    public init(_ message: String) { self.message = message }
+    public var body: some View {
+        Text(message)
+            .font(.system(size: 14))
+            .foregroundStyle(DesignTokens.successText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(DesignTokens.successBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(DesignTokens.successBorder, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
 // MARK: - Loading screen
 
 /// Full-screen loading view (live.html:39-43): S-mark ring + logo,
