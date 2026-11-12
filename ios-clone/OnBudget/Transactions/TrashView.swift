@@ -128,6 +128,18 @@ public struct TrashView: View {
                         .buttonStyle(BackButtonStyle())
                 }
             }
+            // T-P2-1: the failure alert lives on this sheet, not on
+            // the Transactions parent — a restore failure surfaced
+            // nowhere while this sheet was up.
+            .alert(
+                viewModel.alertTitle ?? "Something Went Wrong",
+                isPresented: $viewModel.showAlert,
+                presenting: viewModel.alertMessage
+            ) { _ in
+                Button("Close", role: .cancel) {}
+            } message: { message in
+                Text(message)
+            }
         }
     }
 }

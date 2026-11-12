@@ -119,15 +119,11 @@ public struct TransactionsView: View {
                 onDismiss: { actionsTransaction = nil }
             )
         }
-        .alert(
-            viewModel.alertTitle ?? "Something Went Wrong",
-            isPresented: $viewModel.showAlert,
-            presenting: viewModel.alertMessage
-        ) { _ in
-            Button("Close", role: .cancel) {}
-        } message: { message in
-            Text(message)
-        }
+        // NOTE (T-P2-1): no `.alert` here — the failure alert lives
+        // on the Actions and Trash sheets themselves, because an
+        // alert attached to this parent never surfaces above a
+        // presented sheet. Every `showAlert` call site originates
+        // from one of those sheets.
         .onChange(of: searchText) { _, new in
             viewModel.applySearch(new)
         }

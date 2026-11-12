@@ -168,6 +168,19 @@ public struct TransactionActionsSheet: View {
                 }
             }
         }
+        // T-P2-1: the failure alert lives on this sheet, not on the
+        // Transactions parent — an alert attached behind a presented
+        // sheet never surfaces, so failures from markAsCharity,
+        // reclassify, delete and link/unlinkRefund were invisible.
+        .alert(
+            viewModel.alertTitle ?? "Something Went Wrong",
+            isPresented: $viewModel.showAlert,
+            presenting: viewModel.alertMessage
+        ) { _ in
+            Button("Close", role: .cancel) {}
+        } message: { message in
+            Text(message)
+        }
         .task {
             if transaction.originalPurchaseId != nil {
                 linkedSummary = await viewModel.linkedPurchaseSummary(for: transaction)
