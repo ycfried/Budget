@@ -833,25 +833,34 @@ public struct SessionExpiredView: View {
     @ObservedObject var appState: AppViewModel
     public init(appState: AppViewModel) { self.appState = appState }
     public var body: some View {
-        // ScrollView (audit F-P2-6): a bare VStack can clip the
-        // footer at large Dynamic Type sizes.
-        ScrollView {
-            VStack(spacing: 16) {
-                AuthBrandHeader()
-                Spacer()
-                Text("Your Sign-In Expired")
-                    .font(.system(size: 22, weight: .bold))
-                Text("Sign in again to see your household.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                Button("Sign In Again") { appState.signInAgain() }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .frame(maxWidth: 320)
-                Spacer()
-                AuthFooter()
+        // Vertical balance (audit A-P2-11): the old Spacer()s sat
+        // inside a ScrollView with no height to share, so they
+        // collapsed and the content top-packed. Same GeometryReader
+        // + minHeight pattern as the sign-in screen: a short screen
+        // centers the content, a tall one still scrolls (audit
+        // F-P2-6), and large Dynamic Type is not clipped.
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 16) {
+                    Spacer(minLength: 0)
+                    AuthBrandHeader()
+                    Spacer()
+                    Text("Your Sign-In Expired")
+                        .font(.system(size: 22, weight: .bold))
+                    Text("Sign in again to see your household.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                    Button("Sign In Again") { appState.signInAgain() }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .frame(maxWidth: 320)
+                    Spacer()
+                    AuthFooter()
+                    Spacer(minLength: 0)
+                }
+                .padding(20)
+                .frame(minHeight: geometry.size.height)
             }
-            .padding(20)
+            .background(DesignTokens.background)
         }
-        .background(DesignTokens.background)
     }
 }
