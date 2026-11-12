@@ -80,23 +80,39 @@ final class KitAuditFixTests: XCTestCase {
         XCTAssertEqual(result.connectedItems, 0)
     }
 
+    func testPlaidSyncItemsDecodeWhenPresent() throws {
+        // The explicit decoder must pick up present values — a
+        // synthesized one silently kept the 0 default (same gotcha
+        // as PlaidExchangeResult.duplicate).
+        let body = Data("""
+        {"added": 3, "updated": 1, "reversed": 0, "skipped": 0,
+         "items": 3, "connected_items": 2, "stale": false}
+        """.utf8)
+        let result = try JSONDecoder().decode(PlaidSyncResult.self, from: body)
+        XCTAssertEqual(result.items, 3)
+        XCTAssertEqual(result.connectedItems, 2)
+    }
+
     // MARK: - P0-5 / P0-6: week-close arrays are objects, not a map / strings
 
     func testWeekCloseResultDecodesServerShape() throws {
+        // Real payload (supabase/functions/week-close/index.ts):
+        // `restorations_skipped` is an array of objects; there is NO
+        // `unlinked_excess_by_week` key — the model's field is
+        // optional forward-compat only and must decode nil here.
         let body = Data("""
         {"weeks_closed": 1, "releases": 0, "held_legacy": 0, "restorations": 1,
          "held_refunds_created": 0, "fund_available_cents": 1000, "shortfall_cents": 0,
          "pending_late_adjustment_cents": 0,
-         "unlinked_excess_by_week": [{"week_start": "2026-11-01", "unlinked_excess_cents": 250}],
-         "restorations_skipped": [{"purchase_transaction_id": "00000000-0000-0000-0000-000000000001", "reason": "no purchase"}]}
+         "restorations_skipped": [{"purchase_transaction_id": "00000000-0000-0000-0000-000000000001", "reason": "no purchase"}, {"reason": "restoration tables not yet migrated (apply restoration-snapshots.sql)"}]}
         """.utf8)
         let result = try JSONDecoder().decode(WeekCloseResult.self, from: body)
         XCTAssertEqual(result.weeksClosed, 1)
-        XCTAssertEqual(result.unlinkedExcessByWeek?.count, 1)
-        XCTAssertEqual(result.unlinkedExcessByWeek?[0].weekStart, "2026-11-01")
-        XCTAssertEqual(result.unlinkedExcessByWeek?[0].unlinkedExcessCents, 250)
-        XCTAssertEqual(result.restorationsSkipped.count, 1)
+        XCTAssertNil(result.unlinkedExcessByWeek)
+        XCTAssertEqual(result.restorationsSkipped.count, 2)
         XCTAssertEqual(result.restorationsSkipped[0].reason, "no purchase")
+        XCTAssertNil(result.restorationsSkipped[1].purchaseTransactionId)
+        XCTAssertEqual(result.restorationsSkipped[1].reason, "restoration tables not yet migrated (apply restoration-snapshots.sql)")
     }
 
     func testWeekCloseResultDecodesEmptyArrays() throws {
@@ -104,10 +120,10 @@ final class KitAuditFixTests: XCTestCase {
         {"weeks_closed": 0, "releases": 0, "held_legacy": 0, "restorations": 0,
          "held_refunds_created": 0, "fund_available_cents": 0, "shortfall_cents": 0,
          "pending_late_adjustment_cents": 0,
-         "unlinked_excess_by_week": [], "restorations_skipped": []}
+         "restorations_skipped": []}
         """.utf8)
         let result = try JSONDecoder().decode(WeekCloseResult.self, from: body)
-        XCTAssertEqual(result.unlinkedExcessByWeek?.count, 0)
+        XCTAssertNil(result.unlinkedExcessByWeek)
         XCTAssertEqual(result.restorationsSkipped.count, 0)
     }
 

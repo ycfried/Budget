@@ -76,20 +76,17 @@ final class APIErrorMappingTests: XCTestCase {
         {"error": "invalid_grant", "error_description": "Invalid login credentials"}
         """.utf8)
         let error = OnBudgetError.fromAuthResponse(status: 400, data: body)
-        // The UI must not say which field was wrong (live.js:2425-2430);
-        // wording is the owner's: "username or password is incorrect".
-        // The server CANNOT distinguish the two cases, by design:
-        // Supabase's signInWithPassword docs state the error "will not
-        // distinguish between the cases where the account does not
-        // exist or that the email/phone and password combination is
-        // wrong" — one `invalid_credentials` code covers both, so any
-        // per-field message would be faked. The mechanism that would
-        // be needed is a server-side email-existence check (Edge
-        // Function + GoTrue Admin API, service_role) — a backend
-        // change that would let anyone probe whether an email has an
-        // account, so it needs an explicit owner decision, not a
-        // silent client change.
-        XCTAssertEqual(error, .validationFailed("Username or password is incorrect."))
+        // The UI must not say which field was wrong from the Auth
+        // response alone (live.js:2425-2430): Supabase's
+        // signInWithPassword returns one `invalid_credentials` code
+        // for both cases, by design. Per-field wording comes from the
+        // separate `check-email-exists` Edge Function — the owner
+        // accepted that enumeration trade-off Nov 11, ~7:41 PM ("It's
+        // just a budgeting app"). When that check cannot run, this
+        // generic case is the fallback; its message is the owner's
+        // wording: "username or password is incorrect".
+        XCTAssertEqual(error, .invalidCredentials)
+        XCTAssertEqual(error.userMessage, "Username or password is incorrect.")
     }
 
     func testAuthInvalidCredentialsInMsgFormatMapsToPlainMessage() {

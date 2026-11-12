@@ -267,15 +267,24 @@ final class APIDecodingTests: XCTestCase {
     }
 
     func testWeekCloseResultDecodes() throws {
+        // Real server payload (supabase/functions/week-close/index.ts
+        // payload, line ~799): `restorations_skipped` is an array of
+        // objects, and there is NO `unlinked_excess_by_week` key at
+        // all — the old fixture's `{}` was a made-up shape. The
+        // model's `unlinkedExcessByWeek` is optional forward-compat
+        // only; it decodes nil here.
         let close: WeekCloseResult = try decode("""
         {"weeks_closed": 1, "releases": 1, "held_legacy": 0,
          "restorations": 0, "held_refunds_created": 0,
          "fund_available_cents": 12000, "shortfall_cents": 0,
          "pending_late_adjustment_cents": 0,
-         "unlinked_excess_by_week": {}, "restorations_skipped": []}
+         "restorations_skipped": [{"purchase_transaction_id": "00000000-0000-0000-0000-000000000001", "reason": "purchase row not found"}]}
         """)
         XCTAssertEqual(close.weeksClosed, 1)
         XCTAssertEqual(close.fundAvailableCents, 12000)
+        XCTAssertNil(close.unlinkedExcessByWeek)
+        XCTAssertEqual(close.restorationsSkipped.count, 1)
+        XCTAssertEqual(close.restorationsSkipped[0].reason, "purchase row not found")
     }
 
     func testPlaidSyncResultDecodes() throws {

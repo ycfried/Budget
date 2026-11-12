@@ -71,6 +71,18 @@ public struct PlaidExchangeResult: Equatable, Codable {
         case connected, duplicate
         case duplicateOf = "duplicate_of"
     }
+
+    /// Explicit decoder (audit follow-up): a synthesized `init(from:)`
+    /// does NOT pick up a present value for a `let` with a default —
+    /// `"duplicate": true` decoded as `false`. `decodeIfPresent`
+    /// here is what makes the duplicate path work at all.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.itemId = try container.decodeIfPresent(String.self, forKey: .itemId)
+        self.connected = try container.decode(Bool.self, forKey: .connected)
+        self.duplicate = try container.decodeIfPresent(Bool.self, forKey: .duplicate) ?? false
+        self.duplicateOf = try container.decodeIfPresent(String.self, forKey: .duplicateOf)
+    }
 }
 
 /// plaid-sync success (`plaid-sync/index.ts:592-601`). On a partial
@@ -109,6 +121,27 @@ public struct PlaidSyncResult: Equatable, Codable {
         case skippedDisconnected = "skipped_disconnected"
         case truncated
         case noBankConnected = "no_bank_connected"
+    }
+
+    /// Explicit decoder (same gotcha as `PlaidExchangeResult`): a
+    /// synthesized `init(from:)` does NOT pick up a present value
+    /// for a `let` with a default, so `items` / `connectedItems`
+    /// would read 0 even when the server sends them.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.added = try container.decode(Int.self, forKey: .added)
+        self.updated = try container.decode(Int.self, forKey: .updated)
+        self.reversed = try container.decode(Int.self, forKey: .reversed)
+        self.skipped = try container.decode(Int.self, forKey: .skipped)
+        self.skippedByReason = try container.decodeIfPresent([String: Int].self, forKey: .skippedByReason)
+        self.minutesSincePreviousSync = try container.decodeIfPresent(Int.self, forKey: .minutesSincePreviousSync)
+        self.stale = try container.decodeIfPresent(Bool.self, forKey: .stale)
+        self.duplicateRemoved = try container.decodeIfPresent([String].self, forKey: .duplicateRemoved)
+        self.items = try container.decodeIfPresent(Int.self, forKey: .items) ?? 0
+        self.connectedItems = try container.decodeIfPresent(Int.self, forKey: .connectedItems) ?? 0
+        self.skippedDisconnected = try container.decodeIfPresent(Int.self, forKey: .skippedDisconnected)
+        self.truncated = try container.decodeIfPresent(Bool.self, forKey: .truncated)
+        self.noBankConnected = try container.decodeIfPresent(Bool.self, forKey: .noBankConnected)
     }
 }
 
