@@ -232,7 +232,7 @@ final class EmailAlertsViewModel: ObservableObject {
     }
 
     private func showStartFailure(_ message: String) {
-        resultMessage = "Could not start the email connection: \(message). If it says \"not configured,\" the email connection is not set up on the server yet."
+        resultMessage = "Could not start the email connection: \(message)."
         resultIsError = true
     }
 
@@ -248,7 +248,7 @@ final class EmailAlertsViewModel: ObservableObject {
             resultMessage = nil
             await load()
         case .failed:
-            toast.showError("Email connection didn't go through — try again from Funds.")
+            toast.showError("Email connection didn't go through — try again here.")
             resultMessage = nil
         case .cancelled:
             resultMessage = nil
@@ -372,10 +372,6 @@ struct EmailAlertsView: View {
 
     var body: some View {
         SettingsCard(title: "Email Alerts") {
-            Text("Look only — it never moves, sends, or changes anything.")
-                .font(.subheadline)
-                .foregroundStyle(Color(hex: "#6b7280"))
-
             Text("Connected Email")
                 .font(.headline)
                 .padding(.top, 4)
@@ -494,10 +490,14 @@ struct EmailAlertsView: View {
                     Text("Needs reconnect — access was revoked or expired.")
                         .font(.subheadline)
                         .foregroundStyle(Color(hex: "#6b7280"))
+                } else {
+                    // A healthy row shows the bare word "Connected"
+                    // (audit S-P2-4; standing rule: email status is
+                    // just "Connected").
+                    Text("Connected")
+                        .font(.subheadline)
+                        .foregroundStyle(Color(hex: "#6b7280"))
                 }
-                // No standalone "Connected" line: under a
-                // "Connected Email" heading it repeats the heading.
-                // Only a real problem gets a line.
                 ForEach(viewModel.warningLines(for: connection), id: \.self) { line in
                     Text(line)
                         .font(.subheadline)

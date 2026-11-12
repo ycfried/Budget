@@ -275,7 +275,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
         do {
             linkToken = try await context.client.functions.plaidLink(householdId: context.householdId)
         } catch {
-            toast.showError("Could not start the bank connection: \(settingsErrorMessage(error)). If it says \"not configured,\" the bank connection is not set up on the server yet.")
+            toast.showError("Could not start the bank connection: \(settingsErrorMessage(error)).")
             return
         }
         let outcome: PlaidLinkOutcome
@@ -477,10 +477,6 @@ struct ConnectedAccountsView: View {
 
     var body: some View {
         SettingsCard(title: "Bank Connection") {
-            Text("Look only — it never moves, sends, or changes anything.")
-                .font(.subheadline)
-                .foregroundStyle(Color(hex: "#6b7280"))
-
             if viewModel.isAdmin {
                 HStack(spacing: 12) {
                     Button(viewModel.isConnecting ? "Connecting…" : "Connect New Account") {
@@ -626,7 +622,7 @@ struct ConnectedAccountsView: View {
                         .foregroundStyle(DesignTokens.errorText)
                 }
                 if viewModel.isAdmin, row.account != nil {
-                    Button(row.nickname == nil ? "Add nickname" : "Edit nickname") {
+                    Button(row.nickname == nil ? "Add Nickname" : "Edit Nickname") {
                         viewModel.editNickname(row)
                     }
                     .buttonStyle(QuietButtonStyle())
