@@ -546,20 +546,45 @@ public struct TransactionsFilterSheet: View {
 
                     // Amount — draft-held like the rest; the
                     // validation reads the draft text, not the live
-                    // filter.
+                    // filter. Min / Max carry visible labels above
+                    // the fields (T-P1-4), and the fields share the
+                    // sheet's white-bg + 1pt #e5e7eb border +
+                    // cornerRadius 10 treatment (T-P2-4).
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Amount")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
                         HStack(spacing: 12) {
-                            TextField("$0.00", text: $minText)
-                                .keyboardType(.decimalPad)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 140, minHeight: 44)
-                            TextField("$0.00", text: $maxText)
-                                .keyboardType(.decimalPad)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 140, minHeight: 44)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Min")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.ink)
+                                TextField("$0.00", text: $minText)
+                                    .keyboardType(.decimalPad)
+                                    .padding(.horizontal, 12)
+                                    .frame(maxWidth: 140, minHeight: 44, alignment: .leading)
+                                    .background(.white)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Max")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.ink)
+                                TextField("$0.00", text: $maxText)
+                                    .keyboardType(.decimalPad)
+                                    .padding(.horizontal, 12)
+                                    .frame(maxWidth: 140, minHeight: 44, alignment: .leading)
+                                    .background(.white)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
                         }
                         if draftAmountInvalid {
                             SoftErrorBox("Minimum amount is above the maximum amount — change one of them to see transactions.")
@@ -592,6 +617,10 @@ public struct TransactionsFilterSheet: View {
                     TwoButtonRow {
                         Button("Apply") { apply() }
                             .buttonStyle(PrimaryButtonStyle())
+                            // T-P2-2: Apply stays disabled while the
+                            // amount range is invalid — the error box
+                            // above already says why.
+                            .disabled(draftAmountInvalid)
                     } secondary: {
                         Button("Cancel") { cancel() }
                             .buttonStyle(TertiaryButtonStyle())

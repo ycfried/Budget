@@ -175,7 +175,14 @@ public struct AddPurchaseForm: View {
 
                 FormField("Merchant") {
                     TextField("Merchant", text: $merchant)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                         .textInputAutocapitalization(.words)
                 }
                 .onChange(of: merchant) { _, new in
@@ -185,8 +192,14 @@ public struct AddPurchaseForm: View {
                 FormField("Amount ($)") {
                     TextField("0.00", text: $amountText)
                         .keyboardType(.decimalPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
                 FormField("Date") {
@@ -197,8 +210,14 @@ public struct AddPurchaseForm: View {
                 FormField("Card suffix") {
                     TextField("1005", text: $cardSuffix)
                         .keyboardType(.numberPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .onChange(of: cardSuffix) { _, new in
                     let digits = new.filter(\.isNumber)
@@ -347,7 +366,14 @@ public struct AddDonationForm: View {
 
                 FormField("Organization") {
                     TextField("Organization", text: $organization)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                         .textInputAutocapitalization(.words)
                 }
                 .onChange(of: organization) { _, new in
@@ -357,8 +383,14 @@ public struct AddDonationForm: View {
                 FormField("Amount ($)") {
                     TextField("0.00", text: $amountText)
                         .keyboardType(.decimalPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
                 FormField("Date") {
@@ -369,8 +401,14 @@ public struct AddDonationForm: View {
                 FormField("Card suffix") {
                     TextField("only if paid by card", text: $cardSuffix)
                         .keyboardType(.numberPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .onChange(of: cardSuffix) { _, new in
                     let digits = new.filter(\.isNumber)
@@ -379,7 +417,14 @@ public struct AddDonationForm: View {
 
                 FormField("Note (optional)") {
                     TextField("Note", text: $note, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .onChange(of: note) { _, new in
                     if new.count > 120 { note = String(new.prefix(120)) }
