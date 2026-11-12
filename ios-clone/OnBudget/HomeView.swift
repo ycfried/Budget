@@ -52,6 +52,12 @@ public final class HomeViewModel: ObservableObject {
 
     @Published public var week: HomeSectionState<WeekResult> = .loading
     @Published public var allowanceSet: Bool?
+    /// The stored base allowance in cents (from the household row) —
+    /// the Weekly sheet needs it to explain an override week (the
+    /// temporary increase/decrease is override minus base, live.js
+    /// v69). Nil when the household read failed, so the sheet shows
+    /// no Base row and no override line, exactly as the web.
+    @Published public var allowanceCents: Int?
     @Published public var fund: HomeSectionState<FundSummary> = .loading
     @Published public var charity: HomeSectionState<CharitySummary> = .loading
     @Published public var recent: HomeSectionState<[Transaction]> = .loading
@@ -99,12 +105,17 @@ public final class HomeViewModel: ObservableObject {
         }
 
         // Allowance-set flag ($375 is the schema default, not a
-        // choice — allowanceSetAt == nil means never set).
+        // choice — allowanceSetAt == nil means never set). The stored
+        // base travels with it for the Weekly sheet's reconciliation
+        // rows; both clear together when the household read fails so
+        // a stale base can never explain a fresh week.
         do {
             let allowance = try await client.postgrest.householdAllowance(householdId: householdId)
             allowanceSet = allowance.allowanceExplicitlySet
+            allowanceCents = allowance.baseAllowanceCents
         } catch {
             allowanceSet = nil
+            allowanceCents = nil
         }
 
         // Transactions page (100 + probe row): recent 6, purchases
@@ -276,7 +287,7 @@ public struct HomeView: View {
         .refreshable { await viewModel.refresh() }
         .sheet(isPresented: $showWeeklySheet) {
             if case .loaded(let result) = viewModel.week {
-                WeeklySheet(week: result, appState: appState)
+                WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, appState: appState)
             }
         }
         .alert(notLoadedAlertTitle, isPresented: $showNotLoadedAlert) {
@@ -731,11 +742,13 @@ public struct HomeView: View {
 /// two-button sheet rule.
 public struct WeeklySheet: View {
     let week: WeekResult
+    let baseAllowanceCents: Int?
     @ObservedObject var appState: AppViewModel
     @Environment(\.dismiss) private var dismiss
 
-    public init(week: WeekResult, appState: AppViewModel) {
+    public init(week: WeekResult, baseAllowanceCents: Int?, appState: AppViewModel) {
         self.week = week
+        self.baseAllowanceCents = baseAllowanceCents
         self.appState = appState
     }
 
@@ -753,11 +766,11 @@ public struct WeeklySheet: View {
             }
             Text("Pending transactions are included and marked.\(week.unlinkedExcessCents != 0 ? " Unlinked refunds above this week's spending are not counted here." : "")")
                 .font(.system(size: 15))
-            sheetRow(label: "Allowance", value: MoneyFormat.string(cents: week.baseAvailableCents + week.tempCents))
-            sheetRow(label: "Spent", value: MoneyFormat.string(cents: week.chargesCents))
-            sheetRow(label: "Balance", value: MoneyFormat.string(cents: week.availableCents))
-            if week.unlinkedExcessCents != 0 {
-                sheetRow(label: "Unlinked refunds", value: MoneyFormat.string(cents: week.unlinkedExcessCents))
+            // Reconciliation rows (live.js v69): Base / Temporary /
+            // Carried debt appear exactly when they change the number;
+            // a normal week keeps the approved three rows.
+            ForEach(week.sheetRows(baseAllowanceCents: baseAllowanceCents), id: \.label) { row in
+                sheetRow(label: row.label, value: MoneyFormat.string(cents: row.cents))
             }
             HStack(spacing: 12) {
                 Button("Show Transactions") {

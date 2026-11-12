@@ -71,6 +71,18 @@ public enum PostgrestFilter: Equatable {
         .equal("household_id", id.uuidString)
     }
 
+    /// Filter for a row of the `households` table itself. Its primary
+    /// key is `id` — there is NO `household_id` column on that table,
+    /// so `.householdId` against `households` fails with "column
+    /// households.household_id does not exist" (phone feedback, Nov
+    /// 11, 2026: Budget card, invite code, auto-sync toggle, Extra
+    /// Fund, and the Home allowance flag all broke on this one
+    /// filter). Use `.householdId` only for tables that HAVE a
+    /// `household_id` column (transactions, household_members, …).
+    public static func householdRow(_ id: UUID) -> PostgrestFilter {
+        .equal("id", id.uuidString)
+    }
+
     public static func onOrAfterNov1() -> PostgrestFilter {
         // The app starts Nov 1, 2026 — the list never shows pre-Nov
         // rows (live.js:747-750).
@@ -335,7 +347,7 @@ public struct PostgrestClient {
         let row: Household? = try await fetchOne(PostgrestQuery(
             table: "households",
             columns: "id,name,base_allowance_cents,fund_shortfall_cents,auto_sync_enabled,created_at",
-            filters: [.householdId(householdId)]
+            filters: [.householdRow(householdId)]
         ))
         return row?.name
     }
@@ -355,7 +367,7 @@ public struct PostgrestClient {
         let row: AllowanceRow? = try await fetchOne(PostgrestQuery(
             table: "households",
             columns: "base_allowance_cents,allowance_set_at",
-            filters: [.householdId(householdId)]
+            filters: [.householdRow(householdId)]
         ))
         return (row?.baseAllowanceCents, row?.allowanceSetAt != nil)
     }
@@ -370,7 +382,7 @@ public struct PostgrestClient {
         let row: Row? = try await fetchOne(PostgrestQuery(
             table: "households",
             columns: "auto_sync_enabled",
-            filters: [.householdId(householdId)]
+            filters: [.householdRow(householdId)]
         ))
         return row?.autoSyncEnabled == true
     }
@@ -381,7 +393,7 @@ public struct PostgrestClient {
         let row: Row? = try await fetchOne(PostgrestQuery(
             table: "households",
             columns: "invite_code",
-            filters: [.householdId(householdId)]
+            filters: [.householdRow(householdId)]
         ))
         return row?.inviteCode
     }
@@ -392,7 +404,7 @@ public struct PostgrestClient {
         let row: Row? = try await fetchOne(PostgrestQuery(
             table: "households",
             columns: "fund_shortfall_cents",
-            filters: [.householdId(householdId)]
+            filters: [.householdRow(householdId)]
         ))
         return row?.fundShortfallCents ?? 0
     }
@@ -775,10 +787,15 @@ public struct PostgrestClient {
     }
 
     /// Email connections via the public view (live.js:1551-1552).
+    /// The select must include `household_id`: the model declares it
+    /// non-optional, and a missing key is a decoding error, not a
+    /// nil — the list failed to load entirely ("Could not load email
+    /// connections.", phone feedback, Nov 11, 2026) even though the
+    /// view returns the column and the manual Check Email flow works.
     public func emailConnections(householdId: UUID) async throws -> [EmailConnectionPublic] {
         try await fetch(PostgrestQuery(
             table: "email_connections_public",
-            columns: "id,provider,email_address,status,last_poll_at,last_error,created_at,connected_at",
+            columns: "id,household_id,provider,email_address,status,last_poll_at,last_error,created_at,connected_at",
             filters: [.householdId(householdId)]
         ))
     }

@@ -342,6 +342,15 @@ public struct WeekResult: Equatable, Codable {
     public let weekStart: String
     public let baseAvailableCents: Int
     public let tempCents: Int
+    /// The weekly-allowance override for this week, when the override
+    /// actually drives B (`compute-week/index.ts:385`, PR #65, live
+    /// Nov 11, 2026) — null when no override row exists or a stored
+    /// close snapshot wins. Optional so responses from before PR #65
+    /// (no `override_cents` key) still decode. An override sets a NEW
+    /// TOTAL, so the server reports `temp_cents` 0 for override weeks;
+    /// the sheet derives the temporary increase/decrease as
+    /// `override_cents` minus the stored base (see `sheetRows`).
+    public let overrideCents: Int?
     public let carriedDebtCents: Int
     public let chargesCents: Int
     public let availableCents: Int
@@ -353,6 +362,7 @@ public struct WeekResult: Equatable, Codable {
         case weekStart = "week_start"
         case baseAvailableCents = "base_available_cents"
         case tempCents = "temp_cents"
+        case overrideCents = "override_cents"
         case carriedDebtCents = "carried_debt_cents"
         case chargesCents = "charges_cents"
         case availableCents = "available_cents"
@@ -367,6 +377,7 @@ public struct WeekResult: Equatable, Codable {
         case weekStart = "week_start"
         case baseAvailableCents = "base_available_cents"
         case tempCents = "temp_cents"
+        case overrideCents = "override_cents"
         case carriedDebtCents = "carried_debt_cents"
         case chargesCents = "charges_cents"
         case availableCents = "available_cents"
@@ -390,6 +401,7 @@ public struct WeekResult: Equatable, Codable {
         self.weekStart = flat.weekStart
         self.baseAvailableCents = flat.baseAvailableCents
         self.tempCents = flat.tempCents
+        self.overrideCents = flat.overrideCents
         self.carriedDebtCents = flat.carriedDebtCents
         self.chargesCents = flat.chargesCents
         self.availableCents = flat.availableCents
@@ -401,11 +413,13 @@ public struct WeekResult: Equatable, Codable {
     public init(
         weekStart: String, baseAvailableCents: Int, tempCents: Int,
         carriedDebtCents: Int, chargesCents: Int, availableCents: Int,
-        weekLocked: Bool, pendingRefundExcludedCents: Int, unlinkedExcessCents: Int
+        weekLocked: Bool, pendingRefundExcludedCents: Int, unlinkedExcessCents: Int,
+        overrideCents: Int? = nil
     ) {
         self.weekStart = weekStart
         self.baseAvailableCents = baseAvailableCents
         self.tempCents = tempCents
+        self.overrideCents = overrideCents
         self.carriedDebtCents = carriedDebtCents
         self.chargesCents = chargesCents
         self.availableCents = availableCents
@@ -413,12 +427,69 @@ public struct WeekResult: Equatable, Codable {
         self.pendingRefundExcludedCents = pendingRefundExcludedCents
         self.unlinkedExcessCents = unlinkedExcessCents
     }
+
+    /// The Weekly Budget sheet's rows (live.js v69 `openWeeklySheet`,
+    /// PR #64 Fix 1 + PR #65): the reconciliation lines appear exactly
+    /// when they change the number, so a normal week keeps the
+    /// approved three rows (Allowance / Spent / Balance) and a debt or
+    /// temporary week explains itself. `baseAllowanceCents` is the
+    /// stored base from the household row (nil when that read failed —
+    /// then no Base row and no override line, exactly as the web).
+    /// The week's temporary adjustment comes from exactly one source:
+    /// an override's delta against the stored base when an override
+    /// drives B, else the legacy `temp_cents` sum. A locked week is
+    /// explained by its snapshot, never re-explained from a later
+    /// override, so its delta is always 0.
+    public func sheetRows(baseAllowanceCents: Int?) -> [WeekSheetRow] {
+        let overrideDelta: Int
+        if let override = overrideCents, let base = baseAllowanceCents, !weekLocked {
+            overrideDelta = override - base
+        } else {
+            overrideDelta = 0
+        }
+        let tempDelta = overrideDelta != 0 ? overrideDelta : tempCents
+        let hasTemp = tempDelta > 0
+        let hasTempDecrease = tempDelta < 0
+        let hasDebt = carriedDebtCents > 0
+        var rows: [WeekSheetRow] = []
+        if let base = baseAllowanceCents, hasTemp || hasTempDecrease || hasDebt {
+            rows.append(WeekSheetRow(label: "Base allowance", cents: base))
+        }
+        if hasTemp {
+            rows.append(WeekSheetRow(label: "Temporary increases", cents: tempDelta))
+        }
+        if hasTempDecrease {
+            rows.append(WeekSheetRow(label: "Temporary decrease", cents: -tempDelta))
+        }
+        if hasDebt {
+            rows.append(WeekSheetRow(label: "Carried debt", cents: carriedDebtCents))
+        }
+        rows.append(WeekSheetRow(label: "Allowance", cents: baseAvailableCents + tempCents))
+        rows.append(WeekSheetRow(label: "Spent", cents: chargesCents))
+        rows.append(WeekSheetRow(label: "Balance", cents: availableCents))
+        if unlinkedExcessCents > 0 {
+            rows.append(WeekSheetRow(label: "Unlinked refunds", cents: unlinkedExcessCents))
+        }
+        return rows
+    }
+}
+
+/// One row of the Weekly Budget sheet: a label and its amount in cents.
+public struct WeekSheetRow: Equatable {
+    public let label: String
+    public let cents: Int
+
+    public init(label: String, cents: Int) {
+        self.label = label
+        self.cents = cents
+    }
 }
 
 private struct WeekResultFlat: Decodable {
     let weekStart: String
     let baseAvailableCents: Int
     let tempCents: Int
+    let overrideCents: Int?
     let carriedDebtCents: Int
     let chargesCents: Int
     let availableCents: Int
@@ -430,6 +501,7 @@ private struct WeekResultFlat: Decodable {
         case weekStart = "week_start"
         case baseAvailableCents = "base_available_cents"
         case tempCents = "temp_cents"
+        case overrideCents = "override_cents"
         case carriedDebtCents = "carried_debt_cents"
         case chargesCents = "charges_cents"
         case availableCents = "available_cents"
@@ -444,6 +516,7 @@ private struct WeekResultFlat: Decodable {
         self.weekStart = try container.decode(String.self, forKey: .weekStart)
         self.baseAvailableCents = try container.decode(Int.self, forKey: .baseAvailableCents)
         self.tempCents = try container.decode(Int.self, forKey: .tempCents)
+        self.overrideCents = try container.decodeIfPresent(Int.self, forKey: .overrideCents)
         self.carriedDebtCents = try container.decode(Int.self, forKey: .carriedDebtCents)
         self.chargesCents = try container.decode(Int.self, forKey: .chargesCents)
         self.availableCents = try container.decode(Int.self, forKey: .availableCents)

@@ -171,10 +171,19 @@ public final class AppViewModel: ObservableObject {
 
     public var isAdmin: Bool { role == .admin }
 
-    public var displayName: String {
+    /// The signed-in user's display name from auth metadata
+    /// (`full_name`, then `name`) — nil when no name is set. NEVER
+    /// the email: the web never uses the full email as a display name
+    /// (live.js:490-505: stored member name → own metadata name →
+    /// email prefix → "Household member"; the Profile name field is
+    /// the metadata name or blank, live.js:548-552). The old fallback
+    /// to the email put "ycfried1@gmail.com" in the Profile Name field
+    /// and on the owner's own Members row (phone feedback, Nov 11,
+    /// 2026) instead of the email-prefix fallback. Callers that need a
+    /// non-empty label use the member-list resolution (which falls
+    /// back to the prefix) or "Household member".
+    public var displayName: String? {
         client.currentSession?.user.displayName
-            ?? client.currentSession?.user.email
-            ?? "Household member"
     }
 
     // MARK: - Boot

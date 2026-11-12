@@ -318,6 +318,109 @@ final class PostgrestQueryTests: XCTestCase {
     }
 }
 
+// MARK: - Households-table reads (phone feedback, Nov 11, 2026)
+//
+// The `households` table's primary key is `id` — there is NO
+// `household_id` column on it. The five reads below used to filter
+// with `.householdId` (`household_id=eq.…`), so every one of them
+// failed live with "column households.household_id does not exist":
+// the Budget card showed the raw DB error, the invite code read
+// "No invite code is set up", the auto-sync toggle read OFF while
+// syncs ran, the Extra Fund never loaded, and Home's allowance flag
+// came back nil (blank allowance/spent). These tests pin the filter
+// to `id=eq.…` at the real call sites, through the stub transport.
+// The email-connections read is pinned here too: its select omitted
+// `household_id` while the model declares it non-optional, so the
+// whole list failed to decode ("Could not load email connections.").
+
+final class HouseholdReadsTests: XCTestCase {
+    private func queryItems(of request: URLRequest) -> [String: String] {
+        let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+    }
+
+    private func clientReturning(_ object: Any) -> (PostgrestClient, StubTransport) {
+        let transport = StubTransport(handler: { _ in StubTransport.json(object) })
+        let client = PostgrestClient(
+            configuration: testConfiguration(),
+            tokenProvider: testTokenProvider(),
+            transport: transport
+        )
+        return (client, transport)
+    }
+
+    private func assertFiltersById(_ request: URLRequest, householdId: UUID, file: StaticString = #filePath, line: UInt = #line) {
+        let items = queryItems(of: request)
+        XCTAssertEqual(items["id"], "eq.\(householdId.uuidString)", file: file, line: line)
+        XCTAssertNil(items["household_id"], "households-table reads must not filter on household_id", file: file, line: line)
+    }
+
+    func testHouseholdNameFiltersById() async throws {
+        let householdId = UUID()
+        let (client, transport) = clientReturning([[
+            "id": householdId.uuidString, "name": "Friedman Household",
+            "base_allowance_cents": 500000, "fund_shortfall_cents": 0,
+            "auto_sync_enabled": true, "created_at": "2026-11-01T00:00:00Z",
+        ]])
+        let name = try await client.householdName(householdId: householdId)
+        XCTAssertEqual(name, "Friedman Household")
+        XCTAssertEqual(transport.requests.count, 1)
+        assertFiltersById(transport.requests[0], householdId: householdId)
+    }
+
+    func testHouseholdAllowanceFiltersById() async throws {
+        let householdId = UUID()
+        let (client, transport) = clientReturning([[
+            "base_allowance_cents": 500000, "allowance_set_at": "2026-11-06T00:00:00Z",
+        ]])
+        let allowance = try await client.householdAllowance(householdId: householdId)
+        XCTAssertEqual(allowance.baseAllowanceCents, 500000)
+        XCTAssertTrue(allowance.allowanceExplicitlySet)
+        assertFiltersById(transport.requests[0], householdId: householdId)
+    }
+
+    func testAutoSyncEnabledFiltersById() async throws {
+        let householdId = UUID()
+        let (client, transport) = clientReturning([["auto_sync_enabled": true]])
+        XCTAssertTrue(try await client.autoSyncEnabled(householdId: householdId))
+        assertFiltersById(transport.requests[0], householdId: householdId)
+    }
+
+    func testInviteCodeFiltersById() async throws {
+        let householdId = UUID()
+        let (client, transport) = clientReturning([["invite_code": "PJM2HG"]])
+        XCTAssertEqual(try await client.inviteCode(householdId: householdId), "PJM2HG")
+        assertFiltersById(transport.requests[0], householdId: householdId)
+    }
+
+    func testFundShortfallFiltersById() async throws {
+        let householdId = UUID()
+        let (client, transport) = clientReturning([["fund_shortfall_cents": 0]])
+        XCTAssertEqual(try await client.fundShortfallCents(householdId: householdId), 0)
+        assertFiltersById(transport.requests[0], householdId: householdId)
+    }
+
+    func testEmailConnectionsSelectIncludesHouseholdId() async throws {
+        let householdId = UUID()
+        let (client, transport) = clientReturning([[
+            "id": "11111111-1111-1111-1111-111111111111",
+            "household_id": householdId.uuidString,
+            "provider": "gmail", "email_address": "ycfried1@gmail.com",
+            "status": "active", "last_poll_at": "2026-11-11T18:00:00Z",
+            "last_error": NSNull(), "created_at": "2026-11-02T00:00:00Z",
+            "connected_at": "2026-11-02T00:00:00Z",
+        ]])
+        let rows = try await client.emailConnections(householdId: householdId)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].householdId, householdId)
+        XCTAssertEqual(rows[0].emailAddress, "ycfried1@gmail.com")
+        let items = queryItems(of: transport.requests[0])
+        XCTAssertEqual(items["household_id"], "eq.\(householdId.uuidString)")
+        let selected = (items["select"] ?? "").split(separator: ",").map(String.init)
+        XCTAssertTrue(selected.contains("household_id"), "select must include household_id or the row cannot decode: \(items["select"] ?? "")")
+    }
+}
+
 // MARK: - Edge Function request construction
 
 final class EdgeFunctionRequestTests: XCTestCase {

@@ -206,6 +206,32 @@ final class APISelectShapeTests: XCTestCase {
         XCTAssertTrue(row.autoSyncEnabled)
     }
 
+    // Phone feedback, Nov 11, 2026: the email-connections read selected
+    // every column except `household_id`, while the model declares it
+    // non-optional — the whole list failed to decode ("Could not load
+    // email connections."). This JSON is exactly the columns the read
+    // now selects, so a future narrowing that drops a required field
+    // fails here instead of on the Settings screen.
+    func testEmailConnectionDecodesFromSelectedColumns() throws {
+        let row = try decode("""
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "household_id": "22222222-2222-2222-2222-222222222222",
+          "provider": "gmail",
+          "email_address": "ycfried1@gmail.com",
+          "status": "active",
+          "last_poll_at": "2026-11-11T18:00:00Z",
+          "last_error": null,
+          "created_at": "2026-11-02T00:00:00Z",
+          "connected_at": "2026-11-02T00:00:00Z"
+        }
+        """, as: EmailConnectionPublic.self)
+        XCTAssertEqual(row.householdId.uuidString, "22222222-2222-2222-2222-222222222222")
+        XCTAssertEqual(row.emailAddress, "ycfried1@gmail.com")
+        XCTAssertEqual(row.status, "active")
+        XCTAssertNil(row.lastError)
+    }
+
     func testTransactionDecodesFromRefundLinkCandidateColumns() throws {
         let row = try decode("""
         {

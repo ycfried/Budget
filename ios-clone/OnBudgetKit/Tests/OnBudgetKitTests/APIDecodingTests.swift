@@ -108,6 +108,164 @@ final class APIDecodingTests: XCTestCase {
         XCTAssertEqual(week.carriedDebtCents, 1000)
     }
 
+    // MARK: - Weekly sheet reconciliation (phone feedback, Nov 11, 2026;
+    // web v69, PR #64 Fix 1 + PR #65)
+
+    func testWeekResultDecodesOverrideCents() throws {
+        let week: WeekResult = try decode("""
+        {"week_start": "2026-11-08", "base_available_cents": 47500,
+         "temp_cents": 0, "override_cents": 47500, "carried_debt_cents": 0,
+         "charges_cents": 0, "available_cents": 47500, "week_locked": false,
+         "pending_refund_excluded_cents": 0, "unlinked_excess_cents": 0}
+        """)
+        XCTAssertEqual(week.overrideCents, 47500)
+    }
+
+    func testWeekResultDecodesWithoutOverrideCents() throws {
+        // Responses from before PR #65 carry no `override_cents` key —
+        // they still decode, with no override in effect.
+        let week: WeekResult = try decode("""
+        {"week_start": "2026-11-08", "base_available_cents": 37500,
+         "temp_cents": 0, "carried_debt_cents": 0, "charges_cents": 1059,
+         "available_cents": 36441, "week_locked": false,
+         "pending_refund_excluded_cents": 0, "unlinked_excess_cents": 0}
+        """)
+        XCTAssertNil(week.overrideCents)
+        XCTAssertEqual(week.sheetRows(baseAllowanceCents: 37500).map(\.label),
+                       ["Allowance", "Spent", "Balance"])
+    }
+
+    private func weekResult(
+        baseAvailable: Int, temp: Int = 0, override: Int? = nil,
+        debt: Int = 0, charges: Int = 0, available: Int = 0,
+        locked: Bool = false, unlinkedExcess: Int = 0
+    ) -> WeekResult {
+        WeekResult(
+            weekStart: "2026-11-08", baseAvailableCents: baseAvailable, tempCents: temp,
+            carriedDebtCents: debt, chargesCents: charges, availableCents: available,
+            weekLocked: locked, pendingRefundExcludedCents: 0,
+            unlinkedExcessCents: unlinkedExcess, overrideCents: override
+        )
+    }
+
+    func testWeekSheetRowsNormalWeekIsThreeRows() throws {
+        let rows = weekResult(baseAvailable: 37500, charges: 1059, available: 36441)
+            .sheetRows(baseAllowanceCents: 37500)
+        XCTAssertEqual(rows, [
+            WeekSheetRow(label: "Allowance", cents: 37500),
+            WeekSheetRow(label: "Spent", cents: 1059),
+            WeekSheetRow(label: "Balance", cents: 36441),
+        ])
+    }
+
+    func testWeekSheetRowsOverrideIncrease() throws {
+        // $475 override on a $375 base: the server reports temp 0, so
+        // the increase comes from the override delta (PR #65).
+        let rows = weekResult(baseAvailable: 47500, override: 47500, available: 47500)
+            .sheetRows(baseAllowanceCents: 37500)
+        XCTAssertEqual(rows.map(\.label),
+                       ["Base allowance", "Temporary increases", "Allowance", "Spent", "Balance"])
+        XCTAssertEqual(rows[0].cents, 37500)
+        XCTAssertEqual(rows[1].cents, 10000)
+        XCTAssertEqual(rows[2].cents, 47500)
+    }
+
+    func testWeekSheetRowsOverrideDecrease() throws {
+        // $275 override on a $375 base: a Temporary decrease line.
+        let rows = weekResult(baseAvailable: 27500, override: 27500, available: 27500)
+            .sheetRows(baseAllowanceCents: 37500)
+        XCTAssertEqual(rows.map(\.label),
+                       ["Base allowance", "Temporary decrease", "Allowance", "Spent", "Balance"])
+        XCTAssertEqual(rows[1].cents, 10000)
+    }
+
+    func testWeekSheetRowsCarriedDebt() throws {
+        let rows = weekResult(baseAvailable: 0, debt: 34810, charges: 12169, available: -9479)
+            .sheetRows(baseAllowanceCents: 37500)
+        XCTAssertEqual(rows.map(\.label),
+                       ["Base allowance", "Carried debt", "Allowance", "Spent", "Balance"])
+        XCTAssertEqual(rows[1].cents, 34810)
+        XCTAssertEqual(rows[4].cents, -9479)
+    }
+
+    func testWeekSheetRowsLegacyTempIncrease() throws {
+        // No override in effect: the legacy temp_cents sum is the
+        // adjustment, as before.
+        let rows = weekResult(baseAvailable: 37500, temp: 5000, available: 42500)
+            .sheetRows(baseAllowanceCents: 37500)
+        XCTAssertEqual(rows.map(\.label),
+                       ["Base allowance", "Temporary increases", "Allowance", "Spent", "Balance"])
+        XCTAssertEqual(rows[1].cents, 5000)
+    }
+
+    func testWeekSheetRowsLockedWeekIgnoresOverride() throws {
+        // A closed week is explained by its snapshot, never
+        // re-explained from a later override.
+        let rows = weekResult(baseAvailable: 37500, override: 47500, available: 37500, locked: true)
+            .sheetRows(baseAllowanceCents: 37500)
+        XCTAssertEqual(rows.map(\.label), ["Allowance", "Spent", "Balance"])
+    }
+
+    func testWeekSheetRowsWithoutBaseShowsNoBaseRow() throws {
+        // Stored base unknown (household read failed): no Base row and
+        // no override line, exactly as the web.
+        let rows = weekResult(baseAvailable: 47500, override: 47500, available: 47500)
+            .sheetRows(baseAllowanceCents: nil)
+        XCTAssertEqual(rows.map(\.label), ["Allowance", "Spent", "Balance"])
+    }
+
+    // MARK: - Display-name resolution (phone feedback, Nov 11, 2026)
+
+    func testMemberDisplayNameNeverShowsFullEmail() throws {
+        // The owner's own row: no stored name, no auth-metadata name.
+        // The web falls back to the email PREFIX (live.js:490-505) —
+        // never the full address. The native used to feed the full
+        // email in as the metadata fallback, so the row read
+        // "ycfried1@gmail.com (you)".
+        let ownRow = MemberListRow(
+            userId: UUID(), displayName: nil, role: .admin,
+            createdAt: "2026-11-01T00:00:00Z", emailPrefix: "ycfried1"
+        )
+        XCTAssertEqual(ownRow.displayName(fallbackOwnMetadataName: nil, isOwnRow: true), "ycfried1")
+        // Stored name wins over everything.
+        let namedRow = MemberListRow(
+            userId: UUID(), displayName: "Shuki Friedman", role: .admin,
+            createdAt: "2026-11-01T00:00:00Z", emailPrefix: "ycfried1"
+        )
+        XCTAssertEqual(namedRow.displayName(fallbackOwnMetadataName: nil, isOwnRow: true), "Shuki Friedman")
+        // Own metadata name wins over the prefix when one is set.
+        XCTAssertEqual(ownRow.displayName(fallbackOwnMetadataName: "Shuki Friedman", isOwnRow: true), "Shuki Friedman")
+        // Another member's row never uses the caller's metadata name.
+        XCTAssertEqual(ownRow.displayName(fallbackOwnMetadataName: "Shuki Friedman", isOwnRow: false), "ycfried1")
+        // Nothing at all: last resort, never a bare email or "Member".
+        let bareRow = MemberListRow(
+            userId: UUID(), displayName: nil, role: .member,
+            createdAt: "2026-11-01T00:00:00Z", emailPrefix: nil
+        )
+        XCTAssertEqual(bareRow.displayName(fallbackOwnMetadataName: nil, isOwnRow: false), "Household member")
+    }
+
+    func testAuthUserDisplayNameIsMetadataOnly() throws {
+        // A GoTrue user payload with a name: the metadata name is the
+        // display name.
+        let named: AuthUser = try decode("""
+        {"id": "22222222-2222-2222-2222-222222222222",
+         "email": "ycfried1@gmail.com",
+         "user_metadata": {"full_name": "Shuki Friedman"}}
+        """)
+        XCTAssertEqual(named.displayName, "Shuki Friedman")
+        // No metadata name: displayName is nil — the email is NOT a
+        // display name (the old AppState fallback showed the full
+        // email in the Profile Name field and the Members list).
+        let unnamed: AuthUser = try decode("""
+        {"id": "22222222-2222-2222-2222-222222222222",
+         "email": "ycfried1@gmail.com",
+         "user_metadata": {}}
+        """)
+        XCTAssertNil(unnamed.displayName)
+        XCTAssertEqual(unnamed.email, "ycfried1@gmail.com")
+    }
+
     func testWeekCloseResultDecodes() throws {
         let close: WeekCloseResult = try decode("""
         {"weeks_closed": 1, "releases": 1, "held_legacy": 0,
