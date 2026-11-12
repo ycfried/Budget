@@ -102,6 +102,24 @@ public final class KeychainBiometricStore: BiometricKeychain {
         self.account = account
     }
 
+    /// The device's biometry name for user-facing copy ("Face ID" /
+    /// "Touch ID"), so Touch ID hardware never sees "Face ID" text
+    /// (audit A-P2-2). Falls back to "Face ID" when the kind cannot
+    /// be determined. Non-prompting: `canEvaluatePolicy` only reads
+    /// the enrolment.
+    private var biometryName: String {
+        #if canImport(LocalAuthentication)
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(
+            .deviceOwnerAuthenticationWithBiometrics, error: &error)
+        else { return "Face ID" }
+        return context.biometryType == .touchID ? "Touch ID" : "Face ID"
+        #else
+        return "Face ID"
+        #endif
+    }
+
     private func baseQuery() -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
@@ -155,12 +173,12 @@ public final class KeychainBiometricStore: BiometricKeychain {
             // because it always supplies a context.
             if authenticatedContext == nil { return nil }
             throw BiometricUnlockError.keychainError(
-                "Face ID approved the unlock but the saved session could not be read.")
+                "\(biometryName) approved the unlock but the saved session could not be read.")
         case errSecAuthFailed:
             throw BiometricUnlockError.biometricsChanged
         default:
             throw BiometricUnlockError.keychainError(
-                "Could not read the saved Face ID session (\(status)).")
+                "Could not read the saved \(biometryName) session (\(status)).")
         }
     }
 
@@ -178,7 +196,7 @@ public final class KeychainBiometricStore: BiometricKeychain {
         guard status == errSecSuccess else {
             if status == errSecAuthFailed { throw BiometricUnlockError.biometricsChanged }
             throw BiometricUnlockError.keychainError(
-                "Could not save the Face ID session (\(status)).")
+                "Could not save the \(biometryName) session (\(status)).")
         }
     }
 
@@ -199,7 +217,7 @@ public final class KeychainBiometricStore: BiometricKeychain {
             &error
         ) else {
             throw BiometricUnlockError.keychainError(
-                "Could not create the Face ID access control.")
+                "Could not create the \(biometryName) access control.")
         }
         return accessControl
     }
@@ -234,9 +252,16 @@ public final class KeychainBiometricStore: BiometricKeychain {
 /// `LAContext` that just passed evaluation.
 public final class BiometricSessionStore: SessionStore {
     public let keychain: BiometricKeychain
+    /// The device's biometry name for user-facing copy (audit
+    /// A-P2-2): "Face ID" unless the caller knows the kind.
+    public let biometryName: String
 
-    public init(keychain: BiometricKeychain = KeychainBiometricStore()) {
+    public init(
+        keychain: BiometricKeychain = KeychainBiometricStore(),
+        biometryName: String = "Face ID"
+    ) {
         self.keychain = keychain
+        self.biometryName = biometryName
     }
 
     public func load() -> AuthSession? {
@@ -270,7 +295,7 @@ public final class BiometricSessionStore: SessionStore {
             return try JSONDecoder().decode(AuthSession.self, from: data)
         } catch {
             throw BiometricUnlockError.keychainError(
-                "The saved Face ID session could not be read.")
+                "The saved \(biometryName) session could not be read.")
         }
     }
 }

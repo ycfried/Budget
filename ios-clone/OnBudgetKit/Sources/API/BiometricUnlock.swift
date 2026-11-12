@@ -93,23 +93,34 @@ public enum BiometricUnlockError: Error, Equatable {
     case keychainError(String)
 
     public var userMessage: String {
+        // The plain `userMessage` keeps the Face ID wording for
+        // callers that do not know the device kind (and for the
+        // Linux tests, where there is no biometry at all). UI code
+        // that knows the kind must use `userMessage(for:)` instead
+        // (audit A-P2-2), so Touch ID hardware never sees "Face ID".
+        userMessage(for: .faceID)
+    }
+
+    /// The message for the device's actual biometry kind.
+    public func userMessage(for kind: BiometryKind) -> String {
+        let name = kind.displayName
         switch self {
         case .cancelled:
-            return "Face ID was cancelled. Sign in with your password."
+            return "\(name) was cancelled. Sign in with your password."
         case .failed:
-            return "Face ID did not recognise you. Try again, or sign in with your password."
+            return "\(name) did not recognise you. Try again, or sign in with your password."
         case .lockout:
-            return "Face ID is locked after too many attempts. Sign in with your password."
+            return "\(name) is locked after too many attempts. Sign in with your password."
         case .notAvailable:
-            return "This device does not have Face ID."
+            return "This device does not have \(name)."
         case .notEnrolled:
-            return "Face ID is not set up on this device. Set it up in Settings, then turn on Face ID unlock here."
+            return "\(name) is not set up on this device. Set it up in Settings, then turn on \(name) unlock here."
         case .biometricsChanged:
-            return "Your Face ID enrolment changed, so the saved unlock was removed. Sign in with your password, then turn Face ID unlock back on in Settings."
+            return "Your \(name) enrolment changed, so the saved unlock was removed. Sign in with your password, then turn \(name) unlock back on in Settings."
         case .noStoredSession:
-            return "No Face ID unlock is set up. Sign in with your password."
+            return "No \(name) unlock is set up. Sign in with your password."
         case .noSession:
-            return "Sign in first, then turn on Face ID unlock in Settings."
+            return "Sign in first, then turn on \(name) unlock in Settings."
         case .sessionExpired:
             return "Your saved sign-in expired. Sign in with your password."
         case .refreshFailed(let message):
@@ -126,6 +137,12 @@ public enum BiometryKind: Equatable {
     case faceID
     case touchID
     case none
+
+    /// "Face ID" / "Touch ID" for user-facing copy (audit A-P2-2).
+    /// `.none` falls back to Face ID wording, like `BiometricUnlock.label`.
+    public var displayName: String {
+        self == .touchID ? "Touch ID" : "Face ID"
+    }
 }
 
 // MARK: - Authenticator seam (LAContext)
@@ -245,7 +262,9 @@ public final class BiometricUnlock {
     ) {
         self.keychain = keychain
         self.authenticator = authenticator
-        self.store = BiometricSessionStore(keychain: keychain)
+        self.store = BiometricSessionStore(
+            keychain: keychain,
+            biometryName: authenticator.biometryKind.displayName)
     }
 
     /// True when a protected session is stored. Never prompts.
@@ -270,7 +289,9 @@ public final class BiometricUnlock {
         keychain: BiometricKeychain = KeychainBiometricStore()
     ) -> SessionStore {
         keychain.exists()
-            ? BiometricSessionStore(keychain: keychain)
+            ? BiometricSessionStore(
+                keychain: keychain,
+                biometryName: LAContextAuthenticator().biometryKind.displayName)
             : UserDefaultsSessionStore()
     }
 
@@ -288,7 +309,7 @@ public final class BiometricUnlock {
         guard authenticator.canEvaluate else {
             throw BiometricUnlockError.notEnrolled
         }
-        try await authenticator.evaluate(reason: "Turn on Face ID unlock for OnBudget.")
+        try await authenticator.evaluate(reason: "Turn on \(authenticator.biometryKind.displayName) unlock for OnBudget.")
         try store.saveThrowing(session)
         client.replaceSessionStore(store)
     }
@@ -322,7 +343,7 @@ public final class BiometricUnlock {
             dropStoredSession(client: client)
             throw BiometricUnlockError.notEnrolled
         }
-        try await authenticator.evaluate(reason: "Unlock OnBudget with Face ID.")
+        try await authenticator.evaluate(reason: "Unlock OnBudget with \(authenticator.biometryKind.displayName).")
         let session: AuthSession
         do {
             guard let loaded = try store.loadAuthenticated(
@@ -337,7 +358,7 @@ public final class BiometricUnlock {
             // password screen. The user re-opts in after signing in.
             dropStoredSession(client: client)
             throw error as? BiometricUnlockError ?? BiometricUnlockError.keychainError(
-                "The saved Face ID session could not be read.")
+                "The saved \(authenticator.biometryKind.displayName) session could not be read.")
         }
         client.restoreSession(session)
         do {

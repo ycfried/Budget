@@ -367,10 +367,12 @@ public final class AppViewModel: ObservableObject {
         } catch let error as BiometricUnlockError {
             refreshBiometricUnlockAvailability()
             if error == .cancelled { return .cancelled }
-            return .failed(error.userMessage)
+            // Audit A-P2-2: the message names the device's actual
+            // biometry kind, so Touch ID hardware never sees "Face ID".
+            return .failed(error.userMessage(for: biometricUnlock.biometryKind))
         } catch {
             refreshBiometricUnlockAvailability()
-            return .failed("Face ID did not work. Sign in with your password.")
+            return .failed("\(biometricUnlock.biometryKind.displayName) did not work. Sign in with your password.")
         }
     }
 
