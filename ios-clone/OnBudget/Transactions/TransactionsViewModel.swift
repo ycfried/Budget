@@ -142,8 +142,9 @@ public final class TransactionsViewModel {
         TransactionFilters.cards(in: Array(loadedPage.prefix(pageSize)))
     }
 
-    /// The count line (live.js:863-886): "`N` transactions · Total
-    /// shown `$X`" (+ the older-rows suffix when the probe row came
+    /// The count line (live.js:863-886, wording per owner Nov 12,
+    /// 2026 — "Total", not "Total shown"): "`N` transactions ·
+    /// Total `$X`" (+ the older-rows suffix when the probe row came
     /// back). On failure the line is empty — the error box below
     /// already says it (T-P2-11: one failure message, not two
     /// stacked). The min>max text outranks a zero total.
@@ -160,7 +161,7 @@ public final class TransactionsViewModel {
         }
         let total = TransactionFilters.shownTotal(for: shown, status: filters.status)
         let suffix = hasMore ? " · of loaded transactions — tap Load more for older ones" : ""
-        return "\(shown.count) transactions · Total shown \(TransactionFormatting.formatCents(total))\(suffix)"
+        return "\(shown.count) transactions · Total \(TransactionFormatting.formatCents(total))\(suffix)"
     }
 
     /// Whether the viewer has any action on a row (live.js:982):
