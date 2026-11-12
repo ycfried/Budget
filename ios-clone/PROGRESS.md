@@ -142,3 +142,48 @@ prompt; fix = set-key-partition-list after import, commit 8669ef1)
 → run 43119545461: archive+export passed in ~3 min, upload
 rejected 409 (iOS 18.5 SDK; Apple requires Xcode 26 / iOS 26 SDK
 since Apr 28, 2026; fix = select newest Xcode 26, commit b79f837).
+
+## 2026-11-12 ~02:55 UTC — Fix branch: phone feedback + full audit + auth flows
+
+Branch `native-fixes-phone-feedback` (from `ios-clone-testflight` @ `dbc0348`).
+Owner's Nov 11 phone feedback (8 defects + remove-member + sign-in rework +
+Back placement + AutoFill + per-field errors + roles) plus the web v67–v69 port
+(PRs #62/#64/#65) plus a full screen-by-screen audit (kit / Settings / Auth
+slices) — all native-only; web frozen at v69. Full per-item report:
+`~/workspace/household-budget/NATIVE_FIXES_PHONE_FEEDBACK_REPORT.md`.
+
+- **Simulator CI, head `c57496b`: GREEN on rerun.** Run 43136632880 attempt 1
+  failed only on UI test `testPlaidSandboxConnect` (Link sheet did not open
+  within 90s — failure-time hierarchy showed the Connect button stuck on
+  "Connecting…" with no error, and a WebView present after the wait expired:
+  a slow live link-token fetch, not a code bug; the same test passed on the
+  base branch run 43078714860). Attempt 2 (plain `gh run rerun`, no new push)
+  SUCCEEDED: all unit suites + 10 UI tests passed, 0 failed. Earlier runs on
+  this branch failed on test compile errors / stale fixtures (fixed across
+  48f581b, 5ba60f9, cf9093a, 61baa0d, c57496b); lesson recorded: a synthesized
+  `init(from:)` does NOT pick up a present value for a `let` with a default
+  (verified 3× — `PlaidExchangeResult.duplicate`, `PlaidSyncResult.items`,
+  `WeekCloseResult.restorationsSkipped` now decode explicitly).
+- **Backend NOT yet applied live:** `supabase/household-roles-owner.sql`
+  (owner_id + owner-only remove + `set_household_member_role` RPC) and
+  `supabase/functions/check-email-exists/index.ts` (per-field sign-in errors).
+  Both need parent review + live apply/deploy; verify with test data only.
+- **Auth batch (head `7af38eb`, pushed `[skip ci]`):** Forgot Password? always
+  opens the dedicated sheet (never auto-sends) with a "Check Your Email"
+  confirmation state (Done + Send Again); sign-up confirmations — `signUp`
+  passes `redirect_to=onbudget://email-confirmed`, name step shows a
+  persistent inline "Check Your Email" state, new deep-link handler adopts
+  the session and boots in. Dashboard half still owed (see
+  `~/workspace/household-budget/SUPABASE_AUTH_DASHBOARD.md`): redirect
+  allow-list (`onbudget://reset-password`, `onbudget://email-confirmed`),
+  reset + confirm-signup email templates, "Confirm email" ON. **Sequencing:
+  run CI green BEFORE turning Confirm ON** — the UI tests' fresh
+  `@example.com` sign-ups cannot confirm, so they go red until the test
+  helper is updated (Admin API confirm; needs a service-role CI secret).
+- **Push rule (owner, Nov 12):** batch pushes; intermediate commits carry
+  `[skip ci]`; one verification run per batch on a push without the marker.
+  This PROGRESS.md update is the trigger commit for the auth batch's
+  verification run.
+- **NOT merged, NOT uploaded:** parent reviews, merges, uploads. The
+  temporary simulator trigger commit (`cc68bae`) must be reverted before
+  merge. Do NOT trigger the TestFlight upload workflow from this branch.
