@@ -171,7 +171,6 @@ final class EmailAlertsViewModel: ObservableObject {
             statusLine = connections.isEmpty ? "No email connected yet." : ""
             loadError = nil
         } catch {
-            statusLine = "Could not load email connections."
             loadError = "Could not load email connections."
         }
     }
@@ -374,13 +373,17 @@ struct EmailAlertsView: View {
             Text("Connected Email")
                 .font(.headline)
                 .padding(.top, 4)
+            // A reload failure shows above the list even when
+            // connections are already on screen — never a silent
+            // stale list, and never a grey muted line for an error.
+            if let error = viewModel.loadError {
+                ErrorBox(error)
+            }
             if viewModel.isLoading && viewModel.connections.isEmpty {
                 ProgressView()
-            } else if let error = viewModel.loadError, viewModel.connections.isEmpty {
-                ErrorBox(error)
-            } else if viewModel.connections.isEmpty {
+            } else if viewModel.connections.isEmpty && viewModel.loadError == nil {
                 MutedLine(text: viewModel.isAdmin ? "None — connect an email below." : "None — the admin connects email alerts.")
-            } else {
+            } else if !viewModel.connections.isEmpty {
                 ForEach(viewModel.connections) { connection in
                     connectionRow(connection)
                 }

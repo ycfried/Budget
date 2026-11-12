@@ -398,6 +398,19 @@ public struct PostgrestClient {
         return row?.inviteCode
     }
 
+    /// The household's owner id (`households.owner_id`, the creator —
+    /// owner decision, Nov 11, 2026). Nil when the household has no
+    /// owner recorded (backfill gap) or the row cannot be read.
+    public func householdOwnerId(householdId: UUID) async throws -> UUID? {
+        struct Row: Decodable { let ownerId: UUID?; enum CodingKeys: String, CodingKey { case ownerId = "owner_id" } }
+        let row: Row? = try await fetchOne(PostgrestQuery(
+            table: "households",
+            columns: "owner_id",
+            filters: [.householdRow(householdId)]
+        ))
+        return row?.ownerId
+    }
+
     /// The household's fund shortfall (live.js:1611).
     public func fundShortfallCents(householdId: UUID) async throws -> Int {
         struct Row: Decodable { let fundShortfallCents: Int?; enum CodingKeys: String, CodingKey { case fundShortfallCents = "fund_shortfall_cents" } }

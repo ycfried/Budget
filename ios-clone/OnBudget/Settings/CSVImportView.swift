@@ -68,6 +68,8 @@ final class CSVImportViewModel: ObservableObject {
 
     // MARK: - File pick + preview
 
+    /// A nil url here means the picker itself failed to deliver a
+    /// file (not a cancel — cancels never reach this function).
     func filePicked(_ url: URL?) {
         guard let url else {
             showPickerError("No file reached the app from the picker. Try saving the file to Files first, then picking it from Files.")
@@ -221,7 +223,9 @@ struct CSVDocumentPicker: UIViewControllerRepresentable {
         }
 
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-            onPick(nil)
+            // Cancelling the picker is not a failure: dismiss with
+            // no message (previously this called onPick(nil), which
+            // showed a misleading "No file reached the app" error).
         }
     }
 }
@@ -274,7 +278,7 @@ struct CSVImportView: View {
                     }
                 }
                 ForEach(Array(viewModel.previewRows.enumerated()), id: \.offset) { index, preview in
-                    Text("\(index + 1). \(preview.row.date) · \(TitleCase.apply(to: preview.row.merchant.lowercased())) · \(OnBudgetKit.MoneyFormat.formatCents(preview.row.amountCents)) · ••\(preview.row.suffix) — \(preview.isDuplicate ? "Duplicate, will be skipped" : "New")")
+                    Text("\(index + 1). \(preview.row.date) · \(preview.row.merchant) · \(OnBudgetKit.MoneyFormat.formatCents(preview.row.amountCents)) · ••\(preview.row.suffix) — \(preview.isDuplicate ? "Duplicate, will be skipped" : "New")")
                         .font(.subheadline)
                         .foregroundStyle(preview.isDuplicate ? Color(hex: "#6b7280") : DesignTokens.ink)
                 }

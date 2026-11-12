@@ -69,6 +69,11 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
     /// Any other server-side validation refusal (bad amount, bad kind,
     /// bad date, "request is not pending", …). Message preserved.
     case validationFailed(String)
+    /// Wrong email or wrong password on sign-in (`invalid_grant` /
+    /// "Invalid login credentials"). The generic message is the
+    /// fallback; the client refines it per-field via the
+    /// `check-email-exists` function (owner decision, Nov 11, 2026).
+    case invalidCredentials
     /// An HTTP failure from PostgREST / an Edge Function that no case
     /// above covers. `message` is the server's `error` string.
     case serverError(status: Int, message: String)
@@ -107,6 +112,8 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
             return message
         case .validationFailed(let message):
             return message
+        case .invalidCredentials:
+            return "Username or password is incorrect."
         case .serverError(_, let message):
             return message
         case .decodingError(let message):
@@ -129,7 +136,8 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
             return status >= 500
         case .sessionExpired, .forbidden, .adminOnly, .weekLocked,
              .insufficientFund, .cannotRestore, .heldRefundAlreadyResolved,
-             .rateLimited, .notFound, .validationFailed, .decodingError, .unknown:
+             .rateLimited, .notFound, .validationFailed, .invalidCredentials,
+             .decodingError, .unknown:
             return false
         }
     }
@@ -241,7 +249,7 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
                 // before reaching here. Check it FIRST, before the
                 // session-expired signals (which also match the code).
                 if body.error == "invalid_grant" || message.lowercased().contains("invalid login credentials") {
-                    return .validationFailed("Username or password is incorrect.")
+                    return .invalidCredentials
                 }
                 if status == 401 || isSessionExpiredMessage(message) {
                     return .sessionExpired
@@ -254,6 +262,23 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
         // shown to the user (owner, Nov 11, 2026). The status code is
         // kept on the case for logging, never in the message.
         return .serverError(status: status, message: "Could not complete the request. Try again.")
+    }
+}
+
+/// Per-field sign-in wording (owner, Nov 11, 2026): a wrong username
+/// says the username is incorrect, a wrong password says the password
+/// is incorrect — not one generic message. The server check
+/// (`check-email-exists`) is what distinguishes them, because
+/// Supabase Auth itself returns one generic invalid-credentials
+/// error. `nil` = the check could not run: fall back to the generic
+/// message, never guess a field.
+public enum SignInErrorMessage {
+    public static func invalidCredentials(emailExists: Bool?) -> String {
+        switch emailExists {
+        case true: return "Password is incorrect."
+        case false: return "Username is incorrect."
+        case nil: return "Username or password is incorrect."
+        }
     }
 }
 

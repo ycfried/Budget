@@ -8,11 +8,23 @@
 //   stored display_name -> own auth-metadata name -> email_prefix ->
 //   "Household member" (never the bare word "Member").
 // - Remove: RPC `remove_household_member(p_user_id:)` after one
-//   confirm. Server re-checks: admin-only, own household only, never
-//   yourself, never the last admin. Admin sees Remove on every OTHER
-//   member's row; never on their own row; members see no Remove.
+//   confirm. Server re-checks: OWNER-ONLY (roles decision, Nov 11,
+//   2026 — the PR #57 "never the last admin" guard is gone: only the
+//   owner removes members, and the owner is always admin-capable),
+//   own household only, never yourself. The owner sees Remove on
+//   every OTHER member's row; never on their own row; admins and
+//   members see no Remove.
+// - Roles: Owner (the household creator, `households.owner_id`),
+//   Admin (co-admin), Member. Owner or admin can promote a member to
+//   admin; only the owner can change an admin back to member; the
+//   owner's role never changes. RPC `set_household_member_role`.
+//   Each role shows its label + a short plain note of what it can do.
 // - Invite code: `PostgrestClient.inviteCode(householdId:)` (the
 //   `households.invite_code` column — NEVER the household UUID).
+//   OWNER-ONLY: only the owner fetches or sees it (Nov 11, 2026).
+//   A failed read shows an error line, never "No invite code is set
+//   up" (owner report, Nov 11: the app said that while PJM2HG
+//   existed).
 //   Copy writes the clipboard and flips to "Copied" for 2s; Share
 //   uses the native share sheet with
 //   "Join my household on OnBudget with invite code CODE".
@@ -37,17 +49,28 @@ import OnBudgetKit
 @MainActor
 final class MembersSettingsViewModel: ObservableObject {
     @Published var members: [MemberListRow] = []
+    @Published var ownerId: UUID?
     @Published var inviteCode: String?
+    @Published var inviteCodeLoadFailed = false
     @Published var householdName: String?
     @Published var loadError: String?
     @Published var isLoading = false
     @Published var memberToRemove: MemberListRow?
     @Published var removeFailed = false
+    @Published var roleChangeRequest: RoleChangeRequest?
+    @Published var roleChangeFailed = false
     @Published var copiedCode = false
     @Published var showShareSheet = false
     @Published var deleteStep: DeleteStep?
     @Published var deleteFailed = false
     @Published var deleteFailedStep: String?
+
+    /// A pending promote/demote, captured for the confirm alert.
+    struct RoleChangeRequest: Identifiable {
+        let member: MemberListRow
+        let toRole: HouseholdRole
+        var id: String { "\(member.userId.uuidString)-\(toRole.rawValue)" }
+    }
 
     enum DeleteStep: Identifiable {
         case confirmDelete
@@ -71,6 +94,30 @@ final class MembersSettingsViewModel: ObservableObject {
     }
 
     var isAdmin: Bool { context.isAdmin }
+    var isOwner: Bool { context.isOwner }
+
+    /// The role to SHOW for a member: Owner when the member's id is
+    /// the household's owner id, else the stored role. The server
+    /// never returns 'owner' as a role value.
+    func displayRole(for member: MemberListRow) -> HouseholdRole {
+        if let ownerId, member.userId == ownerId { return .owner }
+        return member.role
+    }
+
+    /// The promote/demote action available on another member's row, if
+    /// any: a member can be made Admin (by the owner or an admin); an
+    /// admin (other than the owner) can be changed back to Member, but
+    /// ONLY by the owner. Nil for your own row and for the owner.
+    func roleAction(for member: MemberListRow) -> (label: String, toRole: HouseholdRole)? {
+        guard !isOwnRow(member), displayRole(for: member) != .owner else { return nil }
+        if member.role == .member, isAdmin {
+            return ("Make Admin", .admin)
+        }
+        if member.role == .admin, isOwner {
+            return ("Make Member", .member)
+        }
+        return nil
+    }
 
     func displayName(for member: MemberListRow) -> String {
         let isOwnRow = member.userId == context.currentUserId
@@ -90,16 +137,58 @@ final class MembersSettingsViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             async let membersTask = context.client.rpcs.listHouseholdMembers()
-            async let codeTask = context.client.postgrest.inviteCode(householdId: context.householdId)
+            async let ownerTask = context.client.postgrest.householdOwnerId(householdId: context.householdId)
             async let nameTask = context.client.postgrest.householdName(householdId: context.householdId)
             members = try await membersTask
-            if context.isAdmin {
-                inviteCode = try await codeTask
-            }
+            // Fail soft: if the owner column is not there yet (the
+            // roles migration has not been applied), the list still
+            // loads — owner-only controls simply stay hidden until
+            // the next load after the migration lands.
+            ownerId = try? await ownerTask
             householdName = try await nameTask ?? householdName
             loadError = nil
+            // The invite code is owner-only (owner decision, Nov 11,
+            // 2026): only the owner fetches it. A failed read is
+            // tracked separately — it must NOT fall through to the
+            // "No invite code is set up" line (owner report, Nov 11:
+            // the app said that while PJM2HG existed).
+            inviteCodeLoadFailed = false
+            if context.isOwner {
+                do {
+                    inviteCode = try await context.client.postgrest.inviteCode(householdId: context.householdId)
+                } catch {
+                    inviteCode = nil
+                    inviteCodeLoadFailed = true
+                }
+            } else {
+                inviteCode = nil
+            }
         } catch {
             loadError = settingsErrorMessage(error)
+        }
+    }
+
+    // MARK: - Change role (promote / demote)
+
+    func confirmRoleChange(_ member: MemberListRow, to role: HouseholdRole) {
+        roleChangeRequest = RoleChangeRequest(member: member, toRole: role)
+    }
+
+    /// The request arrives as a parameter, captured by the alert's
+    /// button — the same `.alert(item:)` pitfall as removeConfirmed
+    /// (the binding is nilled when the alert dismisses, before an
+    /// unstructured Task runs).
+    func roleChangeConfirmed(_ request: RoleChangeRequest) async {
+        roleChangeRequest = nil
+        let label = displayName(for: request.member)
+        do {
+            try await context.client.rpcs.setHouseholdMemberRole(pUserId: request.member.userId, pRole: request.toRole)
+            toast.show(request.toRole == .admin
+                       ? "\(label) is now an admin."
+                       : "\(label) is now a regular member.")
+            await load()
+        } catch {
+            roleChangeFailed = true
         }
     }
 
@@ -196,7 +285,7 @@ struct MembersSettingsView: View {
 
     var body: some View {
         SettingsCard(title: "Account & Household") {
-            Text("Only the admin can share the invite code.")
+            Text("Only the owner can share the invite code.")
                 .font(.subheadline)
                 .foregroundStyle(Color(hex: "#6b7280"))
             if let name = viewModel.householdName, !name.isEmpty {
@@ -208,19 +297,23 @@ struct MembersSettingsView: View {
             Text("Members")
                 .font(.headline)
                 .padding(.top, 4)
+            // A reload failure shows above the list even when stale
+            // rows are already on screen — never a silent stale list.
+            if let error = viewModel.loadError {
+                ErrorBox(error)
+            }
             if viewModel.isLoading && viewModel.members.isEmpty {
                 ProgressView()
-            } else if let error = viewModel.loadError, viewModel.members.isEmpty {
-                ErrorBox(error)
             } else if viewModel.members.isEmpty {
                 MutedLine(text: "No members yet.")
             } else {
                 ForEach(viewModel.members) { member in
                     memberRow(member)
                 }
+                rolesLegend
             }
 
-            if viewModel.isAdmin {
+            if viewModel.isOwner {
                 inviteCodeSection
             }
 
@@ -242,6 +335,25 @@ struct MembersSettingsView: View {
             Button("Close", role: .cancel) {}
         } message: {
             Text("Could not remove this member. Try again.")
+        }
+        .alert(item: $viewModel.roleChangeRequest) { request in
+            let label = viewModel.displayName(for: request.member)
+            let role = request.toRole
+            return Alert(
+                title: Text(role == .admin ? "Make Admin" : "Make Member"),
+                message: Text(role == .admin
+                              ? "Make \(label) an admin? \(HouseholdRole.admin.capabilityNote)"
+                              : "Change \(label) to a regular member? \(HouseholdRole.member.capabilityNote)"),
+                primaryButton: .default(Text(role == .admin ? "Make Admin" : "Make Member")) {
+                    Task { await viewModel.roleChangeConfirmed(request) }
+                },
+                secondaryButton: .cancel()
+            )
+        }
+        .alert("Could not change role", isPresented: $viewModel.roleChangeFailed) {
+            Button("Close", role: .cancel) {}
+        } message: {
+            Text("Could not change this member's role. Try again.")
         }
         .alert(item: $viewModel.deleteStep) { step in
             switch step {
@@ -290,9 +402,16 @@ struct MembersSettingsView: View {
             Text(viewModel.displayName(for: member) + (viewModel.isOwnRow(member) ? " (you)" : ""))
                 .font(.subheadline)
                 .fontWeight(.semibold)
-            RolePill(role: member.role)
+            RolePill(role: viewModel.displayRole(for: member))
             Spacer()
-            if viewModel.isAdmin && !viewModel.isOwnRow(member) {
+            if let action = viewModel.roleAction(for: member) {
+                Button(action.label) {
+                    viewModel.confirmRoleChange(member, to: action.toRole)
+                }
+                .buttonStyle(TertiaryButtonStyle())
+                .accessibilityLabel("\(action.label) \(viewModel.displayName(for: member))")
+            }
+            if viewModel.isOwner && !viewModel.isOwnRow(member) {
                 Button("Remove") {
                     viewModel.confirmRemove(member)
                 }
@@ -302,13 +421,28 @@ struct MembersSettingsView: View {
         }
     }
 
+    /// The role legend: each role with its short plain note of what it
+    /// can do (owner decision, Nov 11, 2026).
+    private var rolesLegend: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach([HouseholdRole.owner, .admin, .member], id: \.rawValue) { role in
+                Text("\(role.label) — \(role.capabilityNote)")
+                    .font(.caption)
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
+        }
+        .padding(.top, 4)
+    }
+
     @ViewBuilder
     private var inviteCodeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Members join with the invite code below.")
                 .font(.subheadline)
                 .foregroundStyle(Color(hex: "#6b7280"))
-            if let code = viewModel.inviteCode, !code.isEmpty {
+            if viewModel.inviteCodeLoadFailed {
+                ErrorBox("Could not load the invite code. Try again.")
+            } else if let code = viewModel.inviteCode, !code.isEmpty {
                 Text(code)
                     .font(.system(.title3, design: .monospaced))
                     .fontWeight(.semibold)
@@ -345,10 +479,14 @@ struct MembersSettingsView: View {
                 viewModel.startDelete()
             }
             .buttonStyle(DangerButtonStyle())
-            Text("Privacy · Terms")
-                .font(.subheadline)
-                .foregroundStyle(DesignTokens.mid)
-                .padding(.top, 4)
+            HStack(spacing: 4) {
+                Link("Privacy", destination: URL(string: "https://ycfried.github.io/Budget/privacy.html")!)
+                Text("·")
+                Link("Terms", destination: URL(string: "https://ycfried.github.io/Budget/terms.html")!)
+            }
+            .font(.subheadline)
+            .foregroundStyle(DesignTokens.mid)
+            .padding(.top, 4)
         }
     }
 }

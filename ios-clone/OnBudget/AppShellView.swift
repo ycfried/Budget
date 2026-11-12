@@ -120,6 +120,7 @@ public struct AppShellView: View {
             client: appState.client,
             householdId: householdId,
             isAdmin: appState.isAdmin,
+            isOwner: appState.isOwner,
             currentUserId: appState.client.currentSession?.user.id,
             displayName: appState.displayName,
             email: appState.client.currentSession?.user.email,

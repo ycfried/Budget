@@ -92,7 +92,7 @@ final class ProfileSettingsViewModel: ObservableObject {
         if enabled {
             do {
                 try await biometricUnlock.enable(client: context.client)
-                toast.show("Face ID unlock is on. You can unlock with Face ID instead of typing your password.")
+                toast.show("\(faceIDBiometryName) unlock is on. You can unlock with \(faceIDBiometryName) instead of typing your password.")
             } catch let error as BiometricUnlockError {
                 if error == .cancelled {
                     // Silent: the user backed out of the prompt.
@@ -100,7 +100,7 @@ final class ProfileSettingsViewModel: ObservableObject {
                     toast.showError(error.userMessage)
                 }
             } catch {
-                toast.showError("Could not turn on Face ID unlock. Try again.")
+                toast.showError("Could not turn on \(faceIDBiometryName) unlock. Try again.")
             }
         } else {
             // Silent when nothing was enabled: flipping the toggle
@@ -112,7 +112,7 @@ final class ProfileSettingsViewModel: ObservableObject {
                 return
             }
             biometricUnlock.disable(client: context.client)
-            toast.show("Face ID unlock is off. Your saved unlock was removed.")
+            toast.show("\(faceIDBiometryName) unlock is off. Your saved unlock was removed.")
         }
         refreshFaceIDState()
     }

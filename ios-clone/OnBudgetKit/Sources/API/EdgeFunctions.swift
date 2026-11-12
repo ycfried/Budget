@@ -503,4 +503,38 @@ public struct EdgeFunctionsClient {
     public func deleteAccount() async throws -> DeleteAccountResult {
         try await invoke(name: "delete-account", body: [:])
     }
+
+    // MARK: - Auth helpers
+
+    /// Invoke a function WITHOUT a session token (apikey header only).
+    /// Used only by `checkEmailExists`: at sign-in failure there is
+    /// no session to attach, and the check itself is the
+    /// unauthenticated step the owner accepted (Nov 11, 2026 — "It's
+    /// just a budgeting app"). Every other function call stays
+    /// authenticated through `invoke`.
+    public func invokeUnauthenticated<T: Decodable>(name: String, body: [String: Any]) async throws -> T {
+        let request = try makeRequest(name: name, body: body)
+        let (data, response) = try await transport.send(request)
+        guard (200...299).contains(response.statusCode) else {
+            throw OnBudgetError.fromHTTPResponse(status: response.statusCode, data: data)
+        }
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw OnBudgetError.decodingError("Could not read the result of \(name).")
+        }
+    }
+
+    /// `check-email-exists` — does an auth account exist for this
+    /// email? (`check-email-exists/index.ts`). Unauthenticated by
+    /// necessity (called after a failed sign-in, when there is no
+    /// session). The server answers one boolean; no user data comes
+    /// back. The owner accepted the enumeration trade-off (Nov 11,
+    /// 2026). A failure here throws, and the caller falls back to
+    /// the generic "Username or password is incorrect."
+    public func checkEmailExists(email: String) async throws -> Bool {
+        struct Result: Decodable { let exists: Bool }
+        let result: Result = try await invokeUnauthenticated(name: "check-email-exists", body: ["email": email])
+        return result.exists
+    }
 }

@@ -634,12 +634,28 @@ extension RPCClient {
     }
 
     /// `remove_household_member(p_user_id)`
-    /// (`remove-household-member.sql:33-76`). Admin only; own household
-    /// only; never yourself ("you cannot remove yourself"); never the
-    /// last admin ("cannot remove the last admin").
+    /// (`household-roles-owner.sql` §3). OWNER ONLY since the Nov 11,
+    /// 2026 roles decision; own household only; never yourself
+    /// ("you cannot remove yourself"). The PR #57 "never the last
+    /// admin" guard is gone: only the owner removes members, and the
+    /// owner is always admin-capable, so no removal can strand the
+    /// household without an admin.
     public func removeHouseholdMember(pUserId: UUID) async throws {
         try await callVoid(name: "remove_household_member", params: [
             "p_user_id": pUserId.uuidString,
+        ])
+    }
+
+    /// `set_household_member_role(p_user_id, p_role)`
+    /// (`household-roles-owner.sql` §4). Promote member -> admin
+    /// (owner or admin may do it); demote admin -> member (OWNER
+    /// ONLY). Refuses the owner's role, your own role, and roles
+    /// outside 'admin'/'member'. Idempotent: already-that-role is a
+    /// silent success.
+    public func setHouseholdMemberRole(pUserId: UUID, pRole: HouseholdRole) async throws {
+        try await callVoid(name: "set_household_member_role", params: [
+            "p_user_id": pUserId.uuidString,
+            "p_role": pRole.rawValue,
         ])
     }
 }

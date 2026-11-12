@@ -357,8 +357,16 @@ public struct AuthView: View {
             busy = nil
             await appState.boot()
         } catch let error as OnBudgetError {
-            // Deliberately generic: never says which field was wrong.
-            message = error.userMessage
+            if case .invalidCredentials = error {
+                // Per-field wording (owner, Nov 11, 2026): the check
+                // says which field was wrong. If the check itself
+                // fails, keep the generic message — never guess.
+                let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+                let exists = try? await appState.client.functions.checkEmailExists(email: trimmed)
+                message = SignInErrorMessage.invalidCredentials(emailExists: exists)
+            } else {
+                message = error.userMessage
+            }
             messageIsError = true
             busy = nil
         } catch {

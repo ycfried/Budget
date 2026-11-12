@@ -103,7 +103,8 @@ final class APIErrorMappingTests: XCTestCase {
         {"code": 400, "error_code": "invalid_grant", "msg": "Invalid login credentials"}
         """.utf8)
         let error = OnBudgetError.fromAuthResponse(status: 400, data: body)
-        XCTAssertEqual(error, .validationFailed("Username or password is incorrect."))
+        XCTAssertEqual(error, .invalidCredentials)
+        XCTAssertEqual(error.userMessage, "Username or password is incorrect.")
     }
 
     func testAuthFallbackNeverShowsARawStatusCode() {

@@ -100,6 +100,10 @@ public final class AppViewModel: ObservableObject {
     /// The signed-in user's membership, once known.
     @Published public var householdId: UUID?
     @Published public var role: HouseholdRole?
+    /// The household's owner id (`households.owner_id`, the creator).
+    /// Loaded at boot alongside the household name; nil until then,
+    /// and nil when the household has no owner recorded.
+    @Published public var ownerId: UUID?
     @Published public var householdName: String?
 
     /// One-open-at-a-time stat-card expansion, shared by Home and
@@ -170,6 +174,13 @@ public final class AppViewModel: ObservableObject {
     }
 
     public var isAdmin: Bool { role == .admin }
+    /// Owner = the household creator. The owner keeps role `.admin`
+    /// (so every admin check keeps passing for the owner), and is
+    /// identified by `ownerId` matching the signed-in user.
+    public var isOwner: Bool {
+        guard let ownerId, let userId = client.currentSession?.user.id else { return false }
+        return ownerId == userId
+    }
 
     /// The signed-in user's display name from auth metadata
     /// (`full_name`, then `name`) — nil when no name is set. NEVER
@@ -218,6 +229,7 @@ public final class AppViewModel: ObservableObject {
             householdId = membership.householdId
             role = membership.role
             householdName = try? await client.postgrest.householdName(householdId: membership.householdId)
+            ownerId = try? await client.postgrest.householdOwnerId(householdId: membership.householdId)
             phase = .app
             selectedTab = .home
         } catch let error as OnBudgetError where error == .sessionExpired {
@@ -239,6 +251,11 @@ public final class AppViewModel: ObservableObject {
         householdId = id
         self.role = role
         householdName = try? await client.postgrest.householdName(householdId: id)
+        // A freshly created household is owned by its creator; a
+        // freshly joined one learns its owner on the next boot.
+        if role == .admin {
+            ownerId = client.currentSession?.user.id
+        }
         phase = .app
         selectedTab = .home
     }
@@ -267,6 +284,7 @@ public final class AppViewModel: ObservableObject {
         await client.signOut()
         householdId = nil
         role = nil
+        ownerId = nil
         householdName = nil
         expandedCard = nil
         pendingTransactionJump = nil

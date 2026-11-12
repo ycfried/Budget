@@ -103,9 +103,40 @@ public enum TransactionSource: String, Equatable, Codable {
 
 /// Household role. Admin-only enforcement lives server-side (RPCs /
 /// Edge Functions / RLS); hiding a button is presentation only.
+/// Household roles (owner decision, Nov 11, 2026): one owner — the
+/// household creator; Admin is the co-admin; everyone else joins as a
+/// Member. The stored `household_members.role` is only 'admin' or
+/// 'member'; `.owner` is a DISPLAY role derived from
+/// `households.owner_id` (see `MembersSettingsViewModel.displayRole`).
+/// The server never returns 'owner' as a role value, so decoding never
+/// produces it — it is only ever assigned by the client when the
+/// member's id matches the household's owner id.
 public enum HouseholdRole: String, Equatable, Codable {
+    case owner
     case admin
     case member
+
+    /// The label shown wherever a role is shown.
+    public var label: String {
+        switch self {
+        case .owner: return "Owner"
+        case .admin: return "Admin"
+        case .member: return "Member"
+        }
+    }
+
+    /// Short plain-language note of what the role can do, shown
+    /// wherever a role is shown (owner decision, Nov 11, 2026).
+    public var capabilityNote: String {
+        switch self {
+        case .owner:
+            return "Started the household — the only one who can remove members or see the invite code."
+        case .admin:
+            return "Full access except removing members."
+        case .member:
+            return "Regular member."
+        }
+    }
 }
 
 // MARK: - Transactions

@@ -25,6 +25,10 @@ struct SettingsContext {
     let client: SupabaseClient
     let householdId: UUID
     let isAdmin: Bool
+    /// Owner = the household creator (`households.owner_id`). The
+    /// owner keeps role `.admin`; this flag is what gates
+    /// owner-only UI (invite code, Remove member, demote).
+    let isOwner: Bool
     let currentUserId: UUID?
     let displayName: String?
     let email: String?
@@ -51,6 +55,7 @@ struct SettingsContext {
         client: SupabaseClient,
         householdId: UUID,
         isAdmin: Bool,
+        isOwner: Bool = false,
         currentUserId: UUID? = nil,
         displayName: String? = nil,
         email: String? = nil,
@@ -64,6 +69,7 @@ struct SettingsContext {
         self.client = client
         self.householdId = householdId
         self.isAdmin = isAdmin
+        self.isOwner = isOwner
         self.currentUserId = currentUserId
         self.displayName = displayName
         self.email = email
@@ -78,11 +84,29 @@ struct SettingsContext {
 
 // MARK: - Errors
 
-/// The exact text a screen should show for a backend failure: the
-/// server's own text, unchanged, for `OnBudgetError`.
+/// The exact text a Settings screen should show for a backend failure.
+/// The kit's `userMessage` returns the server's text verbatim for
+/// server/transport errors — that is how a raw database error
+/// ("column households.household_id does not exist", owner report
+/// Nov 11, 2026) reached the user. This layer passes through only the
+/// specific refusal cases whose messages are already plain language
+/// (admin-only, week-locked, rate-limited, validation, …) and maps
+/// everything else — raw server strings, decode failures, transport
+/// text, non-kit errors — to a generic plain message. The raw text
+/// stays on the error for logging; it never reaches the screen.
 func settingsErrorMessage(_ error: Error) -> String {
-    if let budgetError = error as? OnBudgetError { return budgetError.userMessage }
-    return error.localizedDescription
+    guard let budgetError = error as? OnBudgetError else {
+        return "Could not complete that. Try again."
+    }
+    switch budgetError {
+    case .networkOffline, .timedOut, .sessionExpired,
+         .forbidden, .adminOnly, .weekLocked, .insufficientFund,
+         .cannotRestore, .heldRefundAlreadyResolved, .rateLimited,
+         .notFound, .validationFailed, .invalidCredentials:
+        return budgetError.userMessage
+    case .networkError, .serverError, .decodingError, .unknown:
+        return "Could not complete that. Try again."
+    }
 }
 
 // MARK: - Toast
@@ -244,7 +268,7 @@ struct RolePill: View {
     let role: HouseholdRole
 
     var body: some View {
-        Text(role == .admin ? "Admin" : "Member")
+        Text(role.label)
             .font(.caption)
             .fontWeight(.semibold)
             .padding(.horizontal, 8)

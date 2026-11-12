@@ -162,7 +162,7 @@ struct BudgetSettingsView: View {
             if let old = change.oldCents {
                 message = "Change the weekly allowance from \(OnBudgetKit.MoneyFormat.formatCents(old)) to \(OnBudgetKit.MoneyFormat.formatCents(change.newCents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
             } else {
-                message = "Set the weekly allowance to \(OnBudgetKit.MoneyFormat.formatCents(change.newCents))? (The current allowance could not be read, so no old value is shown.)\nThis applies from the current week onward. It does not rewrite closed weeks."
+                message = "Set the weekly allowance to \(OnBudgetKit.MoneyFormat.formatCents(change.newCents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
             }
             return Alert(
                 title: Text("Change Allowance"),

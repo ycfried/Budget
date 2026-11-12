@@ -71,7 +71,7 @@ enum PlaidLinkError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .sdkNotLinked:
-            return "Plaid Link isn't linked in this build yet — the LinkKit package still needs adding (see ios-clone/docs/PLAID_INTEGRATION.md)."
+            return "The bank connection is not set up in this build yet. Try again later."
         case .presentationUnavailable:
             return "Could not open the bank connection — there is no screen to present it from."
         }
@@ -129,6 +129,11 @@ final class ConnectedAccountsViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isSyncing = false
     @Published var autoSyncOn = false
+    /// True when the server value could not be read: the toggle keeps
+    /// its previous value, is disabled, and shows a note — it must
+    /// never silently show OFF while syncs are running (owner report,
+    /// Nov 11, 2026: toggle OFF, last synced 6:00 PM).
+    @Published var autoSyncUnknown = false
     @Published var isTogglingAutoSync = false
     @Published var nicknameTarget: ConnectedAccountRow?
     @Published var nicknameText = ""
@@ -162,9 +167,15 @@ final class ConnectedAccountsViewModel: ObservableObject {
             let accounts = try await context.client.postgrest.plaidAccounts(itemIds: itemIds)
             // Nicknames fail soft: the list still renders without them.
             let nicknames = (try? await context.client.postgrest.accountNicknames(householdId: context.householdId)) ?? []
-            // Auto-sync is server truth; a failed read leaves the
-            // switch off rather than showing a wrong state.
-            autoSyncOn = (try? await context.client.postgrest.autoSyncEnabled(householdId: context.householdId)) ?? false
+            // Auto-sync is server truth. A failed read keeps the
+            // previous value and disables the toggle with a note —
+            // it never silently shows OFF.
+            if let enabled = try? await context.client.postgrest.autoSyncEnabled(householdId: context.householdId) {
+                autoSyncOn = enabled
+                autoSyncUnknown = false
+            } else {
+                autoSyncUnknown = true
+            }
             let nicknameByAccount: [String: String] = Dictionary(
                 nicknames.compactMap { nick in
                     guard let name = nick.nickname else { return nil }
@@ -216,7 +227,6 @@ final class ConnectedAccountsViewModel: ObservableObject {
             loadError = nil
         } catch {
             loadError = "Could not load bank accounts."
-            syncLine = "Could not load bank accounts."
         }
     }
 
@@ -290,8 +300,10 @@ final class ConnectedAccountsViewModel: ObservableObject {
                 toast.showError("Connection could not be finished: \(settingsErrorMessage(error))")
             }
         case .exited(let message):
-            if let message {
-                toast.showError("Bank connection closed: \(message)")
+            // The SDK's exit text is internal wording — never shown.
+            // Nil message = the user cancelled: show nothing.
+            if message != nil {
+                toast.showError("The bank connection didn't finish. Try again.")
             }
         }
     }
@@ -470,7 +482,12 @@ struct ConnectedAccountsView: View {
                         .fontWeight(.semibold)
                 }
                 .tint(DesignTokens.primary)
-                .disabled(viewModel.isTogglingAutoSync)
+                .disabled(viewModel.isTogglingAutoSync || viewModel.autoSyncUnknown)
+                if viewModel.autoSyncUnknown {
+                    Text("Could not check automatic sync.")
+                        .font(.subheadline)
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
             }
 
             Text(viewModel.syncLine)

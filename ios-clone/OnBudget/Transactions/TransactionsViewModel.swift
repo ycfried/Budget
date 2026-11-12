@@ -187,7 +187,12 @@ public final class TransactionsViewModel {
                 self.hasMore = false
                 self.loadState = .failed(error)
             } catch {
+                // Same as the OnBudgetError catch above: a failed load
+                // clears the list (PR #64 Fix 2 — a load failure must
+                // never leave stale rows on screen).
                 guard !Task.isCancelled else { return }
+                self.loadedPage = []
+                self.hasMore = false
                 self.loadState = .failed(.unknown(error.localizedDescription))
             }
         }
