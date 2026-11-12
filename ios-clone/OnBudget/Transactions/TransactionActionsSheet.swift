@@ -95,7 +95,7 @@ public struct TransactionActionsSheet: View {
                 ]
             }
             return [
-                SheetAction(id: .charity, label: "Mark as Charity", subline: "Ask the admin to mark this as a gift", disabled: true),
+                SheetAction(id: .charity, label: "Mark as Charity", subline: "Only the admin can mark this as a gift", disabled: true),
                 SheetAction(id: .extraFund, label: "Use Extra Fund", subline: "Ask for this charge to be covered from the fund", disabled: false),
             ]
         case .refund:
@@ -354,7 +354,7 @@ public struct TransactionActionsSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             if let linkCandidates {
                 if linkCandidates.isEmpty {
-                    Text("No matching purchase found")
+                    Text("No Matching Purchase Found")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     Text(
@@ -497,7 +497,7 @@ public struct TransactionActionsSheet: View {
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Reason (required)")
+                Text("Reason (Required)")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 TextField("Reason", text: $reclassifyReason, axis: .vertical)
@@ -557,7 +557,7 @@ public struct TransactionActionsSheet: View {
                     .font(.system(size: 15))
                     .foregroundStyle(DesignTokens.ink)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Reason (required)")
+                    Text("Reason (Required)")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     TextField("Reason", text: $deleteReason, axis: .vertical)
@@ -567,7 +567,7 @@ public struct TransactionActionsSheet: View {
                     SoftErrorBox(deleteReasonError)
                 }
                 TwoButtonRow {
-                    Button("Delete") {
+                    Button("Move to Trash") {
                         Task {
                             let reason = deleteReason.trimmingCharacters(in: .whitespaces)
                             guard !reason.isEmpty else {

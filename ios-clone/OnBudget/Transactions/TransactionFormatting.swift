@@ -337,9 +337,9 @@ public enum TransactionSort: String, Equatable, CaseIterable {
 /// The single "When" choice (Filters rethink, Nov 11, 2026 — owner:
 /// one button + one calendar, tap a start date then an end date).
 /// It replaces the three overlapping date controls (month dropdown,
-/// "This week" toggle, From/To fields): the sheet offers All Time /
-/// This Week / This Month / a custom range, and the calendar is where
-/// the range is picked. The stored filter keeps its old fields
+/// "This week" toggle, From/To fields): the sheet offers This Week /
+/// This Month / a custom range, and Clear returns to unfiltered
+/// (no All Time pick). The stored filter keeps its old fields
 /// (`month` / `weekOnly` / `fromDate` / `toDate`); this enum is the
 /// one presentation of them, mapped both ways below.
 public enum WhenSelection: Equatable {
@@ -348,12 +348,13 @@ public enum WhenSelection: Equatable {
     case thisMonth
     case custom(from: String, to: String)
 
-    /// Plain label for the When button and the one date chip:
-    /// "All Time" / "This Week" / "This Month" / "Nov 8 – Nov 14"
+    /// Plain label for the When button: "Choose Dates" when no
+    /// range is set (T-P2-15 — the quick picks no longer offer All
+    /// Time) / "This Week" / "This Month" / "Nov 8 – Nov 14"
     /// (one-sided range: "From Nov 8" / "To Nov 14").
     public var label: String {
         switch self {
-        case .allTime: return "All Time"
+        case .allTime: return "Choose Dates"
         case .thisWeek: return "This Week"
         case .thisMonth: return "This Month"
         case .custom(let from, let to):

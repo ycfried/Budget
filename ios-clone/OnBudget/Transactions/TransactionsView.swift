@@ -409,7 +409,7 @@ public struct TransactionsView: View {
 /// Bottom sheet: handle bar, heading "Filters" (RETHOUGHT, Nov 11,
 /// 2026 — owner: "this page needs to be rethought"). One clear
 /// control per question, nothing fighting anything else:
-/// - When: ONE button ("All Time" / "This Week" / "This Month" /
+/// - When: ONE button ("Choose Dates" / "This Week" / "This Month" /
 ///   "Nov 8 – Nov 14") that opens ONE calendar — tap a start date,
 ///   then an end date. Quick picks (This Week / This Month) sit at
 ///   the top of the calendar; Clear lives in the calendar toolbar

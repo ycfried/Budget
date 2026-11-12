@@ -12,7 +12,7 @@ import OnBudgetKit
 ///
 /// Detail panel, in order: bold merchant + amount + kind label;
 /// labelled rows Date (long) / Account / Status (pill) / Source
-/// (pill) (+ Refund link row for refunds); then the Actions button —
+/// (pill) (+ Refund Link row for refunds); then the Actions button —
 /// one small tertiary button, only when the viewer has any action on
 /// that row. No explainer sentences: the facts already say it.
 /// The whole row is the tap target — the chevron is only a visual
@@ -130,11 +130,9 @@ public struct TransactionDetailView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(
-                "\(TransactionFormatting.displayMerchant(transaction.merchant)) — \(TransactionFormatting.formatCents(transaction.amountCents)) (\(TransactionFormatting.kindLabel(for: transaction)))"
-            )
-            .font(.system(size: 15, weight: .bold))
-            .foregroundStyle(DesignTokens.ink)
+            Text(detailHeader)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(DesignTokens.ink)
 
             VStack(spacing: 6) {
                 // No Week row: the Date already says it (owner,
@@ -146,7 +144,7 @@ public struct TransactionDetailView: View {
                 detailRow(label: "Source") { SourcePill(transaction) }
                 if transaction.kind == .refund {
                     detailRow(
-                        label: "Refund link",
+                        label: "Refund Link",
                         value: transaction.originalPurchaseId != nil
                             ? "Linked to a purchase"
                             : "Not linked to a purchase yet"
@@ -162,6 +160,22 @@ public struct TransactionDetailView: View {
                 }
             }
         }
+    }
+
+    /// Detail header: merchant — amount, plus the kind in
+    /// parentheses only when it says something ("(Refund)" /
+    /// "(Charity gift)" / "(Transfer)"). A plain charge shows no
+    /// "(Transaction)" noise (T-P2-8) — every other kind maps to
+    /// that same label, so it carries no information either.
+    private var detailHeader: String {
+        let kindSuffix: String
+        switch transaction.kind {
+        case .refund, .charity, .transfer:
+            kindSuffix = " (\(TransactionFormatting.kindLabel(for: transaction)))"
+        default:
+            kindSuffix = ""
+        }
+        return "\(TransactionFormatting.displayMerchant(transaction.merchant)) — \(TransactionFormatting.formatCents(transaction.amountCents))\(kindSuffix)"
     }
 
     private func detailRow(label: String, value: String) -> some View {
