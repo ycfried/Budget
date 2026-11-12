@@ -267,22 +267,24 @@ final class APIDecodingTests: XCTestCase {
     }
 
     func testWeekCloseResultDecodes() throws {
-        // Real server payload (supabase/functions/week-close/index.ts
-        // payload, line ~799): `restorations_skipped` is an array of
-        // objects, and there is NO `unlinked_excess_by_week` key at
-        // all — the old fixture's `{}` was a made-up shape. The
-        // model's `unlinkedExcessByWeek` is optional forward-compat
-        // only; it decodes nil here.
+        // Real server payload (week-close/index.ts:1003-1004 in the
+        // current server source): `unlinked_excess_by_week` is an
+        // array of `{week_start, unlinked_excess_cents}` objects and
+        // `restorations_skipped` is an array of objects. The old
+        // fixture's `"unlinked_excess_by_week": {}` (a dictionary)
+        // could never decode.
         let close: WeekCloseResult = try decode("""
         {"weeks_closed": 1, "releases": 1, "held_legacy": 0,
          "restorations": 0, "held_refunds_created": 0,
          "fund_available_cents": 12000, "shortfall_cents": 0,
          "pending_late_adjustment_cents": 0,
+         "unlinked_excess_by_week": [{"week_start": "2026-11-01", "unlinked_excess_cents": 250}],
          "restorations_skipped": [{"purchase_transaction_id": "00000000-0000-0000-0000-000000000001", "reason": "purchase row not found"}]}
         """)
         XCTAssertEqual(close.weeksClosed, 1)
         XCTAssertEqual(close.fundAvailableCents, 12000)
-        XCTAssertNil(close.unlinkedExcessByWeek)
+        XCTAssertEqual(close.unlinkedExcessByWeek?.count, 1)
+        XCTAssertEqual(close.unlinkedExcessByWeek?[0].unlinkedExcessCents, 250)
         XCTAssertEqual(close.restorationsSkipped.count, 1)
         XCTAssertEqual(close.restorationsSkipped[0].reason, "purchase row not found")
     }

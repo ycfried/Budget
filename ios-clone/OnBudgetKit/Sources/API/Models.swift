@@ -568,13 +568,12 @@ public struct WeekCloseResult: Equatable, Codable {
     public let fundAvailableCents: Int
     public let shortfallCents: Int
     public let pendingLateAdjustmentCents: Int
-    /// `unlinked_excess_by_week` is NOT returned by the server today
-    /// (verified by grep across `supabase/` — no function emits the
-    /// key). The field is optional forward-compat only: it decodes
-    /// nil when absent and an array of `{week_start,
-    /// unlinked_excess_cents}` objects if the server ever adds it.
-    /// The old `[String: Int]` dictionary model could never have
-    /// decoded an array, so the retype stands either way.
+    /// `unlinked_excess_by_week` is an ARRAY of `{week_start,
+    /// unlinked_excess_cents}` objects (empty `[]` included) — the
+    /// old `[String: Int]` dictionary model could never decode it,
+    /// so `weekClose()` could never succeed. It is optional because
+    /// the no-op early return (`week-close/index.ts:423`) omits the
+    /// key; the full payload carries it (`:1003`).
     public let unlinkedExcessByWeek: [WeekUnlinkedExcess]?
     /// `restorations_skipped` is always an array of OBJECTS
     /// (`{reason}` or `{purchase_transaction_id, reason}`), never

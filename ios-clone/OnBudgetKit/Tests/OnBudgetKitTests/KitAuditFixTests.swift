@@ -96,19 +96,23 @@ final class KitAuditFixTests: XCTestCase {
     // MARK: - P0-5 / P0-6: week-close arrays are objects, not a map / strings
 
     func testWeekCloseResultDecodesServerShape() throws {
-        // Real payload (supabase/functions/week-close/index.ts):
-        // `restorations_skipped` is an array of objects; there is NO
-        // `unlinked_excess_by_week` key — the model's field is
-        // optional forward-compat only and must decode nil here.
+        // Real payload (supabase/functions/week-close/index.ts:1003-1004
+        // in the current server source): `unlinked_excess_by_week`
+        // is an array of objects and `restorations_skipped` is an
+        // array of objects. (The no-op early return omits the
+        // unlinked key, so the field stays optional.)
         let body = Data("""
         {"weeks_closed": 1, "releases": 0, "held_legacy": 0, "restorations": 1,
          "held_refunds_created": 0, "fund_available_cents": 1000, "shortfall_cents": 0,
          "pending_late_adjustment_cents": 0,
+         "unlinked_excess_by_week": [{"week_start": "2026-11-01", "unlinked_excess_cents": 250}],
          "restorations_skipped": [{"purchase_transaction_id": "00000000-0000-0000-0000-000000000001", "reason": "no purchase"}, {"reason": "restoration tables not yet migrated (apply restoration-snapshots.sql)"}]}
         """.utf8)
         let result = try JSONDecoder().decode(WeekCloseResult.self, from: body)
         XCTAssertEqual(result.weeksClosed, 1)
-        XCTAssertNil(result.unlinkedExcessByWeek)
+        XCTAssertEqual(result.unlinkedExcessByWeek?.count, 1)
+        XCTAssertEqual(result.unlinkedExcessByWeek?[0].weekStart, "2026-11-01")
+        XCTAssertEqual(result.unlinkedExcessByWeek?[0].unlinkedExcessCents, 250)
         XCTAssertEqual(result.restorationsSkipped.count, 2)
         XCTAssertEqual(result.restorationsSkipped[0].reason, "no purchase")
         XCTAssertNil(result.restorationsSkipped[1].purchaseTransactionId)
@@ -116,6 +120,20 @@ final class KitAuditFixTests: XCTestCase {
     }
 
     func testWeekCloseResultDecodesEmptyArrays() throws {
+        let body = Data("""
+        {"weeks_closed": 0, "releases": 0, "held_legacy": 0, "restorations": 0,
+         "held_refunds_created": 0, "fund_available_cents": 0, "shortfall_cents": 0,
+         "pending_late_adjustment_cents": 0,
+         "unlinked_excess_by_week": [], "restorations_skipped": []}
+        """.utf8)
+        let result = try JSONDecoder().decode(WeekCloseResult.self, from: body)
+        XCTAssertEqual(result.unlinkedExcessByWeek?.count, 0)
+        XCTAssertEqual(result.restorationsSkipped.count, 0)
+    }
+
+    func testWeekCloseResultDecodesWithoutUnlinkedKey() throws {
+        // The no-op early return (week-close/index.ts:423) omits the
+        // unlinked key entirely — the field must decode nil, not throw.
         let body = Data("""
         {"weeks_closed": 0, "releases": 0, "held_legacy": 0, "restorations": 0,
          "held_refunds_created": 0, "fund_available_cents": 0, "shortfall_cents": 0,
