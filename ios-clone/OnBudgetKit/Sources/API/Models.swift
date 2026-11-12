@@ -568,15 +568,18 @@ public struct WeekCloseResult: Equatable, Codable {
     public let fundAvailableCents: Int
     public let shortfallCents: Int
     public let pendingLateAdjustmentCents: Int
-    /// `unlinked_excess_by_week` is always an ARRAY of
-    /// `{week_start, unlinked_excess_cents}` objects (empty `[]`
-    /// included) — the old `[String: Int]` dictionary model could
-    /// never decode, so `weekClose()` could never succeed.
+    /// `unlinked_excess_by_week` is NOT returned by the server today
+    /// (verified by grep across `supabase/` — no function emits the
+    /// key). The field is optional forward-compat only: it decodes
+    /// nil when absent and an array of `{week_start,
+    /// unlinked_excess_cents}` objects if the server ever adds it.
+    /// The old `[String: Int]` dictionary model could never have
+    /// decoded an array, so the retype stands either way.
     public let unlinkedExcessByWeek: [WeekUnlinkedExcess]?
     /// `restorations_skipped` is always an array of OBJECTS
     /// (`{reason}` or `{purchase_transaction_id, reason}`), never
     /// bare strings — and it defaults to empty if the key is absent.
-    public let restorationsSkipped: [WeekCloseSkipped] = []
+    public let restorationsSkipped: [WeekCloseSkipped]
 
     enum CodingKeys: String, CodingKey {
         case weeksClosed = "weeks_closed"
@@ -589,6 +592,24 @@ public struct WeekCloseResult: Equatable, Codable {
         case pendingLateAdjustmentCents = "pending_late_adjustment_cents"
         case unlinkedExcessByWeek = "unlinked_excess_by_week"
         case restorationsSkipped = "restorations_skipped"
+    }
+
+    /// Explicit decoder (same gotcha as `PlaidExchangeResult` /
+    /// `PlaidSyncResult`): a synthesized `init(from:)` does NOT pick
+    /// up a present value for a `let` with a default — the array
+    /// decoded as `[]` even with an object in the JSON.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.weeksClosed = try container.decode(Int.self, forKey: .weeksClosed)
+        self.releases = try container.decode(Int.self, forKey: .releases)
+        self.heldLegacy = try container.decode(Int.self, forKey: .heldLegacy)
+        self.restorations = try container.decode(Int.self, forKey: .restorations)
+        self.heldRefundsCreated = try container.decode(Int.self, forKey: .heldRefundsCreated)
+        self.fundAvailableCents = try container.decode(Int.self, forKey: .fundAvailableCents)
+        self.shortfallCents = try container.decode(Int.self, forKey: .shortfallCents)
+        self.pendingLateAdjustmentCents = try container.decode(Int.self, forKey: .pendingLateAdjustmentCents)
+        self.unlinkedExcessByWeek = try container.decodeIfPresent([WeekUnlinkedExcess].self, forKey: .unlinkedExcessByWeek)
+        self.restorationsSkipped = try container.decodeIfPresent([WeekCloseSkipped].self, forKey: .restorationsSkipped) ?? []
     }
 }
 
