@@ -17,7 +17,8 @@ import OnBudgetKit
 /// The single TrashView (integration, Nov 9, 2026): the Funds copy
 /// is deleted — CLONE_SPEC §11 links Trash only from Transactions,
 /// and no Funds call site ever existed. Reached from the
-/// Transactions "Trash (N)" link only (admin-only, hidden at 0).
+/// Transactions "Trash" link only (admin-only, hidden when empty —
+/// no count is shown).
 ///
 /// KNOWN LIVE DEFECT (not worked around): merged duplicates were
 /// excluded without recording `pre_exclusion_state`, so restoring
@@ -68,54 +69,64 @@ public struct TrashView: View {
                             .foregroundStyle(Color(hex: "#6b7280"))
                             .padding(.top, 8)
                     } else {
-                        ForEach(viewModel.trashTransactions) { transaction in
-                            Button {
-                                Task {
-                                    restoringId = transaction.id
-                                    _ = await viewModel.restore(transaction)
-                                    restoringId = nil
-                                }
-                            } label: {
-                                HStack(spacing: 10) {
-                                    TransactionIconView(
-                                        merchant: transaction.merchant,
-                                        institutionName: transaction.cardSuffix == "0000"
-                                            ? nil : viewModel.institutionBySuffix[transaction.cardSuffix]
-                                    )
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(TransactionFormatting.displayMerchant(transaction.merchant))
-                                            .font(.system(size: 16, weight: .bold))
-                                            .foregroundStyle(DesignTokens.ink)
-                                            .lineLimit(1)
-                                        Text("\(TransactionFormatting.displayDay(transaction.date)) · \(TransactionFormatting.cardLabel(for: transaction))")
-                                            .font(.system(size: 13))
-                                            .foregroundStyle(Color(hex: "#6b7280"))
+                        // ONE continuous list, like the main
+                        // Transactions list (T-P2-14) — a single white
+                        // card with a divider between rows, not a
+                        // card per row.
+                        VStack(spacing: 0) {
+                            ForEach(viewModel.trashTransactions) { transaction in
+                                Button {
+                                    Task {
+                                        restoringId = transaction.id
+                                        _ = await viewModel.restore(transaction)
+                                        restoringId = nil
                                     }
-                                    Spacer()
-                                    Text(TransactionFormatting.formatCents(transaction.amountCents))
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundStyle(DesignTokens.ink)
-                                    // The Restore pill is the visual hint for
-                                    // the whole-row action (same look as
-                                    // SmallPrimaryButtonStyle); the row
-                                    // itself is the button.
-                                    Text("Restore")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(.white)
-                                        .padding(.vertical, 8)
-                                        .padding(.horizontal, 12)
-                                        .background(DesignTokens.primary)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        TransactionIconView(
+                                            merchant: transaction.merchant,
+                                            institutionName: transaction.cardSuffix == "0000"
+                                                ? nil : viewModel.institutionBySuffix[transaction.cardSuffix]
+                                        )
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(TransactionFormatting.displayMerchant(transaction.merchant))
+                                                .font(.system(size: 16, weight: .bold))
+                                                .foregroundStyle(DesignTokens.ink)
+                                                .lineLimit(1)
+                                            Text("\(TransactionFormatting.displayDay(transaction.date)) · \(TransactionFormatting.cardLabel(for: transaction))")
+                                                .font(.system(size: 13))
+                                                .foregroundStyle(Color(hex: "#6b7280"))
+                                        }
+                                        Spacer()
+                                        Text(TransactionFormatting.formatCents(transaction.amountCents))
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundStyle(DesignTokens.ink)
+                                        // The Restore pill is the visual hint for
+                                        // the whole-row action (same look as
+                                        // SmallPrimaryButtonStyle); the row
+                                        // itself is the button.
+                                        Text("Restore")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(.white)
+                                            .padding(.vertical, 8)
+                                            .padding(.horizontal, 12)
+                                            .background(DesignTokens.primary)
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    }
+                                    .padding(14)
+                                    .contentShape(Rectangle())
                                 }
-                                .padding(14)
-                                .contentShape(Rectangle())
+                                .buttonStyle(.plain)
+                                .disabled(restoringId == transaction.id)
+                                if transaction.id != viewModel.trashTransactions.last?.id {
+                                    Divider()
+                                        .padding(.leading, 64)
+                                }
                             }
-                            .buttonStyle(.plain)
-                            .disabled(restoringId == transaction.id)
-                            .background(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 20))
-                            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
                         }
+                        .background(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
                     }
                 }
                 .padding()
