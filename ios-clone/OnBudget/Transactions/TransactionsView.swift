@@ -402,9 +402,11 @@ public struct TransactionsView: View {
 /// control per question, nothing fighting anything else:
 /// - When: ONE button ("All Time" / "This Week" / "This Month" /
 ///   "Nov 8 – Nov 14") that opens ONE calendar — tap a start date,
-///   then an end date. Quick picks (This Week / This Month / All
-///   Time) sit at the top of the calendar. No month dropdown, no
-///   "This week" toggle, no From/To fields on this page.
+///   then an end date. Quick picks (This Week / This Month) sit at
+///   the top of the calendar; Clear lives in the calendar toolbar
+///   (owner, Nov 12, 2026 — All Time is gone, Clear does that job).
+///   No month dropdown, no "This week" toggle, no From/To fields on
+///   this page.
 /// - Status select: All transactions / Charity gifts / Pending /
 ///   Posted / Refunds. Card / Account select ("All cards" default).
 /// - Amount: Min / Max side by side (placeholders `$0.00`). Bounds
@@ -647,9 +649,16 @@ public struct TransactionsFilterSheet: View {
 
 /// ONE date control (owner, Nov 11, 2026): one button opens one
 /// calendar; tap a start date, then an end date. Quick picks (This
-/// Week / This Month / All Time) sit at the top; a third tap restarts
-/// the range. The chosen range feeds the one date-range chip on the
+/// Week / This Month) sit at the top; a third tap restarts the
+/// range. The chosen range feeds the one date-range chip on the
 /// Transactions page ("Nov 8 – Nov 14").
+///
+/// Reworked Nov 12, 2026 (owner): the system graphical DatePicker
+/// cannot render a range fill, so this is a custom month grid —
+/// start and end are solid blue circles, the days between carry a
+/// light-blue band, hotel-style. All Time is gone (Clear does that
+/// job); Clear lives in the toolbar top-right, by the back arrow,
+/// so Done is full-width and centered at the bottom.
 private struct DateRangeCalendarView: View {
     @Binding var selection: WhenSelection
     @Environment(\.dismiss) private var dismiss
@@ -657,52 +666,53 @@ private struct DateRangeCalendarView: View {
     /// The range being built: first tap = start, second tap = end.
     @State private var pendingStart: Date?
     @State private var pendingEnd: Date?
+    /// First day of the month currently shown.
+    @State private var visibleMonth: Date = Calendar.current.date(
+        from: Calendar.current.dateComponents([.year, .month], from: Date())
+    ) ?? Date()
+
+    private static let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter
+    }()
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Quick Picks")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(DesignTokens.ink)
                     HStack(spacing: 10) {
                         Button("This Week") { choose(.thisWeek) }
                             .buttonStyle(SmallOutlineButtonStyle())
                         Button("This Month") { choose(.thisMonth) }
                             .buttonStyle(SmallOutlineButtonStyle())
-                        Button("All Time") { choose(.allTime) }
-                            .buttonStyle(SmallOutlineButtonStyle())
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(pendingLabel)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(DesignTokens.ink)
-                    DatePicker(
-                        "Range",
-                        selection: Binding(
-                            get: { pendingStart ?? Calendar.current.startOfDay(for: Date()) },
-                            set: { pick($0) }
-                        ),
-                        displayedComponents: .date
-                    )
-                    .datePickerStyle(.graphical)
-                    .labelsHidden()
+                    pendingLabel
+                    monthHeader
+                    weekdayHeader
+                    monthGrid
                 }
 
-                HStack {
-                    Button("Clear") { choose(.allTime) }
-                        .buttonStyle(QuietButtonStyle())
-                    Spacer()
-                    Button("Done") { done() }
-                        .buttonStyle(PrimaryButtonStyle())
-                }
+                Button("Done") { done() }
+                    .buttonStyle(PrimaryButtonStyle())
             }
             .padding()
         }
         .navigationTitle("Choose Dates")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Clear") { choose(.allTime) }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.primary)
+            }
+        }
         .onAppear {
             // Seed the pending range from the current selection
             // (stored as YYYY-MM-DD strings).
@@ -710,20 +720,163 @@ private struct DateRangeCalendarView: View {
                 pendingStart = TransactionFormatting.dateFromString(from)
                 pendingEnd = TransactionFormatting.dateFromString(to)
             }
+            if let start = pendingStart,
+               let firstOfMonth = Calendar.current.date(
+                from: Calendar.current.dateComponents([.year, .month], from: start)) {
+                visibleMonth = firstOfMonth
+            }
         }
     }
 
-    private var pendingLabel: String {
+    // MARK: - Range label
+
+    /// Start-only reads "Nov 19 – Pick end date" with the start
+    /// date in blue until the end is picked (owner, Nov 12, 2026).
+    @ViewBuilder
+    private var pendingLabel: some View {
         switch (pendingStart, pendingEnd) {
         case (nil, _):
-            return "Tap a start date"
+            Text("Tap a start date")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
         case (let start?, nil):
-            return "\(TransactionFormatting.displayDay(TransactionFormatting.string(from: start))) — tap an end date"
+            Text(TransactionFormatting.displayDay(TransactionFormatting.string(from: start)))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DesignTokens.primary)
+            + Text(" – Pick end date")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
         case (let start?, let end?):
             let from = TransactionFormatting.string(from: start)
             let to = TransactionFormatting.string(from: end)
-            if start == end { return TransactionFormatting.displayDay(from) }
-            return "\(TransactionFormatting.displayDay(from)) – \(TransactionFormatting.displayDay(to))"
+            if start == end {
+                Text(TransactionFormatting.displayDay(from))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+            } else {
+                Text("\(TransactionFormatting.displayDay(from)) – \(TransactionFormatting.displayDay(to))")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+            }
+        }
+    }
+
+    // MARK: - Custom calendar grid
+
+    private var monthHeader: some View {
+        HStack {
+            Button { shiftMonth(by: -1) } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.primary)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Previous month")
+            Spacer()
+            Text(Self.monthFormatter.string(from: visibleMonth))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            Spacer()
+            Button { shiftMonth(by: 1) } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.primary)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Next month")
+        }
+    }
+
+    /// SUN–SAT headers, rotated to the device calendar's first
+    /// weekday so they line up with the grid below.
+    private var weekdayHeader: some View {
+        HStack(spacing: 0) {
+            ForEach(weekdaySymbols, id: \.self) { symbol in
+                Text(symbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var weekdaySymbols: [String] {
+        let symbols = Calendar.current.shortWeekdaySymbols.map { $0.uppercased() }
+        let start = Calendar.current.firstWeekday - 1
+        guard start > 0 else { return symbols }
+        return Array(symbols[start...] + symbols[..<start])
+    }
+
+    private var monthGrid: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
+            spacing: 4
+        ) {
+            // Enumerated by position: the leading blanks are all nil
+            // and would collide as ForEach ids.
+            ForEach(Array(daysInVisibleMonth().enumerated()), id: \.offset) { _, day in
+                if let day {
+                    dayCell(day)
+                } else {
+                    Color.clear.frame(height: 44)
+                }
+            }
+        }
+    }
+
+    /// The visible month's days as [Date?], with nil leading blanks
+    /// so the 1st lands under the right weekday header.
+    private func daysInVisibleMonth() -> [Date?] {
+        let calendar = Calendar.current
+        guard let monthInterval = calendar.dateInterval(of: .month, for: visibleMonth),
+              let dayRange = calendar.range(of: .day, in: .month, for: visibleMonth)
+        else { return [] }
+        let firstWeekday = calendar.component(.weekday, from: monthInterval.start)
+        let leadingBlanks = (firstWeekday - calendar.firstWeekday + 7) % 7
+        var days: [Date?] = Array(repeating: nil, count: leadingBlanks)
+        for day in dayRange {
+            if let date = calendar.date(byAdding: .day, value: day - 1, to: monthInterval.start) {
+                days.append(date)
+            }
+        }
+        return days
+    }
+
+    /// Start / end: solid blue circle, white number. Days strictly
+    /// between: light-blue fill band across the whole cell, so the
+    /// picked range reads as one hotel-style span.
+    private func dayCell(_ date: Date) -> some View {
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: date)
+        let isStart = pendingStart.map { calendar.isDate($0, inSameDayAs: day) } ?? false
+        let isEnd = pendingEnd.map { calendar.isDate($0, inSameDayAs: day) } ?? false
+        let inRange: Bool = {
+            guard let start = pendingStart, let end = pendingEnd else { return false }
+            return day >= start && day <= end
+        }()
+        return Button { pick(day) } label: {
+            ZStack {
+                if inRange {
+                    Rectangle().fill(Color(hex: "#dbeafe"))
+                }
+                if isStart || isEnd {
+                    Circle()
+                        .fill(DesignTokens.primary)
+                        .frame(width: 36, height: 36)
+                }
+                Text("\(calendar.component(.day, from: day))")
+                    .font(.system(size: 16, weight: (isStart || isEnd) ? .semibold : .regular))
+                    .foregroundStyle((isStart || isEnd) ? .white : DesignTokens.ink)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(TransactionFormatting.displayDay(TransactionFormatting.string(from: day)))\(isStart ? ", range start" : "")\(isEnd ? ", range end" : "")")
+    }
+
+    private func shiftMonth(by months: Int) {
+        if let shifted = Calendar.current.date(byAdding: .month, value: months, to: visibleMonth) {
+            visibleMonth = shifted
         }
     }
 
