@@ -370,7 +370,13 @@ public struct FundRequestQueue: View {
         if request.status == "split" {
             return "Split — \(MoneyFormat.formatCents(request.remainderCents)) remaining"
         }
-        return request.status.uppercased()
+        // Title Case, never ALL-CAPS (F-P2-5).
+        switch request.status {
+        case "pending": return "Pending"
+        case "approved": return "Approved"
+        case "declined": return "Declined"
+        default: return request.status.capitalized
+        }
     }
 
     private func statusSentence(_ request: FundRequest) -> String {

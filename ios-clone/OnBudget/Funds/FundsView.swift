@@ -374,6 +374,21 @@ public struct SavingsSection: View {
         viewModel.savings.filter { $0.kind == kind }.reduce(0) { $0 + $1.amountCents }
     }
 
+    /// Plain words for a stored savings kind, matching the summary
+    /// labels above: transfer_in → "Transferred In", withdrawal →
+    /// "Withdrawn", interest → "Interest", adjustment → "Adjustments"
+    /// (kinds per supabase/savings-movements.sql:19 + 'adjustment'
+    /// in live-savings-rpc.sql:35).
+    private func kindLabel(_ kind: String) -> String {
+        switch kind {
+        case "transfer_in": return "Transferred In"
+        case "withdrawal": return "Withdrawn"
+        case "interest": return "Interest"
+        case "adjustment": return "Adjustments"
+        default: return kind.capitalized
+        }
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let error = viewModel.savingsError {
@@ -401,7 +416,7 @@ public struct SavingsSection: View {
                 Divider()
                 let latest = Array(viewModel.savings.prefix(20))
                 ForEach(Array(latest.enumerated()), id: \.offset) { _, row in
-                    Text("\(row.kind) \(MoneyFormat.formatCents(row.amountCents)) · Recorded balance \(row.actualBalanceCents.map { MoneyFormat.formatCents($0) } ?? "—") · \(row.createdAt.map { MoneyFormat.fmtDateTime($0) } ?? "")\(row.note.isEmpty ? "" : " · \(row.note)")")
+                    Text("\(kindLabel(row.kind)) \(MoneyFormat.formatCents(row.amountCents)) · Recorded balance \(row.actualBalanceCents.map { MoneyFormat.formatCents($0) } ?? "—") · \(row.createdAt.map { MoneyFormat.fmtDateTime($0) } ?? "")\(row.note.isEmpty ? "" : " · \(row.note)")")
                         .font(.system(size: 14))
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }
