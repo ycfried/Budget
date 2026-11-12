@@ -104,7 +104,9 @@ final class ProfileSettingsViewModel: ObservableObject {
                 if error == .cancelled {
                     // Silent: the user backed out of the prompt.
                 } else {
-                    toast.showError(error.userMessage)
+                    // Audit A-P2-2: the message names the device's
+                    // actual biometry kind.
+                    toast.showError(error.userMessage(for: biometricUnlock.biometryKind))
                 }
             } catch {
                 toast.showError("Could not turn on \(faceIDBiometryName) unlock. Try again.")

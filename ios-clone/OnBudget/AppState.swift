@@ -377,10 +377,12 @@ public final class AppViewModel: ObservableObject {
         } catch let error as BiometricUnlockError {
             refreshBiometricUnlockAvailability()
             if error == .cancelled { return .cancelled }
-            return .failed(error.userMessage)
+            // Audit A-P2-2: the message names the device's actual
+            // biometry kind, so Touch ID hardware never sees "Face ID".
+            return .failed(error.userMessage(for: biometricUnlock.biometryKind))
         } catch {
             refreshBiometricUnlockAvailability()
-            return .failed("Face ID did not work. Sign in with your password.")
+            return .failed("\(biometricUnlock.biometryKind.displayName) did not work. Sign in with your password.")
         }
     }
 
@@ -502,7 +504,10 @@ public final class AppViewModel: ObservableObject {
     /// happened on Supabase's server when the link was fetched, so
     /// the email is confirmed even if this handler fails — the user
     /// can then just sign in. Success adopts the session and boots
-    /// straight in; failure lands on Auth with a plain message.
+    /// straight in; failure re-validates the stored session with
+    /// `boot()` (audit A-P1-1) instead of forcing `.auth`, so a
+    /// signed-in user who tapped a stale link stays in the app and
+    /// only a truly dead session lands on Auth, with a plain message.
     public func handleEmailConfirmationDeepLink(_ url: URL) async {
         guard url.scheme == "onbudget", url.host == "email-confirmed" else { return }
         if let fragment = url.fragment {
@@ -523,7 +528,10 @@ public final class AppViewModel: ObservableObject {
             }
         }
         authNotice = "This confirmation link could not be used. If your email is already confirmed, just sign in."
-        phase = .auth
+        // Audit A-P1-1: re-validate instead of forcing `.auth` — a
+        // signed-in user who tapped a stale link goes back into the
+        // app; only a dead/absent session lands on Auth.
+        await boot()
     }
 
     /// Exchange a PKCE recovery code for a session, then hand the

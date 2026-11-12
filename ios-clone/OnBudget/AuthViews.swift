@@ -214,12 +214,16 @@ public struct AuthView: View {
                 .textContentType(.password)
                 // Eye icon, not "Show"/"Hide" text (owner, Nov 12,
                 // 2026). The 12pt spacing keeps it clear of the
-                // biometric icon next to it.
+                // biometric icon next to it. 44pt hit area (audit
+                // A-P2-8): the icon stays 18pt, the tappable frame
+                // is 44pt.
                 Button { showPassword.toggle() } label: {
                     Image(systemName: showPassword ? "eye.slash" : "eye")
                         .font(.system(size: 18))
                         .foregroundStyle(DesignTokens.primary)
                 }
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
                 .accessibilityLabel(showPassword ? "Hide Password" : "Show Password")
                 // Biometric unlock as a small icon in the password
                 // row (owner, Nov 11, 2026) — the manual trigger,
@@ -234,6 +238,10 @@ public struct AuthView: View {
                             .font(.system(size: 20))
                             .foregroundStyle(DesignTokens.primary)
                     }
+                    // 44pt hit area (audit A-P2-8): the icon stays
+                    // 20pt, the tappable frame is 44pt.
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
                     .accessibilityLabel(biometricUnlockLabel)
                     .disabled(busy != nil)
                 }
@@ -389,7 +397,19 @@ public struct AuthView: View {
                 let exists = try? await appState.client.functions.checkEmailExists(email: trimmed)
                 message = SignInErrorMessage.invalidCredentials(emailExists: exists)
             } else {
-                message = error.userMessage
+                // Audit A-P2-7: show the sanitised displayMessage,
+                // never raw transport text. Audit A-P2-9: an
+                // unconfirmed email names the next step — GoTrue
+                // answers "Email not confirmed" with no guidance.
+                // There is no in-app resend (verified: no resend
+                // path exists in the native code), so the step is
+                // to check the inbox for the confirmation link.
+                let text = error.displayMessage
+                if text.lowercased().contains("not confirmed") {
+                    message = "Email not confirmed. Check your inbox for the confirmation link, then sign in again."
+                } else {
+                    message = text
+                }
             }
             messageIsError = true
             busy = nil
@@ -457,7 +477,9 @@ public struct NameStepView: View {
                 Text("Check Your Email")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
-                InfoBox("Account created. Check your email to confirm it, then sign in.")
+                // Inline success is GREEN (owner decision, Nov 12,
+                // 2026), like the success toasts — not the blue InfoBox.
+                SuccessBox("Account created. Check your email to confirm it, then sign in.")
                 Text("The confirmation link opens the OnBudget app. If it doesn't open, tap it on the iPhone or iPad where OnBudget is installed — the email is confirmed either way, then just sign in.")
                     .font(.system(size: 15))
                     .foregroundStyle(Color(hex: "#6b7280"))
@@ -479,7 +501,7 @@ public struct NameStepView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .onChange(of: name) { message = nil }
                 if let message { DismissableErrorBox(message) { self.message = nil } }
-                Button(busy ? "Creating account…" : "Create Account") { Task { await createAccount() } }
+                Button(busy ? "Creating Account…" : "Create Account") { Task { await createAccount() } }
                     .buttonStyle(PrimaryButtonStyle())
                     .accessibilityIdentifier("auth.createAccountConfirm")
                     .disabled(busy)
@@ -576,6 +598,9 @@ public struct ForgotPasswordSheet: View {
                 Text("Check your inbox (and spam folder) for the link. The link opens the OnBudget app, where you choose a new password. If the link has expired, send a fresh one from here.")
                     .font(.system(size: 15))
                     .foregroundStyle(DesignTokens.ink)
+                // Audit A-P2-10: the error box sits above the
+                // buttons, like everywhere else — not below them.
+                if let message { DismissableErrorBox(message) { self.message = nil } }
                 HStack(spacing: 12) {
                     Button("Done") { dismiss() }
                         .buttonStyle(PrimaryButtonStyle())
@@ -583,7 +608,6 @@ public struct ForgotPasswordSheet: View {
                         .buttonStyle(TertiaryButtonStyle())
                         .disabled(busy)
                 }
-                if let message { DismissableErrorBox(message) { self.message = nil } }
             } else {
                 Text("Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.")
                     .font(.system(size: 15))
@@ -628,7 +652,9 @@ public struct ForgotPasswordSheet: View {
             sent = true
             sentEmail = trimmed
         } catch let error as OnBudgetError {
-            message = error.userMessage
+            // Audit A-P2-7: the sanitised displayMessage, never raw
+            // transport text.
+            message = error.displayMessage
             busy = false
         } catch {
             message = "Could not send the reset link. Try again."
@@ -643,7 +669,7 @@ public struct ForgotPasswordSheet: View {
 /// Nov 9, 2026): heading "Choose a New Password", the "Step 3 of
 /// the reset…" intro, "Password requirements: at least 8 characters.
 /// Both fields must match.", New Password + Confirm New Password
-/// each with a Show/Hide toggle, "Save New Password" (full-width
+/// each with an eye-icon toggle (audit A-P2-4), "Save New Password" (full-width
 /// primary), Back top-left. Messages are the reset page's exact texts.
 public struct ResetPasswordView: View {
     @EnvironmentObject private var appState: AppViewModel
@@ -670,7 +696,14 @@ public struct ResetPasswordView: View {
                         BackButton {
                             appState.pendingResetCode = nil
                             appState.resetLinkError = nil
-                            appState.phase = .auth
+                            // Audit A-P1-1: re-validate the stored
+                            // session instead of forcing `.auth` — a
+                            // signed-in user who opened a stale link
+                            // goes back into the app; only a dead
+                            // session lands on Auth. (The post-save
+                            // path still returns to sign-in: the
+                            // password just changed.)
+                            Task { await appState.boot() }
                         }
                         .disabled(busy)
                         Spacer()
@@ -684,16 +717,27 @@ public struct ResetPasswordView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(Color(hex: "#6b7280"))
                     if exchanging {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 24)
+                        // Labelled spinner (audit A-P2-6): the bare
+                        // ProgressView said nothing about what was
+                        // happening. Back stays the exit.
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Checking your link…")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
                     } else {
                         passwordField(label: "New Password", text: $newPassword, showing: $showNew)
                             .onChange(of: newPassword) { message = nil }
                         passwordField(label: "Confirm New Password", text: $confirmPassword, showing: $showConfirm)
                             .onChange(of: confirmPassword) { message = nil }
                         if let message {
-                            if messageIsError { DismissableErrorBox(message) { self.message = nil } } else { InfoBox(message) }
+                            // Inline success is GREEN (owner decision,
+                            // Nov 12, 2026): "Password saved…" renders
+                            // in a SuccessBox, not the blue InfoBox.
+                            if messageIsError { DismissableErrorBox(message) { self.message = nil } } else { SuccessBox(message) }
                         }
                         Button(busy ? "Saving…" : "Save New Password") { Task { await save() } }
                             .buttonStyle(PrimaryButtonStyle())
@@ -741,9 +785,17 @@ public struct ResetPasswordView: View {
                     }
                 }
                 .textContentType(.newPassword)
-                Button(showing.wrappedValue ? "Hide" : "Show") { showing.wrappedValue.toggle() }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
+                // Eye icon, not "Show"/"Hide" text (audit A-P2-4):
+                // the reset fields match the sign-in field. 44pt hit
+                // area (audit A-P2-8); the icon stays 18pt.
+                Button { showing.wrappedValue.toggle() } label: {
+                    Image(systemName: showing.wrappedValue ? "eye.slash" : "eye")
+                        .font(.system(size: 18))
+                        .foregroundStyle(DesignTokens.primary)
+                }
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .accessibilityLabel(showing.wrappedValue ? "Hide Password" : "Show Password")
             }
             .padding(12)
             .background(.white)
@@ -786,25 +838,34 @@ public struct SessionExpiredView: View {
     @ObservedObject var appState: AppViewModel
     public init(appState: AppViewModel) { self.appState = appState }
     public var body: some View {
-        // ScrollView (audit F-P2-6): a bare VStack can clip the
-        // footer at large Dynamic Type sizes.
-        ScrollView {
-            VStack(spacing: 16) {
-                AuthBrandHeader()
-                Spacer()
-                Text("Your Sign-In Expired")
-                    .font(.system(size: 22, weight: .bold))
-                Text("Sign in again to see your household.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                Button("Sign In Again") { appState.signInAgain() }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .frame(maxWidth: 320)
-                Spacer()
-                AuthFooter()
+        // Vertical balance (audit A-P2-11): the old Spacer()s sat
+        // inside a ScrollView with no height to share, so they
+        // collapsed and the content top-packed. Same GeometryReader
+        // + minHeight pattern as the sign-in screen: a short screen
+        // centers the content, a tall one still scrolls (audit
+        // F-P2-6), and large Dynamic Type is not clipped.
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 16) {
+                    Spacer(minLength: 0)
+                    AuthBrandHeader()
+                    Spacer()
+                    Text("Your Sign-In Expired")
+                        .font(.system(size: 22, weight: .bold))
+                    Text("Sign in again to see your household.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                    Button("Sign In Again") { appState.signInAgain() }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .frame(maxWidth: 320)
+                    Spacer()
+                    AuthFooter()
+                    Spacer(minLength: 0)
+                }
+                .padding(20)
+                .frame(minHeight: geometry.size.height)
             }
-            .padding(20)
+            .background(DesignTokens.background)
         }
-        .background(DesignTokens.background)
     }
 }
