@@ -3,10 +3,13 @@ import OnBudgetKit
 
 /// Transactions screen (CLONE_SPEC §7).
 ///
-/// - Heading "Transactions". Header actions (right): "+ Add"
-///   (primary) → the Add popup; "Filters" (tertiary) → the filter
-///   sheet. The Add label stays compact so the 28pt title fits on
-///   one line at iPhone width.
+/// - Heading "Transactions". Header actions (right, in order):
+///   sync icon (admin only, 44pt circle) · "+ Add" (primary) →
+///   the Add popup · "Filters" (tertiary) → the filter sheet. The
+///   Add label stays compact so the 28pt title fits on one line at
+///   iPhone width; the three controls sit 2pt apart at 375pt
+///   (owner, Nov 12, 2026 — the sync button no longer gets a row
+///   of its own).
 /// - Page links under the header: "Trash" · "Activity" · "Past Weeks"
 ///   on ONE line, as proper small low-key outline buttons (owner, Nov
 ///   11, 2026 — the quiet grey text read as labels, not as something
@@ -28,10 +31,11 @@ import OnBudgetKit
 ///   probe row does NOT show the button. Load More raises the limit
 ///   by 100 and refreshes. Every filter/search/sort change is a new
 ///   list: the page resets to 100.
-/// - Pull-to-refresh + manual sync icon (admin only): the same
-///   `arrow.clockwise` symbol as the Home Weekly Budget card, in a
-///   44pt circle — primary blue when an allowance has been set, grey
-///   while unset; it spins while syncing.
+/// - Pull-to-refresh + manual sync icon (admin only), in the title
+///   row before "+ Add": the same `arrow.clockwise` symbol as the
+///   Home Weekly Budget card, in a 44pt circle — primary blue when
+///   an allowance has been set, grey while unset; it spins while
+///   syncing.
 /// - Empty / loading / error states per §2.4 — a real error state,
 ///   never an endless spinner. Auth failure: "Your sign-in expired —
 ///   sign in again to see transactions." + "Sign In Again" (calls
@@ -165,54 +169,67 @@ public struct TransactionsView: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Transactions")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(DesignTokens.ink)
-                    .lineLimit(1)
-                Spacer()
-                Button("+ Add") { showingAdd = true }
-                    .buttonStyle(SmallPrimaryButtonStyle())
-                Button("Filters") { showingFilters = true }
-                    .buttonStyle(SmallTertiaryButtonStyle())
-            }
+        // Title row, one line (owner, Nov 12, 2026): the sync
+        // button used to sit alone on a row of its own under the
+        // title; it now lives here, before "+ Add", and the empty
+        // row is gone — the Trash / Activity / Past Weeks row moves
+        // up directly under this row. Order on the right: sync,
+        // then "+ Add" (primary), then "Filters" (tertiary).
+        // Narrow-phone fit (375pt, default type size): the row's
+        // content is 375 − 2×16 page padding = 343pt wide. Title
+        // "Transactions" at 28pt bold ≈ 168pt, sync circle 44pt,
+        // "+ Add" ≈ 62pt, "Filters" ≈ 64pt — intrinsic ≈ 338pt,
+        // leaving ≈ 5pt for the gaps, so the controls sit 2pt apart
+        // (spacing shrunk, button sizes untouched) with a
+        // zero-minimum spacer taking up the rest. A live render
+        // check at 375pt is still owed — no live render here.
+        HStack(spacing: 2) {
+            Text("Transactions")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(DesignTokens.ink)
+                .lineLimit(1)
+            Spacer(minLength: 0)
             if viewModel.isAdmin {
-                HStack {
-                    // Sync: the same refresh symbol as the Home Weekly
-                    // Budget card (owner, Nov 11, 2026) — an icon, no
-                    // text pill. Primary blue once an allowance is set,
-                    // grey before that (same rule as Home); it spins
-                    // while syncing.
-                    Button { Task { await viewModel.runSync() } } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 17, weight: .semibold))
-                            // White icon on the blue state; dark ink on the
-                            // grey state — white-on-grey was ~1.1:1 and
-                            // effectively invisible (audit H-P1-1).
-                            .foregroundStyle(viewModel.allowanceSet ? .white : DesignTokens.ink)
-                            .frame(width: 44, height: 44)
-                            .background(
-                                viewModel.allowanceSet
-                                    ? DesignTokens.primary : Color(hex: "#e5e7eb"))
-                            .clipShape(Circle())
-                            // Repeating linear spin while syncing: a plain
-                            // 0°→360° rotation with no animation renders
-                            // identically at both ends, so it never
-                            // visibly spun (audit H-P1-2).
-                            .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
-                            .animation(
-                                viewModel.isSyncing
-                                    ? .linear(duration: 0.9).repeatForever(autoreverses: false)
-                                    : .default,
-                                value: viewModel.isSyncing)
-                    }
-                    .disabled(viewModel.isSyncing)
-                    .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")
-                    Spacer()
-                }
+                syncButton
             }
+            Button("+ Add") { showingAdd = true }
+                .buttonStyle(SmallPrimaryButtonStyle())
+            Button("Filters") { showingFilters = true }
+                .buttonStyle(SmallTertiaryButtonStyle())
         }
+    }
+
+    /// The manual sync button, moved verbatim from its old row
+    /// (owner, Nov 12, 2026) — only its placement changed. Same
+    /// refresh symbol as the Home Weekly Budget card, same 44pt
+    /// circle, same blue-when-set / grey-when-unset rule, same
+    /// repeating spin while syncing (audit H-P1-1/H-P1-2).
+    private var syncButton: some View {
+        Button { Task { await viewModel.runSync() } } label: {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 17, weight: .semibold))
+                // White icon on the blue state; dark ink on the
+                // grey state — white-on-grey was ~1.1:1 and
+                // effectively invisible (audit H-P1-1).
+                .foregroundStyle(viewModel.allowanceSet ? .white : DesignTokens.ink)
+                .frame(width: 44, height: 44)
+                .background(
+                    viewModel.allowanceSet
+                        ? DesignTokens.primary : Color(hex: "#e5e7eb"))
+                .clipShape(Circle())
+                // Repeating linear spin while syncing: a plain
+                // 0°→360° rotation with no animation renders
+                // identically at both ends, so it never
+                // visibly spun (audit H-P1-2).
+                .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
+                .animation(
+                    viewModel.isSyncing
+                        ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                        : .default,
+                    value: viewModel.isSyncing)
+        }
+        .disabled(viewModel.isSyncing)
+        .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")
     }
 
     @ViewBuilder
