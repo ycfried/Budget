@@ -120,8 +120,7 @@ public struct TrashView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("← Back") { onBack() }
-                        .buttonStyle(BackButtonStyle())
+                    BackButton(action: onBack)
                 }
             }
         }

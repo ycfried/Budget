@@ -93,7 +93,11 @@ public struct DimOnPressButtonStyle: ButtonStyle {
 }
 
 /// Back buttons: light blue #3b82f6, bold 700, 15px, no background,
-/// no border. Text is always "← Back".
+/// no border. Text is always "← Back". This is the ONE back
+/// implementation (audit X-P2-7, Nov 12 2026): the Funds inline
+/// duplicate and the `BackButtonStyle()` toolbar call sites all
+/// route through here now; the rendering itself lives in
+/// `BackButtonStyle`, used by this view and nothing else.
 public struct BackButton: View {
     public let action: () -> Void
     public init(action: @escaping () -> Void) { self.action = action }
@@ -103,6 +107,7 @@ public struct BackButton: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(DesignTokens.mid)
         }
+        .buttonStyle(BackButtonStyle())
         .accessibilityLabel("Back")
     }
 }

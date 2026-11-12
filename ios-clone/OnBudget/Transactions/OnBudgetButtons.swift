@@ -87,6 +87,8 @@ public struct SmallOutlineButtonStyle: ButtonStyle {
 }
 
 /// Back link: light blue #3b82f6, bold 700, 15px, no bg, no border.
+/// (Kept only as the style `BackButton` — the one shared back
+/// implementation — is built on; call sites use `BackButton`.)
 public struct BackButtonStyle: ButtonStyle {
     public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label

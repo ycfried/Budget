@@ -217,8 +217,7 @@ public struct AddPurchaseForm: View {
         .scrollIndicators(.hidden)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button("← Back") { onBack() }
-                    .buttonStyle(BackButtonStyle())
+                BackButton(action: onBack)
             }
         }
         .alert("Possible Duplicate", isPresented: $showingDuplicateConfirm) {
@@ -397,8 +396,7 @@ public struct AddDonationForm: View {
         .scrollIndicators(.hidden)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button("← Back") { onBack() }
-                    .buttonStyle(BackButtonStyle())
+                BackButton(action: onBack)
             }
         }
         .alert("Possible Duplicate", isPresented: $showingDuplicateConfirm) {
