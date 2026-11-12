@@ -487,7 +487,7 @@ public struct NameStepView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .onChange(of: name) { message = nil }
                 if let message { DismissableErrorBox(message) { self.message = nil } }
-                Button(busy ? "Creating account…" : "Create Account") { Task { await createAccount() } }
+                Button(busy ? "Creating Account…" : "Create Account") { Task { await createAccount() } }
                     .buttonStyle(PrimaryButtonStyle())
                     .accessibilityIdentifier("auth.createAccountConfirm")
                     .disabled(busy)
@@ -699,9 +699,17 @@ public struct ResetPasswordView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(Color(hex: "#6b7280"))
                     if exchanging {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 24)
+                        // Labelled spinner (audit A-P2-6): the bare
+                        // ProgressView said nothing about what was
+                        // happening. Back stays the exit.
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Checking your link…")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
                     } else {
                         passwordField(label: "New Password", text: $newPassword, showing: $showNew)
                             .onChange(of: newPassword) { message = nil }
