@@ -325,9 +325,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 .accessibilityLabel(accessibilityLabel)
                 if isExpanded {
                     Divider()
+                        .transition(ExpandAnimation.transition)
                     expanded
+                        .transition(ExpandAnimation.transition)
                 }
-                .transition(ExpandAnimation.transition)
             }
             .animation(ExpandAnimation.animation, value: isExpanded)
         }
