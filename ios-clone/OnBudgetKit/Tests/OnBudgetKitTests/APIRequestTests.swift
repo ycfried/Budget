@@ -382,21 +382,24 @@ final class HouseholdReadsTests: XCTestCase {
     func testAutoSyncEnabledFiltersById() async throws {
         let householdId = UUID()
         let (client, transport) = clientReturning([["auto_sync_enabled": true]])
-        XCTAssertTrue(try await client.autoSyncEnabled(householdId: householdId))
+        let enabled = try await client.autoSyncEnabled(householdId: householdId)
+        XCTAssertTrue(enabled)
         assertFiltersById(transport.requests[0], householdId: householdId)
     }
 
     func testInviteCodeFiltersById() async throws {
         let householdId = UUID()
         let (client, transport) = clientReturning([["invite_code": "PJM2HG"]])
-        XCTAssertEqual(try await client.inviteCode(householdId: householdId), "PJM2HG")
+        let code = try await client.inviteCode(householdId: householdId)
+        XCTAssertEqual(code, "PJM2HG")
         assertFiltersById(transport.requests[0], householdId: householdId)
     }
 
     func testFundShortfallFiltersById() async throws {
         let householdId = UUID()
         let (client, transport) = clientReturning([["fund_shortfall_cents": 0]])
-        XCTAssertEqual(try await client.fundShortfallCents(householdId: householdId), 0)
+        let shortfall = try await client.fundShortfallCents(householdId: householdId)
+        XCTAssertEqual(shortfall, 0)
         assertFiltersById(transport.requests[0], householdId: householdId)
     }
 
