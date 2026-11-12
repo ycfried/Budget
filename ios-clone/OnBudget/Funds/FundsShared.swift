@@ -268,6 +268,11 @@ public struct FundsExpandableCard<Expanded: View>: View {
     public let amountText: String
     public let isExpanded: Bool
     public let isNegative: Bool
+    /// When true the face text is a loading/error status, not an
+    /// amount — render it as a small muted line (matching the Home
+    /// failure presentation), never in 28pt bold amount type
+    /// (F-P2-13).
+    public let amountIsStatus: Bool
     public let accessibilityLabel: String
     public let onToggle: () -> Void
     public let expanded: Expanded
@@ -277,6 +282,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
         amountText: String,
         isExpanded: Bool,
         isNegative: Bool = false,
+        amountIsStatus: Bool = false,
         accessibilityLabel: String,
         onToggle: @escaping () -> Void,
         @ViewBuilder expanded: () -> Expanded
@@ -285,6 +291,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
         self.amountText = amountText
         self.isExpanded = isExpanded
         self.isNegative = isNegative
+        self.amountIsStatus = amountIsStatus
         self.accessibilityLabel = accessibilityLabel
         self.onToggle = onToggle
         self.expanded = expanded()
@@ -308,8 +315,8 @@ public struct FundsExpandableCard<Expanded: View>: View {
                                 .font(.system(size: 17, weight: .bold))
                                 .foregroundStyle(DesignTokens.ink)
                             Text(amountText)
-                                .font(.system(size: 28, weight: .bold))
-                                .foregroundStyle(isNegative ? DesignTokens.errorText : DesignTokens.ink)
+                                .font(.system(size: amountIsStatus ? 14 : 28, weight: amountIsStatus ? .regular : .bold))
+                                .foregroundStyle(amountIsStatus ? Color(hex: "#6b7280") : (isNegative ? DesignTokens.errorText : DesignTokens.ink))
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         HStack {
