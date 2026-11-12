@@ -111,7 +111,28 @@ public enum EmailConnectionWarnings {
 /// (filterState.mjs `bankSyncToast`). The caller passes the decoded
 /// counts; a stale flag adds one honest sentence and a non-empty
 /// `skipped_by_reason` adds the per-reason breakdown.
+///
+/// Every skip-reason key the server emits (plaid-sync `logSkip` /
+/// `upsertTransaction`, plus the legacy `duplicate` / `already-known`
+/// keys) maps to plain user words — the raw slug never reaches the
+/// user (audit S-P2-9). An unknown key falls back to a generic
+/// plain line, never the slug itself.
 public enum BankSyncToast {
+    private static let reasonWords: [String: String] = [
+        "missing-token": "bank connection needs reconnecting",
+        "token-decrypt-failed": "bank connection needs reconnecting",
+        "account-upsert-failed": "could not be saved",
+        "account-disconnected": "account disconnected",
+        "removed-not-found": "already removed",
+        "removed-update-failed": "could not be updated",
+        "invalid-amount": "invalid amount",
+        "invalid-date": "invalid date",
+        "update-failed": "could not be updated",
+        "insert-failed": "could not be saved",
+        "upsert-skipped": "could not be saved",
+        "duplicate": "already known",
+        "already-known": "already known",
+    ]
     public static func text(
         error: String?,
         added: Int,
@@ -139,7 +160,7 @@ public enum BankSyncToast {
         let reasons = (skippedByReason ?? [:])
             .filter { $0.value > 0 }
             .sorted { $0.value > $1.value }
-            .map { "\($0.key.replacingOccurrences(of: "-", with: " ")) ×\($0.value)" }
+            .map { "\(reasonWords[$0.key] ?? "another reason") ×\($0.value)" }
             .joined(separator: ", ")
         if !reasons.isEmpty { text += " Skipped: \(reasons)." }
         return (text, false)
@@ -148,8 +169,11 @@ public enum BankSyncToast {
 
 /// Email-check result message from a `gmail-poll` response
 /// (filterState.mjs `emailCheckMessage`). Per-connection failures in
-/// `errors[]` are surfaced — a top-level-only read used to report
-/// false success after a token died.
+/// `errors[]` used to be surfaced verbatim — a top-level-only read
+/// used to report false success after a token died. Now every error
+/// maps to plain words (audit S-P1-3): an expired grant says so,
+/// anything else is a generic "try again" — the server's error text
+/// never reaches the user.
 public enum EmailCheckMessage {
     public static func text(
         topLevelError: String?,
@@ -161,14 +185,15 @@ public enum EmailCheckMessage {
         stale: Bool?,
         minutesSincePreviousPoll: Int?
     ) -> (text: String, isError: Bool) {
-        if let failed = firstConnectionError ?? topLevelError {
-            let failText: String
-            if let firstConnectionError, firstConnectionError.lowercased().contains("reauthorization") {
-                failText = "access expired — reconnect your email."
-            } else {
-                failText = failed
+        if firstConnectionError != nil || topLevelError != nil {
+            let combined = [firstConnectionError, topLevelError]
+                .compactMap { $0 }
+                .joined(separator: " ")
+                .lowercased()
+            if combined.contains("reauthorization") {
+                return ("Email check failed: access expired — reconnect your email.", true)
             }
-            return ("Email check failed: \(failText)", true)
+            return ("Email check failed. Try again.", true)
         }
         var text = "Email checked: \(stored) added, \(duplicates) already known, \(quarantined) quarantined, \(unparseable) could not be read."
         if stale == true {

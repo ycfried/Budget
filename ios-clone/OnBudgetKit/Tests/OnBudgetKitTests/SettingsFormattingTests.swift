@@ -277,6 +277,19 @@ final class SettingsFormattingTests: XCTestCase {
         XCTAssertTrue(text.hasPrefix("Sync done: 3 added, 1 updated, 2 skipped across 2 connected account(s)."))
         XCTAssertTrue(text.contains("400 minutes since the last one"))
         XCTAssertTrue(text.contains("already known ×2"))
+        // Server skip-reason slugs map to plain words (audit
+        // S-P2-9); unknown keys fall back to a generic plain line,
+        // never the raw slug.
+        let (slugText, _) = BankSyncToast.text(
+            error: nil, added: 0, updated: 0, skipped: 4, items: 1,
+            duplicateRemoved: [], stale: nil, minutesSincePreviousSync: nil,
+            skippedByReason: ["account-disconnected": 1, "invalid-amount": 2, "some-new-reason": 1],
+            failedInstitutions: []
+        )
+        XCTAssertTrue(slugText.contains("account disconnected ×1"))
+        XCTAssertTrue(slugText.contains("invalid amount ×2"))
+        XCTAssertTrue(slugText.contains("another reason ×1"))
+        XCTAssertFalse(slugText.contains("some-new-reason"))
         let (errText, errIsError) = BankSyncToast.text(
             error: "boom", added: 0, updated: 0, skipped: 0, items: 0,
             duplicateRemoved: [], stale: nil, minutesSincePreviousSync: nil,
@@ -294,6 +307,16 @@ final class SettingsFormattingTests: XCTestCase {
         )
         XCTAssertTrue(isError)
         XCTAssertEqual(text, "Email check failed: access expired — reconnect your email.")
+        // Any other server error maps to plain words — the raw text
+        // never reaches the user (audit S-P1-3).
+        let (genericText, genericIsError) = EmailCheckMessage.text(
+            topLevelError: nil, firstConnectionError: "Error: invalid_grant (server exploded)",
+            stored: 0, duplicates: 0, quarantined: 0, unparseable: 0,
+            stale: nil, minutesSincePreviousPoll: nil
+        )
+        XCTAssertTrue(genericIsError)
+        XCTAssertEqual(genericText, "Email check failed. Try again.")
+        XCTAssertFalse(genericText.contains("invalid_grant"))
         let (okText, okIsError) = EmailCheckMessage.text(
             topLevelError: nil, firstConnectionError: nil,
             stored: 2, duplicates: 1, quarantined: 0, unparseable: 0,
