@@ -83,7 +83,18 @@ public struct AddMoneyForm: View {
         ) {
             Button(TitleCase.apply(to: "Save Top-Up")) {
                 Task {
-                    await viewModel.addTopup(amountCents: amountCents ?? 0, note: note.trimmingCharacters(in: .whitespaces))
+                    // On success the form clears AND closes back to
+                    // the Funds list with the success toast (owner
+                    // decision #9); on failure the typed input stays
+                    // put beside the error. The in-flight double-tap
+                    // guard lives in addTopup itself.
+                    if await viewModel.addTopup(amountCents: amountCents ?? 0, note: note.trimmingCharacters(in: .whitespaces)) {
+                        amountText = ""
+                        note = ""
+                        confirmed = false
+                        fieldError = nil
+                        onClose()
+                    }
                 }
             }
             Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}

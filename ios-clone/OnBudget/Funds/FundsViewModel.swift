@@ -375,8 +375,11 @@ public final class FundsViewModel: ObservableObject {
     /// Shortfall-first top-up via `add_fund_money`. The server split is
     /// authoritative; the client preview is informational only. The
     /// client key is reused across retries of the same attempt.
-    public func addTopup(amountCents: Int, note: String) async {
-        guard busyAction == nil else { return }
+    /// Returns true only when the save committed, so the form can
+    /// clear and close on success — a failed save must leave the
+    /// typed input in place (F-P1-3/F-P1-4).
+    public func addTopup(amountCents: Int, note: String) async -> Bool {
+        guard busyAction == nil else { return false }
         busyAction = "topup"
         defer { busyAction = nil }
         if topupClientKey == nil { topupClientKey = UUID().uuidString }
@@ -390,8 +393,10 @@ public final class FundsViewModel: ObservableObject {
             topupClientKey = nil
             succeed("Top-up saved: \(MoneyFormat.formatCents(result.shortfallCoveredCents)) covered owed back, \(MoneyFormat.formatCents(result.fundAddedCents)) added to fund.")
             await refresh()
+            return true
         } catch {
             fail(title: "Could Not Save Top-Up", error: error)
+            return false
         }
     }
 
