@@ -465,6 +465,19 @@ public struct SavingsSection: View {
         }
     }
 
+    /// One savings-ledger line: transfer-in and interest are money
+    /// in — green with a "+" prefix under the shared kind rule;
+    /// withdrawals and adjustments stay muted and plain. The
+    /// recorded balance is a balance, never an inflow.
+    private func savingsRow(_ row: SavingsLedgerEntry) -> Text {
+        let isInflow = row.kind == "transfer_in" || row.kind == "interest"
+        let amount = TransactionFormatting.inflowDisplay(cents: row.amountCents)
+        return Text("\(kindLabel(row.kind)) ")
+            + Text(isInflow ? amount.text : MoneyFormat.formatCents(row.amountCents))
+                .foregroundStyle(isInflow ? amount.color : Color(hex: "#6b7280"))
+            + Text(" · Recorded balance \(row.actualBalanceCents.map { MoneyFormat.formatCents($0) } ?? "—") · \(row.createdAt.map { MoneyFormat.fmtDateTime($0) } ?? "")\(row.note.isEmpty ? "" : " · \(row.note)")")
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let error = viewModel.savingsError {
@@ -476,7 +489,15 @@ public struct SavingsSection: View {
                     "Balance",
                     value: latestBalance.map { MoneyFormat.formatCents($0) } ?? "Not recorded yet"
                 )
-                FundsBreakdownRow("Transferred In", value: MoneyFormat.formatCents(sum(kind: "transfer_in")))
+                // "Transferred In" is money in: green with a "+"
+                // prefix under the shared kind rule. A zero sum
+                // stays plain "$0.00" (inflowDisplay's guard).
+                let transferredIn = sum(kind: "transfer_in")
+                FundsBreakdownRow(
+                    "Transferred In",
+                    value: TransactionFormatting.inflowDisplay(cents: transferredIn).text,
+                    isInflow: transferredIn > 0
+                )
                 FundsBreakdownRow("Withdrawn", value: MoneyFormat.formatCents(sum(kind: "withdrawal")))
                 FundsBreakdownRow(
                     "Interest / Adjustments",
@@ -492,7 +513,7 @@ public struct SavingsSection: View {
                 Divider()
                 let latest = Array(viewModel.savings.prefix(20))
                 ForEach(Array(latest.enumerated()), id: \.offset) { _, row in
-                    Text("\(kindLabel(row.kind)) \(MoneyFormat.formatCents(row.amountCents)) · Recorded balance \(row.actualBalanceCents.map { MoneyFormat.formatCents($0) } ?? "—") · \(row.createdAt.map { MoneyFormat.fmtDateTime($0) } ?? "")\(row.note.isEmpty ? "" : " · \(row.note)")")
+                    savingsRow(row)
                         .font(.system(size: 14))
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }

@@ -257,7 +257,16 @@ struct PastWeeksView: View {
                 metricRow(label: "Carry-in", value: week.moneyOrMissing(week.carryInCents))
                 metricRow(label: "Surplus", value: week.moneyOrMissing(week.surplusCents))
                 metricRow(label: "Debt carried out", value: week.moneyOrMissing(week.outgoingDebtCents))
-                metricRow(label: week.releaseLabel, value: week.moneyOrMissing(week.releaseCents))
+                // The release is money moved INTO the Extra Fund —
+                // green with a "+" prefix under the shared kind
+                // rule, but only once actually released. A held or
+                // pending release has not moved yet, so it stays
+                // plain ink; "not recorded" stays plain too.
+                metricRow(
+                    label: week.releaseLabel,
+                    value: week.releaseCents.map { TransactionFormatting.inflowDisplay(cents: $0).text } ?? "not recorded",
+                    isInflow: week.releaseLabel == "Released" && (week.releaseCents ?? 0) > 0
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
@@ -268,7 +277,7 @@ struct PastWeeksView: View {
         .accessibilityLabel("Week of \(week.heading) — show its transactions")
     }
 
-    private func metricRow(label: String, value: String) -> some View {
+    private func metricRow(label: String, value: String, isInflow: Bool = false) -> some View {
         HStack {
             Text(label)
                 .font(.subheadline)
@@ -277,7 +286,7 @@ struct PastWeeksView: View {
             Text(value)
                 .font(.subheadline)
                 .fontWeight(.semibold)
-                .foregroundStyle(DesignTokens.ink)
+                .foregroundStyle(isInflow ? DesignTokens.success : DesignTokens.ink)
         }
     }
 }

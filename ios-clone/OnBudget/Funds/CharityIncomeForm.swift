@@ -236,9 +236,17 @@ public struct CharityIncomeHistory: View {
                 FundsMuted("No income recorded yet.")
             } else {
                 ForEach(viewModel.charityIncome) { row in
+                    // The income amount is money in: green with a
+                    // "+" prefix under the shared kind rule
+                    // (inflowDisplay). The committed figure stays
+                    // plain — it is an obligation, not an inflow.
+                    let display = TransactionFormatting.inflowDisplay(cents: row.amountCents)
                     HStack(alignment: .top, spacing: 8) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("\(row.sourceLabel) · \(MoneyFormat.formatCents(row.amountCents)) on \(MoneyFormat.fmtLong(row.incomeDate)) at \(MoneyFormat.formatRateBp(row.rateBp))% → commits \(MoneyFormat.formatCents(row.committedCents))\(row.note.isEmpty ? "" : " · \(row.note)")\(row.status == "reversed" ? " (Reversed — replaced)" : "")")
+                            (Text(row.sourceLabel)
+                                + Text(" · ")
+                                + Text(display.text).foregroundStyle(display.color)
+                                + Text(" on \(MoneyFormat.fmtLong(row.incomeDate)) at \(MoneyFormat.formatRateBp(row.rateBp))% → commits \(MoneyFormat.formatCents(row.committedCents))\(row.note.isEmpty ? "" : " · \(row.note)")\(row.status == "reversed" ? " (Reversed — replaced)" : "")"))
                                 .font(.system(size: 14))
                         }
                         Spacer()
@@ -280,9 +288,17 @@ public struct FundTopupsHistory: View {
                 FundsMuted("No money added yet.")
             } else {
                 ForEach(viewModel.topups, id: \.clientKey) { row in
+                    // The top-up is money into the fund: green with
+                    // a "+" prefix under the shared kind rule
+                    // (inflowDisplay). The split detail line below
+                    // stays muted and plain — its parts are
+                    // destinations of the top-up, not standalone
+                    // inflows.
+                    let display = TransactionFormatting.inflowDisplay(cents: row.amountCents)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(MoneyFormat.formatCents(row.amountCents))
+                        Text(display.text)
                             .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(display.color)
                         Text("\(row.createdAt.map { MoneyFormat.displayDay($0) } ?? "") · \(MoneyFormat.formatCents(row.shortfallCoveredCents)) covered owed back · \(MoneyFormat.formatCents(row.fundAddedCents)) added to fund · Owed back after \(MoneyFormat.formatCents(row.shortfallAfterCents))\(row.note.isEmpty ? "" : " · \(row.note)")")
                             .font(.system(size: 14))
                             .foregroundStyle(Color(hex: "#6b7280"))
