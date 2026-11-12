@@ -181,7 +181,10 @@ public final class ToastManager {
 
     public init() {}
 
-    public func show(_ message: String, kind: ToastStyle.Kind = .success) {
+    /// Informational messages default to `.info` (brand blue);
+    /// success must be explicit (audit SH-P2-1, Nov 12 2026 — the
+    /// old `.success` default turned plain information green).
+    public func show(_ message: String, kind: ToastStyle.Kind = .info) {
         dismissTask?.cancel()
         toast = Toast(message: message, kind: kind)
         dismissTask = Task { [weak self] in

@@ -542,7 +542,10 @@ public final class AppViewModel: ObservableObject {
 
     // MARK: - Toasts
 
-    public func showToast(_ message: String, kind: ToastStyle.Kind = .success) {
+    /// Informational messages default to `.info` (brand blue);
+    /// success must be explicit (audit SH-P2-1, Nov 12 2026 — the
+    /// old `.success` default turned plain information green).
+    public func showToast(_ message: String, kind: ToastStyle.Kind = .info) {
         toast = Toast(message: message, kind: kind)
     }
 }
