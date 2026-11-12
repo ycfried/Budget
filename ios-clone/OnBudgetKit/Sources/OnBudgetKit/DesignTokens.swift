@@ -19,6 +19,11 @@ public enum DesignTokens {
 
     public static let backgroundHex = "#ffffff"
     public static let inkHex = "#0f172a"
+    /// Muted secondary text (#6b7280) and the info-box background
+    /// (#eef4ff) — tokens since audit X-P2-8 (Nov 12 2026); screens
+    /// must use these, never the raw hex.
+    public static let mutedHex = "#6b7280"
+    public static let infoBackgroundHex = "#eef4ff"
 
     // MARK: - Soft-red errors (owner rule, Nov 5 2026: light background,
     // dark red text — never a hard red fill)
@@ -43,6 +48,8 @@ public enum DesignTokens {
     public static var pale: Color { Color(hex: paleHex) }
     public static var background: Color { Color(hex: backgroundHex) }
     public static var ink: Color { Color(hex: inkHex) }
+    public static var muted: Color { Color(hex: mutedHex) }
+    public static var infoBackground: Color { Color(hex: infoBackgroundHex) }
     public static var errorBackground: Color { Color(hex: errorBackgroundHex) }
     public static var errorText: Color { Color(hex: errorTextHex) }
     public static var errorBorder: Color { Color(hex: errorBorderHex) }

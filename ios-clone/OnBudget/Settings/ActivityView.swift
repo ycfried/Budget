@@ -148,7 +148,7 @@ struct ActivityView: View {
                     .fontWeight(.bold)
                 Text("Who did what, and when — not the transaction list.")
                     .font(.subheadline)
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                    .foregroundStyle(DesignTokens.muted)
 
                 SettingsCard(title: "Filter by Date") {
                     HStack(spacing: 12) {
@@ -256,7 +256,7 @@ struct ActivityView: View {
                     .font(.subheadline)
                 Text("\(entry.actor) · \(entry.time)")
                     .font(.subheadline)
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                    .foregroundStyle(DesignTokens.muted)
             }
         }
     }
@@ -264,7 +264,7 @@ struct ActivityView: View {
     private func dotColor(for entry: AuditDisplayEntry) -> Color {
         switch AuditFormatting.dotClass(action: entry.action, detail: entry.detail) {
         case "charity": return Color(hex: "#16a34a")
-        case "system": return Color(hex: "#6b7280")
+        case "system": return DesignTokens.muted
         default: return DesignTokens.primary
         }
     }

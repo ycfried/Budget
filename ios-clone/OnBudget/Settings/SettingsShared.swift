@@ -235,7 +235,7 @@ struct MutedLine: View {
     var body: some View {
         Text(text)
             .font(.subheadline)
-            .foregroundStyle(Color(hex: "#6b7280"))
+            .foregroundStyle(DesignTokens.muted)
     }
 }
 

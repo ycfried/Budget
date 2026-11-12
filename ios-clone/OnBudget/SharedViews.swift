@@ -158,7 +158,7 @@ public struct InfoBox: View {
             .foregroundStyle(DesignTokens.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(Color(hex: "#eef4ff"))
+            .background(DesignTokens.infoBackground)
             .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

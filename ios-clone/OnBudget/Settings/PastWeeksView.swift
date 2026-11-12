@@ -206,7 +206,7 @@ struct PastWeeksView: View {
                     .fontWeight(.bold)
                 Text("Closed weeks, read-only. Tap a week to see its summary and its transactions.")
                     .font(.subheadline)
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                    .foregroundStyle(DesignTokens.muted)
 
                 SettingsCard(title: "Filter by Date") {
                     HStack(spacing: 12) {
@@ -298,7 +298,7 @@ struct PastWeeksView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(Color(hex: "#eef4ff"))
+            .background(DesignTokens.infoBackground)
             .cornerRadius(12)
         }
         .buttonStyle(.plain)
@@ -309,7 +309,7 @@ struct PastWeeksView: View {
         HStack {
             Text(label)
                 .font(.subheadline)
-                .foregroundStyle(Color(hex: "#6b7280"))
+                .foregroundStyle(DesignTokens.muted)
             Spacer()
             Text(value)
                 .font(.subheadline)
