@@ -458,16 +458,20 @@ public struct HomeView: View {
         }
 
         // Progress bar: charges / capacity, capped at 100%; red
-        // when charges exceed capacity.
+        // when charges exceed capacity. Over budget the fill is
+        // full-width red — a zero/negative capacity used to force
+        // the fraction to 0, so the bar was an empty grey track
+        // exactly when over budget (audit H-P2-6).
         let capacity = result.baseAvailableCents + result.tempCents
-        let fraction = capacity > 0 ? min(1, Double(result.chargesCents) / Double(capacity)) : 0
+        let overBudget = result.chargesCents > capacity
+        let fraction = overBudget ? 1 : (capacity > 0 ? Double(result.chargesCents) / Double(capacity) : 0)
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color(hex: "#ececf1"))
                     .frame(height: 8)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(result.chargesCents > capacity ? DesignTokens.errorText : DesignTokens.primary)
+                    .fill(overBudget ? DesignTokens.errorText : DesignTokens.primary)
                     .frame(width: geometry.size.width * fraction, height: 8)
             }
         }
