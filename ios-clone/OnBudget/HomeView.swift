@@ -336,9 +336,9 @@ public struct HomeView: View {
             case .loading:
                 heroSkeleton
             case .failed(let error):
-                Text("Could not load this week's numbers.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                // One failure message only: the ErrorBox. The grey
+                // "Could not load…" line above it said the same
+                // thing twice (audit H-P2-4).
                 ErrorBox(weekErrorText(error))
                 Button("Try Again") { Task { await viewModel.refresh() } }
                     .buttonStyle(TertiaryButtonStyle())
