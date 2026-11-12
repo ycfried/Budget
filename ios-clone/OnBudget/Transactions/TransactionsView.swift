@@ -308,15 +308,22 @@ public struct TransactionsView: View {
     private var listContent: some View {
         switch viewModel.loadState {
         case .idle, .loading:
-            VStack(spacing: 12) {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                ForEach(0..<3, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color(hex: "#f1f5f9"))
-                        .frame(height: 76)
+            // Shimmer skeletons shaped like the loaded list — one
+            // white card with three skeleton rows and dividers, no
+            // spinner (owner loading language, Nov 12, 2026).
+            VStack(spacing: 0) {
+                ForEach(0..<3, id: \.self) { index in
+                    TransactionRowSkeleton()
+                        .padding(14)
+                    if index < 2 {
+                        Divider()
+                            .padding(.leading, 64)
+                    }
                 }
             }
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .accessibilityLabel("Loading transactions")
         case .failed(let error):
             VStack(alignment: .leading, spacing: 12) {
                 if error == .sessionExpired {

@@ -20,7 +20,10 @@
 // Fund + Charity cards: stacked, Charity above Extra Fund, both
 // full-width, expand downward IN PLACE, one-open-at-a-time, with
 // the expand detail (Available / Pending / Total) and NO action
-// buttons on Home (actions belong on the Funds page).
+// buttons on Home (actions belong on the Funds page). Both cards
+// are BIGGER and tinted (owner, Nov 12, 2026 — Charity soft green,
+// Extra Fund soft blue, shared StatCardTheme with the Funds page);
+// the Weekly Budget hero above them is untouched.
 // "Last synced" is shown once, quietly, under Automatic Sync in
 // Settings (ConnectedAccountsView); Home carries NO sync line
 // (owner, Nov 11, 2026 — removed from Home entirely).
@@ -44,6 +47,12 @@ public enum HomeSectionState<Value> {
     /// load" status line on the stat cards).
     public var isFailed: Bool {
         if case .failed = self { return true }
+        return false
+    }
+
+    /// True only while loading (the card shows its shimmer skeleton).
+    public var isLoading: Bool {
+        if case .loading = self { return true }
         return false
     }
 }
@@ -329,8 +338,9 @@ public struct HomeView: View {
     // Hero — Weekly Budget. Bigger and more prominent than the
     // other cards (owner, Nov 11, 2026: it is the most important
     // number on the page). The loading state renders at the same
-    // full hero size (skeleton blocks + system spinner), so the
-    // layout never jumps when the number arrives.
+    // full hero size (shimmer skeleton blocks, no spinner), so the
+    // layout never jumps when the number arrives. The hero look is
+    // untouched by the Nov 12 tinted-cards direction.
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Weekly Budget")
@@ -362,38 +372,27 @@ public struct HomeView: View {
     }
 
     /// Full-size hero skeleton: same frame, padding, rows and
-    /// spacing as the loaded hero, with grey placeholder blocks
-    /// where the number, progress bar and stats go — including the
-    /// 44pt sync-button block in the figure row, and no extra
-    /// spinner row the loaded hero lacks — so the page never jumps
-    /// when the numbers arrive (audit H-P2-5).
+    /// spacing as the loaded hero, with shimmer blocks where the
+    /// week label, figure, sync button, progress bar, spent line
+    /// and stats go — the same rows as heroLoaded, in the same
+    /// order, and no extra row the loaded hero lacks — so the page
+    /// never jumps when the numbers arrive (audit H-P2-5). Verified
+    /// against heroLoaded, Nov 12 2026: label / figure row with the
+    /// 44pt sync-button block / progress bar / spent line / stats
+    /// row, all present, all the same sizes.
     private var heroSkeleton: some View {
         VStack(alignment: .leading, spacing: 14) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(hex: "#ececf1"))
-                .frame(width: 160, height: 18)
+            SkeletonBlock(width: 160, height: 18)
             HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(hex: "#ececf1"))
-                    .frame(width: 230, height: 54)
+                SkeletonBlock(width: 230, height: 54, cornerRadius: 8)
                 Spacer()
-                Circle()
-                    .fill(Color(hex: "#ececf1"))
-                    .frame(width: 44, height: 44)
+                SkeletonBlock(width: 44, height: 44, cornerRadius: 22)
             }
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color(hex: "#ececf1"))
-                .frame(maxWidth: .infinity, minHeight: 8, maxHeight: 8)
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(hex: "#ececf1"))
-                .frame(width: 180, height: 14)
+            SkeletonBlock(height: 8, cornerRadius: 4)
+            SkeletonBlock(width: 180, height: 14)
             HStack(spacing: 24) {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color(hex: "#ececf1"))
-                    .frame(width: 110, height: 40)
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color(hex: "#ececf1"))
-                    .frame(width: 80, height: 40)
+                SkeletonBlock(width: 110, height: 40)
+                SkeletonBlock(width: 80, height: 40)
             }
         }
         .accessibilityLabel("Weekly Budget, loading")
@@ -481,19 +480,19 @@ public struct HomeView: View {
         }
         .frame(height: 8)
 
-        // Spent line + % used. While no allowance is set both read —.
-        // A failed allowance read (nil) still shows compute-week's
-        // numbers — only an explicit never-set hides them (audit
-        // H-P1-4).
+        // Spent line + % used. While no allowance is set the line
+        // reads "Not set" in muted regular type — a genuinely unset
+        // value, never a bare dash (owner loading/empty language,
+        // Nov 12, 2026). A failed allowance read (nil) still shows
+        // compute-week's numbers — only an explicit never-set hides
+        // them (audit H-P1-4).
         HStack(spacing: 8) {
             if viewModel.allowanceSet != false {
                 Text("\(MoneyFormat.string(cents: result.chargesCents)) spent")
                 Text("·")
                 Text(usedPercentText(result: result, capacity: capacity))
             } else {
-                Text("— spent")
-                Text("·")
-                Text("—")
+                Text("Not set")
             }
         }
         .font(.system(size: 14))
@@ -506,9 +505,10 @@ public struct HomeView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color(hex: "#6b7280"))
                 Text(viewModel.allowanceSet == false
-                     ? "—"
+                     ? "Not set"
                      : MoneyFormat.string(cents: capacity))
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 17, weight: viewModel.allowanceSet == false ? .regular : .bold))
+                    .foregroundStyle(viewModel.allowanceSet == false ? DesignTokens.muted : DesignTokens.ink)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Purchases")
@@ -574,6 +574,9 @@ public struct HomeView: View {
         statCard(
             title: "Charity",
             face: charityFaceText,
+            theme: .charity,
+            isLoading: viewModel.charity.isLoading,
+            faceIsNegative: false,
             statusText: charityStatusText,
             statusIsError: viewModel.charity.isFailed,
             isExpanded: appState.expandedCard == .charity,
@@ -608,6 +611,9 @@ public struct HomeView: View {
         statCard(
             title: "Extra Fund",
             face: fundFaceText,
+            theme: .fund,
+            isLoading: viewModel.fund.isLoading,
+            faceIsNegative: fundFaceIsNegative,
             statusText: fundStatusText,
             statusIsError: viewModel.fund.isFailed,
             isExpanded: appState.expandedCard == .fund,
@@ -644,22 +650,32 @@ public struct HomeView: View {
         }
     }
 
-    /// A stat card face is Title + signed number only, chevron
+    /// A stat card face: icon chip + Title, then the amount in
+    /// 28pt heavy in the card's deep tint colour, chevron
     /// bottom-right (SF Symbol chevron.down, down when collapsed,
     /// rotating 180° to up when expanded, with the shared
-    /// ExpandAnimation). The whole card is the tap target — the
-    /// chevron is only a visual hint (owner, Nov 11, 2026). The
-    /// status line under the number explains a loading or failed
-    /// face, so a failed card never shows a bare "—" with no
-    /// explanation; the expanded rows carry the ErrorBox + Retry.
-    /// The card body is a tap gesture, NOT a Button: the expanded
-    /// rows contain real "Try Again" Buttons, and a Button nested
-    /// inside a Button never fires (audit H-P1-3). A child Button
-    /// wins over an ancestor tap gesture, so the retry taps while
-    /// the rest of the card still toggles.
+    /// ExpandAnimation). Bigger and tinted (owner, Nov 12, 2026 —
+    /// StatCardTheme, shared with the Funds page): 20pt padding,
+    /// 18pt title, 28pt amount, icon chip; the collapsed card reads
+    /// as a real card, not a bare row. The whole card is the tap
+    /// target — the chevron is only a visual hint (owner, Nov 11,
+    /// 2026). Loading shows the same bigger shape in muted grey
+    /// shimmer, with NO colour (title + grey chip + shimmer amount
+    /// block, no spinner, no "Loading…" text). A failed card shows
+    /// the same shape with a STATIC grey block for the face — never
+    /// a bare "—" — plus the red status line below it; the expanded
+    /// rows carry the ErrorBox + Retry. The card body is a tap
+    /// gesture, NOT a Button: the expanded rows contain real "Try
+    /// Again" Buttons, and a Button nested inside a Button never
+    /// fires (audit H-P1-3). A child Button wins over an ancestor
+    /// tap gesture, so the retry taps while the rest of the card
+    /// still toggles.
     private func statCard<Rows: View>(
         title: String,
         face: String,
+        theme: StatCardTheme,
+        isLoading: Bool,
+        faceIsNegative: Bool = false,
         statusText: String? = nil,
         statusIsError: Bool = false,
         isExpanded: Bool,
@@ -667,29 +683,36 @@ public struct HomeView: View {
         onTap: @escaping () -> Void,
         @ViewBuilder rows: () -> Rows
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(DesignTokens.ink)
-                    Text(face)
-                        .font(.system(size: 22, weight: .heavy))
-                        .foregroundStyle(DesignTokens.ink)
-                    if let statusText {
-                        HStack(spacing: 6) {
-                            if !statusIsError {
-                                ProgressView()
-                                    .progressViewStyle(.circular)
-                                    .scaleEffect(0.8)
-                            }
-                            Text(statusText)
-                                .font(.system(size: 13, weight: statusIsError ? .semibold : .regular))
-                                .foregroundStyle(statusIsError ? DesignTokens.errorText : Color(hex: "#6b7280"))
-                        }
-                    }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                if isLoading {
+                    SkeletonBlock(width: 36, height: 36, cornerRadius: 10)
+                } else {
+                    Image(systemName: theme.iconName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(theme.deep)
+                        .frame(width: 36, height: 36)
+                        .background(theme.chip)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
+                Text(title)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
                 Spacer()
+            }
+            if isLoading {
+                SkeletonBlock(width: 150, height: 34, cornerRadius: 8)
+            } else if statusIsError {
+                SkeletonBlock(width: 150, height: 34, cornerRadius: 8, animated: false)
+            } else {
+                Text(face)
+                    .font(.system(size: 28, weight: .heavy))
+                    .foregroundStyle(faceIsNegative ? DesignTokens.errorText : theme.deep)
+            }
+            if let statusText {
+                Text(statusText)
+                    .font(.system(size: 13, weight: statusIsError ? .semibold : .regular))
+                    .foregroundStyle(statusIsError ? DesignTokens.errorText : Color(hex: "#6b7280"))
             }
             if isExpanded {
                 VStack(alignment: .leading, spacing: 6) { rows() }
@@ -705,9 +728,9 @@ public struct HomeView: View {
                     .animation(ExpandAnimation.animation, value: isExpanded)
             }
         }
-        .padding(16)
+        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(isLoading ? .white : theme.background)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 40 / 255, opacity: 0.05),
                 radius: 2, x: 0, y: 1)
@@ -732,20 +755,23 @@ public struct HomeView: View {
         }
     }
 
+    /// Face text is only rendered when loaded: loading shows the
+    /// shimmer amount block, failure the static grey block — never
+    /// a bare "—" (owner loading/empty language, Nov 12, 2026).
     private var charityFaceText: String {
         switch viewModel.charity {
         case .loaded(let summary): return MoneyFormat.signedString(cents: summary.remainingCents)
-        case .failed: return "—"
-        case .loading: return "—"
+        case .failed, .loading: return ""
         }
     }
 
-    /// Status line under the Charity face: loading gets a spinner +
-    /// "Loading…", failure gets a plain red "Could not load" (the
-    /// expanded rows carry the ErrorBox + Retry). Loaded: none.
+    /// Status line under the Charity face: failure gets a plain red
+    /// "Could not load" (the expanded rows carry the ErrorBox +
+    /// Retry). Loading gets NO line — the skeleton is the loading
+    /// sign. Loaded: none.
     private var charityStatusText: String? {
         switch viewModel.charity {
-        case .loading: return "Loading…"
+        case .loading: return nil
         case .failed: return "Could not load"
         case .loaded: return nil
         }
@@ -754,7 +780,7 @@ public struct HomeView: View {
     /// Same status line for Extra Fund.
     private var fundStatusText: String? {
         switch viewModel.fund {
-        case .loading: return "Loading…"
+        case .loading: return nil
         case .failed: return "Could not load"
         case .loaded: return nil
         }
@@ -763,9 +789,16 @@ public struct HomeView: View {
     private var fundFaceText: String {
         switch viewModel.fund {
         case .loaded(let summary): return MoneyFormat.signedString(cents: summary.availableCents)
-        case .failed: return "—"
-        case .loading: return "—"
+        case .failed, .loading: return ""
         }
+    }
+
+    /// A negative Extra Fund balance reads red, like the hero's
+    /// over-budget figure. (A negative Charity remaining means
+    /// ahead on giving, so it stays deep green.)
+    private var fundFaceIsNegative: Bool {
+        if case .loaded(let summary) = viewModel.fund { return summary.availableCents < 0 }
+        return false
     }
 
     private var charityAriaLabel: String {
@@ -813,11 +846,14 @@ public struct HomeView: View {
             }
             switch viewModel.recent {
             case .loading:
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .accessibilityLabel("Loading recent transactions")
+                // Shimmer skeletons shaped like the loaded rows —
+                // no spinner, no "Loading…" line (owner loading
+                // language, Nov 12, 2026).
+                VStack(spacing: 12) {
+                    ForEach(0..<3, id: \.self) { _ in TransactionRowSkeleton() }
+                }
+                .padding(.vertical, 12)
+                .accessibilityLabel("Loading recent transactions")
             case .failed(let error):
                 if error == .sessionExpired {
                     ErrorBox("Your sign-in expired — sign in again to see transactions.")

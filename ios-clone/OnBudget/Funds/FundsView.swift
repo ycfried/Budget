@@ -141,7 +141,7 @@ public struct FundsView: View {
                     } else if let error = viewModel.fundError {
                         FundsErrorBox(error)
                     } else {
-                        FundsMuted("Loading fund balance…")
+                        SkeletonBlock(width: 160, height: 16)
                     }
                 }
             }
@@ -154,7 +154,7 @@ public struct FundsView: View {
                     } else if let error = viewModel.charityError {
                         FundsErrorBox(error)
                     } else {
-                        FundsMuted("Loading charity…")
+                        SkeletonBlock(width: 160, height: 16)
                     }
                 }
             }
@@ -166,7 +166,7 @@ public struct FundsView: View {
                     } else if let error = viewModel.allowanceError {
                         FundsErrorBox(error)
                     } else {
-                        FundsMuted("Loading your current allowance…")
+                        SkeletonBlock(width: 160, height: 16)
                     }
                 }
             }
@@ -182,6 +182,8 @@ public struct FundsView: View {
             isExpanded: appState.expandedCard == .fund,
             isNegative: (viewModel.fundSummary?.availableCents ?? 0) < 0,
             amountIsStatus: viewModel.fundSummary == nil,
+            isLoading: viewModel.fundSummary == nil && viewModel.fundError == nil,
+            theme: .fund,
             accessibilityLabel: fundAccessibilityLabel,
             onToggle: { toggleCard(.fund) }
         ) {
@@ -205,15 +207,25 @@ public struct FundsView: View {
                     }
                 }
             } else {
-                FundsMuted("Loading fund balance…")
+                // Loading inside the expanded card: skeleton rows
+                // shaped like the breakdown rows, no "Loading…"
+                // text (owner loading language, Nov 12, 2026).
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 200, height: 16)
+                    SkeletonBlock(width: 170, height: 16)
+                    SkeletonBlock(width: 190, height: 16)
+                }
             }
         }
         .accessibilityIdentifier("funds.extraFund")
     }
 
+    /// Face text is only rendered when loaded: loading shows the
+    /// shimmer amount block, failure the static grey block — never
+    /// a "Loading…" line or a bare "—" in amount type.
     private var fundFaceText: String {
         guard let summary = viewModel.fundSummary else {
-            return viewModel.fundError == nil ? "Loading fund balance…" : "—"
+            return ""
         }
         return MoneyFormat.formatCents(summary.availableCents)
     }
@@ -236,15 +248,19 @@ public struct FundsView: View {
             title: "Charity",
             amountText: charityFaceText,
             isExpanded: appState.expandedCard == .charity,
-            isNegative: (viewModel.charitySummary?.remainingCents ?? 0) < 0,
+            isNegative: false, // A negative Charity remaining means
+            // ahead on giving, not an error — it stays deep green,
+            // matching Home (a negative Extra Fund balance stays red).
             amountIsStatus: viewModel.charitySummary == nil,
+            isLoading: viewModel.charitySummary == nil && viewModel.charityError == nil,
+            theme: .charity,
             accessibilityLabel: charityAccessibilityLabel,
             onToggle: { toggleCard(.charity) }
         ) {
             if let error = viewModel.charityError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.charitySummary {
-                FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents), isNegative: summary.remainingCents < 0)
+                FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents))
                 FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
                 // Pending gifts are computed but were never shown,
                 // so Available looked wrong until gifts post
@@ -265,7 +281,11 @@ public struct FundsView: View {
                     }
                 }
             } else {
-                FundsMuted("Loading charity…")
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 200, height: 16)
+                    SkeletonBlock(width: 170, height: 16)
+                    SkeletonBlock(width: 190, height: 16)
+                }
             }
         }
         .accessibilityIdentifier("funds.charity")
@@ -273,7 +293,7 @@ public struct FundsView: View {
 
     private var charityFaceText: String {
         guard let summary = viewModel.charitySummary else {
-            return viewModel.charityError == nil ? "Loading charity…" : "—"
+            return ""
         }
         return MoneyFormat.formatCents(summary.remainingCents)
     }

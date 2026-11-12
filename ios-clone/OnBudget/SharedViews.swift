@@ -384,6 +384,140 @@ public struct Card<Content: View>: View {
 }
 
 
+// MARK: - Loading skeletons + empty placeholders
+//
+// ONE loading language (owner direction, Nov 12 2026 — umbrella for
+// audit items H-P2-5, F-P2-13, H-P1-4, S-P1-2): every loading state
+// is a shimmer skeleton shaped like the loaded content (same rows,
+// same sizes, so no layout jump), never a spinner mixed in, never a
+// "Loading…" text line, never a "—" dash while loading. A failed
+// load is a third, distinct state — a short plain error line +
+// retry (ErrorBox + Try Again), never a skeleton, never a bare
+// dash, never a false empty state. An empty / no-value face is a
+// muted placeholder in the value's own size and position (a static
+// grey block, or the words "Not set" in muted regular type where
+// the value is genuinely unset) — never a bare bold "—" in amount
+// type, never a sentence in amount type.
+
+// MARK: - Stat-card themes (owner direction, Nov 12 2026)
+//
+// The Home + Funds Charity / Extra Fund cards share ONE theme each
+// (same tint, icon, amount size on both screens). Charity is soft
+// green (giving/growth — green is already the native success
+// colour); Extra Fund is soft blue (savings). Tints are very light
+// so text stays dark and readable; amounts are the deep tint colour,
+// never mid-tone on tint. While loading the card shows NO colour —
+// a white card with grey skeleton blocks in the same bigger shape.
+
+/// The shared tint/identity of a Charity or Extra Fund stat card.
+public enum StatCardTheme {
+    case charity
+    case fund
+
+    /// Soft background wash for the loaded/failed card.
+    public var background: Color {
+        switch self {
+        case .charity: return DesignTokens.charityTint
+        case .fund: return DesignTokens.fundTint
+        }
+    }
+
+    /// Deep tint colour of the amount (and the icon).
+    public var deep: Color {
+        switch self {
+        case .charity: return DesignTokens.charityDeep
+        case .fund: return DesignTokens.fundDeep
+        }
+    }
+
+    /// Slightly deeper wash behind the icon chip.
+    public var chip: Color {
+        switch self {
+        case .charity: return DesignTokens.charityChip
+        case .fund: return DesignTokens.fundChip
+        }
+    }
+
+    /// SF Symbol for the card. There is no piggy-bank symbol, so
+    /// Extra Fund uses a banknote; Charity uses a heart.
+    public var iconName: String {
+        switch self {
+        case .charity: return "heart.fill"
+        case .fund: return "banknote.fill"
+        }
+    }
+}
+
+/// One shimmer skeleton block: a muted grey rounded rectangle with
+/// a soft white sweep travelling across it. Size it to the loaded
+/// content it stands in for (same width/height), so the card holds
+/// its size while loading. `animated: false` renders the same block
+/// static — the muted placeholder used for a failed or empty value
+/// face, which must NOT shimmer (a failed load is not a loading
+/// state).
+public struct SkeletonBlock: View {
+    public let width: CGFloat?
+    public let height: CGFloat
+    public let cornerRadius: CGFloat
+    public let animated: Bool
+    @State private var sweep: CGFloat = -1.2
+
+    public init(width: CGFloat? = nil, height: CGFloat, cornerRadius: CGFloat = 6, animated: Bool = true) {
+        self.width = width
+        self.height = height
+        self.cornerRadius = cornerRadius
+        self.animated = animated
+    }
+
+    public var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .fill(DesignTokens.skeleton)
+            .frame(width: width, height: height)
+            .overlay {
+                if animated {
+                    GeometryReader { geometry in
+                        LinearGradient(
+                            colors: [.white.opacity(0), .white.opacity(0.75), .white.opacity(0)],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                        .frame(width: geometry.size.width * 0.55)
+                        .offset(x: sweep * geometry.size.width * 1.55)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                }
+            }
+            .onAppear {
+                guard animated else { return }
+                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                    sweep = 1.2
+                }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+/// Shimmer skeleton of one transaction row (40pt icon + two text
+/// lines + amount), matching the loaded Recent / Transactions row
+/// shape. Used for the Recent Transactions loading state on Home
+/// and the Transactions list loading state.
+public struct TransactionRowSkeleton: View {
+    public init() {}
+    public var body: some View {
+        HStack(spacing: 12) {
+            SkeletonBlock(width: 40, height: 40, cornerRadius: 20)
+            VStack(alignment: .leading, spacing: 6) {
+                SkeletonBlock(width: 150, height: 14)
+                SkeletonBlock(width: 100, height: 12)
+            }
+            Spacer()
+            SkeletonBlock(width: 64, height: 16)
+        }
+        .padding(.vertical, 6)
+        .accessibilityHidden(true)
+    }
+}
+
+
 // MARK: - Transaction icons / state pills
 //
 // `TransactionIconView` + `StatePill` live in
