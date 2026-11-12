@@ -304,6 +304,36 @@ Deno.serve(async (req) => {
             const merchant = normalizeMerchant(parsed.merchant).slice(0, 80);
             const dedupeHash = await canonicalHash(merchant, parsed.date, parsed.amountCents, parsed.cardSuffix);
             const kind = classifyMerchantOnly(parsed.merchant, parsed.amountCents);
+            // Bank-first guard (Nov 12, 2026 — provisional-merge
+            // miss, owner-reported doubles): same rule as
+            // ingest-amex-alert step 5b — when the Plaid row arrived
+            // BEFORE the alert, inserting here creates a second row
+            // for the same purchase and nothing later merges them.
+            // Skip when a Plaid row with the same canonical hash
+            // already covers this purchase (Plaid rows only, never
+            // an amex_alert row, so two real identical purchases
+            // with no bank row still both insert). Suffix-unknown
+            // alerts ('0000') also match a Plaid row on merchant +
+            // date + amount. Same merchant-string limit as
+            // plaid-sync step 3b: a store-number gap still misses.
+            const { data: bankRow } = await supabaseAdmin.from('transactions')
+              .select('id').eq('household_id', householdId).eq('source', 'plaid')
+              .eq('dedupe_hash', dedupeHash).limit(1).maybeSingle();
+            let bankCovered = !!bankRow;
+            if (!bankCovered && parsed.cardSuffix === '0000') {
+              const { data: bankRowByFields } = await supabaseAdmin.from('transactions')
+                .select('id').eq('household_id', householdId).eq('source', 'plaid')
+                .eq('merchant', merchant).eq('date', parsed.date).eq('amount_cents', parsed.amountCents)
+                .limit(1).maybeSingle();
+              bankCovered = !!bankRowByFields;
+            }
+            if (bankCovered) {
+              await supabaseAdmin.from('processed_email_ids').insert({
+                connection_id: conn.id, message_id: messageId, disposition: 'duplicate',
+              });
+              totals.duplicates += 1;
+              continue;
+            }
             const { data: inserted, error: insertErr } = await supabaseAdmin.from('transactions').insert({
               household_id: householdId,
               date: parsed.date,

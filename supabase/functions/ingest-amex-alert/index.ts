@@ -218,6 +218,36 @@ Deno.serve(async (req) => {
       if (existing) return json({ stored: true, duplicate: true, state: 'provisional' });
     }
 
+    // 5b. Bank-first guard (Nov 12, 2026 — provisional-merge miss,
+    //     owner-reported doubles): when the Plaid row arrived BEFORE
+    //     the alert, inserting here creates a second row for the same
+    //     purchase and nothing later merges them (plaid-sync only
+    //     claims alert rows at bank-ingest time). So before inserting,
+    //     skip when a Plaid row with the same canonical hash already
+    //     covers this purchase — the bank row IS the purchase; the
+    //     alert adds nothing. Plaid rows only, never an amex_alert
+    //     row: two real identical purchases with no bank row must
+    //     both insert (spec test 20), and two real identical
+    //     purchases with bank rows still yield two rows (each alert
+    //     is dropped against its own bank row; a bank row arriving
+    //     later inserts its own row). Suffix-unknown alerts ('0000')
+    //     also match a Plaid row on merchant + date + amount, since
+    //     their hash can never equal the bank row's. Same merchant-
+    //     string limit as plaid-sync step 3b: a store-number gap
+    //     ("ROYAL FARMS #123" vs "ROYAL FARMS") still misses.
+    const { data: bankRow } = await supabase.from('transactions')
+      .select('id').eq('household_id', householdId).eq('source', 'plaid')
+      .eq('dedupe_hash', dedupeHash).limit(1).maybeSingle();
+    let bankCovered = !!bankRow;
+    if (!bankCovered && cardSuffix === '0000') {
+      const { data: bankRowByFields } = await supabase.from('transactions')
+        .select('id').eq('household_id', householdId).eq('source', 'plaid')
+        .eq('merchant', merchant).eq('date', date).eq('amount_cents', amountCents)
+        .limit(1).maybeSingle();
+      bankCovered = !!bankRowByFields;
+    }
+    if (bankCovered) return json({ stored: true, duplicate: true, state: 'provisional' });
+
     // 2. Replay: claim the nonce AFTER the quarantine checks and
     // the dedupe check above, and BEFORE the insert. A
     // unique-violation here means this exact signed delivery was
