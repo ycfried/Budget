@@ -18,6 +18,7 @@ public struct TemporaryAllowanceView: View {
     @State private var newTotalText = ""
     @State private var weeks = 1
     @State private var fieldError: String?
+    @State private var showConfirm = false
 
     public init(viewModel: FundsViewModel) {
         self.viewModel = viewModel
@@ -25,13 +26,29 @@ public struct TemporaryAllowanceView: View {
 
     private var newTotalCents: Int? { MoneyFormat.parseDollarsStrict(newTotalText) }
 
-    /// Preview: "Base `$B` · New total `$N` · `W` week(s) · `YYYY-MM-DD, …`."
-    /// Empty until values are entered.
+    /// Preview: "Base `$B` · New total `$N` · `W` week(s) · `Mon D, …`."
+    /// Empty until values are entered. Dates render short ("Nov 15,
+    /// Nov 22"), never raw ISO (F-P2-1).
     private var previewText: String {
         guard let base = viewModel.baseAllowanceCents,
               let total = newTotalCents, total >= 0 else { return "" }
         let dates = MoneyFormat.sundays(from: MoneyFormat.currentSundayNY(), count: weeks)
+            .map { MoneyFormat.fmtShort($0) }
         return "Base \(MoneyFormat.formatCents(base)) · New total \(MoneyFormat.formatCents(total)) · \(weeks) week(s) · \(dates.joined(separator: ", "))."
+    }
+
+    /// Confirm-dialog text: the new total + weeks + dates, calling
+    /// out $0 explicitly — $0 is allowed only when confirmed here
+    /// (F-P2-3).
+    private var confirmMessage: String {
+        guard let total = newTotalCents else { return "" }
+        let dates = MoneyFormat.sundays(from: MoneyFormat.currentSundayNY(), count: weeks)
+            .map { MoneyFormat.fmtShort($0) }
+        var message = "Set the weekly allowance to \(MoneyFormat.formatCents(total)) for \(weeks) week\(weeks == 1 ? "" : "s") (\(dates.joined(separator: ", ")))."
+        if total == 0 {
+            message += " That is $0.00 — no spending room for those weeks."
+        }
+        return message
     }
 
     public var body: some View {
@@ -69,7 +86,19 @@ public struct TemporaryAllowanceView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }
-            if !previewText.isEmpty {
+            // F-P2-14: the preview is empty until the base loads, so
+            // say so — with a retry when the load failed — instead of
+            // a bare amount field with no preview.
+            if viewModel.baseAllowanceCents == nil {
+                if let allowanceError = viewModel.allowanceError {
+                    FundsErrorBox(allowanceError)
+                    FundsSmallTertiaryButton("Try Again") {
+                        Task { await viewModel.reloadAllowance() }
+                    }
+                } else {
+                    FundsMuted("Loading your current allowance…")
+                }
+            } else if !previewText.isEmpty {
                 Text(previewText)
                     .font(.system(size: 14))
                     .foregroundStyle(Color(hex: "#6b7280"))
@@ -86,7 +115,20 @@ public struct TemporaryAllowanceView: View {
                     return
                 }
                 fieldError = nil
+                // F-P2-3: confirm before setting — one tap used to
+                // set a 1–4 week allowance with no dialog, and $0
+                // was accepted silently.
+                showConfirm = true
+            }
+        }
+        .confirmationDialog(
+            "Set New Total",
+            isPresented: $showConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(TitleCase.apply(to: "Set New Total")) {
                 Task {
+                    guard let cents = newTotalCents else { return }
                     // Clear only on success — on failure the typed
                     // input stays beside the error (F-P1-4).
                     if await viewModel.setTemporaryAllowance(newTotalCents: cents, weeks: weeks) {
@@ -95,6 +137,9 @@ public struct TemporaryAllowanceView: View {
                     }
                 }
             }
+            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(confirmMessage)
         }
     }
 }

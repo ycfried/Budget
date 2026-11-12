@@ -87,6 +87,10 @@ public final class FundsViewModel: ObservableObject {
 
     @Published public var baseAllowanceCents: Int?
     @Published public var allowanceExplicitlySet = false
+    /// Non-nil when the base allowance failed to load, so the
+    /// Temporary Allowance form can say so with a retry instead of
+    /// showing a bare amount field with no preview (F-P2-14).
+    @Published public var allowanceError: String?
 
     /// Client key for the in-flight top-up, reused across retries of
     /// the same attempt (idempotency — live.js:4638-4640).
@@ -336,10 +340,17 @@ public final class FundsViewModel: ObservableObject {
             let allowance = try await context.client.postgrest.householdAllowance(householdId: context.householdId)
             baseAllowanceCents = allowance.baseAllowanceCents
             allowanceExplicitlySet = allowance.allowanceExplicitlySet
+            allowanceError = nil
         } catch {
             baseAllowanceCents = nil
             allowanceExplicitlySet = false
+            allowanceError = "Could not load your current allowance. Try again."
         }
+    }
+
+    /// Retry just the allowance load (Temporary Allowance error state).
+    public func reloadAllowance() async {
+        await loadAllowance()
     }
 
     // MARK: - Errors / toasts
