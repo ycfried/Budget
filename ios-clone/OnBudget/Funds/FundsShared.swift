@@ -255,16 +255,22 @@ public struct FundsErrorBox: View {
 }
 
 /// One labelled row inside an expanded balance card
-/// (Available / Pending / Total — spec §6.2/§9.1).
+/// (Available / Pending / Total — spec §6.2/§9.1). `isInflow`
+/// marks a money-in row (e.g. savings "Transferred In"): green
+/// with a "+" prefix under the shared kind rule — never red, and
+/// never applied to a balance or a shortfall (those stay ink, or
+/// red when negative via `isNegative`).
 public struct FundsBreakdownRow: View {
     public let label: String
     public let value: String
     public let isNegative: Bool
+    public let isInflow: Bool
 
-    public init(_ label: String, value: String, isNegative: Bool = false) {
+    public init(_ label: String, value: String, isNegative: Bool = false, isInflow: Bool = false) {
         self.label = label
         self.value = value
         self.isNegative = isNegative
+        self.isInflow = isInflow
     }
 
     public var body: some View {
@@ -274,7 +280,7 @@ public struct FundsBreakdownRow: View {
             Spacer()
             Text(value)
                 .fontWeight(.semibold)
-                .foregroundStyle(isNegative ? DesignTokens.errorText : DesignTokens.ink)
+                .foregroundStyle(isNegative ? DesignTokens.errorText : (isInflow ? DesignTokens.success : DesignTokens.ink))
         }
         .font(.system(size: 15))
     }

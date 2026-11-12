@@ -80,6 +80,17 @@ public enum TransactionKind: Equatable, Codable, Sendable {
     public static let reclassifiable: [TransactionKind] = [
         .charge, .refund, .fundCharge, .transfer, .payment, .cashback, .income,
     ]
+
+    /// The money-in kind names (owner, Nov 12, 2026): income,
+    /// refund, cashback — green with a "+" prefix. The KIND, not
+    /// the stored sign, decides the colour: charity gifts are
+    /// outflows but render blue, regular kinds render ink. Shared
+    /// with the CSV preview, which only has the classified kind
+    /// string, not a Transaction.
+    public static let moneyInKindNames: Set<String> = ["income", "refund", "cashback"]
+
+    /// True for the money-in kinds: income, refund, cashback.
+    public var isMoneyIn: Bool { Self.moneyInKindNames.contains(rawValue) }
 }
 
 /// `provisional` (pending) / `verified` (posted) / `excluded` (trash) /
@@ -177,6 +188,12 @@ public struct Transaction: Equatable, Codable, Identifiable {
     /// A pending (provisional) refund restores nothing and is excluded
     /// from week math (compute-week contract).
     public var isPendingRefund: Bool { kind == .refund && state == .provisional }
+
+    /// Money-in row (owner, Nov 12, 2026): kind income / refund /
+    /// cashback — renders green with a "+" prefix. Kind-based,
+    /// not sign-based: a negative charge or transfer still renders
+    /// ink with its stored minus (the kind decides the colour).
+    public var isInflow: Bool { kind.isMoneyIn }
 
     enum CodingKeys: String, CodingKey {
         case id, date, merchant, state, kind, excluded, late

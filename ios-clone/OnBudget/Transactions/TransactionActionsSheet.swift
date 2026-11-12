@@ -203,7 +203,7 @@ public struct TransactionActionsSheet: View {
     }
 
     private var subtitle: String {
-        "\(TransactionFormatting.displayMerchant(transaction.merchant)) — \(TransactionFormatting.formatCents(transaction.amountCents))"
+        "\(TransactionFormatting.displayMerchant(transaction.merchant)) — \(TransactionFormatting.amountDisplay(for: transaction).text)"
     }
 
     // MARK: - List
@@ -310,7 +310,7 @@ public struct TransactionActionsSheet: View {
 
     private var extraFundContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Ask the admin to cover “\(TransactionFormatting.displayMerchant(transaction.merchant))” (\(TransactionFormatting.formatCents(transaction.amountCents))) from the Extra Fund?")
+            Text("Ask the admin to cover “\(TransactionFormatting.displayMerchant(transaction.merchant))” (\(TransactionFormatting.amountDisplay(for: transaction).text)) from the Extra Fund?")
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
             VStack(alignment: .leading, spacing: 6) {
@@ -336,7 +336,7 @@ public struct TransactionActionsSheet: View {
                         // T-P2-6: a request can never exceed the
                         // charge it covers.
                         guard cents <= transaction.amountCents else {
-                            extraFundError = "The request can't be more than the charge (\(TransactionFormatting.formatCents(transaction.amountCents)))."
+                            extraFundError = "The request can't be more than the charge (\(TransactionFormatting.amountDisplay(for: transaction).text))."
                             return
                         }
                         isWorking = true

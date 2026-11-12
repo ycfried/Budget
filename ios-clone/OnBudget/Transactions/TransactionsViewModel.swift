@@ -161,7 +161,10 @@ public final class TransactionsViewModel {
         }
         let total = TransactionFilters.shownTotal(for: shown, status: filters.status)
         let suffix = hasMore ? " · of loaded transactions — tap Load more for older ones" : ""
-        return "\(shown.count) transactions · Total \(TransactionFormatting.formatCents(total))\(suffix)"
+        // A negative net total is money in overall, so it reads
+        // "+$X" (MoneyFormat.netTotalText); the line stays muted —
+        // the total is a summary, not a row.
+        return "\(shown.count) transactions · Total \(MoneyFormat.netTotalText(cents: total))\(suffix)"
     }
 
     /// Whether the viewer has any action on a row (live.js:982):
@@ -392,7 +395,7 @@ public final class TransactionsViewModel {
         do {
             try await client.rpcs.markTransactionCharity(pTransactionId: transaction.id)
             toastManager.show(
-                "Marked as charity gift: \(TransactionFormatting.formatCents(transaction.amountCents)) to \(TransactionFormatting.displayMerchant(transaction.merchant)).",
+                "Marked as charity gift: \(TransactionFormatting.amountDisplay(for: transaction).text) to \(TransactionFormatting.displayMerchant(transaction.merchant)).",
                 kind: .success
             )
             await reloadAfterMutation()
@@ -453,7 +456,7 @@ public final class TransactionsViewModel {
         guard amountCents <= transaction.amountCents else {
             showAlert(
                 title: "Could Not Send Request",
-                message: "The request can't be more than the charge (\(TransactionFormatting.formatCents(transaction.amountCents)))."
+                message: "The request can't be more than the charge (\(TransactionFormatting.amountDisplay(for: transaction).text))."
             )
             return false
         }

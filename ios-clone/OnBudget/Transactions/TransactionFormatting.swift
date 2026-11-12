@@ -1,12 +1,15 @@
 import Foundation
+import SwiftUI
 import OnBudgetKit
 
-/// Pure display formatting for Transactions — no SwiftUI, no network.
+/// Pure display formatting for Transactions — no network.
 ///
 /// Every label below is copied from the live web app v66
 /// (`origin/main` live.js). Money is integer cents; dates are
 /// `YYYY-MM-DD` strings in America/New_York; the data floor is
 /// 2026-11-01 — no row dated before it is ever shown or accepted.
+/// The amount-colour helper returns a SwiftUI Color, so this file
+/// imports SwiftUI; the money text itself stays pure (MoneyFormat).
 public enum TransactionFormatting {
 
     /// The app's data floor (live.js:231, 756).
@@ -33,6 +36,55 @@ public enum TransactionFormatting {
             grouped.append(char)
         }
         return String(grouped.reversed())
+    }
+
+    // MARK: - Amount display: the one shared kind→colour rule
+    //
+    // Owner, Nov 12, 2026 (voice note + refinement the same day):
+    // the KIND, not the direction, decides how a transaction
+    // amount renders — every screen routes its row amounts through
+    // `amountDisplay(for:)`, never through its own colour logic.
+    // - Money in (kind income / refund / cashback): GREEN
+    //   (`DesignTokens.success`, #16a34a) with a "+" prefix
+    //   ("+$75.00"). The stored Plaid negative is flipped to "+"
+    //   here, at the display layer only.
+    // - Charity gifts (kind charity): BLUE (`DesignTokens.primary`,
+    //   #2f6bff). Charity rows are outflows, but the kind decides.
+    // - Regular kinds (charge / payment / transfer / fund charge /
+    //   other): BLACK ink, stored sign kept ("$X" / "-$X").
+    // - RED is never a transaction amount: it stays reserved for
+    //   the over-budget hero figure, negative balances, and errors.
+    // - Zero is "$0.00" in ink for every kind.
+    // Display only: the model cents, the week math, and the totals
+    // are untouched — only the text and colour of a rendered row
+    // change.
+
+    /// Text + colour for one transaction row, under the shared
+    /// kind rule above. The single helper every amount-rendering
+    /// screen uses (Home Recent, Transactions list + detail,
+    /// Trash, Review, action sheets, toasts that quote a row).
+    public static func amountDisplay(for transaction: Transaction) -> (text: String, color: Color) {
+        if transaction.amountCents == 0 { return (formatCents(0), DesignTokens.ink) }
+        if transaction.isInflow {
+            return (
+                MoneyFormat.amountText(cents: transaction.amountCents, isMoneyIn: true),
+                DesignTokens.success
+            )
+        }
+        if transaction.kind == .charity {
+            return (formatCents(transaction.amountCents), DesignTokens.primary)
+        }
+        return (formatCents(transaction.amountCents), DesignTokens.ink)
+    }
+
+    /// Display for an amount already known to be money in —
+    /// charity income rows, fund top-ups, savings transfer-in /
+    /// interest, a released surplus: "+$X" green. A zero or
+    /// negative input falls back to the plain rendering: a known
+    /// inflow is positive by construction, so this is only a guard.
+    public static func inflowDisplay(cents: Int) -> (text: String, color: Color) {
+        guard cents > 0 else { return (formatCents(cents), DesignTokens.ink) }
+        return ("+" + formatCents(cents), DesignTokens.success)
     }
 
     /// Strict money parsing (live.js:52-60 `parseDollarsStrict`):

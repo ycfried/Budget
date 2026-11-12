@@ -286,7 +286,13 @@ struct CSVImportView: View {
                     ErrorBox(viewModel.parseErrors.joined(separator: "\n"))
                 }
                 ForEach(Array(viewModel.previewRows.enumerated()), id: \.offset) { index, preview in
-                    Text("\(index + 1). \(preview.row.date) · \(preview.row.merchant) · \(OnBudgetKit.MoneyFormat.formatCents(preview.row.amountCents)) · ••\(preview.row.suffix) — \(preview.isDuplicate ? "Duplicate, will be skipped" : "New")")
+                    // The preview amount uses the shared kind rule:
+                    // a CSV credit classifies as income / refund /
+                    // cashback and reads "+$X"; other kinds keep
+                    // the stored sign.
+                    let kind = CSVParsing.classifyKind(merchant: preview.row.merchant, amountCents: preview.row.amountCents)
+                    let amountText = MoneyFormat.amountText(cents: preview.row.amountCents, isMoneyIn: TransactionKind.moneyInKindNames.contains(kind))
+                    Text("\(index + 1). \(preview.row.date) · \(preview.row.merchant) · \(amountText) · ••\(preview.row.suffix) — \(preview.isDuplicate ? "Duplicate, will be skipped" : "New")")
                         .font(.subheadline)
                         .foregroundStyle(preview.isDuplicate ? Color(hex: "#6b7280") : DesignTokens.ink)
                 }
