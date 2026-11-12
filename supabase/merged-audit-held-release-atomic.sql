@@ -12,7 +12,7 @@
 -- shortfall race the first atomic version kept.
 --
 -- WHY: resolve_held_refund (from restoration-snapshots.sql) selects
--- the held row, checks status='pending', then updates it without a
+-- the held row, checks status='held', then updates it without a
 -- status condition. Two concurrent releases can both pass the
 -- check and both post fund-ledger rows — a double release. This
 -- replacement keeps every existing semantic (admin-only, release =
@@ -22,12 +22,24 @@
 --   1. the row is locked (SELECT ... FOR UPDATE) for the whole RPC
 --      transaction, so a second release for the same household row
 --      blocks until the first commits;
---   2. the resolving UPDATE is conditional on status='pending'
+--   2. the resolving UPDATE is conditional on status='held'
 --      and its row count is checked — if another run already
 --      resolved it, this run raises 'held refund already resolved'
 --      instead of posting money a second time.
 -- A replayed release is therefore an error, never a second credit;
 -- the client already shows an error toast on RPC failure.
+--
+-- STATUS VOCABULARY (Nov 9, 2026 — live defect 2): the releasable
+-- state is 'held', matching the live held_refunds CHECK constraint
+-- ('held','written_off','resolved'). The function previously
+-- checked status='pending', which no live row can hold, so a held
+-- refund could never be released at all — and the second-release
+-- refusal was untestable. week-close inserts rows as 'held', the
+-- client offers Release only for 'held' rows, and the unlink guard
+-- in refund-linking.sql (P2-N14) matches 'held' too. write_off and
+-- resolve still close the row as 'resolved' (the documented
+-- semantics); 'written_off' stays an allowed-but-unused constraint
+-- value — no code path writes it.
 create or replace function public.resolve_held_refund(p_held_id uuid, p_action text, p_note text)
 returns void
 language plpgsql
@@ -45,7 +57,7 @@ begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_row from held_refunds where id = p_held_id for update;
   if not found then raise exception 'held refund not found'; end if;
-  if v_row.status <> 'pending' then raise exception 'held refund is not pending'; end if;
+  if v_row.status <> 'held' then raise exception 'held refund is not held'; end if;
   if not exists (select 1 from household_members
                  where household_id = v_row.household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';
@@ -75,7 +87,7 @@ begin
     if v_note is null then v_note := 'release'; end if;
     update held_refunds
       set status = 'resolved', resolved_at = now(), resolution_note = v_note
-      where id = p_held_id and status = 'pending';
+      where id = p_held_id and status = 'held';
     get diagnostics v_updated = row_count;
     if v_updated = 0 then raise exception 'held refund already resolved'; end if;
     insert into audit_log (household_id, actor, actor_name, action, detail)
@@ -92,7 +104,7 @@ begin
   if v_note is null then v_note := p_action; end if;
   update held_refunds
     set status = 'resolved', resolved_at = now(), resolution_note = v_note
-    where id = p_held_id and status = 'pending';
+    where id = p_held_id and status = 'held';
   get diagnostics v_updated = row_count;
   if v_updated = 0 then raise exception 'held refund already resolved'; end if;
   insert into audit_log (household_id, actor, actor_name, action, detail)

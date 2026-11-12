@@ -531,11 +531,16 @@ public final class FundsViewModel: ObservableObject {
     // MARK: - Review: held refunds
 
     /// Release a held refund via `resolve_held_refund`
-    /// (`p_action='release'`). LIVE DEFECT (Nov 9, 2026): the server
-    /// refuses today because it expects `status='pending'` while the
-    /// CHECK allows only `held`/`written_off`/`resolved` — the refusal
-    /// surfaces verbatim here; when the server fix lands, this call
-    /// works with no clone change.
+    /// (`p_action='release'`). Web PR #62 fixed the server live
+    /// Nov 9, 2026: the releasable state is `status='held'`
+    /// (matching the live held_refunds CHECK); the repo copy of the
+    /// function in `supabase/merged-audit-held-release-atomic.sql`
+    /// is synced to that fix on this branch. The earlier "LIVE
+    /// DEFECT" note claiming the server still expects 'pending'
+    /// was stale — this branch's SQL copy predated the PR #62 merge,
+    /// not a live refusal. A server refusal still surfaces verbatim
+    /// in an alert. Live verification in the test household is still
+    /// owed (no live check was possible from here).
     public func releaseHeldRefund(_ held: HeldRefund) async {
         await guarded("release-\(held.id.uuidString)", title: "Could Not Release") {
             try await context.client.rpcs.resolveHeldRefund(
