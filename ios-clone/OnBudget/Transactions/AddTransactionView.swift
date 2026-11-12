@@ -136,7 +136,7 @@ private struct FormField<Content: View>: View {
 /// Footnote: "Never enter a full card number."
 /// Validation, in order, each naming the field: amount must be a
 /// positive number ("Amount: enter a positive amount."); suffix
-/// exactly 4 digits ("Card suffix: enter exactly 4 digits. Never
+/// exactly 4 digits ("Card Suffix: enter exactly 4 digits. Never
 /// enter a full card number."); merchant required; date required;
 /// date must be ≥ 2026-11-01 ("Date: transactions start Nov 1, 2026.
 /// Pick a date on or after Nov 1, 2026."); date must not be in the
@@ -279,7 +279,7 @@ public struct AddPurchaseForm: View {
             return nil
         }
         guard cardSuffix.count == 4, cardSuffix.allSatisfy(\.isNumber) else {
-            errorMessage = "Card suffix: enter exactly 4 digits. Never enter a full card number."
+            errorMessage = "Card Suffix: enter exactly 4 digits. Never enter a full card number."
             return nil
         }
         let trimmedMerchant = merchant.trimmingCharacters(in: .whitespaces)
@@ -509,7 +509,7 @@ public struct AddDonationForm: View {
             return nil
         }
         if !cardSuffix.isEmpty, !(cardSuffix.count == 4 && cardSuffix.allSatisfy(\.isNumber)) {
-            errorMessage = "Card suffix: enter exactly 4 digits. Never enter a full card number."
+            errorMessage = "Card Suffix: enter exactly 4 digits. Never enter a full card number."
             return nil
         }
         return (trimmedOrg, cents, dateStr, cardSuffix, note.trimmingCharacters(in: .whitespaces))

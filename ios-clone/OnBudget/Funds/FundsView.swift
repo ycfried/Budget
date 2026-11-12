@@ -196,7 +196,7 @@ public struct FundsView: View {
                 FundsErrorBox(error)
             } else if let summary = viewModel.fundSummary {
                 FundsBreakdownRow(
-                    isAdmin ? "Spendable available" : "Available to request",
+                    isAdmin ? "Spendable Available" : "Available to Request",
                     value: MoneyFormat.formatCents(summary.availableCents),
                     isNegative: summary.availableCents < 0
                 )
