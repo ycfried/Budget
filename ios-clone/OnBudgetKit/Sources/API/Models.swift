@@ -484,22 +484,22 @@ public struct WeekResult: Equatable, Codable {
         let hasDebt = carriedDebtCents > 0
         var rows: [WeekSheetRow] = []
         if let base = baseAllowanceCents, hasTemp || hasTempDecrease || hasDebt {
-            rows.append(WeekSheetRow(label: "Base allowance", cents: base))
+            rows.append(WeekSheetRow(label: "Base Allowance", cents: base))
         }
         if hasTemp {
-            rows.append(WeekSheetRow(label: "Temporary increases", cents: tempDelta))
+            rows.append(WeekSheetRow(label: "Temporary Increases", cents: tempDelta))
         }
         if hasTempDecrease {
-            rows.append(WeekSheetRow(label: "Temporary decrease", cents: -tempDelta))
+            rows.append(WeekSheetRow(label: "Temporary Decrease", cents: -tempDelta, isDeduction: true))
         }
         if hasDebt {
-            rows.append(WeekSheetRow(label: "Carried debt", cents: carriedDebtCents))
+            rows.append(WeekSheetRow(label: "Carried Debt", cents: carriedDebtCents, isDeduction: true))
         }
         rows.append(WeekSheetRow(label: "Allowance", cents: baseAvailableCents + tempCents))
         rows.append(WeekSheetRow(label: "Spent", cents: chargesCents))
         rows.append(WeekSheetRow(label: "Balance", cents: availableCents))
         if unlinkedExcessCents > 0 {
-            rows.append(WeekSheetRow(label: "Unlinked refunds", cents: unlinkedExcessCents))
+            rows.append(WeekSheetRow(label: "Unlinked Refunds", cents: unlinkedExcessCents))
         }
         return rows
     }
@@ -509,10 +509,16 @@ public struct WeekResult: Equatable, Codable {
 public struct WeekSheetRow: Equatable {
     public let label: String
     public let cents: Int
+    /// Deduction lines (Temporary Decrease, Carried Debt) print with
+    /// a leading minus so the reconciliation adds up on sight; the
+    /// stored cents stay positive — display only, the math is
+    /// unchanged (audit H-P2-2).
+    public let isDeduction: Bool
 
-    public init(label: String, cents: Int) {
+    public init(label: String, cents: Int, isDeduction: Bool = false) {
         self.label = label
         self.cents = cents
+        self.isDeduction = isDeduction
     }
 }
 

@@ -102,6 +102,7 @@ public struct TransactionsView: View {
         }
         .onChange(of: appState.pendingWeekFilter) { _, _ in consumeHandoffs() }
         .onChange(of: appState.pendingTransactionJump) { _, _ in consumeHandoffs() }
+        .onChange(of: appState.pendingClearTransactionFilters) { _, _ in consumeHandoffs() }
         .sheet(isPresented: $showingFilters) {
             TransactionsFilterSheet(viewModel: viewModel, onDismiss: { showingFilters = false })
         }
@@ -138,6 +139,8 @@ public struct TransactionsView: View {
     /// Past Weeks / Weekly sheet (`pendingWeekFilter`) and Home
     /// recent-row tap (`pendingTransactionJump`): apply to the list,
     /// then clear the flag so a later tab switch does not re-apply.
+    /// Home "See All" (`pendingClearTransactionFilters`) clears
+    /// search/filters first, same as the jump (audit H-P2-8).
     private func consumeHandoffs() {
         if let week = appState.pendingWeekFilter {
             appState.pendingWeekFilter = nil
@@ -146,6 +149,13 @@ public struct TransactionsView: View {
         if let jump = appState.pendingTransactionJump {
             appState.pendingTransactionJump = nil
             viewModel.applyTransactionJump(jump)
+        }
+        if appState.pendingClearTransactionFilters {
+            appState.pendingClearTransactionFilters = false
+            viewModel.clearSearchAndFilters()
+            // The search box is local state: clear it too, or it
+            // would keep showing text the list no longer filters by.
+            searchText = ""
         }
     }
 
@@ -174,13 +184,25 @@ public struct TransactionsView: View {
                     Button { Task { await viewModel.runSync() } } label: {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
+                            // White icon on the blue state; dark ink on the
+                            // grey state — white-on-grey was ~1.1:1 and
+                            // effectively invisible (audit H-P1-1).
+                            .foregroundStyle(viewModel.allowanceSet ? .white : DesignTokens.ink)
                             .frame(width: 44, height: 44)
                             .background(
                                 viewModel.allowanceSet
                                     ? DesignTokens.primary : Color(hex: "#e5e7eb"))
                             .clipShape(Circle())
+                            // Repeating linear spin while syncing: a plain
+                            // 0°→360° rotation with no animation renders
+                            // identically at both ends, so it never
+                            // visibly spun (audit H-P1-2).
                             .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
+                            .animation(
+                                viewModel.isSyncing
+                                    ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                                    : .default,
+                                value: viewModel.isSyncing)
                     }
                     .disabled(viewModel.isSyncing)
                     .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")

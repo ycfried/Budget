@@ -164,7 +164,7 @@ final class APIDecodingTests: XCTestCase {
         let rows = weekResult(baseAvailable: 47500, override: 47500, available: 47500)
             .sheetRows(baseAllowanceCents: 37500)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base allowance", "Temporary increases", "Allowance", "Spent", "Balance"])
+                       ["Base Allowance", "Temporary Increases", "Allowance", "Spent", "Balance"])
         XCTAssertEqual(rows[0].cents, 37500)
         XCTAssertEqual(rows[1].cents, 10000)
         XCTAssertEqual(rows[2].cents, 47500)
@@ -175,7 +175,7 @@ final class APIDecodingTests: XCTestCase {
         let rows = weekResult(baseAvailable: 27500, override: 27500, available: 27500)
             .sheetRows(baseAllowanceCents: 37500)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base allowance", "Temporary decrease", "Allowance", "Spent", "Balance"])
+                       ["Base Allowance", "Temporary Decrease", "Allowance", "Spent", "Balance"])
         XCTAssertEqual(rows[1].cents, 10000)
     }
 
@@ -183,7 +183,7 @@ final class APIDecodingTests: XCTestCase {
         let rows = weekResult(baseAvailable: 0, debt: 34810, charges: 12169, available: -9479)
             .sheetRows(baseAllowanceCents: 37500)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base allowance", "Carried debt", "Allowance", "Spent", "Balance"])
+                       ["Base Allowance", "Carried Debt", "Allowance", "Spent", "Balance"])
         XCTAssertEqual(rows[1].cents, 34810)
         XCTAssertEqual(rows[4].cents, -9479)
     }
@@ -194,7 +194,7 @@ final class APIDecodingTests: XCTestCase {
         let rows = weekResult(baseAvailable: 37500, temp: 5000, available: 42500)
             .sheetRows(baseAllowanceCents: 37500)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base allowance", "Temporary increases", "Allowance", "Spent", "Balance"])
+                       ["Base Allowance", "Temporary Increases", "Allowance", "Spent", "Balance"])
         XCTAssertEqual(rows[1].cents, 5000)
     }
 

@@ -136,6 +136,11 @@ public final class AppViewModel: ObservableObject {
     /// Transactions screen once consumed.
     @Published public var pendingWeekFilter: String?
 
+    /// Handoff from Home "See All" (audit H-P2-8): open Transactions
+    /// with search/filters cleared first, like the recent-row jump.
+    /// Cleared by the Transactions screen once consumed.
+    @Published public var pendingClearTransactionFilters = false
+
     /// Handoff from Settings Budget → Temporary Allowance (spec
     /// §10.4): switch to the Funds tab and open the Temporary
     /// Allowance form there. Cleared by FundsView once consumed.
@@ -390,6 +395,17 @@ public final class AppViewModel: ObservableObject {
     public func jumpToTransaction(_ id: UUID) {
         pendingTransactionJump = id
         pendingWeekFilter = nil
+        selectedTab = .transactions
+    }
+
+    /// Home "See All" (audit H-P2-8): clear Transactions
+    /// filters/search first — same as the recent-row jump — then
+    /// open Transactions. Without the clear, See All could land on
+    /// a filtered list.
+    public func showAllTransactions() {
+        pendingClearTransactionFilters = true
+        pendingWeekFilter = nil
+        pendingTransactionJump = nil
         selectedTab = .transactions
     }
 

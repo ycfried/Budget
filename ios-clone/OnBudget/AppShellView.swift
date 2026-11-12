@@ -155,7 +155,10 @@ public struct AppShellView: View {
                 .foregroundStyle(DesignTokens.ink)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .padding(.horizontal, 124)
+                // ~110pt per side matches the Profile control's
+                // actual width; 124pt truncated longer household
+                // names early on narrow phones (audit H-P2-10).
+                .padding(.horizontal, 110)
             HStack {
                 Spacer()
                 Menu {

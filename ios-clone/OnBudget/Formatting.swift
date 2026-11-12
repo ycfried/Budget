@@ -72,9 +72,11 @@ public enum AppDates {
         return longFormatter.string(from: date)
     }
 
-    /// Hero kicker: "Nov 8, 2026 (Sun–Sat)" (live.js weekLabel).
+    /// Hero kicker: "Nov 8, 2026" (live.js weekLabel, with the
+    /// "(Sun–Sat)" suffix removed — owner, Nov 12, 2026: the date
+    /// alone, audit H-P2-9).
     public static func weekLabel(weekStart: String) -> String {
-        "\(long(weekStart)) (Sun–Sat)"
+        long(weekStart)
     }
 
     /// Today / Yesterday (New York date) or "Mon D, YYYY" short form.

@@ -65,6 +65,11 @@ public final class HomeViewModel: ObservableObject {
     /// v69). Nil when the household read failed, so the sheet shows
     /// no Base row and no override line, exactly as the web.
     @Published public var allowanceCents: Int?
+    /// The household-read failure, when that read failed (audit
+    /// H-P1-4): the hero shows this with a retry instead of silently
+    /// blanking numbers compute-week already returned. Nil on a
+    /// successful read.
+    @Published public var allowanceError: OnBudgetError?
     @Published public var fund: HomeSectionState<FundSummary> = .loading
     @Published public var charity: HomeSectionState<CharitySummary> = .loading
     @Published public var recent: HomeSectionState<[Transaction]> = .loading
@@ -119,9 +124,16 @@ public final class HomeViewModel: ObservableObject {
             let allowance = try await client.postgrest.householdAllowance(householdId: householdId)
             allowanceSet = allowance.allowanceExplicitlySet
             allowanceCents = allowance.baseAllowanceCents
+            allowanceError = nil
+        } catch let error as OnBudgetError {
+            if error == .sessionExpired { appState.showSessionExpired(); return }
+            allowanceSet = nil
+            allowanceCents = nil
+            allowanceError = error
         } catch {
             allowanceSet = nil
             allowanceCents = nil
+            allowanceError = .unknown("Could not load your allowance setting.")
         }
 
         // Transactions page (100 + probe row): recent 6, purchases
@@ -213,7 +225,7 @@ public final class HomeViewModel: ObservableObject {
     // MARK: - Bank sync
 
     /// Home sync button (live.js:2842-2876, runBankSync): admin
-    /// only, one sync at a time, spins while running. The toast
+    /// only, one sync at a time, spins while syncing. The toast
     /// text is bankSyncToast (filterState.mjs:449-463).
     public func syncBank() async {
         guard isAdmin, !isSyncing else { return }
@@ -225,8 +237,12 @@ public final class HomeViewModel: ObservableObject {
             case .success(let result):
                 appState.showToast(Self.syncToastText(result), kind: .success)
             case .partial(let partial):
+                // Lead with the failure (audit H-P2-7): the old text
+                // opened "Sync done:" and never said what failed.
+                // The counts still follow, so the partial progress
+                // is not lost.
                 appState.showToast(
-                    "Sync done: \(partial.result.added) added, \(partial.result.updated) updated, \(partial.result.skipped) skipped across \(partial.result.items) connected account(s). — \(partial.failedInstitutions.joined(separator: ", "))",
+                    "Couldn't sync \(partial.failedInstitutions.joined(separator: ", ")): \(partial.result.added) added, \(partial.result.updated) updated, \(partial.result.skipped) skipped across \(partial.result.items) connected account(s).",
                     kind: .error)
             }
             await refresh()
@@ -289,6 +305,13 @@ public struct HomeView: View {
         .background(DesignTokens.background)
         .task { await viewModel.refresh() }
         .refreshable { await viewModel.refresh() }
+        // Settings dismiss (audit H-P1-5): the Settings cover sits
+        // over this tab and never re-ran the load, so a just-set
+        // allowance still showed the old state. Refresh when the
+        // cover closes; opening it changes nothing.
+        .onChange(of: appState.showSettings) { _, isShowing in
+            if !isShowing { Task { await viewModel.refresh() } }
+        }
         .sheet(isPresented: $showWeeklySheet) {
             if case .loaded(let result) = viewModel.week {
                 WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, appState: appState)
@@ -317,9 +340,9 @@ public struct HomeView: View {
             case .loading:
                 heroSkeleton
             case .failed(let error):
-                Text("Could not load this week's numbers.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                // One failure message only: the ErrorBox. The grey
+                // "Could not load…" line above it said the same
+                // thing twice (audit H-P2-4).
                 ErrorBox(weekErrorText(error))
                 Button("Try Again") { Task { await viewModel.refresh() } }
                     .buttonStyle(TertiaryButtonStyle())
@@ -338,20 +361,26 @@ public struct HomeView: View {
         // Hero exception: outline, NO shadow (styles.css:1127).
     }
 
-    /// Full-size hero skeleton: same frame, padding and row heights
-    /// as the loaded hero, with grey placeholder blocks where the
-    /// number, progress bar and stats go, plus the system spinner.
+    /// Full-size hero skeleton: same frame, padding, rows and
+    /// spacing as the loaded hero, with grey placeholder blocks
+    /// where the number, progress bar and stats go — including the
+    /// 44pt sync-button block in the figure row, and no extra
+    /// spinner row the loaded hero lacks — so the page never jumps
+    /// when the numbers arrive (audit H-P2-5).
     private var heroSkeleton: some View {
         VStack(alignment: .leading, spacing: 14) {
             RoundedRectangle(cornerRadius: 6)
                 .fill(Color(hex: "#ececf1"))
                 .frame(width: 160, height: 18)
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(hex: "#ececf1"))
-                .frame(width: 230, height: 54)
-            ProgressView()
-                .progressViewStyle(.circular)
-                .frame(maxWidth: .infinity, alignment: .center)
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(hex: "#ececf1"))
+                    .frame(width: 230, height: 54)
+                Spacer()
+                Circle()
+                    .fill(Color(hex: "#ececf1"))
+                    .frame(width: 44, height: 44)
+            }
             RoundedRectangle(cornerRadius: 4)
                 .fill(Color(hex: "#ececf1"))
                 .frame(maxWidth: .infinity, minHeight: 8, maxHeight: 8)
@@ -407,13 +436,25 @@ public struct HomeView: View {
                 Button { Task { await viewModel.syncBank() } } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        // White icon on the blue state; dark ink on the
+                        // grey state — white-on-grey was ~1.1:1 and
+                        // effectively invisible (audit H-P1-1).
+                        .foregroundStyle(viewModel.allowanceSet == true ? .white : DesignTokens.ink)
                         .frame(width: 44, height: 44)
                         .background(
                             viewModel.allowanceSet == true
                                 ? DesignTokens.primary : Color(hex: "#e5e7eb"))
                         .clipShape(Circle())
+                        // Repeating linear spin while syncing: a plain
+                        // 0°→360° rotation with no animation renders
+                        // identically at both ends, so it never
+                        // visibly spun (audit H-P1-2).
                         .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
+                        .animation(
+                            viewModel.isSyncing
+                                ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                                : .default,
+                            value: viewModel.isSyncing)
                 }
                 .disabled(viewModel.isSyncing)
                 .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")
@@ -421,24 +462,31 @@ public struct HomeView: View {
         }
 
         // Progress bar: charges / capacity, capped at 100%; red
-        // when charges exceed capacity.
+        // when charges exceed capacity. Over budget the fill is
+        // full-width red — a zero/negative capacity used to force
+        // the fraction to 0, so the bar was an empty grey track
+        // exactly when over budget (audit H-P2-6).
         let capacity = result.baseAvailableCents + result.tempCents
-        let fraction = capacity > 0 ? min(1, Double(result.chargesCents) / Double(capacity)) : 0
+        let overBudget = result.chargesCents > capacity
+        let fraction = overBudget ? 1 : (capacity > 0 ? Double(result.chargesCents) / Double(capacity) : 0)
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color(hex: "#ececf1"))
                     .frame(height: 8)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(result.chargesCents > capacity ? DesignTokens.errorText : DesignTokens.primary)
+                    .fill(overBudget ? DesignTokens.errorText : DesignTokens.primary)
                     .frame(width: geometry.size.width * fraction, height: 8)
             }
         }
         .frame(height: 8)
 
         // Spent line + % used. While no allowance is set both read —.
+        // A failed allowance read (nil) still shows compute-week's
+        // numbers — only an explicit never-set hides them (audit
+        // H-P1-4).
         HStack(spacing: 8) {
-            if viewModel.allowanceSet == true {
+            if viewModel.allowanceSet != false {
                 Text("\(MoneyFormat.string(cents: result.chargesCents)) spent")
                 Text("·")
                 Text(usedPercentText(result: result, capacity: capacity))
@@ -457,9 +505,9 @@ public struct HomeView: View {
                 Text("Weekly Allowance")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color(hex: "#6b7280"))
-                Text(viewModel.allowanceSet == true
-                     ? MoneyFormat.string(cents: capacity)
-                     : "—")
+                Text(viewModel.allowanceSet == false
+                     ? "—"
+                     : MoneyFormat.string(cents: capacity))
                     .font(.system(size: 17, weight: .bold))
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -469,6 +517,17 @@ public struct HomeView: View {
                 Text(viewModel.purchasesThisWeek.map(String.init) ?? "N/A")
                     .font(.system(size: 17, weight: .bold))
             }
+        }
+
+        // Allowance-read failure (audit H-P1-4): the hero numbers
+        // above already come from compute-week, so this is an error
+        // line + retry, not a blank. The "Set Your Weekly Allowance"
+        // button below stays gated on an explicit never-set, so a
+        // mere read failure never hides it.
+        if let allowanceError = viewModel.allowanceError {
+            ErrorBox("Couldn't load your allowance setting — \(allowanceError.displayMessage)")
+            Button("Try Again") { Task { await viewModel.refresh() } }
+                .buttonStyle(TertiaryButtonStyle())
         }
 
         // Set Your Weekly Allowance: admin only, never-set state.
@@ -569,11 +628,13 @@ public struct HomeView: View {
                     .buttonStyle(TertiaryButtonStyle())
             } else if case .loaded(let summary) = viewModel.fund {
                 // Home expansions show rows only, no action buttons.
-                // Row labels are the web's exact wording
-                // (live.js:3604): "Spendable available" (admin) /
-                // "Available to request" (member).
+                // Row labels are Title Case (owner rule, Nov 4, 2026):
+                // "Spendable Available" (admin) / "Available to
+                // Request" (member). The in-code web-parity exemption
+                // for these rows was wrong and is removed (audit
+                // H-P2-1).
                 statRow(
-                    label: viewModel.isAdmin ? "Spendable available" : "Available to request",
+                    label: viewModel.isAdmin ? "Spendable Available" : "Available to Request",
                     value: MoneyFormat.signedString(cents: summary.availableCents))
                 statRow(label: "Pending", value: MoneyFormat.string(cents: summary.pendingIncludingHeldCents))
                 statRow(label: "Total", value: MoneyFormat.string(cents: summary.totalCents))
@@ -589,6 +650,11 @@ public struct HomeView: View {
     /// status line under the number explains a loading or failed
     /// face, so a failed card never shows a bare "—" with no
     /// explanation; the expanded rows carry the ErrorBox + Retry.
+    /// The card body is a tap gesture, NOT a Button: the expanded
+    /// rows contain real "Try Again" Buttons, and a Button nested
+    /// inside a Button never fires (audit H-P1-3). A child Button
+    /// wins over an ancestor tap gesture, so the retry taps while
+    /// the rest of the card still toggles.
     private func statCard<Rows: View>(
         title: String,
         face: String,
@@ -599,61 +665,59 @@ public struct HomeView: View {
         onTap: @escaping () -> Void,
         @ViewBuilder rows: () -> Rows
     ) -> some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title)
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(DesignTokens.ink)
-                        Text(face)
-                            .font(.system(size: 22, weight: .heavy))
-                            .foregroundStyle(DesignTokens.ink)
-                        if let statusText {
-                            HStack(spacing: 6) {
-                                if !statusIsError {
-                                    ProgressView()
-                                        .progressViewStyle(.circular)
-                                        .scaleEffect(0.8)
-                                }
-                                Text(statusText)
-                                    .font(.system(size: 13, weight: statusIsError ? .semibold : .regular))
-                                    .foregroundStyle(statusIsError ? DesignTokens.errorText : Color(hex: "#6b7280"))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(DesignTokens.ink)
+                    Text(face)
+                        .font(.system(size: 22, weight: .heavy))
+                        .foregroundStyle(DesignTokens.ink)
+                    if let statusText {
+                        HStack(spacing: 6) {
+                            if !statusIsError {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .scaleEffect(0.8)
                             }
+                            Text(statusText)
+                                .font(.system(size: 13, weight: statusIsError ? .semibold : .regular))
+                                .foregroundStyle(statusIsError ? DesignTokens.errorText : Color(hex: "#6b7280"))
                         }
                     }
-                    Spacer()
                 }
-                if isExpanded {
-                    VStack(alignment: .leading, spacing: 6) { rows() }
-                        .padding(.top, 4)
-                        .transition(ExpandAnimation.transition)
-                }
-                HStack {
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(DesignTokens.primary)
-                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                        .animation(ExpandAnimation.animation, value: isExpanded)
-                }
+                Spacer()
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-            .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 40 / 255, opacity: 0.05),
-                    radius: 2, x: 0, y: 1)
-            .contentShape(Rectangle())
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 6) { rows() }
+                    .padding(.top, 4)
+                    .transition(ExpandAnimation.transition)
+            }
+            HStack {
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(DesignTokens.primary)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                    .animation(ExpandAnimation.animation, value: isExpanded)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 40 / 255, opacity: 0.05),
+                radius: 2, x: 0, y: 1)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
         .animation(ExpandAnimation.animation, value: isExpanded)
         .accessibilityLabel(ariaLabel)
+        .accessibilityAddTraits(.isButton)
     }
 
-    /// Row labels are the web's exact wording (live.js:3560-3600),
-    /// not Title Case — Title Case applies to headings and button
-    /// labels, not these rows.
+    /// Row labels are Title Case, like headings and button labels
+    /// (owner rule, Nov 4, 2026 — audit H-P2-1).
     private func statRow(label: String, value: String) -> some View {
         HStack {
             Text(label)
@@ -741,7 +805,7 @@ public struct HomeView: View {
                 Text("Recent Transactions")
                     .font(.system(size: 22, weight: .bold))
                 Spacer()
-                Button("See All") { appState.selectedTab = .transactions }
+                Button("See All") { appState.showAllTransactions() }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.primary)
             }
@@ -846,23 +910,24 @@ public struct WeeklySheet: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
-                Spacer()
-                Text("Weekly Budget")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Color.clear.frame(width: 50)
-            }
+            // Single dismiss control: the bottom "Close" next to
+            // "Show Transactions". The header "Cancel" duplicated it
+            // (audit H-P2-3), and its centring shim was narrower
+            // than the rendered button, so the title now centres
+            // on its own frame instead.
+            Text("Weekly Budget")
+                .font(.system(size: 17, weight: .bold))
+                .frame(maxWidth: .infinity, alignment: .center)
             Text("Pending transactions are included and marked.\(week.unlinkedExcessCents != 0 ? " Unlinked refunds above this week's spending are not counted here." : "")")
                 .font(.system(size: 15))
             // Reconciliation rows (live.js v69): Base / Temporary /
             // Carried debt appear exactly when they change the number;
             // a normal week keeps the approved three rows.
             ForEach(week.sheetRows(baseAllowanceCents: baseAllowanceCents), id: \.label) { row in
-                sheetRow(label: row.label, value: MoneyFormat.string(cents: row.cents))
+                // Deduction rows print with a leading minus
+                // (audit H-P2-2) so Base $375 → Allowance $325 adds
+                // up on sight; the model cents stay positive.
+                sheetRow(label: row.label, value: MoneyFormat.string(cents: row.isDeduction ? -row.cents : row.cents))
             }
             HStack(spacing: 12) {
                 Button("Show Transactions") {
