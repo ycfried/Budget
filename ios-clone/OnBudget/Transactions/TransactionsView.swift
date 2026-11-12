@@ -131,6 +131,13 @@ public struct TransactionsView: View {
         .onChange(of: searchText) { _, new in
             viewModel.applySearch(new)
         }
+        // T-P1-1: the box is local state, so a filter clear from the
+        // view model (empty-state button, Past Weeks / Home-row jump)
+        // must clear it too — otherwise the box shows a search the
+        // list no longer applies.
+        .onChange(of: viewModel.searchResetNonce) { _, _ in
+            searchText = ""
+        }
     }
 
     // MARK: - Handoffs from the app shell
@@ -238,6 +245,10 @@ public struct TransactionsView: View {
                 HStack(spacing: 8) {
                     ForEach(chips, id: \.key) { chip in
                         Button {
+                            // Clearing the search chip clears the
+                            // visible box too (T-P1-1) — same rule as
+                            // "Clear Search and Filters".
+                            if chip.key == "search" { searchText = "" }
                             viewModel.filters.clearChip(chip.key)
                             viewModel.filterChanged()
                         } label: {
@@ -622,10 +633,10 @@ public struct TransactionsFilterSheet: View {
         onDismiss()
     }
 
-    /// Reset clears everything to defaults.
+    /// Reset clears everything to defaults — including the search
+    /// box, via `clearSearchAndFilters` (T-P1-1).
     private func reset() {
-        viewModel.filters = TransactionFilters()
-        viewModel.persistFilters()
+        viewModel.clearSearchAndFilters()
         let defaults = TransactionFilters()
         draftStatus = defaults.status
         draftWhen = defaults.whenSelection

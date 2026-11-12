@@ -66,6 +66,12 @@ public final class TransactionsViewModel {
     public private(set) var allowanceSet: Bool = false
 
     public var filters = TransactionFilters()
+    /// Bumped whenever the search box must clear with the filters
+    /// (T-P1-1): the box is local @State in TransactionsView, so the
+    /// view watches this and clears it — the box and the list can
+    /// never disagree after a clear, a Past Weeks jump, or a Home
+    /// row jump.
+    public var searchResetNonce: Int = 0
     public var expandedTransactionId: UUID?
     public var isSyncing: Bool = false
     public var isSaving: Bool = false
@@ -134,13 +140,12 @@ public final class TransactionsViewModel {
 
     /// The count line (live.js:863-886): "`N` transactions · Total
     /// shown `$X`" (+ the older-rows suffix when the probe row came
-    /// back). Failure and min>max texts outrank a zero total.
+    /// back). On failure the line is empty — the error box below
+    /// already says it (T-P2-11: one failure message, not two
+    /// stacked). The min>max text outranks a zero total.
     public var countLine: String {
-        if case .failed(let error) = loadState {
-            if error == .sessionExpired {
-                return "Sign-in expired — sign in again to see transactions."
-            }
-            return "Could not load transactions — try again."
+        if case .failed = loadState {
+            return ""
         }
         if filters.amountRangeInvalid {
             return "Minimum amount is above the maximum amount — change one of them to see transactions."
@@ -229,11 +234,15 @@ public final class TransactionsViewModel {
     }
 
     /// "Clear Search and Filters": resets every filter to default and
-    /// re-renders (live.js:1033-1042).
+    /// re-renders (live.js:1033-1042). Also bumps `searchResetNonce`
+    /// so the visible search box clears with the filters (T-P1-1) —
+    /// the Past Weeks and Home-row jumps call this first, so they
+    /// clear the box too.
     public func clearSearchAndFilters() {
         filters = TransactionFilters()
         persistFilters()
         resetPage()
+        searchResetNonce += 1
     }
 
     /// Past Weeks / Weekly-sheet jump (live.js:3457-3500): clear
