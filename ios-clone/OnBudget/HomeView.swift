@@ -65,6 +65,11 @@ public final class HomeViewModel: ObservableObject {
     /// v69). Nil when the household read failed, so the sheet shows
     /// no Base row and no override line, exactly as the web.
     @Published public var allowanceCents: Int?
+    /// The household-read failure, when that read failed (audit
+    /// H-P1-4): the hero shows this with a retry instead of silently
+    /// blanking numbers compute-week already returned. Nil on a
+    /// successful read.
+    @Published public var allowanceError: OnBudgetError?
     @Published public var fund: HomeSectionState<FundSummary> = .loading
     @Published public var charity: HomeSectionState<CharitySummary> = .loading
     @Published public var recent: HomeSectionState<[Transaction]> = .loading
@@ -119,9 +124,16 @@ public final class HomeViewModel: ObservableObject {
             let allowance = try await client.postgrest.householdAllowance(householdId: householdId)
             allowanceSet = allowance.allowanceExplicitlySet
             allowanceCents = allowance.baseAllowanceCents
+            allowanceError = nil
+        } catch let error as OnBudgetError {
+            if error == .sessionExpired { appState.showSessionExpired(); return }
+            allowanceSet = nil
+            allowanceCents = nil
+            allowanceError = error
         } catch {
             allowanceSet = nil
             allowanceCents = nil
+            allowanceError = .unknown("Could not load your allowance setting.")
         }
 
         // Transactions page (100 + probe row): recent 6, purchases
@@ -449,8 +461,11 @@ public struct HomeView: View {
         .frame(height: 8)
 
         // Spent line + % used. While no allowance is set both read —.
+        // A failed allowance read (nil) still shows compute-week's
+        // numbers — only an explicit never-set hides them (audit
+        // H-P1-4).
         HStack(spacing: 8) {
-            if viewModel.allowanceSet == true {
+            if viewModel.allowanceSet != false {
                 Text("\(MoneyFormat.string(cents: result.chargesCents)) spent")
                 Text("·")
                 Text(usedPercentText(result: result, capacity: capacity))
@@ -469,9 +484,9 @@ public struct HomeView: View {
                 Text("Weekly Allowance")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color(hex: "#6b7280"))
-                Text(viewModel.allowanceSet == true
-                     ? MoneyFormat.string(cents: capacity)
-                     : "—")
+                Text(viewModel.allowanceSet == false
+                     ? "—"
+                     : MoneyFormat.string(cents: capacity))
                     .font(.system(size: 17, weight: .bold))
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -481,6 +496,17 @@ public struct HomeView: View {
                 Text(viewModel.purchasesThisWeek.map(String.init) ?? "N/A")
                     .font(.system(size: 17, weight: .bold))
             }
+        }
+
+        // Allowance-read failure (audit H-P1-4): the hero numbers
+        // above already come from compute-week, so this is an error
+        // line + retry, not a blank. The "Set Your Weekly Allowance"
+        // button below stays gated on an explicit never-set, so a
+        // mere read failure never hides it.
+        if let allowanceError = viewModel.allowanceError {
+            ErrorBox("Couldn't load your allowance setting — \(allowanceError.displayMessage)")
+            Button("Try Again") { Task { await viewModel.refresh() } }
+                .buttonStyle(TertiaryButtonStyle())
         }
 
         // Set Your Weekly Allowance: admin only, never-set state.
