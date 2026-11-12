@@ -455,7 +455,7 @@ public final class TransactionsViewModel {
         guard amountCents <= transaction.amountCents else {
             showAlert(
                 title: "Could Not Send Request",
-                message: "The request can't be more than the charge (\(TransactionFormatting.formatCents(transaction.amountCents)))."
+                message: "The request can't be more than the charge (\(TransactionFormatting.amountDisplay(for: transaction).text))."
             )
             return false
         }
