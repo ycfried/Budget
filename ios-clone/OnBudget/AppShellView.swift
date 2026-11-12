@@ -2,7 +2,13 @@
 //
 // App shell + tab bar (CLONE_SPEC §0.1–0.2, §2.2).
 // Home on EVERY fresh load (app start, login, reopen), never on
-// in-app navigation. Tab bar: Home, Transactions, Funds.
+// in-app navigation. Tab bar: Home, Transactions, Funds — ALWAYS at
+// the bottom, on iPhone and iPad (owner, Nov 11 2026: the top
+// segmented pill "throws me off"). The system renders a plain TabView
+// as a top segmented control on iPad (regular size class) — the flag
+// in OnBudgetApp.init (`UseFloatingTabBar` = false) forces the
+// traditional bottom tab bar back. The top bar keeps just the title
+// (household name) + the profile menu.
 // Settings is NOT a tab — reached from the profile menu only, as a
 // full-screen cover over the current tab.
 // Top bar: white, bottom hairline, title centred, profile button

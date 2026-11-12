@@ -182,6 +182,65 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "06-funds")
     }
 
+    /// Bottom tab bar (owner, Nov 11 2026): on iPad the system renders
+    /// a plain TabView's tabs as a segmented control at the TOP —
+    /// the "Home / Transactions / Funds segmented pill" that threw the
+    /// owner off. `OnBudgetApp` registers `UseFloatingTabBar` = false
+    /// so the traditional bottom tab bar is used on iPad too. This
+    /// test pins the bar to the bottom of the screen and proves all
+    /// three tabs switch content. NOTE: CI runs on an iPhone 16
+    /// simulator (compact size class), where the bar is at the bottom
+    /// with or without the flag — this test guards the placement on
+    /// iPhone and the tab switching; the iPad rendering itself can
+    /// only be proven on a real iPad.
+    func testTabBarIsAtBottom() throws {
+        signUpAndJoinTestHousehold()
+
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(
+            tabBar.waitForExistence(timeout: 30),
+            "Tab bar missing on Home"
+        )
+        let screenHeight = app.windows.firstMatch.frame.height
+        XCTAssertGreaterThan(screenHeight, 0, "No window frame to measure against")
+        XCTAssertGreaterThan(
+            tabBar.frame.minY, screenHeight * 0.5,
+            "Tab bar is not at the bottom of the screen (minY \(tabBar.frame.minY) on a \(screenHeight)pt screen) — on iPad this is the top segmented control"
+        )
+        for identifier in ["tab.home", "tab.transactions", "tab.funds"] {
+            XCTAssertTrue(
+                app.tabBars.buttons[identifier].exists,
+                "Tab bar is missing the \(identifier) tab"
+            )
+        }
+
+        tapTab(identifier: "tab.transactions", label: "Transactions")
+        XCTAssertTrue(
+            app.staticTexts["Transactions"].waitForExistence(timeout: 30),
+            "Transactions tab did not show the Transactions screen"
+        )
+        tapTab(identifier: "tab.funds", label: "Funds")
+        XCTAssertTrue(
+            app.staticTexts["Extra Fund"].waitForExistence(timeout: 30),
+            "Funds tab did not show the Funds screen (no Extra Fund card)"
+        )
+        XCTAssertFalse(
+            app.staticTexts["Weekly Budget"].exists,
+            "Weekly Budget still showing after switching to Funds"
+        )
+        tapTab(identifier: "tab.home", label: "Home")
+        XCTAssertTrue(
+            app.staticTexts["Weekly Budget"].waitForExistence(timeout: 30),
+            "Home tab did not return to the Weekly Budget card"
+        )
+        // The bar stays at the bottom after switching tabs.
+        XCTAssertGreaterThan(
+            app.tabBars.firstMatch.frame.minY, screenHeight * 0.5,
+            "Tab bar left the bottom of the screen after switching tabs"
+        )
+        attachScreenshot(named: "07-tab-bar-bottom")
+    }
+
     /// Gmail callback deep link (CI run 42746242404 finding): the
     /// script opens onbudget://gmail-callback?gmail=connected
     /// before the tests, which raises a SpringBoard "Open in
