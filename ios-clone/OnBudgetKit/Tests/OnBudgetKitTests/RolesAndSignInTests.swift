@@ -129,7 +129,8 @@ final class RolesAndSignInTests: XCTestCase {
             tokenProvider: testTokenProvider(),
             transport: transport
         )
-        XCTAssertFalse(try await client.checkEmailExists(email: "nobody@example.com"))
+        let exists = try await client.checkEmailExists(email: "nobody@example.com")
+        XCTAssertFalse(exists)
     }
 
     // MARK: - Per-field sign-in wording
