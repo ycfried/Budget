@@ -36,6 +36,10 @@ public struct FundsRulesSection: View {
     @ObservedObject public var viewModel: FundsViewModel
     @State private var rateText = ""
     @State private var rateError: String?
+    /// "How it works" starts closed (owner, Nov 12, 2026): the
+    /// rules used to fill the card with paragraphs; now the card
+    /// is one compact rate row and the reading lives behind this.
+    @State private var showHowItWorks = false
 
     public init(viewModel: FundsViewModel) {
         self.viewModel = viewModel
@@ -71,28 +75,16 @@ public struct FundsRulesSection: View {
                     } else {
                         FundsMuted("Only the admin can change the default rate.")
                     }
+                    if let summary = viewModel.fundSummary {
+                        FundsMuted(
+                            summary.shortfallCents > 0
+                                ? "Owed back now: \(MoneyFormat.formatCents(summary.shortfallCents))."
+                                : "Nothing owed back right now."
+                        )
+                    }
                 }
                 Divider()
-                ruleBlock(
-                    title: "Charity Basis",
-                    text: "Charity is \(MoneyFormat.formatRateBp(defaultRateBp))% of money actually received and manually entered amounts, from November 2026. Transfers, refunds, reimbursements, loans, and Extra Fund top-ups do not count on their own — nothing is pulled in automatically."
-                )
-                ruleBlock(
-                    title: "Rate per Entry",
-                    text: "A rate set on one income replaces the default for that entry only — it never adds to it. Correcting an old income reverses it and adds a replacement; the old entry stays, marked reversed."
-                )
-                Divider()
-                ruleBlock(
-                    title: "Extra Fund Top-Ups",
-                    text: "Money added covers what the fund owes back first, then the rest increases spendable Available. The Add Money form shows that split before you save."
-                )
-                if let summary = viewModel.fundSummary {
-                    FundsMuted(
-                        summary.shortfallCents > 0
-                            ? "Owed back now: \(MoneyFormat.formatCents(summary.shortfallCents))."
-                            : "Nothing owed back right now."
-                    )
-                }
+                howItWorksRow
             }
         }
         .accessibilityIdentifier("funds.rules")
@@ -108,23 +100,22 @@ public struct FundsRulesSection: View {
 
     // MARK: - Admin rate editor
 
+    /// ONE compact row (owner, Nov 12, 2026): the field and Save
+    /// sized to fit each other — not a stretched full-width blue
+    /// button — with Reset as a small quiet link beside them.
     private var rateEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Default Rate (%)")
-                        .font(.system(size: 14, weight: .semibold))
-                    TextField(MoneyFormat.formatRateBp(defaultRateBp), text: $rateText)
-                        .keyboardType(.decimalPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 120)
+            HStack(spacing: 10) {
+                TextField(MoneyFormat.formatRateBp(defaultRateBp), text: $rateText)
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 90)
+                FundsSmallPrimaryButton("Save", isBusy: viewModel.busyAction == "rate") {
+                    saveRate()
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("")
-                        .font(.system(size: 14, weight: .semibold))
-                    FundsPrimaryButton("Save Default Rate", isBusy: viewModel.busyAction == "rate") {
-                        saveRate()
-                    }
+                FundsQuietButton("Reset") {
+                    rateText = MoneyFormat.formatRateBp(defaultRateBp)
+                    rateError = nil
                 }
             }
             if let pending = pendingRateBp {
@@ -137,11 +128,47 @@ public struct FundsRulesSection: View {
             if let rateError {
                 FundsErrorBox(rateError)
             }
-            HStack(spacing: 12) {
-                FundsTertiaryButton("Reset") {
-                    rateText = MoneyFormat.formatRateBp(defaultRateBp)
-                    rateError = nil
+        }
+    }
+
+    /// The three rule paragraphs, behind one expandable row that
+    /// starts closed (owner, Nov 12, 2026).
+    private var howItWorksRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                showHowItWorks.toggle()
+            } label: {
+                HStack {
+                    Text("How It Works")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    Spacer()
+                    Text("⌄")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .rotationEffect(.degrees(showHowItWorks ? 180 : 0))
                 }
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            .animation(ExpandAnimation.animation, value: showHowItWorks)
+            if showHowItWorks {
+                VStack(alignment: .leading, spacing: 12) {
+                    ruleBlock(
+                        title: "Charity Basis",
+                        text: "Charity is \(MoneyFormat.formatRateBp(defaultRateBp))% of money actually received and manually entered amounts, from November 2026. Transfers, refunds, reimbursements, loans, and Extra Fund top-ups do not count on their own — nothing is pulled in automatically."
+                    )
+                    ruleBlock(
+                        title: "Rate per Entry",
+                        text: "A rate set on one income replaces the default for that entry only — it never adds to it. Correcting an old income reverses it and adds a replacement; the old entry stays, marked reversed."
+                    )
+                    ruleBlock(
+                        title: "Extra Fund Top-Ups",
+                        text: "Money added covers what the fund owes back first, then the rest increases spendable Available. The Add Money form shows that split before you save."
+                    )
+                }
+                .padding(.bottom, 12)
+                .transition(ExpandAnimation.transition)
             }
         }
     }

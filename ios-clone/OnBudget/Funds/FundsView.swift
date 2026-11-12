@@ -9,9 +9,9 @@ import OnBudgetKit
 // expansions INCLUDE action buttons (Home does not). At most one card
 // expanded at a time.
 //
-// Forms: one at a time; the More card hides while a form is open.
-// Back returns to the Funds list (swipe-right closes the form too,
-// via the navigation stack in the coordinator).
+// Forms: one at a time; the sections below the cards hide while a
+// form is open. Back returns to the Funds list (swipe-right closes
+// the form too, via the navigation stack in the coordinator).
 //
 // Entry point for the app shell's tab bar:
 //   FundsView(context: FundsContext(client:householdId:role:userId:),
@@ -80,7 +80,9 @@ public struct FundsView: View {
                     fundCard
                     charityCard
                     rulesCard
-                    moreCard
+                    reviewSection
+                    activitySection
+                    savingsSection
                 }
             }
             .padding()
@@ -195,7 +197,6 @@ public struct FundsView: View {
                 FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents), isNegative: summary.remainingCents < 0)
                 FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
                 FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.committedCents))
-                FundsMuted("November 2026 onward")
                 HStack(spacing: 12) {
                     if isAdmin {
                         FundsPrimaryButton("Record Income") {
@@ -256,81 +257,93 @@ public struct FundsView: View {
         }
     }
 
-    // MARK: - More card (§9.2)
+    // MARK: - Dissolved More sections (§9.2)
+    //
+    // The old "More" card is gone (owner, Nov 12, 2026 — it was
+    // unclear what it was for). Each section is now its own card
+    // under its own plain name: Review FIRST — it's work needing
+    // attention — then Fund Activity, then Past Savings Records.
+    // Same expand-in-place row as the old More card; the sections
+    // hide while a form is open (the else branch above).
 
-    private var moreCard: some View {
-        FundsCard {
-            VStack(alignment: .leading, spacing: 0) {
-                FundsHeading("More")
-                moreRow(
-                    title: "Fund Activity",
-                    section: .activity,
-                    isAdminOnly: true
-                ) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        FundTopupsHistory(viewModel: viewModel)
-                        Divider()
-                        CharityIncomeHistory(
-                            viewModel: viewModel,
-                            correcting: $correctingIncome,
-                            openIncomeForm: Binding(
-                                get: { openForm == .income },
-                                set: { if $0 { openForm = .income } }
-                            )
-                        )
-                    }
-                }
-                moreRow(
-                    title: viewModel.reviewCount > 0 ? "Review (\(viewModel.reviewCount))" : "Review",
-                    section: .review,
-                    isAdminOnly: true
-                ) {
-                    ReviewView(viewModel: viewModel)
-                }
-                moreRow(
-                    title: "Past Savings Records",
-                    section: .savings,
-                    isAdminOnly: false
-                ) {
-                    SavingsSection(viewModel: viewModel)
-                }
+    private var reviewSection: some View {
+        fundsSection(
+            title: viewModel.reviewCount > 0 ? "Review (\(viewModel.reviewCount))" : "Review",
+            section: .review,
+            isAdminOnly: true
+        ) {
+            ReviewView(viewModel: viewModel)
+        }
+    }
+
+    private var activitySection: some View {
+        fundsSection(
+            title: "Fund Activity",
+            section: .activity,
+            isAdminOnly: true
+        ) {
+            VStack(alignment: .leading, spacing: 16) {
+                FundTopupsHistory(viewModel: viewModel)
+                Divider()
+                CharityIncomeHistory(
+                    viewModel: viewModel,
+                    correcting: $correctingIncome,
+                    openIncomeForm: Binding(
+                        get: { openForm == .income },
+                        set: { if $0 { openForm = .income } }
+                    )
+                )
             }
         }
     }
 
+    private var savingsSection: some View {
+        fundsSection(
+            title: "Past Savings Records",
+            section: .savings,
+            isAdminOnly: false
+        ) {
+            SavingsSection(viewModel: viewModel)
+        }
+    }
+
     @ViewBuilder
-    private func moreRow<Content: View>(
+    private func fundsSection<Content: View>(
         title: String,
         section: FundsMoreSection,
         isAdminOnly: Bool,
         @ViewBuilder content: () -> Content
     ) -> some View {
         if !isAdminOnly || isAdmin {
-            // Whole-row tap target (owner rule, Nov 11 2026): the
-            // entire row is the toggle; the chevron is only a hint.
-            Button {
-                openMore = openMore == section ? nil : section
-            } label: {
-                HStack {
-                    Text(TitleCase.apply(to: title))
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(DesignTokens.ink)
-                    Spacer()
-                    Text("⌄")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(DesignTokens.primary)
-                        .rotationEffect(.degrees(openMore == section ? 180 : 0))
+            FundsCard {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Whole-row tap target (owner rule, Nov 11 2026):
+                    // the entire row is the toggle; the chevron is
+                    // only a hint.
+                    Button {
+                        openMore = openMore == section ? nil : section
+                    } label: {
+                        HStack {
+                            Text(TitleCase.apply(to: title))
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(DesignTokens.ink)
+                            Spacer()
+                            Text("⌄")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(DesignTokens.primary)
+                                .rotationEffect(.degrees(openMore == section ? 180 : 0))
+                        }
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .animation(ExpandAnimation.animation, value: openMore == section)
+                    if openMore == section {
+                        content()
+                            .padding(.bottom, 12)
+                            .transition(ExpandAnimation.transition)
+                    }
                 }
-                .padding(.vertical, 12)
             }
-            .buttonStyle(.plain)
-            .animation(ExpandAnimation.animation, value: openMore == section)
-            if openMore == section {
-                content()
-                    .padding(.bottom, 12)
-                    .transition(ExpandAnimation.transition)
-            }
-            Divider()
         }
     }
 }
