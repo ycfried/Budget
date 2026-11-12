@@ -578,12 +578,12 @@ struct ConnectedAccountsView: View {
                 secondaryButton: .cancel()
             )
         }
-        .alert("Could not disconnect", isPresented: $viewModel.disconnectFailed) {
+        .alert("Could Not Disconnect", isPresented: $viewModel.disconnectFailed) {
             Button("Close", role: .cancel) {}
         } message: {
             Text("Could not disconnect this account. Try again.")
         }
-        .alert("Could not save nickname", isPresented: $viewModel.nicknameFailed) {
+        .alert("Could Not Save Nickname", isPresented: $viewModel.nicknameFailed) {
             Button("Close", role: .cancel) {}
         } message: {
             Text("Could not save this nickname. Try again.")

@@ -157,11 +157,17 @@ extension View {
     /// (owner report, Nov 11 2026). An overlay is positioned inside
     /// the screen's own bounds, so the banner is always at the
     /// screen's bottom, never mid-screen.
-    func toastOverlay(_ toastState: ToastState) -> some View {
+    func toastOverlay(_ toastState: ToastState, clearTabBar: Bool = true) -> some View {
         overlay(alignment: .bottom) {
             if let toast = toastState.current {
-                ToastBanner(toast: toast) { toastState.dismiss() }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                // Move-only entrance (audit X-P2-9, Nov 12 2026):
+                // the toast used to fade in too (`.combined(with:
+                // .opacity)`), the app's only opacity fade. Toasts
+                // are not expand/collapse cards, so this is a
+                // consistency change, not a rule-violation fix — the
+                // 0.2s animation below is unchanged.
+                ToastBanner(toast: toast, clearTabBar: clearTabBar) { toastState.dismiss() }
+                    .transition(.move(edge: .bottom))
             }
         }
         .animation(.easeInOut(duration: 0.2), value: toastState.current?.id)
@@ -235,7 +241,110 @@ struct MutedLine: View {
     var body: some View {
         Text(text)
             .font(.subheadline)
-            .foregroundStyle(Color(hex: "#6b7280"))
+            .foregroundStyle(DesignTokens.muted)
+    }
+}
+
+// MARK: - History date filter (shared by Past Weeks + Activity)
+
+/// ONE History date filter (audit X-P2-10, Nov 12 2026): Past Weeks
+/// and Activity used to carry separate ~60-line copies of this card,
+/// including the same today-as-default bug in both. Both screens
+/// now render this one component, bound to their view model's
+/// drafts and the shared `HistoryFilterState`.
+struct HistoryDateFilterCard: View {
+    @Binding var draftFrom: String
+    @Binding var draftTo: String
+    let filter: HistoryFilterState
+    let onApply: () -> Void
+    let onClear: () -> Void
+
+    var body: some View {
+        SettingsCard(title: "Filter by Date") {
+            HStack(spacing: 12) {
+                HistoryDateField(label: "From", text: $draftFrom)
+                HistoryDateField(label: "To", text: $draftTo)
+            }
+            HStack(spacing: 12) {
+                Button("Apply Filter") { onApply() }
+                    .buttonStyle(PrimaryButtonStyle())
+                Button("Clear Date Filter") { onClear() }
+                    .buttonStyle(TertiaryButtonStyle())
+            }
+            if !filter.periodLine.isEmpty {
+                MutedLine(text: filter.periodLine)
+            }
+            if !filter.countLine.isEmpty {
+                MutedLine(text: filter.countLine)
+            }
+        }
+    }
+}
+
+/// One side of the History date filter. From/To are `YYYY-MM-DD`
+/// strings; blank means no limit on that side. A blank side shows
+/// a "Select date" placeholder, NEVER today's date (audit X-P1-1,
+/// Nov 12 2026 — the old per-screen `dateField` fell back to
+/// `Date()` when the draft was empty, so both screens opened
+/// showing today). Tapping the placeholder sets today, revealing
+/// the picker; the × clears that side back to blank.
+struct HistoryDateField: View {
+    let label: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            if text.isEmpty {
+                Button {
+                    text = Self.string(from: Date())
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar")
+                        Text("Select date")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(DesignTokens.muted)
+                }
+                .frame(maxWidth: 160, alignment: .leading)
+                .padding(.vertical, 6)
+            } else {
+                HStack(spacing: 6) {
+                    DatePicker("", selection: Binding(
+                        get: { Self.date(from: text) ?? Date() },
+                        set: { text = Self.string(from: $0) }
+                    ), displayedComponents: .date)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    Button {
+                        text = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(DesignTokens.muted)
+                    }
+                    .accessibilityLabel("Clear \(label) date")
+                }
+                .frame(maxWidth: 160, alignment: .leading)
+            }
+        }
+    }
+
+    private static func date(from string: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.date(from: string)
+    }
+
+    private static func string(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: date)
     }
 }
 

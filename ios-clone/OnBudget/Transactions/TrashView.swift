@@ -135,8 +135,7 @@ public struct TrashView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("← Back") { onBack() }
-                        .buttonStyle(BackButtonStyle())
+                    BackButton(action: onBack)
                 }
             }
             // T-P2-1: the failure alert lives on this sheet, not on

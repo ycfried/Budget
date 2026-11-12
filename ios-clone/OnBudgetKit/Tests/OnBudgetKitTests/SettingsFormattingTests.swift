@@ -157,9 +157,10 @@ final class SettingsFormattingTests: XCTestCase {
     }
 
     func testActivityTitleAndGrouping() {
-        XCTAssertEqual(AuditFormatting.activityTitle(action: "Weeks processed", count: 3), "3 weeks closed")
-        XCTAssertEqual(AuditFormatting.activityTitle(action: "Weeks processed", count: 1), "1 week closed")
-        XCTAssertEqual(AuditFormatting.activityTitle(action: "CSV import", count: 2), "CSV import")
+        XCTAssertEqual(AuditFormatting.activityTitle(action: "Weeks processed", count: 3), "3 Weeks Closed")
+        XCTAssertEqual(AuditFormatting.activityTitle(action: "Weeks processed", count: 1), "1 Week Closed")
+        XCTAssertEqual(AuditFormatting.activityTitle(action: "CSV import", count: 2), "CSV Import")
+        XCTAssertEqual(AuditFormatting.activityTitle(action: "Transaction added by hand", count: 1), "Transaction Added by Hand")
         let entries = [
             AuditDisplayEntry(action: "Weeks processed", detail: "2 weeks closed.", actor: "Admin", time: "Nov 8, 9:00 AM"),
             AuditDisplayEntry(action: "Weeks processed", detail: "2 weeks closed.", actor: "Admin", time: "Nov 8, 9:00 AM"),
@@ -179,9 +180,9 @@ final class SettingsFormattingTests: XCTestCase {
 
     func testHistoryPeriodLabel() {
         XCTAssertEqual(AuditFormatting.historyPeriodLabel(from: nil, to: nil), "")
-        XCTAssertEqual(AuditFormatting.historyPeriodLabel(from: "2026-11-01", to: "2026-11-08"), "Showing 2026-11-01 to 2026-11-08.")
-        XCTAssertEqual(AuditFormatting.historyPeriodLabel(from: "2026-11-01", to: nil), "Showing from 2026-11-01 onward.")
-        XCTAssertEqual(AuditFormatting.historyPeriodLabel(from: nil, to: "2026-11-08"), "Showing up to 2026-11-08.")
+        XCTAssertEqual(AuditFormatting.historyPeriodLabel(from: "2026-11-01", to: "2026-11-08"), "Showing Nov 1, 2026 to Nov 8, 2026.")
+        XCTAssertEqual(AuditFormatting.historyPeriodLabel(from: "2026-11-01", to: nil), "Showing from Nov 1, 2026 onward.")
+        XCTAssertEqual(AuditFormatting.historyPeriodLabel(from: nil, to: "2026-11-08"), "Showing up to Nov 8, 2026.")
     }
 
     func testFilterRowsByDateKeepsUndatedRows() {

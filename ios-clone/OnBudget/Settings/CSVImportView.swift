@@ -104,7 +104,11 @@ final class CSVImportViewModel: ObservableObject {
         } catch {
             previewRows = []
             parseErrors = []
-            resultMessage = "Could not read this file (\(settingsErrorMessage(error))). Try saving the file to Files first, then picking it from Files."
+            // The FILE read fine — this is the whole-history dedupe
+            // fetch that failed (audit CF-4, Nov 12 2026): saying
+            // "could not read this file" blamed the file and sent
+            // the user to re-save it in Files for no reason.
+            resultMessage = "Could not check this file against your history (\(settingsErrorMessage(error))). Nothing was imported — try again."
             resultIsError = true
             return
         }
@@ -173,13 +177,18 @@ final class CSVImportViewModel: ObservableObject {
         }
     }
 
-    /// Reload the whole-history dedupe set and confirm the imported
-    /// rows are now present (count verification after import).
+    /// Reload the history after import and confirm the insert
+    /// landed: the shortfall check compares the inserted count
+    /// against the new rows the file held (audit CF-6, Nov 12
+    /// 2026 — the old check compared the WHOLE-history count to
+    /// `added`, which can never be smaller, so the shortfall
+    /// branch could never fire). A failed reload still reports
+    /// that the import could not be verified.
     private func verifyCounts(expectedNew: Int, added: Int) async {
         do {
-            let existing = try await context.client.postgrest.transactionsForCSVDedupe(householdId: context.householdId)
-            if existing.count < added {
-                resultMessage = "Imported \(added) transaction(s), but the reload shows fewer rows than expected — check the list."
+            _ = try await context.client.postgrest.transactionsForCSVDedupe(householdId: context.householdId)
+            if added < expectedNew {
+                resultMessage = "Imported \(added) of \(expectedNew) new transaction(s) — some rows were not inserted. Check the list."
                 resultIsError = true
             }
         } catch {
@@ -270,12 +279,11 @@ struct CSVImportView: View {
                 Text("\(viewModel.newRows.count) new, \(viewModel.duplicateCount) duplicate(s) skipped, \(viewModel.parseErrors.count) unparseable row(s).")
                     .font(.subheadline)
                     .foregroundStyle(Color(hex: "#6b7280"))
+                // Parse errors are errors: soft-red box, never the
+                // grey muted line they used to render in (audit
+                // CF-5, Nov 12 2026).
                 if !viewModel.parseErrors.isEmpty {
-                    ForEach(viewModel.parseErrors, id: \.self) { error in
-                        Text(error)
-                            .font(.subheadline)
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                    }
+                    ErrorBox(viewModel.parseErrors.joined(separator: "\n"))
                 }
                 ForEach(Array(viewModel.previewRows.enumerated()), id: \.offset) { index, preview in
                     Text("\(index + 1). \(preview.row.date) · \(preview.row.merchant) · \(OnBudgetKit.MoneyFormat.formatCents(preview.row.amountCents)) · ••\(preview.row.suffix) — \(preview.isDuplicate ? "Duplicate, will be skipped" : "New")")

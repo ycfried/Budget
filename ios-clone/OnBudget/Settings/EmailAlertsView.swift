@@ -179,10 +179,24 @@ final class EmailAlertsViewModel: ObservableObject {
         }
     }
 
+    /// Plain-language `last_error` (audit CF-2, Nov 12 2026): the
+    /// stored string is a raw server/Gmail error and must never
+    /// render verbatim. Same approach as `EmailCheckMessage`
+    /// (S-P1-3(d)): auth/expired failures map to "reconnect";
+    /// anything else maps to a generic plain line, never the raw
+    /// text.
+    static func plainLastError(_ raw: String) -> String {
+        let lower = raw.lowercased()
+        if lower.contains("reauthorization") || lower.contains("invalid_grant")
+            || lower.contains("expired") || lower.contains("revoked") {
+            return "Email access expired — reconnect this email."
+        }
+        return "The last email check ran into a problem — try Check Email Now."
+    }
+
     /// Warning lines for one connection (filterState.mjs
     /// `emailConnectionWarnings`): expiring grant / stale last poll.
-    func warningLines(for connection: EmailConnectionPublic) -> [String] {
-        EmailConnectionWarnings.warnings(
+    func warningLines(for connection: EmailConnectionPublic) -> [String] {        EmailConnectionWarnings.warnings(
             status: connection.status,
             connectedAt: connection.connectedAt,
             createdAt: connection.createdAt,
@@ -446,7 +460,7 @@ struct EmailAlertsView: View {
                 secondaryButton: .cancel()
             )
         }
-        .alert("Could not disconnect", isPresented: $viewModel.disconnectFailed) {
+        .alert("Could Not Disconnect", isPresented: $viewModel.disconnectFailed) {
             Button("Close", role: .cancel) {}
         } message: {
             Text("Could not disconnect this email. Try again.")
@@ -509,7 +523,7 @@ struct EmailAlertsView: View {
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }
                 if let lastError = connection.lastError {
-                    Text(lastError)
+                    Text(EmailAlertsViewModel.plainLastError(lastError))
                         .font(.subheadline)
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }

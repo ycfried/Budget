@@ -268,7 +268,7 @@ public final class TransactionsViewModel {
         if loadedPage.contains(where: { $0.id == id }) {
             expandedTransactionId = id
         } else {
-            toastManager.show("That transaction is not in the loaded list — tap Load more for older ones.")
+            toastManager.show("That transaction is not in the loaded list — tap Load more for older ones.", kind: .info)
         }
     }
 
@@ -334,7 +334,7 @@ public final class TransactionsViewModel {
                 if result.noBankConnected == true {
                     toastManager.show("No bank connection yet — connect a bank account first.", kind: .error)
                 } else {
-                    toastManager.show("Bank sync complete: \(result.added) new, \(result.updated) updated.")
+                    toastManager.show("Bank sync complete: \(result.added) new, \(result.updated) updated.", kind: .success)
                 }
             case .partial(let partial):
                 let names = partial.failedInstitutions.isEmpty
@@ -391,7 +391,8 @@ public final class TransactionsViewModel {
         do {
             try await client.rpcs.markTransactionCharity(pTransactionId: transaction.id)
             toastManager.show(
-                "Marked as charity gift: \(TransactionFormatting.formatCents(transaction.amountCents)) to \(TransactionFormatting.displayMerchant(transaction.merchant))."
+                "Marked as charity gift: \(TransactionFormatting.formatCents(transaction.amountCents)) to \(TransactionFormatting.displayMerchant(transaction.merchant)).",
+                kind: .success
             )
             await reloadAfterMutation()
             return true
@@ -420,7 +421,7 @@ public final class TransactionsViewModel {
         }
         do {
             try await client.rpcs.reclassifyTransaction(txnId: transaction.id, newKind: kind, reason: reason)
-            toastManager.show("Transaction reclassified.")
+            toastManager.show("Transaction reclassified.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
@@ -471,7 +472,7 @@ public final class TransactionsViewModel {
                 action: "Extra Fund request created",
                 detail: "Requested \(TransactionFormatting.formatCents(amountCents)) for \(TransactionFormatting.displayMerchant(transaction.merchant))."
             )
-            toastManager.show("Extra Fund request sent.")
+            toastManager.show("Extra Fund request sent.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
@@ -494,10 +495,10 @@ public final class TransactionsViewModel {
         do {
             if transaction.source == .manual {
                 try await client.rpcs.deleteTransaction(pTransactionId: transaction.id)
-                toastManager.show("Transaction deleted.")
+                toastManager.show("Transaction deleted.", kind: .success)
             } else {
                 try await client.rpcs.excludeTransaction(txnId: transaction.id, reason: reason)
-                toastManager.show("Moved to trash bin.")
+                toastManager.show("Moved to trash bin.", kind: .success)
             }
             await reloadAfterMutation()
             return true
@@ -528,7 +529,7 @@ public final class TransactionsViewModel {
                 action: "Transaction restored",
                 detail: "\(TransactionFormatting.displayMerchant(transaction.merchant)) returned to the week."
             )
-            toastManager.show("Transaction restored.")
+            toastManager.show("Transaction restored.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
@@ -592,7 +593,7 @@ public final class TransactionsViewModel {
         }
         do {
             _ = try await client.rpcs.linkRefund(pRefundId: refund.id, pPurchaseId: purchase.id)
-            toastManager.show("Refund linked to its purchase.")
+            toastManager.show("Refund linked to its purchase.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
@@ -614,7 +615,7 @@ public final class TransactionsViewModel {
         }
         do {
             try await client.rpcs.unlinkRefund(pRefundId: refund.id)
-            toastManager.show("Refund unlinked.")
+            toastManager.show("Refund unlinked.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
@@ -683,7 +684,7 @@ public final class TransactionsViewModel {
                 action: "Transaction added by hand",
                 detail: "\(TransactionFormatting.displayMerchant(merchant)) \(TransactionFormatting.formatCents(amountCents)) on \(TransactionFormatting.fmtLong(date))."
             )
-            toastManager.show("Transaction added.")
+            toastManager.show("Transaction added.", kind: .success)
             await reloadAfterMutation()
             return .saved
         } catch let error as OnBudgetError {
@@ -732,7 +733,8 @@ public final class TransactionsViewModel {
                 pClientKey: clientKey
             )
             toastManager.show(
-                "Gift recorded: \(TransactionFormatting.formatCents(amountCents)) to \(TransactionFormatting.displayMerchant(merchant))."
+                "Gift recorded: \(TransactionFormatting.formatCents(amountCents)) to \(TransactionFormatting.displayMerchant(merchant)).",
+                kind: .success
             )
             await reloadAfterMutation()
             return .saved

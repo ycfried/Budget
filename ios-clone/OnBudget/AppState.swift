@@ -399,6 +399,16 @@ public final class AppViewModel: ObservableObject {
         showSettings = true
     }
 
+    /// Dismiss Settings (full-screen cover, no tab bar): also
+    /// clears any root toast so it cannot linger over the next
+    /// screen (audit X-P2-13, Nov 12 2026). Sign-out clears the
+    /// toast itself and never routes through here, so the
+    /// account-deleted notice still survives sign-out.
+    public func dismissSettings() {
+        toast = nil
+        showSettings = false
+    }
+
     /// Recent-row tap (live.js:1040-1110): clear Transactions
     /// filters/search first (the Transactions screen does this when
     /// it consumes the jump), open Transactions, expand the row.
@@ -433,7 +443,7 @@ public final class AppViewModel: ObservableObject {
     /// (the link lives inside the Settings cover) so the Funds tab
     /// is visible when the form opens.
     public func openTemporaryAllowance() {
-        showSettings = false
+        dismissSettings()
         pendingTemporaryAllowance = true
         selectedTab = .funds
     }
@@ -564,7 +574,10 @@ public final class AppViewModel: ObservableObject {
 
     // MARK: - Toasts
 
-    public func showToast(_ message: String, kind: ToastStyle.Kind = .success) {
+    /// Informational messages default to `.info` (brand blue);
+    /// success must be explicit (audit SH-P2-1, Nov 12 2026 — the
+    /// old `.success` default turned plain information green).
+    public func showToast(_ message: String, kind: ToastStyle.Kind = .info) {
         toast = Toast(message: message, kind: kind)
     }
 }

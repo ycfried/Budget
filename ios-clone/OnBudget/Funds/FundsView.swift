@@ -117,16 +117,9 @@ public struct FundsView: View {
     }
 
     private var backButton: some View {
-        Button {
-            openForm = nil
-        } label: {
-            Text("← Back")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(DesignTokens.mid)
-        }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityLabel("Back to Funds")
+        BackButton(action: { openForm = nil })
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Back to Funds")
     }
 
     /// The balance the open form acts on, kept visible above the
