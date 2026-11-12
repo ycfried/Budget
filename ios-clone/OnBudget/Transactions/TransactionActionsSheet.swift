@@ -333,6 +333,12 @@ public struct TransactionActionsSheet: View {
                             extraFundError = "Enter a positive amount."
                             return
                         }
+                        // T-P2-6: a request can never exceed the
+                        // charge it covers.
+                        guard cents <= transaction.amountCents else {
+                            extraFundError = "The request can't be more than the charge (\(TransactionFormatting.formatCents(transaction.amountCents)))."
+                            return
+                        }
                         isWorking = true
                         let ok = await viewModel.requestExtraFund(for: transaction, amountCents: cents)
                         isWorking = false

@@ -433,7 +433,9 @@ public final class TransactionsViewModel {
     }
 
     /// Extra Fund request for a charge (live.js:3834-3861). Refuses
-    /// charity rows and non-charges with the web's exact wording.
+    /// charity rows and non-charges with the web's exact wording,
+    /// and any amount above the charge itself (T-P2-6 — the fund
+    /// covers a charge, never more than it).
     public func requestExtraFund(for transaction: Transaction, amountCents: Int) async -> Bool {
         if transaction.kind == .charity {
             showAlert(title: "Does Not Qualify", message: "Charity gifts cannot be covered by the Extra Fund.")
@@ -443,6 +445,13 @@ public final class TransactionsViewModel {
             showAlert(
                 title: "Does Not Qualify",
                 message: "Only a charge can be covered by the Extra Fund. This row does not count toward weekly spending, so there is nothing for the fund to cover."
+            )
+            return false
+        }
+        guard amountCents <= transaction.amountCents else {
+            showAlert(
+                title: "Could Not Send Request",
+                message: "The request can't be more than the charge (\(TransactionFormatting.formatCents(transaction.amountCents)))."
             )
             return false
         }
