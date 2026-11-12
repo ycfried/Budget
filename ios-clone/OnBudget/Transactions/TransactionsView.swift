@@ -250,7 +250,12 @@ public struct TransactionsView: View {
                             .foregroundStyle(DesignTokens.ink)
                             .padding(.vertical, 6)
                             .padding(.horizontal, 10)
-                            .background(DesignTokens.pale)
+                            // Neutral grey, not pale (audit SH-P2-2,
+                            // Nov 12 2026): pale #bfdbfe is ONLY the
+                            // middle tier of a three-button row, and
+                            // this is a tappable filter chip. Same
+                            // fill as the grey tertiary buttons.
+                            .background(Color(hex: "#e5e7eb"))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)

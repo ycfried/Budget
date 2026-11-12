@@ -74,7 +74,11 @@ public struct AddTransactionView: View {
                         subtitle: "Record a gift by hand"
                     )
                 }
-                .buttonStyle(PaleButtonStyle())
+                // Grey tertiary, not pale (audit SH-P2-2, Nov 12
+                // 2026): pale #bfdbfe is ONLY the middle tier of a
+                // three-button row — this is a vertical two-option
+                // stack under Primary "Purchase".
+                .buttonStyle(TertiaryButtonStyle())
             }
         }
     }
