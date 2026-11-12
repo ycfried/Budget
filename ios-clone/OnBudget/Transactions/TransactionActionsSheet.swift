@@ -95,7 +95,7 @@ public struct TransactionActionsSheet: View {
                 ]
             }
             return [
-                SheetAction(id: .charity, label: "Mark as Charity", subline: "Ask the admin to mark this as a gift", disabled: true),
+                SheetAction(id: .charity, label: "Mark as Charity", subline: "Only the admin can mark this as a gift", disabled: true),
                 SheetAction(id: .extraFund, label: "Use Extra Fund", subline: "Ask for this charge to be covered from the fund", disabled: false),
             ]
         case .refund:
@@ -162,9 +162,24 @@ public struct TransactionActionsSheet: View {
                             flow = .list
                         }
                     }
-                    .foregroundStyle(DesignTokens.mid)
+                    // T-P2-10: the owner Back treatment (light blue
+                    // #3b82f6, bold 700, 15px).
+                    .buttonStyle(BackButtonStyle())
                 }
             }
+        }
+        // T-P2-1: the failure alert lives on this sheet, not on the
+        // Transactions parent — an alert attached behind a presented
+        // sheet never surfaces, so failures from markAsCharity,
+        // reclassify, delete and link/unlinkRefund were invisible.
+        .alert(
+            viewModel.alertTitle ?? "Something Went Wrong",
+            isPresented: $viewModel.showAlert,
+            presenting: viewModel.alertMessage
+        ) { _ in
+            Button("Close", role: .cancel) {}
+        } message: { message in
+            Text(message)
         }
         .task {
             if transaction.originalPurchaseId != nil {
@@ -318,6 +333,12 @@ public struct TransactionActionsSheet: View {
                             extraFundError = "Enter a positive amount."
                             return
                         }
+                        // T-P2-6: a request can never exceed the
+                        // charge it covers.
+                        guard cents <= transaction.amountCents else {
+                            extraFundError = "The request can't be more than the charge (\(TransactionFormatting.formatCents(transaction.amountCents)))."
+                            return
+                        }
                         isWorking = true
                         let ok = await viewModel.requestExtraFund(for: transaction, amountCents: cents)
                         isWorking = false
@@ -339,7 +360,7 @@ public struct TransactionActionsSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             if let linkCandidates {
                 if linkCandidates.isEmpty {
-                    Text("No matching purchase found")
+                    Text("No Matching Purchase Found")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     Text(
@@ -482,7 +503,7 @@ public struct TransactionActionsSheet: View {
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Reason (required)")
+                Text("Reason (Required)")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 TextField("Reason", text: $reclassifyReason, axis: .vertical)
@@ -542,7 +563,7 @@ public struct TransactionActionsSheet: View {
                     .font(.system(size: 15))
                     .foregroundStyle(DesignTokens.ink)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Reason (required)")
+                    Text("Reason (Required)")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     TextField("Reason", text: $deleteReason, axis: .vertical)
@@ -552,7 +573,7 @@ public struct TransactionActionsSheet: View {
                     SoftErrorBox(deleteReasonError)
                 }
                 TwoButtonRow {
-                    Button("Delete") {
+                    Button("Move to Trash") {
                         Task {
                             let reason = deleteReason.trimmingCharacters(in: .whitespaces)
                             guard !reason.isEmpty else {

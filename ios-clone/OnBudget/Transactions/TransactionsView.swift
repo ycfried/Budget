@@ -120,17 +120,20 @@ public struct TransactionsView: View {
                 onDismiss: { actionsTransaction = nil }
             )
         }
-        .alert(
-            viewModel.alertTitle ?? "Something Went Wrong",
-            isPresented: $viewModel.showAlert,
-            presenting: viewModel.alertMessage
-        ) { _ in
-            Button("Close", role: .cancel) {}
-        } message: { message in
-            Text(message)
-        }
+        // NOTE (T-P2-1): no `.alert` here — the failure alert lives
+        // on the Actions and Trash sheets themselves, because an
+        // alert attached to this parent never surfaces above a
+        // presented sheet. Every `showAlert` call site originates
+        // from one of those sheets.
         .onChange(of: searchText) { _, new in
             viewModel.applySearch(new)
+        }
+        // T-P1-1: the box is local state, so a filter clear from the
+        // view model (empty-state button, Past Weeks / Home-row jump)
+        // must clear it too — otherwise the box shows a search the
+        // list no longer applies.
+        .onChange(of: viewModel.searchResetNonce) { _, _ in
+            searchText = ""
         }
     }
 
@@ -260,6 +263,10 @@ public struct TransactionsView: View {
                 HStack(spacing: 8) {
                     ForEach(chips, id: \.key) { chip in
                         Button {
+                            // Clearing the search chip clears the
+                            // visible box too (T-P1-1) — same rule as
+                            // "Clear Search and Filters".
+                            if chip.key == "search" { searchText = "" }
                             viewModel.filters.clearChip(chip.key)
                             viewModel.filterChanged()
                         } label: {
@@ -346,6 +353,8 @@ public struct TransactionsView: View {
                     ForEach(shown) { transaction in
                         TransactionRowView(
                             transaction: transaction,
+                            institutionName: transaction.cardSuffix == "0000"
+                                ? nil : viewModel.institutionBySuffix[transaction.cardSuffix],
                             isExpanded: viewModel.expandedTransactionId == transaction.id,
                             hasActions: viewModel.hasActions(for: transaction),
                             onToggle: {
@@ -422,7 +431,7 @@ public struct TransactionsView: View {
 /// Bottom sheet: handle bar, heading "Filters" (RETHOUGHT, Nov 11,
 /// 2026 — owner: "this page needs to be rethought"). One clear
 /// control per question, nothing fighting anything else:
-/// - When: ONE button ("All Time" / "This Week" / "This Month" /
+/// - When: ONE button ("Choose Dates" / "This Week" / "This Month" /
 ///   "Nov 8 – Nov 14") that opens ONE calendar — tap a start date,
 ///   then an end date. Quick picks (This Week / This Month) sit at
 ///   the top of the calendar; Clear lives in the calendar toolbar
@@ -555,20 +564,45 @@ public struct TransactionsFilterSheet: View {
 
                     // Amount — draft-held like the rest; the
                     // validation reads the draft text, not the live
-                    // filter.
+                    // filter. Min / Max carry visible labels above
+                    // the fields (T-P1-4), and the fields share the
+                    // sheet's white-bg + 1pt #e5e7eb border +
+                    // cornerRadius 10 treatment (T-P2-4).
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Amount")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
                         HStack(spacing: 12) {
-                            TextField("$0.00", text: $minText)
-                                .keyboardType(.decimalPad)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 140, minHeight: 44)
-                            TextField("$0.00", text: $maxText)
-                                .keyboardType(.decimalPad)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 140, minHeight: 44)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Min")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.ink)
+                                TextField("$0.00", text: $minText)
+                                    .keyboardType(.decimalPad)
+                                    .padding(.horizontal, 12)
+                                    .frame(maxWidth: 140, minHeight: 44, alignment: .leading)
+                                    .background(.white)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Max")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.ink)
+                                TextField("$0.00", text: $maxText)
+                                    .keyboardType(.decimalPad)
+                                    .padding(.horizontal, 12)
+                                    .frame(maxWidth: 140, minHeight: 44, alignment: .leading)
+                                    .background(.white)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
                         }
                         if draftAmountInvalid {
                             SoftErrorBox("Minimum amount is above the maximum amount — change one of them to see transactions.")
@@ -601,6 +635,10 @@ public struct TransactionsFilterSheet: View {
                     TwoButtonRow {
                         Button("Apply") { apply() }
                             .buttonStyle(PrimaryButtonStyle())
+                            // T-P2-2: Apply stays disabled while the
+                            // amount range is invalid — the error box
+                            // above already says why.
+                            .disabled(draftAmountInvalid)
                     } secondary: {
                         Button("Cancel") { cancel() }
                             .buttonStyle(TertiaryButtonStyle())
@@ -644,10 +682,10 @@ public struct TransactionsFilterSheet: View {
         onDismiss()
     }
 
-    /// Reset clears everything to defaults.
+    /// Reset clears everything to defaults — including the search
+    /// box, via `clearSearchAndFilters` (T-P1-1).
     private func reset() {
-        viewModel.filters = TransactionFilters()
-        viewModel.persistFilters()
+        viewModel.clearSearchAndFilters()
         let defaults = TransactionFilters()
         draftStatus = defaults.status
         draftWhen = defaults.whenSelection
@@ -728,7 +766,14 @@ private struct DateRangeCalendarView: View {
         }
         .navigationTitle("Choose Dates")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            // T-P2-10: the owner Back treatment (light blue #3b82f6,
+            // bold 700, 15px), not the system back button.
+            ToolbarItem(placement: .topBarLeading) {
+                Button("← Back") { dismiss() }
+                    .buttonStyle(BackButtonStyle())
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Clear") { choose(.allTime) }
                     .font(.system(size: 15, weight: .semibold))
@@ -737,10 +782,24 @@ private struct DateRangeCalendarView: View {
         }
         .onAppear {
             // Seed the pending range from the current selection
-            // (stored as YYYY-MM-DD strings).
-            if case .custom(let from, let to) = selection {
+            // (stored as YYYY-MM-DD strings) — for This Week /
+            // This Month too (T-P2-9), so the calendar opens with
+            // the range highlighted and the label showing it,
+            // instead of opening blank.
+            switch selection {
+            case .custom(let from, let to):
                 pendingStart = TransactionFormatting.dateFromString(from)
                 pendingEnd = TransactionFormatting.dateFromString(to)
+            case .thisWeek:
+                let bounds = TransactionFormatting.currentWeekBounds()
+                pendingStart = TransactionFormatting.dateFromString(bounds.start)
+                pendingEnd = TransactionFormatting.dateFromString(bounds.end)
+            case .thisMonth:
+                let bounds = TransactionFormatting.currentMonthBounds()
+                pendingStart = TransactionFormatting.dateFromString(bounds.start)
+                pendingEnd = TransactionFormatting.dateFromString(bounds.end)
+            case .allTime:
+                break
             }
             if let start = pendingStart,
                let firstOfMonth = Calendar.current.date(

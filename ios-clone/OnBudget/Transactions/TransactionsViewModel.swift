@@ -64,8 +64,18 @@ public final class TransactionsViewModel {
     /// Whether the $375 schema-default allowance was ever explicitly
     /// set — the sync button is primary blue only when it was set.
     public private(set) var allowanceSet: Bool = false
+    /// Card suffix → institution name (best-effort, for bank icons —
+    /// the same map Home builds in `refresh()`). Nil suffixes fall
+    /// back to the merchant icon.
+    public private(set) var institutionBySuffix: [String: String] = [:]
 
     public var filters = TransactionFilters()
+    /// Bumped whenever the search box must clear with the filters
+    /// (T-P1-1): the box is local @State in TransactionsView, so the
+    /// view watches this and clears it — the box and the list can
+    /// never disagree after a clear, a Past Weeks jump, or a Home
+    /// row jump.
+    public var searchResetNonce: Int = 0
     public var expandedTransactionId: UUID?
     public var isSyncing: Bool = false
     public var isSaving: Bool = false
@@ -134,13 +144,12 @@ public final class TransactionsViewModel {
 
     /// The count line (live.js:863-886): "`N` transactions · Total
     /// shown `$X`" (+ the older-rows suffix when the probe row came
-    /// back). Failure and min>max texts outrank a zero total.
+    /// back). On failure the line is empty — the error box below
+    /// already says it (T-P2-11: one failure message, not two
+    /// stacked). The min>max text outranks a zero total.
     public var countLine: String {
-        if case .failed(let error) = loadState {
-            if error == .sessionExpired {
-                return "Sign-in expired — sign in again to see transactions."
-            }
-            return "Could not load transactions — try again."
+        if case .failed = loadState {
+            return ""
         }
         if filters.amountRangeInvalid {
             return "Minimum amount is above the maximum amount — change one of them to see transactions."
@@ -183,6 +192,7 @@ public final class TransactionsViewModel {
                 self.hasMore = hasMore
                 self.loadState = .loaded(rows)
                 await self.loadAllowanceState()
+                await self.loadInstitutionMap()
             } catch let error as OnBudgetError {
                 guard !Task.isCancelled else { return }
                 self.loadedPage = []
@@ -229,11 +239,15 @@ public final class TransactionsViewModel {
     }
 
     /// "Clear Search and Filters": resets every filter to default and
-    /// re-renders (live.js:1033-1042).
+    /// re-renders (live.js:1033-1042). Also bumps `searchResetNonce`
+    /// so the visible search box clears with the filters (T-P1-1) —
+    /// the Past Weeks and Home-row jumps call this first, so they
+    /// clear the box too.
     public func clearSearchAndFilters() {
         filters = TransactionFilters()
         persistFilters()
         resetPage()
+        searchResetNonce += 1
     }
 
     /// Past Weeks / Weekly-sheet jump (live.js:3457-3500): clear
@@ -280,6 +294,28 @@ public final class TransactionsViewModel {
             // Allowance state is presentation-only (sync-button
             // treatment); a failed read leaves the button grey.
             allowanceSet = false
+        }
+    }
+
+    /// Suffix → institution map for bank icons (T-P1-2 — the same
+    /// derivation Home uses: item → institution name, item → account
+    /// mask). Best-effort, never blocks the list: a failed read
+    /// leaves rows on their merchant icons.
+    private func loadInstitutionMap() async {
+        do {
+            let pairs = try await client.postgrest.plaidItemInstitutions(householdId: householdId)
+            let masks = try await client.postgrest.plaidAccountMasks(
+                itemIds: pairs.map(\.itemId))
+            var map: [String: String] = [:]
+            for (itemId, mask) in masks {
+                guard let mask,
+                      let pair = pairs.first(where: { $0.itemId == itemId }),
+                      let name = pair.institutionName else { continue }
+                map[mask] = name
+            }
+            institutionBySuffix = map
+        } catch {
+            // Best-effort only: no error state.
         }
     }
 
@@ -397,7 +433,9 @@ public final class TransactionsViewModel {
     }
 
     /// Extra Fund request for a charge (live.js:3834-3861). Refuses
-    /// charity rows and non-charges with the web's exact wording.
+    /// charity rows and non-charges with the web's exact wording,
+    /// and any amount above the charge itself (T-P2-6 — the fund
+    /// covers a charge, never more than it).
     public func requestExtraFund(for transaction: Transaction, amountCents: Int) async -> Bool {
         if transaction.kind == .charity {
             showAlert(title: "Does Not Qualify", message: "Charity gifts cannot be covered by the Extra Fund.")
@@ -407,6 +445,13 @@ public final class TransactionsViewModel {
             showAlert(
                 title: "Does Not Qualify",
                 message: "Only a charge can be covered by the Extra Fund. This row does not count toward weekly spending, so there is nothing for the fund to cover."
+            )
+            return false
+        }
+        guard amountCents <= transaction.amountCents else {
+            showAlert(
+                title: "Could Not Send Request",
+                message: "The request can't be more than the charge (\(TransactionFormatting.formatCents(transaction.amountCents)))."
             )
             return false
         }

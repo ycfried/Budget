@@ -45,9 +45,18 @@ public struct AddTransactionView: View {
             .navigationTitle("Add Transaction")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { onDismiss() }
-                        .foregroundStyle(DesignTokens.mid)
+                // T-P1-3: Cancel lives ONLY on the options screen.
+                // On the form screens the form's own "← Back"
+                // (BackButtonStyle) is the top-left button — the two
+                // must never render side by side. The forms keep
+                // their in-body Cancel, which discards the draft and
+                // closes. T-P2-10: Cancel wears the owner Back
+                // treatment here too.
+                if step == .options {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") { onDismiss() }
+                            .buttonStyle(BackButtonStyle())
+                    }
                 }
             }
         }
@@ -130,7 +139,8 @@ private struct FormField<Content: View>: View {
 /// exactly 4 digits ("Card suffix: enter exactly 4 digits. Never
 /// enter a full card number."); merchant required; date required;
 /// date must be ≥ 2026-11-01 ("Date: transactions start Nov 1, 2026.
-/// Pick a date on or after Nov 1, 2026.").
+/// Pick a date on or after Nov 1, 2026."); date must not be in the
+/// future (native-only guard, T-P2-13 — the web spec has none).
 /// Duplicate warning: "Possible Duplicate" — "A transaction already
 /// exists for MERCHANT $X on DATE. Add it again anyway?", Confirm
 /// "Add Anyway".
@@ -166,7 +176,14 @@ public struct AddPurchaseForm: View {
 
                 FormField("Merchant") {
                     TextField("Merchant", text: $merchant)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                         .textInputAutocapitalization(.words)
                 }
                 .onChange(of: merchant) { _, new in
@@ -176,8 +193,14 @@ public struct AddPurchaseForm: View {
                 FormField("Amount ($)") {
                     TextField("0.00", text: $amountText)
                         .keyboardType(.decimalPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
                 FormField("Date") {
@@ -185,11 +208,17 @@ public struct AddPurchaseForm: View {
                         .labelsHidden()
                 }
 
-                FormField("Card suffix") {
+                FormField("Card Suffix") {
                     TextField("1005", text: $cardSuffix)
                         .keyboardType(.numberPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .onChange(of: cardSuffix) { _, new in
                     let digits = new.filter(\.isNumber)
@@ -255,12 +284,18 @@ public struct AddPurchaseForm: View {
         }
         let trimmedMerchant = merchant.trimmingCharacters(in: .whitespaces)
         guard !trimmedMerchant.isEmpty else {
-            errorMessage = "Enter a merchant."
+            errorMessage = "Merchant: enter a merchant."
             return nil
         }
         let dateStr = dateString
         guard dateStr >= TransactionFormatting.dataFloorDate else {
             errorMessage = "Date: transactions start Nov 1, 2026. Pick a date on or after Nov 1, 2026."
+            return nil
+        }
+        // T-P2-13: no future dates on hand-entered rows (a deliberate
+        // native divergence — the web spec has no upper-bound check).
+        guard dateStr <= TransactionFormatting.nyTodayString() else {
+            errorMessage = "Date can't be in the future."
             return nil
         }
         return (trimmedMerchant, cents, dateStr, cardSuffix)
@@ -296,12 +331,14 @@ public struct AddPurchaseForm: View {
 /// as weekly spending. Admin only." Admin-only (server-enforced).
 /// Fields: Organization (max 80, required), Amount ($), Date,
 /// Card suffix (4 digits, placeholder "only if paid by card" —
-/// optional), Note (optional) (max 120). Submit: Record Gift.
+/// optional), Note (Optional) (max 120). Submit: Record Gift.
 /// Footnote: "Leave the card suffix blank for a cash gift. Never
 /// enter a full card number."
 /// Validation: positive amount; organization required; date required;
 /// date ≥ 2026-11-01 ("Date: gifts before November 2026 are outside
-/// the charity period."); suffix if present exactly 4 digits.
+/// the charity period."); date must not be in the future (native-only
+/// guard, T-P2-13 — the web spec has none); suffix if present exactly
+/// 4 digits.
 /// Duplicate warning mirrors the manual form ("Record this gift anyway?").
 /// Missing-RPC error → "Charity isn't live yet — the database step
 /// still needs approval."; admin-only refusal → "Only the admin can
@@ -338,7 +375,14 @@ public struct AddDonationForm: View {
 
                 FormField("Organization") {
                     TextField("Organization", text: $organization)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                         .textInputAutocapitalization(.words)
                 }
                 .onChange(of: organization) { _, new in
@@ -348,8 +392,14 @@ public struct AddDonationForm: View {
                 FormField("Amount ($)") {
                     TextField("0.00", text: $amountText)
                         .keyboardType(.decimalPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
                 FormField("Date") {
@@ -357,20 +407,33 @@ public struct AddDonationForm: View {
                         .labelsHidden()
                 }
 
-                FormField("Card suffix") {
+                FormField("Card Suffix") {
                     TextField("only if paid by card", text: $cardSuffix)
                         .keyboardType(.numberPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .onChange(of: cardSuffix) { _, new in
                     let digits = new.filter(\.isNumber)
                     cardSuffix = String(digits.prefix(4))
                 }
 
-                FormField("Note (optional)") {
+                FormField("Note (Optional)") {
                     TextField("Note", text: $note, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .onChange(of: note) { _, new in
                     if new.count > 120 { note = String(new.prefix(120)) }
@@ -431,12 +494,18 @@ public struct AddDonationForm: View {
         }
         let trimmedOrg = organization.trimmingCharacters(in: .whitespaces)
         guard !trimmedOrg.isEmpty else {
-            errorMessage = "Enter an organization."
+            errorMessage = "Organization: enter an organization."
             return nil
         }
         let dateStr = dateString
         guard dateStr >= TransactionFormatting.dataFloorDate else {
             errorMessage = "Date: gifts before November 2026 are outside the charity period."
+            return nil
+        }
+        // T-P2-13: no future dates on hand-entered rows (a deliberate
+        // native divergence — the web spec has no upper-bound check).
+        guard dateStr <= TransactionFormatting.nyTodayString() else {
+            errorMessage = "Date can't be in the future."
             return nil
         }
         if !cardSuffix.isEmpty, !(cardSuffix.count == 4 && cardSuffix.allSatisfy(\.isNumber)) {
