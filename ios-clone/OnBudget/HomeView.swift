@@ -906,7 +906,11 @@ public struct HomeView: View {
     }
 
     private func recentRow(_ row: Transaction) -> some View {
-        Button {
+        // The amount uses the one shared kind rule
+        // (TransactionFormatting.amountDisplay): money in green
+        // with "+", charity blue, regular kinds ink — never red.
+        let display = TransactionFormatting.amountDisplay(for: row)
+        return Button {
             // Tapping a row jumps to Transactions and expands that
             // row's detail (filters/search cleared first, by the
             // Transactions screen when it consumes the jump). If the
@@ -932,9 +936,9 @@ public struct HomeView: View {
                     }
                 }
                 Spacer()
-                Text(MoneyFormat.signedString(cents: row.amountCents))
+                Text(display.text)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(row.amountCents < 0 ? DesignTokens.errorText : DesignTokens.ink)
+                    .foregroundStyle(display.color)
             }
             .padding(.vertical, 6)
         }

@@ -82,6 +82,12 @@ public struct TrashView: View {
                                         restoringId = nil
                                     }
                                 } label: {
+                                    // The amount uses the one shared
+                                    // kind rule (amountDisplay):
+                                    // money in green with "+",
+                                    // charity blue, regular kinds
+                                    // ink — never red.
+                                    let display = TransactionFormatting.amountDisplay(for: transaction)
                                     HStack(spacing: 10) {
                                         TransactionIconView(
                                             merchant: transaction.merchant,
@@ -98,9 +104,9 @@ public struct TrashView: View {
                                                 .foregroundStyle(Color(hex: "#6b7280"))
                                         }
                                         Spacer()
-                                        Text(TransactionFormatting.formatCents(transaction.amountCents))
+                                        Text(display.text)
                                             .font(.system(size: 16, weight: .semibold))
-                                            .foregroundStyle(DesignTokens.ink)
+                                            .foregroundStyle(display.color)
                                         // The Restore pill is the visual hint for
                                         // the whole-row action (same look as
                                         // SmallPrimaryButtonStyle); the row

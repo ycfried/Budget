@@ -42,6 +42,13 @@ public struct TransactionRowView: View {
         self.onActions = onActions
     }
 
+    /// The row's amount under the one shared kind rule
+    /// (TransactionFormatting.amountDisplay): money in green with
+    /// "+", charity blue, regular kinds ink — never red.
+    private var amount: (text: String, color: Color) {
+        TransactionFormatting.amountDisplay(for: transaction)
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: onToggle) {
@@ -56,11 +63,9 @@ public struct TransactionRowView: View {
                             .foregroundStyle(DesignTokens.ink)
                             .lineLimit(1)
                         Spacer()
-                        Text(TransactionFormatting.formatCents(transaction.amountCents))
+                        Text(amount.text)
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(
-                                transaction.amountCents < 0 ? DesignTokens.errorText : DesignTokens.ink
-                            )
+                            .foregroundStyle(amount.color)
                         Image(systemName: "chevron.down")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color(hex: "#6b7280"))
@@ -94,7 +99,7 @@ public struct TransactionRowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                "\(TransactionFormatting.displayMerchant(transaction.merchant)) \(TransactionFormatting.formatCents(transaction.amountCents)) \(TransactionFormatting.displayDay(transaction.date)) \(TransactionFormatting.stateWord(for: transaction)) — show detail"
+                "\(TransactionFormatting.displayMerchant(transaction.merchant)) \(amount.text) \(TransactionFormatting.displayDay(transaction.date)) \(TransactionFormatting.stateWord(for: transaction)) — show detail"
             )
             .accessibilityIdentifier("transaction.row")
 
@@ -130,9 +135,7 @@ public struct TransactionDetailView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(detailHeader)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(DesignTokens.ink)
+            detailHeader
 
             VStack(spacing: 6) {
                 // No Week row: the Date already says it (owner,
@@ -167,7 +170,10 @@ public struct TransactionDetailView: View {
     /// "(Charity gift)" / "(Transfer)"). A plain charge shows no
     /// "(Transaction)" noise (T-P2-8) — every other kind maps to
     /// that same label, so it carries no information either.
-    private var detailHeader: String {
+    /// The amount uses the one shared kind rule
+    /// (TransactionFormatting.amountDisplay): money in green with
+    /// "+", charity blue, regular kinds ink — never red.
+    private var detailHeader: some View {
         let kindSuffix: String
         switch transaction.kind {
         case .refund, .charity, .transfer:
@@ -175,7 +181,13 @@ public struct TransactionDetailView: View {
         default:
             kindSuffix = ""
         }
-        return "\(TransactionFormatting.displayMerchant(transaction.merchant)) — \(TransactionFormatting.formatCents(transaction.amountCents))\(kindSuffix)"
+        let amount = TransactionFormatting.amountDisplay(for: transaction)
+        return (Text(TransactionFormatting.displayMerchant(transaction.merchant))
+            + Text(" — ")
+            + Text(amount.text).foregroundStyle(amount.color)
+            + Text(kindSuffix))
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(DesignTokens.ink)
     }
 
     private func detailRow(label: String, value: String) -> some View {

@@ -120,7 +120,7 @@ public struct ReviewView: View {
             Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
         } message: {
             if let suggestion = confirmingLink {
-                Text("Link this \(MoneyFormat.formatCents(suggestion.refund.amountCents)) refund from \(TitleCase.apply(to: suggestion.refund.merchant.lowercased())) to \(TitleCase.apply(to: suggestion.purchase.merchant.lowercased())) \(MoneyFormat.formatCents(suggestion.purchase.amountCents))?")
+                Text("Link this \(TransactionFormatting.amountDisplay(for: suggestion.refund).text) refund from \(TitleCase.apply(to: suggestion.refund.merchant.lowercased())) to \(TitleCase.apply(to: suggestion.purchase.merchant.lowercased())) \(MoneyFormat.formatCents(suggestion.purchase.amountCents))?")
             }
         }
         .confirmationDialog(
@@ -246,11 +246,11 @@ public struct ReviewView: View {
         }
     }
 
-    private func labeledRow(_ label: String, _ value: String) -> some View {
+    private func labeledRow(_ label: String, _ value: String, valueColor: Color? = nil) -> some View {
         HStack {
             Text(label).foregroundStyle(Color(hex: "#6b7280"))
             Spacer()
-            Text(value).fontWeight(.medium)
+            Text(value).fontWeight(.medium).foregroundStyle(valueColor ?? DesignTokens.ink)
         }
         .font(.system(size: 14))
     }
@@ -359,12 +359,16 @@ public struct ReviewView: View {
 
     @ViewBuilder
     private func refundLinkSide(label: String, transaction: Transaction) -> some View {
+        // The Amount row uses the one shared kind rule
+        // (amountDisplay): money in green with "+", charity blue,
+        // regular kinds ink — never red.
+        let display = TransactionFormatting.amountDisplay(for: transaction)
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.system(size: 14, weight: .bold))
             Text(TitleCase.apply(to: transaction.merchant.lowercased()))
                 .font(.system(size: 15, weight: .semibold))
-            labeledRow("Amount", MoneyFormat.formatCents(transaction.amountCents))
+            labeledRow("Amount", display.text, valueColor: display.color)
             labeledRow("Date", MoneyFormat.fmtLong(transaction.date))
             labeledRow("Card", transaction.cardSuffix.isEmpty ? "—" : "••\(transaction.cardSuffix)")
             labeledRow("Source", sourceLabel(transaction.source))
@@ -467,7 +471,10 @@ public struct DuplicateSide: View {
             if let transaction {
                 Text(TitleCase.apply(to: transaction.merchant.lowercased()))
                     .font(.system(size: 15, weight: .semibold))
-                DuplicateDetailRow("Amount", MoneyFormat.formatCents(transaction.amountCents))
+                // The Amount row uses the one shared kind rule
+                // (amountDisplay): money in green with "+",
+                // charity blue, regular kinds ink — never red.
+                DuplicateDetailRow("Amount", TransactionFormatting.amountDisplay(for: transaction).text, valueColor: TransactionFormatting.amountDisplay(for: transaction).color)
                 DuplicateDetailRow("Date", MoneyFormat.fmtLong(transaction.date))
                 DuplicateDetailRow("Card", transaction.cardSuffix.isEmpty ? "—" : "••\(transaction.cardSuffix)")
                 DuplicateDetailRow("Source", sourceLabel(transaction.source))
@@ -483,17 +490,21 @@ public struct DuplicateSide: View {
 public struct DuplicateDetailRow: View {
     public let label: String
     public let value: String
+    /// Amount colour under the shared kind rule, when this row is
+    /// an amount; nil keeps the inherited ink.
+    public let valueColor: Color?
 
-    public init(_ label: String, _ value: String) {
+    public init(_ label: String, _ value: String, valueColor: Color? = nil) {
         self.label = label
         self.value = value
+        self.valueColor = valueColor
     }
 
     public var body: some View {
         HStack {
             Text(label).foregroundStyle(Color(hex: "#6b7280"))
             Spacer()
-            Text(value).fontWeight(.medium)
+            Text(value).fontWeight(.medium).foregroundStyle(valueColor ?? DesignTokens.ink)
         }
         .font(.system(size: 14))
     }
