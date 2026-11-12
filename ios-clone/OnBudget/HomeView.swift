@@ -326,6 +326,15 @@ public struct HomeView: View {
         .sheet(isPresented: $showWeeklySheet) {
             if case .loaded(let result) = viewModel.week {
                 WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, appState: appState)
+                    // iPad width (owner, Nov 12 2026): a plain .sheet
+                    // is a ~540pt form sheet on iPad — narrow and
+                    // cramped for this content. .fitted sizes the
+                    // sheet to the content, and WeeklySheet fixes its
+                    // width to 600pt in the regular size class, so the
+                    // sheet opens 600pt wide and centred; on iPhone
+                    // (compact) the width stays full-screen and only
+                    // the height hugs the content.
+                    .presentationSizing(.fitted)
             }
         }
         .alert(notLoadedAlertTitle, isPresented: $showNotLoadedAlert) {
@@ -948,15 +957,19 @@ public struct HomeView: View {
 /// tapping the hero number. Rows, exactly three, in order:
 /// Allowance (= base room + temp) / Spent (server charges_cents) /
 /// Balance (available_cents). Fourth row only when non-zero:
-/// Unlinked refunds. Message: "Pending transactions are included
-/// and marked." (+ the unlinked sentence when the 4th row is
-/// present). Show Transactions (primary) + Close (tertiary) —
-/// two-button sheet rule.
+/// Unlinked refunds. No explainer line under the header (owner,
+/// Nov 12 2026): the "Pending transactions are included and
+/// marked." line crowded the header, and pending state is already
+/// marked on the rows. Show Transactions (primary) + Close
+/// (tertiary) — two-button sheet rule. iPad: 600pt wide, centred
+/// (.presentationSizing(.fitted) + fixed width in the regular size
+/// class); iPhone: full-width.
 public struct WeeklySheet: View {
     let week: WeekResult
     let baseAllowanceCents: Int?
     @ObservedObject var appState: AppViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(week: WeekResult, baseAllowanceCents: Int?, appState: AppViewModel) {
         self.week = week
@@ -965,17 +978,21 @@ public struct WeeklySheet: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Single dismiss control: the bottom "Close" next to
-            // "Show Transactions". The header "Cancel" duplicated it
-            // (audit H-P2-3), and its centring shim was narrower
-            // than the rendered button, so the title now centres
-            // on its own frame instead.
+        VStack(alignment: .leading, spacing: 16) {
+            // Header: air above the title (owner, Nov 12 2026 — the
+            // sheet felt claustrophobic). Single dismiss control:
+            // the bottom "Close" next to "Show Transactions". The
+            // header "Cancel" duplicated it (audit H-P2-3), and its
+            // centring shim was narrower than the rendered button,
+            // so the title now centres on its own frame instead.
             Text("Weekly Budget")
                 .font(.system(size: 17, weight: .bold))
                 .frame(maxWidth: .infinity, alignment: .center)
-            Text("Pending transactions are included and marked.\(week.unlinkedExcessCents != 0 ? " Unlinked refunds above this week's spending are not counted here." : "")")
-                .font(.system(size: 15))
+                .padding(.top, 8)
+            // No explainer line here (owner, Nov 12 2026): the
+            // "Pending transactions are included and marked." line
+            // crowded the header. Pending state is already marked
+            // on the rows themselves, so nothing replaces it.
             // Reconciliation rows (live.js v69): Base / Temporary /
             // Carried debt appear exactly when they change the number;
             // a normal week keeps the approved three rows.
@@ -994,9 +1011,19 @@ public struct WeeklySheet: View {
                 Button("Close") { dismiss() }
                     .buttonStyle(TertiaryButtonStyle())
             }
+            .padding(.top, 8)
             Spacer()
         }
-        .padding(20)
+        .padding(.horizontal, 24)
+        .padding(.top, 20)
+        .padding(.bottom, 24)
+        // iPad width (owner, Nov 12 2026): with .presentationSizing
+        // (.fitted) at the presentation site, the sheet sizes to
+        // this content — so a fixed 600pt width here actually widens
+        // the sheet on iPad (regular size class) instead of the
+        // system ~540pt form sheet. On iPhone (compact) no width is
+        // fixed and the sheet stays full-width.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 
     private func sheetRow(label: String, value: String) -> some View {
@@ -1007,5 +1034,6 @@ public struct WeeklySheet: View {
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
         }
+        .padding(.vertical, 4)
     }
 }
