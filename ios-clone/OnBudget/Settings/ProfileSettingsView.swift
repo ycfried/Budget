@@ -32,6 +32,13 @@ final class ProfileSettingsViewModel: ObservableObject {
     @Published var showNewPassword = false
     @Published var passwordAlert: PasswordAlert?
 
+    /// Persistent inline save error (audit CF-1, Nov 12 2026):
+    /// a name/email save failure used to be toast-only, so the
+    /// message vanished after 4s before the user could act on it.
+    /// The toast still fires; this box ALSO stays on the Profile
+    /// card until the next save attempt or a tap dismisses it.
+    @Published var saveError: String?
+
     /// Face ID unlock (native v1, opt-in): shown only when the
     /// device can evaluate biometrics. Hidden entirely on devices
     /// without enrolled biometrics — including the simulator, so the
@@ -126,6 +133,7 @@ final class ProfileSettingsViewModel: ObservableObject {
             return
         }
         guard !isSavingName else { return }
+        saveError = nil
         isSavingName = true
         defer { isSavingName = false }
         do {
@@ -133,6 +141,7 @@ final class ProfileSettingsViewModel: ObservableObject {
             name = trimmed
             toast.show("Name saved — it now shows in your profile.", kind: .success)
         } catch {
+            saveError = "Could not save your name. Try again."
             toast.showError("Could not save your name. Try again.")
         }
     }
@@ -150,12 +159,14 @@ final class ProfileSettingsViewModel: ObservableObject {
             return
         }
         guard !isSavingEmail else { return }
+        saveError = nil
         isSavingEmail = true
         defer { isSavingEmail = false }
         do {
             _ = try await context.client.updateEmail(trimmed)
             toast.show("Confirmation sent to \(trimmed) — your sign-in email stays as it is until you confirm it.", kind: .success)
         } catch {
+            saveError = "Could not change your email. Try again."
             toast.showError("Could not change your email. Try again.")
         }
     }
@@ -202,6 +213,13 @@ struct ProfileSettingsView: View {
 
     var body: some View {
         SettingsCard(title: "Profile") {
+            // Persistent save failure (audit CF-1): unlike the
+            // toast, this box stays until the next save attempt
+            // or a tap dismisses it.
+            if let saveError = viewModel.saveError {
+                ErrorBox(saveError)
+                    .onTapGesture { viewModel.saveError = nil }
+            }
             LabeledField(label: "Name", text: $viewModel.name, placeholder: "Your name", autocapitalization: .words)
             Button(viewModel.isSavingName ? "Saving…" : "Save Name") {
                 Task { await viewModel.saveName() }
