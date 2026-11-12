@@ -303,8 +303,10 @@ public final class AppViewModel: ObservableObject {
     /// means the stored session is live and the caller should boot;
     /// `.cancelled` stays silent; `.failed` carries the message for
     /// the auth screen's inline error box. The Face ID prompt only
-    /// ever fires from this call — never on appear, never at boot —
-    /// so the UI tests (which never opt in) can never see it.
+    /// ever fires from this call — including the auth screen's
+    /// once-per-appearance auto-prompt for opted-in returning users
+    /// (owner, Nov 11, 2026) — never at boot, so the UI tests (which
+    /// never opt in) can never see it.
     public func unlockWithBiometrics() async -> BiometricUnlockOutcome {
         do {
             _ = try await biometricUnlock.unlock(client: client)

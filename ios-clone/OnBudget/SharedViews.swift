@@ -143,14 +143,13 @@ public struct LoadingView: View {
     public init() {}
     public var body: some View {
         VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .stroke(DesignTokens.primary, lineWidth: 2)
-                    .frame(width: 72, height: 72)
-                Text("S")
-                    .font(.system(size: 36, weight: .bold))
-                    .foregroundStyle(DesignTokens.primary)
-            }
+            // The real logo (Assets.xcassets/AppLogo), not the "S"
+            // placeholder ring (owner, Nov 11, 2026).
+            Image("AppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 72, height: 72)
+                .clipShape(Circle())
             Text("OnBudget")
                 .font(.system(size: 28, weight: .bold, design: .default))
                 .foregroundStyle(DesignTokens.ink)

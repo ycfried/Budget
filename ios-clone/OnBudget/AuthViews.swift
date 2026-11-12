@@ -8,13 +8,24 @@
 // Terms" links.
 //
 // Sign-in: Email + Password (eye toggle inside the field), button
-// row Sign In (primary) + Create Account (tertiary), then a
-// full-width quiet "Forgot Password?" link. Failures stay in the
-// inline soft-red box under the buttons — never a toast.
+// row Sign In (primary) + Create Account (tertiary), Remember me
+// checkbox, then a full-width quiet "Forgot Password?" link.
+// Failures stay in the inline soft-red box under the buttons — never
+// a toast — in plain language: wrong credentials read "Username or
+// password is incorrect." (the server cannot say which field is
+// wrong, by design) and no raw status code is ever shown.
+// Biometric unlock (owner, Nov 11, 2026): for a returning user who
+// opted in, the prompt fires automatically once when the screen
+// appears, plus a small Face ID / Touch ID icon in the password row
+// as the manual trigger; the old big grey button is gone. Sign-in
+// stays email/password. Password AutoFill: the email field is the
+// username field (.username) so iOS offers to save the login and to
+// fill it in on return.
 // Create-account: validates Email + Password ONLY, then moves to
 // the separate "Choose Your Name" panel (values survive). Household
 // name is REQUIRED at sign-up (owner, Nov 4): no default fallback,
-// no "optional" copy.
+// no "optional" copy. Back sits top-left on every screen, never
+// next to the primary button.
 // Forgot password: uses the filled Email, else a sheet with the
 // 3-step message; the native app passes its own allow-listed deep
 // link as redirectTo (AppDeepLinks.resetPassword). Generic wording
@@ -33,19 +44,22 @@ public struct AuthBrandHeader: View {
     public init() {}
     public var body: some View {
         HStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .stroke(DesignTokens.primary, lineWidth: 2)
-                    .frame(width: 40, height: 40)
-                Text("S")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(DesignTokens.primary)
-            }
+            // The real logo (Assets.xcassets/AppLogo — the same
+            // circular picture the web app uses), not the "S"
+            // placeholder ring the clone shipped with (owner, Nov 11,
+            // 2026).
+            Image("AppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 40, height: 40)
+                .clipShape(Circle())
             Text("OnBudget")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Centered as a unit (owner, Nov 11, 2026): the header was
+        // left-aligned, which read as shifted-left on a wide screen.
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
@@ -64,6 +78,10 @@ public struct AuthFooter: View {
         .font(.system(size: 13))
         .foregroundStyle(Color(hex: "#6b7280"))
         .multilineTextAlignment(.center)
+        // Full width so the centered text actually centers on the
+        // screen (owner, Nov 11, 2026): the footer was only as wide
+        // as its longest line and sat left-aligned.
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -80,24 +98,41 @@ public struct AuthView: View {
     @State private var busy: String? // label of the running action
     @State private var showNameStep = false
     @State private var showForgotSheet = false
+    // Remember me (owner, Nov 11, 2026): ON by default — today's
+    // behaviour (the session persists across launches). OFF signs in
+    // into memory only, so closing the app signs the user out.
+    @State private var rememberMe = true
+    // Auto-prompt guard: the biometric prompt fires at most once per
+    // appearance of this screen.
+    @State private var didAutoPromptBiometrics = false
 
     public init(appState: AppViewModel) { self.appState = appState }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                AuthBrandHeader()
-                if showNameStep {
-                    nameStep
-                } else {
-                    signInPanel
+        // Vertical balance (owner, Nov 11, 2026): the page was
+        // bunched at the top with a big empty area below. The content
+        // takes at least the full screen height and the spacers share
+        // the leftover space, so a short screen centers the content;
+        // a tall screen still scrolls normally.
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Spacer(minLength: 0)
+                    AuthBrandHeader()
+                    if showNameStep {
+                        nameStep
+                    } else {
+                        signInPanel
+                    }
+                    AuthFooter()
+                        .padding(.top, 8)
+                    Spacer(minLength: 0)
                 }
-                AuthFooter()
-                    .padding(.top, 8)
+                .padding(20)
+                .frame(minHeight: geometry.size.height)
             }
-            .padding(20)
+            .background(DesignTokens.background)
         }
-        .background(DesignTokens.background)
         .sheet(isPresented: $showForgotSheet) {
             ForgotPasswordSheet(email: email) { result in
                 message = result
@@ -113,9 +148,17 @@ public struct AuthView: View {
                 message = nil
             }
             // Offer Face ID unlock when a protected session exists
-            // and biometrics can evaluate. This only recomputes a
-            // flag — the Face ID prompt fires only from the button.
+            // and biometrics can evaluate.
             appState.refreshBiometricUnlockAvailability()
+            // Smarter unlock (owner, Nov 11, 2026): prompt
+            // automatically for a returning user who opted in. Safe
+            // after an explicit sign-out — sign-out deletes the
+            // protected session, so there is nothing to prompt for.
+            // Never fires in the UI tests (they never opt in).
+            if appState.biometricUnlockAvailable && !didAutoPromptBiometrics {
+                didAutoPromptBiometrics = true
+                Task { await unlockWithBiometrics() }
+            }
         }
     }
 
@@ -130,7 +173,11 @@ public struct AuthView: View {
             Text("Email")
                 .font(.system(size: 14, weight: .bold))
             TextField("Email", text: $email)
-                .textContentType(.emailAddress)
+                // Password AutoFill (owner, Nov 11, 2026): the email
+                // field is the username field, so iOS offers to save
+                // the login to the passwords app on sign-in and offers
+                // to fill it in on return. The email keyboard stays.
+                .textContentType(.username)
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -157,6 +204,22 @@ public struct AuthView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.primary)
                     .accessibilityLabel(showPassword ? "Hide Password" : "Show Password")
+                // Biometric unlock as a small icon in the password
+                // row (owner, Nov 11, 2026) — the manual trigger,
+                // next to the field it unlocks. Shown only when a
+                // protected session exists; the icon follows the
+                // hardware (Face ID / Touch ID).
+                if appState.biometricUnlockAvailable {
+                    Button {
+                        Task { await unlockWithBiometrics() }
+                    } label: {
+                        Image(systemName: appState.biometricUnlock.biometryKind == .touchID ? "touchid" : "faceid")
+                            .font(.system(size: 20))
+                            .foregroundStyle(DesignTokens.primary)
+                    }
+                    .accessibilityLabel(biometricUnlockLabel)
+                    .disabled(busy != nil)
+                }
             }
             .padding(12)
             .background(.white)
@@ -179,6 +242,33 @@ public struct AuthView: View {
                     .disabled(busy != nil)
             }
 
+            // Remember me (owner, Nov 11, 2026): ticked (the
+            // default) keeps the session across launches; unticked
+            // signs in into memory only, so closing the app signs
+            // the user out. When biometric unlock is on, the session
+            // is already kept for that — the box is checked and
+            // disabled rather than pretending to control it.
+            Button {
+                rememberMe.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: rememberMeEffective ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 18))
+                        .foregroundStyle(rememberMeDisabled ? Color(hex: "#9ca3af") : DesignTokens.primary)
+                    Text("Remember me")
+                        .font(.system(size: 15))
+                        .foregroundStyle(DesignTokens.ink)
+                }
+            }
+            .disabled(rememberMeDisabled)
+            .accessibilityIdentifier("auth.rememberMe")
+            .padding(.top, 4)
+            if rememberMeDisabled {
+                Text("Biometric unlock is on — it keeps you signed in.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
+
             Button("Forgot Password?") {
                 if AuthValidation.isValidEmail(email) {
                     Task { await sendReset(email: email) }
@@ -192,21 +282,22 @@ public struct AuthView: View {
             .frame(maxWidth: .infinity)
             .padding(.top, 4)
 
-            // Face ID unlock (native v1, opt-in only): shown only
-            // when a protected session exists AND biometrics can
-            // evaluate — never during the UI tests (they never opt
-            // in) and never on a device without enrolled biometrics.
-            // Tapping it is the ONLY place the Face ID prompt fires.
-            if appState.biometricUnlockAvailable {
-                Button(busy == "faceID" ? "Waiting…" : biometricUnlockLabel) {
-                    Task { await unlockWithBiometrics() }
-                }
-                .buttonStyle(TertiaryButtonStyle())
-                .accessibilityIdentifier("auth.unlockWithFaceID")
-                .disabled(busy != nil)
-                .frame(maxWidth: .infinity)
-            }
+            // The big "Unlock with Touch ID" button is gone (owner,
+            // Nov 11, 2026): biometric unlock is now the auto-prompt
+            // on open plus the icon in the password row above.
         }
+    }
+
+    /// The effective Remember-me state: biometric unlock implies a
+    /// kept session, so the box reads checked while it is on.
+    private var rememberMeEffective: Bool {
+        rememberMe || appState.biometricUnlockAvailable
+    }
+
+    /// Biometric unlock already keeps the session — the box must not
+    /// pretend to control that.
+    private var rememberMeDisabled: Bool {
+        appState.biometricUnlockAvailable
     }
 
     private var nameStep: some View {
@@ -247,6 +338,16 @@ public struct AuthView: View {
         }
         busy = "signIn"
         message = nil
+        // Remember me: pick the session store BEFORE signing in, so
+        // the session lands in the right place. Unticked signs in
+        // into memory only (InMemorySessionStore) — closing the app
+        // signs the user out. When biometric unlock is on, the
+        // protected Keychain session already keeps the user signed
+        // in — never swap that store away.
+        if !appState.biometricUnlockAvailable {
+            appState.client.replaceSessionStore(
+                rememberMe ? UserDefaultsSessionStore() : InMemorySessionStore())
+        }
         do {
             _ = try await appState.client.signIn(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -261,7 +362,10 @@ public struct AuthView: View {
             messageIsError = true
             busy = nil
         } catch {
-            message = "Incorrect email or password"
+            // A non-OnBudgetError here cannot be a credential failure
+            // (those arrive as OnBudgetError via fromAuthResponse) —
+            // never blame the password for a transport surprise.
+            message = "Could not sign in. Try again."
             messageIsError = true
             busy = nil
         }
@@ -321,6 +425,13 @@ public struct NameStepView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Back goes top-left, same place on every screen (owner,
+            // Nov 11, 2026) — never squeezed next to the primary
+            // button at the bottom.
+            HStack {
+                BackButton(action: onBack)
+                Spacer()
+            }
             Text("Choose Your Name")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
@@ -334,13 +445,10 @@ public struct NameStepView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             if let message { ErrorBox(message) }
-            HStack(spacing: 12) {
-                BackButton(action: onBack)
-                Button(busy ? "Creating account…" : "Create Account") { Task { await createAccount() } }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .accessibilityIdentifier("auth.createAccountConfirm")
-                    .disabled(busy)
-            }
+            Button(busy ? "Creating account…" : "Create Account") { Task { await createAccount() } }
+                .buttonStyle(PrimaryButtonStyle())
+                .accessibilityIdentifier("auth.createAccountConfirm")
+                .disabled(busy)
         }
     }
 
@@ -368,6 +476,19 @@ public struct NameStepView: View {
                     kind: .info)
                 appState.phase = .auth
             }
+        } catch let error as OnBudgetError {
+            // The server's already-registered error surfaces HERE, at
+            // the name step — the earliest point it can be known (the
+            // sign-in card's Create Account button makes no server
+            // call, same as the web; there is no email-existence
+            // check to call). Name the problem and point at sign-in
+            // (owner, Nov 11, 2026); other failures stay generic.
+            if error.userMessage.lowercased().contains("already registered") {
+                message = "An account already exists for this email. Sign in instead."
+            } else {
+                message = "Could not create the account. Try again."
+            }
+            busy = false
         } catch {
             message = "Could not create the account. Try again."
             busy = false
@@ -476,43 +597,50 @@ public struct ResetPasswordView: View {
     public init() {}
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                AuthBrandHeader()
-                Text("Reset Your Password")
-                    .font(.system(size: 22, weight: .bold))
-                Text("Password requirements: at least 8 characters.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                if exchanging {
-                    ProgressView()
+        // Same vertical balance as the sign-in screen (owner, Nov 11,
+        // 2026): centered when the content fits, scrolling when tall.
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Spacer(minLength: 0)
+                    AuthBrandHeader()
+                    Text("Reset Your Password")
+                        .font(.system(size: 22, weight: .bold))
+                    Text("Password requirements: at least 8 characters.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                    if exchanging {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 24)
+                    } else {
+                        passwordField(label: "New Password", text: $newPassword, showing: $showNew)
+                        passwordField(label: "Confirm New Password", text: $confirmPassword, showing: $showConfirm)
+                        if let message {
+                            if messageIsError { ErrorBox(message) } else { InfoBox(message) }
+                        }
+                        Button(busy ? "Saving…" : "Save New Password") { Task { await save() } }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .disabled(busy)
+                        Button("Back to Sign In") {
+                            appState.pendingResetCode = nil
+                            appState.resetLinkError = nil
+                            appState.phase = .auth
+                        }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
-                } else {
-                    passwordField(label: "New Password", text: $newPassword, showing: $showNew)
-                    passwordField(label: "Confirm New Password", text: $confirmPassword, showing: $showConfirm)
-                    if let message {
-                        if messageIsError { ErrorBox(message) } else { InfoBox(message) }
+                        .padding(.top, 4)
                     }
-                    Button(busy ? "Saving…" : "Save New Password") { Task { await save() } }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(busy)
-                    Button("Back to Sign In") {
-                        appState.pendingResetCode = nil
-                        appState.resetLinkError = nil
-                        appState.phase = .auth
-                    }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 4)
+                    AuthFooter()
+                        .padding(.top, 8)
+                    Spacer(minLength: 0)
                 }
-                AuthFooter()
-                    .padding(.top, 8)
+                .padding(20)
+                .frame(minHeight: geometry.size.height)
             }
-            .padding(20)
+            .background(DesignTokens.background)
         }
-        .background(DesignTokens.background)
         .task {
             // Exchange the code (or adopt the fragment session);
             // a bad code shows the reset page's exact message.

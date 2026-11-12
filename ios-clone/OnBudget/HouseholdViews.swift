@@ -177,6 +177,13 @@ public struct HouseholdNamePanel: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Back goes top-left, same place on every screen (owner,
+            // Nov 11, 2026) — never squeezed next to the primary
+            // button at the bottom.
+            HStack {
+                BackButton(action: onBack)
+                Spacer()
+            }
             Text("Name Your Household")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
@@ -192,13 +199,10 @@ public struct HouseholdNamePanel: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             if let localError { ErrorBox(localError) }
-            HStack(spacing: 12) {
-                BackButton(action: onBack)
-                Button(busy ? "Creating…" : "Create Household") { Task { await create() } }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .accessibilityIdentifier("household.createConfirm")
-                    .disabled(busy)
-            }
+            Button(busy ? "Creating…" : "Create Household") { Task { await create() } }
+                .buttonStyle(PrimaryButtonStyle())
+                .accessibilityIdentifier("household.createConfirm")
+                .disabled(busy)
         }
     }
 

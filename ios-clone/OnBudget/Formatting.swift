@@ -133,7 +133,7 @@ public enum AuthValidation {
     }
 
     /// Sign-in field checks. Sign-in failure itself is deliberately
-    /// generic ("Incorrect email or password") and never names a field.
+    /// generic ("Username or password is incorrect.") and never names a field.
     public static func signInError(email: String, password: String) -> String? {
         if email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "Enter an email address to sign in."
