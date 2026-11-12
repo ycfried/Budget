@@ -301,6 +301,13 @@ public struct HomeView: View {
         .background(DesignTokens.background)
         .task { await viewModel.refresh() }
         .refreshable { await viewModel.refresh() }
+        // Settings dismiss (audit H-P1-5): the Settings cover sits
+        // over this tab and never re-ran the load, so a just-set
+        // allowance still showed the old state. Refresh when the
+        // cover closes; opening it changes nothing.
+        .onChange(of: appState.showSettings) { _, isShowing in
+            if !isShowing { Task { await viewModel.refresh() } }
+        }
         .sheet(isPresented: $showWeeklySheet) {
             if case .loaded(let result) = viewModel.week {
                 WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, appState: appState)
