@@ -397,7 +397,19 @@ public struct AuthView: View {
                 let exists = try? await appState.client.functions.checkEmailExists(email: trimmed)
                 message = SignInErrorMessage.invalidCredentials(emailExists: exists)
             } else {
-                message = error.userMessage
+                // Audit A-P2-7: show the sanitised displayMessage,
+                // never raw transport text. Audit A-P2-9: an
+                // unconfirmed email names the next step — GoTrue
+                // answers "Email not confirmed" with no guidance.
+                // There is no in-app resend (verified: no resend
+                // path exists in the native code), so the step is
+                // to check the inbox for the confirmation link.
+                let text = error.displayMessage
+                if text.lowercased().contains("not confirmed") {
+                    message = "Email not confirmed. Check your inbox for the confirmation link, then sign in again."
+                } else {
+                    message = text
+                }
             }
             messageIsError = true
             busy = nil
@@ -636,7 +648,9 @@ public struct ForgotPasswordSheet: View {
             sent = true
             sentEmail = trimmed
         } catch let error as OnBudgetError {
-            message = error.userMessage
+            // Audit A-P2-7: the sanitised displayMessage, never raw
+            // transport text.
+            message = error.displayMessage
             busy = false
         } catch {
             message = "Could not send the reset link. Try again."
