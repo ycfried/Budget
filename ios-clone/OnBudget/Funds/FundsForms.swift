@@ -195,11 +195,11 @@ public struct UseFundForm: View {
                 showOverride = true
             } else {
                 viewModel.alertTitle = "Could Not Record"
-                viewModel.alertMessage = error.userMessage
+                viewModel.alertMessage = error.displayMessage
             }
         } catch {
             viewModel.alertTitle = "Could Not Record"
-            viewModel.alertMessage = error.localizedDescription
+            viewModel.alertMessage = OnBudgetError.displayMessage(for: error)
         }
     }
 }
@@ -430,10 +430,10 @@ public struct FundRequestQueue: View {
             if case .insufficientFund = error, overrideReason == nil {
                 showOverride = true
             } else {
-                approveError = error.userMessage
+                approveError = error.displayMessage
             }
         } catch {
-            approveError = error.localizedDescription
+            approveError = OnBudgetError.displayMessage(for: error)
         }
     }
 }

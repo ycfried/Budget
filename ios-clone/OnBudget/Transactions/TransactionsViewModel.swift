@@ -24,8 +24,10 @@ import OnBudgetKit
 /// - Allowance-set state (sync-button treatment):
 ///   `client.postgrest.householdAllowance(householdId:)`.
 ///
-/// Server refusals are surfaced verbatim (`error.userMessage`) — the
-/// client never rewrites them. Two server defects that affected these
+/// Server refusals are shown through `error.displayMessage` — the
+/// specific refusals (week-locked, admin-only, …) keep their plain
+/// text; raw server/transport text is mapped to a generic line, never
+/// shown (owner report, Nov 11, 2026). Two server defects that affected these
 /// screens were fixed live in web PR #62 (Nov 9, 2026) and the native
 /// was built to the intended behaviour from the start, so no clone
 /// change was needed: (1) merged duplicates now record
@@ -308,10 +310,10 @@ public final class TransactionsViewModel {
                 )
             }
         } catch let error as OnBudgetError {
-            toastManager.showError(error.userMessage)
+            toastManager.showError(error.displayMessage)
             return
         } catch {
-            toastManager.showError(error.localizedDescription)
+            toastManager.showError(OnBudgetError.displayMessage(for: error))
             return
         }
         await load()
@@ -361,10 +363,10 @@ public final class TransactionsViewModel {
             if error == .sessionExpired {
                 loadState = .failed(error)
             }
-            showAlert(title: "Could Not Mark as Charity", message: error.userMessage)
+            showAlert(title: "Could Not Mark as Charity", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Mark as Charity", message: error.localizedDescription)
+            showAlert(title: "Could Not Mark as Charity", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -386,10 +388,10 @@ public final class TransactionsViewModel {
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Reclassify", message: error.userMessage)
+            showAlert(title: "Could Not Reclassify", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Reclassify", message: error.localizedDescription)
+            showAlert(title: "Could Not Reclassify", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -428,10 +430,10 @@ public final class TransactionsViewModel {
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Send Request", message: error.userMessage)
+            showAlert(title: "Could Not Send Request", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Send Request", message: error.localizedDescription)
+            showAlert(title: "Could Not Send Request", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -455,10 +457,10 @@ public final class TransactionsViewModel {
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Delete", message: error.userMessage)
+            showAlert(title: "Could Not Delete", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Delete", message: error.localizedDescription)
+            showAlert(title: "Could Not Delete", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -485,10 +487,10 @@ public final class TransactionsViewModel {
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Restore", message: error.userMessage)
+            showAlert(title: "Could Not Restore", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Restore", message: error.localizedDescription)
+            showAlert(title: "Could Not Restore", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -549,10 +551,10 @@ public final class TransactionsViewModel {
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Link Refund", message: error.userMessage)
+            showAlert(title: "Could Not Link Refund", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Link Refund", message: error.localizedDescription)
+            showAlert(title: "Could Not Link Refund", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -571,10 +573,10 @@ public final class TransactionsViewModel {
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Unlink Refund", message: error.userMessage)
+            showAlert(title: "Could Not Unlink Refund", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Unlink Refund", message: error.localizedDescription)
+            showAlert(title: "Could Not Unlink Refund", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }

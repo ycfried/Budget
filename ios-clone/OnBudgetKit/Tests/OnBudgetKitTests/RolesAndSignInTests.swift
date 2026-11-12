@@ -145,4 +145,29 @@ final class RolesAndSignInTests: XCTestCase {
         XCTAssertEqual(OnBudgetError.invalidCredentials.userMessage, "Username or password is incorrect.")
         XCTAssertFalse(OnBudgetError.invalidCredentials.isRetryable)
     }
+
+    // MARK: - displayMessage (never raw server text on screen)
+
+    func testDisplayMessagePassesSpecificRefusalsThrough() {
+        XCTAssertEqual(OnBudgetError.adminOnly("admin only").displayMessage, "admin only")
+        XCTAssertEqual(OnBudgetError.weekLocked("week is locked: test").displayMessage, "week is locked: test")
+        XCTAssertEqual(OnBudgetError.rateLimited("too many failed join attempts, try again later").displayMessage,
+                       "too many failed join attempts, try again later")
+        XCTAssertEqual(OnBudgetError.validationFailed("Amount: enter a positive amount.").displayMessage,
+                       "Amount: enter a positive amount.")
+    }
+
+    func testDisplayMessageMapsRawServerTextToGeneric() {
+        // The owner's Nov 11, 2026 report: this exact string reached
+        // the Settings screen. It must never be shown again.
+        XCTAssertEqual(
+            OnBudgetError.serverError(status: 500, message: "column households.household_id does not exist").displayMessage,
+            "Could not complete that. Try again.")
+        XCTAssertEqual(OnBudgetError.decodingError("keyNotFound").displayMessage, "Could not complete that. Try again.")
+        XCTAssertEqual(OnBudgetError.unknown("weird").displayMessage, "Could not complete that. Try again.")
+        XCTAssertEqual(OnBudgetError.networkError("The Internet connection appears to be offline.").displayMessage,
+                       "Could not complete that. Try again.")
+        XCTAssertEqual(OnBudgetError.displayMessage(for: NSError(domain: "x", code: 1)),
+                       "Could not complete that. Try again.")
+    }
 }

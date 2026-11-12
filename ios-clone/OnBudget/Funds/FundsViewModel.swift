@@ -8,9 +8,10 @@ import OnBudgetKit
 /// The server is authoritative for every figure: week math comes from
 /// compute-week (not used here), fund/charity figures are display
 /// aggregations over rows the server computed (`FundSummary` /
-/// `CharitySummary`), and every refusal text is carried through
-/// verbatim via `OnBudgetError.userMessage` — the client never rewrites
-/// it and never works around a server refusal.
+/// `CharitySummary`), and every refusal is shown through
+/// `OnBudgetError.displayMessage` — the specific refusals keep their
+/// plain text; raw server text is mapped to a generic line, never
+/// shown (owner report, Nov 11, 2026).
 ///
 /// TWO SERVER DEFECTS that affected these screens were fixed live
 /// in web PR #62 (Nov 9, 2026) and the native was built to the
@@ -344,7 +345,7 @@ public final class FundsViewModel: ObservableObject {
     // MARK: - Errors / toasts
 
     public func userMessage(for error: Error) -> String {
-        (error as? OnBudgetError)?.userMessage ?? error.localizedDescription
+        OnBudgetError.displayMessage(for: error)
     }
 
     private func fail(title: String, error: Error) {

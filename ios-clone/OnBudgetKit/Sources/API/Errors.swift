@@ -125,6 +125,35 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
 
     public var errorDescription: String? { userMessage }
 
+    /// The text a screen may SHOW for this error. Unlike
+    /// `userMessage`, which preserves the server's text verbatim (for
+    /// logging, and for cases where the server text IS the message),
+    /// this maps the untrusted cases — raw server strings, decode
+    /// failures, transport text — to generic plain language, so a
+    /// database error can never reach the user (owner report, Nov 11,
+    /// 2026: "column households.household_id does not exist"). The
+    /// specific refusal cases (admin-only, week-locked,
+    /// rate-limited, validation, …) pass through: their messages are
+    /// already plain language.
+    public var displayMessage: String {
+        switch self {
+        case .networkOffline, .timedOut, .sessionExpired,
+             .forbidden, .adminOnly, .weekLocked, .insufficientFund,
+             .cannotRestore, .heldRefundAlreadyResolved, .rateLimited,
+             .notFound, .validationFailed, .invalidCredentials:
+            return userMessage
+        case .networkError, .serverError, .decodingError, .unknown:
+            return "Could not complete that. Try again."
+        }
+    }
+
+    /// Display-safe message for any error: the kit case's
+    /// `displayMessage`, or a generic line for anything else — never
+    /// `localizedDescription` (Foundation text is technical).
+    public static func displayMessage(for error: Error) -> String {
+        (error as? OnBudgetError)?.displayMessage ?? "Could not complete that. Try again."
+    }
+
     /// Whether tapping "Try again" can plausibly succeed without the
     /// user changing anything. Session/admin/lock/validation refusals
     /// are not retryable; transport and 5xx failures are.

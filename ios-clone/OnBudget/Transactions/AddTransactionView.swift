@@ -284,7 +284,7 @@ public struct AddPurchaseForm: View {
                 duplicateLabel = "\(TransactionFormatting.displayMerchant(values.merchant)) \(TransactionFormatting.formatCents(values.amountCents)) on \(TransactionFormatting.fmtLong(values.date))"
                 showingDuplicateConfirm = true
             case .failed(let error):
-                errorMessage = error.userMessage
+                errorMessage = error.displayMessage
             }
         }
     }
@@ -471,7 +471,9 @@ public struct AddDonationForm: View {
     }
 
     /// Missing-RPC and admin-only refusals get the web's exact
-    /// wording (live.js:4300-4310); other refusals surface verbatim.
+    /// wording (live.js:4300-4310); other refusals go through
+    /// `displayMessage` (specific refusals keep their text; raw
+    /// server text becomes a generic line).
     private func donationErrorMessage(_ error: OnBudgetError) -> String {
         if case .notFound = error {
             return "Charity isn't live yet — the database step still needs approval."
@@ -479,6 +481,6 @@ public struct AddDonationForm: View {
         if case .adminOnly = error {
             return "Only the admin can record charity gifts."
         }
-        return error.userMessage
+        return error.displayMessage
     }
 }

@@ -227,7 +227,7 @@ public final class HomeViewModel: ObservableObject {
             await refresh()
         } catch let error as OnBudgetError {
             if error == .sessionExpired { appState.showSessionExpired(); return }
-            appState.showToast("Sync failed: \(error.userMessage)", kind: .error)
+            appState.showToast("Sync failed: \(error.displayMessage)", kind: .error)
         } catch {
             appState.showToast("Sync failed: the server did not answer.", kind: .error)
         }
