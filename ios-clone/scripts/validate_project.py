@@ -4,6 +4,9 @@
 Parses ios-clone/OnBudget.xcodeproj/project.pbxproj with plutil (macOS)
 and checks the invariants the scaffold must hold:
 - every 24-hex object reference resolves
+- every Swift source file on disk under OnBudget/, OnBudgetTests/
+  and OnBudgetUITests/ is a file reference in the project (a new
+  file committed without a pbxproj entry fails only at compile)
 - exactly the three expected targets exist
   (OnBudget, OnBudgetTests, OnBudgetUITests)
 - project configs disable code signing, name no development team,
@@ -50,6 +53,24 @@ def main():
             assert value in objects, f"Missing PBX reference: {value}"
 
     references(data)
+
+    # Every Swift source on disk must be a file reference in the
+    # project (Nov 12, 2026: FundsRulesView.swift was committed without
+    # a pbxproj entry and the run failed only at compile, ~25 minutes
+    # in). Matched by filename — the project has no two sources sharing
+    # a basename, so a filename match is exact.
+    referenced = {
+        o["path"] for o in objects.values()
+        if o.get("isa") == "PBXFileReference"
+        and str(o.get("path", "")).endswith(".swift")
+    }
+    for subdir in ("OnBudget", "OnBudgetTests", "OnBudgetUITests"):
+        for path in sorted((CLONE / subdir).rglob("*.swift")):
+            assert path.name in referenced, (
+                f"{path.name} is on disk under {subdir}/ but has no "
+                "entry in project.pbxproj — add it to its target "
+                "(Xcode: File > Add Files) or the build cannot see it"
+            )
 
     targets = {
         o["name"]: o

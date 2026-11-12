@@ -17,6 +17,7 @@
 		F20000000000000000000007 /* TemporaryAllowanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000007 /* TemporaryAllowanceView.swift */; };
 		F20000000000000000000008 /* ReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000008 /* ReviewView.swift */; };
 		F20000000000000000000010 /* FundsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000010 /* FundsView.swift */; };
+		F20000000000000000000011 /* FundsRulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000011 /* FundsRulesView.swift */; };
 		D101D101D101D101D101D101 /* SettingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = C101C101C101C101C101C101 /* SettingsShared.swift */; };
 		D102D102D102D102D102D102 /* ProfileSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C102C102C102C102C102C102 /* ProfileSettingsView.swift */; };
 		D103D103D103D103D103D103 /* MembersSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C103C103C103C103C103C103 /* MembersSettingsView.swift */; };
@@ -87,6 +88,7 @@
 		F10000000000000000000007 /* TemporaryAllowanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryAllowanceView.swift; sourceTree = "<group>"; };
 		F10000000000000000000008 /* ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewView.swift; sourceTree = "<group>"; };
 		F10000000000000000000010 /* FundsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsView.swift; sourceTree = "<group>"; };
+		F10000000000000000000011 /* FundsRulesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsRulesView.swift; sourceTree = "<group>"; };
 		C101C101C101C101C101C101 /* SettingsShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsShared.swift; sourceTree = "<group>"; };
 		C102C102C102C102C102C102 /* ProfileSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSettingsView.swift; sourceTree = "<group>"; };
 		C103C103C103C103C103C103 /* MembersSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembersSettingsView.swift; sourceTree = "<group>"; };
@@ -197,6 +199,7 @@
 				F10000000000000000000007 /* TemporaryAllowanceView.swift */,
 				F10000000000000000000008 /* ReviewView.swift */,
 				F10000000000000000000010 /* FundsView.swift */,
+				F10000000000000000000011 /* FundsRulesView.swift */,
 			);
 			path = Funds;
 			sourceTree = "<group>";
@@ -400,6 +403,7 @@
 				F20000000000000000000007 /* TemporaryAllowanceView.swift in Sources */,
 				F20000000000000000000008 /* ReviewView.swift in Sources */,
 				F20000000000000000000010 /* FundsView.swift in Sources */,
+				F20000000000000000000011 /* FundsRulesView.swift in Sources */,
 				B70101010101010101010101 /* TransactionFormatting.swift in Sources */,
 				B70202020202020202020202 /* TransactionIconLookup.swift in Sources */,
 				B70303030303030303030303 /* OnBudgetButtons.swift in Sources */,
