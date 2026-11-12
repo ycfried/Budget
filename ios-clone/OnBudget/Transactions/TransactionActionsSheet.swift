@@ -162,7 +162,9 @@ public struct TransactionActionsSheet: View {
                             flow = .list
                         }
                     }
-                    .foregroundStyle(DesignTokens.mid)
+                    // T-P2-10: the owner Back treatment (light blue
+                    // #3b82f6, bold 700, 15px).
+                    .buttonStyle(BackButtonStyle())
                 }
             }
         }

@@ -45,9 +45,18 @@ public struct AddTransactionView: View {
             .navigationTitle("Add Transaction")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { onDismiss() }
-                        .foregroundStyle(DesignTokens.mid)
+                // T-P1-3: Cancel lives ONLY on the options screen.
+                // On the form screens the form's own "← Back"
+                // (BackButtonStyle) is the top-left button — the two
+                // must never render side by side. The forms keep
+                // their in-body Cancel, which discards the draft and
+                // closes. T-P2-10: Cancel wears the owner Back
+                // treatment here too.
+                if step == .options {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") { onDismiss() }
+                            .buttonStyle(BackButtonStyle())
+                    }
                 }
             }
         }

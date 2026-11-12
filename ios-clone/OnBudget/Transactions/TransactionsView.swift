@@ -719,7 +719,14 @@ private struct DateRangeCalendarView: View {
         }
         .navigationTitle("Choose Dates")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            // T-P2-10: the owner Back treatment (light blue #3b82f6,
+            // bold 700, 15px), not the system back button.
+            ToolbarItem(placement: .topBarLeading) {
+                Button("← Back") { dismiss() }
+                    .buttonStyle(BackButtonStyle())
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Clear") { choose(.allTime) }
                     .font(.system(size: 15, weight: .semibold))
