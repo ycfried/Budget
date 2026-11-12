@@ -902,6 +902,12 @@ final class OnBudgetUITests: XCTestCase {
         for _ in 1...3 {
             field.tap()
             if waitForKeyboardFocus(field, timeout: 5) {
+                // Clear first: Remember-me pre-fills the email field from the
+                // previous test's sign-in, so typing without clearing would
+                // append and produce an invalid email.
+                if let current = field.value as? String, !current.isEmpty {
+                    field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
+                }
                 field.typeText(text)
                 return
             }
