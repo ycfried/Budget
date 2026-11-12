@@ -670,7 +670,14 @@ public struct ResetPasswordView: View {
                         BackButton {
                             appState.pendingResetCode = nil
                             appState.resetLinkError = nil
-                            appState.phase = .auth
+                            // Audit A-P1-1: re-validate the stored
+                            // session instead of forcing `.auth` — a
+                            // signed-in user who opened a stale link
+                            // goes back into the app; only a dead
+                            // session lands on Auth. (The post-save
+                            // path still returns to sign-in: the
+                            // password just changed.)
+                            Task { await appState.boot() }
                         }
                         .disabled(busy)
                         Spacer()
