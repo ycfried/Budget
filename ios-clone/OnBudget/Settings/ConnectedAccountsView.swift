@@ -394,8 +394,13 @@ final class ConnectedAccountsViewModel: ObservableObject {
 
     // MARK: - Disconnect
 
-    func disconnectConfirmed() async {
-        guard let row = disconnectTarget else { return }
+    /// The row arrives as a parameter, captured by the alert's
+    /// button: `.alert(item:)` nils the `disconnectTarget` binding
+    /// when the alert dismisses, which happens BEFORE an unstructured
+    /// `Task` runs — so re-reading the binding here always found nil
+    /// and the disconnect silently never happened (same pitfall as
+    /// removeConfirmed, Nov 11, 2026).
+    func disconnectConfirmed(_ row: ConnectedAccountRow) async {
         disconnectTarget = nil
         do {
             if let account = row.account {
@@ -514,7 +519,7 @@ struct ConnectedAccountsView: View {
                     title: Text("Disconnect Account"),
                     message: Text("Disconnect \(label)? This stops syncing this account only. Other accounts on the same bank connection keep syncing. Past transactions stay in the list. To sync this account again later, reconnect the bank from the Bank Connection card."),
                     primaryButton: .destructive(Text("Disconnect")) {
-                        Task { await viewModel.disconnectConfirmed() }
+                        Task { await viewModel.disconnectConfirmed(row) }
                     },
                     secondaryButton: .cancel()
                 )
@@ -523,7 +528,7 @@ struct ConnectedAccountsView: View {
                 title: Text("Disconnect Bank"),
                 message: Text("Disconnect \(row.item.institutionName ?? "this bank")? The app will stop syncing this connection. Past transactions stay in the list."),
                 primaryButton: .destructive(Text("Disconnect")) {
-                    Task { await viewModel.disconnectConfirmed() }
+                    Task { await viewModel.disconnectConfirmed(row) }
                 },
                 secondaryButton: .cancel()
             )

@@ -74,8 +74,13 @@ final class BudgetSettingsViewModel: ObservableObject {
         )
     }
 
-    func confirmSave() async {
-        guard let change = confirmChange else { return }
+    /// The change arrives as a parameter, captured by the alert's
+    /// button: `.alert(item:)` nils the `confirmChange` binding when
+    /// the alert dismisses, which happens BEFORE an unstructured
+    /// `Task` runs — so re-reading the binding here always found nil
+    /// and the allowance change silently never happened (same pitfall
+    /// as removeConfirmed, Nov 11, 2026).
+    func confirmSave(_ change: AllowanceChange) async {
         confirmChange = nil
         guard !isSaving else { return }
         isSaving = true
@@ -163,7 +168,7 @@ struct BudgetSettingsView: View {
                 title: Text("Change Allowance"),
                 message: Text(message),
                 primaryButton: .default(Text("Change Allowance")) {
-                    Task { await viewModel.confirmSave() }
+                    Task { await viewModel.confirmSave(change) }
                 },
                 secondaryButton: .cancel(Text("Keep Current"))
             )

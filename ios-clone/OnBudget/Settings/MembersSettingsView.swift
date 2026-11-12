@@ -109,8 +109,14 @@ final class MembersSettingsViewModel: ObservableObject {
         memberToRemove = member
     }
 
-    func removeConfirmed() async {
-        guard let member = memberToRemove else { return }
+    /// The member arrives as a parameter, captured by the alert's
+    /// button: `.alert(item:)` nils the `memberToRemove` binding
+    /// when the alert dismisses, which happens BEFORE an unstructured
+    /// `Task` runs — so re-reading the binding here always found nil
+    /// and the removal silently never happened (owner report, Nov 11,
+    /// 2026: Remove on "Jack friedman" did nothing). The same pitfall
+    /// is fixed the same way in confirmSave / disconnectConfirmed.
+    func removeConfirmed(_ member: MemberListRow) async {
         memberToRemove = nil
         let label = displayName(for: member)
         do {
@@ -227,7 +233,7 @@ struct MembersSettingsView: View {
                 title: Text("Remove Member"),
                 message: Text("Remove \(label) from the household? They will lose access to the household's data."),
                 primaryButton: .destructive(Text("Remove")) {
-                    Task { await viewModel.removeConfirmed() }
+                    Task { await viewModel.removeConfirmed(member) }
                 },
                 secondaryButton: .cancel()
             )

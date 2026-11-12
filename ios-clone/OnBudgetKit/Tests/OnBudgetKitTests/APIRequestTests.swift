@@ -105,6 +105,29 @@ final class RPCRequestTests: XCTestCase {
         }
     }
 
+    func testRemoveHouseholdMemberSendsExactNameAndParam() async throws {
+        // PR #57 / supabase/remove-household-member.sql:
+        // remove_household_member(p_user_id uuid) returns void.
+        // The web calls supabase.rpc('remove_household_member',
+        // { p_user_id: userId }); the native Remove button calls this
+        // via callVoid. The Nov 11, 2026 failure was NOT here — the
+        // alert dismissed before the Task ran, so the call never
+        // happened — but the contract is pinned so a rename can never
+        // silently break it.
+        let memberId = UUID()
+        let transport = StubTransport(handler: { _ in StubTransport.raw("") })
+        let client = RPCClient(
+            configuration: testConfiguration(),
+            tokenProvider: testTokenProvider(),
+            transport: transport
+        )
+        try await client.removeHouseholdMember(pUserId: memberId)
+        XCTAssertEqual(transport.requests.count, 1)
+        XCTAssertEqual(transport.requests[0].httpMethod, "POST")
+        XCTAssertEqual(transport.requests[0].url?.path, "/rest/v1/rpc/remove_household_member")
+        XCTAssertEqual(jsonBody(of: transport.requests[0])["p_user_id"] as? String, memberId.uuidString)
+    }
+
     func testLinkRefundUsesPParamsAndReturnsPurchaseId() async throws {
         let refundId = UUID()
         let purchaseId = UUID()

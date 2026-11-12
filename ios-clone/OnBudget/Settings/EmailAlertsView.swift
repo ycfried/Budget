@@ -326,8 +326,13 @@ final class EmailAlertsViewModel: ObservableObject {
 
     // MARK: - Disconnect
 
-    func disconnectConfirmed() async {
-        guard let connection = connectionToDisconnect else { return }
+    /// The connection arrives as a parameter, captured by the alert's
+    /// button: `.alert(item:)` nils the `connectionToDisconnect`
+    /// binding when the alert dismisses, which happens BEFORE an
+    /// unstructured `Task` runs — so re-reading the binding here
+    /// always found nil and the disconnect silently never happened
+    /// (same pitfall as removeConfirmed, Nov 11, 2026).
+    func disconnectConfirmed(_ connection: EmailConnectionPublic) async {
         connectionToDisconnect = nil
         do {
             let result = try await context.client.functions.gmailDisconnect(
@@ -421,7 +426,7 @@ struct EmailAlertsView: View {
                 title: Text("Disconnect Email"),
                 message: Text("Disconnect \(connection.emailAddress)? The app will stop checking it. Past transactions stay in the list."),
                 primaryButton: .destructive(Text("Disconnect")) {
-                    Task { await viewModel.disconnectConfirmed() }
+                    Task { await viewModel.disconnectConfirmed(connection) }
                 },
                 secondaryButton: .cancel()
             )
