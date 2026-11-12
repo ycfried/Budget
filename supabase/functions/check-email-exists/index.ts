@@ -83,17 +83,18 @@ Deno.serve(async (req) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // getUserByEmail is the GoTrue admin lookup. A missing account
-  // comes back as an error ("User not found") — that is exists:false,
-  // not a failure. Any other admin error is a 500.
-  const { data, error } = await admin.auth.admin.getUserByEmail(email);
+  // getUserByEmail does NOT exist on supabase-js v2's admin client
+  // (runtime TypeError, Nov 12, 2026 — the call 500s on every
+  // request). Use listUsers and match the email locally instead.
+  // The user base is small (tens of accounts), so one page of 1000
+  // covers it; paginate if that ever stops being true.
+  const { data, error } = await admin.auth.admin.listUsers({ perPage: 1000 });
   if (error) {
-    const msg = String(error.message ?? '').toLowerCase();
-    if (msg.includes('not found') || error.status === 404) {
-      return json({ exists: false });
-    }
     console.error('check-email-exists: admin lookup failed', error.message);
     return json({ error: 'could not check that email' }, 500);
   }
-  return json({ exists: Boolean(data?.user) });
+  const exists = (data?.users ?? []).some(
+    (u) => (u.email ?? '').toLowerCase() === email,
+  );
+  return json({ exists });
 });
