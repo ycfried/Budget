@@ -194,18 +194,25 @@ public struct FundsQuietButton: View {
 
 // MARK: - Cards, rows, error boxes
 
-/// A white card, radius 20, hairline shadow (spec §1.2).
+/// A white card, radius 20, hairline shadow (spec §1.2). `background`
+/// / `padding` are overridable for the tinted stat cards (owner,
+/// Nov 12, 2026 — Charity soft green, Extra Fund soft blue, 20pt
+/// padding); everything else stays the default white / 16pt.
 public struct FundsCard<Content: View>: View {
     public let content: Content
+    public let background: Color
+    public let padding: CGFloat
 
-    public init(@ViewBuilder content: () -> Content) {
+    public init(background: Color = .white, padding: CGFloat = 16, @ViewBuilder content: () -> Content) {
         self.content = content()
+        self.background = background
+        self.padding = padding
     }
 
     public var body: some View {
         content
-            .padding(16)
-            .background(.white)
+            .padding(padding)
+            .background(background)
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
     }
@@ -263,16 +270,29 @@ public struct FundsBreakdownRow: View {
 
 /// A Title + Amount face that expands in place (no sheet, no overlay —
 /// spec §6.2/§9.1). Chevron `⌄` bottom-right, brand blue, flips to `⌃`.
+/// Bigger and tinted when a `theme` is given (owner, Nov 12, 2026 —
+/// the same StatCardTheme as Home: Charity soft green, Extra Fund
+/// soft blue; 20pt padding, 18pt title, 28pt amount, icon chip),
+/// so Home and Funds match. Loading shows the same bigger shape in
+/// muted grey shimmer with NO colour and no "Loading…" text
+/// (`isLoading`); a failed face is a STATIC grey block, never a bare
+/// "—" in amount type — the expanded content carries the error box
+/// (F-P2-13 / owner loading language, Nov 12, 2026).
 public struct FundsExpandableCard<Expanded: View>: View {
     public let title: String
     public let amountText: String
     public let isExpanded: Bool
     public let isNegative: Bool
     /// When true the face text is a loading/error status, not an
-    /// amount — render it as a small muted line (matching the Home
-    /// failure presentation), never in 28pt bold amount type
+    /// amount — render it as a skeleton/static block (matching the
+    /// Home failure presentation), never in 28pt bold amount type
     /// (F-P2-13).
     public let amountIsStatus: Bool
+    /// True only while loading (shimmer skeleton). False with
+    /// `amountIsStatus` true means failed (static grey block).
+    public let isLoading: Bool
+    /// The card's tint/identity; nil keeps the plain white card.
+    public let theme: StatCardTheme?
     public let accessibilityLabel: String
     public let onToggle: () -> Void
     public let expanded: Expanded
@@ -283,6 +303,8 @@ public struct FundsExpandableCard<Expanded: View>: View {
         isExpanded: Bool,
         isNegative: Bool = false,
         amountIsStatus: Bool = false,
+        isLoading: Bool = false,
+        theme: StatCardTheme? = nil,
         accessibilityLabel: String,
         onToggle: @escaping () -> Void,
         @ViewBuilder expanded: () -> Expanded
@@ -292,14 +314,19 @@ public struct FundsExpandableCard<Expanded: View>: View {
         self.isExpanded = isExpanded
         self.isNegative = isNegative
         self.amountIsStatus = amountIsStatus
+        self.isLoading = isLoading
+        self.theme = theme
         self.accessibilityLabel = accessibilityLabel
         self.onToggle = onToggle
         self.expanded = expanded()
     }
 
     public var body: some View {
-        FundsCard {
-            VStack(alignment: .leading, spacing: 8) {
+        FundsCard(
+            background: isLoading ? .white : (theme?.background ?? .white),
+            padding: theme == nil ? 16 : 20
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
                 // Whole-area tap target (owner rule, Nov 11 2026):
                 // the ENTIRE card face — title, amount AND the
                 // chevron row — is the toggle. The chevron is only a
@@ -309,16 +336,34 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 // toggle — tapping an action must not collapse the
                 // card underneath it.
                 Button(action: onToggle) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 12) {
+                            if let theme {
+                                if isLoading {
+                                    SkeletonBlock(width: 36, height: 36, cornerRadius: 10)
+                                } else {
+                                    Image(systemName: theme.iconName)
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundStyle(theme.deep)
+                                        .frame(width: 36, height: 36)
+                                        .background(theme.chip)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+                            }
                             Text(TitleCase.apply(to: title))
-                                .font(.system(size: 17, weight: .bold))
+                                .font(.system(size: theme == nil ? 17 : 18, weight: .bold))
                                 .foregroundStyle(DesignTokens.ink)
-                            Text(amountText)
-                                .font(.system(size: amountIsStatus ? 14 : 28, weight: amountIsStatus ? .regular : .bold))
-                                .foregroundStyle(amountIsStatus ? Color(hex: "#6b7280") : (isNegative ? DesignTokens.errorText : DesignTokens.ink))
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        if isLoading {
+                            SkeletonBlock(width: 150, height: 34, cornerRadius: 8)
+                        } else if amountIsStatus {
+                            SkeletonBlock(width: 150, height: 34, cornerRadius: 8, animated: false)
+                        } else {
+                            Text(amountText)
+                                .font(.system(size: 28, weight: .bold))
+                                .foregroundStyle(isNegative ? DesignTokens.errorText : (theme?.deep ?? DesignTokens.ink))
+                        }
                         HStack {
                             Spacer()
                             Text("⌄")
