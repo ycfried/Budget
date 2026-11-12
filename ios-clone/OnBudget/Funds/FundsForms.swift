@@ -12,14 +12,17 @@ import OnBudgetKit
 
 public struct AddMoneyForm: View {
     @ObservedObject public var viewModel: FundsViewModel
+    /// Closes the form back to the Funds list (owned by FundsView).
+    public var onClose: () -> Void = {}
     @State private var amountText = ""
     @State private var note = ""
     @State private var confirmed = false
     @State private var fieldError: String?
     @State private var showConfirm = false
 
-    public init(viewModel: FundsViewModel) {
+    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.onClose = onClose
     }
 
     private var amountCents: Int? { MoneyFormat.parseDollarsStrict(amountText) }
@@ -67,6 +70,7 @@ public struct AddMoneyForm: View {
                         confirmed = false
                         fieldError = nil
                         viewModel.toast = nil
+                        onClose()
                     }
                 }
                 FundsMuted("Log each deposit only once.")
@@ -79,7 +83,18 @@ public struct AddMoneyForm: View {
         ) {
             Button(TitleCase.apply(to: "Save Top-Up")) {
                 Task {
-                    await viewModel.addTopup(amountCents: amountCents ?? 0, note: note.trimmingCharacters(in: .whitespaces))
+                    // On success the form clears AND closes back to
+                    // the Funds list with the success toast (owner
+                    // decision #9); on failure the typed input stays
+                    // put beside the error. The in-flight double-tap
+                    // guard lives in addTopup itself.
+                    if await viewModel.addTopup(amountCents: amountCents ?? 0, note: note.trimmingCharacters(in: .whitespaces)) {
+                        amountText = ""
+                        note = ""
+                        confirmed = false
+                        fieldError = nil
+                        onClose()
+                    }
                 }
             }
             Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
@@ -109,6 +124,8 @@ public struct AddMoneyForm: View {
 
 public struct UseFundForm: View {
     @ObservedObject public var viewModel: FundsViewModel
+    /// Closes the form back to the Funds list (owned by FundsView).
+    public var onClose: () -> Void = {}
     @State private var amountText = ""
     @State private var note = ""
     @State private var fieldError: String?
@@ -117,8 +134,9 @@ public struct UseFundForm: View {
     @State private var overrideReason = ""
     @State private var pendingCents: Int?
 
-    public init(viewModel: FundsViewModel) {
+    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.onClose = onClose
     }
 
     private var amountCents: Int? { MoneyFormat.parseDollarsStrict(amountText) }
@@ -152,6 +170,7 @@ public struct UseFundForm: View {
                         amountText = ""
                         note = ""
                         fieldError = nil
+                        onClose()
                     }
                 }
             }
@@ -212,12 +231,15 @@ public struct UseFundForm: View {
 
 public struct AskFundForm: View {
     @ObservedObject public var viewModel: FundsViewModel
+    /// Closes the form back to the Funds list (owned by FundsView).
+    public var onClose: () -> Void = {}
     @State private var amountText = ""
     @State private var note = ""
     @State private var fieldError: String?
 
-    public init(viewModel: FundsViewModel) {
+    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.onClose = onClose
     }
 
     private var amountCents: Int? { MoneyFormat.parseDollarsStrict(amountText) }
@@ -246,19 +268,24 @@ public struct AskFundForm: View {
                             }
                             fieldError = nil
                             Task {
-                                await viewModel.createFundRequest(
+                                // Clear only on success — on failure
+                                // the typed input stays beside the
+                                // error (F-P1-4).
+                                if await viewModel.createFundRequest(
                                     amountCents: cents,
                                     note: note.trimmingCharacters(in: .whitespaces),
                                     transactionId: nil
-                                )
-                                amountText = ""
-                                note = ""
+                                ) {
+                                    amountText = ""
+                                    note = ""
+                                }
                             }
                         }
                         FundsTertiaryButton("Cancel") {
                             amountText = ""
                             note = ""
                             fieldError = nil
+                            onClose()
                         }
                     }
                 }
@@ -296,6 +323,11 @@ public struct FundRequestQueue: View {
                         if request.id != viewModel.fundRequests.last?.id {
                             Divider()
                         }
+                    }
+                    // The fetch caps at 50 (PostgrestClient); say so
+                    // when the cap binds (F-P2-8).
+                    if viewModel.fundRequests.count >= 50 {
+                        FundsMuted("Showing the latest 50 fund requests.")
                     }
                 }
             }
@@ -343,7 +375,13 @@ public struct FundRequestQueue: View {
         if request.status == "split" {
             return "Split — \(MoneyFormat.formatCents(request.remainderCents)) remaining"
         }
-        return request.status.uppercased()
+        // Title Case, never ALL-CAPS (F-P2-5).
+        switch request.status {
+        case "pending": return "Pending"
+        case "approved": return "Approved"
+        case "declined": return "Declined"
+        default: return request.status.capitalized
+        }
     }
 
     private func statusSentence(_ request: FundRequest) -> String {

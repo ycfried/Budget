@@ -6,7 +6,7 @@ import OnBudgetKit
 // Sub-sections in order:
 // 1. Refund Restorations & Held Refunds
 // 2. Possible Duplicates (first 20 + Show More, +20 per tap)
-// 3. Resolved Duplicates (max 20, newest first)
+// 3. Resolved Duplicates (first 20 + Show More, +20 per tap)
 // 4. Refund Links (first 20 + Show More, +20 per tap)
 //
 // Every link / merge / release is an admin tap; nothing here links
@@ -15,6 +15,7 @@ import OnBudgetKit
 public struct ReviewView: View {
     @ObservedObject public var viewModel: FundsViewModel
     @State private var dedupeShownCount = 20
+    @State private var resolvedShownCount = 20
     @State private var refundLinkShownCount = 20
     @State private var confirmingRelease: HeldRefund?
     @State private var confirmingDedupe: (candidate: DuplicateCandidate, action: DuplicateResolutionAction, rememberAlias: Bool)?
@@ -143,6 +144,19 @@ public struct ReviewView: View {
 
     // MARK: 1 — Restorations & Held Refunds
 
+    /// A written-off held refund is not "Resolved": it was closed
+    /// with no money moved and no release (F-P2-7).
+    private func heldStatusText(_ held: HeldRefund) -> String {
+        switch held.status {
+        case "held", "pending":
+            return "Held for review"
+        case "written_off":
+            return "Written off\(held.resolutionNote.map { " — \($0)" } ?? "")"
+        default:
+            return "Resolved\(held.resolutionNote.map { " — \($0)" } ?? "")"
+        }
+    }
+
     private var restorationsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Refund Restorations & Held Refunds")
@@ -172,9 +186,7 @@ public struct ReviewView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(MoneyFormat.formatCents(held.heldCents))
                                 .font(.system(size: 15, weight: .semibold))
-                            Text(held.status == "held" || held.status == "pending"
-                                 ? "Held for review"
-                                 : "Resolved\(held.resolutionNote.map { " — \($0)" } ?? "")")
+                            Text(heldStatusText(held))
                                 .font(.system(size: 14))
                                 .foregroundStyle(Color(hex: "#6b7280"))
                         }
@@ -254,7 +266,14 @@ public struct ReviewView: View {
             } else if viewModel.resolvedDuplicates.isEmpty {
                 FundsMuted("No resolved duplicates.")
             } else {
-                ForEach(viewModel.resolvedDuplicates.prefix(20)) { row in
+                // Newest first (the fetch orders by resolved_at
+                // desc); first 20 + Show More, same pattern as
+                // Possible Duplicates (F-P2-6).
+                let shown = Array(viewModel.resolvedDuplicates.prefix(resolvedShownCount))
+                if viewModel.resolvedDuplicates.count > shown.count {
+                    FundsMuted("Showing the first \(shown.count) of \(viewModel.resolvedDuplicates.count) resolved duplicates.")
+                }
+                ForEach(shown) { row in
                     HStack(alignment: .top, spacing: 8) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(row.merchantA) / \(row.merchantB)")
@@ -273,8 +292,13 @@ public struct ReviewView: View {
                             }
                         }
                     }
-                    if row.id != viewModel.resolvedDuplicates.prefix(20).last?.id {
+                    if row.id != shown.last?.id {
                         Divider()
+                    }
+                }
+                if viewModel.resolvedDuplicates.count > shown.count {
+                    FundsSmallTertiaryButton("Show More") {
+                        resolvedShownCount += 20
                     }
                 }
             }

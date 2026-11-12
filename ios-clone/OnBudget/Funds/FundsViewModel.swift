@@ -87,6 +87,10 @@ public final class FundsViewModel: ObservableObject {
 
     @Published public var baseAllowanceCents: Int?
     @Published public var allowanceExplicitlySet = false
+    /// Non-nil when the base allowance failed to load, so the
+    /// Temporary Allowance form can say so with a retry instead of
+    /// showing a bare amount field with no preview (F-P2-14).
+    @Published public var allowanceError: String?
 
     /// Client key for the in-flight top-up, reused across retries of
     /// the same attempt (idempotency — live.js:4638-4640).
@@ -336,10 +340,17 @@ public final class FundsViewModel: ObservableObject {
             let allowance = try await context.client.postgrest.householdAllowance(householdId: context.householdId)
             baseAllowanceCents = allowance.baseAllowanceCents
             allowanceExplicitlySet = allowance.allowanceExplicitlySet
+            allowanceError = nil
         } catch {
             baseAllowanceCents = nil
             allowanceExplicitlySet = false
+            allowanceError = "Could not load your current allowance. Try again."
         }
+    }
+
+    /// Retry just the allowance load (Temporary Allowance error state).
+    public func reloadAllowance() async {
+        await loadAllowance()
     }
 
     // MARK: - Errors / toasts
@@ -375,8 +386,11 @@ public final class FundsViewModel: ObservableObject {
     /// Shortfall-first top-up via `add_fund_money`. The server split is
     /// authoritative; the client preview is informational only. The
     /// client key is reused across retries of the same attempt.
-    public func addTopup(amountCents: Int, note: String) async {
-        guard busyAction == nil else { return }
+    /// Returns true only when the save committed, so the form can
+    /// clear and close on success — a failed save must leave the
+    /// typed input in place (F-P1-3/F-P1-4).
+    public func addTopup(amountCents: Int, note: String) async -> Bool {
+        guard busyAction == nil else { return false }
         busyAction = "topup"
         defer { busyAction = nil }
         if topupClientKey == nil { topupClientKey = UUID().uuidString }
@@ -390,8 +404,10 @@ public final class FundsViewModel: ObservableObject {
             topupClientKey = nil
             succeed("Top-up saved: \(MoneyFormat.formatCents(result.shortfallCoveredCents)) covered owed back, \(MoneyFormat.formatCents(result.fundAddedCents)) added to fund.")
             await refresh()
+            return true
         } catch {
             fail(title: "Could Not Save Top-Up", error: error)
+            return false
         }
     }
 
@@ -418,7 +434,10 @@ public final class FundsViewModel: ObservableObject {
     /// Inserts a pending `fund_requests` row; audits
     /// "Extra Fund request created" (best-effort — a blocked audit
     /// insert must not fail the request itself).
-    public func createFundRequest(amountCents: Int, note: String, transactionId: UUID?) async {
+    /// Returns true only when the request was sent, so the caller
+    /// clears the typed input on success only (F-P1-4).
+    public func createFundRequest(amountCents: Int, note: String, transactionId: UUID?) async -> Bool {
+        var succeeded = false
         await guarded("request", title: "Could Not Send Request") {
             _ = try await context.client.postgrest.createFundRequest(
                 householdId: context.householdId,
@@ -439,9 +458,11 @@ public final class FundsViewModel: ObservableObject {
             } catch {
                 // Audit is best-effort only.
             }
+            succeeded = true
             succeed("Request sent.")
             await refresh()
         }
+        return succeeded
     }
 
     /// Approve (in full or as a split) via `approve_and_allocate`.
@@ -478,6 +499,8 @@ public final class FundsViewModel: ObservableObject {
     /// New income via `record_charity_income`, or a correction via
     /// `correct_charity_income` (append-only reversal + replacement;
     /// the old entry stays, marked reversed).
+    /// Returns true only when the save committed, so the caller
+    /// clears the typed input on success only (F-P1-4).
     public func saveIncome(
         correcting income: CharityIncome?,
         amountCents: Int,
@@ -485,7 +508,8 @@ public final class FundsViewModel: ObservableObject {
         sourceLabel: String,
         rateBp: Int?,
         note: String
-    ) async {
+    ) async -> Bool {
+        var succeeded = false
         await guarded("income", title: "Could Not Save Income") {
             let result: CharityIncomeResult
             if let income {
@@ -509,6 +533,27 @@ public final class FundsViewModel: ObservableObject {
                 )
                 succeed("Income saved — commits \(MoneyFormat.formatCents(result.committedCents)) to charity.")
             }
+            succeeded = true
+            await refresh()
+        }
+        return succeeded
+    }
+
+    /// Remove the weekly allowance override(s) for the current week
+    /// onward (up to 4 weeks — the Temporary Allowance range) via
+    /// `remove_weekly_allowance_override`, so the base allowance
+    /// applies again for those weeks.
+    /// NOTE: until `supabase/remove-weekly-allowance-override.sql`
+    /// is applied live the RPC does not exist and this fails with a
+    /// plain-language error; nothing is changed.
+    public func removeTemporaryAllowance(weeks: Int = 4) async {
+        await guarded("remove-temp", title: "Could Not Remove Override") {
+            try await context.client.rpcs.removeWeeklyAllowanceOverride(
+                pHouseholdId: context.householdId,
+                firstWeekStart: MoneyFormat.currentSundayNY(),
+                weeks: weeks
+            )
+            succeed("Weekly allowance override removed — the base allowance applies again.")
             await refresh()
         }
     }
@@ -516,11 +561,16 @@ public final class FundsViewModel: ObservableObject {
     // MARK: - Review: held refunds
 
     /// Release a held refund via `resolve_held_refund`
-    /// (`p_action='release'`). LIVE DEFECT (Nov 9, 2026): the server
-    /// refuses today because it expects `status='pending'` while the
-    /// CHECK allows only `held`/`written_off`/`resolved` — the refusal
-    /// surfaces verbatim here; when the server fix lands, this call
-    /// works with no clone change.
+    /// (`p_action='release'`). Web PR #62 fixed the server live
+    /// Nov 9, 2026: the releasable state is `status='held'`
+    /// (matching the live held_refunds CHECK); the repo copy of the
+    /// function in `supabase/merged-audit-held-release-atomic.sql`
+    /// is synced to that fix on this branch. The earlier "LIVE
+    /// DEFECT" note claiming the server still expects 'pending'
+    /// was stale — this branch's SQL copy predated the PR #62 merge,
+    /// not a live refusal. A server refusal still surfaces verbatim
+    /// in an alert. Live verification in the test household is still
+    /// owed (no live check was possible from here).
     public func releaseHeldRefund(_ held: HeldRefund) async {
         await guarded("release-\(held.id.uuidString)", title: "Could Not Release") {
             try await context.client.rpcs.resolveHeldRefund(
@@ -605,7 +655,10 @@ public final class FundsViewModel: ObservableObject {
     /// (owner, Nov 4). One `set_weekly_allowance_override` row per
     /// week via the kit's multi-week helper; never `add_temp_increase`
     /// (revoked live Nov 9, 2026).
-    public func setTemporaryAllowance(newTotalCents: Int, weeks: Int) async {
+    /// Returns true only when the override was set, so the caller
+    /// clears the typed input on success only (F-P1-4).
+    public func setTemporaryAllowance(newTotalCents: Int, weeks: Int) async -> Bool {
+        var succeeded = false
         await guarded("temp", title: "Could Not Set Allowance") {
             try await context.client.rpcs.setWeeklyAllowanceOverride(
                 pHouseholdId: context.householdId,
@@ -613,8 +666,10 @@ public final class FundsViewModel: ObservableObject {
                 pAllowanceCents: newTotalCents,
                 weeks: weeks
             )
+            succeeded = true
             succeed("Weekly allowance set to \(MoneyFormat.formatCents(newTotalCents)) for \(weeks) week(s).")
             await refresh()
         }
+        return succeeded
     }
 }

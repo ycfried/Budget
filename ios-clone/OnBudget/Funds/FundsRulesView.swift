@@ -81,6 +81,13 @@ public struct FundsRulesSection: View {
                                 ? "Owed back now: \(MoneyFormat.formatCents(summary.shortfallCents))."
                                 : "Nothing owed back right now."
                         )
+                    } else if viewModel.fundError != nil {
+                        // The shortfall line stays visible under the
+                        // rate row even when the fund fails to load,
+                        // with an error note in its place (F-P2-9).
+                        FundsMuted("Owed back: could not load fund balances — try again.")
+                    } else {
+                        FundsMuted("Owed back: loading…")
                     }
                 }
                 Divider()
@@ -123,7 +130,10 @@ public struct FundsRulesSection: View {
             } else if MoneyFormat.parseRatePercent(rateText) != nil {
                 FundsMuted("This is already the default rate.")
             } else {
-                FundsMuted("Affects future incomes only.")
+                // Unparseable or empty rate text must never fall
+                // through to a line describing a rate that does not
+                // exist (F-P2-10).
+                FundsMuted("Enter a rate to see how it applies.")
             }
             if let rateError {
                 FundsErrorBox(rateError)

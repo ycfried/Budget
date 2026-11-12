@@ -892,21 +892,26 @@ public struct PostgrestClient {
 
     // MARK: Duplicates, restoration, history
 
-    /// Pending duplicate candidates (live.js:1877-1878).
+    /// Pending duplicate candidates (live.js:1877-1878), newest
+    /// first so "first 20" + Show More paginate a defined set
+    /// (F-P2-6).
     public func pendingDuplicateCandidates(householdId: UUID) async throws -> [DuplicateCandidate] {
         try await fetch(PostgrestQuery(
             table: "duplicate_candidates",
             columns: "id,household_id,canonical_transaction_id,duplicate_transaction_id,reason,merchant_a,merchant_b,status,created_at",
-            filters: [.householdId(householdId), .equal("status", "pending")]
+            filters: [.householdId(householdId), .equal("status", "pending")],
+            orders: [PostgrestOrder("created_at", ascending: false)]
         ))
     }
 
-    /// Resolved duplicate candidates (live.js:2001-2002).
+    /// Resolved duplicate candidates (live.js:2001-2002), newest
+    /// first (F-P2-6).
     public func resolvedDuplicateCandidates(householdId: UUID) async throws -> [DuplicateCandidate] {
         try await fetch(PostgrestQuery(
             table: "duplicate_candidates",
             columns: "id,household_id,canonical_transaction_id,duplicate_transaction_id,reason,merchant_a,merchant_b,status,created_at,resolved_at",
-            filters: [.householdId(householdId), .notEqual("status", "pending")]
+            filters: [.householdId(householdId), .notEqual("status", "pending")],
+            orders: [PostgrestOrder("resolved_at", ascending: false), PostgrestOrder("created_at", ascending: false)]
         ))
     }
 

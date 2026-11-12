@@ -20,6 +20,8 @@ public struct CharityIncomeForm: View {
     /// Owned by the parent (FundsView) so the Correct button in Fund
     /// Activity can open this form prefilled.
     @Binding public var correcting: CharityIncome?
+    /// Closes the form back to the Funds list (owned by FundsView).
+    public var onClose: () -> Void = {}
 
     @State private var sourceText = ""
     @State private var amountText = ""
@@ -28,9 +30,10 @@ public struct CharityIncomeForm: View {
     @State private var note = ""
     @State private var fieldError: String?
 
-    public init(viewModel: FundsViewModel, correcting: Binding<CharityIncome?>) {
+    public init(viewModel: FundsViewModel, correcting: Binding<CharityIncome?>, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
         self._correcting = correcting
+        self.onClose = onClose
     }
 
     private var defaultRateBp: Int { viewModel.charitySettings?.defaultRateBp ?? 1000 }
@@ -43,7 +46,11 @@ public struct CharityIncomeForm: View {
 
     private var previewText: String {
         guard let cents = amountCents, cents > 0 else { return "Enter an amount to see what it commits." }
-        let committed = cents * effectiveRateBp / 10_000
+        // Round HALF-UP, matching the server (r13-charity.sql:180,228)
+        // and the model (Models.swift:925): (amount × rate + 5000) /
+        // 10000. Truncating was off by 1¢ whenever the remainder hit
+        // 5000 (e.g. $10.05 at 10% commits $1.01, not $1.00).
+        let committed = Int((Int64(cents) * Int64(effectiveRateBp) + 5000) / 10_000)
         if overrideBp != nil {
             return "This commits \(MoneyFormat.formatCents(committed)) at \(MoneyFormat.formatRateBp(effectiveRateBp))% — this entry only (the default rate for future incomes is unchanged)."
         }
@@ -118,6 +125,22 @@ public struct CharityIncomeForm: View {
                             correcting = nil
                             clearIncomeFields()
                         }
+                    } else {
+                        FundsTertiaryButton("Cancel") {
+                            clearIncomeFields()
+                            onClose()
+                        }
+                    }
+                }
+                // While correcting, Cancel Correction reverts to add
+                // mode; this quiet Cancel closes the form outright
+                // (kept off the button row so the two cancels never
+                // sit next to each other in the same treatment).
+                if correcting != nil {
+                    FundsQuietButton("Cancel") {
+                        correcting = nil
+                        clearIncomeFields()
+                        onClose()
                     }
                 }
             }
@@ -168,16 +191,20 @@ public struct CharityIncomeForm: View {
         }
         fieldError = nil
         Task {
-            await viewModel.saveIncome(
+            // Clear only on success — on failure the typed input
+            // (and the correction, if any) stays beside the error
+            // (F-P1-4).
+            if await viewModel.saveIncome(
                 correcting: correcting,
                 amountCents: cents,
                 date: dateString,
                 sourceLabel: source,
                 rateBp: overrideBp,
                 note: note.trimmingCharacters(in: .whitespaces)
-            )
-            correcting = nil
-            clearIncomeFields()
+            ) {
+                correcting = nil
+                clearIncomeFields()
+            }
         }
     }
 }

@@ -64,15 +64,19 @@ public struct FundsView: View {
             VStack(spacing: 16) {
                 if let form = openForm {
                     backButton
+                    // The balance the open form acts on stays visible
+                    // above it (F-P2-12); the sections below the cards
+                    // stay hidden while a form is open.
+                    formBalanceStrip(for: form)
                     switch form {
                     case .add:
-                        AddMoneyForm(viewModel: viewModel)
+                        AddMoneyForm(viewModel: viewModel, onClose: { openForm = nil })
                     case .use:
-                        UseFundForm(viewModel: viewModel)
+                        UseFundForm(viewModel: viewModel, onClose: { openForm = nil })
                     case .ask:
-                        AskFundForm(viewModel: viewModel)
+                        AskFundForm(viewModel: viewModel, onClose: { openForm = nil })
                     case .income:
-                        CharityIncomeForm(viewModel: viewModel, correcting: $correctingIncome)
+                        CharityIncomeForm(viewModel: viewModel, correcting: $correctingIncome, onClose: { openForm = nil })
                     case .temp:
                         TemporaryAllowanceView(viewModel: viewModel)
                     }
@@ -125,6 +129,57 @@ public struct FundsView: View {
         .accessibilityLabel("Back to Funds")
     }
 
+    /// The balance the open form acts on, kept visible above the
+    /// form while it is open (F-P2-12): Use Fund / Ask show current
+    /// Available; Add Money keeps its split preview in the form AND
+    /// the current Available here; Charity Income shows charity
+    /// Available; Temporary Allowance shows the current base.
+    @ViewBuilder
+    private func formBalanceStrip(for form: FundsForm) -> some View {
+        switch form {
+        case .add, .use, .ask:
+            FundsCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let summary = viewModel.fundSummary {
+                        FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.availableCents), isNegative: summary.availableCents < 0)
+                        if summary.shortfallCents > 0 {
+                            FundsBreakdownRow("Owed back", value: MoneyFormat.formatCents(summary.shortfallCents))
+                        }
+                    } else if let error = viewModel.fundError {
+                        FundsErrorBox(error)
+                    } else {
+                        FundsMuted("Loading fund balance…")
+                    }
+                }
+            }
+        case .income:
+            FundsCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let summary = viewModel.charitySummary {
+                        FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents), isNegative: summary.remainingCents < 0)
+                        FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
+                    } else if let error = viewModel.charityError {
+                        FundsErrorBox(error)
+                    } else {
+                        FundsMuted("Loading charity…")
+                    }
+                }
+            }
+        case .temp:
+            FundsCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let base = viewModel.baseAllowanceCents {
+                        FundsBreakdownRow("Current weekly allowance", value: MoneyFormat.formatCents(base))
+                    } else if let error = viewModel.allowanceError {
+                        FundsErrorBox(error)
+                    } else {
+                        FundsMuted("Loading your current allowance…")
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Extra Fund card (§9.1)
 
     private var fundCard: some View {
@@ -133,6 +188,7 @@ public struct FundsView: View {
             amountText: fundFaceText,
             isExpanded: appState.expandedCard == .fund,
             isNegative: (viewModel.fundSummary?.availableCents ?? 0) < 0,
+            amountIsStatus: viewModel.fundSummary == nil,
             accessibilityLabel: fundAccessibilityLabel,
             onToggle: { toggleCard(.fund) }
         ) {
@@ -188,6 +244,7 @@ public struct FundsView: View {
             amountText: charityFaceText,
             isExpanded: appState.expandedCard == .charity,
             isNegative: (viewModel.charitySummary?.remainingCents ?? 0) < 0,
+            amountIsStatus: viewModel.charitySummary == nil,
             accessibilityLabel: charityAccessibilityLabel,
             onToggle: { toggleCard(.charity) }
         ) {
@@ -196,6 +253,12 @@ public struct FundsView: View {
             } else if let summary = viewModel.charitySummary {
                 FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents), isNegative: summary.remainingCents < 0)
                 FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
+                // Pending gifts are computed but were never shown,
+                // so Available looked wrong until gifts post
+                // (F-P2-11).
+                if summary.pendingGiftCents > 0 {
+                    FundsBreakdownRow("Pending gifts", value: MoneyFormat.formatCents(summary.pendingGiftCents))
+                }
                 FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.committedCents))
                 HStack(spacing: 12) {
                     if isAdmin {
@@ -374,6 +437,21 @@ public struct SavingsSection: View {
         viewModel.savings.filter { $0.kind == kind }.reduce(0) { $0 + $1.amountCents }
     }
 
+    /// Plain words for a stored savings kind, matching the summary
+    /// labels above: transfer_in → "Transferred In", withdrawal →
+    /// "Withdrawn", interest → "Interest", adjustment → "Adjustments"
+    /// (kinds per supabase/savings-movements.sql:19 + 'adjustment'
+    /// in live-savings-rpc.sql:35).
+    private func kindLabel(_ kind: String) -> String {
+        switch kind {
+        case "transfer_in": return "Transferred In"
+        case "withdrawal": return "Withdrawn"
+        case "interest": return "Interest"
+        case "adjustment": return "Adjustments"
+        default: return kind.capitalized
+        }
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let error = viewModel.savingsError {
@@ -401,7 +479,7 @@ public struct SavingsSection: View {
                 Divider()
                 let latest = Array(viewModel.savings.prefix(20))
                 ForEach(Array(latest.enumerated()), id: \.offset) { _, row in
-                    Text("\(row.kind) \(MoneyFormat.formatCents(row.amountCents)) · Recorded balance \(row.actualBalanceCents.map { MoneyFormat.formatCents($0) } ?? "—") · \(row.createdAt.map { MoneyFormat.fmtDateTime($0) } ?? "")\(row.note.isEmpty ? "" : " · \(row.note)")")
+                    Text("\(kindLabel(row.kind)) \(MoneyFormat.formatCents(row.amountCents)) · Recorded balance \(row.actualBalanceCents.map { MoneyFormat.formatCents($0) } ?? "—") · \(row.createdAt.map { MoneyFormat.fmtDateTime($0) } ?? "")\(row.note.isEmpty ? "" : " · \(row.note)")")
                         .font(.system(size: 14))
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }
