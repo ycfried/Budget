@@ -32,6 +32,20 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Write UI-test service key file
+        # The UI test runner process does NOT inherit the step's
+        # environment (run 43247037525 proved it: the step env held
+        # the key, logged masked as ***, yet the runner saw nothing),
+        # so the helper reads the key from this file when the env var
+        # is absent. Outside the repo, mode 600, runner-ephemeral;
+        # the value is never printed.
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" > "$HOME/.onbudget-uitest-service-key"
+            chmod 600 "$HOME/.onbudget-uitest-service-key"
+          fi
       - name: Validate, compile and test synthetic app
         env:
           ONBUDGET_APPROVED_WORKFLOW: '1'

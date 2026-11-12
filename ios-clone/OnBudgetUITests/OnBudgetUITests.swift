@@ -504,14 +504,16 @@ final class OnBudgetUITests: XCTestCase {
     /// returns .needsConfirmation, so after the name step the helper
     /// confirms the fresh account via the Supabase Auth Admin API
     /// and signs in with the same credentials. The service-role key
-    /// comes ONLY from the SUPABASE_SERVICE_ROLE_KEY environment
-    /// variable; when it is absent the test fails fast here instead
-    /// of burning its 60–90s waits before failing at the same gate.
+    /// comes from the SUPABASE_SERVICE_ROLE_KEY environment variable
+    /// when present, otherwise from ~/.onbudget-uitest-service-key
+    /// (see uiTestServiceKey — the UI test runner does not inherit
+    /// the step's environment); when neither exists the test fails
+    /// fast here instead of burning its 60–90s waits before failing
+    /// at the same gate.
     private func signUpFreshAccount() {
-        guard let serviceKey = ProcessInfo.processInfo.environment["SUPABASE_SERVICE_ROLE_KEY"],
-              !serviceKey.isEmpty else {
+        guard let serviceKey = Self.uiTestServiceKey(), !serviceKey.isEmpty else {
             XCTFail(
-                "SUPABASE_SERVICE_ROLE_KEY is not set in the test runner environment — "
+                "SUPABASE_SERVICE_ROLE_KEY is not set in the test runner environment and no key file was found — "
                 + "add it as a CI secret and pass it to the simulator step. "
                 + "Email confirmation is ON, so a fresh test account cannot sign in without being confirmed first."
             )
@@ -582,6 +584,28 @@ final class OnBudgetUITests: XCTestCase {
         tapAndTypeText(signInPassword, password, fieldName: "auth.password")
         dismissKeyboardIfPresent(focusedField: signInPassword)
         app.buttons["auth.signIn"].tap()
+    }
+
+    /// Service-role key for the Admin-API confirm path. The UI test
+    /// runner process does NOT inherit the xcodebuild shell's
+    /// environment (proven by run 43247037525: the step env held the
+    /// key — logged masked as *** — yet the runner saw nothing), so
+    /// the key comes from the environment when present and otherwise
+    /// from a file the workflow writes outside the repo
+    /// (~/.onbudget-uitest-service-key, mode 600, runner-ephemeral).
+    /// The key is never logged.
+    private static func uiTestServiceKey() -> String? {
+        if let fromEnv = ProcessInfo.processInfo.environment["SUPABASE_SERVICE_ROLE_KEY"],
+           !fromEnv.isEmpty {
+            return fromEnv
+        }
+        let path = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".onbudget-uitest-service-key")
+        guard let contents = try? String(contentsOf: path, encoding: .utf8) else {
+            return nil
+        }
+        let trimmed = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     // MARK: - Admin-API confirmation (email confirmation is ON)
