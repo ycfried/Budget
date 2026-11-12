@@ -64,6 +64,10 @@ public final class TransactionsViewModel {
     /// Whether the $375 schema-default allowance was ever explicitly
     /// set — the sync button is primary blue only when it was set.
     public private(set) var allowanceSet: Bool = false
+    /// Card suffix → institution name (best-effort, for bank icons —
+    /// the same map Home builds in `refresh()`). Nil suffixes fall
+    /// back to the merchant icon.
+    public private(set) var institutionBySuffix: [String: String] = [:]
 
     public var filters = TransactionFilters()
     /// Bumped whenever the search box must clear with the filters
@@ -188,6 +192,7 @@ public final class TransactionsViewModel {
                 self.hasMore = hasMore
                 self.loadState = .loaded(rows)
                 await self.loadAllowanceState()
+                await self.loadInstitutionMap()
             } catch let error as OnBudgetError {
                 guard !Task.isCancelled else { return }
                 self.loadedPage = []
@@ -289,6 +294,28 @@ public final class TransactionsViewModel {
             // Allowance state is presentation-only (sync-button
             // treatment); a failed read leaves the button grey.
             allowanceSet = false
+        }
+    }
+
+    /// Suffix → institution map for bank icons (T-P1-2 — the same
+    /// derivation Home uses: item → institution name, item → account
+    /// mask). Best-effort, never blocks the list: a failed read
+    /// leaves rows on their merchant icons.
+    private func loadInstitutionMap() async {
+        do {
+            let pairs = try await client.postgrest.plaidItemInstitutions(householdId: householdId)
+            let masks = try await client.postgrest.plaidAccountMasks(
+                itemIds: pairs.map(\.itemId))
+            var map: [String: String] = [:]
+            for (itemId, mask) in masks {
+                guard let mask,
+                      let pair = pairs.first(where: { $0.itemId == itemId }),
+                      let name = pair.institutionName else { continue }
+                map[mask] = name
+            }
+            institutionBySuffix = map
+        } catch {
+            // Best-effort only: no error state.
         }
     }
 

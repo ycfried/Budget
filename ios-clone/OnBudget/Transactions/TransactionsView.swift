@@ -335,6 +335,8 @@ public struct TransactionsView: View {
                     ForEach(shown) { transaction in
                         TransactionRowView(
                             transaction: transaction,
+                            institutionName: transaction.cardSuffix == "0000"
+                                ? nil : viewModel.institutionBySuffix[transaction.cardSuffix],
                             isExpanded: viewModel.expandedTransactionId == transaction.id,
                             hasActions: viewModel.hasActions(for: transaction),
                             onToggle: {

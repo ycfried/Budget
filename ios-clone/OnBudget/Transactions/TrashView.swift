@@ -77,7 +77,11 @@ public struct TrashView: View {
                                 }
                             } label: {
                                 HStack(spacing: 10) {
-                                    TransactionIconView(merchant: transaction.merchant)
+                                    TransactionIconView(
+                                        merchant: transaction.merchant,
+                                        institutionName: transaction.cardSuffix == "0000"
+                                            ? nil : viewModel.institutionBySuffix[transaction.cardSuffix]
+                                    )
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(TransactionFormatting.displayMerchant(transaction.merchant))
                                             .font(.system(size: 16, weight: .bold))
