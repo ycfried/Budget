@@ -124,7 +124,6 @@
 		A70909090909090909090909 /* AddTransactionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionView.swift; sourceTree = "<group>"; };
 		A70A0A0A0A0A0A0A0A0A0A0A /* TrashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashView.swift; sourceTree = "<group>"; };
 		A8A8A8A8A8A8A8A8A8A8A8A8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		E9E9E9E9E9E9E9E9E9E9E9E9 /* OnBudget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OnBudget.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -172,7 +171,6 @@
 			isa = PBXGroup;
 			children = (
 				A8A8A8A8A8A8A8A8A8A8A8A8 /* Info.plist */,
-				E9E9E9E9E9E9E9E9E9E9E9E9 /* OnBudget.entitlements */,
 				A1A1A1A1A1A1A1A1A1A1A1A1 /* OnBudgetApp.swift */,
 				A2A2A2A2A2A2A2A2A2A2A2A2 /* ContentView.swift */,
 				C100C100C100C100C100C100 /* Settings */,
@@ -590,7 +588,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = OnBudget/OnBudget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				PROVISIONING_PROFILE_SPECIFIER = "OnBudget App Store";
 				CURRENT_PROJECT_VERSION = 1;
@@ -615,7 +612,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = OnBudget/OnBudget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				PROVISIONING_PROFILE_SPECIFIER = "OnBudget App Store";
 				CURRENT_PROJECT_VERSION = 1;

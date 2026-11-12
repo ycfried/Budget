@@ -15,9 +15,7 @@ and checks the invariants the scaffold must hold:
 - exactly one remote Swift package reference: Plaid's
   plaid-link-ios-spm (LinkKit), Up to Next Major Version from 7.0.0,
   linked to the OnBudget app target only — no other remote packages
-- no shell-script build phases; code-sign entitlements only the
-  one approved associated-domains file for Password AutoFill
-  (owner, Nov 12, 2026 — see the entitlements check below)
+- no shell-script build phases, no code-sign entitlements anywhere
 - the UI test target is a ui-testing bundle whose TEST_TARGET_NAME
   is the app, so `test-without-building` launches the real app
 No network, no Xcode build, no signing.
@@ -159,36 +157,14 @@ def main():
         f"Local package must be OnBudgetKit, got {packages[0]['relativePath']}"
     )
 
-    # Entitlements: exactly one is approved — the
-    # associated-domains file for Password AutoFill (owner, Nov 12,
-    # 2026), on the OnBudget app target only, containing only
-    # webcredentials:ycfried.github.io. Anything else is still
-    # banned. The file itself is checked, not just the setting, so
-    # a stray capability cannot slip in under the approved name.
-    entitlements_path = CLONE / "OnBudget" / "OnBudget.entitlements"
-    with open(entitlements_path, "rb") as f:
-        entitlements = plistlib.load(f)
-    assert entitlements == {
-        "com.apple.developer.associated-domains": ["webcredentials:ycfried.github.io"]
-    }, (
-        "OnBudget.entitlements must contain only "
-        f"webcredentials:ycfried.github.io, got {entitlements!r}"
-    )
     for name, target in targets.items():
         for config in objects[target["buildConfigurationList"]][
             "buildConfigurations"
         ]:
             settings = objects[config]["buildSettings"]
-            entitlement = settings.get("CODE_SIGN_ENTITLEMENTS")
-            if name == "OnBudget":
-                assert entitlement == "OnBudget/OnBudget.entitlements", (
-                    f"{name}: CODE_SIGN_ENTITLEMENTS must be "
-                    f"OnBudget/OnBudget.entitlements, got {entitlement!r}"
-                )
-            else:
-                assert not entitlement, (
-                    f"{name}: no entitlements allowed"
-                )
+            assert not settings.get("CODE_SIGN_ENTITLEMENTS"), (
+                f"{name}: no unapproved entitlements"
+            )
         if name == "OnBudget":
             app_configs = [
                 objects[c]["buildSettings"]
