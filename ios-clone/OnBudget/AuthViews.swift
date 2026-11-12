@@ -48,13 +48,17 @@ public struct AuthBrandHeader: View {
             // circular picture the web app uses), not the "S"
             // placeholder ring the clone shipped with (owner, Nov 11,
             // 2026).
+            // Logo 72pt / wordmark 30pt (owner, Nov 12, 2026): the
+            // sign-in header sat in a lot of empty space — the bump
+            // fills it without crowding the fields. Same centered
+            // layout and spacing as before.
             Image("AppLogo")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 56, height: 56)
+                .frame(width: 72, height: 72)
                 .clipShape(Circle())
             Text("OnBudget")
-                .font(.system(size: 26, weight: .bold))
+                .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
         }
         // Centered as a unit (owner, Nov 11, 2026): the header was
@@ -114,7 +118,16 @@ public struct AuthView: View {
     // appearance of this screen.
     @State private var didAutoPromptBiometrics = false
 
-    public init(appState: AppViewModel) { self.appState = appState }
+    public init(appState: AppViewModel) {
+        self.appState = appState
+        // Remember me (owner, Nov 12, 2026): the sign-in screen
+        // opens with the saved email already filled in, so the
+        // first frame never shows an empty Email field. Setting it
+        // here (rather than in onAppear) also means no programmatic
+        // change fires the email onChange that clears the message —
+        // a boot-time offline notice set in onAppear survives.
+        _email = State(initialValue: RememberedEmail().load() ?? "")
+    }
 
     public var body: some View {
         // Vertical balance (owner, Nov 11, 2026): the page was
@@ -145,10 +158,13 @@ public struct AuthView: View {
             ForgotPasswordSheet(email: email)
         }
         .onAppear {
-            // Sign-out lands here fresh: fields cleared, sign-in
-            // panel (never stranded on the name step).
+            // Sign-out lands here fresh: password and message
+            // cleared, sign-in panel (never stranded on the name
+            // step). The email is NOT cleared here — it was already
+            // pre-filled from Remember me in init (owner, Nov 12,
+            // 2026), and setting it again in onAppear would fire
+            // the email onChange and wipe the offline notice below.
             if appState.phase == .auth && !showNameStep {
-                email = ""
                 password = ""
                 message = nil
             }
@@ -267,44 +283,59 @@ public struct AuthView: View {
                     .disabled(busy != nil)
             }
 
-            // Remember me (owner, Nov 11, 2026): ticked (the
-            // default) keeps the session across launches; unticked
-            // signs in into memory only, so closing the app signs
-            // the user out. The row only shows when biometric
-            // unlock is OFF (owner, Nov 12, 2026): with biometrics
-            // on, the session is already kept, so there is nothing
-            // to choose — the old disabled row read as broken. The
-            // checkbox is ONE rounded square (the app's squarish
-            // style), the whole row is the tap target.
-            if !appState.biometricUnlockAvailable {
-                Button {
-                    rememberMe.toggle()
-                } label: {
-                    HStack(spacing: 8) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(rememberMe ? DesignTokens.primary : .white)
-                                .frame(width: 22, height: 22)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(
-                                            rememberMe ? DesignTokens.primary : Color(hex: "#9ca3af"),
-                                            lineWidth: 1.5
-                                        )
-                                )
-                            if rememberMe {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
+            // Remember me (owner, Nov 12, 2026): the row shows
+            // ALWAYS — the Nov 12 hide-when-biometrics-on rule is
+            // reversed. The owner was at the sign-in screen with
+            // biometrics available and still faced an empty Email
+            // field, so the hidden row did not help him. Ticked
+            // (the default) keeps the session across launches AND
+            // saves the email locally so the sign-in screen
+            // pre-fills it; unticked signs in into memory only, so
+            // closing the app signs the user out, and clears any
+            // saved email immediately. The checkbox is ONE rounded
+            // square (the app's squarish style), the whole row is
+            // the tap target.
+            Button {
+                rememberMe.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(rememberMe ? DesignTokens.primary : .white)
+                            .frame(width: 22, height: 22)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(
+                                        rememberMe ? DesignTokens.primary : Color(hex: "#9ca3af"),
+                                        lineWidth: 1.5
+                                    )
+                            )
+                        if rememberMe {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
                         }
-                        Text("Remember me")
-                            .font(.system(size: 15))
-                            .foregroundStyle(DesignTokens.ink)
                     }
+                    Text("Remember me")
+                        .font(.system(size: 15))
+                        .foregroundStyle(DesignTokens.ink)
                 }
-                .accessibilityIdentifier("auth.rememberMe")
-                .padding(.top, 4)
+            }
+            .accessibilityIdentifier("auth.rememberMe")
+            .padding(.top, 4)
+            // Toggling writes the remembered email right away:
+            // unticking clears it immediately (not just "stop
+            // saving"), re-ticking saves whatever is typed so a
+            // later sign-out still pre-fills. The sign-in itself
+            // saves again on success (see signIn()).
+            .onChange(of: rememberMe) { _, ticked in
+                if ticked {
+                    if !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        RememberedEmail().save(email)
+                    }
+                } else {
+                    RememberedEmail().clear()
+                }
             }
 
             // Forgot password (owner, Nov 12, 2026): always opens
@@ -337,7 +368,20 @@ public struct AuthView: View {
             email: email,
             password: password,
             onBack: { showNameStep = false; message = nil },
-            onCreated: { Task { await appState.boot() } }
+            onCreated: {
+                // Account created and signed in: remember the email
+                // exactly as a password sign-in would (owner, Nov 12,
+                // 2026) — the next sign-in screen pre-fills it.
+                // (With email confirmation ON, this does not run at
+                // creation; the email is saved at the sign-in after
+                // confirming instead.)
+                if rememberMe {
+                    RememberedEmail().save(email)
+                } else {
+                    RememberedEmail().clear()
+                }
+                Task { await appState.boot() }
+            }
         )
     }
 
@@ -384,6 +428,17 @@ public struct AuthView: View {
             _ = try await appState.client.signIn(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password)
+            // Remember me (owner, Nov 12, 2026): a successful
+            // sign-in remembers the email for the next sign-in
+            // screen when ticked — even with biometrics on, where
+            // the session store is left alone above. Unticked
+            // clears any saved email (the toggle already cleared
+            // it; this covers a sign-in that never toggled).
+            if rememberMe {
+                RememberedEmail().save(email)
+            } else {
+                RememberedEmail().clear()
+            }
             // No "Signed in." message: boot() changes phase
             // immediately, so it was never rendered (audit F-P2-13).
             busy = nil
