@@ -324,11 +324,15 @@ public enum AuditFormatting {
 
     /// A collapsed "Weeks processed ×N" group reads as "N weeks
     /// closed", never with the internal "processed" wording.
+    /// Titles are Title-Cased at DISPLAY time only (audit X-P2-3,
+    /// Nov 12 2026): the stored/translated action stays sentence
+    /// case in `formatAction`, so e.g. "Transaction added by hand"
+    /// renders "Transaction Added by Hand" here and nowhere else.
     public static func activityTitle(action: String, count: Int) -> String {
         if action == "Weeks processed" {
-            return "\(count) \(count == 1 ? "week" : "weeks") closed"
+            return TitleCase.apply(to: "\(count) \(count == 1 ? "week" : "weeks") closed")
         }
-        return action
+        return TitleCase.apply(to: action)
     }
 
     /// Collapse repeated weekly-processing events inside one day's
@@ -361,13 +365,16 @@ public enum AuditFormatting {
 
     /// States the active period so a filter can never silently make
     /// records disappear; with no filter the line stays empty.
+    /// Dates render long ("Nov 1, 2026"), never raw ISO (audit
+    /// X-P1-2, Nov 12 2026) — the same `fmtLong` every other line
+    /// on these screens uses.
     public static func historyPeriodLabel(from: String?, to: String?) -> String {
         let from = (from ?? "").isEmpty ? nil : from
         let to = (to ?? "").isEmpty ? nil : to
         if from == nil && to == nil { return "" }
-        if let from, let to { return "Showing \(from) to \(to)." }
-        if let from { return "Showing from \(from) onward." }
-        return "Showing up to \(to!)."
+        if let from, let to { return "Showing \(MoneyFormat.fmtLong(from)) to \(MoneyFormat.fmtLong(to))." }
+        if let from { return "Showing from \(MoneyFormat.fmtLong(from)) onward." }
+        return "Showing up to \(MoneyFormat.fmtLong(to!))."
     }
 
     /// Filter rows by a `YYYY-MM-DD` date string. A blank bound means
