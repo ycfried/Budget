@@ -614,11 +614,13 @@ public struct HomeView: View {
                     .buttonStyle(TertiaryButtonStyle())
             } else if case .loaded(let summary) = viewModel.fund {
                 // Home expansions show rows only, no action buttons.
-                // Row labels are the web's exact wording
-                // (live.js:3604): "Spendable available" (admin) /
-                // "Available to request" (member).
+                // Row labels are Title Case (owner rule, Nov 4, 2026):
+                // "Spendable Available" (admin) / "Available to
+                // Request" (member). The in-code web-parity exemption
+                // for these rows was wrong and is removed (audit
+                // H-P2-1).
                 statRow(
-                    label: viewModel.isAdmin ? "Spendable available" : "Available to request",
+                    label: viewModel.isAdmin ? "Spendable Available" : "Available to Request",
                     value: MoneyFormat.signedString(cents: summary.availableCents))
                 statRow(label: "Pending", value: MoneyFormat.string(cents: summary.pendingIncludingHeldCents))
                 statRow(label: "Total", value: MoneyFormat.string(cents: summary.totalCents))
@@ -700,9 +702,8 @@ public struct HomeView: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// Row labels are the web's exact wording (live.js:3560-3600),
-    /// not Title Case — Title Case applies to headings and button
-    /// labels, not these rows.
+    /// Row labels are Title Case, like headings and button labels
+    /// (owner rule, Nov 4, 2026 — audit H-P2-1).
     private func statRow(label: String, value: String) -> some View {
         HStack {
             Text(label)
@@ -911,7 +912,10 @@ public struct WeeklySheet: View {
             // Carried debt appear exactly when they change the number;
             // a normal week keeps the approved three rows.
             ForEach(week.sheetRows(baseAllowanceCents: baseAllowanceCents), id: \.label) { row in
-                sheetRow(label: row.label, value: MoneyFormat.string(cents: row.cents))
+                // Deduction rows print with a leading minus
+                // (audit H-P2-2) so Base $375 → Allowance $325 adds
+                // up on sight; the model cents stay positive.
+                sheetRow(label: row.label, value: MoneyFormat.string(cents: row.isDeduction ? -row.cents : row.cents))
             }
             HStack(spacing: 12) {
                 Button("Show Transactions") {
