@@ -12,17 +12,15 @@ import OnBudgetKit
 /// verbatim via `OnBudgetError.userMessage` — the client never rewrites
 /// it and never works around a server refusal.
 ///
-/// TWO LIVE SERVER DEFECTS affect these screens (synthetic proofs,
-/// Nov 9, 2026; web fix branch-only, not yet live):
-/// 1. Merged duplicates can never be restored from Trash — the server
-///    `resolve_duplicate_candidate` does not record `pre_exclusion_state`.
-/// 2. Held refunds can never be released — the server `resolve_held_refund`
-///    expects `status='pending'` but the CHECK allows only
-///    `held`/`written_off`/`resolved` (the fix aligns everything on
-///    `held`, so this UI treats `held` AND `pending` as releasable).
-/// Both flows are built to the INTENDED behaviour below; when the
-/// server fix lands live they work with no clone change. A refusal
-/// today surfaces verbatim in an alert.
+/// TWO SERVER DEFECTS that affected these screens were fixed live
+/// in web PR #62 (Nov 9, 2026) and the native was built to the
+/// intended behaviour from the start, so no clone change was needed:
+/// 1. Merged duplicates now record `pre_exclusion_state` and can be
+///    restored from Trash. 2. Held refunds are released on
+///    `status='held'` (the CHECK's releasable state); this UI still
+///    treats `held` AND `pending` as releasable so a legacy 'pending'
+///    row, if one ever appears, is not stranded. A server refusal
+///    surfaces verbatim in an alert.
 @MainActor
 public final class FundsViewModel: ObservableObject {
     public let context: FundsContext

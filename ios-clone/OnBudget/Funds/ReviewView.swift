@@ -179,12 +179,9 @@ public struct ReviewView: View {
                                 .foregroundStyle(Color(hex: "#6b7280"))
                         }
                         Spacer()
-                        // LIVE DEFECT (Nov 9, 2026): the server refuses a
-                        // release today (expects status='pending', CHECK
-                        // allows only held/written_off/resolved). The
-                        // button exists per the intended behaviour and
-                        // the refusal surfaces verbatim; when the server
-                        // fix lands, this works with no clone change.
+                        // PR #62 (live Nov 9, 2026): the server releases
+                        // on status='held'; the 'pending' arm is kept
+                        // only so a legacy row is not stranded.
                         if held.status == "held" || held.status == "pending" {
                             FundsSmallPrimaryButton("Release", isBusy: viewModel.busyAction == "release-\(held.id.uuidString)") {
                                 confirmingRelease = held

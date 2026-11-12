@@ -25,13 +25,12 @@ import OnBudgetKit
 ///   `client.postgrest.householdAllowance(householdId:)`.
 ///
 /// Server refusals are surfaced verbatim (`error.userMessage`) — the
-/// client never rewrites them. Two live server defects affect these
-/// screens and are NOT worked around here (build to the INTENDED
-/// behaviour; when the server fixes land, the flows work with no clone
-/// change): (1) merged duplicates can never be restored from Trash
-/// (`resolve_duplicate_candidate` does not record `pre_exclusion_state`);
-/// (2) held refunds can never be released (`resolve_held_refund` status
-/// mismatch). A refusal from either surfaces verbatim.
+/// client never rewrites them. Two server defects that affected these
+/// screens were fixed live in web PR #62 (Nov 9, 2026) and the native
+/// was built to the intended behaviour from the start, so no clone
+/// change was needed: (1) merged duplicates now record
+/// `pre_exclusion_state` and can be restored from Trash; (2) held
+/// refunds release on `status='held'`. A refusal surfaces verbatim.
 ///
 /// All figures displayed are server figures; the client never
 /// recomputes week math. The list total is a display sum over the
