@@ -63,6 +63,29 @@ public struct QuietButtonStyle: ButtonStyle {
     }
 }
 
+/// Small low-key outline button — a clear button affordance (border
+/// + shape + press feedback) without the weight of a filled button.
+/// For peer navigation rows that must read as tappable but stay
+/// understated (owner, Nov 11, 2026: the Trash / Activity / Past
+/// Weeks row — "shouldn't be too big or bulky, kinda low key").
+/// Squarish with rounded edges (cornerRadius 8), never a round pill.
+public struct SmallOutlineButtonStyle: ButtonStyle {
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(DesignTokens.ink)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
 /// Back link: light blue #3b82f6, bold 700, 15px, no bg, no border.
 public struct BackButtonStyle: ButtonStyle {
     public func makeBody(configuration: ButtonStyle.Configuration) -> some View {

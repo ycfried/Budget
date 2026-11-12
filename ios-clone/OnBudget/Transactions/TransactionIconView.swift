@@ -3,12 +3,20 @@ import OnBudgetKit
 
 /// Transaction icon: the bank's Google favicon when the card suffix
 /// maps to a connected institution, else the merchant favicon from
-/// the curated keyword map. Any unmapped name, or a failed favicon
-/// load, falls back to a monogram tile: white initial on the real
-/// brand colour when the map knows one, else a soft neutral tile
-/// (light slate `#e2e8f0`, dark slate initial) — one designed system
-/// with the logo tiles (same size, same corner radius), never a fake
-/// brand colour, never a blank tile, and never Clearbit (dead Nov 4, 2026).
+/// the curated keyword map. A loaded logo renders on a clean white
+/// tile with a light border (never a white box floating on a coloured
+/// tile — the "weird" look the owner reported, Nov 11, 2026); the
+/// aspect is never stretched (wide logos letterbox). The source is
+/// Google's favicon service at sz=128, which returns each site's
+/// largest icon (measured Nov 11, 2026: Amex 32px, Walmart / Amazon
+/// 48px, Royal Farms 128px, Seven Mile Market 168×107) — small
+/// sources are upscaled with high interpolation, and sz=128 is
+/// already the max. Any unmapped name, or a failed favicon load, falls
+/// back to a monogram tile: white initial on the real brand colour
+/// when the map knows one, else a soft neutral tile (light slate
+/// `#e2e8f0`, dark slate initial) — one designed system with the logo
+/// tiles (same size, same corner radius), never a fake brand colour,
+/// never a blank tile, and never Clearbit (dead Nov 4, 2026).
 public struct TransactionIconView: View {
     /// Institution name for the card suffix, when known (from the
     /// Settings bank list). When nil, the merchant icon is used.
@@ -34,11 +42,19 @@ public struct TransactionIconView: View {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
+                        // Clean white tile: the logo's own white
+                        // background blends into the tile, so there is
+                        // no white box floating on a coloured tile.
+                        // scaledToFit keeps the aspect (a wide logo
+                        // letterboxes, never stretches); high
+                        // interpolation softens the upscale of the
+                        // small sources Google serves.
                         image
                             .resizable()
+                            .interpolation(.high)
                             .scaledToFit()
-                            .frame(width: size * 0.72, height: size * 0.72)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .padding(size * 0.14)
+                            .frame(width: size, height: size)
                             .background(Color.white)
                     case .empty, .failure:
                         // Loading or failed: the monogram underneath
@@ -52,6 +68,10 @@ public struct TransactionIconView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
         .accessibilityHidden(true)
     }
 
@@ -70,8 +90,11 @@ public struct TransactionIconView: View {
     private var monogram: some View {
         ZStack {
             monogramBackground
+            // The generic merchant icon: the merchant's initial as a
+            // proper icon (rounded bold letter on the soft tile), not
+            // a bare grey square (owner, Nov 11, 2026).
             Text(TransactionIconLookup.initial(for: merchant))
-                .font(.system(size: size * 0.45, weight: .bold))
+                .font(.system(size: size * 0.45, weight: .bold, design: .rounded))
                 .foregroundStyle(monogramForeground)
         }
     }
@@ -120,7 +143,7 @@ public struct StatePill: View {
             .padding(.horizontal, 8)
             .background(pillBackground)
             .foregroundStyle(pillForeground)
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private var pillBackground: Color {
@@ -142,7 +165,7 @@ public struct StatePill: View {
     }
 }
 
-/// Source pill: Bank / By hand / File / Email alert.
+/// Source pill: Bank / By hand / File / Email.
 public struct SourcePill: View {
     let transaction: Transaction
 
@@ -157,6 +180,6 @@ public struct SourcePill: View {
             .padding(.horizontal, 8)
             .background(Color(hex: "#eef4ff"))
             .foregroundStyle(Color(hex: "#1e3a8a"))
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }

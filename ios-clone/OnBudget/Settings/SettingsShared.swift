@@ -283,7 +283,7 @@ struct RolePill: View {
             .padding(.vertical, 3)
             .background(Color(hex: "#eef4ff"))
             .foregroundStyle(DesignTokens.ink)
-            .cornerRadius(999)
+            .cornerRadius(6)
     }
 }
 
@@ -291,7 +291,12 @@ struct RolePill: View {
 
 /// Bank favicon (Google favicon service, sz=128) with a
 /// brand-coloured monogram fallback. Never Clearbit (dead Nov 4,
-/// 2026). Unmapped banks fall back to a slate monogram tile.
+/// 2026). Unmapped banks fall back to a slate monogram tile. A loaded
+/// logo renders on a clean white tile with a light border — the same
+/// treatment as TransactionIconView (owner, Nov 11, 2026: logos
+/// looked weird as a white box on a coloured tile / stretched
+/// edge-to-edge); the aspect is never stretched, and small sources
+/// upscale with high interpolation.
 struct BankLogoView: View {
     let institutionName: String?
     var size: CGFloat = 40
@@ -306,9 +311,11 @@ struct BankLogoView: View {
                     case .success(let image):
                         image
                             .resizable()
+                            .interpolation(.high)
                             .scaledToFit()
+                            .padding(size * 0.14)
                             .frame(width: size, height: size)
-                            .cornerRadius(8)
+                            .background(Color.white)
                     default:
                         monogram
                             .onAppear {
@@ -321,6 +328,11 @@ struct BankLogoView: View {
             }
         }
         .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
     }
 
     private var monogram: some View {

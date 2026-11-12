@@ -68,9 +68,14 @@ public struct TransactionRowView: View {
                     HStack(spacing: 8) {
                         StatePill(transaction)
                         SourcePill(transaction)
+                        Spacer()
+                        // Date + card sit at the row's trailing edge —
+                        // a fixed column that never moves with the
+                        // badge widths (owner, Nov 11, 2026).
                         Text("\(TransactionFormatting.displayDay(transaction.date)) · \(TransactionFormatting.cardLabel(for: transaction))")
                             .font(.system(size: 13))
                             .foregroundStyle(Color(hex: "#6b7280"))
+                            .lineLimit(1)
                     }
                     .padding(.leading, 50)
                 }
@@ -99,9 +104,9 @@ public struct TransactionRowView: View {
             }
         }
         .animation(ExpandAnimation.animation, value: isExpanded)
-        .background(.white)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+        // No per-row card: the list is ONE continuous list — the
+        // container in TransactionsView carries the single white card
+        // and the dividers between rows (owner, Nov 11, 2026).
     }
 }
 

@@ -459,12 +459,13 @@ public struct FundsMoneyField: View {
 }
 
 /// Source label, display only (live.js:347): plaid → Bank,
-/// manual → By hand, csv → File, amex_alert → Email alert.
+/// manual → By hand, csv → File, amex_alert → Email (renamed from
+/// "Email alert", owner Nov 11, 2026).
 public func sourceLabel(_ source: TransactionSource) -> String {
     switch source {
     case .plaid: return "Bank"
     case .manual: return "By hand"
     case .csv: return "File"
-    case .amexAlert: return "Email alert"
+    case .amexAlert: return "Email"
     }
 }

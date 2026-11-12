@@ -88,6 +88,42 @@ public enum TransactionFormatting {
         return (string(from: sunday), string(from: saturday))
     }
 
+    /// The current calendar month in New York, as `YYYY-MM-DD` bounds
+    /// (first day – last day). Companion to `currentWeekBounds`, for
+    /// the single "When" control's "This Month" quick pick.
+    public static func currentMonthBounds(date: Date = Date()) -> (start: String, end: String) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = newYorkTimeZone
+        let startOfDay = calendar.startOfDay(for: date)
+        guard let first = calendar.date(from: calendar.dateComponents([.year, .month], from: startOfDay)),
+              let range = calendar.range(of: .day, in: .month, for: startOfDay),
+              let last = calendar.date(byAdding: .day, value: range.count - 1, to: first) else {
+            let today = nyTodayString(date: date)
+            return (today, today)
+        }
+        return (string(from: first), string(from: last))
+    }
+
+    /// First – last day of a `YYYY-MM` month, as `YYYY-MM-DD` bounds.
+    /// A past month stored in the filter normalizes to its span (the
+    /// single "When" control has no month dropdown — a stored past
+    /// month reads as its custom range, same effect).
+    public static func monthBounds(_ yearMonth: String) -> (start: String, end: String) {
+        guard let first = dateFromString("\(yearMonth)-01") else { return (yearMonth + "-01", yearMonth + "-01") }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = newYorkTimeZone
+        guard let range = calendar.range(of: .day, in: .month, for: first),
+              let last = calendar.date(byAdding: .day, value: range.count - 1, to: first) else {
+            return (string(from: first), string(from: first))
+        }
+        return (string(from: first), string(from: last))
+    }
+
+    /// The current month as `YYYY-MM` in New York.
+    public static func currentMonthString(date: Date = Date()) -> String {
+        String(nyTodayString(date: date).prefix(7))
+    }
+
     /// `YYYY-MM-DD` for a Date, in New York.
     public static func string(from date: Date) -> String {
         let formatter = DateFormatter()
@@ -194,13 +230,13 @@ public enum TransactionFormatting {
     }
 
     /// Source labels, display only (live.js:347): Bank / By hand /
-    /// File / Email alert.
+    /// File / Email (renamed from "Email alert", owner Nov 11, 2026).
     public static func sourceLabel(for source: TransactionSource) -> String {
         switch source {
         case .plaid: return "Bank"
         case .manual: return "By hand"
         case .csv: return "File"
-        case .amexAlert: return "Email alert"
+        case .amexAlert: return "Email"
         }
     }
 
@@ -298,6 +334,34 @@ public enum TransactionSort: String, Equatable, CaseIterable {
     }
 }
 
+/// The single "When" choice (Filters rethink, Nov 11, 2026 — owner:
+/// one button + one calendar, tap a start date then an end date).
+/// It replaces the three overlapping date controls (month dropdown,
+/// "This week" toggle, From/To fields): the sheet offers All Time /
+/// This Week / This Month / a custom range, and the calendar is where
+/// the range is picked. The stored filter keeps its old fields
+/// (`month` / `weekOnly` / `fromDate` / `toDate`); this enum is the
+/// one presentation of them, mapped both ways below.
+public enum WhenSelection: Equatable {
+    case allTime
+    case thisWeek
+    case thisMonth
+    case custom(from: String, to: String)
+
+    /// Plain label for the When button and the one date chip:
+    /// "All Time" / "This Week" / "This Month" / "Nov 8 – Nov 14"
+    /// (one-sided range: "From Nov 8" / "To Nov 14").
+    public var label: String {
+        switch self {
+        case .allTime: return "All Time"
+        case .thisWeek: return "This Week"
+        case .thisMonth: return "This Month"
+        case .custom(let from, let to):
+            return TransactionFormatting.dateRangeChipLabel(from: from, to: to) ?? "Custom Range"
+        }
+    }
+}
+
 /// The full filter set for the Transactions list. Filters combine
 /// (AND): status + month + card + week + From/To + min/max + search.
 /// Applied client-side to the loaded page — the server list is the
@@ -344,11 +408,18 @@ public struct TransactionFilters: Equatable {
     public var activeChips: [(key: String, label: String)] {
         var chips: [(String, String)] = []
         if status != .all { chips.append(("status", status.label)) }
-        if month != "all" { chips.append(("month", TransactionFormatting.monthLabel(month))) }
         if card != "all" { chips.append(("card", "••\(card)")) }
-        if weekOnly { chips.append(("week", "This week")) }
-        if let rangeLabel = TransactionFormatting.dateRangeChipLabel(from: fromDate, to: toDate) {
-            chips.append(("range", rangeLabel))
+        // ONE date chip at most, from the single "When" choice —
+        // never a "From" chip and a "To" chip, never a week chip
+        // beside a month chip.
+        switch whenSelection {
+        case .allTime: break
+        case .thisWeek: chips.append(("when", "This Week"))
+        case .thisMonth: chips.append(("when", "This Month"))
+        case .custom(let from, let to):
+            if let rangeLabel = TransactionFormatting.dateRangeChipLabel(from: from, to: to) {
+                chips.append(("when", rangeLabel))
+            }
         }
         if let minCents { chips.append(("min", "Min \(TransactionFormatting.formatCents(minCents))")) }
         if let maxCents { chips.append(("max", "Max \(TransactionFormatting.formatCents(maxCents))")) }
@@ -364,6 +435,7 @@ public struct TransactionFilters: Equatable {
         case "month": month = "all"
         case "card": card = "all"
         case "week": weekOnly = false
+        case "when": setWhenSelection(.allTime)
         case "range": fromDate = ""; toDate = ""
         case "from": fromDate = ""
         case "to": toDate = ""
@@ -392,6 +464,46 @@ public struct TransactionFilters: Equatable {
     public mutating func setToDate(_ date: String) {
         toDate = date
         if !date.isEmpty { weekOnly = false }
+    }
+
+    /// The stored date fields as the single "When" choice. A stored
+    /// past month has no place in the single control, so it reads as
+    /// its custom range (same dates, same effect — only the
+    /// presentation changes).
+    public var whenSelection: WhenSelection {
+        if weekOnly { return .thisWeek }
+        if !fromDate.isEmpty || !toDate.isEmpty { return .custom(from: fromDate, to: toDate) }
+        if month != "all" {
+            if month == TransactionFormatting.currentMonthString() { return .thisMonth }
+            let bounds = TransactionFormatting.monthBounds(month)
+            return .custom(from: bounds.start, to: bounds.end)
+        }
+        return .allTime
+    }
+
+    /// Write a "When" choice into the stored date fields. One choice
+    /// only: a new choice clears the other three, so the filter can
+    /// never hold This week ON with dates set (the old contradiction).
+    public mutating func setWhenSelection(_ selection: WhenSelection) {
+        switch selection {
+        case .allTime:
+            weekOnly = false
+            month = "all"
+            fromDate = ""
+            toDate = ""
+        case .thisWeek:
+            month = "all"
+            setWeekOnly(true)
+        case .thisMonth:
+            weekOnly = false
+            fromDate = ""
+            toDate = ""
+            month = TransactionFormatting.currentMonthString()
+        case .custom(let from, let to):
+            month = "all"
+            setFromDate(from)
+            setToDate(to)
+        }
     }
 
     /// Apply all filters to the loaded page (live.js:798-830).
