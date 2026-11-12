@@ -101,6 +101,11 @@ public final class AppViewModel: ObservableObject {
     /// Settings is not a tab (CLONE_SPEC §2.2): the profile menu
     /// opens it as a full-screen cover over the current tab.
     @Published public var showSettings = false
+    /// Where Settings should land when it opens, if a caller asked
+    /// for a section (owner decision #27: "Set Your Weekly
+    /// Allowance" lands on the Budget card). Nil = top of Settings.
+    /// Cleared when Settings closes so the next open starts at top.
+    @Published public var settingsScrollTarget: SettingsScrollTarget?
     @Published public var toast: Toast?
 
     /// The signed-in user's membership, once known.
@@ -385,7 +390,10 @@ public final class AppViewModel: ObservableObject {
     /// profile menu (or a Home link) as a full-screen cover over
     /// the current tab. The tab underneath is left alone so
     /// dismissing Settings returns to where the user was.
-    public func openSettings() {
+    /// `to` scrolls Settings to that section on open (owner
+    /// decision #27); nil opens at the top.
+    public func openSettings(to target: SettingsScrollTarget? = nil) {
+        settingsScrollTarget = target
         showSettings = true
     }
 

@@ -31,7 +31,8 @@
 // - Delete Account: two-step confirm, then
 //   `EdgeFunctionsClient.deleteAccount()` (no household id — the
 //   function derives it from the caller). On failure the server
-//   restores the membership first; the alert names the failing step.
+//   restores the membership first; the alert says so in plain
+//   language and never names the server step (audit S-P1-3).
 //   On success: push-token unregister best-effort, then
 //   `SupabaseClient.signOut()` (clears the session), then
 //   `context.onAccountDeleted("Your account was deleted.")`.
@@ -52,8 +53,19 @@ final class MembersSettingsViewModel: ObservableObject {
     @Published var ownerId: UUID?
     @Published var inviteCode: String?
     @Published var inviteCodeLoadFailed = false
+    /// True once the invite-code fetch has resolved (success or
+    /// failure). Until then the section shows a spinner — never the
+    /// "No invite code is set up" line for an unknown state (audit
+    /// S-P1-1: the line flashed on every load while the fetch was
+    /// still in flight).
+    @Published var inviteCodeLoaded = false
     @Published var householdName: String?
     @Published var loadError: String?
+    /// True after a failed load until a load succeeds. The members
+    /// section shows the error + Retry while this is set — never a
+    /// false "No members yet." (audit S-P1-2: the dismissable error
+    /// box used to clear the failure into the empty state).
+    @Published var loadFailed = false
     @Published var isLoading = false
     @Published var memberToRemove: MemberListRow?
     @Published var removeFailed = false
@@ -63,7 +75,6 @@ final class MembersSettingsViewModel: ObservableObject {
     @Published var showShareSheet = false
     @Published var deleteStep: DeleteStep?
     @Published var deleteFailed = false
-    @Published var deleteFailedStep: String?
 
     /// A pending promote/demote, captured for the confirm alert.
     struct RoleChangeRequest: Identifiable {
@@ -147,25 +158,32 @@ final class MembersSettingsViewModel: ObservableObject {
             ownerId = try? await ownerTask
             householdName = try await nameTask ?? householdName
             loadError = nil
-            // The invite code is owner-only (owner decision, Nov 11,
-            // 2026): only the owner fetches it. A failed read is
-            // tracked separately — it must NOT fall through to the
-            // "No invite code is set up" line (owner report, Nov 11:
-            // the app said that while PJM2HG existed).
-            inviteCodeLoadFailed = false
-            if context.isOwner {
-                do {
-                    inviteCode = try await context.client.postgrest.inviteCode(householdId: context.householdId)
-                } catch {
-                    inviteCode = nil
-                    inviteCodeLoadFailed = true
-                }
-            } else {
-                inviteCode = nil
-            }
+            loadFailed = false
         } catch {
             loadError = settingsErrorMessage(error)
+            loadFailed = true
         }
+        // The invite code is owner-only (owner decision, Nov 11,
+        // 2026): only the owner fetches it. A failed read is
+        // tracked separately — it must NOT fall through to the
+        // "No invite code is set up" line (owner report, Nov 11:
+        // the app said that while PJM2HG existed). The fetch runs
+        // even when the members fetch failed, so a members error
+        // never leaves the invite section showing a false "not set
+        // up" line either (audit S-P1-1).
+        inviteCodeLoaded = false
+        inviteCodeLoadFailed = false
+        if context.isOwner {
+            do {
+                inviteCode = try await context.client.postgrest.inviteCode(householdId: context.householdId)
+            } catch {
+                inviteCode = nil
+                inviteCodeLoadFailed = true
+            }
+        } else {
+            inviteCode = nil
+        }
+        inviteCodeLoaded = true
     }
 
     // MARK: - Change role (promote / demote)
@@ -249,7 +267,6 @@ final class MembersSettingsViewModel: ObservableObject {
         do {
             let result = try await context.client.functions.deleteAccount()
             guard result.deleted else {
-                deleteFailedStep = result.step
                 deleteFailed = true
                 return
             }
@@ -262,13 +279,9 @@ final class MembersSettingsViewModel: ObservableObject {
             context.onAccountDeleted("Your account was deleted.")
         } catch {
             // The server restores the membership first on failure —
-            // nothing was deleted. The user stays signed in.
-            if let budgetError = error as? OnBudgetError,
-               case .serverError(_, let message) = budgetError {
-                deleteFailedStep = message
-            } else {
-                deleteFailedStep = nil
-            }
+            // nothing was deleted. The user stays signed in. The
+            // failure is reported in plain language only — never
+            // the server's step or error text (audit S-P1-3).
             deleteFailed = true
         }
     }
@@ -299,18 +312,25 @@ struct MembersSettingsView: View {
                 .padding(.top, 4)
             // A reload failure shows above the list even when stale
             // rows are already on screen — never a silent stale list.
-            if let error = viewModel.loadError {
-                DismissableErrorBox(error) { viewModel.loadError = nil }
+            // The error + Retry stay until a load succeeds; the
+            // empty "No members yet." line only shows when the load
+            // actually returned empty (audit S-P1-2).
+            if viewModel.loadFailed {
+                ErrorBox(viewModel.loadError ?? "Could not load members.")
+                Button("Retry") {
+                    Task { await viewModel.load() }
+                }
+                .buttonStyle(TertiaryButtonStyle())
             }
             if viewModel.isLoading && viewModel.members.isEmpty {
                 ProgressView()
-            } else if viewModel.members.isEmpty {
-                MutedLine(text: "No members yet.")
-            } else {
+            } else if !viewModel.members.isEmpty {
                 ForEach(viewModel.members) { member in
                     memberRow(member)
                 }
                 rolesLegend
+            } else if !viewModel.loadFailed {
+                MutedLine(text: "No members yet.")
             }
 
             if viewModel.isOwner {
@@ -383,14 +403,9 @@ struct MembersSettingsView: View {
         ) {
             Button("Close", role: .cancel) {
                 viewModel.deleteFailed = false
-                viewModel.deleteFailedStep = nil
             }
         } message: {
-            if let step = viewModel.deleteFailedStep, !step.isEmpty {
-                Text("Could not delete your account. Nothing was deleted — try again. (step: \(step))")
-            } else {
-                Text("Could not delete your account. Nothing was deleted — try again.")
-            }
+            Text("Could not delete your account. Nothing was deleted — try again.")
         }
         .sheet(isPresented: $viewModel.showShareSheet) {
             ShareSheet(text: viewModel.shareText)
@@ -440,7 +455,9 @@ struct MembersSettingsView: View {
             Text("Members join with the invite code below.")
                 .font(.subheadline)
                 .foregroundStyle(Color(hex: "#6b7280"))
-            if viewModel.inviteCodeLoadFailed {
+            if !viewModel.inviteCodeLoaded {
+                ProgressView()
+            } else if viewModel.inviteCodeLoadFailed {
                 ErrorBox("Could not load the invite code. Try again.")
             } else if let code = viewModel.inviteCode, !code.isEmpty {
                 Text(code)

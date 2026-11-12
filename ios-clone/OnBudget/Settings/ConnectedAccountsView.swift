@@ -126,6 +126,10 @@ final class ConnectedAccountsViewModel: ObservableObject {
     @Published var syncLine = "Not synced yet."
     @Published var syncStale = false
     @Published var loadError: String?
+    /// True after a failed load until a load succeeds. The card
+    /// shows the error + Retry while this is set — never a false
+    /// "None." (audit S-P1-2).
+    @Published var loadFailed = false
     @Published var isLoading = false
     @Published var isSyncing = false
     @Published var autoSyncOn = false
@@ -225,8 +229,10 @@ final class ConnectedAccountsViewModel: ObservableObject {
             }
             rows = built
             loadError = nil
+            loadFailed = false
         } catch {
             loadError = "Could not load bank accounts."
+            loadFailed = true
         }
     }
 
@@ -269,7 +275,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
         do {
             linkToken = try await context.client.functions.plaidLink(householdId: context.householdId)
         } catch {
-            toast.showError("Could not start the bank connection: \(settingsErrorMessage(error)). If it says \"not configured,\" the bank connection is not set up on the server yet.")
+            toast.showError("Could not start the bank connection: \(settingsErrorMessage(error)).")
             return
         }
         let outcome: PlaidLinkOutcome
@@ -369,9 +375,10 @@ final class ConnectedAccountsViewModel: ObservableObject {
             if !failed.isEmpty {
                 let first = failed[0]
                 let name = first.institution ?? "A bank connection"
-                let why = first.error.map { ": \($0)" } ?? ""
                 let more = failed.count > 1 ? " (+\(failed.count - 1) more)" : ""
-                toast.showError("Automatic sync could not be \(target ? "turned on" : "turned off") — \(name) failed\(why)\(more). Nothing was changed; the switch stays \(target ? "off" : "on").")
+                // Plain language only — the server's per-item error
+                // text never reaches the user (audit S-P1-3).
+                toast.showError("Automatic sync could not be \(target ? "turned on" : "turned off") — \(name) failed\(more). Nothing was changed; the switch stays \(target ? "off" : "on").")
                 return
             }
             // Confirm against the server before claiming anything:
@@ -470,10 +477,6 @@ struct ConnectedAccountsView: View {
 
     var body: some View {
         SettingsCard(title: "Bank Connection") {
-            Text("Look only — it never moves, sends, or changes anything.")
-                .font(.subheadline)
-                .foregroundStyle(Color(hex: "#6b7280"))
-
             if viewModel.isAdmin {
                 HStack(spacing: 12) {
                     Button(viewModel.isConnecting ? "Connecting…" : "Connect New Account") {
@@ -520,16 +523,24 @@ struct ConnectedAccountsView: View {
             Text("Connected Accounts")
                 .font(.headline)
                 .padding(.top, 4)
+            // A failed load shows the error + Retry and stays there
+            // until a load succeeds — never a false "None." (audit
+            // S-P1-2). Stale rows still render underneath the error.
+            if viewModel.loadFailed {
+                ErrorBox(viewModel.loadError ?? "Could not load bank accounts.")
+                Button("Retry") {
+                    Task { await viewModel.load() }
+                }
+                .buttonStyle(TertiaryButtonStyle())
+            }
             if viewModel.isLoading && viewModel.rows.isEmpty {
                 ProgressView()
-            } else if let error = viewModel.loadError {
-                DismissableErrorBox(error) { viewModel.loadError = nil }
-            } else if viewModel.rows.isEmpty {
-                MutedLine(text: "None.")
-            } else {
+            } else if !viewModel.rows.isEmpty {
                 ForEach(viewModel.rows) { row in
                     accountRow(row)
                 }
+            } else if !viewModel.loadFailed {
+                MutedLine(text: "None.")
             }
         }
         .task { await viewModel.load() }
@@ -611,7 +622,7 @@ struct ConnectedAccountsView: View {
                         .foregroundStyle(DesignTokens.errorText)
                 }
                 if viewModel.isAdmin, row.account != nil {
-                    Button(row.nickname == nil ? "Add nickname" : "Edit nickname") {
+                    Button(row.nickname == nil ? "Add Nickname" : "Edit Nickname") {
                         viewModel.editNickname(row)
                     }
                     .buttonStyle(QuietButtonStyle())

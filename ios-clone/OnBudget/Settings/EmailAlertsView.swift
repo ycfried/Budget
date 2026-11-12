@@ -132,8 +132,11 @@ final class GmailOAuthPresenter: NSObject, ASWebAuthenticationPresentationContex
 @MainActor
 final class EmailAlertsViewModel: ObservableObject {
     @Published var connections: [EmailConnectionPublic] = []
-    @Published var statusLine = "No email connected yet."
     @Published var loadError: String?
+    /// True after a failed load until a load succeeds. The card
+    /// shows the error + Retry while this is set — never a false
+    /// "None." (audit S-P1-2).
+    @Published var loadFailed = false
     @Published var isLoading = false
     @Published var isConnecting = false
     @Published var isChecking = false
@@ -168,10 +171,11 @@ final class EmailAlertsViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             connections = try await context.client.postgrest.emailConnections(householdId: context.householdId)
-            statusLine = connections.isEmpty ? "No email connected yet." : ""
             loadError = nil
+            loadFailed = false
         } catch {
             loadError = "Could not load email connections."
+            loadFailed = true
         }
     }
 
@@ -205,9 +209,11 @@ final class EmailAlertsViewModel: ObservableObject {
         } catch {
             // 409: the caller administers more than one household and
             // must name one. Offer the picker; a failed list read
-            // falls back to the plain 409 message.
+            // falls back to the plain 409 message. The server's own
+            // message never reaches the user — the sanitised
+            // settings error text is used instead (audit S-P1-3).
             if let budgetError = error as? OnBudgetError,
-               case .serverError(let status, let message) = budgetError, status == 409 {
+               case .serverError(let status, _) = budgetError, status == 409 {
                 if let picked = await pickAdminHousehold() {
                     do {
                         let retry = try await context.client.functions.gmailOAuthStart(householdId: picked, client: "native")
@@ -216,7 +222,7 @@ final class EmailAlertsViewModel: ObservableObject {
                         showStartFailure(settingsErrorMessage(error))
                     }
                 } else {
-                    resultMessage = "Could not start the email connection: \(message). You administer more than one household — pick which household to connect this email to."
+                    resultMessage = "Could not start the email connection: \(settingsErrorMessage(error)). You administer more than one household — pick which household to connect this email to."
                     resultIsError = true
                 }
                 return
@@ -226,7 +232,7 @@ final class EmailAlertsViewModel: ObservableObject {
     }
 
     private func showStartFailure(_ message: String) {
-        resultMessage = "Could not start the email connection: \(message). If it says \"not configured,\" the email connection is not set up on the server yet."
+        resultMessage = "Could not start the email connection: \(message)."
         resultIsError = true
     }
 
@@ -242,7 +248,7 @@ final class EmailAlertsViewModel: ObservableObject {
             resultMessage = nil
             await load()
         case .failed:
-            toast.showError("Email connection didn't go through — try again from Funds.")
+            toast.showError("Email connection didn't go through — try again here.")
             resultMessage = nil
         case .cancelled:
             resultMessage = nil
@@ -366,30 +372,29 @@ struct EmailAlertsView: View {
 
     var body: some View {
         SettingsCard(title: "Email Alerts") {
-            Text("Look only — it never moves, sends, or changes anything.")
-                .font(.subheadline)
-                .foregroundStyle(Color(hex: "#6b7280"))
-
             Text("Connected Email")
                 .font(.headline)
                 .padding(.top, 4)
             // A reload failure shows above the list even when
             // connections are already on screen — never a silent
             // stale list, and never a grey muted line for an error.
-            if let error = viewModel.loadError {
-                DismissableErrorBox(error) { viewModel.loadError = nil }
+            // The error + Retry stay until a load succeeds — never
+            // a false "None." (audit S-P1-2).
+            if viewModel.loadFailed {
+                ErrorBox(viewModel.loadError ?? "Could not load email connections.")
+                Button("Retry") {
+                    Task { await viewModel.load() }
+                }
+                .buttonStyle(TertiaryButtonStyle())
             }
             if viewModel.isLoading && viewModel.connections.isEmpty {
                 ProgressView()
-            } else if viewModel.connections.isEmpty && viewModel.loadError == nil {
-                MutedLine(text: viewModel.isAdmin ? "None — connect an email below." : "None — the admin connects email alerts.")
             } else if !viewModel.connections.isEmpty {
                 ForEach(viewModel.connections) { connection in
                     connectionRow(connection)
                 }
-            }
-            if !viewModel.statusLine.isEmpty {
-                MutedLine(text: viewModel.statusLine)
+            } else if !viewModel.loadFailed {
+                MutedLine(text: viewModel.isAdmin ? "None — connect an email below." : "None — the admin connects email alerts.")
             }
             if let callback = appState.gmailCallbackResult {
                 MutedLine(text: callback == .connected ? "Gmail return: Connected" : "Gmail return: Failed")
@@ -485,10 +490,14 @@ struct EmailAlertsView: View {
                     Text("Needs reconnect — access was revoked or expired.")
                         .font(.subheadline)
                         .foregroundStyle(Color(hex: "#6b7280"))
+                } else {
+                    // A healthy row shows the bare word "Connected"
+                    // (audit S-P2-4; standing rule: email status is
+                    // just "Connected").
+                    Text("Connected")
+                        .font(.subheadline)
+                        .foregroundStyle(Color(hex: "#6b7280"))
                 }
-                // No standalone "Connected" line: under a
-                // "Connected Email" heading it repeats the heading.
-                // Only a real problem gets a line.
                 ForEach(viewModel.warningLines(for: connection), id: \.self) { line in
                     Text(line)
                         .font(.subheadline)

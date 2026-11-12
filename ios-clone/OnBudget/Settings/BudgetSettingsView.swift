@@ -114,7 +114,9 @@ struct BudgetSettingsView: View {
                     .font(.subheadline)
                     .foregroundStyle(Color(hex: "#6b7280"))
                 Spacer()
-                RolePill(role: .admin)
+                // The viewer's own role — Owner for the owner, Admin
+                // for admins — matching Members (audit S-P2-7).
+                RolePill(role: context.isOwner ? .owner : .admin)
             }
 
             Text("Weekly Allowance")
