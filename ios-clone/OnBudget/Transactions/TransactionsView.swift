@@ -174,13 +174,25 @@ public struct TransactionsView: View {
                     Button { Task { await viewModel.runSync() } } label: {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
+                            // White icon on the blue state; dark ink on the
+                            // grey state — white-on-grey was ~1.1:1 and
+                            // effectively invisible (audit H-P1-1).
+                            .foregroundStyle(viewModel.allowanceSet ? .white : DesignTokens.ink)
                             .frame(width: 44, height: 44)
                             .background(
                                 viewModel.allowanceSet
                                     ? DesignTokens.primary : Color(hex: "#e5e7eb"))
                             .clipShape(Circle())
+                            // Repeating linear spin while syncing: a plain
+                            // 0°→360° rotation with no animation renders
+                            // identically at both ends, so it never
+                            // visibly spun (audit H-P1-2).
                             .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
+                            .animation(
+                                viewModel.isSyncing
+                                    ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                                    : .default,
+                                value: viewModel.isSyncing)
                     }
                     .disabled(viewModel.isSyncing)
                     .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")

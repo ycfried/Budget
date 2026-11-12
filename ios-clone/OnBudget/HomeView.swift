@@ -213,7 +213,7 @@ public final class HomeViewModel: ObservableObject {
     // MARK: - Bank sync
 
     /// Home sync button (live.js:2842-2876, runBankSync): admin
-    /// only, one sync at a time, spins while running. The toast
+    /// only, one sync at a time, spins while syncing. The toast
     /// text is bankSyncToast (filterState.mjs:449-463).
     public func syncBank() async {
         guard isAdmin, !isSyncing else { return }
@@ -407,13 +407,25 @@ public struct HomeView: View {
                 Button { Task { await viewModel.syncBank() } } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        // White icon on the blue state; dark ink on the
+                        // grey state — white-on-grey was ~1.1:1 and
+                        // effectively invisible (audit H-P1-1).
+                        .foregroundStyle(viewModel.allowanceSet == true ? .white : DesignTokens.ink)
                         .frame(width: 44, height: 44)
                         .background(
                             viewModel.allowanceSet == true
                                 ? DesignTokens.primary : Color(hex: "#e5e7eb"))
                         .clipShape(Circle())
+                        // Repeating linear spin while syncing: a plain
+                        // 0°→360° rotation with no animation renders
+                        // identically at both ends, so it never
+                        // visibly spun (audit H-P1-2).
                         .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
+                        .animation(
+                            viewModel.isSyncing
+                                ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                                : .default,
+                            value: viewModel.isSyncing)
                 }
                 .disabled(viewModel.isSyncing)
                 .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")
