@@ -423,7 +423,10 @@ public final class FundsViewModel: ObservableObject {
     /// Inserts a pending `fund_requests` row; audits
     /// "Extra Fund request created" (best-effort — a blocked audit
     /// insert must not fail the request itself).
-    public func createFundRequest(amountCents: Int, note: String, transactionId: UUID?) async {
+    /// Returns true only when the request was sent, so the caller
+    /// clears the typed input on success only (F-P1-4).
+    public func createFundRequest(amountCents: Int, note: String, transactionId: UUID?) async -> Bool {
+        var succeeded = false
         await guarded("request", title: "Could Not Send Request") {
             _ = try await context.client.postgrest.createFundRequest(
                 householdId: context.householdId,
@@ -444,9 +447,11 @@ public final class FundsViewModel: ObservableObject {
             } catch {
                 // Audit is best-effort only.
             }
+            succeeded = true
             succeed("Request sent.")
             await refresh()
         }
+        return succeeded
     }
 
     /// Approve (in full or as a split) via `approve_and_allocate`.
@@ -483,6 +488,8 @@ public final class FundsViewModel: ObservableObject {
     /// New income via `record_charity_income`, or a correction via
     /// `correct_charity_income` (append-only reversal + replacement;
     /// the old entry stays, marked reversed).
+    /// Returns true only when the save committed, so the caller
+    /// clears the typed input on success only (F-P1-4).
     public func saveIncome(
         correcting income: CharityIncome?,
         amountCents: Int,
@@ -490,7 +497,8 @@ public final class FundsViewModel: ObservableObject {
         sourceLabel: String,
         rateBp: Int?,
         note: String
-    ) async {
+    ) async -> Bool {
+        var succeeded = false
         await guarded("income", title: "Could Not Save Income") {
             let result: CharityIncomeResult
             if let income {
@@ -514,8 +522,10 @@ public final class FundsViewModel: ObservableObject {
                 )
                 succeed("Income saved — commits \(MoneyFormat.formatCents(result.committedCents)) to charity.")
             }
+            succeeded = true
             await refresh()
         }
+        return succeeded
     }
 
     // MARK: - Review: held refunds
@@ -610,7 +620,10 @@ public final class FundsViewModel: ObservableObject {
     /// (owner, Nov 4). One `set_weekly_allowance_override` row per
     /// week via the kit's multi-week helper; never `add_temp_increase`
     /// (revoked live Nov 9, 2026).
-    public func setTemporaryAllowance(newTotalCents: Int, weeks: Int) async {
+    /// Returns true only when the override was set, so the caller
+    /// clears the typed input on success only (F-P1-4).
+    public func setTemporaryAllowance(newTotalCents: Int, weeks: Int) async -> Bool {
+        var succeeded = false
         await guarded("temp", title: "Could Not Set Allowance") {
             try await context.client.rpcs.setWeeklyAllowanceOverride(
                 pHouseholdId: context.householdId,
@@ -618,8 +631,10 @@ public final class FundsViewModel: ObservableObject {
                 pAllowanceCents: newTotalCents,
                 weeks: weeks
             )
+            succeeded = true
             succeed("Weekly allowance set to \(MoneyFormat.formatCents(newTotalCents)) for \(weeks) week(s).")
             await refresh()
         }
+        return succeeded
     }
 }

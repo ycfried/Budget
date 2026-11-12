@@ -268,13 +268,17 @@ public struct AskFundForm: View {
                             }
                             fieldError = nil
                             Task {
-                                await viewModel.createFundRequest(
+                                // Clear only on success — on failure
+                                // the typed input stays beside the
+                                // error (F-P1-4).
+                                if await viewModel.createFundRequest(
                                     amountCents: cents,
                                     note: note.trimmingCharacters(in: .whitespaces),
                                     transactionId: nil
-                                )
-                                amountText = ""
-                                note = ""
+                                ) {
+                                    amountText = ""
+                                    note = ""
+                                }
                             }
                         }
                         FundsTertiaryButton("Cancel") {

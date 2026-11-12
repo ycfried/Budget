@@ -191,16 +191,20 @@ public struct CharityIncomeForm: View {
         }
         fieldError = nil
         Task {
-            await viewModel.saveIncome(
+            // Clear only on success — on failure the typed input
+            // (and the correction, if any) stays beside the error
+            // (F-P1-4).
+            if await viewModel.saveIncome(
                 correcting: correcting,
                 amountCents: cents,
                 date: dateString,
                 sourceLabel: source,
                 rateBp: overrideBp,
                 note: note.trimmingCharacters(in: .whitespaces)
-            )
-            correcting = nil
-            clearIncomeFields()
+            ) {
+                correcting = nil
+                clearIncomeFields()
+            }
         }
     }
 }

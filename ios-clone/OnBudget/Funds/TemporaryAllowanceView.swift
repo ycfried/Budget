@@ -87,9 +87,12 @@ public struct TemporaryAllowanceView: View {
                 }
                 fieldError = nil
                 Task {
-                    await viewModel.setTemporaryAllowance(newTotalCents: cents, weeks: weeks)
-                    newTotalText = ""
-                    weeks = 1
+                    // Clear only on success — on failure the typed
+                    // input stays beside the error (F-P1-4).
+                    if await viewModel.setTemporaryAllowance(newTotalCents: cents, weeks: weeks) {
+                        newTotalText = ""
+                        weeks = 1
+                    }
                 }
             }
         }
