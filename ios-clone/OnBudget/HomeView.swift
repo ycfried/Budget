@@ -1012,6 +1012,15 @@ public struct WeeklySheet: View {
                     .buttonStyle(TertiaryButtonStyle())
             }
             .padding(.top, 8)
+            // Footnote only (owner, Nov 12 2026): the header explainer
+            // line was removed, but its second sentence explains the
+            // Unlinked Refunds row, so it survives here at the bottom,
+            // small and muted, only when it applies.
+            if week.unlinkedExcessCents != 0 {
+                Text("Unlinked refunds above this week's spending are not counted here.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(DesignTokens.muted)
+            }
             Spacer()
         }
         .padding(.horizontal, 24)
