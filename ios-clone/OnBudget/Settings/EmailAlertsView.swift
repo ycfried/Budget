@@ -209,9 +209,11 @@ final class EmailAlertsViewModel: ObservableObject {
         } catch {
             // 409: the caller administers more than one household and
             // must name one. Offer the picker; a failed list read
-            // falls back to the plain 409 message.
+            // falls back to the plain 409 message. The server's own
+            // message never reaches the user — the sanitised
+            // settings error text is used instead (audit S-P1-3).
             if let budgetError = error as? OnBudgetError,
-               case .serverError(let status, let message) = budgetError, status == 409 {
+               case .serverError(let status, _) = budgetError, status == 409 {
                 if let picked = await pickAdminHousehold() {
                     do {
                         let retry = try await context.client.functions.gmailOAuthStart(householdId: picked, client: "native")
@@ -220,7 +222,7 @@ final class EmailAlertsViewModel: ObservableObject {
                         showStartFailure(settingsErrorMessage(error))
                     }
                 } else {
-                    resultMessage = "Could not start the email connection: \(message). You administer more than one household — pick which household to connect this email to."
+                    resultMessage = "Could not start the email connection: \(settingsErrorMessage(error)). You administer more than one household — pick which household to connect this email to."
                     resultIsError = true
                 }
                 return

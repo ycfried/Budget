@@ -375,9 +375,10 @@ final class ConnectedAccountsViewModel: ObservableObject {
             if !failed.isEmpty {
                 let first = failed[0]
                 let name = first.institution ?? "A bank connection"
-                let why = first.error.map { ": \($0)" } ?? ""
                 let more = failed.count > 1 ? " (+\(failed.count - 1) more)" : ""
-                toast.showError("Automatic sync could not be \(target ? "turned on" : "turned off") — \(name) failed\(why)\(more). Nothing was changed; the switch stays \(target ? "off" : "on").")
+                // Plain language only — the server's per-item error
+                // text never reaches the user (audit S-P1-3).
+                toast.showError("Automatic sync could not be \(target ? "turned on" : "turned off") — \(name) failed\(more). Nothing was changed; the switch stays \(target ? "off" : "on").")
                 return
             }
             // Confirm against the server before claiming anything:

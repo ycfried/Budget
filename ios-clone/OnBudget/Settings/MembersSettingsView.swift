@@ -31,7 +31,8 @@
 // - Delete Account: two-step confirm, then
 //   `EdgeFunctionsClient.deleteAccount()` (no household id — the
 //   function derives it from the caller). On failure the server
-//   restores the membership first; the alert names the failing step.
+//   restores the membership first; the alert says so in plain
+//   language and never names the server step (audit S-P1-3).
 //   On success: push-token unregister best-effort, then
 //   `SupabaseClient.signOut()` (clears the session), then
 //   `context.onAccountDeleted("Your account was deleted.")`.
@@ -74,7 +75,6 @@ final class MembersSettingsViewModel: ObservableObject {
     @Published var showShareSheet = false
     @Published var deleteStep: DeleteStep?
     @Published var deleteFailed = false
-    @Published var deleteFailedStep: String?
 
     /// A pending promote/demote, captured for the confirm alert.
     struct RoleChangeRequest: Identifiable {
@@ -267,7 +267,6 @@ final class MembersSettingsViewModel: ObservableObject {
         do {
             let result = try await context.client.functions.deleteAccount()
             guard result.deleted else {
-                deleteFailedStep = result.step
                 deleteFailed = true
                 return
             }
@@ -280,13 +279,9 @@ final class MembersSettingsViewModel: ObservableObject {
             context.onAccountDeleted("Your account was deleted.")
         } catch {
             // The server restores the membership first on failure —
-            // nothing was deleted. The user stays signed in.
-            if let budgetError = error as? OnBudgetError,
-               case .serverError(_, let message) = budgetError {
-                deleteFailedStep = message
-            } else {
-                deleteFailedStep = nil
-            }
+            // nothing was deleted. The user stays signed in. The
+            // failure is reported in plain language only — never
+            // the server's step or error text (audit S-P1-3).
             deleteFailed = true
         }
     }
@@ -408,14 +403,9 @@ struct MembersSettingsView: View {
         ) {
             Button("Close", role: .cancel) {
                 viewModel.deleteFailed = false
-                viewModel.deleteFailedStep = nil
             }
         } message: {
-            if let step = viewModel.deleteFailedStep, !step.isEmpty {
-                Text("Could not delete your account. Nothing was deleted — try again. (step: \(step))")
-            } else {
-                Text("Could not delete your account. Nothing was deleted — try again.")
-            }
+            Text("Could not delete your account. Nothing was deleted — try again.")
         }
         .sheet(isPresented: $viewModel.showShareSheet) {
             ShareSheet(text: viewModel.shareText)
