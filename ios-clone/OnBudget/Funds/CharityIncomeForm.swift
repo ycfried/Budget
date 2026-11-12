@@ -20,6 +20,8 @@ public struct CharityIncomeForm: View {
     /// Owned by the parent (FundsView) so the Correct button in Fund
     /// Activity can open this form prefilled.
     @Binding public var correcting: CharityIncome?
+    /// Closes the form back to the Funds list (owned by FundsView).
+    public var onClose: () -> Void = {}
 
     @State private var sourceText = ""
     @State private var amountText = ""
@@ -28,9 +30,10 @@ public struct CharityIncomeForm: View {
     @State private var note = ""
     @State private var fieldError: String?
 
-    public init(viewModel: FundsViewModel, correcting: Binding<CharityIncome?>) {
+    public init(viewModel: FundsViewModel, correcting: Binding<CharityIncome?>, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
         self._correcting = correcting
+        self.onClose = onClose
     }
 
     private var defaultRateBp: Int { viewModel.charitySettings?.defaultRateBp ?? 1000 }
@@ -122,6 +125,22 @@ public struct CharityIncomeForm: View {
                             correcting = nil
                             clearIncomeFields()
                         }
+                    } else {
+                        FundsTertiaryButton("Cancel") {
+                            clearIncomeFields()
+                            onClose()
+                        }
+                    }
+                }
+                // While correcting, Cancel Correction reverts to add
+                // mode; this quiet Cancel closes the form outright
+                // (kept off the button row so the two cancels never
+                // sit next to each other in the same treatment).
+                if correcting != nil {
+                    FundsQuietButton("Cancel") {
+                        correcting = nil
+                        clearIncomeFields()
+                        onClose()
                     }
                 }
             }

@@ -66,13 +66,13 @@ public struct FundsView: View {
                     backButton
                     switch form {
                     case .add:
-                        AddMoneyForm(viewModel: viewModel)
+                        AddMoneyForm(viewModel: viewModel, onClose: { openForm = nil })
                     case .use:
-                        UseFundForm(viewModel: viewModel)
+                        UseFundForm(viewModel: viewModel, onClose: { openForm = nil })
                     case .ask:
-                        AskFundForm(viewModel: viewModel)
+                        AskFundForm(viewModel: viewModel, onClose: { openForm = nil })
                     case .income:
-                        CharityIncomeForm(viewModel: viewModel, correcting: $correctingIncome)
+                        CharityIncomeForm(viewModel: viewModel, correcting: $correctingIncome, onClose: { openForm = nil })
                     case .temp:
                         TemporaryAllowanceView(viewModel: viewModel)
                     }

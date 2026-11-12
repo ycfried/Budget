@@ -12,14 +12,17 @@ import OnBudgetKit
 
 public struct AddMoneyForm: View {
     @ObservedObject public var viewModel: FundsViewModel
+    /// Closes the form back to the Funds list (owned by FundsView).
+    public var onClose: () -> Void = {}
     @State private var amountText = ""
     @State private var note = ""
     @State private var confirmed = false
     @State private var fieldError: String?
     @State private var showConfirm = false
 
-    public init(viewModel: FundsViewModel) {
+    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.onClose = onClose
     }
 
     private var amountCents: Int? { MoneyFormat.parseDollarsStrict(amountText) }
@@ -67,6 +70,7 @@ public struct AddMoneyForm: View {
                         confirmed = false
                         fieldError = nil
                         viewModel.toast = nil
+                        onClose()
                     }
                 }
                 FundsMuted("Log each deposit only once.")
@@ -109,6 +113,8 @@ public struct AddMoneyForm: View {
 
 public struct UseFundForm: View {
     @ObservedObject public var viewModel: FundsViewModel
+    /// Closes the form back to the Funds list (owned by FundsView).
+    public var onClose: () -> Void = {}
     @State private var amountText = ""
     @State private var note = ""
     @State private var fieldError: String?
@@ -117,8 +123,9 @@ public struct UseFundForm: View {
     @State private var overrideReason = ""
     @State private var pendingCents: Int?
 
-    public init(viewModel: FundsViewModel) {
+    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.onClose = onClose
     }
 
     private var amountCents: Int? { MoneyFormat.parseDollarsStrict(amountText) }
@@ -152,6 +159,7 @@ public struct UseFundForm: View {
                         amountText = ""
                         note = ""
                         fieldError = nil
+                        onClose()
                     }
                 }
             }
@@ -212,12 +220,15 @@ public struct UseFundForm: View {
 
 public struct AskFundForm: View {
     @ObservedObject public var viewModel: FundsViewModel
+    /// Closes the form back to the Funds list (owned by FundsView).
+    public var onClose: () -> Void = {}
     @State private var amountText = ""
     @State private var note = ""
     @State private var fieldError: String?
 
-    public init(viewModel: FundsViewModel) {
+    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.onClose = onClose
     }
 
     private var amountCents: Int? { MoneyFormat.parseDollarsStrict(amountText) }
@@ -259,6 +270,7 @@ public struct AskFundForm: View {
                             amountText = ""
                             note = ""
                             fieldError = nil
+                            onClose()
                         }
                     }
                 }
