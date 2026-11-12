@@ -150,28 +150,13 @@ struct ActivityView: View {
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.muted)
 
-                SettingsCard(title: "Filter by Date") {
-                    HStack(spacing: 12) {
-                        dateField(label: "From", text: $viewModel.draftFrom)
-                        dateField(label: "To", text: $viewModel.draftTo)
-                    }
-                    HStack(spacing: 12) {
-                        Button("Apply Filter") {
-                            Task { await viewModel.applyFilter() }
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        Button("Clear Date Filter") {
-                            Task { await viewModel.clearFilter() }
-                        }
-                        .buttonStyle(TertiaryButtonStyle())
-                    }
-                    if !viewModel.filter.periodLine.isEmpty {
-                        MutedLine(text: viewModel.filter.periodLine)
-                    }
-                    if !viewModel.filter.countLine.isEmpty {
-                        MutedLine(text: viewModel.filter.countLine)
-                    }
-                }
+                HistoryDateFilterCard(
+                    draftFrom: $viewModel.draftFrom,
+                    draftTo: $viewModel.draftTo,
+                    filter: viewModel.filter,
+                    onApply: { Task { await viewModel.applyFilter() } },
+                    onClear: { Task { await viewModel.clearFilter() } }
+                )
 
                 if viewModel.isLoading && viewModel.groups.isEmpty {
                     ProgressView()
@@ -180,7 +165,7 @@ struct ActivityView: View {
                 } else if viewModel.groups.isEmpty {
                     MutedLine(text: viewModel.filter.isActive
                         ? "No entries in the selected period."
-                        : "No audit entries yet.")
+                        : "No activity yet.")
                 } else {
                     ForEach(viewModel.groups) { group in
                         daySection(group)
@@ -199,37 +184,6 @@ struct ActivityView: View {
             .padding()
         }
         .task { await viewModel.load() }
-    }
-
-    private func dateField(label: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            DatePicker("", selection: Binding(
-                get: { Self.date(from: text.wrappedValue) ?? Date() },
-                set: { text.wrappedValue = Self.string(from: $0) }
-            ), displayedComponents: .date)
-            .labelsHidden()
-            .datePickerStyle(.compact)
-            .frame(maxWidth: 160)
-        }
-    }
-
-    private static func date(from string: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter.date(from: string)
-    }
-
-    private static func string(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter.string(from: date)
     }
 
     private func daySection(_ group: ActivityDayGroup) -> some View {

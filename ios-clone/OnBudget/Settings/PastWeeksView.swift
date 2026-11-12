@@ -94,6 +94,10 @@ final class PastWeeksViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var draftFrom = ""
     @Published var draftTo = ""
+    /// True when more than 100 closed weeks matched and the list
+    /// was cut to the latest 100 (audit X-P2-4) — the view says so
+    /// instead of silently truncating.
+    @Published var weekCapped = false
 
     private let context: SettingsContext
     private let toast: ToastState
@@ -125,12 +129,14 @@ final class PastWeeksViewModel: ObservableObject {
             for (index, close) in ascending.enumerated() {
                 carryInByWeek[close.weekStart] = index == 0 ? nil : ascending[index - 1].outgoingDebtCents
             }
-            let shown = AuditFormatting.filterRowsByDate(
+            let filtered = AuditFormatting.filterRowsByDate(
                 closes.sorted { $0.weekStart > $1.weekStart },
                 getDate: { $0.weekStart },
                 from: filter.fromDate.isEmpty ? nil : filter.fromDate,
                 to: filter.toDate.isEmpty ? nil : filter.toDate
-            ).prefix(100)
+            )
+            weekCapped = filtered.count > 100
+            let shown = filtered.prefix(100)
             filter.weekShown = shown.count
             filter.weekTotal = closes.count
             weeks = shown.map { close in
@@ -208,28 +214,13 @@ struct PastWeeksView: View {
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.muted)
 
-                SettingsCard(title: "Filter by Date") {
-                    HStack(spacing: 12) {
-                        dateField(label: "From", text: $viewModel.draftFrom)
-                        dateField(label: "To", text: $viewModel.draftTo)
-                    }
-                    HStack(spacing: 12) {
-                        Button("Apply Filter") {
-                            Task { await viewModel.applyFilter() }
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        Button("Clear Date Filter") {
-                            Task { await viewModel.clearFilter() }
-                        }
-                        .buttonStyle(TertiaryButtonStyle())
-                    }
-                    if !viewModel.filter.periodLine.isEmpty {
-                        MutedLine(text: viewModel.filter.periodLine)
-                    }
-                    if !viewModel.filter.countLine.isEmpty {
-                        MutedLine(text: viewModel.filter.countLine)
-                    }
-                }
+                HistoryDateFilterCard(
+                    draftFrom: $viewModel.draftFrom,
+                    draftTo: $viewModel.draftTo,
+                    filter: viewModel.filter,
+                    onApply: { Task { await viewModel.applyFilter() } },
+                    onClear: { Task { await viewModel.clearFilter() } }
+                )
 
                 SettingsCard(title: "Week History") {
                     if viewModel.isLoading && viewModel.weeks.isEmpty {
@@ -241,6 +232,9 @@ struct PastWeeksView: View {
                             ? "No closed weeks in the selected period."
                             : "No closed weeks yet.")
                     } else {
+                        if viewModel.weekCapped && !viewModel.filter.isActive {
+                            MutedLine(text: "Showing the latest 100 closed weeks.")
+                        }
                         ForEach(viewModel.weeks) { week in
                             weekBlock(week)
                         }
@@ -250,37 +244,6 @@ struct PastWeeksView: View {
             .padding()
         }
         .task { await viewModel.load() }
-    }
-
-    private func dateField(label: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            DatePicker("", selection: Binding(
-                get: { Self.date(from: text.wrappedValue) ?? Date() },
-                set: { text.wrappedValue = Self.string(from: $0) }
-            ), displayedComponents: .date)
-            .labelsHidden()
-            .datePickerStyle(.compact)
-            .frame(maxWidth: 160)
-        }
-    }
-
-    private static func date(from string: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter.date(from: string)
-    }
-
-    private static func string(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter.string(from: date)
     }
 
     private func weekBlock(_ week: PastWeekRow) -> some View {
@@ -301,7 +264,7 @@ struct PastWeeksView: View {
             .background(DesignTokens.infoBackground)
             .cornerRadius(12)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(DimOnPressButtonStyle())
         .accessibilityLabel("Week of \(week.heading) — show its transactions")
     }
 

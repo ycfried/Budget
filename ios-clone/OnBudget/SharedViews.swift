@@ -80,6 +80,18 @@ public struct SmallTertiaryButtonStyle: ButtonStyle {
     }
 }
 
+/// Plain row style with pressed-state dimming (audit X-P2-6):
+/// a full-width tappable row (e.g. a Past Week) must give press
+/// feedback, which `.buttonStyle(.plain)` does not. The label's
+/// own styling is untouched — only opacity dips while pressed.
+public struct DimOnPressButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
 /// Back buttons: light blue #3b82f6, bold 700, 15px, no background,
 /// no border. Text is always "← Back".
 public struct BackButton: View {
