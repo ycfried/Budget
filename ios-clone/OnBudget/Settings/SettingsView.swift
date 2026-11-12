@@ -18,8 +18,9 @@ import OnBudgetKit
 /// A Settings section a caller can ask Settings to land on when it
 /// opens (owner decision #27: "Set Your Weekly Allowance" lands on
 /// the Budget card). Carried on `AppViewModel.settingsScrollTarget`
-/// and consumed once by `SettingsView`.
-enum SettingsScrollTarget: String, Hashable {
+/// and consumed once by `SettingsView`. Public: `AppViewModel` is a
+/// public class and exposes it on a public property and method.
+public enum SettingsScrollTarget: String, Hashable {
     case budget
 }
 
