@@ -24,6 +24,13 @@ import OnBudgetKit
 final class ProfileSettingsViewModel: ObservableObject {
     @Published var name: String
     @Published var email: String
+    /// The new address awaiting confirmation after a successful
+    /// Save Email. The sign-in email does NOT change until the new
+    /// address is confirmed, so the field keeps showing the pending
+    /// address with a persistent "Confirmation pending" note under
+    /// it — the user must never mistake it for the current one
+    /// (audit S-P2-5). Clears on the next open (fresh view model).
+    @Published var pendingEmailConfirmation: String?
     @Published var isSavingName = false
     @Published var isSavingEmail = false
     @Published var isSigningOut = false
@@ -154,6 +161,7 @@ final class ProfileSettingsViewModel: ObservableObject {
         defer { isSavingEmail = false }
         do {
             _ = try await context.client.updateEmail(trimmed)
+            pendingEmailConfirmation = trimmed
             toast.show("Confirmation sent to \(trimmed) — your sign-in email stays as it is until you confirm it.", kind: .success)
         } catch {
             toast.showError("Could not change your email. Try again.")
@@ -215,6 +223,11 @@ struct ProfileSettingsView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(viewModel.isSavingEmail)
+            if let pending = viewModel.pendingEmailConfirmation {
+                Text("Confirmation pending — check your inbox to confirm \(pending). Your sign-in email stays as it is until then.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
 
             Text("Password")
                 .font(.subheadline)
@@ -246,7 +259,11 @@ struct ProfileSettingsView: View {
             Button(viewModel.isSigningOut ? "Signing Out…" : "Sign Out") {
                 Task { await viewModel.signOut() }
             }
-            .buttonStyle(TertiaryButtonStyle())
+            // Distinct outline treatment — never the same grey
+            // tertiary as Change Password above it when the Face ID
+            // section is hidden (audit S-P2-6; owner button rule:
+            // two adjacent buttons never share a colour/treatment).
+            .buttonStyle(OutlineButtonStyle())
             .accessibilityIdentifier("settings.signOut")
             .disabled(viewModel.isSigningOut)
             .padding(.top, 4)

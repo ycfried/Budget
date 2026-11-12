@@ -65,6 +65,29 @@ public struct PaleButtonStyle: ButtonStyle {
     }
 }
 
+/// Distinct outline: white bg, brand-blue border + text, same
+/// sizing as Primary / Tertiary. The second treatment in a pair
+/// that must not share a colour with a grey tertiary neighbour
+/// (owner button rule, Nov 3–4, 2026).
+public struct OutlineButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(DesignTokens.primary)
+            .padding(.vertical, 13)
+            .padding(.horizontal, 18)
+            .frame(maxWidth: .infinity)
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(DesignTokens.primary, lineWidth: 1.5)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}
+
 /// Small variant of the tertiary style for in-row actions.
 public struct SmallTertiaryButtonStyle: ButtonStyle {
     public init() {}
