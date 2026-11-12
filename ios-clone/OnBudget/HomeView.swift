@@ -896,16 +896,14 @@ public struct WeeklySheet: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
-                Spacer()
-                Text("Weekly Budget")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Color.clear.frame(width: 50)
-            }
+            // Single dismiss control: the bottom "Close" next to
+            // "Show Transactions". The header "Cancel" duplicated it
+            // (audit H-P2-3), and its centring shim was narrower
+            // than the rendered button, so the title now centres
+            // on its own frame instead.
+            Text("Weekly Budget")
+                .font(.system(size: 17, weight: .bold))
+                .frame(maxWidth: .infinity, alignment: .center)
             Text("Pending transactions are included and marked.\(week.unlinkedExcessCents != 0 ? " Unlinked refunds above this week's spending are not counted here." : "")")
                 .font(.system(size: 15))
             // Reconciliation rows (live.js v69): Base / Temporary /
