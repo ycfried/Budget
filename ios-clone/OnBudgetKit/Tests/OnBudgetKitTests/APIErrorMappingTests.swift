@@ -76,8 +76,63 @@ final class APIErrorMappingTests: XCTestCase {
         {"error": "invalid_grant", "error_description": "Invalid login credentials"}
         """.utf8)
         let error = OnBudgetError.fromAuthResponse(status: 400, data: body)
-        // The UI must not say which field was wrong (live.js:2425-2430).
-        XCTAssertEqual(error, .validationFailed("Incorrect email or password"))
+        // The UI must not say which field was wrong (live.js:2425-2430);
+        // wording is the owner's: "username or password is incorrect".
+        // The server CANNOT distinguish the two cases, by design:
+        // Supabase's signInWithPassword docs state the error "will not
+        // distinguish between the cases where the account does not
+        // exist or that the email/phone and password combination is
+        // wrong" — one `invalid_credentials` code covers both, so any
+        // per-field message would be faked. The mechanism that would
+        // be needed is a server-side email-existence check (Edge
+        // Function + GoTrue Admin API, service_role) — a backend
+        // change that would let anyone probe whether an email has an
+        // account, so it needs an explicit owner decision, not a
+        // silent client change.
+        XCTAssertEqual(error, .validationFailed("Username or password is incorrect."))
+    }
+
+    func testAuthInvalidCredentialsInMsgFormatMapsToPlainMessage() {
+        // GoTrue's newer error format carries the text in `msg`:
+        // {"code":400,"error_code":"invalid_grant",
+        //  "msg":"Invalid login credentials"}. This is the body behind
+        // the owner's "Sign-in failed (400)." report (Nov 11, 2026):
+        // without the `msg` field the message decoded empty and the
+        // raw fallback fired.
+        let body = Data("""
+        {"code": 400, "error_code": "invalid_grant", "msg": "Invalid login credentials"}
+        """.utf8)
+        let error = OnBudgetError.fromAuthResponse(status: 400, data: body)
+        XCTAssertEqual(error, .validationFailed("Username or password is incorrect."))
+    }
+
+    func testAuthFallbackNeverShowsARawStatusCode() {
+        // An unparseable 400 body must still read as plain language,
+        // never "Sign-in failed (400)."
+        let error = OnBudgetError.fromAuthResponse(status: 400, data: Data("not json".utf8))
+        XCTAssertEqual(error, .serverError(status: 400, message: "Could not complete the request. Try again."))
+        XCTAssertFalse(error.userMessage.contains("400"))
+        let httpError = OnBudgetError.fromHTTPResponse(status: 500, data: Data("not json".utf8))
+        XCTAssertEqual(httpError, .serverError(status: 500, message: "Could not complete the request. Try again."))
+        XCTAssertFalse(httpError.userMessage.contains("500"))
+    }
+
+    func testAuthSignUpAlreadyRegisteredMapsToValidationFailed() {
+        // GoTrue's sign-up error for an existing email carries the
+        // text in `msg`, not `message`:
+        // {"code":400,"error_code":"user_already_exists",
+        //  "msg":"User already registered"}. Before the `msg` field
+        // was decoded, this fell through to the generic
+        // "Sign-in failed (400)." and the name step could never tell
+        // the user the email is already registered (owner report,
+        // Nov 11, 2026).
+        let body = Data("""
+        {"code": 400, "error_code": "user_already_exists", "msg": "User already registered"}
+        """.utf8)
+        let error = OnBudgetError.fromAuthResponse(status: 400, data: body)
+        XCTAssertEqual(error, .validationFailed("User already registered"))
+        XCTAssertEqual(error.userMessage, "User already registered")
+        XCTAssertFalse(error.isRetryable)
     }
 
     func testURLErrorMapping() {

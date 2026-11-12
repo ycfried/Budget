@@ -219,8 +219,11 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
             return classifyServerMessage(message, status: status)
         }
         if status == 401 { return .sessionExpired }
-        if status == 403 { return .forbidden("Request refused (403).") }
-        return .serverError(status: status, message: "Request failed (\(status)).")
+        if status == 403 { return .forbidden("The request was refused.") }
+        // Plain language only — never a raw "Request failed (400)."
+        // (owner, Nov 11, 2026). The status code is kept on the case
+        // for logging, never in the message.
+        return .serverError(status: status, message: "Could not complete the request. Try again.")
     }
 
     /// Classify a GoTrue (auth) error body. GoTrue answers failures as
@@ -228,7 +231,7 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
     public static func fromAuthResponse(status: Int, data: Data) -> OnBudgetError {
         let decoder = JSONDecoder()
         if let body = try? decoder.decode(GoTrueErrorBody.self, from: data) {
-            let message = body.errorDescription ?? body.error ?? body.message ?? ""
+            let message = body.errorDescription ?? body.error ?? body.msg ?? body.message ?? ""
             if !message.isEmpty {
                 // `invalid_grant` means different things by context:
                 // on the password grant it is a wrong email/password;
@@ -238,7 +241,7 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
                 // before reaching here. Check it FIRST, before the
                 // session-expired signals (which also match the code).
                 if body.error == "invalid_grant" || message.lowercased().contains("invalid login credentials") {
-                    return .validationFailed("Incorrect email or password")
+                    return .validationFailed("Username or password is incorrect.")
                 }
                 if status == 401 || isSessionExpiredMessage(message) {
                     return .sessionExpired
@@ -247,7 +250,10 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
             }
         }
         if status == 401 { return .sessionExpired }
-        return .serverError(status: status, message: "Sign-in failed (\(status)).")
+        // Plain language only: a raw "Sign-in failed (400)." is never
+        // shown to the user (owner, Nov 11, 2026). The status code is
+        // kept on the case for logging, never in the message.
+        return .serverError(status: status, message: "Could not complete the request. Try again.")
     }
 }
 
@@ -270,12 +276,18 @@ struct GoTrueErrorBody: Decodable {
     let error: String?
     let errorDescription: String?
     let message: String?
+    // GoTrue's signup / token-refresh errors carry the text in
+    // `msg` ("User already registered"), not `message` — without
+    // this field those errors decoded to an empty string and
+    // surfaced as the generic "Sign-in failed (400)."
+    let msg: String?
     let code: Int?
 
     enum CodingKeys: String, CodingKey {
         case error
         case errorDescription = "error_description"
         case message
+        case msg
         case code
     }
 }
