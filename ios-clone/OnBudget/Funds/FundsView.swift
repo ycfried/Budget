@@ -306,6 +306,8 @@ public struct FundsView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         if !isAdminOnly || isAdmin {
+            // Whole-row tap target (owner rule, Nov 11 2026): the
+            // entire row is the toggle; the chevron is only a hint.
             Button {
                 openMore = openMore == section ? nil : section
             } label: {
@@ -314,16 +316,19 @@ public struct FundsView: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     Spacer()
-                    Text(openMore == section ? "⌃" : "›")
+                    Text("⌄")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(DesignTokens.primary)
+                        .rotationEffect(.degrees(openMore == section ? 180 : 0))
                 }
                 .padding(.vertical, 12)
             }
             .buttonStyle(.plain)
+            .animation(ExpandAnimation.animation, value: openMore == section)
             if openMore == section {
                 content()
                     .padding(.bottom, 12)
+                    .transition(ExpandAnimation.transition)
             }
             Divider()
         }

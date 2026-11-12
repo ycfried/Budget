@@ -157,7 +157,7 @@ public struct HouseholdView: View {
             // field that caused it (audit F-P2-7; web renders
             // #householdMsg below Join too).
             if let message {
-                if messageIsError { DismissableErrorBox(message) { message = nil } } else { InfoBox(message) }
+                if messageIsError { DismissableErrorBox(message) { self.message = nil } } else { InfoBox(message) }
             }
         }
     }

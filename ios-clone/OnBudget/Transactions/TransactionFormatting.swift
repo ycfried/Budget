@@ -213,25 +213,18 @@ public enum TransactionFormatting {
         return "••\(transaction.cardSuffix)"
     }
 
-    /// The counting sentence in the detail panel (live.js:1011).
-    public static func countingSentence(for transaction: Transaction) -> String {
-        if transaction.kind == .charity { return "Outside weekly spending." }
-        if transaction.isInTrash { return "Kept for the record; does not count toward any week." }
-        if transaction.state == .reversed { return "Reversed; does not count." }
-        switch transaction.kind {
-        case .payment: return "Card payment; does not count toward weekly spending."
-        case .cashback: return "Cash-back credit; does not count toward weekly spending."
-        case .transfer: return "Transfer; does not count toward weekly spending."
-        default: return "Counts toward its week unless excluded."
+    /// One chip label for the From/To date range: "Nov 8 – Nov 14"
+    /// for a range, just "Nov 8" when both bounds are the same date,
+    /// "From Nov 8" / "To Nov 14" for a single bound; nil when no
+    /// date filter is set.
+    public static func dateRangeChipLabel(from fromDate: String, to toDate: String) -> String? {
+        if fromDate.isEmpty, toDate.isEmpty { return nil }
+        if !fromDate.isEmpty, !toDate.isEmpty {
+            if fromDate == toDate { return fmtShort(fromDate) }
+            return "\(fmtShort(fromDate)) – \(fmtShort(toDate))"
         }
-    }
-
-    /// Email-alert rows carry this muted line in the detail panel.
-    public static func emailAlertLine(for transaction: Transaction) -> String? {
-        guard transaction.source == .amexAlert else { return nil }
-        return transaction.state == .provisional
-            ? "From an email alert — pending until the bank confirms it."
-            : "From an email alert, confirmed by the bank."
+        if !fromDate.isEmpty { return "From \(fmtShort(fromDate))" }
+        return "To \(fmtShort(toDate))"
     }
 }
 
@@ -258,11 +251,23 @@ public enum TransactionStatusFilter: String, Equatable, CaseIterable {
 
 /// Sort field + direction (live.js:823-833). Amount sort is by
 /// absolute value; the direction button shows arrow AND words.
-public enum TransactionSort: String, Equatable {
+public enum TransactionSort: String, Equatable, CaseIterable {
     case dateDesc = "date-desc"
     case dateAsc = "date-asc"
     case amountDesc = "amount-desc"
     case amountAsc = "amount-asc"
+
+    /// Menu label for the single Sort picker (one control, all four
+    /// options): "Newest first" / "Oldest first" / "Amount: high to
+    /// low" / "Amount: low to high".
+    public var label: String {
+        switch self {
+        case .dateDesc: return "Newest first"
+        case .dateAsc: return "Oldest first"
+        case .amountDesc: return "Amount: high to low"
+        case .amountAsc: return "Amount: low to high"
+        }
+    }
 
     public var field: String { rawValue.hasPrefix("amount") ? "amount" : "date" }
     public var isAscending: Bool { rawValue.hasSuffix("asc") }
@@ -333,15 +338,18 @@ public struct TransactionFilters: Equatable {
     }
 
     /// Active-filter chips: (key, label) pairs; tapping a chip clears
-    /// only that filter (live.js §7.1).
+    /// only that filter (live.js §7.1). The From/To date range is ONE
+    /// chip ("Nov 8 – Nov 14"), never two — tapping it clears both
+    /// dates.
     public var activeChips: [(key: String, label: String)] {
         var chips: [(String, String)] = []
         if status != .all { chips.append(("status", status.label)) }
         if month != "all" { chips.append(("month", TransactionFormatting.monthLabel(month))) }
         if card != "all" { chips.append(("card", "••\(card)")) }
         if weekOnly { chips.append(("week", "This week")) }
-        if !fromDate.isEmpty { chips.append(("from", "From \(TransactionFormatting.fmtShort(fromDate))")) }
-        if !toDate.isEmpty { chips.append(("to", "To \(TransactionFormatting.fmtShort(toDate))")) }
+        if let rangeLabel = TransactionFormatting.dateRangeChipLabel(from: fromDate, to: toDate) {
+            chips.append(("range", rangeLabel))
+        }
         if let minCents { chips.append(("min", "Min \(TransactionFormatting.formatCents(minCents))")) }
         if let maxCents { chips.append(("max", "Max \(TransactionFormatting.formatCents(maxCents))")) }
         if !search.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -356,6 +364,7 @@ public struct TransactionFilters: Equatable {
         case "month": month = "all"
         case "card": card = "all"
         case "week": weekOnly = false
+        case "range": fromDate = ""; toDate = ""
         case "from": fromDate = ""
         case "to": toDate = ""
         case "min": minCents = nil
@@ -363,6 +372,26 @@ public struct TransactionFilters: Equatable {
         case "search": search = ""
         default: break
         }
+    }
+
+    /// "This week" and a custom From/To range are one choice, never
+    /// both: turning This week on clears the dates; setting a date
+    /// turns This week off. The filter sheet keeps its draft in
+    /// agreement the same way; these helpers keep the applied
+    /// filter in agreement too.
+    public mutating func setWeekOnly(_ on: Bool) {
+        weekOnly = on
+        if on { fromDate = ""; toDate = "" }
+    }
+
+    public mutating func setFromDate(_ date: String) {
+        fromDate = date
+        if !date.isEmpty { weekOnly = false }
+    }
+
+    public mutating func setToDate(_ date: String) {
+        toDate = date
+        if !date.isEmpty { weekOnly = false }
     }
 
     /// Apply all filters to the loaded page (live.js:798-830).

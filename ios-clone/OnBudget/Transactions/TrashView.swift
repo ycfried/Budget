@@ -6,9 +6,11 @@ import OnBudgetKit
 /// admin can bring them back."
 /// Lists excluded rows only, from the same load as Transactions. Each
 /// row: icon, merchant, amount, day + card, and a Restore button
-/// (primary, small). Restore → `restore_transaction`, which restores
-/// the stored `pre_exclusion_state` and clears excluded/reason/
-/// snapshot. Refuses with an alert when no prior state was recorded
+/// (primary, small). The WHOLE row is the tap target — tapping
+/// anywhere on a row restores it, the same action as the Restore
+/// button; the button is only the visual hint. Restore →
+/// `restore_transaction`, which restores the stored
+/// `pre_exclusion_state` and clears excluded/reason/snapshot. Refuses with an alert when no prior state was recorded
 /// ("cannot restore: no prior state recorded" — surfaced verbatim).
 /// Empty: "Trash is empty."
 ///
@@ -67,32 +69,45 @@ public struct TrashView: View {
                             .padding(.top, 8)
                     } else {
                         ForEach(viewModel.trashTransactions) { transaction in
-                            HStack(spacing: 10) {
-                                TransactionIconView(merchant: transaction.merchant)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(TransactionFormatting.displayMerchant(transaction.merchant))
-                                        .font(.system(size: 16, weight: .bold))
-                                        .foregroundStyle(DesignTokens.ink)
-                                        .lineLimit(1)
-                                    Text("\(TransactionFormatting.displayDay(transaction.date)) · \(TransactionFormatting.cardLabel(for: transaction))")
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(Color(hex: "#6b7280"))
+                            Button {
+                                Task {
+                                    restoringId = transaction.id
+                                    _ = await viewModel.restore(transaction)
+                                    restoringId = nil
                                 }
-                                Spacer()
-                                Text(TransactionFormatting.formatCents(transaction.amountCents))
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(DesignTokens.ink)
-                                Button("Restore") {
-                                    Task {
-                                        restoringId = transaction.id
-                                        _ = await viewModel.restore(transaction)
-                                        restoringId = nil
+                            } label: {
+                                HStack(spacing: 10) {
+                                    TransactionIconView(merchant: transaction.merchant)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(TransactionFormatting.displayMerchant(transaction.merchant))
+                                            .font(.system(size: 16, weight: .bold))
+                                            .foregroundStyle(DesignTokens.ink)
+                                            .lineLimit(1)
+                                        Text("\(TransactionFormatting.displayDay(transaction.date)) · \(TransactionFormatting.cardLabel(for: transaction))")
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(Color(hex: "#6b7280"))
                                     }
+                                    Spacer()
+                                    Text(TransactionFormatting.formatCents(transaction.amountCents))
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.ink)
+                                    // The Restore pill is the visual hint for
+                                    // the whole-row action (same look as
+                                    // SmallPrimaryButtonStyle); the row
+                                    // itself is the button.
+                                    Text("Restore")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .padding(.vertical, 8)
+                                        .padding(.horizontal, 12)
+                                        .background(DesignTokens.primary)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
-                                .buttonStyle(SmallPrimaryButtonStyle())
-                                .disabled(restoringId == transaction.id)
+                                .padding(14)
+                                .contentShape(Rectangle())
                             }
-                            .padding(14)
+                            .buttonStyle(.plain)
+                            .disabled(restoringId == transaction.id)
                             .background(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 20))
                             .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)

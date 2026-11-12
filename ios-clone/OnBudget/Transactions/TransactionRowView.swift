@@ -8,12 +8,13 @@ import OnBudgetKit
 /// "`Today` · ••1005" meta. Row accessible name: merchant + amount +
 /// day + status + "— show detail".
 ///
-/// Detail panel, in order: bold merchant + amount + kind label; the
-/// counting sentence; labelled rows Week (Sun–Sat range) / Date (long)
-/// / Status / Card / Source (+ Refund link row for refunds); the
-/// email-alert line for `amex_alert` rows; then the Actions button —
+/// Detail panel, in order: bold merchant + amount + kind label;
+/// labelled rows Week (Sun–Sat range) / Date (long) / Status / Card /
+/// Source (+ Refund link row for refunds); then the Actions button —
 /// one small tertiary button, only when the viewer has any action on
-/// that row.
+/// that row. No explainer sentences: the facts already say it.
+/// The whole row is the tap target — the chevron is only a visual
+/// hint. Expand/collapse uses the shared ExpandAnimation.
 public struct TransactionRowView: View {
     let transaction: Transaction
     /// Institution name for the card suffix, when known.
@@ -62,6 +63,7 @@ public struct TransactionRowView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color(hex: "#6b7280"))
                             .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                            .animation(ExpandAnimation.animation, value: isExpanded)
                     }
                     HStack(spacing: 8) {
                         StatePill(transaction)
@@ -72,6 +74,11 @@ public struct TransactionRowView: View {
                     }
                     .padding(.leading, 50)
                 }
+                // The whole card is the tap target — the padding is
+                // inside the button, so taps on the card edge toggle
+                // too; the chevron is only a visual hint.
+                .padding(14)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
@@ -86,9 +93,12 @@ public struct TransactionRowView: View {
                     onActions: onActions
                 )
                 .padding(.top, 12)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
+                .transition(ExpandAnimation.transition)
             }
         }
-        .padding(14)
+        .animation(ExpandAnimation.animation, value: isExpanded)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
@@ -114,10 +124,6 @@ public struct TransactionDetailView: View {
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(DesignTokens.ink)
 
-            Text(TransactionFormatting.countingSentence(for: transaction))
-                .font(.system(size: 14))
-                .foregroundStyle(Color(hex: "#6b7280"))
-
             VStack(spacing: 6) {
                 detailRow(label: "Week", value: "\(TransactionFormatting.weekRangeOf(transaction.date)) (Sun–Sat)")
                 detailRow(label: "Date", value: TransactionFormatting.fmtLong(transaction.date))
@@ -132,12 +138,6 @@ public struct TransactionDetailView: View {
                             : "Not linked to a purchase yet"
                     )
                 }
-            }
-
-            if let emailLine = TransactionFormatting.emailAlertLine(for: transaction) {
-                Text(emailLine)
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "#6b7280"))
             }
 
             if hasActions {

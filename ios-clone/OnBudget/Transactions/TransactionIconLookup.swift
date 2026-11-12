@@ -1,12 +1,15 @@
 import Foundation
 
 /// Merchant / bank icon lookup — the curated keyword → domain maps
-/// from live.js (v66), carried over verbatim. Icons come from
-/// Google's favicon service (`google.com/s2/favicons`, sz=128); an
-/// unmapped merchant, or a failed load, falls back to a brand-coloured
-/// monogram tile (white initial on the merchant's brand colour, slate
-/// #475569 when unmapped) — never a flat grey box alone, and never
-/// Clearbit (dead since Nov 4, 2026).
+/// from live.js (v66), carried over verbatim, plus the local
+/// merchants from the owner's Nov 11, 2026 feedback (Royal Farms,
+/// Seven Mile Market, Kosher Town — domains verified by web search,
+/// see the merchant map below). Icons come from Google's favicon
+/// service (`google.com/s2/favicons`, sz=128); an unmapped merchant,
+/// or a failed load, falls back to a monogram tile — a soft neutral
+/// tile when no brand colour is known (never a fake brand colour),
+/// or the merchant's real brand colour when the map knows one —
+/// and never Clearbit (dead since Nov 4, 2026).
 public enum TransactionIconLookup {
 
     // MARK: - Bank logos (live.js:72-84)
@@ -61,6 +64,24 @@ public enum TransactionIconLookup {
         ("lyft", "lyft.com"),
         ("netflix", "netflix.com"),
         ("spotify", "spotify.com"),
+        // Local / regional merchants (owner feedback, Nov 11, 2026).
+        // Domains verified by web search Nov 11, 2026 — do not
+        // change them without re-verifying:
+        // - Royal Farms: royalfarms.com (chain's own site and press
+        //   releases; NOT royalfarmsstores.com).
+        // - Seven Mile Market (Pikesville): sevenmilemarket.com
+        //   (Wikipedia infobox + the store's own ads). "7 mile"
+        //   covers bank descriptors written "7 MILE MARKET".
+        // - Kosher Town: koshertown.com is Koshertown Supermarket,
+        //   459 Albany Ave, Brooklyn, NY — the only "Kosher Town"
+        //   with a verifiable website found. No Baltimore Kosher
+        //   Town turned up; if the owner's store is a different
+        //   local shop, remove this entry rather than guessing.
+        ("royal farms", "royalfarms.com"),
+        ("seven mile", "sevenmilemarket.com"),
+        ("7 mile", "sevenmilemarket.com"),
+        ("kosher town", "koshertown.com"),
+        ("koshertown", "koshertown.com"),
     ]
 
     public static let merchantBrandColors: [(keyword: String, hex: String)] = [
@@ -87,7 +108,22 @@ public enum TransactionIconLookup {
         ("apple", "#000000"),
     ]
 
+    // No brand colour is invented for the local merchants above
+    // (Royal Farms, Seven Mile Market, Kosher Town): their hexes
+    // were not verified, so they are deliberately absent here and
+    // their monograms use the soft neutral tile below instead.
+
+    /// Dark slate `#475569` — the monogram initial on the soft
+    /// fallback tile. (Before Nov 11, 2026 this was the whole tile;
+    /// the tile itself is now `fallbackTileHex`.)
     public static let fallbackBrandHex = "#475569"
+
+    /// Soft neutral tile `#e2e8f0` (slate-200) for any merchant or
+    /// bank with no known brand colour. Same size and corner radius
+    /// as the logo tiles, so a list mixing real logos and monograms
+    /// reads as one designed system — a deliberate placeholder,
+    /// never a fake brand colour and never a flat grey box.
+    public static let fallbackTileHex = "#e2e8f0"
 
     // MARK: - Lookups
 
@@ -96,9 +132,12 @@ public enum TransactionIconLookup {
         return bankDomains.first { name.contains($0.keyword) }?.domain
     }
 
-    public static func bankBrandHex(for institutionName: String?) -> String {
-        guard let name = institutionName?.lowercased(), !name.isEmpty else { return fallbackBrandHex }
-        return bankBrandColors.first { name.contains($0.keyword) }?.hex ?? fallbackBrandHex
+    /// The brand colour hex for an institution name, or nil when
+    /// the bank is unmapped or has no known brand colour — the
+    /// caller then uses the soft neutral fallback tile.
+    public static func bankBrandHex(for institutionName: String?) -> String? {
+        guard let name = institutionName?.lowercased(), !name.isEmpty else { return nil }
+        return bankBrandColors.first { name.contains($0.keyword) }?.hex
     }
 
     public static func merchantDomain(for merchant: String) -> String? {
@@ -106,9 +145,12 @@ public enum TransactionIconLookup {
         return merchantDomains.first { name.contains($0.keyword) }?.domain
     }
 
-    public static func merchantBrandHex(for merchant: String) -> String {
+    /// The brand colour hex for a merchant, or nil when the merchant
+    /// is unmapped or has no known brand colour — the caller then
+    /// uses the soft neutral fallback tile.
+    public static func merchantBrandHex(for merchant: String) -> String? {
         let name = merchant.lowercased()
-        return merchantBrandColors.first { name.contains($0.keyword) }?.hex ?? fallbackBrandHex
+        return merchantBrandColors.first { name.contains($0.keyword) }?.hex
     }
 
     /// Google favicon URL for a domain (live.js uses

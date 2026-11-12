@@ -3,9 +3,10 @@ import OnBudgetKit
 
 /// Transactions screen (CLONE_SPEC §7).
 ///
-/// - Heading "Transactions". Header actions (right): "+ Add
-///   Transaction" (primary) → the Add popup; "Filters" (tertiary) →
-///   the filter sheet.
+/// - Heading "Transactions". Header actions (right): "+ Add"
+///   (primary) → the Add popup; "Filters" (tertiary) → the filter
+///   sheet. The Add label stays compact so the 28pt title fits on
+///   one line at iPhone width.
 /// - Page links under the header: "Past Weeks" · "Activity" (quiet
 ///   links). The app shell supplies both handlers, so the links
 ///   push PastWeeksView / ActivityView as subpages on the
@@ -153,8 +154,9 @@ public struct TransactionsView: View {
                 Text("Transactions")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
                 Spacer()
-                Button("+ Add Transaction") { showingAdd = true }
+                Button("+ Add") { showingAdd = true }
                     .buttonStyle(SmallPrimaryButtonStyle())
                 Button("Filters") { showingFilters = true }
                     .buttonStyle(SmallTertiaryButtonStyle())
@@ -255,7 +257,8 @@ public struct TransactionsView: View {
         switch viewModel.loadState {
         case .idle, .loading:
             VStack(spacing: 12) {
-                ProgressView("Loading…")
+                ProgressView()
+                    .progressViewStyle(.circular)
                 ForEach(0..<3, id: \.self) { _ in
                     RoundedRectangle(cornerRadius: 20)
                         .fill(Color(hex: "#f1f5f9"))
@@ -371,16 +374,18 @@ public struct TransactionsView: View {
 /// newest first, "All months" default); This week checkbox (current
 /// Sun–Sat, NY); From / To date fields side by side, compact
 /// (labels shortened to "From"/"To" — never "From date"/"To date",
-/// never massive full-width fields).
+/// never massive full-width fields). This week and a custom From/To
+/// range are one choice, never both: turning This week on clears
+/// From/To, and picking a From or To date turns This week off.
 /// Card / Account select ("All cards" default; options `••suffix`).
-/// Amount group: Min / Max side by side (placeholders `$0.00`;
-/// "Blank = no limit. Refunds count as negative amounts."). Bounds
-/// compare to the SIGNED amount; either end alone works; blank /
+/// Amount group: Min / Max side by side (placeholders `$0.00`).
+/// Bounds compare to the SIGNED amount; either end alone works; blank /
 /// unparseable = no limit; min > max is a validation state, not an
 /// empty result. Bounds apply live (debounced 250ms, not persisted).
-/// Sort by select (Date / Amount) + direction button showing arrow
-/// AND words. Amount sort is by absolute value. Sort persists
-/// (`hb-tx-sort`); month/card persist (`hb-tx-month`, `hb-tx-card`).
+/// Sort by: ONE picker with all four options (Newest first / Oldest
+/// first / Amount: high to low / Amount: low to high). Amount sort is
+/// by absolute value. Sort persists (`hb-tx-sort`); month/card persist
+/// (`hb-tx-month`, `hb-tx-card`).
 /// Button row (three-button rule): Apply (primary) / Reset (pale) /
 /// Cancel (tertiary). Apply commits the sheet-held status/week/date
 /// values (month, card, bounds, sort already apply live) and closes;
@@ -456,7 +461,16 @@ public struct TransactionsFilterSheet: View {
                         .background(DesignTokens.pale)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
 
-                        Toggle("This week", isOn: $draftWeekOnly)
+                        Toggle("This week", isOn: Binding(
+                            get: { draftWeekOnly },
+                            set: { new in
+                                draftWeekOnly = new
+                                if new {
+                                    draftFromDate = nil
+                                    draftToDate = nil
+                                }
+                            }
+                        ))
                             .font(.system(size: 15))
 
                         HStack(spacing: 12) {
@@ -466,7 +480,10 @@ public struct TransactionsFilterSheet: View {
                                     .foregroundStyle(DesignTokens.ink)
                                 DatePicker("", selection: Binding(
                                     get: { draftFromDate ?? Date() },
-                                    set: { draftFromDate = $0 }
+                                    set: {
+                                        draftFromDate = $0
+                                        draftWeekOnly = false
+                                    }
                                 ), displayedComponents: .date)
                                 .labelsHidden()
                                 .datePickerStyle(.compact)
@@ -477,7 +494,10 @@ public struct TransactionsFilterSheet: View {
                                     .foregroundStyle(DesignTokens.ink)
                                 DatePicker("", selection: Binding(
                                     get: { draftToDate ?? Date() },
-                                    set: { draftToDate = $0 }
+                                    set: {
+                                        draftToDate = $0
+                                        draftWeekOnly = false
+                                    }
                                 ), displayedComponents: .date)
                                 .labelsHidden()
                                 .datePickerStyle(.compact)
@@ -488,12 +508,16 @@ public struct TransactionsFilterSheet: View {
                             if draftFromDate != nil {
                                 Button("Clear From") { draftFromDate = nil }
                                     .buttonStyle(QuietButtonStyle())
+                                    .transition(ExpandAnimation.transition)
                             }
                             if draftToDate != nil {
                                 Button("Clear To") { draftToDate = nil }
                                     .buttonStyle(QuietButtonStyle())
+                                    .transition(ExpandAnimation.transition)
                             }
                         }
+                        .animation(ExpandAnimation.animation, value: draftFromDate)
+                        .animation(ExpandAnimation.animation, value: draftToDate)
                     }
 
                     // Card / Account
@@ -537,40 +561,34 @@ public struct TransactionsFilterSheet: View {
                                 .frame(maxWidth: 140)
                                 .onChange(of: maxText) { _, _ in applyBounds() }
                         }
-                        Text("Blank = no limit. Refunds count as negative amounts.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color(hex: "#6b7280"))
                         if viewModel.filters.amountRangeInvalid {
                             SoftErrorBox("Minimum amount is above the maximum amount — change one of them to see transactions.")
                         }
                     }
 
-                    // Sort
+                    // Sort — one picker with all four options (was a
+                    // "Date"/"Amount" dropdown plus a separate
+                    // direction button).
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Sort by")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
-                        HStack(spacing: 12) {
-                            Picker("Sort by", selection: Binding(
-                                get: { viewModel.filters.sort.field },
-                                set: { field in
-                                    viewModel.filters.sort = viewModel.filters.sort.withField(field)
-                                    viewModel.filterChanged()
-                                }
-                            )) {
-                                Text("Date").tag("date")
-                                Text("Amount").tag("amount")
-                            }
-                            .pickerStyle(.menu)
-                            .padding(8)
-                            .background(DesignTokens.pale)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            Button(viewModel.filters.sort.directionLabel) {
-                                viewModel.filters.sort = viewModel.filters.sort.toggledDirection()
+                        Picker("Sort by", selection: Binding(
+                            get: { viewModel.filters.sort },
+                            set: { new in
+                                viewModel.filters.sort = new
                                 viewModel.filterChanged()
                             }
-                            .buttonStyle(SmallTertiaryButtonStyle())
+                        )) {
+                            ForEach(TransactionSort.allCases, id: \.self) { sort in
+                                Text(sort.label).tag(sort)
+                            }
                         }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(DesignTokens.pale)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
 
                     ThreeButtonRow {
@@ -600,11 +618,13 @@ public struct TransactionsFilterSheet: View {
     }
 
     /// Apply commits the sheet-held status/week/date values and closes.
+    /// Week/dates go through the agreement helpers, so the applied
+    /// filter can never hold This week ON with From/To set.
     private func apply() {
         viewModel.filters.status = draftStatus
-        viewModel.filters.weekOnly = draftWeekOnly
-        viewModel.filters.fromDate = draftFromDate.map(TransactionFormatting.string(from:)) ?? ""
-        viewModel.filters.toDate = draftToDate.map(TransactionFormatting.string(from:)) ?? ""
+        viewModel.filters.setFromDate(draftFromDate.map(TransactionFormatting.string(from:)) ?? "")
+        viewModel.filters.setToDate(draftToDate.map(TransactionFormatting.string(from:)) ?? "")
+        viewModel.filters.setWeekOnly(draftWeekOnly)
         viewModel.filterChanged()
         onDismiss()
     }

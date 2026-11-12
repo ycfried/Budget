@@ -293,30 +293,43 @@ public struct FundsExpandableCard<Expanded: View>: View {
     public var body: some View {
         FundsCard {
             VStack(alignment: .leading, spacing: 8) {
+                // Whole-area tap target (owner rule, Nov 11 2026):
+                // the ENTIRE card face — title, amount AND the
+                // chevron row — is the toggle. The chevron is only a
+                // visual hint, never the only place that responds.
+                // The expanded content keeps its own buttons (Add
+                // Money / Spend / Request), so it is not part of the
+                // toggle — tapping an action must not collapse the
+                // card underneath it.
                 Button(action: onToggle) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(TitleCase.apply(to: title))
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(DesignTokens.ink)
-                        Text(amountText)
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundStyle(isNegative ? DesignTokens.errorText : DesignTokens.ink)
+                    VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(TitleCase.apply(to: title))
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(DesignTokens.ink)
+                            Text(amountText)
+                                .font(.system(size: 28, weight: .bold))
+                                .foregroundStyle(isNegative ? DesignTokens.errorText : DesignTokens.ink)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack {
+                            Spacer()
+                            Text("⌄")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(DesignTokens.primary)
+                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(accessibilityLabel)
-                HStack {
-                    Spacer()
-                    Text(isExpanded ? "⌃" : "⌄")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(DesignTokens.primary)
-                }
                 if isExpanded {
                     Divider()
                     expanded
                 }
+                .transition(ExpandAnimation.transition)
             }
+            .animation(ExpandAnimation.animation, value: isExpanded)
         }
     }
 }

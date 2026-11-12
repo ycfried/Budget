@@ -386,7 +386,8 @@ public struct TransactionActionsSheet: View {
                     }
                 }
             } else {
-                ProgressView("Loading…")
+                ProgressView()
+                    .progressViewStyle(.circular)
             }
             Button("Cancel") { flow = .list }
                 .buttonStyle(TertiaryButtonStyle())

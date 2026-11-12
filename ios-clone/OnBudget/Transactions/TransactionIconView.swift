@@ -4,9 +4,11 @@ import OnBudgetKit
 /// Transaction icon: the bank's Google favicon when the card suffix
 /// maps to a connected institution, else the merchant favicon from
 /// the curated keyword map. Any unmapped name, or a failed favicon
-/// load, falls back to a brand-coloured monogram tile (white initial
-/// on the merchant's brand colour, slate #475569 when unmapped) —
-/// never a flat grey box alone, and never Clearbit (dead Nov 4, 2026).
+/// load, falls back to a monogram tile: white initial on the real
+/// brand colour when the map knows one, else a soft neutral tile
+/// (light slate `#e2e8f0`, dark slate initial) — one designed system
+/// with the logo tiles (same size, same corner radius), never a fake
+/// brand colour, never a blank tile, and never Clearbit (dead Nov 4, 2026).
 public struct TransactionIconView: View {
     /// Institution name for the card suffix, when known (from the
     /// Settings bank list). When nil, the merchant icon is used.
@@ -38,9 +40,11 @@ public struct TransactionIconView: View {
                             .frame(width: size * 0.72, height: size * 0.72)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                             .background(Color.white)
-                    default:
+                    case .empty, .failure:
                         // Loading or failed: the monogram underneath
                         // stays visible — never a blank tile.
+                        Color.clear
+                    @unknown default:
                         Color.clear
                     }
                 }
@@ -65,19 +69,38 @@ public struct TransactionIconView: View {
 
     private var monogram: some View {
         ZStack {
-            brandColor
+            monogramBackground
             Text(TransactionIconLookup.initial(for: merchant))
                 .font(.system(size: size * 0.45, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(monogramForeground)
         }
     }
 
-    private var brandColor: Color {
+    /// Real brand colour when the map knows one; otherwise the soft
+    /// neutral fallback tile — never an invented brand colour.
+    private var monogramBackground: Color {
+        if let hex = brandHex {
+            return Color(hex: hex)
+        }
+        return Color(hex: TransactionIconLookup.fallbackTileHex)
+    }
+
+    /// White initial on a brand colour; dark slate initial on the
+    /// soft fallback tile so it stays readable.
+    private var monogramForeground: Color {
+        if brandHex != nil {
+            return .white
+        }
+        return Color(hex: TransactionIconLookup.fallbackBrandHex)
+    }
+
+    /// The brand colour for this row, when the map knows one.
+    private var brandHex: String? {
         if let name = institutionName,
            TransactionIconLookup.bankDomain(for: name) != nil {
-            return Color(hex: TransactionIconLookup.bankBrandHex(for: name))
+            return TransactionIconLookup.bankBrandHex(for: name)
         }
-        return Color(hex: TransactionIconLookup.merchantBrandHex(for: merchant))
+        return TransactionIconLookup.merchantBrandHex(for: merchant)
     }
 }
 

@@ -22,8 +22,8 @@
 // the expand detail (Available / Pending / Total) and NO action
 // buttons on Home (actions belong on the Funds page).
 // "Last synced" is shown once, quietly, under Automatic Sync in
-// Settings; Home carries the same value in the footer
-// ("OnBudget · Last bank sync …", live.html:560-562).
+// Settings (ConnectedAccountsView); Home carries NO sync line
+// (owner, Nov 11, 2026 — removed from Home entirely).
 //
 // Clone basis: live web v66.
 
@@ -39,6 +39,13 @@ public enum HomeSectionState<Value> {
     case loading
     case loaded(Value)
     case failed(OnBudgetError)
+
+    /// True only for the failed state (used for the red "could not
+    /// load" status line on the stat cards).
+    public var isFailed: Bool {
+        if case .failed = self { return true }
+        return false
+    }
 }
 
 // MARK: - View model
@@ -66,7 +73,6 @@ public final class HomeViewModel: ObservableObject {
     @Published public var purchasesThisWeek: Int?
     /// Week-counted charges, for the empty-week hint.
     @Published public var hasWeekTransactions = false
-    @Published public var lastSyncText: String?
     @Published public var isSyncing = false
     /// Card suffix → institution name (best-effort, for bank icons).
     @Published public var institutionBySuffix: [String: String] = [:]
@@ -165,12 +171,11 @@ public final class HomeViewModel: ObservableObject {
             fund = .failed(.unknown("Could not load Extra Fund balances."))
         }
 
-        // Last-sync stamp: freshest plaid_items.last_sync_at
-        // (live.js:560-562, 1348). Best-effort — never blocks Home.
+        // Plaid items: only for the suffix → institution map (bank
+        // icons). Best-effort — never blocks Home. No sync stamp is
+        // kept here: the sync line lives in Settings only.
         do {
             let items = try await client.postgrest.plaidItems(householdId: householdId)
-            let stamps = items.compactMap(\.lastSyncAt).sorted()
-            lastSyncText = AppDates.lastSyncLabel(isoTimestamp: stamps.last)
             // Suffix → institution map for bank icons (best-effort).
             let pairs = try await client.postgrest.plaidItemInstitutions(householdId: householdId)
             let masks = try await client.postgrest.plaidAccountMasks(
@@ -184,7 +189,7 @@ public final class HomeViewModel: ObservableObject {
             }
             institutionBySuffix = map
         } catch {
-            lastSyncText = nil
+            // Best-effort only: no stamp, no error state.
         }
     }
 
@@ -278,7 +283,6 @@ public struct HomeView: View {
                 charityCard
                 fundCard
                 recentSection
-                footer
             }
             .padding(16)
         }
@@ -299,19 +303,21 @@ public struct HomeView: View {
 
     // MARK: Hero — Weekly Budget
 
+    // Hero — Weekly Budget. Bigger and more prominent than the
+    // other cards (owner, Nov 11, 2026: it is the most important
+    // number on the page). The loading state renders at the same
+    // full hero size (skeleton blocks + system spinner), so the
+    // layout never jumps when the number arrives.
     private var heroCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("Weekly Budget")
-                .font(.system(size: 22, weight: .bold))
+                .font(.system(size: 24, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
             switch viewModel.week {
             case .loading:
-                Text("Loading…")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                ProgressView()
+                heroSkeleton
             case .failed(let error):
-                Text("Week numbers unavailable")
+                Text("Could not load this week's numbers.")
                     .font(.system(size: 15))
                     .foregroundStyle(Color(hex: "#6b7280"))
                 ErrorBox(weekErrorText(error))
@@ -321,7 +327,7 @@ public struct HomeView: View {
                 heroLoaded(result)
             }
         }
-        .padding(16)
+        .padding(20)
         .background(.white)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
@@ -332,12 +338,44 @@ public struct HomeView: View {
         // Hero exception: outline, NO shadow (styles.css:1127).
     }
 
+    /// Full-size hero skeleton: same frame, padding and row heights
+    /// as the loaded hero, with grey placeholder blocks where the
+    /// number, progress bar and stats go, plus the system spinner.
+    private var heroSkeleton: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color(hex: "#ececf1"))
+                .frame(width: 160, height: 18)
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(hex: "#ececf1"))
+                .frame(width: 230, height: 54)
+            ProgressView()
+                .progressViewStyle(.circular)
+                .frame(maxWidth: .infinity, alignment: .center)
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(hex: "#ececf1"))
+                .frame(maxWidth: .infinity, minHeight: 8, maxHeight: 8)
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color(hex: "#ececf1"))
+                .frame(width: 180, height: 14)
+            HStack(spacing: 24) {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(hex: "#ececf1"))
+                    .frame(width: 110, height: 40)
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(hex: "#ececf1"))
+                    .frame(width: 80, height: 40)
+            }
+        }
+        .accessibilityLabel("Weekly Budget, loading")
+    }
+
     private func weekErrorText(_ error: OnBudgetError) -> String {
         switch error {
         case .networkOffline, .timedOut, .networkError:
             return "Couldn't update this week's numbers — check your connection and try again."
         default:
-            return "Couldn't update this week's numbers — switch tabs or reopen the app to try again."
+            return "Couldn't update this week's numbers — tap Try Again to reload."
         }
     }
 
@@ -347,10 +385,14 @@ public struct HomeView: View {
             .font(.system(size: 15))
             .foregroundStyle(Color(hex: "#6b7280"))
 
-        // Big figure (tap target — opens the Weekly sheet).
+        // Big figure — the whole figure row (not just the digits)
+        // opens the Weekly sheet; the sync button stays its own
+        // tap target at the end of the row.
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Button { showWeeklySheet = true } label: {
                 heroFigure(cents: result.availableCents)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel(
                 result.availableCents < 0
@@ -459,9 +501,9 @@ public struct HomeView: View {
     private func heroFigure(cents: Int) -> some View {
         let parts = MoneyFormat.parts(cents: cents)
         return (Text(parts.sign + "$" + parts.dollars)
-            .font(.system(size: 36, weight: .heavy))
+            .font(.system(size: 44, weight: .heavy))
             + Text("." + parts.cents)
-            .font(.system(size: 20, weight: .heavy)))
+            .font(.system(size: 24, weight: .heavy)))
             .foregroundStyle(cents < 0 ? DesignTokens.errorText : DesignTokens.ink)
     }
 
@@ -471,26 +513,32 @@ public struct HomeView: View {
         statCard(
             title: "Charity",
             face: charityFaceText,
+            statusText: charityStatusText,
+            statusIsError: viewModel.charity.isFailed,
             isExpanded: appState.expandedCard == .charity,
             ariaLabel: charityAriaLabel,
             onTap: {
-                guard case .loaded = viewModel.charity else {
+                switch viewModel.charity {
+                case .loading:
                     notLoadedAlertTitle = "Charity"
                     showNotLoadedAlert = true
-                    return
-                }
-                withAnimation {
-                    appState.expandedCard = appState.expandedCard == .charity ? nil : .charity
+                case .failed, .loaded:
+                    // Failed cards expand too, so the error + Retry
+                    // are reachable; loading still shows the alert.
+                    withAnimation(ExpandAnimation.animation) {
+                        appState.expandedCard = appState.expandedCard == .charity ? nil : .charity
+                    }
                 }
             }
         ) {
-            if case .loaded(let summary) = viewModel.charity {
+            if case .failed = viewModel.charity {
+                ErrorBox("Could not load charity.")
+                Button("Try Again") { Task { await viewModel.refresh() } }
+                    .buttonStyle(TertiaryButtonStyle())
+            } else if case .loaded(let summary) = viewModel.charity {
                 statRow(label: "Available", value: MoneyFormat.signedString(cents: summary.remainingCents))
                 statRow(label: "Given", value: MoneyFormat.string(cents: summary.givenCents))
                 statRow(label: "Total", value: MoneyFormat.string(cents: summary.committedCents))
-                Text("November 2026 onward")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color(hex: "#6b7280"))
             }
         }
     }
@@ -499,20 +547,27 @@ public struct HomeView: View {
         statCard(
             title: "Extra Fund",
             face: fundFaceText,
+            statusText: fundStatusText,
+            statusIsError: viewModel.fund.isFailed,
             isExpanded: appState.expandedCard == .fund,
             ariaLabel: fundAriaLabel,
             onTap: {
-                guard case .loaded = viewModel.fund else {
+                switch viewModel.fund {
+                case .loading:
                     notLoadedAlertTitle = "Extra Fund"
                     showNotLoadedAlert = true
-                    return
-                }
-                withAnimation {
-                    appState.expandedCard = appState.expandedCard == .fund ? nil : .fund
+                case .failed, .loaded:
+                    withAnimation(ExpandAnimation.animation) {
+                        appState.expandedCard = appState.expandedCard == .fund ? nil : .fund
+                    }
                 }
             }
         ) {
-            if case .loaded(let summary) = viewModel.fund {
+            if case .failed = viewModel.fund {
+                ErrorBox("Could not load Extra Fund balances.")
+                Button("Try Again") { Task { await viewModel.refresh() } }
+                    .buttonStyle(TertiaryButtonStyle())
+            } else if case .loaded(let summary) = viewModel.fund {
                 // Home expansions show rows only, no action buttons.
                 // Row labels are the web's exact wording
                 // (live.js:3604): "Spendable available" (admin) /
@@ -526,12 +581,19 @@ public struct HomeView: View {
         }
     }
 
-    /// A stat card face is Title + signed number only, chevron ⌄
-    /// bottom-right (flips to ⌃ when expanded). Tap anywhere
-    /// expands it in place; tap again, or the other card, collapses.
+    /// A stat card face is Title + signed number only, chevron
+    /// bottom-right (SF Symbol chevron.down, down when collapsed,
+    /// rotating 180° to up when expanded, with the shared
+    /// ExpandAnimation). The whole card is the tap target — the
+    /// chevron is only a visual hint (owner, Nov 11, 2026). The
+    /// status line under the number explains a loading or failed
+    /// face, so a failed card never shows a bare "—" with no
+    /// explanation; the expanded rows carry the ErrorBox + Retry.
     private func statCard<Rows: View>(
         title: String,
         face: String,
+        statusText: String? = nil,
+        statusIsError: Bool = false,
         isExpanded: Bool,
         ariaLabel: String,
         onTap: @escaping () -> Void,
@@ -547,18 +609,33 @@ public struct HomeView: View {
                         Text(face)
                             .font(.system(size: 22, weight: .heavy))
                             .foregroundStyle(DesignTokens.ink)
+                        if let statusText {
+                            HStack(spacing: 6) {
+                                if !statusIsError {
+                                    ProgressView()
+                                        .progressViewStyle(.circular)
+                                        .scaleEffect(0.8)
+                                }
+                                Text(statusText)
+                                    .font(.system(size: 13, weight: statusIsError ? .semibold : .regular))
+                                    .foregroundStyle(statusIsError ? DesignTokens.errorText : Color(hex: "#6b7280"))
+                            }
+                        }
                     }
                     Spacer()
                 }
                 if isExpanded {
                     VStack(alignment: .leading, spacing: 6) { rows() }
                         .padding(.top, 4)
+                        .transition(ExpandAnimation.transition)
                 }
                 HStack {
                     Spacer()
-                    Text(isExpanded ? "⌃" : "⌄")
+                    Image(systemName: "chevron.down")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(DesignTokens.primary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .animation(ExpandAnimation.animation, value: isExpanded)
                 }
             }
             .padding(16)
@@ -567,8 +644,10 @@ public struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 40 / 255, opacity: 0.05),
                     radius: 2, x: 0, y: 1)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(ExpandAnimation.animation, value: isExpanded)
         .accessibilityLabel(ariaLabel)
     }
 
@@ -592,6 +671,26 @@ public struct HomeView: View {
         case .loaded(let summary): return MoneyFormat.signedString(cents: summary.remainingCents)
         case .failed: return "—"
         case .loading: return "—"
+        }
+    }
+
+    /// Status line under the Charity face: loading gets a spinner +
+    /// "Loading…", failure gets a plain red "Could not load" (the
+    /// expanded rows carry the ErrorBox + Retry). Loaded: none.
+    private var charityStatusText: String? {
+        switch viewModel.charity {
+        case .loading: return "Loading…"
+        case .failed: return "Could not load"
+        case .loaded: return nil
+        }
+    }
+
+    /// Same status line for Extra Fund.
+    private var fundStatusText: String? {
+        switch viewModel.fund {
+        case .loading: return "Loading…"
+        case .failed: return "Could not load"
+        case .loaded: return nil
         }
     }
 
@@ -648,9 +747,11 @@ public struct HomeView: View {
             }
             switch viewModel.recent {
             case .loading:
-                ProgressView("Loading…")
+                ProgressView()
+                    .progressViewStyle(.circular)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
+                    .accessibilityLabel("Loading recent transactions")
             case .failed(let error):
                 if error == .sessionExpired {
                     ErrorBox("Your sign-in expired — sign in again to see transactions.")
@@ -715,19 +816,10 @@ public struct HomeView: View {
         row.cardSuffix == "0000" ? "Cash / no card" : "••\(row.cardSuffix)"
     }
 
-    // MARK: Footer
-
-    /// "OnBudget · Last bank sync …" sits directly under the last
-    /// card (live.html:560-562). "Last synced" itself is shown once,
-    /// quietly, under Automatic Sync in Settings; Home carries the
-    /// same stamp here.
-    private var footer: some View {
-        Text("OnBudget · Last bank sync \(viewModel.lastSyncText.map { $0.replacingOccurrences(of: "Last synced ", with: "") } ?? "—")")
-            .font(.system(size: 13))
-            .foregroundStyle(Color(hex: "#6b7280"))
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 4)
-    }
+    // No Home footer: the "OnBudget · Last bank sync …" line was
+    // removed (owner, Nov 11, 2026). The sync stamp lives once,
+    // quietly, under Automatic Sync in Settings
+    // (ConnectedAccountsView).
 }
 
 // MARK: - Weekly sheet

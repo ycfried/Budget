@@ -142,30 +142,47 @@ public struct AppShellView: View {
     }
 
     private var topBar: some View {
-        HStack {
-            Color.clear.frame(width: 40, height: 40)
-            Spacer()
+        // Title stays centred via the ZStack (the right-hand
+        // Profile control is wider than the old icon alone, so an
+        // HStack with a matching left spacer would drift it).
+        // Profile: bigger, easily tappable icon (28pt glyph in a
+        // 44pt hit target, plus a "Profile" text label — owner,
+        // Nov 11, 2026: the icon alone was too small and unclear).
+        // The Menu still opens Profile → Settings / Sign Out.
+        ZStack {
             Text(appState.householdName ?? "OnBudget")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
-            Spacer()
-            Menu {
-                Button("Settings") { appState.openSettings() }
-                Button("Sign Out", role: .destructive) {
-                    Task { await appState.signOut() }
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 124)
+            HStack {
+                Spacer()
+                Menu {
+                    Button("Settings") { appState.openSettings() }
+                    Button("Sign Out", role: .destructive) {
+                        Task { await appState.signOut() }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Profile")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Image(systemName: "person.circle")
+                            .font(.system(size: 28))
+                            .foregroundStyle(DesignTokens.ink)
+                            .frame(width: 44, height: 44)
+                            .background(.white)
+                            .overlay(
+                                Circle().stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                            )
+                            .clipShape(Circle())
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
-            } label: {
-                Image(systemName: "person.circle")
-                    .font(.system(size: 22))
-                    .foregroundStyle(DesignTokens.ink)
-                    .frame(width: 40, height: 40)
-                    .background(.white)
-                    .overlay(
-                        Circle().stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                    )
-                    .clipShape(Circle())
+                .accessibilityLabel("Profile")
             }
-            .accessibilityLabel("Profile")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

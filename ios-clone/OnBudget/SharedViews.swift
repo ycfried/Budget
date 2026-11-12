@@ -186,9 +186,35 @@ public struct LoadingView: View {
             Text("Loading Your Household")
                 .font(.system(size: 15))
                 .foregroundStyle(Color(hex: "#6b7280"))
+            // Modern native system spinner — the one spinner style
+            // used for every load in the app (owner, Nov 11, 2026:
+            // the old loading sign was ugly and dated).
+            ProgressView()
+                .progressViewStyle(.circular)
+                .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.background)
+    }
+}
+
+// MARK: - Expand / collapse animation
+
+/// The ONE opening/closing effect for every expandable surface
+/// (owner rule, Nov 11 2026 — "they should all share a classy
+/// opening/closing effect"): Charity / Extra Fund cards, transaction
+/// detail rows, fund rows, sheets' inner expands — all share the same
+/// smooth ease-in-out, 0.25s. No abrupt snaps, no per-screen timing.
+/// Apply with `.animation(ExpandAnimation.animation, value: <the
+/// expanded flag>)` at the toggle site and
+/// `.transition(ExpandAnimation.transition)` on the expanding content;
+/// chevrons rotate 180° with the same animation (down when collapsed,
+/// up when expanded). Sheets keep the system presentation animation.
+public enum ExpandAnimation {
+    public static let duration = 0.25
+    public static var animation: Animation { .easeInOut(duration: duration) }
+    public static var transition: AnyTransition {
+        .opacity.combined(with: .move(edge: .top))
     }
 }
 

@@ -669,6 +669,33 @@ async function upsertPlaidTx(
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
     existing = data;
   }
+  // 3b. Suffix-unknown fallback (Nov 12, 2026 — provisional-merge
+  //     miss, owner-reported doubles): an Amex alert whose email
+  //     carried no card ending is stored with card_suffix '0000', so
+  //     its dedupe_hash can NEVER equal the bank row's hash (real
+  //     suffix) and the exact match above misses — the purchase then
+  //     shows twice (email row + bank row). When the exact match
+  //     misses, also claim the earliest alert row with the same
+  //     normalized merchant + date + signed amount whose suffix is
+  //     '0000' (the suffix was never known, not a different card).
+  //     Same guards as the exact match: source 'amex_alert' only,
+  //     earliest first. Two identical real purchases still coexist
+  //     — the claim consumes one alert row; a second bank row finds
+  //     no alert row left and inserts its own. The TOIREMORG $2
+  //     pair is unaffected (merchant strings differ). LIMIT: this
+  //     does not close a merchant-string gap — if Plaid's merchant
+  //     carries a store number the alert lacks (e.g. "ROYAL FARMS
+  //     #123" vs "ROYAL FARMS"), neither the hash nor this match
+  //     fires; that needs a merchant-normalization decision, not a
+  //     looser merge (see the diagnosis SQL in the fix report).
+  if (!existing) {
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
+      .eq('household_id', householdId)
+      .eq('merchant', merchant).eq('date', date).eq('amount_cents', signed)
+      .eq('source', 'amex_alert').eq('card_suffix', '0000')
+      .order('created_at', { ascending: true }).limit(1).maybeSingle();
+    existing = data;
+  }
 
   if (existing) {
     // Merged-audit A14: a re-delivery never overwrites Trash state
