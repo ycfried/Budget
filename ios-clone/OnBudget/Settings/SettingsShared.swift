@@ -401,10 +401,13 @@ struct RolePill: View {
 /// Bank favicon (Google favicon service, sz=128) with a
 /// brand-coloured monogram fallback. Never Clearbit (dead Nov 4,
 /// 2026). Unmapped banks fall back to a slate monogram tile. A loaded
-/// logo renders on a clean white tile with a light border — the same
-/// treatment as TransactionIconView (owner, Nov 11, 2026: logos
-/// looked weird as a white box on a coloured tile / stretched
-/// edge-to-edge); the aspect is never stretched, and small sources
+/// logo FILLS the whole tile edge-to-edge — the same fill rule as
+/// TransactionIconView (owner, Nov 12, 2026): aspect-fill + clip,
+/// cropping overflow, never stretched, no inner padding between the
+/// image and the tile edge; the 1pt border and corner radius stay.
+/// (Nov 11, 2026: logos looked weird as a white box on a coloured
+/// tile / stretched edge-to-edge — that was the old scaledToFit +
+/// 14% padding; fill-by-cropping is not stretching.) Small sources
 /// upscale with high interpolation.
 struct BankLogoView: View {
     let institutionName: String?
@@ -421,9 +424,9 @@ struct BankLogoView: View {
                         image
                             .resizable()
                             .interpolation(.high)
-                            .scaledToFit()
-                            .padding(size * 0.14)
+                            .scaledToFill()
                             .frame(width: size, height: size)
+                            .clipped()
                             .background(Color.white)
                     default:
                         monogram

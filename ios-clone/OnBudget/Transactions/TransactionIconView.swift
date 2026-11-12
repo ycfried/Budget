@@ -3,20 +3,26 @@ import OnBudgetKit
 
 /// Transaction icon: the bank's Google favicon when the card suffix
 /// maps to a connected institution, else the merchant favicon from
-/// the curated keyword map. A loaded logo renders on a clean white
-/// tile with a light border (never a white box floating on a coloured
-/// tile — the "weird" look the owner reported, Nov 11, 2026); the
-/// aspect is never stretched (wide logos letterbox). The source is
-/// Google's favicon service at sz=128, which returns each site's
-/// largest icon (measured Nov 11, 2026: Amex 32px, Walmart / Amazon
-/// 48px, Royal Farms 128px, Seven Mile Market 168×107) — small
-/// sources are upscaled with high interpolation, and sz=128 is
-/// already the max. Any unmapped name, or a failed favicon load, falls
-/// back to a monogram tile: white initial on the real brand colour
-/// when the map knows one, else a soft neutral tile (light slate
-/// `#e2e8f0`, dark slate initial) — one designed system with the logo
-/// tiles (same size, same corner radius), never a fake brand colour,
-/// never a blank tile, and never Clearbit (dead Nov 4, 2026).
+/// the curated keyword map. A loaded logo FILLS the whole tile
+/// edge-to-edge (owner, Nov 12, 2026 — the Amex tiles in Recent
+/// Transactions showed a white margin inside the tile): aspect-fill
+/// + clip, cropping overflow, never stretched. No inner padding
+/// between the image and the tile edge; the 1pt border and corner
+/// radius stay. The source is Google's favicon service at sz=128,
+/// which returns each site's largest icon (measured Nov 11, 2026:
+/// Amex 32px, Walmart / Amazon 48px, Royal Farms 128px, Seven Mile
+/// Market 168×107) — small sources are upscaled with high
+/// interpolation, and sz=128 is already the max. The Amex source
+/// itself carries no built-in white padding (verified Nov 12, 2026
+/// from the served bytes: 32×32, mark touches all four edges), so
+/// the margin the owner saw came entirely from this view's old
+/// 14% inner padding + scaledToFit letterboxing, now removed. Any
+/// unmapped name, or a failed favicon load, falls back to a monogram
+/// tile: white initial on the real brand colour when the map knows
+/// one, else a soft neutral tile (light slate `#e2e8f0`, dark slate
+/// initial) — one designed system with the logo tiles (same size,
+/// same corner radius), never a fake brand colour, never a blank
+/// tile, and never Clearbit (dead Nov 4, 2026).
 public struct TransactionIconView: View {
     /// Institution name for the card suffix, when known (from the
     /// Settings bank list). When nil, the merchant icon is used.
@@ -42,19 +48,24 @@ public struct TransactionIconView: View {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
-                        // Clean white tile: the logo's own white
-                        // background blends into the tile, so there is
-                        // no white box floating on a coloured tile.
-                        // scaledToFit keeps the aspect (a wide logo
-                        // letterboxes, never stretches); high
-                        // interpolation softens the upscale of the
-                        // small sources Google serves.
+                        // Edge-to-edge fill (owner, Nov 12, 2026):
+                        // scaledToFill + clip crops overflow so the
+                        // logo reaches the tile edge on every side —
+                        // no inner padding, no letterbox. Fill by
+                        // cropping is not stretching: the aspect is
+                        // never distorted, wide logos lose their
+                        // sides, square logos (Amex) fill exactly.
+                        // High interpolation softens the upscale of
+                        // the small sources Google serves. The white
+                        // background sits behind the image only, so
+                        // a transparent source still reads on white
+                        // instead of the monogram underneath.
                         image
                             .resizable()
                             .interpolation(.high)
-                            .scaledToFit()
-                            .padding(size * 0.14)
+                            .scaledToFill()
                             .frame(width: size, height: size)
+                            .clipped()
                             .background(Color.white)
                     case .empty, .failure:
                         // Loading or failed: the monogram underneath
