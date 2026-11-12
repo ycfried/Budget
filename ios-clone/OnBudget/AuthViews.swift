@@ -596,6 +596,9 @@ public struct ForgotPasswordSheet: View {
                 Text("Check your inbox (and spam folder) for the link. The link opens the OnBudget app, where you choose a new password. If the link has expired, send a fresh one from here.")
                     .font(.system(size: 15))
                     .foregroundStyle(DesignTokens.ink)
+                // Audit A-P2-10: the error box sits above the
+                // buttons, like everywhere else — not below them.
+                if let message { DismissableErrorBox(message) { self.message = nil } }
                 HStack(spacing: 12) {
                     Button("Done") { dismiss() }
                         .buttonStyle(PrimaryButtonStyle())
@@ -603,7 +606,6 @@ public struct ForgotPasswordSheet: View {
                         .buttonStyle(TertiaryButtonStyle())
                         .disabled(busy)
                 }
-                if let message { DismissableErrorBox(message) { self.message = nil } }
             } else {
                 Text("Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.")
                     .font(.system(size: 15))
