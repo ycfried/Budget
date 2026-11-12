@@ -69,6 +69,12 @@ public enum AppDeepLinks {
     /// in the OAuth state; see GmailCallback in OnBudgetKit). The
     /// same `onbudget` scheme registration covers both deep links.
     public static let gmailCallback = URL(string: "onbudget://gmail-callback")!
+    /// Sign-up confirmation destination (owner, Nov 12, 2026):
+    /// the confirmation email links here, so tapping it opens the
+    /// app and confirms the address in place. Must be allow-listed
+    /// in Supabase Auth → URL Configuration → Redirect URLs, next
+    /// to `onbudget://reset-password`.
+    public static let emailConfirmed = URL(string: "onbudget://email-confirmed")!
 }
 
 @MainActor
@@ -446,14 +452,10 @@ public final class AppViewModel: ObservableObject {
         }
         // Hash-style recovery link: #access_token=…&refresh_token=…
         if let fragment = url.fragment {
-            var values: [String: String] = [:]
-            for pair in fragment.split(separator: "&") {
-                let parts = pair.split(separator: "=", maxSplits: 1)
-                if parts.count == 2 { values[String(parts[0])] = String(parts[1]) }
-            }
+            let values = AuthLinkFragment.parse(fragment)
             if let access = values["access_token"], let refresh = values["refresh_token"] {
                 do {
-                    try await client.adoptRecoverySession(
+                    try await client.adoptSessionFromTokens(
                         accessToken: access, refreshToken: refresh,
                         expiresIn: Double(values["expires_in"] ?? "") ?? 3600)
                     pendingResetCode = "fragment"
@@ -466,6 +468,37 @@ public final class AppViewModel: ObservableObject {
             }
         }
         resetLinkError = "This reset link could not be used. Request a new one from the sign-in screen."
+        phase = .auth
+    }
+
+    /// Handles `onbudget://email-confirmed#access_token=…&refresh_token=…&type=signup`
+    /// — the sign-up confirmation link, when the app requested it
+    /// with `redirect_to=onbudget://email-confirmed` (owner, Nov 12,
+    /// 2026: confirmations turned back on). The verify itself already
+    /// happened on Supabase's server when the link was fetched, so
+    /// the email is confirmed even if this handler fails — the user
+    /// can then just sign in. Success adopts the session and boots
+    /// straight in; failure lands on Auth with a plain message.
+    public func handleEmailConfirmationDeepLink(_ url: URL) async {
+        guard url.scheme == "onbudget", url.host == "email-confirmed" else { return }
+        if let fragment = url.fragment {
+            let values = AuthLinkFragment.parse(fragment)
+            if let access = values["access_token"], let refresh = values["refresh_token"] {
+                do {
+                    try await client.adoptSessionFromTokens(
+                        accessToken: access, refreshToken: refresh,
+                        expiresIn: Double(values["expires_in"] ?? "") ?? 3600)
+                    showToast("Email confirmed.", kind: .info)
+                    await boot()
+                    return
+                } catch {
+                    // Fall through to the plain message below — the
+                    // email may already be confirmed, so the message
+                    // says to just sign in.
+                }
+            }
+        }
+        authNotice = "This confirmation link could not be used. If your email is already confirmed, just sign in."
         phase = .auth
     }
 

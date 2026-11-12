@@ -478,15 +478,26 @@ public final class SupabaseClient: @unchecked Sendable {
     /// Create an account. The name is REQUIRED by the app (live.js
     /// sign-up name step, Nov 4): it is stored as auth metadata
     /// `full_name` at sign-up time, never as a separate call.
-    /// The live project has email confirmation OFF, so this normally
-    /// returns `.signedIn`; `.needsConfirmation` covers the setting
-    /// being turned back on.
-    public func signUp(email: String, password: String, fullName: String) async throws -> SignUpOutcome {
-        let body: [String: Any] = [
+    /// Email confirmation is ON in the live project (owner, Nov 12,
+    /// 2026), so this returns `.needsConfirmation` and the caller
+    /// shows the "check your email" state; `.signedIn` covers the
+    /// setting being off.
+    /// Sign up (live.js:2659). `redirectTo` is the confirmation
+    /// email's destination: the native app passes
+    /// `onbudget://email-confirmed` so tapping the link opens the
+    /// app and confirms the address in place (owner, Nov 12, 2026 —
+    /// confirmations turned back on). With no redirect the link goes
+    /// to the project's Site URL. The confirmation itself happens on
+    /// Supabase's server when the link is fetched, so the email is
+    /// confirmed even if the deep link cannot open on that device —
+    /// the user then just signs in.
+    public func signUp(email: String, password: String, fullName: String, redirectTo: URL? = nil) async throws -> SignUpOutcome {
+        var body: [String: Any] = [
             "email": email,
             "password": password,
             "data": ["full_name": fullName],
         ]
+        if let redirectTo { body["redirect_to"] = redirectTo.absoluteString }
         let request = try Self.authRequest(
             configuration: configuration,
             path: "signup",
@@ -579,11 +590,15 @@ public final class SupabaseClient: @unchecked Sendable {
         return session
     }
 
-    /// Adopt a recovery session from a hash-style link
-    /// (`#access_token=…&refresh_token=…`): fetch the user with the
-    /// supplied token and store the resulting session, so
-    /// `changePassword(_:)` can run as the recovering user.
-    public func adoptRecoverySession(accessToken: String, refreshToken: String, expiresIn: TimeInterval) async throws {
+    /// Adopt a session from tokens carried by an auth deep link
+    /// (`#access_token=…&refresh_token=…`) — the recovery link
+    /// (`onbudget://reset-password`) and the sign-up confirmation
+    /// link (`onbudget://email-confirmed`) both arrive this way.
+    /// The tokens are validated by fetching the user, which also
+    /// stores the resulting session — so `changePassword(_:)` can
+    /// run as the recovering user, and a confirmed sign-up lands
+    /// signed in. A bad token throws and no session is stored.
+    public func adoptSessionFromTokens(accessToken: String, refreshToken: String, expiresIn: TimeInterval) async throws {
         let request = try Self.authRequest(
             configuration: configuration,
             path: "user",

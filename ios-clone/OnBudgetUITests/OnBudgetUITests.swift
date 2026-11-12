@@ -397,6 +397,40 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "plaid-12-transactions")
     }
 
+    func testForgotPasswordShowsConfirmation() throws {
+        // Owner, Nov 12, 2026: tapping "Forgot Password?" must NEVER
+        // send the email by itself — it opens the dedicated screen
+        // with an email field + Reset Password button, and after
+        // sending the sheet stays open on a "Check Your Email"
+        // confirmation state. No sign-up needed: the test starts on
+        // the auth screen. The address is fake — /recover answers
+        // 200 generically without revealing whether it exists.
+        let emailField = app.textFields["auth.email"]
+        XCTAssertTrue(
+            emailField.waitForExistence(timeout: 60),
+            "Auth screen did not appear: no email field within 60s of launch"
+        )
+        app.buttons["Forgot Password?"].tap()
+        let forgotEmail = app.textFields["auth.forgotEmail"]
+        XCTAssertTrue(
+            forgotEmail.waitForExistence(timeout: 15),
+            "Forgot-password screen did not open after tapping Forgot Password?"
+        )
+        // Nothing is sent yet: no confirmation text before pressing
+        // the button.
+        XCTAssertFalse(app.staticTexts["Check Your Email"].exists)
+        tapAndTypeText(forgotEmail, "forgot-test@example.com", fieldName: "auth.forgotEmail")
+        dismissKeyboardIfPresent(focusedField: forgotEmail)
+        app.buttons["Send Reset Link"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Check Your Email"].waitForExistence(timeout: 30),
+            "No confirmation state after sending the reset link (the sheet should stay open on 'Check Your Email')"
+        )
+        attachScreenshot(named: "forgot-01-sent")
+        XCTAssertTrue(app.buttons["Done"].exists)
+        XCTAssertTrue(app.buttons["Send Again"].exists)
+    }
+
     // MARK: - Shared sign-up
 
     /// Steps 1–3 of the proof: auth screen → fresh sign-up → name

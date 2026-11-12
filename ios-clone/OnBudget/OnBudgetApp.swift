@@ -17,6 +17,8 @@ struct OnBudgetApp: App {
                     // Deep links on the `onbudget` scheme (registered
                     // in ios-clone/OnBudget/Info.plist):
                     // - onbudget://reset-password?code=… → recovery
+                    // - onbudget://email-confirmed#access_token=… →
+                    //   sign-up confirmation (adopts the session)
                     // - onbudget://gmail-callback?gmail=connected|failed
                     //   → recorded on AppViewModel. The live Gmail
                     //   connect needs no forwarding: the active
@@ -25,6 +27,8 @@ struct OnBudgetApp: App {
                         Task { @MainActor in _ = appState.handleGmailDeepLink(url) }
                     } else if url.host == "reset-password" {
                         Task { await appState.handleResetDeepLink(url) }
+                    } else if url.host == "email-confirmed" {
+                        Task { await appState.handleEmailConfirmationDeepLink(url) }
                     }
                 }
         }

@@ -133,6 +133,64 @@ final class RolesAndSignInTests: XCTestCase {
         XCTAssertFalse(exists)
     }
 
+    // MARK: - sign-up confirmation redirect (owner, Nov 12, 2026)
+
+    func testSignUpSendsConfirmationRedirect() async throws {
+        // The stub returns no session ({}), i.e. confirmation is ON
+        // and the outcome is .needsConfirmation — the request body is
+        // what this pins: the deep link the confirmation email must
+        // point at.
+        let transport = StubTransport(handler: { _ in StubTransport.json([:]) })
+        let client = testClient(
+            store: InMemorySessionStore(), session: nil, transport: transport)
+        let outcome = try await client.signUp(
+            email: "someone@example.com", password: "Password-1",
+            fullName: "Someone", redirectTo: URL(string: "onbudget://email-confirmed")!)
+        guard case .needsConfirmation = outcome else {
+            return XCTFail("Expected .needsConfirmation, got \(outcome)")
+        }
+        let body = jsonBody(of: transport.requests[0])
+        XCTAssertEqual(body["redirect_to"] as? String, "onbudget://email-confirmed")
+        XCTAssertEqual(body["email"] as? String, "someone@example.com")
+        XCTAssertEqual((body["data"] as? [String: Any])?["full_name"] as? String, "Someone")
+    }
+
+    func testSignUpWithoutRedirectOmitsRedirectTo() async throws {
+        let transport = StubTransport(handler: { _ in StubTransport.json([:]) })
+        let client = testClient(
+            store: InMemorySessionStore(), session: nil, transport: transport)
+        _ = try await client.signUp(
+            email: "someone@example.com", password: "Password-1",
+            fullName: "Someone")
+        XCTAssertNil(jsonBody(of: transport.requests[0])["redirect_to"])
+    }
+
+    // MARK: - AuthLinkFragment (reset + confirmation deep links)
+
+    func testAuthLinkFragmentParsesTokens() {
+        let values = AuthLinkFragment.parse(
+            "access_token=abc123&refresh_token=def456&expires_in=3600&type=signup")
+        XCTAssertEqual(values["access_token"], "abc123")
+        XCTAssertEqual(values["refresh_token"], "def456")
+        XCTAssertEqual(values["expires_in"], "3600")
+        XCTAssertEqual(values["type"], "signup")
+    }
+
+    func testAuthLinkFragmentKeepsEqualsInValue() {
+        // Base64 padding: the value may itself contain '='.
+        let values = AuthLinkFragment.parse("access_token=abc==&type=recovery")
+        XCTAssertEqual(values["access_token"], "abc==")
+        XCTAssertEqual(values["type"], "recovery")
+    }
+
+    func testAuthLinkFragmentIgnoresMalformedPairs() {
+        let values = AuthLinkFragment.parse("access_token=abc&lonely&type=signup")
+        XCTAssertEqual(values["access_token"], "abc")
+        XCTAssertEqual(values["type"], "signup")
+        XCTAssertNil(values["lonely"])
+        XCTAssertTrue(AuthLinkFragment.parse("").isEmpty)
+    }
+
     // MARK: - Per-field sign-in wording
 
     func testSignInErrorMessagePerField() {

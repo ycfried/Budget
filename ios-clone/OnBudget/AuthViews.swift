@@ -134,10 +134,7 @@ public struct AuthView: View {
             .background(DesignTokens.background)
         }
         .sheet(isPresented: $showForgotSheet) {
-            ForgotPasswordSheet(email: email) { result in
-                message = result
-                messageIsError = false
-            }
+            ForgotPasswordSheet(email: email)
         }
         .onAppear {
             // Sign-out lands here fresh: fields cleared, sign-in
@@ -276,12 +273,13 @@ public struct AuthView: View {
                     .foregroundStyle(Color(hex: "#6b7280"))
             }
 
+            // Forgot password (owner, Nov 12, 2026): always opens
+            // the dedicated screen — it never sends the email
+            // straight from here. The sheet has the email field and
+            // the Reset Password button; the email goes out only
+            // when the user presses it.
             Button("Forgot Password?") {
-                if AuthValidation.isValidEmail(email) {
-                    Task { await sendReset(email: email) }
-                } else {
-                    showForgotSheet = true
-                }
+                showForgotSheet = true
             }
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(DesignTokens.primary)
@@ -395,31 +393,15 @@ public struct AuthView: View {
         message = nil
         showNameStep = true
     }
-
-    private func sendReset(email: String) async {
-        do {
-            try await appState.client.requestPasswordReset(
-                email: email.trimmingCharacters(in: .whitespacesAndNewlines),
-                redirectTo: AppDeepLinks.resetPassword)
-            message = "If an account exists for that email, a password-reset link was sent to it."
-            messageIsError = false
-        } catch let error as OnBudgetError {
-            message = error.userMessage
-            messageIsError = true
-        } catch {
-            message = "Could not send the reset link. Try again."
-            messageIsError = true
-        }
-    }
 }
 
 // MARK: - Create-account name step
 
 /// "Choose Your Name" (live.js:2440-2530). The name is stored as
 /// auth metadata `full_name` at sign-up time, never as a separate
-/// call. Email confirmation is OFF in the live project, so sign-up
-/// normally returns a session immediately; `.needsConfirmation`
-/// covers the setting being turned back on.
+/// call. Email confirmation is ON in the live project (owner, Nov 12,
+/// 2026), so sign-up returns `.needsConfirmation` and this step shows
+/// the persistent "check your email" state instead of a toast.
 public struct NameStepView: View {
     let email: String
     let password: String
@@ -430,6 +412,11 @@ public struct NameStepView: View {
     @State private var name = ""
     @State private var message: String?
     @State private var busy = false
+    /// Set when sign-up returns `.needsConfirmation` (owner, Nov 12,
+    /// 2026: confirmations are ON). The step then shows the persistent
+    /// "check your email" state instead of a toast that vanishes in
+    /// 4s (audit F-P2-10) — the user must see it until they act.
+    @State private var confirmationSent = false
 
     public init(email: String, password: String, onBack: @escaping () -> Void, onCreated: @escaping () -> Void) {
         self.email = email
@@ -447,23 +434,36 @@ public struct NameStepView: View {
                 BackButton(action: onBack)
                 Spacer()
             }
-            Text("Choose Your Name")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(DesignTokens.ink)
-            Text("Name")
-                .font(.system(size: 14, weight: .bold))
-            TextField("Name", text: $name)
-                .textContentType(.name)
-                .accessibilityIdentifier("auth.name")
-                .padding(12)
-                .background(.white)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            if let message { ErrorBox(message) }
-            Button(busy ? "Creating account…" : "Create Account") { Task { await createAccount() } }
-                .buttonStyle(PrimaryButtonStyle())
-                .accessibilityIdentifier("auth.createAccountConfirm")
-                .disabled(busy)
+            if confirmationSent {
+                Text("Check Your Email")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+                InfoBox("Account created. Check your email to confirm it, then sign in.")
+                Text("The confirmation link opens the OnBudget app. If it doesn't open, tap it on the iPhone or iPad where OnBudget is installed — the email is confirmed either way, then just sign in.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                Button("Back to Sign In") { onBack() }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("auth.backToSignIn")
+            } else {
+                Text("Choose Your Name")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+                Text("Name")
+                    .font(.system(size: 14, weight: .bold))
+                TextField("Name", text: $name)
+                    .textContentType(.name)
+                    .accessibilityIdentifier("auth.name")
+                    .padding(12)
+                    .background(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                if let message { ErrorBox(message) }
+                Button(busy ? "Creating account…" : "Create Account") { Task { await createAccount() } }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("auth.createAccountConfirm")
+                    .disabled(busy)
+            }
         }
     }
 
@@ -478,18 +478,18 @@ public struct NameStepView: View {
             let outcome = try await appState.client.signUp(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password,
-                fullName: name.trimmingCharacters(in: .whitespacesAndNewlines))
+                fullName: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                redirectTo: AppDeepLinks.emailConfirmed)
             busy = false
             switch outcome {
             case .signedIn:
                 onCreated()
             case .needsConfirmation:
-                // The message is shown by the caller via toast; the
-                // user then signs in after confirming email.
-                appState.showToast(
-                    "Account created. If email confirmation is on in Auth settings, confirm the email first, then sign in.",
-                    kind: .info)
-                appState.phase = .auth
+                // Persistent inline state (owner, Nov 12, 2026): the
+                // user stays on this step until they act — no toast,
+                // no jump back to sign-in. The confirmation link
+                // opens the app via onbudget://email-confirmed.
+                confirmationSent = true
             }
         } catch let error as OnBudgetError {
             // The server's already-registered error surfaces HERE, at
@@ -513,26 +513,32 @@ public struct NameStepView: View {
 
 // MARK: - Forgot password sheet
 
-/// Sheet (live.js:2399-2410): 3-step message, Email input, Confirm
-/// "Send Reset Link", Cancel as the top text link (never a button
-/// in the row — §2.3). Generic wording either way.
+/// Dedicated forgot-password screen (owner, Nov 12, 2026): Email
+/// input + "Send Reset Link". The email goes out ONLY when the user
+/// presses the button — tapping "Forgot Password?" on sign-in never
+/// sends anything by itself. After sending, the sheet stays open on
+/// a confirmation state ("Check Your Email") with Done + Send Again,
+/// instead of dismissing into a toast (live.js:2399-2410: 3-step
+/// message, generic wording either way).
 public struct ForgotPasswordSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppViewModel
     @State private var email: String
     @State private var message: String?
     @State private var busy = false
-    let onSent: (String) -> Void
+    /// Set on a successful send: the sheet swaps the form for the
+    /// confirmation state and stays open until the user taps Done.
+    @State private var sent = false
+    @State private var sentEmail = ""
 
-    public init(email: String, onSent: @escaping (String) -> Void) {
+    public init(email: String) {
         self._email = State(initialValue: email)
-        self.onSent = onSent
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Button("Cancel") { dismiss() }
+                Button(sent ? "Done" : "Cancel") { dismiss() }
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(DesignTokens.mid)
                     .disabled(busy)
@@ -542,26 +548,44 @@ public struct ForgotPasswordSheet: View {
                 Spacer()
                 Color.clear.frame(width: 50)
             }
-            Text("Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.")
-                .font(.system(size: 15))
-                .foregroundStyle(DesignTokens.ink)
-            Text("Email")
-                .font(.system(size: 14, weight: .bold))
-            TextField("Email", text: $email)
-                .textContentType(.emailAddress)
-                .keyboardType(.emailAddress)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("auth.forgotEmail")
-                .padding(12)
-                .background(.white)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            if let message { ErrorBox(message) }
-            HStack(spacing: 12) {
-                Button(busy ? "Sending…" : "Send Reset Link") { Task { await send() } }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(busy)
+            if sent {
+                Text("Check Your Email")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+                InfoBox("If an account exists for \(sentEmail), a password-reset link was sent to it.")
+                Text("Check your inbox (and spam folder) for the link. The link opens the OnBudget app, where you choose a new password. If the link has expired, send a fresh one from here.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(DesignTokens.ink)
+                HStack(spacing: 12) {
+                    Button("Done") { dismiss() }
+                        .buttonStyle(PrimaryButtonStyle())
+                    Button(busy ? "Sending…" : "Send Again") { Task { await send() } }
+                        .buttonStyle(TertiaryButtonStyle())
+                        .disabled(busy)
+                }
+                if let message { ErrorBox(message) }
+            } else {
+                Text("Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(DesignTokens.ink)
+                Text("Email")
+                    .font(.system(size: 14, weight: .bold))
+                TextField("Email", text: $email)
+                    .textContentType(.emailAddress)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("auth.forgotEmail")
+                    .padding(12)
+                    .background(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                if let message { ErrorBox(message) }
+                HStack(spacing: 12) {
+                    Button(busy ? "Sending…" : "Send Reset Link") { Task { await send() } }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(busy)
+                }
             }
             Spacer()
         }
@@ -575,13 +599,13 @@ public struct ForgotPasswordSheet: View {
             return
         }
         busy = true
+        message = nil
         do {
             try await appState.client.requestPasswordReset(
                 email: trimmed, redirectTo: AppDeepLinks.resetPassword)
             busy = false
-            let text = "If an account exists for that email, a password-reset link was sent to it."
-            onSent(text)
-            dismiss()
+            sent = true
+            sentEmail = trimmed
         } catch let error as OnBudgetError {
             message = error.userMessage
             busy = false
