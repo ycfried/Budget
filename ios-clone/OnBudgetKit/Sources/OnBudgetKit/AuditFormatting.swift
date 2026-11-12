@@ -28,6 +28,12 @@ public struct AuditDisplayEntry: Equatable {
         self.time = time
         self.count = count
     }
+
+    /// Type-filter bucket, derived from the translated
+    /// action/detail (owner, Nov 12 2026).
+    public var type: AuditFormatting.ActivityType {
+        AuditFormatting.ActivityType.classify(action: action, detail: detail)
+    }
 }
 
 public enum AuditFormatting {
@@ -202,13 +208,24 @@ public enum AuditFormatting {
         if matches(text, pattern: "^Kept .*as separate purchases") {
             return "Kept as two separate purchases."
         }
-        // Weeks-processed summary: drop zero parts, join the rest.
+        // Weeks-processed summary: the TITLE carries the week
+        // count ("N weeks closed"), so the detail never restates
+        // it — only the releases / restorations / held parts stay.
+        // Drop zero parts too; when nothing new remains the detail
+        // is empty and the row shows title + actor/time only
+        // (owner, Nov 12 2026: count and text must agree, and the
+        // title says the thing once).
         if matches(text, pattern: "week(s)? closed") && matches(text, pattern: "release") {
             let stripped = text.hasSuffix(".") ? String(text.dropLast()) : text
             let parts = stripped.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.hasPrefix("0") && !$0.hasPrefix("0 ") }
-            if !parts.isEmpty { return "\(parts.joined(separator: " · "))." }
+                // "week closed" and "weeks closed" both contain
+                // "closed"; no other clause does.
+                .filter { !$0.hasPrefix("0") && !$0.hasPrefix("0 ") && !$0.contains("closed") }
+            if parts.isEmpty { return "" }
+            return "\(parts.joined(separator: " · "))."
         }
+        // A bare "N weeks closed." on its own is the title restated.
+        if matches(text, pattern: "^\\d+ weeks? closed\\.?$") { return "" }
         // Surplus released.
         if let groups = firstMatch(
             text,
@@ -274,6 +291,41 @@ public enum AuditFormatting {
         ), let subject = groups[1] {
             return "Moved to the Trash: \(subject.trimmingCharacters(in: .whitespaces))."
         }
+        // Marked as a charity gift: one short line, no
+        // parenthetical restatement, no date (the actor/time line
+        // below already carries it) — "Walmart $56.34 — marked as
+        // a charity gift" (owner, Nov 12 2026).
+        if let groups = firstMatch(
+            text,
+            pattern: "^(.+?) (\\$[\\d,]+\\.\\d{2}) on (.+?) marked as a charity gift.*$"
+        ), let subject = groups[1], let amount = groups[2] {
+            return "\(subject.trimmingCharacters(in: .whitespaces)) \(amount) — marked as a charity gift."
+        }
+        // Base allowance change: a no-op ("changed from $X to
+        // $X") never renders as a change — the entry is written
+        // server-side by set_base_allowance with no old==new guard
+        // (supabase/04-admin-rpcs.sql), so already-stored no-ops
+        // render as the plain value. A real change keeps only the
+        // values; the title already says it changed.
+        if let groups = firstMatch(
+            text,
+            pattern: "^Base allowance changed from (\\$[\\d,]+\\.\\d{2}) to (\\$[\\d,]+\\.\\d{2})\\.?$"
+        ), let from = groups[1], let to = groups[2] {
+            if from == to { return "Base allowance: \(from)." }
+            return "From \(from) to \(to)."
+        }
+        // Pure restatements of the title: the detail adds nothing,
+        // so the row shows title + actor/time only (owner, Nov 12
+        // 2026: the title says the thing once). The Request forms
+        // are the pre-rewrite text — the replace block below turns
+        // them into "Extra Fund request approved/declined.", which
+        // is the same restatement.
+        if matches(text, pattern: "^Joined the household\\.?$") { return "" }
+        if matches(text, pattern: "^Household created\\.?$") { return "" }
+        if matches(text, pattern: "^Extra Fund request approved\\.?$") { return "" }
+        if matches(text, pattern: "^Extra Fund request declined\\.?$") { return "" }
+        if matches(text, pattern: "^Request.*approved\\.?$") { return "" }
+        if matches(text, pattern: "^Request.*declined\\.?$") { return "" }
         // Charity / fund / household / allowance: strip internal wording.
         text = replace(text, pattern: "^Default charity rate set to ([^ ]+)( \\(applies to future incomes only\\))?\\.?$") { groups in
             "Charity rate: \(groups[1] ?? "") for future income."
@@ -288,7 +340,9 @@ public enum AuditFormatting {
             "Spent from the Extra Fund: \(groups[1] ?? "")."
         }
         text = replace(text, pattern: "^Request.*approved for (.+?)( \\(split; remainder .+?\\))?( \\(override: .+?\\))?\\.?$") { groups in
-            "Extra Fund request approved: \(groups[1] ?? "")."
+            // Amount only — the title already says the request was
+            // approved (owner, Nov 12 2026).
+            "\(groups[1] ?? "")."
         }
         text = replace(text, pattern: "^Request.*approved\\.?$") { _ in "Extra Fund request approved." }
         text = replace(text, pattern: "^Request.*declined\\.?$") { _ in "Extra Fund request declined." }
@@ -320,6 +374,59 @@ public enum AuditFormatting {
             return "system"
         }
         return "money"
+    }
+
+    // MARK: - Activity types (type filter, owner Nov 12 2026)
+
+    /// The type filter's buckets. Chips show only the types
+    /// actually present in the household's log, in this order;
+    /// anything that fits no bucket lands in `other` so "All"
+    /// stays the union of the chips.
+    public enum ActivityType: String, CaseIterable {
+        case weekCloses
+        case members
+        case allowance
+        case charity
+        case duplicates
+        case trash
+        case other
+
+        public var label: String {
+            switch self {
+            case .weekCloses: return "Week closes"
+            case .members: return "Members"
+            case .allowance: return "Allowance"
+            case .charity: return "Charity"
+            case .duplicates: return "Duplicates"
+            case .trash: return "Trash"
+            case .other: return "Other"
+            }
+        }
+
+        /// Classify a translated action/detail pair. Action-first:
+        /// a duplicate merge of a charity gift is Duplicates, not
+        /// Charity; an income row that commits money to charity is
+        /// Charity. Refund-link suggestions sit with Duplicates
+        /// (they are reviewed next to Possible Duplicates).
+        public static func classify(action: String, detail: String) -> ActivityType {
+            if action == "Weeks processed" { return .weekCloses }
+            let text = "\(action) \(detail)".lowercased()
+            if text.contains("duplicate") || text.contains("suggested link") || text.contains("link suggestion") {
+                return .duplicates
+            }
+            if text.contains("household joined") || text.contains("household created")
+                || text.contains("member") || text.contains("join failed") {
+                return .members
+            }
+            if text.contains("allowance") || text.contains("temporary increase") { return .allowance }
+            if text.contains("charity") || text.contains("gift") { return .charity }
+            let lowerAction = action.lowercased()
+            if lowerAction.contains("trash") || lowerAction == "transaction deleted"
+                || lowerAction == "transaction excluded" || lowerAction == "transaction restored" {
+                return .trash
+            }
+            return .other
+        }
     }
 
     /// A collapsed "Weeks processed ×N" group reads as "N weeks
