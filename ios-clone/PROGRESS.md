@@ -188,3 +188,37 @@ slices) — all native-only; web frozen at v69. Full per-item report:
   temporary simulator trigger commit (`cc68bae`) must be reverted before
   merge. Do NOT trigger the TestFlight upload workflow from this branch.
 - **Filters / top-area / list / logos batch (head `cd5ecfe`, pushed `[skip ci]`):** Filters sheet rethought — one When button + one calendar (tap start, then end), white fields with dark ink, Apply/Cancel + "Reset Filters" link, everything draft-held; Transactions top area — sync is the Home `arrow.clockwise` symbol, Trash/Activity/Past Weeks on one low-key outline-button line, Trash has no count; transaction list is one continuous list (single white card + dividers), date + card right-aligned in a fixed column, "Email alert" → "Email"; logos render on clean white tiles (measured: Amex 32px, Walmart/Amazon 48px via Google s2 — sz=128 is already max), fallback is a rounded-letter generic merchant icon. Full per-item report: `~/workspace/household-budget/NATIVE_FIXES_PHONE_FEEDBACK_REPORT.md` §§17–21. This PROGRESS.md update is the trigger commit for the batch's verification run.
+
+## Nov 12, 2026 — fix batch merged + second TestFlight build uploaded (parent)
+
+- **Merged:** `native-fixes-phone-feedback` → `ios-clone-testflight` (fast-forward
+  `dbc0348..decb79a`, 62 files, +4209/−840). The temporary simulator trigger
+  commit `cc68bae` was reverted first (`decb79a`, workflow file only — the app
+  code at the merged head is byte-identical to the green-run head `53aa043`).
+  Simulator verification: run 43159478753 attempt 2 SUCCESS, 208 test cases
+  passed, 0 failed. Main / web app untouched (still eadb22f, live.js v69).
+- **Uploaded:** run 43167922287, conclusion success — **version 1.0.0, build 14**,
+  bundle com.onbudget.ios, Xcode 26.3.0, altool "UPLOAD SUCCEEDED with no
+  errors" 06:32:30Z Nov 12. Build 14 carries the full fix batch: the 8
+  owner-reported defects, roles Owner/Admin/Member (native UI), auth-flow
+  fixes, Filters redesign, continuous transaction list, logo clean-up,
+  green bottom toasts, Funds & charity rules. Apple processing (~10–30 min)
+  before it appears in the owner's TestFlight app.
+- **Backend applied live with the build:** `household-roles-owner.sql`
+  (owner_id backfilled for all 13 households; remove is owner-only;
+  `set_household_member_role` live); `check-email-exists` deployed via
+  main PR #66 (merged 7deee98 — deploy verification owed); Auth dashboard:
+  redirect URLs `onbudget://reset-password` + `onbudget://email-confirmed`
+  added and verified; **Confirm email ON and verified ON**. Email templates
+  (Reset Password / Confirm signup) could NOT be edited — Supabase Free plan
+  requires custom SMTP to edit templates; branded templates deferred to
+  post-launch (Pro/SMTP), default templates send working mail for now.
+- **NOT in build 14 (owner to know):** the provisional-merge server guards
+  (plaid-sync / ingest-amex-alert / gmail-poll) are NOT deployed — diagnosis
+  (Nov 12) shows the Seven Mile $47.65 double is a bank-first race with the
+  same dedupe hash; the guards fix future doubles only, and existing doubled
+  rows need a one-time reconciliation (owner approval). Duplicate rows still
+  show in build 14. Audit leftovers + test-host decision remain open.
+- **Known consequence:** simulator UI tests will go red while Confirm email
+  is ON until the test helper confirms fresh accounts (Admin API or
+  pre-created accounts) — do not turn Confirm back off without the owner.
