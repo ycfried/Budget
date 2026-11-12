@@ -38,21 +38,22 @@ public enum DesignTokens {
 
     public static let successHex = "#16a34a"
 
-    // MARK: - Stat-card tints (owner direction, Nov 12 2026: the
-    // Home/Funds Charity + Extra Fund cards are bigger and more
-    // colourful — each its own soft wash inside the brand family).
-    // The washes deliberately reuse the existing success/info
-    // backgrounds, so the tints read consistently with the rest of
-    // the app; the deep amount colours reuse the success/deep text
-    // colours. Text stays dark on the very light wash.
+    // MARK: - Stat-card deep colours (owner direction, Nov 12 2026,
+    // corrected ~2:02 PM the same day: the Home/Funds Charity +
+    // Extra Fund cards are bigger and more colourful, but NOT a
+    // wash — a coloured OUTLINE on a white card, like the Weekly
+    // Budget hero. Charity keeps a green identity, Extra Fund a
+    // blue one; the deep amount colours below stay (they are the
+    // colour identity, not a wash). The soft-wash tokens that the
+    // first pass added (charityTint/fundTint, charityChip/fundChip)
+    // are REMOVED: nothing else referenced them — they only
+    // duplicated the success/info backgrounds (#f0fdf4 / #eef4ff)
+    // — and no wash remains on these cards. Text stays dark ink;
+    // amounts are the deep colour, never mid-tone.
 
     public static let skeletonHex = "#ececf1"
-    public static let charityTintHex = "#f0fdf4"
     public static let charityDeepHex = "#15803d"
-    public static let charityChipHex = "#dcfce7"
-    public static let fundTintHex = "#eef4ff"
     public static let fundDeepHex = "#1d4ed8"
-    public static let fundChipHex = "#dbeafe"
 
     // Soft-green inline success box (owner decision, Nov 12, 2026:
     // inline success states are GREEN like the success toasts):
@@ -82,12 +83,8 @@ public enum DesignTokens {
     public static var successText: Color { Color(hex: successTextHex) }
     public static var successBorder: Color { Color(hex: successBorderHex) }
     public static var skeleton: Color { Color(hex: skeletonHex) }
-    public static var charityTint: Color { Color(hex: charityTintHex) }
     public static var charityDeep: Color { Color(hex: charityDeepHex) }
-    public static var charityChip: Color { Color(hex: charityChipHex) }
-    public static var fundTint: Color { Color(hex: fundTintHex) }
     public static var fundDeep: Color { Color(hex: fundDeepHex) }
-    public static var fundChip: Color { Color(hex: fundChipHex) }
     #endif
 }
 

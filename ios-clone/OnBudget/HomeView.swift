@@ -13,7 +13,7 @@
 // fields), and the Fund/Charity display aggregations in
 // OnBudgetKit's FundSummary / CharitySummary.
 //
-// Hero: white card, 1.5px #2f6bff outline, no shadow. Sync button
+// Hero: white card, 2.5px #2f6bff outline, no shadow. Sync button
 // is primary blue when allowance set, grey tertiary until set;
 // "Set Your Weekly Allowance" (admin only) when none set. Purchases
 // shows "N/A" — never a bare dash — when transactions fail to load.
@@ -21,9 +21,11 @@
 // full-width, expand downward IN PLACE, one-open-at-a-time, with
 // the expand detail (Available / Pending / Total) and NO action
 // buttons on Home (actions belong on the Funds page). Both cards
-// are BIGGER and tinted (owner, Nov 12, 2026 — Charity soft green,
-// Extra Fund soft blue, shared StatCardTheme with the Funds page);
-// the Weekly Budget hero above them is untouched.
+// are BIGGER and outlined (owner, Nov 12, 2026, corrected ~2:02 PM
+// the same day — NOT a wash: Charity green #16a34a outline, Extra
+// Fund brand-blue #2f6bff outline, both 2px, white inside like the
+// hero, shared StatCardTheme with the Funds page); the Weekly
+// Budget hero above them keeps its thicker 2.5px outline.
 // "Last synced" is shown once, quietly, under Automatic Sync in
 // Settings (ConnectedAccountsView); Home carries NO sync line
 // (owner, Nov 11, 2026 — removed from Home entirely).
@@ -339,8 +341,10 @@ public struct HomeView: View {
     // other cards (owner, Nov 11, 2026: it is the most important
     // number on the page). The loading state renders at the same
     // full hero size (shimmer skeleton blocks, no spinner), so the
-    // layout never jumps when the number arrives. The hero look is
-    // untouched by the Nov 12 tinted-cards direction.
+    // layout never jumps when the number arrives. The hero outline
+    // is the thickest on the page (2.5px, owner correction Nov 12,
+    // 2026 — was 1.5px), so it stays the anchor card above the
+    // 2px-outlined Charity / Extra Fund cards below it.
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Weekly Budget")
@@ -364,7 +368,7 @@ public struct HomeView: View {
         .background(.white)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(DesignTokens.primary, lineWidth: 1.5)
+                .stroke(DesignTokens.primary, lineWidth: 2.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .accessibilityIdentifier("home.weeklyBudget")
@@ -654,17 +658,20 @@ public struct HomeView: View {
     /// 28pt heavy in the card's deep tint colour, chevron
     /// bottom-right (SF Symbol chevron.down, down when collapsed,
     /// rotating 180° to up when expanded, with the shared
-    /// ExpandAnimation). Bigger and tinted (owner, Nov 12, 2026 —
-    /// StatCardTheme, shared with the Funds page): 20pt padding,
-    /// 18pt title, 28pt amount, icon chip; the collapsed card reads
-    /// as a real card, not a bare row. The whole card is the tap
-    /// target — the chevron is only a visual hint (owner, Nov 11,
-    /// 2026). Loading shows the same bigger shape in muted grey
-    /// shimmer, with NO colour (title + grey chip + shimmer amount
-    /// block, no spinner, no "Loading…" text). A failed card shows
-    /// the same shape with a STATIC grey block for the face — never
-    /// a bare "—" — plus the red status line below it; the expanded
-    /// rows carry the ErrorBox + Retry. The card body is a tap
+    /// ExpandAnimation). Bigger and outlined (owner, Nov 12, 2026,
+    /// corrected ~2:02 PM — StatCardTheme, shared with the Funds
+    /// page): 20pt padding, 18pt title, 28pt amount, icon chip;
+    /// white inside with a 2px coloured outline (green for Charity,
+    /// brand blue for Extra Fund), never a background wash. The
+    /// collapsed card reads as a real card, not a bare row. The
+    /// whole card is the tap target — the chevron is only a visual
+    /// hint (owner, Nov 11, 2026). Loading shows the same bigger
+    /// shape with a muted grey outline and muted grey shimmer, with
+    /// NO colour (title + grey chip + shimmer amount block, no
+    /// spinner, no "Loading…" text). A failed card shows the same
+    /// shape with a STATIC grey block for the face — never a bare
+    /// "—" — plus the red status line below it; the expanded rows
+    /// carry the ErrorBox + Retry. The card body is a tap
     /// gesture, NOT a Button: the expanded rows contain real "Try
     /// Again" Buttons, and a Button nested inside a Button never
     /// fires (audit H-P1-3). A child Button wins over an ancestor
@@ -692,8 +699,12 @@ public struct HomeView: View {
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(theme.deep)
                         .frame(width: 36, height: 36)
-                        .background(theme.chip)
+                        .background(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(theme.outline, lineWidth: 1)
+                        )
                 }
                 Text(title)
                     .font(.system(size: 18, weight: .bold))
@@ -730,7 +741,14 @@ public struct HomeView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isLoading ? .white : theme.background)
+        .background(.white)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(
+                    isLoading ? StatCardTheme.loadingOutline : theme.outline,
+                    lineWidth: theme.outlineWidth
+                )
+        )
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 40 / 255, opacity: 0.05),
                 radius: 2, x: 0, y: 1)
