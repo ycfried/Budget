@@ -303,11 +303,9 @@ public enum OnBudgetError: Error, Equatable, LocalizedError {
 /// message, never guess a field.
 public enum SignInErrorMessage {
     public static func invalidCredentials(emailExists: Bool?) -> String {
-        switch emailExists {
-        case true: return "Password is incorrect."
-        case false: return "Username is incorrect."
-        case nil: return "Username or password is incorrect."
-        }
+        if emailExists == true { return "Password is incorrect." }
+        if emailExists == false { return "Username is incorrect." }
+        return "Username or password is incorrect."
     }
 }
 

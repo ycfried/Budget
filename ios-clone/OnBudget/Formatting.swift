@@ -125,7 +125,11 @@ public enum AuthValidation {
 
     public static func isValidEmail(_ email: String) -> Bool {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.contains("@") else { return false }
+        // No whitespace anywhere (audit F-P2 smalls): the web regex
+        // /^[^\s@]+@[^\s@]+\.[^\s@]+$/ rejects "a @b.c", which this
+        // used to accept and then fail generically server-side.
+        guard !trimmed.isEmpty, !trimmed.contains(where: { $0.isWhitespace }),
+              trimmed.contains("@") else { return false }
         let parts = trimmed.split(separator: "@")
         guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty,
               parts[1].contains(".") else { return false }

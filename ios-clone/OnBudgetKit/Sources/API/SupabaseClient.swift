@@ -132,6 +132,16 @@ public struct AuthSession: Equatable, Codable {
 
 /// The signed-in user. `userMetadata` carries `full_name` / `name`
 /// (the web app stores the display name in auth metadata only —
+/// A coding key for a dictionary with unknown keys (user metadata).
+/// Used by `AuthUser` to read string values tolerantly, ignoring
+/// non-string values instead of failing the whole map.
+private struct DynamicCodingKey: CodingKey {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { nil }
+}
+
 /// live.js:538-540, 3367-3370).
 public struct AuthUser: Equatable, Codable {
     public let id: UUID
@@ -153,10 +163,21 @@ public struct AuthUser: Equatable, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
         self.email = try container.decodeIfPresent(String.self, forKey: .email)
-        // Metadata values are strings in practice; tolerate any JSON
-        // scalar by decoding as [String: AnyDecodable] would be
-        // overkill — fall back to empty on a non-string value.
-        self.userMetadata = (try? container.decode([String: String].self, forKey: .userMetadata)) ?? [:]
+        // Tolerate non-string values (audit P1-5): keep the string
+        // values, ignore the rest. One boolean claim (e.g. from an
+        // OAuth provider) used to fail the whole [String: String]
+        // decode and nuke the display name everywhere.
+        if let meta = try? container.nestedContainer(keyedBy: DynamicCodingKey.self, forKey: .userMetadata) {
+            var kept: [String: String] = [:]
+            for key in meta.allKeys {
+                if let value = try? meta.decode(String.self, forKey: key) {
+                    kept[key.stringValue] = value
+                }
+            }
+            self.userMetadata = kept
+        } else {
+            self.userMetadata = [:]
+        }
     }
 
     public init(id: UUID, email: String?, userMetadata: [String: String] = [:]) {
@@ -501,6 +522,14 @@ public final class SupabaseClient: @unchecked Sendable {
             if let request { _ = try? await transport.send(request) }
         }
         setSession(nil)
+        // Back to the plain store (audit P1-4): with Face ID enabled
+        // the store is the Keychain one, and the next password
+        // sign-in would save straight into it — silently re-enabling
+        // biometric unlock with no opt-in, against the documented
+        // rule. Swapping back means the next sign-in lands in
+        // UserDefaults and Face ID stays off until the user opts in
+        // again in Settings.
+        replaceSessionStore(UserDefaultsSessionStore())
     }
 
     /// Request a password-reset email (live.js:2399-2410). The reply
@@ -628,6 +657,9 @@ public final class SupabaseClient: @unchecked Sendable {
     public func deleteAccount() async throws {
         _ = try await functions.deleteAccount()
         setSession(nil)
+        // Same store swap as signOut (audit P1-4): the next sign-in
+        // must not silently re-enable biometric unlock.
+        replaceSessionStore(UserDefaultsSessionStore())
     }
 
     // MARK: - Internals

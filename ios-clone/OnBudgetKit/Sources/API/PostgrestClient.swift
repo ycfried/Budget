@@ -440,7 +440,7 @@ public struct PostgrestClient {
     public func adminMemberships(userId: UUID) async throws -> [HouseholdMembership] {
         try await fetch(PostgrestQuery(
             table: "household_members",
-            columns: "household_id",
+            columns: "household_id,role",
             filters: [.equal("user_id", userId.uuidString), .equal("role", "admin")]
         ))
     }
@@ -756,7 +756,7 @@ public struct PostgrestClient {
     public func accountNicknames(householdId: UUID) async throws -> [AccountNickname] {
         try await fetch(PostgrestQuery(
             table: "account_nicknames",
-            columns: "plaid_item_id,plaid_account_id,card_suffix,nickname",
+            columns: "household_id,plaid_item_id,plaid_account_id,card_suffix,nickname",
             filters: [.householdId(householdId)]
         ))
     }

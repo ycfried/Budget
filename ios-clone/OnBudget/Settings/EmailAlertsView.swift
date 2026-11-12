@@ -424,6 +424,13 @@ struct EmailAlertsView: View {
             }
         }
         .task { await viewModel.load() }
+        .onDisappear {
+            // The Gmail callback line is a one-time delivery notice
+            // (audit F-P1-7): clear it when leaving, after the live
+            // connection status has been re-read — otherwise it
+            // survives across launches indefinitely as stale state.
+            appState.clearGmailCallbackResult()
+        }
         .alert(item: $viewModel.connectionToDisconnect) { connection in
             Alert(
                 title: Text("Disconnect Email"),

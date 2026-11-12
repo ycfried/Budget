@@ -56,11 +56,14 @@ public struct PlaidLinkToken: Equatable, Codable {
 }
 
 /// plaid-exchange: `{item_id, connected, duplicate, duplicate_of}`
-/// (`plaid-exchange/index.ts:107-108`).
+/// (`plaid-exchange/index.ts:107-108`). The success path returns NO
+/// `duplicate` key (only the duplicate path includes it), so the
+/// field defaults to false — a required Bool could never decode a
+/// successful connect.
 public struct PlaidExchangeResult: Equatable, Codable {
     public let itemId: String?
     public let connected: Bool
-    public let duplicate: Bool
+    public let duplicate: Bool = false
     public let duplicateOf: String?
 
     enum CodingKeys: String, CodingKey {
@@ -85,8 +88,12 @@ public struct PlaidSyncResult: Equatable, Codable {
     public let minutesSincePreviousSync: Int?
     public let stale: Bool?
     public let duplicateRemoved: [String]?
-    public let items: Int
-    public let connectedItems: Int
+    /// The 502 partial-failure body carries NO `items` /
+    /// `connected_items` (only the success body does), so both default
+    /// to 0 — required Ints made every 502 undecodable and `.partial`
+    /// unreachable, so the UI could never name the failed bank(s).
+    public let items: Int = 0
+    public let connectedItems: Int = 0
     public let skippedDisconnected: Int?
     public let truncated: Bool?
     public let noBankConnected: Bool?

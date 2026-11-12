@@ -106,6 +106,16 @@ public final class AppViewModel: ObservableObject {
     @Published public var ownerId: UUID?
     @Published public var householdName: String?
 
+    /// Boot failure state (audit F-P1-1, Nov 11, 2026): when the
+    /// membership read fails, the Household screen shows this
+    /// persistently with a Retry — never a vanishing toast, and the
+    /// choice panel stays hidden until membership is known absent.
+    @Published public var bootError: String?
+    /// One-shot notice for the sign-in screen (audit F-P1-2): a
+    /// token-refresh failure that is NOT a dead session (offline,
+    /// timeout) lands on Auth with this plain line instead of
+    /// misdiagnosing "sign-in expired". Cleared when shown.
+    @Published public var authNotice: String?
     /// One-open-at-a-time stat-card expansion, shared by Home and
     /// Funds (live.js:3530-3600).
     @Published public var expandedCard: ExpandedCard?
@@ -202,6 +212,7 @@ public final class AppViewModel: ObservableObject {
     /// Boot (live.js:2339-2395). Always lands on Home.
     public func boot() async {
         phase = .loading
+        bootError = nil
         selectedTab = .home
         showSettings = false
         guard let session = client.currentSession else {
@@ -210,11 +221,23 @@ public final class AppViewModel: ObservableObject {
             return
         }
         do {
-            // Refresh a stale token before reading membership; a
-            // refused refresh funnels to the expired state.
+            // Refresh a stale token before reading membership. Only
+            // a dead session is "sign-in expired" (audit F-P1-2):
+            // offline / timeout / transport failures land on Auth
+            // with a plain offline notice — a password cannot fix
+            // them, and the user must not be told their sign-in died.
             _ = try await client.validAccessToken()
         } catch let error as OnBudgetError where error == .sessionExpired {
             phase = .sessionExpired
+            return
+        } catch let error as OnBudgetError {
+            switch error {
+            case .networkOffline, .timedOut, .networkError:
+                authNotice = "You're offline. Check your connection and try again."
+                phase = .auth
+            default:
+                phase = .sessionExpired
+            }
             return
         } catch {
             phase = .sessionExpired
@@ -235,11 +258,13 @@ public final class AppViewModel: ObservableObject {
         } catch let error as OnBudgetError where error == .sessionExpired {
             phase = .sessionExpired
         } catch {
-            // A membership read error is surfaced, never silent
-            // (live.js:371-389): show the household screen with the
-            // error as a toast rather than stranding on loading.
-            toast = Toast(message: (error as? OnBudgetError)?.userMessage
-                          ?? "Could not load your household. Try again.", kind: .error)
+            // A membership read error is persistent, never silent and
+            // never a vanishing toast (audit F-P1-1, live.js:371-389):
+            // the Household screen shows this with a Retry, and the
+            // choice panel stays hidden until membership is known
+            // absent — the user may already belong to a household
+            // whose read just failed. Raw server text never shows.
+            bootError = "Could not load your household. Try again."
             phase = .household
         }
     }
@@ -286,6 +311,9 @@ public final class AppViewModel: ObservableObject {
         role = nil
         ownerId = nil
         householdName = nil
+        toast = nil
+        bootError = nil
+        authNotice = nil
         expandedCard = nil
         pendingTransactionJump = nil
         pendingWeekFilter = nil
@@ -408,6 +436,12 @@ public final class AppViewModel: ObservableObject {
             .queryItems?.first(where: { $0.name == "code" })?.value {
             pendingResetCode = code
             resetLinkError = nil
+            // Route to the reset screen: it only renders inside the
+            // .auth branch, so without this the link is silently
+            // swallowed when the user is already signed in (audit
+            // F-P1-3). The recovery session replaces the current
+            // session on exchange, so dropping the shell is coherent.
+            phase = .auth
             return
         }
         // Hash-style recovery link: #access_token=…&refresh_token=…
@@ -427,10 +461,12 @@ public final class AppViewModel: ObservableObject {
                 } catch {
                     resetLinkError = "This reset link could not be used. Request a new one from the sign-in screen."
                 }
+                phase = .auth
                 return
             }
         }
         resetLinkError = "This reset link could not be used. Request a new one from the sign-in screen."
+        phase = .auth
     }
 
     /// Exchange a PKCE recovery code for a session, then hand the
@@ -439,12 +475,26 @@ public final class AppViewModel: ObservableObject {
         guard let code = pendingResetCode, code != "fragment" else { return pendingResetCode == "fragment" }
         do {
             _ = try await client.exchangeRecoveryCode(code)
+            // PKCE codes are single-use: clear immediately so a
+            // re-appearing view cannot re-exchange and overwrite the
+            // form with an error (audit F-P2-3).
+            pendingResetCode = nil
             return true
         } catch {
             resetLinkError = "This reset link could not be used. Request a new one from the sign-in screen."
             pendingResetCode = nil
             return false
         }
+    }
+
+    /// Clears the Gmail callback record (audit F-P1-7): the
+    /// "Gmail return: Connected/Failed" line in Settings is a
+    /// one-time delivery notice, not lasting state — it is cleared
+    /// when the Email Alerts screen is left, after the live
+    /// connection status has been re-read.
+    public func clearGmailCallbackResult() {
+        gmailCallbackResult = nil
+        UserDefaults.standard.removeObject(forKey: Self.lastGmailCallbackDefaultsKey)
     }
 
     // MARK: - Toasts

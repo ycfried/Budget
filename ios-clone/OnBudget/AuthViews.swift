@@ -147,6 +147,13 @@ public struct AuthView: View {
                 password = ""
                 message = nil
             }
+            // A boot-time offline notice (audit F-P1-2) shows once,
+            // in the same box as any other sign-in message.
+            if let notice = appState.authNotice {
+                message = notice
+                messageIsError = true
+                appState.authNotice = nil
+            }
             // Offer Face ID unlock when a protected session exists
             // and biometrics can evaluate.
             appState.refreshBiometricUnlockAvailability()
@@ -352,8 +359,8 @@ public struct AuthView: View {
             _ = try await appState.client.signIn(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password)
-            message = "Signed in."
-            messageIsError = false
+            // No "Signed in." message: boot() changes phase
+            // immediately, so it was never rendered (audit F-P2-13).
             busy = nil
             await appState.boot()
         } catch let error as OnBudgetError {
@@ -526,8 +533,9 @@ public struct ForgotPasswordSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Button("Cancel") { dismiss() }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(DesignTokens.mid)
+                    .disabled(busy)
                 Spacer()
                 Text("Forgot Password?")
                     .font(.system(size: 17, weight: .bold))
@@ -544,6 +552,7 @@ public struct ForgotPasswordSheet: View {
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .accessibilityIdentifier("auth.forgotEmail")
                 .padding(12)
                 .background(.white)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
@@ -586,11 +595,11 @@ public struct ForgotPasswordSheet: View {
 // MARK: - Reset-password completion (deep link)
 
 /// Native completion of the reset flow (reset.html, verified
-/// Nov 9, 2026): heading "Reset Your Password", "Password
-/// requirements: at least 8 characters.", New Password + Confirm
-/// New Password each with a Show/Hide toggle, "Save New Password"
-/// (full-width primary), "Back to Sign In" link. Messages are the
-/// reset page's exact texts.
+/// Nov 9, 2026): heading "Choose a New Password", the "Step 3 of
+/// the reset…" intro, "Password requirements: at least 8 characters.
+/// Both fields must match.", New Password + Confirm New Password
+/// each with a Show/Hide toggle, "Save New Password" (full-width
+/// primary), Back top-left. Messages are the reset page's exact texts.
 public struct ResetPasswordView: View {
     @EnvironmentObject private var appState: AppViewModel
     @State private var newPassword = ""
@@ -612,9 +621,21 @@ public struct ResetPasswordView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Spacer(minLength: 0)
                     AuthBrandHeader()
-                    Text("Reset Your Password")
+                    HStack {
+                        BackButton {
+                            appState.pendingResetCode = nil
+                            appState.resetLinkError = nil
+                            appState.phase = .auth
+                        }
+                        .disabled(busy)
+                        Spacer()
+                    }
+                    Text("Choose a New Password")
                         .font(.system(size: 22, weight: .bold))
-                    Text("Password requirements: at least 8 characters.")
+                    Text("Step 3 of the reset: you asked for a link, checked your inbox, and opened it here. Now choose a new password, then return to sign-in with it. If this link has expired, go back to sign-in and use Forgot password? again for a fresh link.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                    Text("Password requirements: at least 8 characters. Both fields must match.")
                         .font(.system(size: 15))
                         .foregroundStyle(Color(hex: "#6b7280"))
                     if exchanging {
@@ -630,14 +651,6 @@ public struct ResetPasswordView: View {
                         Button(busy ? "Saving…" : "Save New Password") { Task { await save() } }
                             .buttonStyle(PrimaryButtonStyle())
                             .disabled(busy)
-                        Button("Back to Sign In") {
-                            appState.pendingResetCode = nil
-                            appState.resetLinkError = nil
-                            appState.phase = .auth
-                        }
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(DesignTokens.primary)
-                        .frame(maxWidth: .infinity)
                         .padding(.top, 4)
                     }
                     AuthFooter()
@@ -701,12 +714,15 @@ public struct ResetPasswordView: View {
         busy = true
         do {
             try await appState.client.changePassword(newPassword)
-            busy = false
             message = "Password saved. You can now sign in with it. Taking you back to sign in…"
             messageIsError = false
             appState.pendingResetCode = nil
             try? await Task.sleep(for: .seconds(2))
             appState.phase = .auth
+            // Busy stays on until the phase change (audit F-P2-2):
+            // clearing it before the sleep left Save tappable again
+            // mid-save. The view unmounts on the phase change.
+            busy = false
         } catch {
             message = "Could not save the new password. The link may have expired — request a new one from the sign-in screen."
             messageIsError = true
@@ -723,21 +739,25 @@ public struct SessionExpiredView: View {
     @ObservedObject var appState: AppViewModel
     public init(appState: AppViewModel) { self.appState = appState }
     public var body: some View {
-        VStack(spacing: 16) {
-            AuthBrandHeader()
-            Spacer()
-            Text("Your Sign-In Expired")
-                .font(.system(size: 22, weight: .bold))
-            Text("Sign in again to see your household.")
-                .font(.system(size: 15))
-                .foregroundStyle(Color(hex: "#6b7280"))
-            Button("Sign In Again") { appState.signInAgain() }
-                .buttonStyle(PrimaryButtonStyle())
-                .frame(maxWidth: 320)
-            Spacer()
-            AuthFooter()
+        // ScrollView (audit F-P2-6): a bare VStack can clip the
+        // footer at large Dynamic Type sizes.
+        ScrollView {
+            VStack(spacing: 16) {
+                AuthBrandHeader()
+                Spacer()
+                Text("Your Sign-In Expired")
+                    .font(.system(size: 22, weight: .bold))
+                Text("Sign in again to see your household.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                Button("Sign In Again") { appState.signInAgain() }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .frame(maxWidth: 320)
+                Spacer()
+                AuthFooter()
+            }
+            .padding(20)
         }
-        .padding(20)
         .background(DesignTokens.background)
     }
 }

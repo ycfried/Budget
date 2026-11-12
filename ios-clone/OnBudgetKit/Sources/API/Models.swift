@@ -568,8 +568,15 @@ public struct WeekCloseResult: Equatable, Codable {
     public let fundAvailableCents: Int
     public let shortfallCents: Int
     public let pendingLateAdjustmentCents: Int
-    public let unlinkedExcessByWeek: [String: Int]?
-    public let restorationsSkipped: [String]
+    /// `unlinked_excess_by_week` is always an ARRAY of
+    /// `{week_start, unlinked_excess_cents}` objects (empty `[]`
+    /// included) — the old `[String: Int]` dictionary model could
+    /// never decode, so `weekClose()` could never succeed.
+    public let unlinkedExcessByWeek: [WeekUnlinkedExcess]?
+    /// `restorations_skipped` is always an array of OBJECTS
+    /// (`{reason}` or `{purchase_transaction_id, reason}`), never
+    /// bare strings — and it defaults to empty if the key is absent.
+    public let restorationsSkipped: [WeekCloseSkipped] = []
 
     enum CodingKeys: String, CodingKey {
         case weeksClosed = "weeks_closed"
@@ -582,6 +589,30 @@ public struct WeekCloseResult: Equatable, Codable {
         case pendingLateAdjustmentCents = "pending_late_adjustment_cents"
         case unlinkedExcessByWeek = "unlinked_excess_by_week"
         case restorationsSkipped = "restorations_skipped"
+    }
+}
+
+/// One entry of week-close's `unlinked_excess_by_week` array
+/// (`week-close/index.ts:558,601,1003`).
+public struct WeekUnlinkedExcess: Equatable, Codable {
+    public let weekStart: String
+    public let unlinkedExcessCents: Int
+
+    enum CodingKeys: String, CodingKey {
+        case weekStart = "week_start"
+        case unlinkedExcessCents = "unlinked_excess_cents"
+    }
+}
+
+/// One entry of week-close's `restorations_skipped` array
+/// (`week-close/index.ts:756-804,976,1004`).
+public struct WeekCloseSkipped: Equatable, Codable {
+    public let purchaseTransactionId: UUID?
+    public let reason: String
+
+    enum CodingKeys: String, CodingKey {
+        case purchaseTransactionId = "purchase_transaction_id"
+        case reason
     }
 }
 
@@ -865,10 +896,13 @@ public struct CharityIncome: Equatable, Codable, Identifiable {
     public let createdAt: String?
 
     /// Committed cents for this income row, as the server computes it
-    /// in `record_charity_income` (amount × rate / 10000, integer
-    /// division). The RPC return carries the server's exact figure;
-    /// this is the same arithmetic for display sums.
-    public var committedCents: Int { amountCents * rateBp / 10_000 }
+    /// in `record_charity_income` — round HALF-UP, not truncate:
+    /// `(amount × rate + 5000) / 10000` (`engine.mjs:323`,
+    /// `r13-charity.sql:180,228`). The truncating form was off by 1¢
+    /// per income row whenever `(amount × rate) mod 10000 ≥ 5000`
+    /// (audit P1-2). The RPC return carries the server's exact
+    /// figure; this is the same arithmetic for display sums.
+    public var committedCents: Int { Int((Int64(amountCents) * Int64(rateBp) + 5000) / 10_000) }
 
     enum CodingKeys: String, CodingKey {
         case id
