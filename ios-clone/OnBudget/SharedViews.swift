@@ -245,11 +245,19 @@ public enum ExpandAnimation {
 /// success is GREEN (owner rule, Nov 11 2026 — native only), errors
 /// are soft red. Auto-dismiss 4s (ToastStyle.autoDismissSeconds,
 /// CLONE_SPEC §2.3); tap dismisses sooner.
+///
+/// `clearTabBar` (audit X-P2-1, Nov 12 2026): true where a tab bar
+/// is actually present (the three tabs) — the banner floats 120pt
+/// above the bottom edge, clear of it. False on Auth/Household and
+/// inside the Settings cover, where there is no tab bar — the banner
+/// sits 16pt above the bottom edge instead of hovering mid-screen.
 public struct ToastBanner: View {
     public let toast: Toast
     public let onDismiss: () -> Void
-    public init(toast: Toast, onDismiss: @escaping () -> Void) {
+    public let clearTabBar: Bool
+    public init(toast: Toast, clearTabBar: Bool = true, onDismiss: @escaping () -> Void) {
         self.toast = toast
+        self.clearTabBar = clearTabBar
         self.onDismiss = onDismiss
     }
     /// Banner background by kind: green for success, brand blue for
@@ -282,7 +290,7 @@ public struct ToastBanner: View {
                 .shadow(radius: 4)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 120) // Clear of the tab bar (web: bottom 120px).
+        .padding(.bottom, clearTabBar ? 120 : 16) // Clear of the tab bar (web: bottom 120px); 16pt where there is none.
     }
 }
 
@@ -291,11 +299,15 @@ public struct ToastBanner: View {
 /// shared value, CLONE_SPEC §2.3).
 public struct ToastOverlayModifier: ViewModifier {
     @Binding public var toast: Toast?
-    public init(toast: Binding<Toast?>) { self._toast = toast }
+    public let clearTabBar: Bool
+    public init(toast: Binding<Toast?>, clearTabBar: Bool = true) {
+        self._toast = toast
+        self.clearTabBar = clearTabBar
+    }
     public func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
             if let toast {
-                ToastBanner(toast: toast) { self.toast = nil }
+                ToastBanner(toast: toast, clearTabBar: clearTabBar) { self.toast = nil }
                     .task(id: toast.id) {
                         try? await Task.sleep(for: .seconds(ToastStyle.autoDismissSeconds))
                         if self.toast?.id == toast.id { self.toast = nil }
@@ -306,8 +318,8 @@ public struct ToastOverlayModifier: ViewModifier {
 }
 
 public extension View {
-    func toastOverlay(_ toast: Binding<Toast?>) -> some View {
-        modifier(ToastOverlayModifier(toast: toast))
+    func toastOverlay(_ toast: Binding<Toast?>, clearTabBar: Bool = true) -> some View {
+        modifier(ToastOverlayModifier(toast: toast, clearTabBar: clearTabBar))
     }
 }
 

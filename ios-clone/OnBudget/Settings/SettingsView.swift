@@ -54,6 +54,6 @@ struct SettingsView: View {
             }
             .padding()
         }
-        .toastOverlay(toast)
+        .toastOverlay(toast, clearTabBar: false) // Settings is a full-screen cover: no tab bar under it (audit X-P2-1).
     }
 }

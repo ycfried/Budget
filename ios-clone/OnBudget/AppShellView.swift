@@ -96,6 +96,15 @@ public struct AppShellView: View {
         .fullScreenCover(isPresented: $appState.showSettings) {
             settingsCover
         }
+        // Root toasts clear on tab change (audit X-P2-13): a toast
+        // fired on one tab must not linger over the next screen
+        // for the rest of its 4s. The history toast is a separate
+        // ToastState owned here and deliberately survives the
+        // Past-Weeks → Transactions pop (see transactionsTab) —
+        // this clears only the root `appState.toast`.
+        .onChange(of: appState.selectedTab) { _, _ in
+            appState.toast = nil
+        }
         .task { ensureTransactionsViewModel() }
         .onChange(of: appState.householdId) { _, _ in ensureTransactionsViewModel() }
     }
@@ -108,7 +117,7 @@ public struct AppShellView: View {
     private var settingsCover: some View {
         NavigationStack {
             if let context = settingsContext() {
-                SettingsView(context: context, onBack: { appState.showSettings = false }, plaidLauncher: PlaidLinkKitLauncher())
+                SettingsView(context: context, onBack: { appState.dismissSettings() }, plaidLauncher: PlaidLinkKitLauncher())
             } else {
                 LoadingView()
             }

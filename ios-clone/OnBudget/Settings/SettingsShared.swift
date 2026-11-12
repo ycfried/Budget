@@ -157,11 +157,17 @@ extension View {
     /// (owner report, Nov 11 2026). An overlay is positioned inside
     /// the screen's own bounds, so the banner is always at the
     /// screen's bottom, never mid-screen.
-    func toastOverlay(_ toastState: ToastState) -> some View {
+    func toastOverlay(_ toastState: ToastState, clearTabBar: Bool = true) -> some View {
         overlay(alignment: .bottom) {
             if let toast = toastState.current {
-                ToastBanner(toast: toast) { toastState.dismiss() }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                // Move-only entrance (audit X-P2-9, Nov 12 2026):
+                // the toast used to fade in too (`.combined(with:
+                // .opacity)`), the app's only opacity fade. Toasts
+                // are not expand/collapse cards, so this is a
+                // consistency change, not a rule-violation fix — the
+                // 0.2s animation below is unchanged.
+                ToastBanner(toast: toast, clearTabBar: clearTabBar) { toastState.dismiss() }
+                    .transition(.move(edge: .bottom))
             }
         }
         .animation(.easeInOut(duration: 0.2), value: toastState.current?.id)

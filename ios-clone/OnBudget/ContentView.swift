@@ -31,8 +31,11 @@ struct ContentView: View {
         }
         // Toasts at the root so they also show on Auth / Household
         // (account-created confirmation, account-deleted notice) —
-        // not only inside the app shell.
-        .toastOverlay($appState.toast)
+        // not only inside the app shell. Tab-bar clearance only
+        // once the app shell (with its tab bar) is showing (audit
+        // X-P2-1); Auth/Household have no tab bar, so the toast
+        // sits near the bottom edge there.
+        .toastOverlay($appState.toast, clearTabBar: appState.phase == .app)
     }
 }
 
