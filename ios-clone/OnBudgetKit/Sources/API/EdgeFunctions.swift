@@ -63,7 +63,7 @@ public struct PlaidLinkToken: Equatable, Codable {
 public struct PlaidExchangeResult: Equatable, Codable {
     public let itemId: String?
     public let connected: Bool
-    public let duplicate: Bool = false
+    public let duplicate: Bool
     public let duplicateOf: String?
 
     enum CodingKeys: String, CodingKey {
@@ -104,8 +104,8 @@ public struct PlaidSyncResult: Equatable, Codable {
     /// `connected_items` (only the success body does), so both default
     /// to 0 — required Ints made every 502 undecodable and `.partial`
     /// unreachable, so the UI could never name the failed bank(s).
-    public let items: Int = 0
-    public let connectedItems: Int = 0
+    public let items: Int
+    public let connectedItems: Int
     public let skippedDisconnected: Int?
     public let truncated: Bool?
     public let noBankConnected: Bool?
