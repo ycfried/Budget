@@ -43,7 +43,11 @@ public struct CharityIncomeForm: View {
 
     private var previewText: String {
         guard let cents = amountCents, cents > 0 else { return "Enter an amount to see what it commits." }
-        let committed = cents * effectiveRateBp / 10_000
+        // Round HALF-UP, matching the server (r13-charity.sql:180,228)
+        // and the model (Models.swift:925): (amount × rate + 5000) /
+        // 10000. Truncating was off by 1¢ whenever the remainder hit
+        // 5000 (e.g. $10.05 at 10% commits $1.01, not $1.00).
+        let committed = Int((Int64(cents) * Int64(effectiveRateBp) + 5000) / 10_000)
         if overrideBp != nil {
             return "This commits \(MoneyFormat.formatCents(committed)) at \(MoneyFormat.formatRateBp(effectiveRateBp))% — this entry only (the default rate for future incomes is unchanged)."
         }
