@@ -760,10 +760,24 @@ private struct DateRangeCalendarView: View {
         }
         .onAppear {
             // Seed the pending range from the current selection
-            // (stored as YYYY-MM-DD strings).
-            if case .custom(let from, let to) = selection {
+            // (stored as YYYY-MM-DD strings) — for This Week /
+            // This Month too (T-P2-9), so the calendar opens with
+            // the range highlighted and the label showing it,
+            // instead of opening blank.
+            switch selection {
+            case .custom(let from, let to):
                 pendingStart = TransactionFormatting.dateFromString(from)
                 pendingEnd = TransactionFormatting.dateFromString(to)
+            case .thisWeek:
+                let bounds = TransactionFormatting.currentWeekBounds()
+                pendingStart = TransactionFormatting.dateFromString(bounds.start)
+                pendingEnd = TransactionFormatting.dateFromString(bounds.end)
+            case .thisMonth:
+                let bounds = TransactionFormatting.currentMonthBounds()
+                pendingStart = TransactionFormatting.dateFromString(bounds.start)
+                pendingEnd = TransactionFormatting.dateFromString(bounds.end)
+            case .allTime:
+                break
             }
             if let start = pendingStart,
                let firstOfMonth = Calendar.current.date(
