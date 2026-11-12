@@ -214,12 +214,16 @@ public struct AuthView: View {
                 .textContentType(.password)
                 // Eye icon, not "Show"/"Hide" text (owner, Nov 12,
                 // 2026). The 12pt spacing keeps it clear of the
-                // biometric icon next to it.
+                // biometric icon next to it. 44pt hit area (audit
+                // A-P2-8): the icon stays 18pt, the tappable frame
+                // is 44pt.
                 Button { showPassword.toggle() } label: {
                     Image(systemName: showPassword ? "eye.slash" : "eye")
                         .font(.system(size: 18))
                         .foregroundStyle(DesignTokens.primary)
                 }
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
                 .accessibilityLabel(showPassword ? "Hide Password" : "Show Password")
                 // Biometric unlock as a small icon in the password
                 // row (owner, Nov 11, 2026) — the manual trigger,
@@ -234,6 +238,10 @@ public struct AuthView: View {
                             .font(.system(size: 20))
                             .foregroundStyle(DesignTokens.primary)
                     }
+                    // 44pt hit area (audit A-P2-8): the icon stays
+                    // 20pt, the tappable frame is 44pt.
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
                     .accessibilityLabel(biometricUnlockLabel)
                     .disabled(busy != nil)
                 }
@@ -643,7 +651,7 @@ public struct ForgotPasswordSheet: View {
 /// Nov 9, 2026): heading "Choose a New Password", the "Step 3 of
 /// the reset…" intro, "Password requirements: at least 8 characters.
 /// Both fields must match.", New Password + Confirm New Password
-/// each with a Show/Hide toggle, "Save New Password" (full-width
+/// each with an eye-icon toggle (audit A-P2-4), "Save New Password" (full-width
 /// primary), Back top-left. Messages are the reset page's exact texts.
 public struct ResetPasswordView: View {
     @EnvironmentObject private var appState: AppViewModel
@@ -748,9 +756,17 @@ public struct ResetPasswordView: View {
                     }
                 }
                 .textContentType(.newPassword)
-                Button(showing.wrappedValue ? "Hide" : "Show") { showing.wrappedValue.toggle() }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
+                // Eye icon, not "Show"/"Hide" text (audit A-P2-4):
+                // the reset fields match the sign-in field. 44pt hit
+                // area (audit A-P2-8); the icon stays 18pt.
+                Button { showing.wrappedValue.toggle() } label: {
+                    Image(systemName: showing.wrappedValue ? "eye.slash" : "eye")
+                        .font(.system(size: 18))
+                        .foregroundStyle(DesignTokens.primary)
+                }
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .accessibilityLabel(showing.wrappedValue ? "Hide Password" : "Show Password")
             }
             .padding(12)
             .background(.white)
