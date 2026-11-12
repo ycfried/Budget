@@ -222,3 +222,41 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - **Known consequence:** simulator UI tests will go red while Confirm email
   is ON until the test helper confirms fresh accounts (Admin API or
   pre-created accounts) — do not turn Confirm back off without the owner.
+
+## Nov 12, 2026 — morning fix batch (branch `native-fix-no-fade-expand`)
+
+- **No-fade expand fix only** (`dada2ba`): simulator run 43231199940 FAILED —
+  kit 196/196 passed, SmokeTests 6/6 passed, but all 5 UI tests failed at the
+  identical sign-up gate ("Household screen did not appear after sign-up"):
+  Confirm email is ON since ~1:28 AM and the helper signed up fresh
+  unroutable @example.com accounts that can never confirm. Not a regression
+  from the no-fade change (testForgotPasswordShowsConfirmation passed).
+- **Batch on this branch** (owner-approved Nov 12, ~9:10 AM; commits `08f9c74`,
+  `100af35`, `0633cca`, `7f55b53`, `55cc8d5`):
+  - Transaction detail: Week row removed; badges hide while the card is open;
+    Status/Source render as pills; "Card" renamed "Account".
+  - Date picker: custom calendar grid (start/end solid blue circles,
+    light-blue fill band between), Quick Picks bold, All Time removed,
+    Clear in the toolbar top-right, Done full-width.
+  - Funds: "More" dissolved into Review (first, with count) / Fund Activity /
+    Past Savings Records sections; rate is one compact row (field + small
+    Save + quiet Reset); rules behind one "How it works" row, default closed;
+    "November 2026 onward" removed from the Funds charity card.
+  - Sign-in: logo 56pt / wordmark 26pt; eye icon for Show/Hide; Privacy/Terms
+    blue + underlined; Remember-me row hidden when biometric unlock is on,
+    checkbox is one rounded square; biometric sentence removed.
+  - AutoFill: `webcredentials:ycfried.github.io` entitlement added
+    (`OnBudget.entitlements`, wired in Debug + Release; validator now
+    allow-lists exactly this file). Apple-app-site-association file prepared
+    for a separate main PR (`~/workspace/apple-app-site-association`).
+  - UI-test helper: fresh accounts are confirmed via the Auth Admin API
+    (listUsers + email_confirm) then signed in; key from
+    SUPABASE_SERVICE_ROLE_KEY env only, fails fast naming the missing secret.
+- **Open before this batch can go green:** the `SUPABASE_SERVICE_ROLE_KEY`
+  repo secret does not exist yet (owner decision pending) — until it does,
+  the 5 sign-up UI tests fail fast with the missing-secret message.
+  Associated Domains capability on the App ID + the App Store profile must
+  also be checked before upload (profile predates the entitlement).
+- **NOT merged, NOT uploaded** — parent reviews first. The temporary
+  workflow-trigger commit `50eda74` stays on the branch until the parent
+  says to revert it before merge (same pattern as `cc68bae`).
