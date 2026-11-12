@@ -223,6 +223,80 @@ final class RPCRequestTests: XCTestCase {
         XCTAssertEqual(body["p_card_suffix"] as? String, "0000")
     }
 
+    /// `set_charity_default_rate` (`r13-charity.sql:126-149`): the
+    /// Rules section's rate save — household id + rate in basis
+    /// points (1250 = 12.5%). Live web call: live.js:3222.
+    func testSetCharityDefaultRateParams() throws {
+        let householdId = UUID()
+        let request = try rpcs.makeRequest(name: "set_charity_default_rate", params: [
+            "p_household_id": householdId.uuidString,
+            "p_rate_bp": 1250,
+        ])
+        XCTAssertEqual(request.url?.path, "/rest/v1/rpc/set_charity_default_rate")
+        let body = jsonBody(of: request)
+        XCTAssertEqual(body["p_household_id"] as? String, householdId.uuidString)
+        XCTAssertEqual(body["p_rate_bp"] as? Int, 1250)
+    }
+
+    /// `record_charity_income` with an explicit per-entry override
+    /// (2000 bp = 20%): the override REPLACES the default, never
+    /// stacks — the server stores the entry at the override rate
+    /// (`r13-charity.sql:151-190`). Live web call: live.js:3255.
+    func testRecordCharityIncomeOverrideParams() throws {
+        let householdId = UUID()
+        let request = try rpcs.makeRequest(name: "record_charity_income", params: [
+            "p_household_id": householdId.uuidString,
+            "p_amount_cents": 50000,
+            "p_income_date": "2026-11-10",
+            "p_source_label": "Paycheck",
+            "p_rate_bp": 2000,
+            "p_note": "",
+        ])
+        XCTAssertEqual(request.url?.path, "/rest/v1/rpc/record_charity_income")
+        let body = jsonBody(of: request)
+        XCTAssertEqual(body["p_amount_cents"] as? Int, 50000)
+        XCTAssertEqual(body["p_income_date"] as? String, "2026-11-10")
+        XCTAssertEqual(body["p_rate_bp"] as? Int, 2000)
+    }
+
+    /// `record_charity_income` with a blank rate sends JSON null, so
+    /// the server falls back to the household default
+    /// (`r13-charity.sql:172`: `coalesce(p_rate_bp, v_rate, 1000)`).
+    /// A missing key would not decode the same way server-side.
+    func testRecordCharityIncomeBlankRateSendsNull() throws {
+        let request = try rpcs.makeRequest(name: "record_charity_income", params: [
+            "p_household_id": UUID().uuidString,
+            "p_amount_cents": 50000,
+            "p_income_date": "2026-11-10",
+            "p_source_label": "Paycheck",
+            "p_rate_bp": NSNull(),
+            "p_note": "",
+        ])
+        XCTAssertTrue(jsonBody(of: request)["p_rate_bp"] is NSNull)
+    }
+
+    /// `correct_charity_income` (`r13-charity.sql:194-239`): the
+    /// correction flow — old income id (not household id) plus the
+    /// corrected fields; a null rate keeps the entry's own rate.
+    /// Live web call: live.js:3250.
+    func testCorrectCharityIncomeParams() throws {
+        let incomeId = UUID()
+        let request = try rpcs.makeRequest(name: "correct_charity_income", params: [
+            "p_income_id": incomeId.uuidString,
+            "p_amount_cents": 60000,
+            "p_income_date": "2026-11-09",
+            "p_source_label": "Paycheck (corrected)",
+            "p_rate_bp": NSNull(),
+            "p_note": "fixed amount",
+        ])
+        XCTAssertEqual(request.url?.path, "/rest/v1/rpc/correct_charity_income")
+        let body = jsonBody(of: request)
+        XCTAssertEqual(body["p_income_id"] as? String, incomeId.uuidString)
+        XCTAssertEqual(body["p_amount_cents"] as? Int, 60000)
+        XCTAssertEqual(body["p_source_label"] as? String, "Paycheck (corrected)")
+        XCTAssertTrue(body["p_rate_bp"] is NSNull)
+    }
+
     func testWeeklyOverrideLoopWritesOneRowPerWeek() async throws {
         let transport = StubTransport(handler: { _ in StubTransport.raw("") })
         let client = RPCClient(

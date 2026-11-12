@@ -166,7 +166,7 @@ final class CSVImportViewModel: ObservableObject {
             parseErrors = []
             fileName = "No file selected"
             resultMessage = nil
-            toast.show("Imported \(added) transaction(s) as provisional.")
+            toast.show("Imported \(added) transaction(s) as provisional.", kind: .success)
             await verifyCounts(expectedNew: rows.count, added: added)
         } catch {
             toast.showError("Could not import. Nothing was claimed as imported — try again.")

@@ -118,6 +118,36 @@ public struct ErrorBox: View {
     }
 }
 
+/// Error box that leaves on its own (owner rule, Nov 11 2026: an
+/// error message that pops up must not stay for good). Tap dismisses
+/// it, and it auto-dismisses after `ToastStyle.autoDismissSeconds`
+/// (4s — the same shared value as the toasts). The caller passes
+/// `onDismiss` to clear the underlying message, so the box never
+/// reappears from stale state; a fresh failure shows a fresh box.
+/// The timer restarts if the message changes (`.task(id:)`), and is
+/// cancelled when the view goes away — so an error never lingers
+/// across navigation either.
+public struct DismissableErrorBox: View {
+    public let message: String
+    public let onDismiss: () -> Void
+    public init(_ message: String, onDismiss: @escaping () -> Void) {
+        self.message = message
+        self.onDismiss = onDismiss
+    }
+    public var body: some View {
+        ErrorBox(message)
+            .onTapGesture(perform: onDismiss)
+            .task(id: message) {
+                try? await Task.sleep(for: .seconds(ToastStyle.autoDismissSeconds))
+                // A cancelled sleep (message changed, view gone) must
+                // NOT dismiss the replacement message — the guard is
+                // the whole point of the id: task.
+                guard !Task.isCancelled else { return }
+                onDismiss()
+            }
+    }
+}
+
 /// Inline info box (`.result`, info bg #eef4ff, ink text).
 public struct InfoBox: View {
     public let message: String
@@ -164,16 +194,25 @@ public struct LoadingView: View {
 
 // MARK: - Toast
 
-/// Bottom toast, floating clear of the tab bar. Success/info are
-/// brand blue with white text; errors are soft red. Auto-dismiss
-/// 4s (ToastStyle.autoDismissSeconds, CLONE_SPEC §2.3); tap
-/// dismisses sooner.
+/// Bottom toast, floating clear of the tab bar. Info is brand blue,
+/// success is GREEN (owner rule, Nov 11 2026 — native only), errors
+/// are soft red. Auto-dismiss 4s (ToastStyle.autoDismissSeconds,
+/// CLONE_SPEC §2.3); tap dismisses sooner.
 public struct ToastBanner: View {
     public let toast: Toast
     public let onDismiss: () -> Void
     public init(toast: Toast, onDismiss: @escaping () -> Void) {
         self.toast = toast
         self.onDismiss = onDismiss
+    }
+    /// Banner background by kind: green for success, brand blue for
+    /// info, soft red for errors.
+    private var bannerBackground: Color {
+        switch toast.kind {
+        case .success: return DesignTokens.success
+        case .info: return DesignTokens.primary
+        case .error: return DesignTokens.errorBackground
+        }
     }
     public var body: some View {
         Button(action: onDismiss) {
@@ -184,10 +223,7 @@ public struct ToastBanner: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .padding(.horizontal, 16)
-                .background(
-                    toast.kind == .error
-                        ? DesignTokens.errorBackground : DesignTokens.primary
-                )
+                .background(bannerBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
                         .stroke(

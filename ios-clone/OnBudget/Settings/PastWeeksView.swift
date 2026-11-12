@@ -235,7 +235,7 @@ struct PastWeeksView: View {
                     if viewModel.isLoading && viewModel.weeks.isEmpty {
                         ProgressView()
                     } else if let error = viewModel.loadError {
-                        ErrorBox(error)
+                        DismissableErrorBox(error) { viewModel.loadError = nil }
                     } else if viewModel.weeks.isEmpty {
                         MutedLine(text: viewModel.filter.isActive
                             ? "No closed weeks in the selected period."

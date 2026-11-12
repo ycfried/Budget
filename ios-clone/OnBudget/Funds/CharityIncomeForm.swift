@@ -21,8 +21,6 @@ public struct CharityIncomeForm: View {
     /// Activity can open this form prefilled.
     @Binding public var correcting: CharityIncome?
 
-    @State private var rateText = ""
-    @State private var rateError: String?
     @State private var sourceText = ""
     @State private var amountText = ""
     @State private var incomeDate = Date()
@@ -65,27 +63,7 @@ public struct CharityIncomeForm: View {
                 FundsMuted("Admin only. Nothing is pulled in automatically.")
                 Text("Current default rate: \(MoneyFormat.formatRateBp(defaultRateBp))%.")
                     .font(.system(size: 15))
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Default Rate (%)")
-                            .font(.system(size: 14, weight: .semibold))
-                        TextField(MoneyFormat.formatRateBp(defaultRateBp), text: $rateText)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 120)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("")
-                            .font(.system(size: 14, weight: .semibold))
-                        FundsPrimaryButton("Save Default Rate", isBusy: viewModel.busyAction == "rate") {
-                            saveRate()
-                        }
-                    }
-                }
-                if let rateError {
-                    FundsErrorBox(rateError)
-                }
-                FundsMuted("Affects future incomes only.")
+                FundsMuted("Change the default rate in Funds & Charity Rules on the Funds page. A change affects future incomes only.")
 
                 Divider()
 
@@ -145,7 +123,6 @@ public struct CharityIncomeForm: View {
             }
         }
         .onAppear {
-            if rateText.isEmpty { rateText = MoneyFormat.formatRateBp(defaultRateBp) }
             if let correcting { prefill(correcting) }
         }
         .onChange(of: correcting) { _, newValue in
@@ -168,15 +145,6 @@ public struct CharityIncomeForm: View {
         rateOverrideText = ""
         note = ""
         fieldError = nil
-    }
-
-    private func saveRate() {
-        guard let bp = MoneyFormat.parseRatePercent(rateText) else {
-            rateError = "Enter a rate between 0 and 100."
-            return
-        }
-        rateError = nil
-        Task { await viewModel.setDefaultRate(basisPoints: bp) }
     }
 
     private func saveIncome() {

@@ -289,7 +289,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
                     institutionName: institutionName
                 )
                 if exchanged.connected {
-                    toast.show("Connected. Tap \"Sync Transactions\" to pull transactions.")
+                    toast.show("Connected. Tap \"Sync Transactions\" to pull transactions.", kind: .success)
                     await load()
                 } else if exchanged.duplicate {
                     toast.show("This bank is already connected — the duplicate connection was removed. Past transactions stay.")
@@ -337,7 +337,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
                     failedInstitutions: partial.failedInstitutions
                 )
             }
-            toast.show(text, kind: isError ? .error : .info)
+            toast.show(text, kind: isError ? .error : .success)
             await load()
         } catch {
             toast.showError("Sync failed: \(settingsErrorMessage(error))")
@@ -346,6 +346,12 @@ final class ConnectedAccountsViewModel: ObservableObject {
 
     // MARK: - Automatic Sync
 
+    /// Toggles automatic sync. The success message is shown ONLY
+    /// after a fresh server read confirms the new flag value — never
+    /// on the write's optimistic return. The owner's build showed a
+    /// success banner and then the switch fell back to OFF, because
+    /// the post-write reload re-read a broken flag value; a banner
+    /// must never claim success the server has not confirmed.
     func setAutoSync(target: Bool) async {
         guard isAdmin, !isTogglingAutoSync else { return }
         isTogglingAutoSync = true
@@ -368,11 +374,22 @@ final class ConnectedAccountsViewModel: ObservableObject {
                 toast.showError("Automatic sync could not be \(target ? "turned on" : "turned off") — \(name) failed\(why)\(more). Nothing was changed; the switch stays \(target ? "off" : "on").")
                 return
             }
-            autoSyncOn = target
-            toast.show(target
-                ? "Automatic sync on. New transactions will be pulled in on your next refresh."
-                : "Automatic sync off.")
+            // Confirm against the server before claiming anything:
+            // load() re-reads households.auto_sync_enabled, so after
+            // it autoSyncOn IS the server value (or autoSyncUnknown
+            // when the read failed, with the old value kept).
             await load()
+            if autoSyncUnknown {
+                toast.showError("Automatic sync could not be confirmed — the switch was not changed. Check your connection and try again.")
+                return
+            }
+            if autoSyncOn == target {
+                toast.show(target
+                    ? "Automatic sync on. New transactions will be pulled in on your next refresh."
+                    : "Automatic sync off.", kind: .success)
+            } else {
+                toast.showError("Automatic sync could not be \(target ? "turned on" : "turned off") — the switch stays \(target ? "off" : "on"). Try again.")
+            }
         } catch {
             toast.showError("Could not \(target ? "enable" : "turn off") automatic sync: \(settingsErrorMessage(error))")
         }
@@ -506,7 +523,7 @@ struct ConnectedAccountsView: View {
             if viewModel.isLoading && viewModel.rows.isEmpty {
                 ProgressView()
             } else if let error = viewModel.loadError {
-                ErrorBox(error)
+                DismissableErrorBox(error) { viewModel.loadError = nil }
             } else if viewModel.rows.isEmpty {
                 MutedLine(text: "None.")
             } else {

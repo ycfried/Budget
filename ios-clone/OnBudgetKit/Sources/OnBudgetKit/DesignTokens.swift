@@ -27,6 +27,12 @@ public enum DesignTokens {
     public static let errorTextHex = "#dc2626"
     public static let errorBorderHex = "#fecaca"
 
+    // MARK: - Success green (owner rule, Nov 11 2026: success toasts
+    // are GREEN, not blue — native only; the web app keeps brand-blue
+    // toasts. Info toasts stay brand blue.)
+
+    public static let successHex = "#16a34a"
+
     // MARK: - SwiftUI colours
 
     #if canImport(SwiftUI)
@@ -40,6 +46,7 @@ public enum DesignTokens {
     public static var errorBackground: Color { Color(hex: errorBackgroundHex) }
     public static var errorText: Color { Color(hex: errorTextHex) }
     public static var errorBorder: Color { Color(hex: errorBorderHex) }
+    public static var success: Color { Color(hex: successHex) }
     #endif
 }
 

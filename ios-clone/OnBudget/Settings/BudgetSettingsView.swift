@@ -91,7 +91,7 @@ final class BudgetSettingsViewModel: ObservableObject {
                 pCents: change.newCents
             )
             currentAllowanceCents = change.newCents
-            toast.show("Allowance saved.")
+            toast.show("Allowance saved.", kind: .success)
         } catch {
             toast.showError("Could not save allowance. Try again.")
         }
@@ -123,7 +123,7 @@ struct BudgetSettingsView: View {
             if viewModel.isLoading {
                 ProgressView()
             } else if let error = viewModel.loadError {
-                ErrorBox(error)
+                DismissableErrorBox(error) { viewModel.loadError = nil }
             }
             HStack(spacing: 8) {
                 Text("$")

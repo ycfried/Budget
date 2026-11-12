@@ -488,7 +488,7 @@ public final class AppViewModel: ObservableObject {
                     try await client.adoptSessionFromTokens(
                         accessToken: access, refreshToken: refresh,
                         expiresIn: Double(values["expires_in"] ?? "") ?? 3600)
-                    showToast("Email confirmed.", kind: .info)
+                    showToast("Email confirmed.", kind: .success)
                     await boot()
                     return
                 } catch {

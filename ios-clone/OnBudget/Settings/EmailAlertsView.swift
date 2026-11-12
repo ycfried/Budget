@@ -238,7 +238,7 @@ final class EmailAlertsViewModel: ObservableObject {
         let result = await oauthPresenter.start(authURL: authURL)
         switch result {
         case .connected:
-            toast.show("Email connected — the app will check it for Amex alerts.")
+            toast.show("Email connected — the app will check it for Amex alerts.", kind: .success)
             resultMessage = nil
             await load()
         case .failed:
@@ -377,7 +377,7 @@ struct EmailAlertsView: View {
             // connections are already on screen — never a silent
             // stale list, and never a grey muted line for an error.
             if let error = viewModel.loadError {
-                ErrorBox(error)
+                DismissableErrorBox(error) { viewModel.loadError = nil }
             }
             if viewModel.isLoading && viewModel.connections.isEmpty {
                 ProgressView()

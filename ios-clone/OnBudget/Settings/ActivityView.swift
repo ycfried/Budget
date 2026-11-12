@@ -176,7 +176,7 @@ struct ActivityView: View {
                 if viewModel.isLoading && viewModel.groups.isEmpty {
                     ProgressView()
                 } else if let error = viewModel.loadError {
-                    ErrorBox(error)
+                    DismissableErrorBox(error) { viewModel.loadError = nil }
                 } else if viewModel.groups.isEmpty {
                     MutedLine(text: viewModel.filter.isActive
                         ? "No entries in the selected period."

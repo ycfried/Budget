@@ -1,9 +1,11 @@
 import Foundation
 
-/// Brand-blue toast spec — owner rules: transient messages are
-/// brand-blue bottom toasts floating clear of the tab bar, never
-/// inside cards. Success and information messages stay brand blue;
-/// errors use the soft-red palette in `DesignTokens` instead.
+/// Toast style spec — owner rules: transient messages are bottom
+/// toasts floating clear of the tab bar, never inside cards.
+/// Information messages stay brand blue; SUCCESS messages are GREEN
+/// (owner rule, Nov 11 2026 — native only, supersedes the web app's
+/// brand-blue success toasts; the web app stays blue); errors use the
+/// soft-red palette in `DesignTokens` instead.
 /// This is the style spec (hex values + behaviour); the SwiftUI
 /// rendering is built with the screens.
 public enum ToastStyle {
@@ -14,18 +16,20 @@ public enum ToastStyle {
         case error
     }
 
-    /// Toast background: brand primary blue for info/success,
-    /// soft-red background for errors.
+    /// Toast background: brand primary blue for info, GREEN for
+    /// success, soft-red background for errors.
     public static func backgroundHex(for kind: Kind) -> String {
         switch kind {
-        case .info, .success:
+        case .info:
             return DesignTokens.primaryHex
+        case .success:
+            return DesignTokens.successHex
         case .error:
             return DesignTokens.errorBackgroundHex
         }
     }
 
-    /// Toast text: white on brand blue, dark red on soft-red.
+    /// Toast text: white on blue/green, dark red on soft-red.
     public static func textHex(for kind: Kind) -> String {
         switch kind {
         case .info, .success:

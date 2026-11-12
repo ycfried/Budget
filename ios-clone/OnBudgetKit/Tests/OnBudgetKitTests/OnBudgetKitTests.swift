@@ -14,11 +14,24 @@ final class OnBudgetKitTests: XCTestCase {
         XCTAssertEqual(DesignTokens.primaryHex, "#2f6bff")
         XCTAssertEqual(DesignTokens.paleHex, "#bfdbfe")
         XCTAssertEqual(DesignTokens.errorTextHex, "#dc2626")
+        XCTAssertEqual(DesignTokens.successHex, "#16a34a")
     }
 
     func testToastStyleIsBrandBlue() {
         XCTAssertEqual(ToastStyle.backgroundHex(for: .info), DesignTokens.primaryHex)
         XCTAssertEqual(ToastStyle.backgroundHex(for: .error), DesignTokens.errorBackgroundHex)
+    }
+
+    /// Success toasts are GREEN, not blue (owner rule, Nov 11 2026 —
+    /// native only; the web app keeps brand-blue success toasts).
+    /// Info stays brand blue; errors stay soft red.
+    func testToastStyleSuccessIsGreen() {
+        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), DesignTokens.successHex)
+        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), "#16a34a")
+        XCTAssertEqual(ToastStyle.textHex(for: .success), "#ffffff")
+        XCTAssertEqual(ToastStyle.textHex(for: .info), "#ffffff")
+        XCTAssertEqual(ToastStyle.textHex(for: .error), DesignTokens.errorTextHex)
+        XCTAssertEqual(ToastStyle.autoDismissSeconds, 4.0)
     }
 
     func testSupabaseConfigurationPresent() {

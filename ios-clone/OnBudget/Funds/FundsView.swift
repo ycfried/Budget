@@ -79,6 +79,7 @@ public struct FundsView: View {
                 } else {
                     fundCard
                     charityCard
+                    rulesCard
                     moreCard
                 }
             }
@@ -231,6 +232,12 @@ public struct FundsView: View {
             return "Charity, ahead by \(MoneyFormat.formatCents(-summary.remainingCents)), show breakdown"
         }
         return "Charity, \(MoneyFormat.formatCents(summary.remainingCents)) remaining, \(MoneyFormat.formatCents(summary.givenCents)) given, \(MoneyFormat.formatCents(summary.committedCents)) committed, show breakdown"
+    }
+
+    // MARK: - Funds & Charity Rules (admin edits, everyone reads)
+
+    private var rulesCard: some View {
+        FundsRulesSection(viewModel: viewModel)
     }
 
     /// Settings Budget → Temporary Allowance: open the form here

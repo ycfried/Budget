@@ -324,8 +324,11 @@ public struct FundsExpandableCard<Expanded: View>: View {
 // MARK: - Toasts (spec §2.3)
 //
 // Bottom only, floating clear of the tab bar, auto-dismiss 4s, tap
-// dismisses sooner, tab switch clears it. Success/info: brand blue
-// #2f6bff, white text. Error: soft red bg/text/border.
+// dismisses sooner, tab switch clears it. Info: brand blue
+// #2f6bff, white text. Success: green #16a34a
+// (`DesignTokens.success`), white text (owner rule, Nov 11, 2026 —
+// native only; the web app stays blue for success). Error: soft
+// red bg/text/border.
 // NOTE (integration, Nov 9, 2026): the auto-dismiss sleeps on the
 // one shared value `ToastStyle.autoDismissSeconds` (4.0, spec §2.3);
 // the stale note claiming the kit value was 3.0s is removed —

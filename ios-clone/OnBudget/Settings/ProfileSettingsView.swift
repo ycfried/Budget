@@ -92,7 +92,7 @@ final class ProfileSettingsViewModel: ObservableObject {
         if enabled {
             do {
                 try await biometricUnlock.enable(client: context.client)
-                toast.show("\(faceIDBiometryName) unlock is on. You can unlock with \(faceIDBiometryName) instead of typing your password.")
+                toast.show("\(faceIDBiometryName) unlock is on. You can unlock with \(faceIDBiometryName) instead of typing your password.", kind: .success)
             } catch let error as BiometricUnlockError {
                 if error == .cancelled {
                     // Silent: the user backed out of the prompt.
@@ -112,7 +112,7 @@ final class ProfileSettingsViewModel: ObservableObject {
                 return
             }
             biometricUnlock.disable(client: context.client)
-            toast.show("\(faceIDBiometryName) unlock is off. Your saved unlock was removed.")
+            toast.show("\(faceIDBiometryName) unlock is off. Your saved unlock was removed.", kind: .success)
         }
         refreshFaceIDState()
     }
@@ -131,7 +131,7 @@ final class ProfileSettingsViewModel: ObservableObject {
         do {
             _ = try await context.client.updateDisplayName(trimmed)
             name = trimmed
-            toast.show("Name saved — it now shows in your profile.")
+            toast.show("Name saved — it now shows in your profile.", kind: .success)
         } catch {
             toast.showError("Could not save your name. Try again.")
         }
@@ -154,7 +154,7 @@ final class ProfileSettingsViewModel: ObservableObject {
         defer { isSavingEmail = false }
         do {
             _ = try await context.client.updateEmail(trimmed)
-            toast.show("Confirmation sent to \(trimmed) — your sign-in email stays as it is until you confirm it.")
+            toast.show("Confirmation sent to \(trimmed) — your sign-in email stays as it is until you confirm it.", kind: .success)
         } catch {
             toast.showError("Could not change your email. Try again.")
         }

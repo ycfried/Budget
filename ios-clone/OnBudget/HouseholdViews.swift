@@ -45,6 +45,9 @@ public struct HouseholdView: View {
     @State private var showNamePanel = false
     @State private var message: String?
     @State private var messageIsError = false
+    /// The boot-failure red box dismissed itself (4s timer / tap) —
+    /// the panel keeps showing Try Again + a muted line instead.
+    @State private var bootErrorBoxHidden = false
     @State private var busy: String?
 
     public init(appState: AppViewModel) { self.appState = appState }
@@ -67,6 +70,7 @@ public struct HouseholdView: View {
             .padding(20)
         }
         .background(DesignTokens.background)
+        .onChange(of: appState.bootError) { bootErrorBoxHidden = false }
     }
 
     /// Persistent boot-failure panel (audit F-P1-1): the error stays
@@ -77,7 +81,17 @@ public struct HouseholdView: View {
             Text("Your Household")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
-            ErrorBox(error)
+            // The red box leaves after 4s (owner rule, Nov 11 2026)
+            // but the recovery stays: the choice panel must NOT
+            // appear while membership is unknown (audit F-P1-1), so
+            // after dismissal a muted line + Try Again remain.
+            if !bootErrorBoxHidden {
+                DismissableErrorBox(error) { bootErrorBoxHidden = true }
+            } else {
+                Text("Could not load your household.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
             Button("Try Again") { Task { await appState.boot() } }
                 .buttonStyle(PrimaryButtonStyle())
                 .accessibilityIdentifier("household.retryBoot")
@@ -132,6 +146,7 @@ public struct HouseholdView: View {
                 .background(.white)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .onChange(of: joinCode) { message = nil }
 
             Button(busy == "join" ? "Joining…" : "Join as Member") { Task { await join() } }
                 .buttonStyle(TertiaryButtonStyle())
@@ -142,7 +157,7 @@ public struct HouseholdView: View {
             // field that caused it (audit F-P2-7; web renders
             // #householdMsg below Join too).
             if let message {
-                if messageIsError { ErrorBox(message) } else { InfoBox(message) }
+                if messageIsError { DismissableErrorBox(message) { message = nil } } else { InfoBox(message) }
             }
         }
     }

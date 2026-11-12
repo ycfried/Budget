@@ -111,9 +111,10 @@ func settingsErrorMessage(_ error: Error) -> String {
 
 // MARK: - Toast
 
-/// Bottom-only toast state. Success/info render brand blue, errors
-/// soft red. Auto-dismisses after 4s (spec §2.3); tap dismisses
-/// sooner. One toast at a time — a new toast replaces the old one.
+/// Bottom-only toast state. Info renders brand blue, success GREEN
+/// (owner rule, Nov 11 2026 — native only), errors soft red.
+/// Auto-dismisses after 4s (spec §2.3); tap dismisses sooner. One
+/// toast at a time — a new toast replaces the old one.
 ///
 /// NOTE (rebase, Nov 9): the button styles, BackButton, ErrorBox
 /// and ToastBanner this file used to define now live in the shared
@@ -148,9 +149,16 @@ extension View {
     /// shared `ToastBanner` (SharedViews) so there is one banner.
     /// Overloads the shared `toastOverlay(Binding<Toast?>)` — this
     /// one takes the shared Settings `ToastState` instead.
+    ///
+    /// Plain `.overlay(alignment: .bottom)` on the screen itself —
+    /// NOT a wrapping ZStack. A ZStack sizes to its content, and a
+    /// ScrollView inside one can size the stack to the scroll content
+    /// rather than the screen, which floated the banner mid-screen
+    /// (owner report, Nov 11 2026). An overlay is positioned inside
+    /// the screen's own bounds, so the banner is always at the
+    /// screen's bottom, never mid-screen.
     func toastOverlay(_ toastState: ToastState) -> some View {
-        ZStack(alignment: .bottom) {
-            self
+        overlay(alignment: .bottom) {
             if let toast = toastState.current {
                 ToastBanner(toast: toast) { toastState.dismiss() }
                     .transition(.move(edge: .bottom).combined(with: .opacity))

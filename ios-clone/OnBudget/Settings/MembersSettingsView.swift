@@ -185,7 +185,7 @@ final class MembersSettingsViewModel: ObservableObject {
             try await context.client.rpcs.setHouseholdMemberRole(pUserId: request.member.userId, pRole: request.toRole)
             toast.show(request.toRole == .admin
                        ? "\(label) is now an admin."
-                       : "\(label) is now a regular member.")
+                       : "\(label) is now a regular member.", kind: .success)
             await load()
         } catch {
             roleChangeFailed = true
@@ -210,7 +210,7 @@ final class MembersSettingsViewModel: ObservableObject {
         let label = displayName(for: member)
         do {
             try await context.client.rpcs.removeHouseholdMember(pUserId: member.userId)
-            toast.show("\(label) was removed from the household.")
+            toast.show("\(label) was removed from the household.", kind: .success)
             await load()
         } catch {
             removeFailed = true
@@ -300,7 +300,7 @@ struct MembersSettingsView: View {
             // A reload failure shows above the list even when stale
             // rows are already on screen — never a silent stale list.
             if let error = viewModel.loadError {
-                ErrorBox(error)
+                DismissableErrorBox(error) { viewModel.loadError = nil }
             }
             if viewModel.isLoading && viewModel.members.isEmpty {
                 ProgressView()

@@ -231,7 +231,7 @@ public struct AuthView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
             if let message {
-                if messageIsError { ErrorBox(message) } else { InfoBox(message) }
+                if messageIsError { DismissableErrorBox(message) { message = nil } } else { InfoBox(message) }
             }
 
             // Two-button rule: primary first, grey tertiary second.
@@ -291,6 +291,11 @@ public struct AuthView: View {
             // Nov 11, 2026): biometric unlock is now the auto-prompt
             // on open plus the icon in the password row above.
         }
+        // A failed sign-in message leaves when the user starts
+        // fixing the fields (owner rule, Nov 11 2026 — error
+        // messages must not stay for good).
+        .onChange(of: email) { message = nil }
+        .onChange(of: password) { message = nil }
     }
 
     /// The effective Remember-me state: biometric unlock implies a
@@ -458,7 +463,8 @@ public struct NameStepView: View {
                     .background(.white)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
-                if let message { ErrorBox(message) }
+                    .onChange(of: name) { message = nil }
+                if let message { DismissableErrorBox(message) { message = nil } }
                 Button(busy ? "Creating account…" : "Create Account") { Task { await createAccount() } }
                     .buttonStyle(PrimaryButtonStyle())
                     .accessibilityIdentifier("auth.createAccountConfirm")
@@ -563,7 +569,7 @@ public struct ForgotPasswordSheet: View {
                         .buttonStyle(TertiaryButtonStyle())
                         .disabled(busy)
                 }
-                if let message { ErrorBox(message) }
+                if let message { DismissableErrorBox(message) { message = nil } }
             } else {
                 Text("Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.")
                     .font(.system(size: 15))
@@ -576,11 +582,12 @@ public struct ForgotPasswordSheet: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("auth.forgotEmail")
+                    .onChange(of: email) { message = nil }
                     .padding(12)
                     .background(.white)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
-                if let message { ErrorBox(message) }
+                if let message { DismissableErrorBox(message) { message = nil } }
                 HStack(spacing: 12) {
                     Button(busy ? "Sending…" : "Send Reset Link") { Task { await send() } }
                         .buttonStyle(PrimaryButtonStyle())
@@ -668,9 +675,11 @@ public struct ResetPasswordView: View {
                             .padding(.vertical, 24)
                     } else {
                         passwordField(label: "New Password", text: $newPassword, showing: $showNew)
+                            .onChange(of: newPassword) { message = nil }
                         passwordField(label: "Confirm New Password", text: $confirmPassword, showing: $showConfirm)
+                            .onChange(of: confirmPassword) { message = nil }
                         if let message {
-                            if messageIsError { ErrorBox(message) } else { InfoBox(message) }
+                            if messageIsError { DismissableErrorBox(message) { message = nil } } else { InfoBox(message) }
                         }
                         Button(busy ? "Saving…" : "Save New Password") { Task { await save() } }
                             .buttonStyle(PrimaryButtonStyle())

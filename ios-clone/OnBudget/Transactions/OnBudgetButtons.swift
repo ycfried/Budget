@@ -13,7 +13,8 @@ import OnBudgetKit
 ///   first; exceptions "Sign In", "Mark as Charity").
 /// - Errors: soft red (bg #fef2f2, text #dc2626, border #fecaca).
 /// - Toasts: bottom only, clear of the tab bar, auto-dismiss 4s,
-///   tap dismisses sooner; success/info brand blue, errors soft red.
+///   tap dismisses sooner; info brand blue, success GREEN (owner
+///   rule, Nov 11 2026 — native only), errors soft red.
 ///
 /// Button styles + toast banner live in SharedViews.swift
 /// (integration, Nov 9, 2026): this file used to define its own
@@ -144,7 +145,8 @@ public struct SoftErrorBox: View {
 // MARK: - Toast
 
 /// Toast manager: one toast at a time, bottom only, auto-dismiss 4s,
-/// tap dismisses sooner. Success/info are brand blue; errors soft red.
+/// tap dismisses sooner. Info is brand blue, success GREEN (owner
+/// rule, Nov 11 2026 — native only); errors soft red.
 @MainActor
 @Observable
 public final class ToastManager {
