@@ -357,20 +357,26 @@ public struct HomeView: View {
         // Hero exception: outline, NO shadow (styles.css:1127).
     }
 
-    /// Full-size hero skeleton: same frame, padding and row heights
-    /// as the loaded hero, with grey placeholder blocks where the
-    /// number, progress bar and stats go, plus the system spinner.
+    /// Full-size hero skeleton: same frame, padding, rows and
+    /// spacing as the loaded hero, with grey placeholder blocks
+    /// where the number, progress bar and stats go — including the
+    /// 44pt sync-button block in the figure row, and no extra
+    /// spinner row the loaded hero lacks — so the page never jumps
+    /// when the numbers arrive (audit H-P2-5).
     private var heroSkeleton: some View {
         VStack(alignment: .leading, spacing: 14) {
             RoundedRectangle(cornerRadius: 6)
                 .fill(Color(hex: "#ececf1"))
                 .frame(width: 160, height: 18)
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(hex: "#ececf1"))
-                .frame(width: 230, height: 54)
-            ProgressView()
-                .progressViewStyle(.circular)
-                .frame(maxWidth: .infinity, alignment: .center)
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(hex: "#ececf1"))
+                    .frame(width: 230, height: 54)
+                Spacer()
+                Circle()
+                    .fill(Color(hex: "#ececf1"))
+                    .frame(width: 44, height: 44)
+            }
             RoundedRectangle(cornerRadius: 4)
                 .fill(Color(hex: "#ececf1"))
                 .frame(maxWidth: .infinity, minHeight: 8, maxHeight: 8)
