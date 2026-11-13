@@ -7,16 +7,26 @@
 // Flow: launch; setUp signs out first if a previous test in this
 // run left a session behind (the Supabase session persists across
 // launches in the same run), so every test starts on the auth
-// screen; then sign up a FRESH account (random email per run,
-// generated password) — sign-ups are ON and email confirmation
-// is ON in the live project (owner, Nov 12, 2026), so sign-up
-// returns .needsConfirmation and the app shows "Check Your Email".
-// The helper then confirms the fresh account via the Supabase Auth
-// Admin API (service-role key baked into the test bundle at build
-// time — UITestSecrets.swift, generated in CI from the
-// SUPABASE_SERVICE_ROLE_KEY secret; never logged, never hard-coded)
-// and signs in with the same credentials; the @example.com address can never
-// receive the confirmation email, so there is no other path.
+// screen; then each test gets a FRESH account (random email per run,
+// generated password) created PRE-CONFIRMED via the Supabase Auth
+// Admin API (POST /admin/users with email_confirm: true — no
+// confirmation email is sent at all), and signs in through the
+// app's own sign-in screen with those credentials. The service-role
+// key is baked into the test bundle at build time —
+// UITestSecrets.swift, generated in CI from the
+// SUPABASE_SERVICE_ROLE_KEY secret; never logged, never hard-coded.
+//   This replaced the old UI sign-up preamble (Nov 12, 2026):
+//   with email confirmation ON (owner decision), every UI sign-up
+//   made Supabase SEND a confirmation email, and the free plan's
+//   per-hour email cap (HTTP 429 over_email_send_rate_limit) kept
+//   failing all 5 UI tests at the same gate (runs 43293116142,
+//   43329580648: kit 216/216, smoke 6/6, UI 1/6). The Admin-API
+//   path sends zero emails, so the tests are immune to the cap.
+//   ONE test — testSignUpJoinAndBrowse — still exercises the real
+//   in-app sign-up flow end to end; it probes the signup endpoint
+//   first and SKIPS cleanly (never fails) while the project is
+//   rate-limited, so a 429 can never fail it again, and the skip
+//   fires only on the 429 signal itself.
 //   Then join the TEST household "Proof Household 2" as a member via
 //      invite code Q6GFME. Never the real household, never the
 //      owner's account. (The test admin account's password is lost;
@@ -33,7 +43,7 @@
 //   assertion is the Link sheet opening, the Sandbox drive after
 //   that is best-effort (see that test).
 //
-// testPlaidSandboxConnect: fresh sign-up, CREATE a fresh household
+// testPlaidSandboxConnect: pre-confirmed sign-in, CREATE a fresh household
 // (the new account is its admin — only an admin can connect a bank;
 // the test admin account's password is lost, so Proof Household 2
 // cannot be used for this), open Settings → Bank Connection, tap
@@ -161,8 +171,14 @@ final class OnBudgetUITests: XCTestCase {
         )
     }
 
+    /// THE live sign-up test: the only test that still signs up
+    /// through the app's own UI end to end. signUpFreshAccount()
+    /// probes the signup endpoint first and SKIPS this test cleanly
+    /// while Supabase's email rate limit is active (HTTP 429) —
+    /// the skip fires only on that signal, never on a real
+    /// sign-up failure — so the rate limit can never fail it again.
     func testSignUpJoinAndBrowse() throws {
-        signUpAndJoinTestHousehold()
+        try signUpAndJoinTestHousehold()
 
         // -- 6. Transactions loads rows ----------------------------------
         tapTab(identifier: "tab.transactions", label: "Transactions")
@@ -200,7 +216,7 @@ final class OnBudgetUITests: XCTestCase {
     /// iPhone and the tab switching; the iPad rendering itself can
     /// only be proven on a real iPad.
     func testTabBarIsAtBottom() throws {
-        signUpAndJoinTestHousehold()
+        signInPreconfirmedAndJoinTestHousehold()
 
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(
@@ -259,7 +275,7 @@ final class OnBudgetUITests: XCTestCase {
     /// alert, the persisted record from the script-launched
     /// instance covers the same assertion.
     func testGmailCallbackDeepLink() throws {
-        signUpAndJoinTestHousehold()
+        signInPreconfirmedAndJoinTestHousehold()
 
         app.buttons["Profile"].tap()
         let settingsItem = app.buttons["Settings"]
@@ -293,7 +309,7 @@ final class OnBudgetUITests: XCTestCase {
     /// the assertion (it is unique to the subpage; the title text
     /// alone could also match the link's label).
     func testPastWeeksAndActivitySubpages() throws {
-        signUpAndJoinTestHousehold()
+        signInPreconfirmedAndJoinTestHousehold()
 
         tapTab(identifier: "tab.transactions", label: "Transactions")
         let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
@@ -342,20 +358,57 @@ final class OnBudgetUITests: XCTestCase {
     // MARK: - Shared preamble
 
     /// Steps 1–5 of the milestone proof: launch → auth screen →
-    /// sign up a fresh account → name step → join Proof Household 2
-    /// as a member → Home renders. Shared by the browse + subpage
-    /// tests; each test method gets its own fresh launch (and its own
-    /// fresh account). The sign-up steps themselves live in
-    /// `signUpFreshAccount()` below, shared with the Plaid test
-    /// (which creates its own household instead of joining).
-    private func signUpAndJoinTestHousehold() {
-        signUpFreshAccount()
+    /// sign up a fresh account through the UI → name step → join
+    /// Proof Household 2 as a member → Home renders. Used ONLY by
+    /// testSignUpJoinAndBrowse (the live sign-up test); every other
+    /// test uses signInPreconfirmedAndJoinTestHousehold() below.
+    /// Throws only via XCTSkip: signUpFreshAccount() skips the test
+    /// while Supabase's email rate limit is active (HTTP 429).
+    private func signUpAndJoinTestHousehold() throws {
+        try signUpFreshAccount()
+        joinTestHouseholdAndCheckHome()
+    }
 
+    /// Pre-confirmed preamble (Nov 12, 2026): the account is created
+    /// via the Auth Admin API with email_confirm: true — Supabase
+    /// sends NO email for that call — and the test then signs in
+    /// through the app's own sign-in screen. Immune to the email
+    /// rate limit that kept failing the old UI sign-up preamble.
+    /// The join + Home steps are identical to the sign-up path.
+    private func signInPreconfirmedAndJoinTestHousehold() {
+        signInPreconfirmedAccount()
+        joinTestHouseholdAndCheckHome()
+    }
+
+    /// Signs in with a freshly created pre-confirmed account and
+    /// leaves the test on the household choice screen. Shared by
+    /// signInPreconfirmedAndJoinTestHousehold() and
+    /// testPlaidSandboxConnect (which creates its own household
+    /// instead of joining).
+    private func signInPreconfirmedAccount() {
+        guard let serviceKey = Self.requireServiceKey() else { return }
+
+        // -- Auth screen renders ---------------------------------------
+        let emailField = app.textFields["auth.email"]
+        XCTAssertTrue(
+            emailField.waitForExistence(timeout: 60),
+            "Auth screen did not appear: no email field within 60s of launch"
+        )
+        attachScreenshot(named: "01-auth")
+
+        guard let credentials = createPreconfirmedTestAccount(serviceKey: serviceKey) else { return }
+        signInThroughUI(email: credentials.email, password: credentials.password)
+    }
+
+    /// Join Proof Household 2 as a member + Home renders. The tail
+    /// of both preambles — the assertions are identical whichever
+    /// way the account was made.
+    private func joinTestHouseholdAndCheckHome() {
         // -- 4. Join Proof Household 2 as a member -----------------------
         let inviteField = app.textFields["household.inviteCode"]
         XCTAssertTrue(
             inviteField.waitForExistence(timeout: 90),
-            "Household screen did not appear after sign-up (account creation or boot failed)"
+            "Household screen did not appear after sign-in (account creation or boot failed)"
         )
         attachScreenshot(named: "03-household-join")
         tapAndTypeText(inviteField, testInviteCode, fieldName: "household.inviteCode")
@@ -376,7 +429,10 @@ final class OnBudgetUITests: XCTestCase {
     }
 
     func testPlaidSandboxConnect() throws {
-        signUpFreshAccount()
+        // Pre-confirmed account (Nov 12, 2026): no email is sent,
+        // so this test is immune to the email rate limit. The
+        // account is the fresh household's admin, as before.
+        signInPreconfirmedAccount()
 
         // -- Create a FRESH household (this account is its admin) --------
         // Proof Household 2 cannot be used here: only an admin can
@@ -496,7 +552,7 @@ final class OnBudgetUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Send Again"].exists)
     }
 
-    // MARK: - Shared sign-up
+    // MARK: - Shared account setup (UI sign-up + pre-confirmed sign-in)
 
     /// Steps 1–3 of the proof: auth screen → fresh sign-up → name
     /// step. Leaves the test on the household choice screen.
@@ -513,16 +569,26 @@ final class OnBudgetUITests: XCTestCase {
     /// environment variable when present; when neither exists the
     /// test fails fast here instead of burning its 60–90s waits
     /// before failing at the same gate.
-    private func signUpFreshAccount() {
-        guard let serviceKey = Self.uiTestServiceKey(), !serviceKey.isEmpty else {
-            XCTFail(
-                "No service-role key reached the UI test runner: UITestSecrets.serviceRoleKey is empty and "
-                + "SUPABASE_SERVICE_ROLE_KEY is not set in the test runner environment — "
-                + "add it as a CI secret so the simulator workflow can generate UITestSecrets.swift. "
-                + "Email confirmation is ON, so a fresh test account cannot sign in without being confirmed first."
+    ///
+    /// Rate-limit skip (Nov 12, 2026): before touching the UI the
+    /// helper probes the signup endpoint — while Supabase's email
+    /// rate limit is active it answers HTTP 429, and the test is
+    /// SKIPPED (throws XCTSkip) instead of failing at the
+    /// "Check Your Email" gate. The skip fires ONLY on the 429
+    /// signal; any other sign-up failure still fails the test, so
+    /// a real sign-up regression cannot hide behind the skip.
+    /// Throws only via that skip.
+    private func signUpFreshAccount() throws {
+        if signUpEmailRateLimited() {
+            try XCTSkip(
+                "Supabase email rate limit is active (HTTP 429 over_email_send_rate_limit) — "
+                + "sign-up cannot send its confirmation email right now, so the live sign-up "
+                + "flow cannot be exercised in this run. Skipping, not failing: the app is "
+                + "not at fault. Re-run after the rate-limit window resets."
             )
-            return
         }
+
+        guard let serviceKey = Self.requireServiceKey() else { return }
 
         // -- 1. Auth screen renders -------------------------------------
         let emailField = app.textFields["auth.email"]
@@ -574,10 +640,18 @@ final class OnBudgetUITests: XCTestCase {
         guard confirmTestAccount(email: email, serviceKey: serviceKey) else { return }
         app.buttons["auth.backToSignIn"].tap()
 
+        signInThroughUI(email: email, password: password)
+    }
+
+    /// Signs in through the app's own sign-in screen with the given
+    /// credentials. Shared by the UI sign-up path (after the Admin
+    /// confirm) and the pre-confirmed path (Admin-API accounts).
+    /// A fresh account lands on the household choice screen.
+    private func signInThroughUI(email: String, password: String) {
         let signInEmail = app.textFields["auth.email"]
         XCTAssertTrue(
             signInEmail.waitForExistence(timeout: 30),
-            "Sign-in screen did not appear after confirming the test account"
+            "Sign-in screen did not appear within 30s"
         )
         tapAndTypeText(signInEmail, email, fieldName: "auth.email")
         let signInPassword = app.secureTextFields["auth.password"]
@@ -588,6 +662,74 @@ final class OnBudgetUITests: XCTestCase {
         tapAndTypeText(signInPassword, password, fieldName: "auth.password")
         dismissKeyboardIfPresent(focusedField: signInPassword)
         app.buttons["auth.signIn"].tap()
+    }
+
+    /// Creates a test account directly via the Auth Admin API,
+    /// already confirmed — POST /admin/users with email_confirm:
+    /// true sends NO confirmation email, so this path is immune to
+    /// Supabase's email rate limit (the 429 that kept failing the
+    /// old UI sign-up preamble). Returns the credentials on HTTP
+    /// 200; fails the test otherwise. Test data only; the service
+    /// key is never logged.
+    private func createPreconfirmedTestAccount(serviceKey: String) -> (email: String, password: String)? {
+        // Random email per run so re-runs never collide with a
+        // previous run's account. example.com is unroutable, which
+        // is fine: the account is already confirmed, so no email
+        // ever needs to reach it.
+        let runId = UUID().uuidString.lowercased().prefix(8)
+        let email = "ios-clone-uitest-\(runId)@example.com"
+        // >= 8 chars (AuthValidation.createAccountError); mixed case +
+        // digits + symbol so it also satisfies any server-side rule.
+        let password = "Uitests-\(runId)-2026!"
+        var request = URLRequest(url: URL(string: "\(Self.supabaseAuthAdminBase)/users")!)
+        request.httpMethod = "POST"
+        request.setValue(serviceKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(serviceKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "email": email,
+            "password": password,
+            "email_confirm": true,
+            "user_metadata": ["display_name": "UI Test"],
+        ])
+        let (status, _) = performAdminRequest(request)
+        guard status == 200 else {
+            XCTFail("Admin API create user failed for \(email) (HTTP \(status)) — cannot set up a pre-confirmed test account")
+            return nil
+        }
+        return (email, password)
+    }
+
+    /// Pre-flight probe: is Supabase's email rate limit active
+    /// right now? POSTs a throwaway sign-up for a random
+    /// @example.com address with the PUBLISHABLE anon key (public
+    /// by design — same value as Configuration.supabaseAnonKey).
+    /// Proven behaviour (direct probes, Nov 12, 2026): while the
+    /// limit is active the endpoint answers HTTP 429
+    /// over_email_send_rate_limit BEFORE validating the email;
+    /// while it is clear the same request answers HTTP 400
+    /// email_address_invalid (example.com is unroutable and
+    /// rejected at validation). Neither outcome creates an account
+    /// or sends an email, so the probe costs nothing and can never
+    /// trip the limit itself. Returns true ONLY on 429 — a
+    /// transport error (status 0) or any other status means "not
+    /// rate-limited", so the test proceeds and fails normally if
+    /// sign-up itself is broken. The status is recorded in the
+    /// test log; no key is ever logged.
+    private func signUpEmailRateLimited() -> Bool {
+        let probeEmail = "ios-clone-uitest-probe-\(UUID().uuidString.lowercased().prefix(8))@example.com"
+        var request = URLRequest(url: URL(string: "\(Self.supabaseAuthBase)/signup")!)
+        request.httpMethod = "POST"
+        request.setValue(Self.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(Self.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "email": probeEmail,
+            "password": "Uitests-probe-2026!",
+        ])
+        let (status, _) = performAdminRequest(request)
+        XCTContext.runActivity(named: "Sign-up email rate-limit probe: HTTP \(status)") { _ in }
+        return status == 429
     }
 
     /// Service-role key for the Admin-API confirm path. The UI test
@@ -614,7 +756,32 @@ final class OnBudgetUITests: XCTestCase {
         return nil
     }
 
+    /// Fails the test fast with the missing-key message when no
+    /// service-role key reached the runner, and returns the key
+    /// otherwise. Shared by the UI sign-up path (Admin confirm)
+    /// and the pre-confirmed path (Admin create).
+    private static func requireServiceKey() -> String? {
+        guard let serviceKey = Self.uiTestServiceKey(), !serviceKey.isEmpty else {
+            XCTFail(
+                "No service-role key reached the UI test runner: UITestSecrets.serviceRoleKey is empty and "
+                + "SUPABASE_SERVICE_ROLE_KEY is not set in the test runner environment — "
+                + "add it as a CI secret so the simulator workflow can generate UITestSecrets.swift. "
+                + "Email confirmation is ON, so a fresh test account cannot be created or confirmed without it."
+            )
+            return nil
+        }
+        return serviceKey
+    }
+
     // MARK: - Admin-API confirmation (email confirmation is ON)
+
+    /// Supabase Auth base + publishable anon key for the live
+    /// project. The anon key is PUBLIC by design — the same value
+    /// as Configuration.supabaseAnonKey — and is only used for the
+    /// rate-limit probe, which needs no privileges. Never put the
+    /// service-role key here; it travels via UITestSecrets only.
+    private static let supabaseAuthBase = "https://tnkhvdkmwmwiogiienee.supabase.co/auth/v1"
+    private static let supabaseAnonKey = "sb_publishable_P2phsf7AYX38dbmxOEZKzQ_uw168MZP"
 
     /// Supabase Auth Admin API base for the live project (public
     /// URL, same project as the app's Configuration.supabaseURL).
