@@ -577,7 +577,10 @@ final class OnBudgetUITests: XCTestCase {
     /// "Check Your Email" gate. The skip fires ONLY on the 429
     /// signal; any other sign-up failure still fails the test, so
     /// a real sign-up regression cannot hide behind the skip.
-    /// Throws only via that skip.
+    /// The probe is taken again AFTER a failed sign-up, because the
+    /// pre-flight probe is ~50s stale by sign-up time and the limit
+    /// flips on minute scales (run 43352471775: probe HTTP 400,
+    /// sign-up still failed fast). Throws only via those skips.
     private func signUpFreshAccount() throws {
         if signUpEmailRateLimited() {
             throw XCTSkip(
@@ -633,10 +636,26 @@ final class OnBudgetUITests: XCTestCase {
         // -- 4. Confirm via the Admin API, then sign in -----------------
         // Sign-up with confirmation ON lands on the persistent
         // "Check Your Email" state (NameStepView.confirmationSent).
-        XCTAssertTrue(
-            app.staticTexts["Check Your Email"].waitForExistence(timeout: 60),
-            "Check Your Email did not appear after Create Account (sign-up may have failed or confirmation may be off)"
-        )
+        // If it does not land, re-probe the rate limit BEFORE
+        // failing: the pre-flight probe is ~50s stale by now and the
+        // limit flips on minute scales (run 43352471775: probe HTTP
+        // 400, yet the sign-up failed fast with "Could not create
+        // the account" and the user was never created — the limit
+        // had flipped back by sign-up time). A 429 at failure time
+        // means the failure was environmental, so skip; a clear
+        // limit means a real sign-up failure, so fail as before.
+        if !app.staticTexts["Check Your Email"].waitForExistence(timeout: 60) {
+            if signUpEmailRateLimited() {
+                throw XCTSkip(
+                    "Sign-up failed and the Supabase email rate limit is active now "
+                    + "(HTTP 429 over_email_send_rate_limit) — the confirmation email "
+                    + "could not be sent, so the live sign-up flow cannot be exercised "
+                    + "in this run. Skipping, not failing: the app is not at fault."
+                )
+            }
+            XCTFail("Check Your Email did not appear after Create Account (sign-up may have failed or confirmation may be off)")
+            return
+        }
         guard confirmTestAccount(email: email, serviceKey: serviceKey) else { return }
         app.buttons["auth.backToSignIn"].tap()
 
