@@ -252,6 +252,27 @@ def main():
             assert target["productType"] == (
                 "com.apple.product-type.app-extension"
             ), "Widget must be an app-extension target"
+            # The widget Info.plist must carry its own identity: a
+            # minimal plist (NSExtension only) builds an appex whose
+            # bundle id is null, and the app's ValidateEmbeddedBinary
+            # step then fails the whole build (run 43361885700).
+            widget_info_path = CLONE / "OnBudgetWidget" / "Info.plist"
+            assert widget_info_path.is_file(), (
+                "Widget Info.plist missing: OnBudgetWidget/Info.plist"
+            )
+            with open(widget_info_path, "rb") as f:
+                widget_info = plistlib.load(f)
+            assert widget_info.get("CFBundleIdentifier") == (
+                "$(PRODUCT_BUNDLE_IDENTIFIER)"
+            ), "Widget Info.plist must set CFBundleIdentifier from PRODUCT_BUNDLE_IDENTIFIER"
+            assert widget_info.get("CFBundlePackageType") == "XPC!", (
+                "Widget Info.plist CFBundlePackageType must be XPC!"
+            )
+            assert widget_info.get("NSExtension", {}).get(
+                "NSExtensionPointIdentifier"
+            ) == "com.apple.widgetkit-extension", (
+                "Widget Info.plist must declare the widgetkit extension point"
+            )
             assert "OnBudgetKit" in [
                 objects[d].get("productName")
                 for d in target.get("packageProductDependencies", [])
