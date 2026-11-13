@@ -26,7 +26,11 @@ jobs:
       github.event.repository.private == false &&
       startsWith(github.event.head_commit.message, 'ci(ios-clone): approved cloud build')
     runs-on: macos-15-intel
-    timeout-minutes: 40
+    # 60 min, not 40: run 43369401698 was cancelled by the 40-min
+    # timeout while still building for testing (slow runner) — the
+    # test phase never started. Same raise the uitest-email-gate
+    # branch made.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
