@@ -7,15 +7,23 @@ import OnBudgetKit
 /// subtitle "Merchant — $X". Rows are tappable list rows (label bold
 /// + muted sub-line + ›). Which actions appear is decided by the
 /// `actionsForTxKind` table — the clone uses this exact table
-/// (relaxed Nov 8, 2026: Charity is offered on ANY charge; members
-/// see it disabled):
+/// (relaxed Nov 8, 2026: Charity is offered on ANY charge;
+/// members do not see it at all — owner rule, Nov 13, 2026:
+/// the sheet never renders a disabled row, only actions that
+/// work):
 ///
 /// | kind | Admin | Member |
-/// | charge | Charity, Extra Fund, Other, Delete | Charity (disabled), Extra Fund |
+/// | charge | Charity, Extra Fund, Other, Delete | Extra Fund |
 /// | refund | Link to Purchase, Other, Delete | — (no actions) |
 /// | transfer, payment, cashback, fund_charge | Other, Delete | — |
 /// | charity | Delete | — |
 /// | other kinds | Other, Delete | — |
+///
+/// Owner rule (Nov 13, 2026): the sheet never renders a disabled
+/// row — only actions that work. A member simply does not see
+/// "Mark as Charity" (it used to render greyed-out with an
+/// "Only the admin can..." subline). The `disabled` flag is gone
+/// from SheetAction entirely so the pattern cannot come back.
 ///
 /// Plus the note under the sheet for transfer/payment/cashback/
 /// fund_charge: "This row does not count toward weekly spending."
@@ -43,7 +51,6 @@ public struct TransactionActionsSheet: View {
         let id: ActionKind
         let label: String
         let subline: String
-        let disabled: Bool
     }
 
     let transaction: Transaction
@@ -89,15 +96,16 @@ public struct TransactionActionsSheet: View {
         case .charge:
             if isAdmin {
                 return [
-                    SheetAction(id: .charity, label: "Mark as Charity", subline: charitySubline, disabled: false),
-                    SheetAction(id: .extraFund, label: "Use Extra Fund", subline: "Ask for this charge to be covered from the fund", disabled: false),
-                    SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts", disabled: false),
-                    SheetAction(id: .delete, label: "Delete", subline: deleteSubline, disabled: false),
+                    SheetAction(id: .charity, label: "Mark as Charity", subline: charitySubline),
+                    SheetAction(id: .extraFund, label: "Use Extra Fund", subline: "Ask for this charge to be covered from the fund"),
+                    SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
+                    SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
                 ]
             }
+            // Owner rule (Nov 13, 2026): no disabled rows — a
+            // member simply does not see "Mark as Charity".
             return [
-                SheetAction(id: .charity, label: "Mark as Charity", subline: "Only the admin can mark this as a gift", disabled: true),
-                SheetAction(id: .extraFund, label: "Use Extra Fund", subline: "Ask for this charge to be covered from the fund", disabled: false),
+                SheetAction(id: .extraFund, label: "Use Extra Fund", subline: "Ask for this charge to be covered from the fund"),
             ]
         case .refund:
             guard isAdmin else { return [] }
@@ -105,24 +113,24 @@ public struct TransactionActionsSheet: View {
                 ? "Change or remove the purchase this refund is linked to"
                 : "Link this refund to the purchase it came from"
             return [
-                SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline, disabled: false),
-                SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts", disabled: false),
-                SheetAction(id: .delete, label: "Delete", subline: deleteSubline, disabled: false),
+                SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline),
+                SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
+                SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
             ]
         case .transfer, .payment, .cashback, .fundCharge:
             guard isAdmin else { return [] }
             return [
-                SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts", disabled: false),
-                SheetAction(id: .delete, label: "Delete", subline: deleteSubline, disabled: false),
+                SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
+                SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
             ]
         case .charity:
             guard isAdmin else { return [] }
-            return [SheetAction(id: .delete, label: "Delete", subline: deleteSubline, disabled: false)]
+            return [SheetAction(id: .delete, label: "Delete", subline: deleteSubline)]
         case .income, .other:
             guard isAdmin else { return [] }
             return [
-                SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts", disabled: false),
-                SheetAction(id: .delete, label: "Delete", subline: deleteSubline, disabled: false),
+                SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
+                SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
             ]
         }
     }
@@ -221,7 +229,6 @@ public struct TransactionActionsSheet: View {
             VStack(spacing: 0) {
                 ForEach(actions) { action in
                     Button {
-                        guard !action.disabled else { return }
                         select(action.id)
                     } label: {
                         HStack {
@@ -239,10 +246,8 @@ public struct TransactionActionsSheet: View {
                                 .foregroundStyle(Color(hex: "#6b7280"))
                         }
                         .padding(.vertical, 12)
-                        .opacity(action.disabled ? 0.55 : 1)
                     }
                     .buttonStyle(.plain)
-                    .disabled(action.disabled)
                     if action.id != actions.last?.id {
                         Divider()
                     }

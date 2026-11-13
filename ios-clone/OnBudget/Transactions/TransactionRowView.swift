@@ -10,11 +10,14 @@ import OnBudgetKit
 /// (owner, Nov 12, 2026). Row accessible name: merchant + amount +
 /// day + status + "— show detail".
 ///
-/// Detail panel, in order: bold merchant + amount + kind label;
-/// labelled rows Date (long) / Account / Status (pill) / Source
-/// (pill) (+ Refund Link row for refunds); then the Actions button —
-/// one small tertiary button, only when the viewer has any action on
-/// that row. No explainer sentences: the facts already say it.
+/// Detail panel: labelled rows Date (long) / Account / Status
+/// (pill) / Source (pill) (+ Refund Link row for refunds); then
+/// the Actions button — one small tertiary button, only when the
+/// viewer has any action on that row. The bold merchant — amount
+/// header is gone (owner, Nov 13, 2026): the collapsed row
+/// already says both, so repeating them here said the merchant
+/// and the price twice. No explainer sentences: the facts
+/// already say it.
 /// The whole row is the tap target — the chevron is only a visual
 /// hint. Expand/collapse uses the shared ExpandAnimation.
 public struct TransactionRowView: View {
@@ -135,8 +138,6 @@ public struct TransactionDetailView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            detailHeader
-
             VStack(spacing: 6) {
                 // No Week row: the Date already says it (owner,
                 // Nov 12, 2026). Status and Source render as the
@@ -163,31 +164,6 @@ public struct TransactionDetailView: View {
                 }
             }
         }
-    }
-
-    /// Detail header: merchant — amount, plus the kind in
-    /// parentheses only when it says something ("(Refund)" /
-    /// "(Charity gift)" / "(Transfer)"). A plain charge shows no
-    /// "(Transaction)" noise (T-P2-8) — every other kind maps to
-    /// that same label, so it carries no information either.
-    /// The amount uses the one shared kind rule
-    /// (TransactionFormatting.amountDisplay): money in green with
-    /// "+", charity blue, regular kinds ink — never red.
-    private var detailHeader: some View {
-        let kindSuffix: String
-        switch transaction.kind {
-        case .refund, .charity, .transfer:
-            kindSuffix = " (\(TransactionFormatting.kindLabel(for: transaction)))"
-        default:
-            kindSuffix = ""
-        }
-        let amount = TransactionFormatting.amountDisplay(for: transaction)
-        return (Text(TransactionFormatting.displayMerchant(transaction.merchant))
-            + Text(" — ")
-            + Text(amount.text).foregroundStyle(amount.color)
-            + Text(kindSuffix))
-            .font(.system(size: 15, weight: .bold))
-            .foregroundStyle(DesignTokens.ink)
     }
 
     private func detailRow(label: String, value: String) -> some View {
