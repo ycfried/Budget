@@ -10,6 +10,10 @@ the same minting the upload workflow already inlines):
                  both bundle ids, create/find the widget App Store profile
                  ("OnBudget Widget", reusing the distribution certificate
                  of the existing app profile), and download that profile.
+                 If the create 409s on the duplicate name but no ACTIVE
+                 profile can be found, stale non-ACTIVE profiles are
+                 deleted and a fresh one is created instead (self-heal,
+                 run 43474792856). An ACTIVE profile is never deleted.
                  Idempotent: every create is check-first, so re-runs are
                  safe. NEVER touches the existing app profile 83TZ7C4533
                  or any certificate — the archive step's
@@ -113,6 +117,10 @@ class ASC:
     def patch(self, path: str, body):
         return self.call("PATCH", path, body)
 
+    def delete(self, path: str):
+        # DELETE returns 204 No Content; call() maps the empty body to {}.
+        return self.call("DELETE", path)
+
 
 def find_bundle_id(asc: ASC, identifier: str):
     data = asc.get(f"/v1/bundleIds?filter[identifier]={identifier}&limit=1")
@@ -207,6 +215,41 @@ def _newest_active_store(profiles):
     return active[-1]
 
 
+def profiles_by_name(asc: ASC, profile_name: str):
+    """All profiles with this exact name, printing each one.
+
+    The print is the ground truth for the next run's log: the name
+    lookup can return profiles the ACTIVE-only pickers skip (e.g.
+    INVALID ones), and a bare "found nothing" hides them. Every
+    candidate is printed (id, name, profileType, status) before
+    any filtering.
+    """
+    data = asc.get(
+        f"/v1/profiles?filter[name]={urllib.parse.quote(profile_name)}&limit=50")
+    profiles = data.get("data", [])
+    print(f"name query filter[name]={profile_name}: "
+          f"{len(profiles)} candidate(s)")
+    for p in profiles:
+        attrs = p.get("attributes", {})
+        print(f"  candidate id={p.get('id')} name={attrs.get('name')!r} "
+              f"type={attrs.get('profileType')} "
+              f"status={attrs.get('status')}")
+    return profiles
+
+
+def _bundle_matched(profiles, bundle_resource_id: str):
+    """Candidates belonging to this bundle id (or with no bundleId
+    relationship in the response). A same-named profile for another
+    bundle id is never picked up."""
+    matched = []
+    for p in profiles:
+        rel = p.get("relationships", {}).get("bundleId", {}).get("data") or {}
+        if rel.get("id") and rel["id"] != bundle_resource_id:
+            continue
+        matched.append(p)
+    return matched
+
+
 def active_store_profile(asc: ASC, bundle_resource_id: str, profile_name=None):
     """Newest ACTIVE IOS_APP_STORE profile for a bundle id, or None.
 
@@ -219,9 +262,11 @@ def active_store_profile(asc: ASC, bundle_resource_id: str, profile_name=None):
     43473255905 even though two ACTIVE profiles named "OnBudget
     Widget" existed (proven by the POST 409 that followed), so a
     name lookup must be tried before concluding there is no profile.
-    The name lookup also checks the profile's bundleId relationship
-    when the response carries one, so a same-named profile for
-    another bundle id is never picked up.
+    Upload run 43474792856 proved the other side of that: the name
+    lookup can ALSO return only non-ACTIVE profiles (most likely
+    INVALID after the App Groups capability change), which the
+    ACTIVE-only picker skips — so the raw candidates are printed
+    (see profiles_by_name) and the caller can self-heal.
     Other filters in this script were audited the same way:
     filter[identifier] IS valid on /v1/bundleIds and on
     /v1/appGroups, so find_bundle_id / ensure_app_group are fine.
@@ -236,15 +281,23 @@ def active_store_profile(asc: ASC, bundle_resource_id: str, profile_name=None):
     print(f"no profile via bundle-id relationship for "
           f"{bundle_resource_id}; falling back to "
           f"filter[name]={profile_name}")
-    data = asc.get(
-        f"/v1/profiles?filter[name]={urllib.parse.quote(profile_name)}&limit=50")
-    candidates = []
-    for p in data.get("data", []):
-        rel = p.get("relationships", {}).get("bundleId", {}).get("data") or {}
-        if rel.get("id") and rel["id"] != bundle_resource_id:
-            continue
-        candidates.append(p)
+    candidates = _bundle_matched(
+        profiles_by_name(asc, profile_name), bundle_resource_id)
     return _newest_active_store(candidates)
+
+
+def _create_widget_profile(asc: ASC, widget_resource_id: str, cert_id: str) -> str:
+    """POST the widget App Store profile (same body every time)."""
+    created = asc.post("/v1/profiles", {"data": {
+        "type": "profiles",
+        "attributes": {"name": WIDGET_PROFILE_NAME, "profileType": "IOS_APP_STORE"},
+        "relationships": {
+            "bundleId": {"data": {"type": "bundleIds", "id": widget_resource_id}},
+            "certificates": {"data": [{"type": "certificates", "id": cert_id}]},
+        }}})
+    new_id = created["data"]["id"]
+    print(f"created widget profile {WIDGET_PROFILE_NAME} ({new_id})")
+    return new_id
 
 
 def ensure_widget_profile(asc: ASC, widget_resource_id: str) -> str:
@@ -255,13 +308,7 @@ def ensure_widget_profile(asc: ASC, widget_resource_id: str) -> str:
         return existing["id"]
     cert_id = distribution_cert_id(asc)
     try:
-        created = asc.post("/v1/profiles", {"data": {
-            "type": "profiles",
-            "attributes": {"name": WIDGET_PROFILE_NAME, "profileType": "IOS_APP_STORE"},
-            "relationships": {
-                "bundleId": {"data": {"type": "bundleIds", "id": widget_resource_id}},
-                "certificates": {"data": [{"type": "certificates", "id": cert_id}]},
-            }}})
+        return _create_widget_profile(asc, widget_resource_id, cert_id)
     except RuntimeError as e:
         # Apple refuses a duplicate name with HTTP 409 — but the
         # profile we need already exists; the lookup above just
@@ -279,10 +326,41 @@ def ensure_widget_profile(asc: ASC, widget_resource_id: str) -> str:
             print(f"reusing widget profile "
                   f"{existing['attributes']['name']} ({existing['id']})")
             return existing["id"]
-        raise
-    new_id = created["data"]["id"]
-    print(f"created widget profile {WIDGET_PROFILE_NAME} ({new_id})")
-    return new_id
+        # Self-heal (proven by run 43474792856): the 409 proves
+        # profiles with this name exist, but the lookup found no
+        # ACTIVE one — they are stale (most likely INVALID after
+        # the App Groups capability change invalidated them).
+        # Delete the stale non-ACTIVE ones and create fresh.
+        # An ACTIVE profile is NEVER deleted.
+        candidates = _bundle_matched(
+            profiles_by_name(asc, WIDGET_PROFILE_NAME), widget_resource_id)
+        stale = [p for p in candidates
+                 if p.get("attributes", {}).get("status") != "ACTIVE"]
+        if not candidates or len(stale) != len(candidates):
+            # Nothing to clean up, or a same-named ACTIVE profile
+            # exists that the lookup did not return as ours — do
+            # not guess; surface the original error.
+            raise
+        for p in stale:
+            attrs = p.get("attributes", {})
+            print(f"deleting stale widget profile "
+                  f"{attrs.get('name')} ({p['id']}) "
+                  f"status={attrs.get('status')}")
+            asc.delete(f"/v1/profiles/{p['id']}")
+        try:
+            return _create_widget_profile(asc, widget_resource_id, cert_id)
+        except RuntimeError as e2:
+            if "HTTP 409" not in str(e2):
+                raise
+            print(f"fresh create hit a duplicate-name 409 again: {e2}")
+            print("re-running the lookup one last time")
+            existing = active_store_profile(asc, widget_resource_id,
+                                            WIDGET_PROFILE_NAME)
+            if existing:
+                print(f"reusing widget profile "
+                      f"{existing['attributes']['name']} ({existing['id']})")
+                return existing["id"]
+            raise
 
 
 def download_profile(asc: ASC, profile_id: str, dest_dir: str, filename: str):
@@ -307,6 +385,18 @@ def cmd_setup(args) -> int:
     widget_profile_id = ensure_widget_profile(asc, widget_resource_id)
     download_profile(asc, widget_profile_id, args.profiles_dir,
                      "OnBudget_Widget.mobileprovision")
+    # Diagnostic only: the workflow downloads the app profile by ID
+    # and the archive needs it to carry App Groups. Print its state
+    # so the next run's log shows it; never change, delete or
+    # recreate the app profile here.
+    try:
+        app = asc.get(f"/v1/profiles/{APP_PROFILE_ID}")
+        attrs = app["data"]["attributes"]
+        print(f"app profile {APP_PROFILE_NAME} ({APP_PROFILE_ID}): "
+              f"type={attrs.get('profileType')} "
+              f"status={attrs.get('status')}")
+    except Exception as e:  # noqa: BLE001 — diagnostic only
+        print(f"WARNING: could not read app profile {APP_PROFILE_ID}: {e}")
     print(json.dumps({
         "widget_bundle_resource_id": widget_resource_id,
         "widget_profile_id": widget_profile_id,
