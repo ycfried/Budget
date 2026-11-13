@@ -470,6 +470,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
 
 struct ConnectedAccountsView: View {
     @StateObject private var viewModel: ConnectedAccountsViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     init(context: SettingsContext, toast: ToastState, plaidLauncher: PlaidLinkLauncher = PlaidLinkNotLinkedLauncher()) {
         _viewModel = StateObject(wrappedValue: ConnectedAccountsViewModel(context: context, toast: toast, plaidLauncher: plaidLauncher))
@@ -590,6 +591,10 @@ struct ConnectedAccountsView: View {
         }
         .sheet(item: $viewModel.nicknameTarget) { row in
             nicknameSheet(for: row)
+                // iPad width (owner, Nov 12, 2026): same treatment
+                // as the Weekly Budget sheet — fitted height + 600pt
+                // width in the regular size class.
+                .presentationSizing(.fitted)
         }
     }
 
@@ -657,11 +662,15 @@ struct ConnectedAccountsView: View {
                     }
                     .buttonStyle(TertiaryButtonStyle())
                 }
-                Spacer()
             }
             .padding()
             .navigationTitle("Nickname")
             .navigationBarTitleDisplayMode(.inline)
         }
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // Weekly Budget sheet. The trailing Spacer is gone: it
+        // stretched the middle empty against the tall form sheet.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 }

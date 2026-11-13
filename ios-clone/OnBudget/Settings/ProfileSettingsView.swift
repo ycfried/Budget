@@ -216,6 +216,7 @@ final class ProfileSettingsViewModel: ObservableObject {
 
 struct ProfileSettingsView: View {
     @StateObject private var viewModel: ProfileSettingsViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     init(context: SettingsContext, toast: ToastState) {
         _viewModel = StateObject(wrappedValue: ProfileSettingsViewModel(context: context, toast: toast))
@@ -290,6 +291,10 @@ struct ProfileSettingsView: View {
         }
         .sheet(isPresented: $viewModel.showChangePassword) {
             changePasswordSheet
+                // iPad width (owner, Nov 12, 2026): same treatment
+                // as the Weekly Budget sheet — fitted height + 600pt
+                // width in the regular size class.
+                .presentationSizing(.fitted)
         }
         .alert(item: $viewModel.passwordAlert) { alert in
             switch alert {
@@ -346,11 +351,15 @@ struct ProfileSettingsView: View {
                     }
                     .buttonStyle(TertiaryButtonStyle())
                 }
-                Spacer()
             }
             .padding()
             .navigationTitle("Change Password")
             .navigationBarTitleDisplayMode(.inline)
         }
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // Weekly Budget sheet. The trailing Spacer is gone: it
+        // stretched the middle empty against the tall form sheet.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 }

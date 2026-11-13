@@ -273,6 +273,7 @@ struct HistoryDateFilterCard: View {
 
     @State private var showingCalendar = false
     @State private var calendarSelection: WhenSelection = .allTime
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// True once the calendar actually picked something (Done, a
     /// quick pick, or Clear). Backing out without picking leaves
     /// the drafts untouched — in particular a one-sided draft the
@@ -336,6 +337,12 @@ struct HistoryDateFilterCard: View {
             NavigationStack {
                 DateRangeCalendarView(selection: calendarBinding)
             }
+            // iPad width (owner, Nov 12, 2026): same treatment as
+            // the Weekly Budget sheet — fitted height + 600pt width
+            // in the regular size class. The month grid is flexible
+            // (7 columns), so it uses the extra width.
+            .presentationSizing(.fitted)
+            .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         }
     }
 

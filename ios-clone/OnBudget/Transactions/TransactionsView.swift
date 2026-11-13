@@ -112,9 +112,17 @@ public struct TransactionsView: View {
         .onChange(of: appState.pendingClearTransactionFilters) { _, _ in consumeHandoffs() }
         .sheet(isPresented: $showingFilters) {
             TransactionsFilterSheet(viewModel: viewModel, onDismiss: { showingFilters = false })
+                // iPad width (owner, Nov 12, 2026): same treatment
+                // as the Weekly Budget sheet — fitted height + 600pt
+                // width in the regular size class.
+                .presentationSizing(.fitted)
         }
         .sheet(isPresented: $showingAdd) {
             AddTransactionView(viewModel: viewModel, onDismiss: { showingAdd = false })
+                // iPad width (owner, Nov 12, 2026): same treatment
+                // as the Weekly Budget sheet — fitted height + 600pt
+                // width in the regular size class.
+                .presentationSizing(.fitted)
         }
         .sheet(isPresented: $showingTrash) {
             TrashView(viewModel: viewModel, onBack: { showingTrash = false })
@@ -126,6 +134,10 @@ public struct TransactionsView: View {
                 viewModel: viewModel,
                 onDismiss: { actionsTransaction = nil }
             )
+                // iPad width (owner, Nov 12, 2026): same treatment
+                // as the Weekly Budget sheet — fitted height + 600pt
+                // width in the regular size class.
+                .presentationSizing(.fitted)
         }
         // NOTE (T-P2-1): no `.alert` here — the failure alert lives
         // on the Actions and Trash sheets themselves, because an
@@ -523,6 +535,7 @@ public struct TransactionsView: View {
 public struct TransactionsFilterSheet: View {
     @Bindable var viewModel: TransactionsViewModel
     let onDismiss: () -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// Snapshot taken on open; Cancel restores it.
     @State private var snapshot: TransactionFilters
@@ -718,6 +731,11 @@ public struct TransactionsFilterSheet: View {
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
         }
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // Weekly Budget sheet. The calendar pushed from here also
+        // gets the extra width for its month grid.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 
     /// Draft amount bounds are invalid when both ends parse and

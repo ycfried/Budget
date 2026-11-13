@@ -20,6 +20,7 @@ public struct AddTransactionView: View {
 
     @Bindable var viewModel: TransactionsViewModel
     let onDismiss: () -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var step: Step = .options
 
@@ -39,7 +40,6 @@ public struct AddTransactionView: View {
                 case .donation:
                     AddDonationForm(viewModel: viewModel, onBack: { step = .options }, onDone: onDismiss)
                 }
-                Spacer()
             }
             .padding()
             .navigationTitle("Add Transaction")
@@ -60,6 +60,12 @@ public struct AddTransactionView: View {
                 }
             }
         }
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // Weekly Budget sheet. The trailing Spacer is gone: it
+        // stretched the middle empty against the tall form sheet
+        // (most visible on the two-button options screen).
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 
     private var optionsContent: some View {

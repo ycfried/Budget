@@ -50,6 +50,7 @@ public struct TransactionActionsSheet: View {
     let isAdmin: Bool
     @Bindable var viewModel: TransactionsViewModel
     let onDismiss: () -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var flow: Flow = .list
     @State private var extraFundAmount: String = ""
@@ -148,7 +149,6 @@ public struct TransactionActionsSheet: View {
                 case .reclassifyReason(let kind): reclassifyReasonContent(kind: kind)
                 case .deleteConfirm: deleteConfirmContent
                 }
-                Spacer()
             }
             .padding()
             .navigationTitle(flowTitle)
@@ -168,6 +168,11 @@ public struct TransactionActionsSheet: View {
                 }
             }
         }
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // Weekly Budget sheet. The trailing Spacer is gone: it
+        // stretched the middle empty against the tall form sheet.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         // T-P2-1: the failure alert lives on this sheet, not on the
         // Transactions parent — an alert attached behind a presented
         // sheet never surfaces, so failures from markAsCharity,

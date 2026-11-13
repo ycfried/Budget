@@ -156,6 +156,11 @@ public struct AuthView: View {
         }
         .sheet(isPresented: $showForgotSheet) {
             ForgotPasswordSheet(email: email)
+                // iPad width (owner, Nov 12, 2026): same treatment
+                // as the Weekly Budget sheet — a plain .sheet is a
+                // narrow form sheet on iPad and the content floated
+                // in dead space. .fitted hugs the content height.
+                .presentationSizing(.fitted)
         }
         .onAppear {
             // Sign-out lands here fresh: password and message
@@ -620,6 +625,7 @@ public struct NameStepView: View {
 public struct ForgotPasswordSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var email: String
     @State private var message: String?
     @State private var busy = false
@@ -664,9 +670,18 @@ public struct ForgotPasswordSheet: View {
                         .disabled(busy)
                 }
             } else {
-                Text("Step 1: enter the email for your account. Step 2: check your inbox for the reset link. Step 3: choose a new password on that page, then return here to sign in. If the link has expired, send a fresh one from here.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(DesignTokens.ink)
+                // Steps as a proper list (owner, Nov 12, 2026):
+                // the run-on "Step 1: ... Step 2: ... Step 3: ..."
+                // paragraph was hard to scan. One step per line,
+                // short; the expired-link note sits below, quiet.
+                VStack(alignment: .leading, spacing: 8) {
+                    forgotStep(number: 1, text: "Enter the email for your account.")
+                    forgotStep(number: 2, text: "Check your inbox for the reset link.")
+                    forgotStep(number: 3, text: "Choose a new password on that page, then return here to sign in.")
+                }
+                Text("If the link has expired, send a fresh one from here.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(DesignTokens.muted)
                 Text("Email")
                     .font(.system(size: 14, weight: .bold))
                 TextField("Email", text: $email)
@@ -687,9 +702,30 @@ public struct ForgotPasswordSheet: View {
                         .disabled(busy)
                 }
             }
-            Spacer()
         }
         .padding(20)
+        // iPad width (owner, Nov 12, 2026): with
+        // .presentationSizing(.fitted) at the presentation site,
+        // the sheet sizes to this content — so a fixed 600pt width
+        // here actually widens the sheet on iPad (regular size
+        // class) instead of the system ~540pt form sheet. On iPhone
+        // (compact) no width is fixed and the sheet stays
+        // full-width. The trailing Spacer is gone: it stretched
+        // the middle empty against the tall form sheet.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+    }
+
+    /// One step row: bold "Step N:" + short text. Used by the
+    /// steps list (owner, Nov 12, 2026).
+    private func forgotStep(number: Int, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("Step \(number):")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(DesignTokens.ink)
+            Text(text)
+                .font(.system(size: 15))
+                .foregroundStyle(DesignTokens.ink)
+        }
     }
 
     private func send() async {

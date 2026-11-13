@@ -340,6 +340,10 @@ public struct FundRequestQueue: View {
                 onApprove: { Task { await approveTapped(overrideReason: nil) } },
                 onCancel: { approving = nil; approveError = nil }
             )
+                // iPad width (owner, Nov 12, 2026): same treatment
+                // as the Weekly Budget sheet — fitted height + 600pt
+                // width in the regular size class.
+                .presentationSizing(.fitted)
         }
         .alert("Fund Is Short", isPresented: $showOverride) {
             TextField("Reason for overriding", text: $overrideReason)
@@ -488,6 +492,7 @@ public struct ApproveRequestSheet: View {
     public let error: String?
     public let onApprove: () -> Void
     public let onCancel: () -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(
         request: FundRequest,
@@ -515,11 +520,15 @@ public struct ApproveRequestSheet: View {
                     FundsPrimaryButton("Approve", action: onApprove)
                     FundsTertiaryButton("Cancel", action: onCancel)
                 }
-                Spacer()
             }
             .padding()
             .navigationTitle(TitleCase.apply(to: "Approve from the Fund"))
             .navigationBarTitleDisplayMode(.inline)
         }
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // Weekly Budget sheet. The trailing Spacer is gone: it
+        // stretched the middle empty against the tall form sheet.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 }
