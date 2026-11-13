@@ -1248,3 +1248,4 @@ final class OnBudgetUITests: XCTestCase {
 // Simulator re-run marker: throw-XCTSkip + 60m timeout (see UITEST_EMAIL_GATE_FIX_REPORT.md §8).
 // Simulator re-run marker: confirm-tap retry (see UITEST_EMAIL_GATE_FIX_REPORT.md §9).
 // Simulator re-run marker: post-failure re-probe (see UITEST_EMAIL_GATE_FIX_REPORT.md §10).
+// Simulator re-run marker: allow skips in result check (see UITEST_EMAIL_GATE_FIX_REPORT.md §11).
