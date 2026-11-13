@@ -628,7 +628,7 @@ final class OnBudgetUITests: XCTestCase {
         )
         tapAndTypeText(nameField, "UI Test", fieldName: "auth.name")
         dismissKeyboardIfPresent(focusedField: nameField)
-        app.buttons["auth.createAccountConfirm"].tap()
+        tapCreateAccountConfirm()
 
         // -- 4. Confirm via the Admin API, then sign in -----------------
         // Sign-up with confirmation ON lands on the persistent
@@ -641,6 +641,35 @@ final class OnBudgetUITests: XCTestCase {
         app.buttons["auth.backToSignIn"].tap()
 
         signInThroughUI(email: email, password: password)
+    }
+
+    /// Taps the name step's Create Account button and verifies the
+    /// tap took effect. A tap fired the instant the keyboard
+    /// finishes dismissing can be dropped: run 43349060619 logged
+    /// the tap fine, yet the app stayed on the name step with no
+    /// busy label, no error, and the user was never created
+    /// server-side (check-email-exists: false) — the keyboard took
+    /// ~1.7s to dismiss and the layout was still settling. So: tap,
+    /// then poll up to 8s for any effect (the "Check Your Email"
+    /// state, an error box, or the "Creating Account…" busy label);
+    /// if the screen is unchanged, tap again, up to 3 attempts. A
+    /// real sign-up failure still fails below at the "Check Your
+    /// Email" wait — this only retries a tap that did nothing.
+    private func tapCreateAccountConfirm() {
+        for _ in 1...3 {
+            app.buttons["auth.createAccountConfirm"].tap()
+            let deadline = Date().addingTimeInterval(8)
+            while Date() < deadline {
+                if app.staticTexts["Check Your Email"].exists
+                    || app.staticTexts["Could not create the account. Try again."].exists
+                    || app.staticTexts["An account already exists for this email. Sign in instead."].exists
+                    || app.buttons["Creating Account…"].exists {
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+        }
+        XCTFail("Create Account tap had no effect after 3 attempts — button, busy label and error box all unchanged, so the tap was dropped, not a sign-up failure")
     }
 
     /// Signs in through the app's own sign-in screen with the given
