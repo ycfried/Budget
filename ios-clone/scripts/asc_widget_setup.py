@@ -205,10 +205,18 @@ def distribution_cert_id(asc: ASC) -> str:
 
 
 def _newest_active_store(profiles):
-    """Newest ACTIVE IOS_APP_STORE profile in a list, or None."""
+    """Newest ACTIVE IOS_APP_STORE profile in a list, or None.
+
+    NOTE: the App Store Connect API names the state attribute
+    ``profileState``, NOT ``status`` — a profile resource carries
+    no ``status`` key at all (proven by upload run 43476197638,
+    whose log printed status=None for profiles that exist). Reading
+    ``status`` matches nothing, so every lookup silently returned
+    None and the script kept trying to create duplicate profiles.
+    """
     active = [p for p in profiles
               if p.get("attributes", {}).get("profileType") == "IOS_APP_STORE"
-              and p.get("attributes", {}).get("status") == "ACTIVE"]
+              and p.get("attributes", {}).get("profileState") == "ACTIVE"]
     if not active:
         return None
     active.sort(key=lambda p: p["attributes"].get("createdDate", ""))
@@ -221,7 +229,7 @@ def profiles_by_name(asc: ASC, profile_name: str):
     The print is the ground truth for the next run's log: the name
     lookup can return profiles the ACTIVE-only pickers skip (e.g.
     INVALID ones), and a bare "found nothing" hides them. Every
-    candidate is printed (id, name, profileType, status) before
+    candidate is printed (id, name, profileType, profileState) before
     any filtering.
     """
     data = asc.get(
@@ -233,7 +241,7 @@ def profiles_by_name(asc: ASC, profile_name: str):
         attrs = p.get("attributes", {})
         print(f"  candidate id={p.get('id')} name={attrs.get('name')!r} "
               f"type={attrs.get('profileType')} "
-              f"status={attrs.get('status')}")
+              f"profileState={attrs.get('profileState')}")
     return profiles
 
 
@@ -335,7 +343,7 @@ def ensure_widget_profile(asc: ASC, widget_resource_id: str) -> str:
         candidates = _bundle_matched(
             profiles_by_name(asc, WIDGET_PROFILE_NAME), widget_resource_id)
         stale = [p for p in candidates
-                 if p.get("attributes", {}).get("status") != "ACTIVE"]
+                 if p.get("attributes", {}).get("profileState") != "ACTIVE"]
         if not candidates or len(stale) != len(candidates):
             # Nothing to clean up, or a same-named ACTIVE profile
             # exists that the lookup did not return as ours — do
@@ -345,7 +353,7 @@ def ensure_widget_profile(asc: ASC, widget_resource_id: str) -> str:
             attrs = p.get("attributes", {})
             print(f"deleting stale widget profile "
                   f"{attrs.get('name')} ({p['id']}) "
-                  f"status={attrs.get('status')}")
+                  f"profileState={attrs.get('profileState')}")
             asc.delete(f"/v1/profiles/{p['id']}")
         try:
             return _create_widget_profile(asc, widget_resource_id, cert_id)
@@ -394,7 +402,7 @@ def cmd_setup(args) -> int:
         attrs = app["data"]["attributes"]
         print(f"app profile {APP_PROFILE_NAME} ({APP_PROFILE_ID}): "
               f"type={attrs.get('profileType')} "
-              f"status={attrs.get('status')}")
+              f"profileState={attrs.get('profileState')}")
     except Exception as e:  # noqa: BLE001 — diagnostic only
         print(f"WARNING: could not read app profile {APP_PROFILE_ID}: {e}")
     print(json.dumps({
