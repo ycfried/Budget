@@ -195,11 +195,19 @@ def distribution_cert_id(asc: ASC) -> str:
 
 
 def active_store_profile(asc: ASC, bundle_resource_id: str):
+    # Profiles have NO valid filter[bundleId] — the API returns
+    # HTTP 400 PARAMETER_ERROR.INVALID ("'bundleId' is not a valid
+    # filter type", proven by upload run 43398996980). List the
+    # bundle id's profiles through the relationship endpoint and
+    # filter client-side on type + status instead.
+    # Other filters in this script were audited the same way:
+    # filter[identifier] IS valid on /v1/bundleIds and on
+    # /v1/appGroups, so find_bundle_id / ensure_app_group are fine.
     data = asc.get(
-        f"/v1/profiles?filter[bundleId]={bundle_resource_id}"
-        "&filter[profileType]=IOS_APP_STORE&limit=10")
+        f"/v1/bundleIds/{bundle_resource_id}/profiles?limit=50")
     active = [p for p in data.get("data", [])
-              if p["attributes"].get("status") == "ACTIVE"]
+              if p["attributes"].get("profileType") == "IOS_APP_STORE"
+              and p["attributes"].get("status") == "ACTIVE"]
     if not active:
         return None
     active.sort(key=lambda p: p["attributes"].get("createdDate", ""))
