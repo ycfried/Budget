@@ -580,7 +580,7 @@ final class OnBudgetUITests: XCTestCase {
     /// Throws only via that skip.
     private func signUpFreshAccount() throws {
         if signUpEmailRateLimited() {
-            try XCTSkip(
+            throw XCTSkip(
                 "Supabase email rate limit is active (HTTP 429 over_email_send_rate_limit) — "
                 + "sign-up cannot send its confirmation email right now, so the live sign-up "
                 + "flow cannot be exercised in this run. Skipping, not failing: the app is "
