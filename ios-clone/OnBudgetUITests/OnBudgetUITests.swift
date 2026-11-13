@@ -690,7 +690,10 @@ final class OnBudgetUITests: XCTestCase {
             "email": email,
             "password": password,
             "email_confirm": true,
-            "user_metadata": ["display_name": "UI Test"],
+            // full_name — the key the app reads for the display name
+            // (SupabaseClient: first userMetadata["full_name"], then
+            // ["name"]); same key the UI sign-up sends as data.
+            "user_metadata": ["full_name": "UI Test"],
         ])
         let (status, _) = performAdminRequest(request)
         guard status == 200 else {
