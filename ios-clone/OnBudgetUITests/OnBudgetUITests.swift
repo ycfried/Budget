@@ -1197,3 +1197,4 @@ final class OnBudgetUITests: XCTestCase {
     }
 }
 // Simulator re-run marker: clearField fix for run 43338434523 (see UITEST_EMAIL_GATE_FIX_REPORT.md).
+// Simulator re-run marker: throw-XCTSkip + 60m timeout (see UITEST_EMAIL_GATE_FIX_REPORT.md §8).
