@@ -49,6 +49,20 @@
                ReferencedContainer = "container:OnBudget.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "NO"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "W40101010101010101010101"
+               BuildableName = "OnBudgetWidget.appex"
+               BlueprintName = "OnBudgetWidget"
+               ReferencedContainer = "container:OnBudget.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

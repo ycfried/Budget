@@ -4,20 +4,24 @@
 Parses ios-clone/OnBudget.xcodeproj/project.pbxproj with plutil (macOS)
 and checks the invariants the scaffold must hold:
 - every 24-hex object reference resolves
-- every Swift source file on disk under OnBudget/, OnBudgetTests/
-  and OnBudgetUITests/ is a file reference in the project (a new
-  file committed without a pbxproj entry fails only at compile)
-- exactly the three expected targets exist
-  (OnBudget, OnBudgetTests, OnBudgetUITests)
+- every Swift source file on disk under OnBudget/, OnBudgetTests/,
+  OnBudgetUITests/ and OnBudgetWidget/ is a file reference in the
+  project (a new file committed without a pbxproj entry fails only
+  at compile)
+- exactly the four expected targets exist
+  (OnBudget, OnBudgetTests, OnBudgetUITests, OnBudgetWidget)
 - project configs disable code signing, name no development team,
   and pin the iOS 18.0 deployment target
 - exactly one local Swift package reference, pointing at OnBudgetKit
 - exactly one remote Swift package reference: Plaid's
   plaid-link-ios-spm (LinkKit), Up to Next Major Version from 7.0.0,
   linked to the OnBudget app target only — no other remote packages
-- no shell-script build phases, no code-sign entitlements anywhere
+- no shell-script build phases; code-sign entitlements ONLY the two
+  approved App Groups files (app + widget, group.com.onbudget.ios)
 - the UI test target is a ui-testing bundle whose TEST_TARGET_NAME
   is the app, so `test-without-building` launches the real app
+- the widget target is an app extension (com.onbudget.ios.widget)
+  with its own Info.plist, no LinkKit, and APPLICATION_EXTENSION_API_ONLY
 No network, no Xcode build, no signing.
 """
 import json
@@ -64,7 +68,7 @@ def main():
         if o.get("isa") == "PBXFileReference"
         and str(o.get("path", "")).endswith(".swift")
     }
-    for subdir in ("OnBudget", "OnBudgetTests", "OnBudgetUITests"):
+    for subdir in ("OnBudget", "OnBudgetTests", "OnBudgetUITests", "OnBudgetWidget"):
         for path in sorted((CLONE / subdir).rglob("*.swift")):
             assert path.name in referenced, (
                 f"{path.name} is on disk under {subdir}/ but has no "
@@ -77,7 +81,7 @@ def main():
         for o in objects.values()
         if o.get("isa") == "PBXNativeTarget"
     }
-    assert set(targets) == {"OnBudget", "OnBudgetTests", "OnBudgetUITests"}, (
+    assert set(targets) == {"OnBudget", "OnBudgetTests", "OnBudgetUITests", "OnBudgetWidget"}, (
         f"Unexpected targets: {sorted(targets)}"
     )
 
@@ -157,14 +161,40 @@ def main():
         f"Local package must be OnBudgetKit, got {packages[0]['relativePath']}"
     )
 
+    # Entitlements: exactly the two approved App Groups files (build
+    # 17 widget). Nothing else may carry an entitlements file, and
+    # each approved file may contain ONLY the application-groups key
+    # with exactly the one group — a stray key (e.g. associated
+    # domains, push) would silently change what the app can do.
+    approved_entitlements = {
+        "OnBudget": "OnBudget/OnBudget.entitlements",
+        "OnBudgetWidget": "OnBudgetWidget/OnBudgetWidget.entitlements",
+    }
     for name, target in targets.items():
         for config in objects[target["buildConfigurationList"]][
             "buildConfigurations"
         ]:
             settings = objects[config]["buildSettings"]
-            assert not settings.get("CODE_SIGN_ENTITLEMENTS"), (
-                f"{name}: no unapproved entitlements"
-            )
+            expected = approved_entitlements.get(name)
+            if expected is None:
+                assert not settings.get("CODE_SIGN_ENTITLEMENTS"), (
+                    f"{name}: no unapproved entitlements"
+                )
+            else:
+                assert settings.get("CODE_SIGN_ENTITLEMENTS") == expected, (
+                    f"{name}: entitlements must be {expected}, got "
+                    f"{settings.get('CODE_SIGN_ENTITLEMENTS')}"
+                )
+    for name, rel in approved_entitlements.items():
+        ent_path = CLONE / rel
+        assert ent_path.is_file(), f"{name}: entitlements file missing: {rel}"
+        with open(ent_path, "rb") as f:
+            ent = plistlib.load(f)
+        assert ent == {
+            "com.apple.security.application-groups": ["group.com.onbudget.ios"]
+        }, f"{name}: entitlements must contain only the App Groups key: {ent!r}"
+
+    for name, target in targets.items():
         if name == "OnBudget":
             app_configs = [
                 objects[c]["buildSettings"]
@@ -218,10 +248,42 @@ def main():
             assert settings.get("TEST_TARGET_NAME") == "OnBudget", (
                 "UITests must test the OnBudget app target"
             )
+        if name == "OnBudgetWidget":
+            assert target["productType"] == (
+                "com.apple.product-type.app-extension"
+            ), "Widget must be an app-extension target"
+            assert "OnBudgetKit" in [
+                objects[d].get("productName")
+                for d in target.get("packageProductDependencies", [])
+            ], "Widget must link the OnBudgetKit package product"
+            assert "LinkKit" not in [
+                objects[d].get("productName")
+                for d in target.get("packageProductDependencies", [])
+            ], "Widget must NOT link LinkKit"
+            for config in objects[target["buildConfigurationList"]][
+                "buildConfigurations"
+            ]:
+                settings = objects[config]["buildSettings"]
+                assert settings.get("PRODUCT_BUNDLE_IDENTIFIER") == (
+                    "com.onbudget.ios.widget"
+                ), "Widget bundle id must be com.onbudget.ios.widget"
+                assert settings.get("GENERATE_INFOPLIST_FILE") == "NO", (
+                    "Widget must use a real Info.plist "
+                    "(GENERATE_INFOPLIST_FILE = NO)"
+                )
+                assert settings.get("INFOPLIST_FILE") == (
+                    "OnBudgetWidget/Info.plist"
+                ), "Widget must point at OnBudgetWidget/Info.plist"
+                assert settings.get("APPLICATION_EXTENSION_API_ONLY") == "YES", (
+                    "Widget must be extension-API-only"
+                )
+                assert settings.get("PROVISIONING_PROFILE_SPECIFIER") == (
+                    "OnBudget Widget"
+                ), "Widget profile specifier must be 'OnBudget Widget'"
 
     print("validate_project.py: project graph OK "
-          "(OnBudget + OnBudgetTests + OnBudgetUITests, OnBudgetKit local package, "
-          "LinkKit remote package on app target only, no signing)")
+          "(OnBudget + OnBudgetTests + OnBudgetUITests + OnBudgetWidget, OnBudgetKit local package, "
+          "LinkKit remote package on app target only, approved App Groups entitlements only)")
     return 0
 
 

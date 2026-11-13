@@ -323,6 +323,8 @@ public final class AppViewModel: ObservableObject {
     /// lands on the sign-in panel (never stranded on the name step).
     public func signOut() async {
         await client.signOut()
+        // The widget must never show the previous user's numbers.
+        WidgetSnapshotStore.delete()
         householdId = nil
         role = nil
         ownerId = nil

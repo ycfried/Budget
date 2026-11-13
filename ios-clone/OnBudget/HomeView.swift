@@ -33,6 +33,7 @@
 // Clone basis: live web v66.
 
 import SwiftUI
+import WidgetKit
 import OnBudgetKit
 
 // MARK: - Section load state
@@ -213,6 +214,23 @@ public final class HomeViewModel: ObservableObject {
             institutionBySuffix = map
         } catch {
             // Best-effort only: no stamp, no error state.
+        }
+
+        // Widget snapshot (build 17): the two numbers the Home-screen
+        // widget shows — the same figures as the hero and Charity
+        // cards. Written only when BOTH loads succeeded; a failed load
+        // writes nothing, so the previous snapshot goes stale instead
+        // of being overwritten with a partial one. The widget reloads
+        // its timeline from this write; a bank sync refreshes Home
+        // too, so a sync updates the widget as well.
+        if case .loaded(let result) = week,
+           case .loaded(let summary) = charity {
+            WidgetSnapshotStore.write(WidgetSnapshot(
+                weekStart: result.weekStart,
+                availableCents: result.availableCents,
+                charityRemainingCents: summary.remainingCents,
+                computedAt: Date()))
+            WidgetCenter.shared.reloadAllTimelines()
         }
     }
 

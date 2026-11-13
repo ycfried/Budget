@@ -49,6 +49,17 @@ name: OnBudget iOS clone TestFlight upload
 #   "OnBudget App Store" (IOS_APP_STORE), id 83TZ7C4533, ACTIVE,
 #   bundle com.onbudget.ios (MZ58SJMG6V).
 # The workflow downloads this profile from the API on every run.
+#
+# Widget (build 17): the OnBudgetWidget extension (bundle
+# com.onbudget.ios.widget) needs its own App ID + App Store profile
+# ("OnBudget Widget") plus the App Group group.com.onbudget.ios on
+# both App IDs. The "Create widget App ID, App Group and profile"
+# step below does that through the API before the archive
+# (ios-clone/scripts/asc_widget_setup.py) and the export step
+# generates exportOptions.plist from the live ACTIVE profiles. The
+# archive's -allowProvisioningUpdates updates the app profile in
+# place to add App Groups — the existing profile is never deleted
+# or replaced, and its id above stays valid.
 # (The profile was re-pointed by the account holder on Nov 11,
 # 2026 to the new distribution certificate below; it previously
 # pointed at 626P45U97T, the friend's 2026-09-06 certificate.)
@@ -169,6 +180,19 @@ jobs:
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           curl -s -H "Authorization: Bearer $TOKEN" "https://api.appstoreconnect.apple.com/v1/profiles/83TZ7C4533" | python3 -c "import base64,json,sys,os; d=json.load(sys.stdin); open(os.path.expanduser('~/Library/MobileDevice/Provisioning Profiles/OnBudget_AppStore.mobileprovision'),'wb').write(base64.b64decode(d['data']['attributes']['profileContent']))"
           ls -la "$HOME/Library/MobileDevice/Provisioning Profiles/"
+      - name: Create widget App ID, App Group and profile (build 17 widget)
+        # App Store Connect API, same key as the profile download above.
+        # Idempotent (check-first creates) and NEVER touches the existing
+        # app profile 83TZ7C4533 or any certificate: the archive step's
+        # -allowProvisioningUpdates updates that profile in place to add
+        # App Groups. See ios-clone/scripts/asc_widget_setup.py — the
+        # capability/group-link steps warn-and-continue there, with the
+        # archive as backstop; bundle-id and profile creation fail hard.
+        run: |
+          python3 ios-clone/scripts/asc_widget_setup.py \
+            --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
+            --key-path "$RUNNER_TEMP/AuthKey.p8" setup \
+            --profiles-dir "$HOME/Library/MobileDevice/Provisioning Profiles"
       - name: Archive (signed, manual signing with the App Store profile)
         run: |
           xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -sdk iphoneos -configuration Release -derivedDataPath DerivedData -archivePath OnBudget.xcarchive archive \
@@ -183,25 +207,15 @@ jobs:
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
       - name: Export signed .ipa
         run: |
-          cat > exportOptions.plist <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store-connect</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>com.onbudget.ios</key>
-              <string>OnBudget App Store</string>
-            </dict>
-            <key>stripSwiftSymbols</key>
-            <true/>
-          </dict>
-          </plist>
-          PLIST
+          # exportOptions.plist is generated from the live ACTIVE profiles
+          # (app + widget) instead of hard-coding profile names: Xcode may
+          # create or update a profile during the archive, and the export
+          # mapping must name the profile that actually exists.
+          python3 ios-clone/scripts/asc_widget_setup.py \
+            --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
+            --key-path "$RUNNER_TEMP/AuthKey.p8" export-plist \
+            --out exportOptions.plist
+          cat exportOptions.plist
           xcodebuild -exportArchive -archivePath OnBudget.xcarchive -exportPath Export -exportOptionsPlist exportOptions.plist \
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
