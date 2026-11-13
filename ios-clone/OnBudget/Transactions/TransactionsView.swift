@@ -126,6 +126,10 @@ public struct TransactionsView: View {
         }
         .sheet(isPresented: $showingTrash) {
             TrashView(viewModel: viewModel, onBack: { showingTrash = false })
+                // iPad width (owner, Nov 12, 2026): same treatment
+                // as the Weekly Budget sheet — fitted height + 600pt
+                // width in the regular size class.
+                .presentationSizing(.fitted)
         }
         .sheet(item: $actionsTransaction) { transaction in
             TransactionActionsSheet(

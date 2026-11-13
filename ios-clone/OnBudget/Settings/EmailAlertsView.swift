@@ -379,6 +379,7 @@ struct EmailAlertsView: View {
     /// visible on the card that owns the Gmail connection instead
     /// of being silently dropped.
     @EnvironmentObject private var appState: AppViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     init(context: SettingsContext, toast: ToastState) {
         _viewModel = StateObject(wrappedValue: EmailAlertsViewModel(context: context, toast: toast))
@@ -471,6 +472,10 @@ struct EmailAlertsView: View {
         )) {
             if let choices = viewModel.householdChoices {
                 householdPickerSheet(choices: choices)
+                    // iPad width (owner, Nov 12, 2026): same treatment
+                    // as the Weekly Budget sheet — fitted height + 600pt
+                    // width in the regular size class.
+                    .presentationSizing(.fitted)
             }
         }
     }
@@ -492,6 +497,9 @@ struct EmailAlertsView: View {
                 }
             }
         }
+        // iPad width (owner, Nov 12, 2026): fitted height + 600pt
+        // width in the regular size class; full-width on iPhone.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 
     private func connectionRow(_ connection: EmailConnectionPublic) -> some View {
