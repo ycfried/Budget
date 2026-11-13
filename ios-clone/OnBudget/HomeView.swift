@@ -447,7 +447,10 @@ public struct HomeView: View {
             Spacer()
             // Sync button: admin-only; grey tertiary while no
             // allowance is set, so "Set Your Weekly Allowance" is
-            // the hero's only primary control.
+            // the hero's only primary control. The fill is the
+            // lighter blue #3b82f6 (DesignTokens.mid), not the
+            // primary #2f6bff — same condition as the Transactions
+            // sync button (owner, Nov 12 ~10:29 PM).
             if viewModel.isAdmin {
                 Button { Task { await viewModel.syncBank() } } label: {
                     Image(systemName: "arrow.clockwise")
@@ -459,7 +462,7 @@ public struct HomeView: View {
                         .frame(width: 44, height: 44)
                         .background(
                             viewModel.allowanceSet == true
-                                ? DesignTokens.primary : Color(hex: "#e5e7eb"))
+                                ? DesignTokens.mid : Color(hex: "#e5e7eb"))
                         .clipShape(Circle())
                         // Repeating linear spin while syncing: a plain
                         // 0°→360° rotation with no animation renders

@@ -4,12 +4,13 @@ import OnBudgetKit
 /// Transactions screen (CLONE_SPEC §7).
 ///
 /// - Heading "Transactions". Header actions (right, in order):
-///   sync icon (admin only, 44pt circle) · "+ Add" (primary) →
-///   the Add popup · "Filters" (tertiary) → the filter sheet. The
-///   Add label stays compact so the 28pt title fits on one line at
-///   iPhone width; the three controls sit 2pt apart at 375pt
-///   (owner, Nov 12, 2026 — the sync button no longer gets a row
-///   of its own).
+///   "+ Add" (primary) → the Add popup · "Filters" (tertiary) →
+///   the filter sheet. The Add label stays compact so the 28pt
+///   title fits on one line at iPhone width. The sync icon used to
+///   sit here too (owner, Nov 12, 2026) but it read as a second
+///   blue button next to "+ Add" (owner, Nov 12 ~10:29 PM), so it
+///   now lives at the right end of the page-links row below, in
+///   the lighter blue #3b82f6.
 /// - Page links under the header: "Trash" · "Activity" · "Past Weeks"
 ///   on ONE line, as proper small low-key outline buttons (owner, Nov
 ///   11, 2026 — the quiet grey text read as labels, not as something
@@ -19,7 +20,9 @@ import OnBudgetKit
 ///   ActivityView as subpages on the Transactions NavigationStack — the
 ///   native equivalent of the web's full pages. The links are hidden
 ///   until a handler is supplied, so they never lead nowhere. Trash is
-///   admin-only, only when trashed rows exist.
+///   admin-only, only when trashed rows exist. The manual sync icon
+///   (admin only, 44pt circle, lighter blue) sits right-aligned at
+///   the end of this row.
 /// - Search box (owner, Nov 12, 2026): standard iOS search look —
 ///   system-grey filled field, magnifier inside on the left, short
 ///   "Search transactions" placeholder, no explainer underneath.
@@ -34,11 +37,14 @@ import OnBudgetKit
 ///   probe row does NOT show the button. Load More raises the limit
 ///   by 100 and refreshes. Every filter/search/sort change is a new
 ///   list: the page resets to 100.
-/// - Pull-to-refresh + manual sync icon (admin only), in the title
-///   row before "+ Add": the same `arrow.clockwise` symbol as the
-///   Home Weekly Budget card, in a 44pt circle — primary blue when
-///   an allowance has been set, grey while unset; it spins while
-///   syncing.
+/// - Pull-to-refresh + manual sync icon (admin only), at the right
+///   end of the Trash / Activity / Past Weeks row: the same
+///   `arrow.clockwise` symbol as the Home Weekly Budget card, in a
+///   44pt circle — lighter blue #3b82f6 (DesignTokens.mid) when an
+///   allowance has been set, grey while unset; it spins while
+///   syncing. It used to sit in the title row before "+ Add", but
+///   next to the blue "+ Add" it read as a second blue button
+///   (owner, Nov 12 ~10:29 PM — option 2, lighter blue).
 /// - Empty / loading / error states per §2.4 — a real error state,
 ///   never an endless spinner. Auth failure: "Your sign-in expired —
 ///   sign in again to see transactions." + "Sign In Again" (calls
@@ -188,29 +194,24 @@ public struct TransactionsView: View {
     // MARK: - Header
 
     private var header: some View {
-        // Title row, one line (owner, Nov 12, 2026): the sync
-        // button used to sit alone on a row of its own under the
-        // title; it now lives here, before "+ Add", and the empty
-        // row is gone — the Trash / Activity / Past Weeks row moves
-        // up directly under this row. Order on the right: sync,
-        // then "+ Add" (primary), then "Filters" (tertiary).
+        // Title row, one line: "+ Add" (primary) then "Filters"
+        // (tertiary) on the right, under which the Trash /
+        // Activity / Past Weeks row moves up directly. The sync
+        // button used to sit here before "+ Add" (owner, Nov 12,
+        // 2026) but two blue buttons side by side read wrong, so
+        // it moved to the right end of the page-links row below,
+        // in the lighter blue (owner, Nov 12 ~10:29 PM — option 2).
         // Narrow-phone fit (375pt, default type size): the row's
         // content is 375 − 2×16 page padding = 343pt wide. Title
-        // "Transactions" at 28pt bold ≈ 168pt, sync circle 44pt,
-        // "+ Add" ≈ 62pt, "Filters" ≈ 64pt — intrinsic ≈ 338pt,
-        // leaving ≈ 5pt for the gaps, so the controls sit 2pt apart
-        // (spacing shrunk, button sizes untouched) with a
-        // zero-minimum spacer taking up the rest. A live render
-        // check at 375pt is still owed — no live render here.
-        HStack(spacing: 2) {
+        // "Transactions" at 28pt bold ≈ 168pt, "+ Add" ≈ 62pt,
+        // "Filters" ≈ 64pt — intrinsic ≈ 294pt, leaving room for
+        // comfortable gaps.
+        HStack(spacing: 8) {
             Text("Transactions")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            if viewModel.isAdmin {
-                syncButton
-            }
             Button("+ Add") { showingAdd = true }
                 .buttonStyle(SmallPrimaryButtonStyle())
             Button("Filters") { showingFilters = true }
@@ -218,11 +219,15 @@ public struct TransactionsView: View {
         }
     }
 
-    /// The manual sync button, moved verbatim from its old row
-    /// (owner, Nov 12, 2026) — only its placement changed. Same
-    /// refresh symbol as the Home Weekly Budget card, same 44pt
-    /// circle, same blue-when-set / grey-when-unset rule, same
-    /// repeating spin while syncing (audit H-P1-1/H-P1-2).
+    /// The manual sync button — same refresh symbol as the Home
+    /// Weekly Budget card, same 44pt circle, same lighter-blue-
+    /// when-set / grey-when-unset rule, same repeating spin while
+    /// syncing (audit H-P1-1/H-P1-2). Placement: right-aligned at
+    /// the end of the Trash / Activity / Past Weeks row (owner,
+    /// Nov 12 ~10:29 PM — option 2); it used to sit in the title
+    /// row before "+ Add", where it read as a second blue button.
+    /// The fill is the lighter blue #3b82f6 (DesignTokens.mid),
+    /// not the primary #2f6bff — same condition, same owner call.
     private var syncButton: some View {
         Button { Task { await viewModel.runSync() } } label: {
             Image(systemName: "arrow.clockwise")
@@ -234,7 +239,7 @@ public struct TransactionsView: View {
                 .frame(width: 44, height: 44)
                 .background(
                     viewModel.allowanceSet
-                        ? DesignTokens.primary : Color(hex: "#e5e7eb"))
+                        ? DesignTokens.mid : Color(hex: "#e5e7eb"))
                 .clipShape(Circle())
                 // Repeating linear spin while syncing: a plain
                 // 0°→360° rotation with no animation renders
@@ -260,7 +265,11 @@ public struct TransactionsView: View {
         // buttons, not big bulky filled ones). Trash shows no count.
         // Three peer navigation buttons share the one treatment by
         // design — the no-duplicates button rule governs action rows
-        // where one action must stand out, not peers.
+        // where one action must stand out, not peers. The manual
+        // sync icon sits right-aligned at the end of this row
+        // (owner, Nov 12 ~10:29 PM — option 2, lighter blue): it
+        // used to sit in the title row before "+ Add", where it
+        // read as a second blue button.
         HStack(spacing: 12) {
             if viewModel.isAdmin, !viewModel.trashTransactions.isEmpty {
                 Button("Trash") { showingTrash = true }
@@ -273,6 +282,10 @@ public struct TransactionsView: View {
             if let onShowPastWeeks {
                 Button("Past Weeks", action: onShowPastWeeks)
                     .buttonStyle(SmallOutlineButtonStyle())
+            }
+            Spacer(minLength: 0)
+            if viewModel.isAdmin {
+                syncButton
             }
         }
     }
