@@ -754,7 +754,7 @@ public struct HomeView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 20)
                 .stroke(
-                    isLoading ? StatCardTheme.loadingOutline : theme.outline,
+                    theme.outline,
                     lineWidth: theme.outlineWidth
                 )
         )

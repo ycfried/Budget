@@ -345,7 +345,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
         FundsCard(
             background: .white,
             padding: theme == nil ? 16 : 20,
-            outline: theme == nil ? nil : (isLoading ? StatCardTheme.loadingOutline : theme?.outline)
+            outline: theme?.outline
         ) {
             VStack(alignment: .leading, spacing: 10) {
                 // Whole-area tap target (owner rule, Nov 11 2026):

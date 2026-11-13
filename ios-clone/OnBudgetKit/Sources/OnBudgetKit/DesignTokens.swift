@@ -42,9 +42,10 @@ public enum DesignTokens {
     // corrected ~2:02 PM the same day: the Home/Funds Charity +
     // Extra Fund cards are bigger and more colourful, but NOT a
     // wash — a coloured OUTLINE on a white card, like the Weekly
-    // Budget hero. Charity keeps a green identity, Extra Fund a
-    // blue one; the deep amount colours below stay (they are the
-    // colour identity, not a wash). The soft-wash tokens that the
+    // Budget hero. Charity keeps a green identity, Extra Fund an
+    // amber one (Nov 12 ~9:55 PM: amber, not blue like the hero,
+    // so the two cards tell apart); the deep amount colours below
+    // stay (they are the colour identity, not a wash). The soft-wash tokens that the
     // first pass added (charityTint/fundTint, charityChip/fundChip)
     // are REMOVED: nothing else referenced them — they only
     // duplicated the success/info backgrounds (#f0fdf4 / #eef4ff)
@@ -53,7 +54,8 @@ public enum DesignTokens {
 
     public static let skeletonHex = "#ececf1"
     public static let charityDeepHex = "#15803d"
-    public static let fundDeepHex = "#1d4ed8"
+    public static let fundHex = "#d97706"
+    public static let fundDeepHex = "#b45309"
 
     // Soft-green inline success box (owner decision, Nov 12, 2026:
     // inline success states are GREEN like the success toasts):
@@ -84,6 +86,7 @@ public enum DesignTokens {
     public static var successBorder: Color { Color(hex: successBorderHex) }
     public static var skeleton: Color { Color(hex: skeletonHex) }
     public static var charityDeep: Color { Color(hex: charityDeepHex) }
+    public static var fund: Color { Color(hex: fundHex) }
     public static var fundDeep: Color { Color(hex: fundDeepHex) }
     #endif
 }

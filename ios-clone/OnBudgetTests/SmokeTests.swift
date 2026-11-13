@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 import OnBudgetKit
 
 /// Scaffold smoke tests — prove the skeleton compiles, links and runs
@@ -47,5 +48,27 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(ToastStyle.backgroundHex(for: .error), DesignTokens.errorBackgroundHex)
         XCTAssertEqual(ToastStyle.textHex(for: .error), DesignTokens.errorTextHex)
         XCTAssertEqual(ToastStyle.placement, "bottom")
+    }
+
+    func testStatCardIconSymbolsResolve() {
+        // Owner, Nov 12 2026: the Charity card icon is a giving
+        // hand (handshake), not a heart; Extra Fund keeps its
+        // banknote. An unknown systemName renders as nothing with
+        // no compile error, so the glyphs must resolve at runtime.
+        // (StatCardTheme itself lives in the app target, which
+        // this bundle cannot import — no host app — so this
+        // asserts the symbol names resolve; the mapping is the
+        // one-line change in SharedViews.swift.)
+        XCTAssertNotNil(UIImage(systemName: "handshake.fill"))
+        XCTAssertNotNil(UIImage(systemName: "banknote.fill"))
+    }
+
+    func testExtraFundAccentIsAmber() {
+        // Owner, Nov 12 2026: Extra Fund is amber, not blue like
+        // the Weekly Budget hero. Outline amber-600, deep tint
+        // amber-700 — the card accent on Home + Funds, loaded
+        // and loading alike.
+        XCTAssertEqual(DesignTokens.fundHex, "#d97706")
+        XCTAssertEqual(DesignTokens.fundDeepHex, "#b45309")
     }
 }
