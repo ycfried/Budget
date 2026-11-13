@@ -37,6 +37,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 API = "https://api.appstoreconnect.apple.com"
@@ -44,6 +45,7 @@ APP_BUNDLE_ID = "com.onbudget.ios"
 WIDGET_BUNDLE_ID = "com.onbudget.ios.widget"
 APP_BUNDLE_RESOURCE_ID = "MZ58SJMG6V"
 APP_PROFILE_ID = "83TZ7C4533"
+APP_PROFILE_NAME = "OnBudget App Store"
 GROUP_ID = "group.com.onbudget.ios"
 WIDGET_PROFILE_NAME = "OnBudget Widget"
 
@@ -194,40 +196,90 @@ def distribution_cert_id(asc: ASC) -> str:
     return certs[0]["id"]
 
 
-def active_store_profile(asc: ASC, bundle_resource_id: str):
-    # Profiles have NO valid filter[bundleId] — the API returns
-    # HTTP 400 PARAMETER_ERROR.INVALID ("'bundleId' is not a valid
-    # filter type", proven by upload run 43398996980). List the
-    # bundle id's profiles through the relationship endpoint and
-    # filter client-side on type + status instead.
-    # Other filters in this script were audited the same way:
-    # filter[identifier] IS valid on /v1/bundleIds and on
-    # /v1/appGroups, so find_bundle_id / ensure_app_group are fine.
-    data = asc.get(
-        f"/v1/bundleIds/{bundle_resource_id}/profiles?limit=50")
-    active = [p for p in data.get("data", [])
-              if p["attributes"].get("profileType") == "IOS_APP_STORE"
-              and p["attributes"].get("status") == "ACTIVE"]
+def _newest_active_store(profiles):
+    """Newest ACTIVE IOS_APP_STORE profile in a list, or None."""
+    active = [p for p in profiles
+              if p.get("attributes", {}).get("profileType") == "IOS_APP_STORE"
+              and p.get("attributes", {}).get("status") == "ACTIVE"]
     if not active:
         return None
     active.sort(key=lambda p: p["attributes"].get("createdDate", ""))
     return active[-1]
 
 
+def active_store_profile(asc: ASC, bundle_resource_id: str, profile_name=None):
+    """Newest ACTIVE IOS_APP_STORE profile for a bundle id, or None.
+
+    Primary: list the bundle id's profiles through the relationship
+    endpoint. Profiles have NO valid filter[bundleId] — the API
+    returns HTTP 400 PARAMETER_ERROR.INVALID ("'bundleId' is not a
+    valid filter type", proven by upload run 43398996980).
+    Fallback, when a name is given: GET /v1/profiles?filter[name]=...
+    — the relationship endpoint returned NOTHING in upload run
+    43473255905 even though two ACTIVE profiles named "OnBudget
+    Widget" existed (proven by the POST 409 that followed), so a
+    name lookup must be tried before concluding there is no profile.
+    The name lookup also checks the profile's bundleId relationship
+    when the response carries one, so a same-named profile for
+    another bundle id is never picked up.
+    Other filters in this script were audited the same way:
+    filter[identifier] IS valid on /v1/bundleIds and on
+    /v1/appGroups, so find_bundle_id / ensure_app_group are fine.
+    """
+    data = asc.get(
+        f"/v1/bundleIds/{bundle_resource_id}/profiles?limit=50")
+    found = _newest_active_store(data.get("data", []))
+    if found:
+        return found
+    if not profile_name:
+        return None
+    print(f"no profile via bundle-id relationship for "
+          f"{bundle_resource_id}; falling back to "
+          f"filter[name]={profile_name}")
+    data = asc.get(
+        f"/v1/profiles?filter[name]={urllib.parse.quote(profile_name)}&limit=50")
+    candidates = []
+    for p in data.get("data", []):
+        rel = p.get("relationships", {}).get("bundleId", {}).get("data") or {}
+        if rel.get("id") and rel["id"] != bundle_resource_id:
+            continue
+        candidates.append(p)
+    return _newest_active_store(candidates)
+
+
 def ensure_widget_profile(asc: ASC, widget_resource_id: str) -> str:
-    existing = active_store_profile(asc, widget_resource_id)
+    existing = active_store_profile(asc, widget_resource_id, WIDGET_PROFILE_NAME)
     if existing:
         print(f"widget profile already exists: "
               f"{existing['attributes']['name']} ({existing['id']})")
         return existing["id"]
     cert_id = distribution_cert_id(asc)
-    created = asc.post("/v1/profiles", {"data": {
-        "type": "profiles",
-        "attributes": {"name": WIDGET_PROFILE_NAME, "profileType": "IOS_APP_STORE"},
-        "relationships": {
-            "bundleId": {"data": {"type": "bundleIds", "id": widget_resource_id}},
-            "certificates": {"data": [{"type": "certificates", "id": cert_id}]},
-        }}})
+    try:
+        created = asc.post("/v1/profiles", {"data": {
+            "type": "profiles",
+            "attributes": {"name": WIDGET_PROFILE_NAME, "profileType": "IOS_APP_STORE"},
+            "relationships": {
+                "bundleId": {"data": {"type": "bundleIds", "id": widget_resource_id}},
+                "certificates": {"data": [{"type": "certificates", "id": cert_id}]},
+            }}})
+    except RuntimeError as e:
+        # Apple refuses a duplicate name with HTTP 409 — but the
+        # profile we need already exists; the lookup above just
+        # missed it (proven by run 43473255905, where the create
+        # 409'd on "Multiple profiles found with the name
+        # 'OnBudget Widget'"). Look again, name fallback included,
+        # and reuse the newest ACTIVE one instead of dying.
+        if "HTTP 409" not in str(e):
+            raise
+        print(f"widget profile create hit a duplicate-name 409: {e}")
+        print("re-running the lookup and reusing the existing profile")
+        existing = active_store_profile(asc, widget_resource_id,
+                                        WIDGET_PROFILE_NAME)
+        if existing:
+            print(f"reusing widget profile "
+                  f"{existing['attributes']['name']} ({existing['id']})")
+            return existing["id"]
+        raise
     new_id = created["data"]["id"]
     print(f"created widget profile {WIDGET_PROFILE_NAME} ({new_id})")
     return new_id
@@ -268,10 +320,10 @@ def cmd_export_plist(args) -> int:
     widget_resource_id = find_bundle_id(asc, WIDGET_BUNDLE_ID)
     assert widget_resource_id, "widget bundle id not found — run setup first"
     mapping = {}
-    for resource_id, bundle_id in (
-            (APP_BUNDLE_RESOURCE_ID, APP_BUNDLE_ID),
-            (widget_resource_id, WIDGET_BUNDLE_ID)):
-        profile = active_store_profile(asc, resource_id)
+    for resource_id, bundle_id, profile_name in (
+            (APP_BUNDLE_RESOURCE_ID, APP_BUNDLE_ID, APP_PROFILE_NAME),
+            (widget_resource_id, WIDGET_BUNDLE_ID, WIDGET_PROFILE_NAME)):
+        profile = active_store_profile(asc, resource_id, profile_name)
         assert profile, f"no ACTIVE App Store profile for {bundle_id}"
         mapping[bundle_id] = profile["attributes"]["name"]
         print(f"{bundle_id} -> {mapping[bundle_id]} ({profile['id']})")
