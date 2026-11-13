@@ -60,7 +60,7 @@ def mint_jwt(key_id: str, issuer: str, key_path: str) -> str:
     payload = b64u(json.dumps(
         {"iss": issuer, "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"},
         separators=(",", ":")).encode())
-    msg = b"%s.%s" % (header, payload)
+    msg = ("%s.%s" % (header, payload)).encode()
     der = subprocess.run(
         ["openssl", "dgst", "-sha256", "-sign", key_path],
         input=msg, capture_output=True, check=True).stdout
@@ -78,7 +78,7 @@ def mint_jwt(key_id: str, issuer: str, key_path: str) -> str:
     s = der[i:i + len_s]
     r = r.lstrip(b"\x00").rjust(32, b"\x00")
     s = s.lstrip(b"\x00").rjust(32, b"\x00")
-    return "%s.%s.%s" % (header.decode(), payload.decode(), b64u(r + s))
+    return "%s.%s.%s" % (header, payload, b64u(r + s))
 
 
 class ASC:
