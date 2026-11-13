@@ -217,6 +217,10 @@ final class ProfileSettingsViewModel: ObservableObject {
 struct ProfileSettingsView: View {
     @StateObject private var viewModel: ProfileSettingsViewModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Keyboard focus for the Name / Email fields — the keyboard
+    /// toolbar's Done button is the way out (owner, Nov 13, 2026).
+    @FocusState private var nameFocused: Bool
+    @FocusState private var emailFocused: Bool
 
     init(context: SettingsContext, toast: ToastState) {
         _viewModel = StateObject(wrappedValue: ProfileSettingsViewModel(context: context, toast: toast))
@@ -231,14 +235,14 @@ struct ProfileSettingsView: View {
                 ErrorBox(saveError)
                     .onTapGesture { viewModel.saveError = nil }
             }
-            LabeledField(label: "Name", text: $viewModel.name, placeholder: "Your name", autocapitalization: .words)
+            LabeledField(label: "Name", text: $viewModel.name, placeholder: "Your name", autocapitalization: .words, focused: $nameFocused)
             Button(viewModel.isSavingName ? "Saving…" : "Save Name") {
                 Task { await viewModel.saveName() }
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(viewModel.isSavingName)
 
-            LabeledField(label: "Email", text: $viewModel.email, placeholder: "you@example.com", keyboardType: .emailAddress, autocapitalization: .never)
+            LabeledField(label: "Email", text: $viewModel.email, placeholder: "you@example.com", keyboardType: .emailAddress, autocapitalization: .never, focused: $emailFocused)
             Button(viewModel.isSavingEmail ? "Saving…" : "Save Email") {
                 Task { await viewModel.saveEmail() }
             }
@@ -316,6 +320,19 @@ struct ProfileSettingsView: View {
                     message: Text("Could not change your password. Try again."),
                     dismissButton: .default(Text("Close"))
                 )
+            }
+        }
+        .toolbar {
+            // Keyboard Done (owner, Nov 13, 2026): no other way
+            // to dismiss the keyboard from the Name / Email fields.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    nameFocused = false
+                    emailFocused = false
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(DesignTokens.primary)
             }
         }
     }

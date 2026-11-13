@@ -566,6 +566,12 @@ public struct TransactionsFilterSheet: View {
     @State private var draftSort: TransactionSort
     @State private var minText: String = ""
     @State private var maxText: String = ""
+    /// Which amount field holds the keyboard — the decimal pad
+    /// has no return key, so the keyboard toolbar's Done button
+    /// is the only way out (owner, Nov 13, 2026).
+    @FocusState private var focusedField: AmountField?
+
+    private enum AmountField: Hashable { case min, max }
 
     public init(viewModel: TransactionsViewModel, onDismiss: @escaping () -> Void) {
         self.viewModel = viewModel
@@ -594,6 +600,10 @@ public struct TransactionsFilterSheet: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        // Owner, Nov 13, 2026: the picked value
+                        // reads black, not blue — the menu label
+                        // follows the tint.
+                        .tint(DesignTokens.ink)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .padding(.horizontal, 12)
                         .background(.white)
@@ -646,6 +656,7 @@ public struct TransactionsFilterSheet: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        .tint(DesignTokens.ink)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .padding(.horizontal, 12)
                         .background(.white)
@@ -661,7 +672,10 @@ public struct TransactionsFilterSheet: View {
                     // filter. Min / Max carry visible labels above
                     // the fields (T-P1-4), and the fields share the
                     // sheet's white-bg + 1pt #e5e7eb border +
-                    // cornerRadius 10 treatment (T-P2-4).
+                    // cornerRadius 10 treatment (T-P2-4). The $ is a
+                    // fixed prefix inside the field (owner, Nov 13,
+                    // 2026) — display only, never part of the typed
+                    // text, so parsing is unchanged.
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Amount")
                             .font(.system(size: 14, weight: .semibold))
@@ -671,8 +685,14 @@ public struct TransactionsFilterSheet: View {
                                 Text("Min")
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(DesignTokens.ink)
-                                TextField("$0.00", text: $minText)
-                                    .keyboardType(.decimalPad)
+                                HStack(spacing: 2) {
+                                    Text("$")
+                                        .font(.system(size: 17))
+                                        .foregroundStyle(DesignTokens.ink)
+                                    TextField("0.00", text: $minText)
+                                        .keyboardType(.decimalPad)
+                                        .focused($focusedField, equals: .min)
+                                }
                                     .padding(.horizontal, 12)
                                     .frame(maxWidth: 140, minHeight: 44, alignment: .leading)
                                     .background(.white)
@@ -686,8 +706,14 @@ public struct TransactionsFilterSheet: View {
                                 Text("Max")
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(DesignTokens.ink)
-                                TextField("$0.00", text: $maxText)
-                                    .keyboardType(.decimalPad)
+                                HStack(spacing: 2) {
+                                    Text("$")
+                                        .font(.system(size: 17))
+                                        .foregroundStyle(DesignTokens.ink)
+                                    TextField("0.00", text: $maxText)
+                                        .keyboardType(.decimalPad)
+                                        .focused($focusedField, equals: .max)
+                                }
                                     .padding(.horizontal, 12)
                                     .frame(maxWidth: 140, minHeight: 44, alignment: .leading)
                                     .background(.white)
@@ -716,6 +742,7 @@ public struct TransactionsFilterSheet: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        .tint(DesignTokens.ink)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .padding(.horizontal, 12)
                         .background(.white)
@@ -748,8 +775,23 @@ public struct TransactionsFilterSheet: View {
                 }
                 .padding()
             }
+            // Dragging the sheet dismisses the keyboard too — the
+            // number pad has no return key, so Done + drag are
+            // the two ways out (owner, Nov 13, 2026).
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
+        }
+        .toolbar {
+            // Keyboard Done (owner, Nov 13, 2026): the decimal
+            // pad has no return key and no other way to dismiss
+            // it — this button resigns the amount field.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedField = nil }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(DesignTokens.primary)
+            }
         }
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
         // size class, full-width on iPhone — same treatment as the

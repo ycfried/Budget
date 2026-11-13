@@ -410,6 +410,9 @@ struct LabeledField: View {
     var isSecure: Bool = false
     var keyboardType: UIKeyboardType = .default
     var autocapitalization: TextInputAutocapitalization = .sentences
+    /// Optional focus binding, so a screen can offer a keyboard
+    /// Done button (Profile). When nil the field is unfocused-only.
+    var focused: Binding<Bool>? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -417,17 +420,38 @@ struct LabeledField: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignTokens.ink)
-            Group {
-                if isSecure {
-                    SecureField(placeholder, text: $text)
-                } else {
-                    TextField(placeholder, text: $text)
-                        .keyboardType(keyboardType)
-                        .textInputAutocapitalization(autocapitalization)
-                }
+            field
+        }
+    }
+
+    @ViewBuilder
+    private var field: some View {
+        // Owner, Nov 13, 2026: the fields looked thin and small
+        // next to the Save buttons below them. Same height and
+        // weight as the buttons (48pt, white, 1pt border,
+        // radius 10) — the .roundedBorder system style is gone.
+        let base = Group {
+            if isSecure {
+                SecureField(placeholder, text: $text)
+            } else {
+                TextField(placeholder, text: $text)
+                    .keyboardType(keyboardType)
+                    .textInputAutocapitalization(autocapitalization)
             }
-            .textFieldStyle(.roundedBorder)
-            .frame(maxWidth: maxWidth)
+        }
+        .font(.system(size: 17))
+        .padding(.horizontal, 12)
+        .frame(maxWidth: maxWidth, minHeight: 48, alignment: .leading)
+        .background(.white)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        if let focused {
+            base.focused(focused)
+        } else {
+            base
         }
     }
 }
