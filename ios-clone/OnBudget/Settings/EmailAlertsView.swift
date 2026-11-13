@@ -472,10 +472,15 @@ struct EmailAlertsView: View {
         )) {
             if let choices = viewModel.householdChoices {
                 householdPickerSheet(choices: choices)
-                    // iPad width (owner, Nov 12, 2026): same treatment
-                    // as the Weekly Budget sheet — fitted height + 600pt
-                    // width in the regular size class.
-                    .presentationSizing(.fitted)
+                    // iPad sheet height (owner, Nov 13, 2026): the
+                    // picker content is a List, and
+                    // .presentationSizing(.fitted) sizes a sheet to
+                    // its content's ideal height — a List has none,
+                    // so the sheet collapsed in build 23. Detents
+                    // give it a real height on iPhone; on iPad they
+                    // are ignored and the sheet takes the default
+                    // form-sheet height.
+                    .presentationDetents([.medium, .large])
             }
         }
     }

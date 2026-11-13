@@ -118,24 +118,33 @@ public struct TransactionsView: View {
         .onChange(of: appState.pendingClearTransactionFilters) { _, _ in consumeHandoffs() }
         .sheet(isPresented: $showingFilters) {
             TransactionsFilterSheet(viewModel: viewModel, onDismiss: { showingFilters = false })
-                // iPad width (owner, Nov 12, 2026): same treatment
-                // as the Weekly Budget sheet — fitted height + 600pt
-                // width in the regular size class.
-                .presentationSizing(.fitted)
+                // iPad sheet height (owner, Nov 13, 2026): the
+                // Filters content is a ScrollView, and
+                // .presentationSizing(.fitted) sizes a sheet to
+                // its content's ideal height — a ScrollView has
+                // no ideal height, so the sheet collapsed to a
+                // sliver and clipped the rows (build 23). Detents
+                // give it a real height on iPhone; on iPad they
+                // are ignored and the sheet takes the default
+                // form-sheet height. Width stays 600pt (regular)
+                // via the frame inside the sheet content.
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showingAdd) {
             AddTransactionView(viewModel: viewModel, onDismiss: { showingAdd = false })
-                // iPad width (owner, Nov 12, 2026): same treatment
-                // as the Weekly Budget sheet — fitted height + 600pt
-                // width in the regular size class.
-                .presentationSizing(.fitted)
+                // iPad sheet height (owner, Nov 13, 2026): the
+                // purchase/donation forms are ScrollViews — see
+                // the Filters note above. .fitted collapsed them
+                // in build 23; detents give a real height.
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showingTrash) {
             TrashView(viewModel: viewModel, onBack: { showingTrash = false })
-                // iPad width (owner, Nov 12, 2026): same treatment
-                // as the Weekly Budget sheet — fitted height + 600pt
-                // width in the regular size class.
-                .presentationSizing(.fitted)
+                // iPad sheet height (owner, Nov 13, 2026): the
+                // Trash content is a ScrollView — see the Filters
+                // note above. .fitted collapsed it in build 23;
+                // detents give a real height.
+                .presentationDetents([.medium, .large])
         }
         .sheet(item: $actionsTransaction) { transaction in
             TransactionActionsSheet(

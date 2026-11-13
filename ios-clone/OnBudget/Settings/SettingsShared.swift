@@ -337,11 +337,16 @@ struct HistoryDateFilterCard: View {
             NavigationStack {
                 DateRangeCalendarView(selection: calendarBinding)
             }
-            // iPad width (owner, Nov 12, 2026): same treatment as
-            // the Weekly Budget sheet — fitted height + 600pt width
-            // in the regular size class. The month grid is flexible
-            // (7 columns), so it uses the extra width.
-            .presentationSizing(.fitted)
+            // iPad sheet height (owner, Nov 13, 2026): the
+            // calendar content is a ScrollView, and
+            // .presentationSizing(.fitted) sizes a sheet to its
+            // content's ideal height — a ScrollView has none, so
+            // the sheet collapsed in build 23. Detents give it a
+            // real height on iPhone; on iPad they are ignored and
+            // the sheet takes the default form-sheet height. The
+            // month grid is flexible (7 columns), so it uses the
+            // extra width.
+            .presentationDetents([.medium, .large])
             .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         }
     }
