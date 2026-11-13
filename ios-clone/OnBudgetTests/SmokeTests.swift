@@ -61,11 +61,13 @@ final class SmokeTests: XCTestCase {
         // one-line change in SharedViews.swift.)
         // "handshake.fill" FAILED here (run 43356758932,
         // SmokeTests.swift:62) while "banknote.fill" on the next
-        // line passed — the filled variant does not exist, so the
-        // mapping uses the unfilled "handshake". If that ever goes
-        // red too, the fallback is "gift.fill".
-        XCTAssertNotNil(UIImage(systemName: "handshake"))
-        XCTAssertNotNil(UIImage(systemName: "banknote.fill"))
+        // line passed; the unfilled "handshake" then FAILED too
+        // (run 43365940363, SmokeTests.swift:67). The handshake
+        // glyph is not available as a system symbol here, so the
+        // mapping uses "gift.fill" — a gift box reads as giving.
+        // Do not re-try "handshake" in either form.
+        XCTAssertNotNil(UIImage(systemName: "gift.fill"), "gift.fill must resolve")
+        XCTAssertNotNil(UIImage(systemName: "banknote.fill"), "banknote.fill must resolve")
     }
 
     func testExtraFundAccentIsAmber() {

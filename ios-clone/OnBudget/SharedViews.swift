@@ -445,18 +445,19 @@ public enum StatCardTheme {
     }
 
     /// SF Symbol for the card. There is no piggy-bank symbol, so
-    /// Extra Fund uses a banknote; Charity uses a giving hand —
-    /// a handshake (two hands), not a raised stop hand.
-    /// NOTE (build 17): "handshake.fill" does NOT resolve —
-    /// UIImage(systemName:) returned nil for it on iOS 18.5
-    /// (simulator run 43356758932, SmokeTests.swift:62), while
-    /// "banknote.fill" on the very next line resolved fine, so the
-    /// filled variant simply does not exist. The unfilled
-    /// "handshake" is used instead; do not re-try ".fill".
-    /// Fallback if this ever goes red too is "gift.fill".
+    /// Extra Fund uses a banknote; Charity uses a giving glyph.
+    /// NOTE (build 17): the owner asked for a giving hand, but
+    /// NEITHER "handshake.fill" NOR the unfilled "handshake"
+    /// resolves — UIImage(systemName:) returned nil for both on
+    /// iOS 18.5 (runs 43356758932 and 43365940363), while
+    /// "banknote.fill" on the adjacent line resolved fine both
+    /// times, so the handshake glyph is simply not available as a
+    /// system symbol here. The fallback is a gift box
+    /// ("gift.fill"), which reads as giving. Do not re-try
+    /// "handshake" in either form.
     public var iconName: String {
         switch self {
-        case .charity: return "handshake"
+        case .charity: return "gift.fill"
         case .fund: return "banknote.fill"
         }
     }
