@@ -412,7 +412,9 @@ struct LabeledField: View {
     var autocapitalization: TextInputAutocapitalization = .sentences
     /// Optional focus binding, so a screen can offer a keyboard
     /// Done button (Profile). When nil the field is unfocused-only.
-    var focused: Binding<Bool>? = nil
+    /// Must be a FocusState binding: .focused() takes
+    /// FocusState<Bool>.Binding, not a plain Binding<Bool>.
+    var focused: FocusState<Bool>.Binding? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
