@@ -1075,14 +1075,41 @@ final class OnBudgetUITests: XCTestCase {
                 // Clear first: Remember-me pre-fills the email field from the
                 // previous test's sign-in, so typing without clearing would
                 // append and produce an invalid email.
-                if let current = field.value as? String, !current.isEmpty {
-                    field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
-                }
+                clearField(field)
                 field.typeText(text)
                 return
             }
         }
         XCTFail("Field \(fieldName) never gained keyboard focus after 3 taps — cannot type")
+    }
+
+    /// Empties a field before typing, independent of where the cursor
+    /// landed. A plain `field.tap()` puts the cursor where it was
+    /// tapped — the middle of a pre-filled value — so deleting
+    /// `value.count` times only removes the characters BEFORE the
+    /// cursor and leaves the tail after it. The new text is then
+    /// inserted mid-value (e.g. `new@example.com` + `@example.com`),
+    /// which is exactly what failed run 43338434523: the first UI
+    /// test (Gmail, empty field) passed, and every later sign-in
+    /// failed with "Username or password is incorrect" — the SignUp
+    /// test even failed the app's own email-format check ("Enter a
+    /// valid email address") — while the same credentials signed in
+    /// fine via curl. The fix: tap the far-right end of the field so
+    /// the cursor lands after the last character, delete, and
+    /// re-read the value until it is empty (up to 3 rounds). An empty
+    /// field reads back as its placeholder ("Email" / "Password") —
+    /// XCTest returns the placeholder as `value` — so the placeholder
+    /// counts as empty. Triple-tap select-all is the last resort.
+    private func clearField(_ field: XCUIElement) {
+        for _ in 1...3 {
+            let current = field.value as? String ?? ""
+            let placeholder = field.placeholderValue as? String ?? ""
+            if current.isEmpty || current == placeholder { return }
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
+        }
+        field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+        field.typeText(XCUIKeyboardKey.delete.rawValue)
     }
 
     /// Polls for the software keyboard to appear until `timeout`
