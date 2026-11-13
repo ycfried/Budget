@@ -312,7 +312,10 @@ public struct TransactionsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(.systemGray5))
+        // Search fill is systemGray6 (#f2f2f7, owner Nov 12 2026):
+        // lighter than systemGray5 so the field sits quietly on
+        // the white page, still reading as a field — no border.
+        .background(Color(.systemGray6))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 

@@ -310,6 +310,10 @@ public struct HomeView: View {
                 charityCard
                 fundCard
                 recentSection
+                    // Breathing room (owner, Nov 12 2026): the section
+                    // sat too tight under the Extra Fund card — 8pt
+                    // extra on top of the 16pt stack gap.
+                    .padding(.top, 8)
             }
             .padding(16)
         }
