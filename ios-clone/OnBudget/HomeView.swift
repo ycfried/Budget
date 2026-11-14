@@ -159,9 +159,13 @@ public final class HomeViewModel: ObservableObject {
             recent = .loaded(Array(visible.prefix(6)))
             if let weekStart {
                 let weekRows = visible.filter { AppDates.isInWeek($0.date, weekStart: weekStart) }
-                purchasesThisWeek = weekRows.filter {
-                    $0.kind == .charge && $0.state != .reversed
-                }.count
+                // Transfers never count as purchases (owner, Nov 14,
+                // 2026): countsAsPurchase is kind-based — only a
+                // charge that is not reversed. The hero's spent
+                // figure comes from compute-week, which excludes
+                // kind='transfer' the same way (engine.mjs
+                // isExcludedFromMath), so the two numbers agree.
+                purchasesThisWeek = weekRows.filter(\.countsAsPurchase).count
                 hasWeekTransactions = !weekRows.isEmpty
             } else {
                 purchasesThisWeek = nil
@@ -378,9 +382,7 @@ public struct HomeView: View {
     // 2px-outlined Charity / Extra Fund cards below it.
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Weekly Budget")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(DesignTokens.ink)
+            heroHeaderRow
             switch viewModel.week {
             case .loading:
                 heroSkeleton
@@ -406,23 +408,102 @@ public struct HomeView: View {
         // Hero exception: outline, NO shadow (styles.css:1127).
     }
 
+    // Hero header — the same style as the Charity / Extra Fund
+    // cards (owner, Nov 14, 2026): icon chip + title in ONE row,
+    // with the week date inline after the title ("Weekly Budget ·
+    // Nov 8") instead of on a line of its own, and the sync button
+    // at the trailing end — the top-right corner of the card. The
+    // title is 18pt bold like the stat cards (was 24pt on its own
+    // line); the hero stays the anchor by its 2.5px outline and
+    // the big figure below. The date shows only once loaded (it
+    // comes from compute-week); while loading the sync spot holds
+    // a skeleton block so the header never jumps when the numbers
+    // arrive.
+    private var heroHeaderRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "calendar")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(DesignTokens.primary)
+                .frame(width: 36, height: 36)
+                .background(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(DesignTokens.primary, lineWidth: 1)
+                )
+            Text("Weekly Budget")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(DesignTokens.ink)
+                .lineLimit(1)
+            if case .loaded(let result) = viewModel.week {
+                Text("· \(AppDates.shortWeekLabel(weekStart: result.weekStart))")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                    .lineLimit(1)
+            }
+            Spacer()
+            if viewModel.isAdmin {
+                switch viewModel.week {
+                case .loading:
+                    SkeletonBlock(width: 44, height: 44, cornerRadius: 22)
+                case .loaded:
+                    syncButton
+                case .failed:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
+    /// Sync button: admin-only; grey tertiary while no allowance
+    /// is set, so "Set Your Weekly Allowance" is the hero's only
+    /// primary control. The fill is the lighter blue #3b82f6
+    /// (DesignTokens.mid), not the primary #2f6bff — same condition
+    /// as the Transactions sync button (owner, Nov 12 ~10:29 PM).
+    /// Moved here from the figure row (owner, Nov 14, 2026: the
+    /// top-right corner of the card, not mid-right over the
+    /// progress bar).
+    private var syncButton: some View {
+        Button { Task { await viewModel.syncBank() } } label: {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 17, weight: .semibold))
+                // White icon on the blue state; dark ink on the
+                // grey state — white-on-grey was ~1.1:1 and
+                // effectively invisible (audit H-P1-1).
+                .foregroundStyle(viewModel.allowanceSet == true ? .white : DesignTokens.ink)
+                .frame(width: 44, height: 44)
+                .background(
+                    viewModel.allowanceSet == true
+                        ? DesignTokens.mid : Color(hex: "#e5e7eb"))
+                .clipShape(Circle())
+                // Repeating linear spin while syncing: a plain
+                // 0°→360° rotation with no animation renders
+                // identically at both ends, so it never
+                // visibly spun (audit H-P1-2).
+                .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
+                .animation(
+                    viewModel.isSyncing
+                        ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                        : .default,
+                    value: viewModel.isSyncing)
+        }
+        .disabled(viewModel.isSyncing)
+        .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")
+    }
+
     /// Full-size hero skeleton: same frame, padding, rows and
     /// spacing as the loaded hero, with shimmer blocks where the
-    /// week label, figure, sync button, progress bar, spent line
-    /// and stats go — the same rows as heroLoaded, in the same
-    /// order, and no extra row the loaded hero lacks — so the page
-    /// never jumps when the numbers arrive (audit H-P2-5). Verified
-    /// against heroLoaded, Nov 12 2026: label / figure row with the
-    /// 44pt sync-button block / progress bar / spent line / stats
-    /// row, all present, all the same sizes.
+    /// figure, progress bar, spent line and stats go — the same
+    /// rows as heroLoaded, in the same order, and no extra row the
+    /// loaded hero lacks — so the page never jumps when the numbers
+    /// arrive (audit H-P2-5). The header row itself is real even
+    /// while loading (icon + title, with a skeleton block in the
+    /// sync spot for admins), so the skeleton starts at the figure.
+    /// Verified against heroLoaded, Nov 14 2026: figure / progress
+    /// bar / spent line / stats row, all present, all the same sizes.
     private var heroSkeleton: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SkeletonBlock(width: 160, height: 18)
-            HStack(spacing: 12) {
-                SkeletonBlock(width: 230, height: 54, cornerRadius: 8)
-                Spacer()
-                SkeletonBlock(width: 44, height: 44, cornerRadius: 22)
-            }
+            SkeletonBlock(width: 230, height: 54, cornerRadius: 8)
             SkeletonBlock(height: 8, cornerRadius: 4)
             SkeletonBlock(width: 180, height: 14)
             HStack(spacing: 24) {
@@ -444,59 +525,21 @@ public struct HomeView: View {
 
     @ViewBuilder
     private func heroLoaded(_ result: WeekResult) -> some View {
-        Text(AppDates.weekLabel(weekStart: result.weekStart))
-            .font(.system(size: 15))
-            .foregroundStyle(Color(hex: "#6b7280"))
-
-        // Big figure — the whole figure row (not just the digits)
-        // opens the Weekly sheet; the sync button stays its own
-        // tap target at the end of the row.
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Button { showWeeklySheet = true } label: {
-                heroFigure(cents: result.availableCents)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel(
-                result.availableCents < 0
-                    ? "Weekly Budget, over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
-                    : "Weekly Budget, \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
-            )
-            Spacer()
-            // Sync button: admin-only; grey tertiary while no
-            // allowance is set, so "Set Your Weekly Allowance" is
-            // the hero's only primary control. The fill is the
-            // lighter blue #3b82f6 (DesignTokens.mid), not the
-            // primary #2f6bff — same condition as the Transactions
-            // sync button (owner, Nov 12 ~10:29 PM).
-            if viewModel.isAdmin {
-                Button { Task { await viewModel.syncBank() } } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 17, weight: .semibold))
-                        // White icon on the blue state; dark ink on the
-                        // grey state — white-on-grey was ~1.1:1 and
-                        // effectively invisible (audit H-P1-1).
-                        .foregroundStyle(viewModel.allowanceSet == true ? .white : DesignTokens.ink)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            viewModel.allowanceSet == true
-                                ? DesignTokens.mid : Color(hex: "#e5e7eb"))
-                        .clipShape(Circle())
-                        // Repeating linear spin while syncing: a plain
-                        // 0°→360° rotation with no animation renders
-                        // identically at both ends, so it never
-                        // visibly spun (audit H-P1-2).
-                        .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
-                        .animation(
-                            viewModel.isSyncing
-                                ? .linear(duration: 0.9).repeatForever(autoreverses: false)
-                                : .default,
-                            value: viewModel.isSyncing)
-                }
-                .disabled(viewModel.isSyncing)
-                .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")
-            }
+        // Big figure — the whole figure row opens the Weekly sheet.
+        // The week date and the sync button live in the header row
+        // now (owner, Nov 14, 2026), not here: the date had its own
+        // line and the sync button sat mid-right over the progress
+        // bar.
+        Button { showWeeklySheet = true } label: {
+            heroFigure(cents: result.availableCents)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
         }
+        .accessibilityLabel(
+            result.availableCents < 0
+                ? "Weekly Budget, over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
+                : "Weekly Budget, \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
+        )
 
         // Progress bar: charges / capacity, capped at 100%; red
         // when charges exceed capacity. Over budget the fill is

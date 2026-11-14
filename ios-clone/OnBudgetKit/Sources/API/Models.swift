@@ -195,6 +195,20 @@ public struct Transaction: Equatable, Codable, Identifiable {
     /// ink with its stored minus (the kind decides the colour).
     public var isInflow: Bool { kind.isMoneyIn }
 
+    /// Counts toward the hero's Purchases number: a charge that is
+    /// not reversed (HomeViewModel.refresh). Transfers, refunds,
+    /// payments, cashback, income, charity and fund charges never
+    /// count — a transfer between the household's own accounts is
+    /// not a purchase (owner, Nov 14, 2026: an internal-transfer
+    /// row was inflating Purchases). The rule is kind-based, not
+    /// name-based, on purpose: a row stored as kind='charge' still
+    /// counts even if its merchant says INTERNAL TRANSFER — that
+    /// row's kind is stale and must be reclassified to 'transfer'
+    /// (supabase/transfer-backfill.sql), not papered over here.
+    /// Callers filter Trash out first (isInTrash); this helper
+    /// only decides the kind/state part.
+    public var countsAsPurchase: Bool { kind == .charge && state != .reversed }
+
     enum CodingKeys: String, CodingKey {
         case id, date, merchant, state, kind, excluded, late
         case householdId = "household_id"
