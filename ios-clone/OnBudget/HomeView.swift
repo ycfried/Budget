@@ -13,7 +13,7 @@
 // fields), and the Fund/Charity display aggregations in
 // OnBudgetKit's FundSummary / CharitySummary.
 //
-// Hero: white card, 2.5px #2f6bff outline, no shadow. Sync button
+// Hero: white card, 3px #2f6bff outline, no shadow. Sync button
 // is primary blue when allowance set, grey tertiary until set;
 // "Set Your Weekly Allowance" (admin only) when none set. Purchases
 // shows "N/A" — never a bare dash — when transactions fail to load.
@@ -25,7 +25,7 @@
 // the same day — NOT a wash: Charity green #16a34a outline, Extra
 // Fund brand-blue #2f6bff outline, both 2px, white inside like the
 // hero, shared StatCardTheme with the Funds page); the Weekly
-// Budget hero above them keeps its thicker 2.5px outline.
+// Budget hero above them keeps its thicker 3px outline.
 // "Last synced" is shown once, quietly, under Automatic Sync in
 // Settings (ConnectedAccountsView); Home carries NO sync line
 // (owner, Nov 11, 2026 — removed from Home entirely).
@@ -377,9 +377,10 @@ public struct HomeView: View {
     // number on the page). The loading state renders at the same
     // full hero size (shimmer skeleton blocks, no spinner), so the
     // layout never jumps when the number arrives. The hero outline
-    // is the thickest on the page (2.5px, owner correction Nov 12,
-    // 2026 — was 1.5px), so it stays the anchor card above the
-    // 2px-outlined Charity / Extra Fund cards below it.
+    // is the thickest on the page (3px, owner Nov 14, 2026 — was
+    // 2.5px since Nov 12, 2026, 1.5px before that), so it stays the
+    // anchor card above the 2px-outlined Charity / Extra Fund cards
+    // below it.
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             heroHeaderRow
@@ -401,7 +402,7 @@ public struct HomeView: View {
         .background(.white)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(DesignTokens.primary, lineWidth: 2.5)
+                .stroke(DesignTokens.primary, lineWidth: 3)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .accessibilityIdentifier("home.weeklyBudget")
@@ -414,7 +415,7 @@ public struct HomeView: View {
     // Nov 8") instead of on a line of its own, and the sync button
     // at the trailing end — the top-right corner of the card. The
     // title is 18pt bold like the stat cards (was 24pt on its own
-    // line); the hero stays the anchor by its 2.5px outline and
+    // line); the hero stays the anchor by its 3px outline and
     // the big figure below. The date shows only once loaded (it
     // comes from compute-week); while loading the sync spot holds
     // a skeleton block so the header never jumps when the numbers
