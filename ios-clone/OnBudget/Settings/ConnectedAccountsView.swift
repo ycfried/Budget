@@ -141,10 +141,32 @@ final class ConnectedAccountsViewModel: ObservableObject {
     @Published var isTogglingAutoSync = false
     @Published var nicknameTarget: ConnectedAccountRow?
     @Published var nicknameText = ""
-    @Published var nicknameFailed = false
-    @Published var disconnectTarget: ConnectedAccountRow?
-    @Published var disconnectFailed = false
-    @Published var alreadyConnectedLines: [String]?
+    /// The ONE alert this screen can show (build 30): the four
+    /// `.alert` modifiers this screen used to stack (Already
+    /// Connected, Disconnect confirm/failed, Nickname failed)
+    /// collapsed into one — SwiftUI only honours a single `.alert`
+    /// on a view, so only one ever fired (same bug as the Members
+    /// screen, Nov 15, 2026).
+    @Published var alert: ConnectedAccountsAlert?
+
+    /// The single alert state for the Connected Accounts screen
+    /// (build 30). One `.alert(item:)` in the view switches over
+    /// the case.
+    enum ConnectedAccountsAlert: Identifiable {
+        case alreadyConnected([String])
+        case disconnect(ConnectedAccountRow)
+        case disconnectFailed
+        case nicknameFailed
+
+        var id: String {
+            switch self {
+            case .alreadyConnected(let lines): return "already-\(lines.joined(separator: "|"))"
+            case .disconnect(let row): return "disconnect-\(row.id)"
+            case .disconnectFailed: return "disconnectFailed"
+            case .nicknameFailed: return "nicknameFailed"
+            }
+        }
+    }
     @Published var isConnecting = false
 
     private let context: SettingsContext
@@ -252,7 +274,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
                         .map { "\($0.name ?? "Account")\($0.mask.map { " ••\($0)" } ?? "")" }
                     return "\(item.institutionName ?? "Bank") — \(parts.isEmpty ? "no accounts listed yet" : parts.joined(separator: ", "))"
                 }
-                alreadyConnectedLines = lines
+                alert = .alreadyConnected(lines)
                 return
             }
         } catch {
@@ -262,7 +284,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
     }
 
     func connectAnywayConfirmed() async {
-        alreadyConnectedLines = nil
+        alert = nil
         await startLink()
     }
 
@@ -424,20 +446,24 @@ final class ConnectedAccountsViewModel: ObservableObject {
             nicknameTarget = nil
             await load()
         } catch {
-            nicknameFailed = true
+            alert = .nicknameFailed
         }
     }
 
     // MARK: - Disconnect
 
+    func confirmDisconnect(_ row: ConnectedAccountRow) {
+        alert = .disconnect(row)
+    }
+
     /// The row arrives as a parameter, captured by the alert's
-    /// button: `.alert(item:)` nils the `disconnectTarget` binding
-    /// when the alert dismisses, which happens BEFORE an unstructured
-    /// `Task` runs — so re-reading the binding here always found nil
-    /// and the disconnect silently never happened (same pitfall as
+    /// button: `.alert(item:)` nils the `alert` binding when the
+    /// alert dismisses, which happens BEFORE an unstructured `Task`
+    /// runs — so re-reading the binding here always found nil and
+    /// the disconnect silently never happened (same pitfall as
     /// removeConfirmed, Nov 11, 2026).
     func disconnectConfirmed(_ row: ConnectedAccountRow) async {
-        disconnectTarget = nil
+        alert = nil
         do {
             if let account = row.account {
                 let result = try await context.client.functions.plaidAccountDisconnect(
@@ -446,7 +472,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
                     plaidAccountId: account.plaidAccountId
                 )
                 guard result.disconnected else {
-                    disconnectFailed = true
+                    alert = .disconnectFailed
                     return
                 }
             } else {
@@ -455,13 +481,13 @@ final class ConnectedAccountsViewModel: ObservableObject {
                     plaidItemId: row.item.plaidItemId
                 )
                 guard result.disconnected else {
-                    disconnectFailed = true
+                    alert = .disconnectFailed
                     return
                 }
             }
             await load()
         } catch {
-            disconnectFailed = true
+            alert = .disconnectFailed
         }
     }
 }
@@ -550,49 +576,53 @@ struct ConnectedAccountsView: View {
             }
         }
         .task { await viewModel.load() }
-        .alert(item: Binding(
-            get: { viewModel.alreadyConnectedLines.map { AlreadyConnectedAlert(lines: $0) } },
-            set: { if $0 == nil { viewModel.alreadyConnectedLines = nil } }
-        )) { alert in
-            Alert(
-                title: Text("Already Connected?"),
-                message: Text("You already have \(alert.lines.count == 1 ? "this bank connection" : "these bank connections"):\n\(alert.lines.joined(separator: "\n"))\n\nConnecting the same account again will create a duplicate. You do not need to reconnect an account that is already syncing — only continue if you are connecting a different account."),
-                primaryButton: .default(Text("Connect Anyway")) {
-                    Task { await viewModel.connectAnywayConfirmed() }
-                },
-                secondaryButton: .cancel()
-            )
-        }
-        .alert(item: $viewModel.disconnectTarget) { row in
-            if row.account != nil {
-                let label = "\(row.displayName)\(row.account?.mask.map { " ••\($0)" } ?? "")"
+        // ONE alert for the whole screen (build 30 — same stacked
+        // `.alert` collapse as the Members screen: only one of the
+        // four stacked modifiers ever fired).
+        .alert(item: $viewModel.alert) { alert in
+            switch alert {
+            case .alreadyConnected(let lines):
                 return Alert(
-                    title: Text("Disconnect Account"),
-                    message: Text("Disconnect \(label)? This stops syncing this account only. Other accounts on the same bank connection keep syncing. Past transactions stay in the list. To sync this account again later, reconnect the bank from the Bank Connection card."),
+                    title: Text("Already Connected?"),
+                    message: Text("You already have \(lines.count == 1 ? "this bank connection" : "these bank connections"):\n\(lines.joined(separator: "\n"))\n\nConnecting the same account again will create a duplicate. You do not need to reconnect an account that is already syncing — only continue if you are connecting a different account."),
+                    primaryButton: .default(Text("Connect Anyway")) {
+                        Task { await viewModel.connectAnywayConfirmed() }
+                    },
+                    secondaryButton: .cancel()
+                )
+            case .disconnect(let row):
+                if row.account != nil {
+                    let label = "\(row.displayName)\(row.account?.mask.map { " ••\($0)" } ?? "")"
+                    return Alert(
+                        title: Text("Disconnect Account"),
+                        message: Text("Disconnect \(label)? This stops syncing this account only. Other accounts on the same bank connection keep syncing. Past transactions stay in the list. To sync this account again later, reconnect the bank from the Bank Connection card."),
+                        primaryButton: .destructive(Text("Disconnect")) {
+                            Task { await viewModel.disconnectConfirmed(row) }
+                        },
+                        secondaryButton: .cancel()
+                    )
+                }
+                return Alert(
+                    title: Text("Disconnect Bank"),
+                    message: Text("Disconnect \(row.item.institutionName ?? "this bank")? The app will stop syncing this connection. Past transactions stay in the list."),
                     primaryButton: .destructive(Text("Disconnect")) {
                         Task { await viewModel.disconnectConfirmed(row) }
                     },
                     secondaryButton: .cancel()
                 )
+            case .disconnectFailed:
+                return Alert(
+                    title: Text("Could Not Disconnect"),
+                    message: Text("Could not disconnect this account. Try again."),
+                    dismissButton: .cancel(Text("Close"))
+                )
+            case .nicknameFailed:
+                return Alert(
+                    title: Text("Could Not Save Nickname"),
+                    message: Text("Could not save this nickname. Try again."),
+                    dismissButton: .cancel(Text("Close"))
+                )
             }
-            return Alert(
-                title: Text("Disconnect Bank"),
-                message: Text("Disconnect \(row.item.institutionName ?? "this bank")? The app will stop syncing this connection. Past transactions stay in the list."),
-                primaryButton: .destructive(Text("Disconnect")) {
-                    Task { await viewModel.disconnectConfirmed(row) }
-                },
-                secondaryButton: .cancel()
-            )
-        }
-        .alert("Could Not Disconnect", isPresented: $viewModel.disconnectFailed) {
-            Button("Close", role: .cancel) {}
-        } message: {
-            Text("Could not disconnect this account. Try again.")
-        }
-        .alert("Could Not Save Nickname", isPresented: $viewModel.nicknameFailed) {
-            Button("Close", role: .cancel) {}
-        } message: {
-            Text("Could not save this nickname. Try again.")
         }
         .sheet(item: $viewModel.nicknameTarget) { row in
             nicknameSheet(for: row)
@@ -602,11 +632,6 @@ struct ConnectedAccountsView: View {
                 .presentationSizing(.fitted)
                 .presentationBackground(.white)
         }
-    }
-
-    private struct AlreadyConnectedAlert: Identifiable {
-        let lines: [String]
-        var id: String { lines.joined(separator: "|") }
     }
 
     private func accountRow(_ row: ConnectedAccountRow) -> some View {
@@ -642,7 +667,7 @@ struct ConnectedAccountsView: View {
             Spacer()
             if viewModel.isAdmin {
                 Button("Disconnect") {
-                    viewModel.disconnectTarget = row
+                    viewModel.confirmDisconnect(row)
                 }
                 .buttonStyle(SmallDangerButtonStyle())
                 .accessibilityLabel("Disconnect \(row.displayName)")

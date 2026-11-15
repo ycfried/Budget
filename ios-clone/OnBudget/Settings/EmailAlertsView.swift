@@ -142,8 +142,25 @@ final class EmailAlertsViewModel: ObservableObject {
     @Published var isChecking = false
     @Published var resultMessage: String?
     @Published var resultIsError = false
-    @Published var connectionToDisconnect: EmailConnectionPublic?
-    @Published var disconnectFailed = false
+    /// The ONE alert this screen can show (build 30): the two
+    /// `.alert` modifiers this screen used to stack (Disconnect
+    /// confirm + failed) collapsed into one — SwiftUI only honours
+    /// a single `.alert` on a view (same bug as the Members screen,
+    /// Nov 15, 2026).
+    @Published var alert: EmailAlertsAlert?
+
+    /// The single alert state for the Email Alerts screen (build 30).
+    enum EmailAlertsAlert: Identifiable {
+        case disconnect(EmailConnectionPublic)
+        case disconnectFailed
+
+        var id: String {
+            switch self {
+            case .disconnect(let connection): return "disconnect-\(connection.id)"
+            case .disconnectFailed: return "disconnectFailed"
+            }
+        }
+    }
     @Published var householdChoices: [HouseholdChoice]?
     private var householdChoiceContinuation: CheckedContinuation<UUID?, Never>?
 
@@ -345,26 +362,30 @@ final class EmailAlertsViewModel: ObservableObject {
 
     // MARK: - Disconnect
 
+    func confirmDisconnect(_ connection: EmailConnectionPublic) {
+        alert = .disconnect(connection)
+    }
+
     /// The connection arrives as a parameter, captured by the alert's
-    /// button: `.alert(item:)` nils the `connectionToDisconnect`
-    /// binding when the alert dismisses, which happens BEFORE an
-    /// unstructured `Task` runs — so re-reading the binding here
-    /// always found nil and the disconnect silently never happened
-    /// (same pitfall as removeConfirmed, Nov 11, 2026).
+    /// button: `.alert(item:)` nils the `alert` binding when the
+    /// alert dismisses, which happens BEFORE an unstructured `Task`
+    /// runs — so re-reading the binding here always found nil and
+    /// the disconnect silently never happened (same pitfall as
+    /// removeConfirmed, Nov 11, 2026).
     func disconnectConfirmed(_ connection: EmailConnectionPublic) async {
-        connectionToDisconnect = nil
+        alert = nil
         do {
             let result = try await context.client.functions.gmailDisconnect(
                 householdId: context.householdId,
                 connectionId: connection.id
             )
             guard result.disconnected else {
-                disconnectFailed = true
+                alert = .disconnectFailed
                 return
             }
             await load()
         } catch {
-            disconnectFailed = true
+            alert = .disconnectFailed
         }
     }
 }
@@ -456,20 +477,26 @@ struct EmailAlertsView: View {
             // survives across launches indefinitely as stale state.
             appState.clearGmailCallbackResult()
         }
-        .alert(item: $viewModel.connectionToDisconnect) { connection in
-            Alert(
-                title: Text("Disconnect Email"),
-                message: Text("Disconnect \(connection.emailAddress)? The app will stop checking it. Past transactions stay in the list."),
-                primaryButton: .destructive(Text("Disconnect")) {
-                    Task { await viewModel.disconnectConfirmed(connection) }
-                },
-                secondaryButton: .cancel()
-            )
-        }
-        .alert("Could Not Disconnect", isPresented: $viewModel.disconnectFailed) {
-            Button("Close", role: .cancel) {}
-        } message: {
-            Text("Could not disconnect this email. Try again.")
+        // ONE alert for the whole screen (build 30 — same stacked
+        // `.alert` collapse as the Members screen).
+        .alert(item: $viewModel.alert) { alert in
+            switch alert {
+            case .disconnect(let connection):
+                return Alert(
+                    title: Text("Disconnect Email"),
+                    message: Text("Disconnect \(connection.emailAddress)? The app will stop checking it. Past transactions stay in the list."),
+                    primaryButton: .destructive(Text("Disconnect")) {
+                        Task { await viewModel.disconnectConfirmed(connection) }
+                    },
+                    secondaryButton: .cancel()
+                )
+            case .disconnectFailed:
+                return Alert(
+                    title: Text("Could Not Disconnect"),
+                    message: Text("Could not disconnect this email. Try again."),
+                    dismissButton: .cancel(Text("Close"))
+                )
+            }
         }
         .sheet(isPresented: Binding(
             get: { viewModel.householdChoices != nil },
@@ -549,7 +576,7 @@ struct EmailAlertsView: View {
             Spacer()
             if viewModel.isAdmin {
                 Button("Disconnect") {
-                    viewModel.connectionToDisconnect = connection
+                    viewModel.confirmDisconnect(connection)
                 }
                 .buttonStyle(SmallDangerButtonStyle())
                 .accessibilityLabel("Disconnect \(connection.emailAddress)")
