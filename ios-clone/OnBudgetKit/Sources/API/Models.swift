@@ -664,7 +664,7 @@ private struct WeekResultFlat: Decodable {
 /// to the base only — temporary increases never feed it — and a rule
 /// change is future-only: a closed week keeps its stored payment.
 public struct DebtRule: Equatable, Codable, Sendable {
-    public enum Mode: String, Equatable, Codable {
+    public enum Mode: String, Equatable, Codable, Sendable {
         case percent, fixed, off
     }
     public let mode: Mode
@@ -741,10 +741,10 @@ public struct DebtPayment: Equatable, Codable, Identifiable, Sendable {
 /// existing code for now — the full migration to descriptors is the
 /// custom-funds build's job.
 public struct FundDescriptor: Equatable, Hashable, Sendable {
-    public enum Kind: String, Equatable, Hashable {
+    public enum Kind: String, Equatable, Hashable, Sendable {
         case spending, debt, charity, savings
     }
-    public enum Scope: String, Equatable, Hashable {
+    public enum Scope: String, Equatable, Hashable, Sendable {
         case household, personal
     }
     public let id: String
