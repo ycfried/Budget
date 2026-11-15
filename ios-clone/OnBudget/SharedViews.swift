@@ -278,6 +278,9 @@ public struct DateField: View {
                     .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            // Whole-area tap target (owner, Nov 15, 2026 app-wide
+            // pass): the padded box responds across its full frame.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Date, \(Self.displayFormatter.string(from: date))")

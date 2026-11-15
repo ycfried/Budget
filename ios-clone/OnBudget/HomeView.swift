@@ -430,6 +430,19 @@ public struct HomeView: View {
                 .stroke(DesignTokens.primary, lineWidth: 3)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
+        .contentShape(Rectangle())
+        // Whole-card tap target (owner, Nov 15, 2026 app-wide
+        // pass): the whole hero opens the Weekly sheet, not just
+        // the figure row — the header and the empty space respond
+        // too. The sync button (and Try Again while failed) still
+        // win: a Button inside beats the parent tap gesture.
+        // Loading or failed weeks open nothing — the sheet needs a
+        // loaded week.
+        .onTapGesture {
+            if case .loaded = viewModel.week {
+                showWeeklySheet = true
+            }
+        }
         .accessibilityIdentifier("home.weeklyBudget")
         // Hero exception: outline, NO shadow (styles.css:1127).
     }

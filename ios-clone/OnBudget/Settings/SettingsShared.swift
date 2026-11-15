@@ -313,6 +313,10 @@ struct HistoryDateFilterCard: View {
                         .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                // Whole-area tap target (owner, Nov 15, 2026
+                // app-wide pass): the padded box responds across
+                // its full frame, not just on the label and icon.
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Choose dates, \(rangeLabel)")

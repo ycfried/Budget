@@ -227,6 +227,11 @@ public struct TransactionActionsSheet: View {
                 .foregroundStyle(Color(hex: "#6b7280"))
             VStack(spacing: 0) {
                 ForEach(actions) { action in
+                    // Whole-row tap target (owner, Nov 15, 2026
+                    // app-wide pass): `.contentShape(Rectangle())`
+                    // makes the empty space between the text and the
+                    // chevron respond too — the same treatment as
+                    // the link-candidate and reclassify rows below.
                     Button {
                         select(action.id)
                     } label: {
@@ -245,6 +250,7 @@ public struct TransactionActionsSheet: View {
                                 .foregroundStyle(Color(hex: "#6b7280"))
                         }
                         .padding(.vertical, 12)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     if action.id != actions.last?.id {
@@ -403,6 +409,7 @@ public struct TransactionActionsSheet: View {
                                         .foregroundStyle(Color(hex: "#6b7280"))
                                 }
                                 .padding(.vertical, 10)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .disabled(isWorking)
@@ -480,6 +487,7 @@ public struct TransactionActionsSheet: View {
                                 .foregroundStyle(Color(hex: "#6b7280"))
                         }
                         .padding(.vertical, 12)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     if option.kind != reclassifyOptions.last?.kind {
