@@ -16,11 +16,13 @@
 		F20000000000000000000006 /* CharityIncomeForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000006 /* CharityIncomeForm.swift */; };
 		F20000000000000000000007 /* TemporaryAllowanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000007 /* TemporaryAllowanceView.swift */; };
 		F20000000000000000000008 /* ReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000008 /* ReviewView.swift */; };
+		F20000000000000000000009 /* ReviewPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000009 /* ReviewPageView.swift */; };
 		F20000000000000000000010 /* FundsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000010 /* FundsView.swift */; };
 		F20000000000000000000011 /* FundsRulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000011 /* FundsRulesView.swift */; };
 		D101D101D101D101D101D101 /* SettingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = C101C101C101C101C101C101 /* SettingsShared.swift */; };
 		D102D102D102D102D102D102 /* ProfileSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C102C102C102C102C102C102 /* ProfileSettingsView.swift */; };
 		D103D103D103D103D103D103 /* MembersSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C103C103C103C103C103C103 /* MembersSettingsView.swift */; };
+		D106D106D106D106D106D106 /* MerchantNamesSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C106C106C106C106C106C106 /* MerchantNamesSettingsView.swift */; };
 		D104D104D104D104D104D104 /* ConnectedAccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C104C104C104C104C104C104 /* ConnectedAccountsView.swift */; };
 		D105D105D105D105D105D105 /* EmailAlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C105C105C105C105C105C105 /* EmailAlertsView.swift */; };
 		D107D107D107D107D107D107 /* PastWeeksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C107C107C107C107C107C107 /* PastWeeksView.swift */; };
@@ -112,11 +114,13 @@
 		F10000000000000000000006 /* CharityIncomeForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharityIncomeForm.swift; sourceTree = "<group>"; };
 		F10000000000000000000007 /* TemporaryAllowanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryAllowanceView.swift; sourceTree = "<group>"; };
 		F10000000000000000000008 /* ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewView.swift; sourceTree = "<group>"; };
+		F10000000000000000000009 /* ReviewPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewPageView.swift; sourceTree = "<group>"; };
 		F10000000000000000000010 /* FundsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsView.swift; sourceTree = "<group>"; };
 		F10000000000000000000011 /* FundsRulesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FundsRulesView.swift; sourceTree = "<group>"; };
 		C101C101C101C101C101C101 /* SettingsShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsShared.swift; sourceTree = "<group>"; };
 		C102C102C102C102C102C102 /* ProfileSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSettingsView.swift; sourceTree = "<group>"; };
 		C103C103C103C103C103C103 /* MembersSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembersSettingsView.swift; sourceTree = "<group>"; };
+		C106C106C106C106C106C106 /* MerchantNamesSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantNamesSettingsView.swift; sourceTree = "<group>"; };
 		C104C104C104C104C104C104 /* ConnectedAccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAccountsView.swift; sourceTree = "<group>"; };
 		C105C105C105C105C105C105 /* EmailAlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailAlertsView.swift; sourceTree = "<group>"; };
 		C107C107C107C107C107C107 /* PastWeeksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastWeeksView.swift; sourceTree = "<group>"; };
@@ -238,6 +242,7 @@
 				F10000000000000000000006 /* CharityIncomeForm.swift */,
 				F10000000000000000000007 /* TemporaryAllowanceView.swift */,
 				F10000000000000000000008 /* ReviewView.swift */,
+				F10000000000000000000009 /* ReviewPageView.swift */,
 				F10000000000000000000010 /* FundsView.swift */,
 				F10000000000000000000011 /* FundsRulesView.swift */,
 			);
@@ -267,6 +272,7 @@
 				C101C101C101C101C101C101 /* SettingsShared.swift */,
 				C102C102C102C102C102C102 /* ProfileSettingsView.swift */,
 				C103C103C103C103C103C103 /* MembersSettingsView.swift */,
+				C106C106C106C106C106C106 /* MerchantNamesSettingsView.swift */,
 				C104C104C104C104C104C104 /* ConnectedAccountsView.swift */,
 				C105C105C105C105C105C105 /* EmailAlertsView.swift */,
 				C107C107C107C107C107C107 /* PastWeeksView.swift */,
@@ -487,6 +493,7 @@
 				F20000000000000000000006 /* CharityIncomeForm.swift in Sources */,
 				F20000000000000000000007 /* TemporaryAllowanceView.swift in Sources */,
 				F20000000000000000000008 /* ReviewView.swift in Sources */,
+				F20000000000000000000009 /* ReviewPageView.swift in Sources */,
 				F20000000000000000000010 /* FundsView.swift in Sources */,
 				F20000000000000000000011 /* FundsRulesView.swift in Sources */,
 				B70101010101010101010101 /* TransactionFormatting.swift in Sources */,
@@ -502,6 +509,7 @@
 				D101D101D101D101D101D101 /* SettingsShared.swift in Sources */,
 				D102D102D102D102D102D102 /* ProfileSettingsView.swift in Sources */,
 				D103D103D103D103D103D103 /* MembersSettingsView.swift in Sources */,
+				D106D106D106D106D106D106 /* MerchantNamesSettingsView.swift in Sources */,
 				D104D104D104D104D104D104 /* ConnectedAccountsView.swift in Sources */,
 				D105D105D105D105D105D105 /* EmailAlertsView.swift in Sources */,
 				D107D107D107D107D107D107 /* PastWeeksView.swift in Sources */,
