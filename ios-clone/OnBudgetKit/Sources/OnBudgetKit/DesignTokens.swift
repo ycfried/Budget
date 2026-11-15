@@ -71,9 +71,10 @@ public enum DesignTokens {
     // (~11:28 PM, "too much colors"): the deep amount/icon colours
     // below NO LONGER colour the card faces — amounts and icons
     // are ink, chevrons muted grey, and ONLY the coloured outline
-    // keeps colour. The deep hexes stay as tokens (the widget
-    // still uses charityDeep; a smoke test pins fundDeepHex), not
-    // as card-face colours. The soft-wash tokens that the
+    // keeps colour. The deep hexes stay as tokens (a smoke test
+    // pins fundDeepHex), not as card-face colours. The widget used
+    // charityDeep for its charity figure until Nov 15, 2026
+    // (widget polish: charity is ink there now). The soft-wash tokens that the
     // first pass added (charityTint/fundTint, charityChip/fundChip)
     // are REMOVED: nothing else referenced them — they only
     // duplicated the success/info backgrounds (#f0fdf4 / #eef4ff)

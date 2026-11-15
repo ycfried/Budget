@@ -45,6 +45,27 @@ public enum MoneyFormat {
         return (negative ? "-" : "") + "$" + grouped + "." + centsText
     }
 
+    /// Whole dollars, no cents: `$394` (39365 cents rounds to 394).
+    /// Widget-only (owner, Nov 15, 2026 — the widget shows whole
+    /// dollars; the app keeps cents everywhere else). Rounds half
+    /// up; negative renders as `-$X`.
+    public static func wholeDollars(cents: Int) -> String {
+        let negative = cents < 0
+        let absolute = abs(cents)
+        let dollars = (absolute + 50) / 100
+        var grouped = ""
+        var remaining = dollars
+        repeat {
+            let chunk = remaining % 1000
+            remaining /= 1000
+            let chunkText = remaining > 0
+                ? String(format: "%03d", chunk)
+                : String(chunk)
+            grouped = grouped.isEmpty ? chunkText : chunkText + "," + grouped
+        } while remaining > 0
+        return (negative ? "-" : "") + "$" + grouped
+    }
+
     /// The dollars part and the cents part separately, so the hero can
     /// render cents smaller (formatCentsHtml, live.js:3651-3659).
     public static func parts(cents: Int) -> (sign: String, dollars: String, cents: String) {
