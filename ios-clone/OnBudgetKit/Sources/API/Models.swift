@@ -432,6 +432,13 @@ public struct WeekResult: Equatable, Codable {
     /// `override_cents` minus the stored base (see `sheetRows`).
     public let overrideCents: Int?
     public let carriedDebtCents: Int
+    /// The base allowance paid toward the incoming debt this week
+    /// (Carried Debt fund, build 29): the effective payment, capped
+    /// at the debt and at the base. Under the old model (no rule) it
+    /// is min(D, B) — the base the debt consumed. Nil when the
+    /// deployed compute-week predates build 29; the sheet and the
+    /// Home math line fall back to the old display then.
+    public let debtPaymentCents: Int?
     public let chargesCents: Int
     public let availableCents: Int
     public let weekLocked: Bool
@@ -444,6 +451,7 @@ public struct WeekResult: Equatable, Codable {
         case tempCents = "temp_cents"
         case overrideCents = "override_cents"
         case carriedDebtCents = "carried_debt_cents"
+        case debtPaymentCents = "debt_payment_cents"
         case chargesCents = "charges_cents"
         case availableCents = "available_cents"
         case weekLocked = "week_locked"
@@ -459,6 +467,7 @@ public struct WeekResult: Equatable, Codable {
         case tempCents = "temp_cents"
         case overrideCents = "override_cents"
         case carriedDebtCents = "carried_debt_cents"
+        case debtPaymentCents = "debt_payment_cents"
         case chargesCents = "charges_cents"
         case availableCents = "available_cents"
         case weekLocked = "week_locked"
@@ -483,6 +492,7 @@ public struct WeekResult: Equatable, Codable {
         self.tempCents = flat.tempCents
         self.overrideCents = flat.overrideCents
         self.carriedDebtCents = flat.carriedDebtCents
+        self.debtPaymentCents = flat.debtPaymentCents
         self.chargesCents = flat.chargesCents
         self.availableCents = flat.availableCents
         self.weekLocked = flat.weekLocked
@@ -494,13 +504,14 @@ public struct WeekResult: Equatable, Codable {
         weekStart: String, baseAvailableCents: Int, tempCents: Int,
         carriedDebtCents: Int, chargesCents: Int, availableCents: Int,
         weekLocked: Bool, pendingRefundExcludedCents: Int, unlinkedExcessCents: Int,
-        overrideCents: Int? = nil
+        overrideCents: Int? = nil, debtPaymentCents: Int? = nil
     ) {
         self.weekStart = weekStart
         self.baseAvailableCents = baseAvailableCents
         self.tempCents = tempCents
         self.overrideCents = overrideCents
         self.carriedDebtCents = carriedDebtCents
+        self.debtPaymentCents = debtPaymentCents
         self.chargesCents = chargesCents
         self.availableCents = availableCents
         self.weekLocked = weekLocked
@@ -520,6 +531,14 @@ public struct WeekResult: Equatable, Codable {
     /// drives B, else the legacy `temp_cents` sum. A locked week is
     /// explained by its snapshot, never re-explained from a later
     /// override, so its delta is always 0.
+    ///
+    /// Carried Debt fund (build 29): when the server reports the
+    /// week's debt payment, the sheet shows THAT as the deduction
+    /// (the base pays P toward the debt) and the debt left after it
+    /// as a trailing display row — never the old "Carried Debt"
+    /// deduction, which would no longer add up (Allowance is B − P,
+    /// not B − D). A nil payment means the old server: the old rows,
+    /// exactly as before.
     public func sheetRows(baseAllowanceCents: Int?) -> [WeekSheetRow] {
         let overrideDelta: Int
         if let override = overrideCents, let base = baseAllowanceCents, !weekLocked {
@@ -531,6 +550,9 @@ public struct WeekResult: Equatable, Codable {
         let hasTemp = tempDelta > 0
         let hasTempDecrease = tempDelta < 0
         let hasDebt = carriedDebtCents > 0
+        let debtPayment = debtPaymentCents
+        let hasDebtPayment = (debtPayment ?? 0) > 0
+        let debtRemaining = max(0, carriedDebtCents - (debtPayment ?? 0))
         var rows: [WeekSheetRow] = []
         if let base = baseAllowanceCents, hasTemp || hasTempDecrease || hasDebt {
             rows.append(WeekSheetRow(label: "Base Allowance", cents: base))
@@ -541,16 +563,34 @@ public struct WeekResult: Equatable, Codable {
         if hasTempDecrease {
             rows.append(WeekSheetRow(label: "Temporary Decrease", cents: -tempDelta, isDeduction: true))
         }
-        if hasDebt {
+        if hasDebtPayment {
+            rows.append(WeekSheetRow(label: "Debt Payment", cents: debtPayment!, isDeduction: true))
+        } else if hasDebt && debtPayment == nil {
             rows.append(WeekSheetRow(label: "Carried Debt", cents: carriedDebtCents, isDeduction: true))
         }
         rows.append(WeekSheetRow(label: "Allowance", cents: baseAvailableCents + tempCents))
         rows.append(WeekSheetRow(label: "Spent", cents: chargesCents))
         rows.append(WeekSheetRow(label: "Balance", cents: availableCents))
+        if debtPayment != nil && debtRemaining > 0 {
+            rows.append(WeekSheetRow(label: "Debt Remaining", cents: debtRemaining))
+        }
         if unlinkedExcessCents > 0 {
             rows.append(WeekSheetRow(label: "Unlinked Refunds", cents: unlinkedExcessCents))
         }
         return rows
+    }
+
+    /// The Home math line for the Carried Debt fund (build 29):
+    /// "Base $400.00 − Debt $100.00 = $300.00" — the week explaining
+    /// why it starts where it does (closes the R6 P1-1 Home-side gap:
+    /// Home used to show $0 with no reason). Nil when the server is
+    /// old (no debt payment reported) or when nothing was paid this
+    /// week (P == 0: the week keeps the full base, so there is no
+    /// math to explain) or when the stored base is unknown.
+    public func debtMathLine(baseAllowanceCents: Int?) -> String? {
+        guard let payment = debtPaymentCents, payment > 0,
+              let base = baseAllowanceCents else { return nil }
+        return "Base \(MoneyFormat.formatCents(base)) − Debt \(MoneyFormat.formatCents(payment)) = \(MoneyFormat.formatCents(baseAvailableCents))"
     }
 }
 
@@ -577,6 +617,7 @@ private struct WeekResultFlat: Decodable {
     let tempCents: Int
     let overrideCents: Int?
     let carriedDebtCents: Int
+    let debtPaymentCents: Int?
     let chargesCents: Int
     let availableCents: Int
     let weekLocked: Bool
@@ -589,6 +630,7 @@ private struct WeekResultFlat: Decodable {
         case tempCents = "temp_cents"
         case overrideCents = "override_cents"
         case carriedDebtCents = "carried_debt_cents"
+        case debtPaymentCents = "debt_payment_cents"
         case chargesCents = "charges_cents"
         case availableCents = "available_cents"
         case weekLocked = "week_locked"
@@ -604,12 +646,123 @@ private struct WeekResultFlat: Decodable {
         self.tempCents = try container.decode(Int.self, forKey: .tempCents)
         self.overrideCents = try container.decodeIfPresent(Int.self, forKey: .overrideCents)
         self.carriedDebtCents = try container.decode(Int.self, forKey: .carriedDebtCents)
+        self.debtPaymentCents = try container.decodeIfPresent(Int.self, forKey: .debtPaymentCents)
         self.chargesCents = try container.decode(Int.self, forKey: .chargesCents)
         self.availableCents = try container.decode(Int.self, forKey: .availableCents)
         self.weekLocked = try container.decodeIfPresent(Bool.self, forKey: .weekLocked) ?? false
         self.pendingRefundExcludedCents = try container.decodeIfPresent(Int.self, forKey: .pendingRefundExcludedCents) ?? 0
         self.unlinkedExcessCents = try container.decodeIfPresent(Int.self, forKey: .unlinkedExcessCents) ?? 0
     }
+}
+
+// MARK: - Carried Debt fund (build 29, Nov 15, 2026)
+
+/// The Carried Debt repayment rule: each week a portion of the BASE
+/// allowance pays the debt down. One row per household in
+/// `debt_settings`; the server defaults a missing row to 25% of the
+/// base. `percentBp` is basis points (2500 = 25%). The rule applies
+/// to the base only — temporary increases never feed it — and a rule
+/// change is future-only: a closed week keeps its stored payment.
+public struct DebtRule: Equatable, Codable {
+    public enum Mode: String, Equatable, Codable {
+        case percent, fixed, off
+    }
+    public let mode: Mode
+    public let percentBp: Int
+    public let fixedCents: Int
+
+    public init(mode: Mode, percentBp: Int = 2500, fixedCents: Int = 0) {
+        self.mode = mode
+        self.percentBp = percentBp
+        self.fixedCents = fixedCents
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case mode
+        case percentBp = "percent_bp"
+        case fixedCents = "fixed_cents"
+    }
+
+    /// The default rule: 25% of the base allowance per week.
+    public static let `default` = DebtRule(mode: .percent, percentBp: 2500)
+
+    /// The rule's payment from the base, in cents — the same rule the
+    /// server applies (engine.mjs debtRulePayment): percent floors,
+    /// fixed is the amount, off is zero. Uncapped: the engine caps
+    /// the effective payment at the debt and at the base.
+    public func rulePaymentCents(baseCents: Int) -> Int {
+        switch mode {
+        case .percent: return baseCents * percentBp / 10000
+        case .fixed: return fixedCents
+        case .off: return 0
+        }
+    }
+
+    /// The effective weekly debt payment: min(D, rule amount, B) —
+    /// the same cap the engine applies (engine.mjs computeWeek).
+    /// Pure, so the Funds preview and the tests share the server's
+    /// rule exactly.
+    public static func paymentCents(baseCents: Int, debtCents: Int, rule: DebtRule) -> Int {
+        min(debtCents, rule.rulePaymentCents(baseCents: baseCents), baseCents)
+    }
+}
+
+/// One row of the `debt_payments` ledger: a payment toward the
+/// carried debt. `source` is `extra_fund` (Pay from Extra Fund),
+/// `surplus` (week-close: unspent allowance paid the debt first) or
+/// `clear` (the balance erased by hand). `weekStart` is the Sunday of
+/// the week the payment is attributed to.
+public struct DebtPayment: Equatable, Codable, Identifiable {
+    public let id: UUID
+    public let householdId: UUID
+    public let amountCents: Int
+    public let source: String
+    public let weekStart: String
+    public let note: String
+    public let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case householdId = "household_id"
+        case amountCents = "amount_cents"
+        case source
+        case weekStart = "week_start"
+        case note
+        case createdAt = "created_at"
+    }
+}
+
+/// A fund on the Funds page. The Debt fund is built on this model so
+/// the custom-funds work (owner direction, Nov 15, 2026: 1 spending
+/// fund, 1 debt fund tied to it, plus user-added charity/savings-style
+/// funds, renameable, household or personal) does not have to undo a
+/// hard-coded "exactly three funds". The three built-in funds are
+/// static descriptors; the Extra Fund and Charity sections keep their
+/// existing code for now — the full migration to descriptors is the
+/// custom-funds build's job.
+public struct FundDescriptor: Equatable, Hashable {
+    public enum Kind: String, Equatable, Hashable {
+        case spending, debt, charity, savings
+    }
+    public enum Scope: String, Equatable, Hashable {
+        case household, personal
+    }
+    public let id: String
+    public let name: String
+    public let kind: Kind
+    public let scope: Scope
+
+    public init(id: String, name: String, kind: Kind, scope: Scope = .household) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.scope = scope
+    }
+
+    public static let spending = FundDescriptor(id: "spending", name: "Weekly Budget", kind: .spending)
+    public static let debt = FundDescriptor(id: "debt", name: "Carried Debt", kind: .debt)
+    public static let charity = FundDescriptor(id: "charity", name: "Charity", kind: .charity)
+    public static let extraFund = FundDescriptor(id: "extra-fund", name: "Extra Fund", kind: .savings)
 }
 
 /// The week-close response (`supabase/functions/week-close/index.ts:993-1000`).
@@ -703,6 +856,9 @@ public struct WeekClose: Equatable, Codable {
     public let baseAllowanceCents: Int?
     public let tempIncreaseCents: Int?
     public let lateAdjustmentCents: Int?
+    /// The debt payment that was in effect when this week closed
+    /// (Carried Debt fund, build 29). Nil for a pre-migration close.
+    public let debtPaymentCents: Int?
     public let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -715,6 +871,7 @@ public struct WeekClose: Equatable, Codable {
         case baseAllowanceCents = "base_allowance_cents"
         case tempIncreaseCents = "temp_increase_cents"
         case lateAdjustmentCents = "late_adjustment_cents"
+        case debtPaymentCents = "debt_payment_cents"
         case createdAt = "created_at"
     }
 }

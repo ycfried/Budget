@@ -870,6 +870,19 @@ public struct PostgrestClient {
         ))
     }
 
+    /// The household's Carried Debt repayment rule (build 29).
+    /// Nil when no row exists (a new household before the backfill)
+    /// — the caller defaults to the 25% rule. Throws when the table
+    /// does not exist yet (the SQL not applied); the caller treats
+    /// that as the old server and shows the old debt display.
+    public func debtSettings(householdId: UUID) async throws -> DebtRule? {
+        try await fetchOne(PostgrestQuery(
+            table: "debt_settings",
+            columns: "household_id,mode,percent_bp,fixed_cents",
+            filters: [.householdId(householdId)]
+        ))
+    }
+
     /// Verified charity gift amounts, whole history (live.js:1705-1707).
     /// The caller sums these for Given; pending gifts are read via
     /// `transactionsPage` and filtered client-side.
@@ -949,6 +962,20 @@ public struct PostgrestClient {
         try await fetch(PostgrestQuery(
             table: "held_refunds",
             columns: "id,household_id,refund_transaction_id,held_cents,status,resolution_note,created_at",
+            filters: [.householdId(householdId)],
+            orders: [PostgrestOrder("created_at", ascending: false)],
+            limit: 100
+        ))
+    }
+
+    /// Debt payments (Carried Debt fund, build 29): every payment
+    /// toward the carried debt, newest first, max 100. The Debt
+    /// section's activity list shows these (all sources) alongside
+    /// the audit rows for rule changes.
+    public func debtPayments(householdId: UUID) async throws -> [DebtPayment] {
+        try await fetch(PostgrestQuery(
+            table: "debt_payments",
+            columns: "id,household_id,amount_cents,source,week_start,note,created_at",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("created_at", ascending: false)],
             limit: 100
