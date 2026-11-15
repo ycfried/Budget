@@ -44,7 +44,11 @@ final class SmokeTests: XCTestCase {
         // Success is GREEN on native (owner, Nov 11, 2026: "green like
         // all success messages") — the old brand-blue rule for success
         // toasts is superseded for native only; the web app keeps blue.
-        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), DesignTokens.successHex)
+        // Build 30 (F): the green is the Posted badge treatment
+        // (light #dcfce7 bg, dark #166534 text), not the solid
+        // #22c55e that was decided Nov 14.
+        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), DesignTokens.toastSuccessBackgroundHex)
+        XCTAssertEqual(ToastStyle.textHex(for: .success), DesignTokens.toastSuccessTextHex)
         XCTAssertEqual(ToastStyle.backgroundHex(for: .error), DesignTokens.errorBackgroundHex)
         XCTAssertEqual(ToastStyle.textHex(for: .error), DesignTokens.errorTextHex)
         XCTAssertEqual(ToastStyle.placement, "bottom")

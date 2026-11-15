@@ -11,6 +11,16 @@ import OnBudgetKit
 //
 // Every link / merge / release is an admin tap; nothing here links
 // anything by itself. Server refusals surface verbatim.
+//
+// Build 30: the confirms are NOT one set of confirmationDialogs
+// on this root — on iPad those floated at the top of the page
+// instead of next to the button tapped (owner report, Nov 15,
+// 2026). Same Purchase / Separate are CENTERED alerts (the owner
+// wants the Same Purchase explainer centred on the screen, Nov 15,
+// 2026); Release / Reopen / Link / Dismiss are confirmationDialogs
+// attached to their own buttons. Each card/row owns its confirm
+// state, so no two dialogs ever share one view — the same stacked-
+// `.alert` pitfall as the Settings screens (build 30, item A).
 
 public struct ReviewView: View {
     @ObservedObject public var viewModel: FundsViewModel
@@ -427,17 +437,22 @@ public struct DuplicatePairCard: View {
                 DuplicateSide(label: "Possible Duplicate", transaction: duplicate, fallback: "Possible duplicate: transaction not found")
             }
             HStack(spacing: 12) {
-                // Build 30: each confirm is a confirmationDialog on
-                // ITS button, not on the Review root — on iPad the
-                // root-anchored dialogs floated at the top of the
-                // page instead of next to the button tapped.
+                // Build 30: the two confirms are CENTERED alerts,
+                // not popovers — the owner (Nov 15, 2026) wants the
+                // Same Purchase explainer centred on the screen,
+                // not anchored next to its button. (The other four
+                // Review confirms stay button-anchored
+                // confirmationDialogs.) A .alert is centred on
+                // iPhone and iPad alike; a confirmationDialog on
+                // iPad is a popover, which is how the old
+                // root-anchored dialogs ended up floating at the
+                // top of the page.
                 FundsSmallPrimaryButton("Same Purchase", isBusy: isBusy) {
                     showSamePurchaseConfirm = true
                 }
-                .confirmationDialog(
+                .alert(
                     "Same Purchase",
-                    isPresented: $showSamePurchaseConfirm,
-                    titleVisibility: .visible
+                    isPresented: $showSamePurchaseConfirm
                 ) {
                     Button(TitleCase.apply(to: "Same Purchase")) { onSamePurchase(rememberAlias) }
                     Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
@@ -447,10 +462,9 @@ public struct DuplicatePairCard: View {
                 FundsSmallTertiaryButton("Separate", isBusy: isBusy) {
                     showSeparateConfirm = true
                 }
-                .confirmationDialog(
+                .alert(
                     "Separate Purchases",
-                    isPresented: $showSeparateConfirm,
-                    titleVisibility: .visible
+                    isPresented: $showSeparateConfirm
                 ) {
                     Button(TitleCase.apply(to: "Separate")) { onSeparate() }
                     Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
