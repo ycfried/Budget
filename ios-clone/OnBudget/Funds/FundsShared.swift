@@ -460,10 +460,9 @@ public struct FundsExpandableCard<Expanded: View>: View {
 //
 // Bottom only, floating clear of the tab bar, auto-dismiss 4s, tap
 // dismisses sooner, tab switch clears it. Info: brand blue
-// #2f6bff, white text. Success: green #22c55e
-// (`DesignTokens.success`), white text (owner rule, Nov 11, 2026 —
-// native only; the web app stays blue for success. Owner, Nov 14,
-// 2026: the green went lighter, #16a34a → #22c55e). Error: soft
+// #2f6bff, white text. Success: the Posted badge treatment — light
+// green bg #dcfce7, dark green text #166534 (owner, Nov 15, 2026;
+// the solid #22c55e bar was the wrong green). Error: soft
 // red bg/text/border.
 // NOTE (integration, Nov 9, 2026): the auto-dismiss sleeps on the
 // one shared value `ToastStyle.autoDismissSeconds` (4.0, spec §2.3);

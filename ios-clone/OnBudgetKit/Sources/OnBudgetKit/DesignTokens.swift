@@ -51,6 +51,16 @@ public enum DesignTokens {
 
     public static let successHex = "#22c55e"
 
+    // Toast success colours (owner, Nov 15, 2026): the success toast
+    // used to be a solid #22c55e bar with white text — the owner
+    // said it was the wrong green and pointed at the Posted status
+    // badge. Success toasts now use the badge treatment: light green
+    // background #dcfce7 with dark green text #166534 (the same pair
+    // TransactionIconView uses for the Posted pill). The money-in
+    // green (successHex) does NOT move — only the toast does.
+    public static let toastSuccessBackgroundHex = "#dcfce7"
+    public static let toastSuccessTextHex = "#166534"
+
     // MARK: - Stat-card deep colours (owner direction, Nov 12 2026,
     // corrected ~2:02 PM the same day: the Home/Funds Charity +
     // Extra Fund cards are bigger and more colourful, but NOT a
