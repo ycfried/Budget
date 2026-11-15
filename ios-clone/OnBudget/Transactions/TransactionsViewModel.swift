@@ -96,6 +96,57 @@ public final class TransactionsViewModel {
     private static let sortKey = "hb-tx-sort"
     private static let monthKey = "hb-tx-month"
     private static let cardKey = "hb-tx-card"
+    /// Last-4s added from the Card / Account dropdown (owner,
+    /// Nov 15, 2026) — per household, survives restarts.
+    private static let customCardsKeyPrefix = "hb-custom-cards-"
+
+    /// Last-4s the user typed in from the Card / Account dropdown.
+    /// The dropdown's options are the union of the linked accounts
+    /// (`institutionBySuffix`), the suffixes in the loaded page, and
+    /// these custom additions.
+    public private(set) var customCardSuffixes: [String] = []
+
+    /// Default card for a new manual row: the first connected
+    /// account (lowest mask, stable order), Cash ("0000") when none
+    /// is known yet.
+    public var defaultCardSuffix: String {
+        institutionBySuffix.keys.sorted().first ?? "0000"
+    }
+
+    /// The Card / Account dropdown options (suffix, label): Cash
+    /// first, then every known suffix — linked accounts labelled
+    /// with their institution ("Chase ••1005"), the rest bare
+    /// ("••1005").
+    public var cardAccountOptions: [(suffix: String, label: String)] {
+        var suffixes = Set(institutionBySuffix.keys)
+        suffixes.formUnion(cardsPresent)
+        suffixes.formUnion(customCardSuffixes)
+        suffixes.insert("0000")
+        return suffixes.sorted().map { suffix in
+            if suffix == "0000" { return (suffix, "Cash") }
+            if let name = institutionBySuffix[suffix] { return (suffix, "\(name) ••\(suffix)") }
+            return (suffix, "••\(suffix)")
+        }
+    }
+
+    /// Add a hand-typed last-4 from the dropdown: exactly 4 digits,
+    /// deduped, persisted per household. Returns false when the value
+    /// is not 4 digits (the form shows its own error then).
+    @discardableResult
+    public func addCustomCardSuffix(_ suffix: String) -> Bool {
+        guard suffix.count == 4, suffix.allSatisfy(\.isNumber) else { return false }
+        if customCardSuffixes.contains(suffix) { return true }
+        customCardSuffixes.append(suffix)
+        UserDefaults.standard.set(
+            customCardSuffixes,
+            forKey: Self.customCardsKey(for: householdId)
+        )
+        return true
+    }
+
+    private static func customCardsKey(for householdId: UUID) -> String {
+        customCardsKeyPrefix + householdId.uuidString
+    }
 
     public init(
         client: SupabaseClient,
@@ -117,6 +168,9 @@ public final class TransactionsViewModel {
         if let savedCard = UserDefaults.standard.string(forKey: Self.cardKey) {
             filters.card = savedCard
         }
+        customCardSuffixes = UserDefaults.standard.stringArray(
+            forKey: Self.customCardsKey(for: householdId)
+        ) ?? []
     }
 
     // MARK: - Derived list

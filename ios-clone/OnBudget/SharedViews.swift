@@ -121,6 +121,10 @@ public struct DimOnPressButtonStyle: ButtonStyle {
 /// duplicate and the `BackButtonStyle()` toolbar call sites all
 /// route through here now; the rendering itself lives in
 /// `BackButtonStyle`, used by this view and nothing else.
+/// Exception (owner, Nov 15, 2026): the Choose Dates calendar
+/// toolbar uses a bare chevron instead — its "← Back" text
+/// truncated to "←…" under the centred title + Clear, and a
+/// truncated button must never ship.
 public struct BackButton: View {
     public let action: () -> Void
     public init(action: @escaping () -> Void) { self.action = action }
@@ -187,6 +191,108 @@ public struct SheetHeader: View {
                 .lineLimit(1)
             Spacer()
             Color.clear.frame(width: 44, height: 44)
+        }
+    }
+}
+
+// MARK: - Shared form fields (owner, Nov 15, 2026 — build 28)
+
+/// Dollar amount field: a fixed "$" prefix inside the field —
+/// display only, never part of the typed text, so parsing is
+/// unchanged. Same white field + 1pt #e5e7eb border + cornerRadius
+/// 10 treatment as the Filters Min/Max fields (owner, Nov 13,
+/// 2026) and the other text fields. One implementation for every
+/// $ entry field cross-app (Add Purchase / Add Donation, Record
+/// Income, Add / Use / Ask Fund, Approve, Temporary Allowance,
+/// base allowance, Extra Fund request).
+public struct DollarTextField: View {
+    @Binding public var text: String
+    public let placeholder: String
+    public let maxWidth: CGFloat?
+    public let minHeight: CGFloat
+
+    public init(text: Binding<String>, placeholder: String = "0.00", maxWidth: CGFloat? = 220, minHeight: CGFloat = 44) {
+        self._text = text
+        self.placeholder = placeholder
+        self.maxWidth = maxWidth
+        self.minHeight = minHeight
+    }
+
+    public var body: some View {
+        HStack(spacing: 2) {
+            Text("$")
+                .font(.system(size: 17))
+                .foregroundStyle(DesignTokens.ink)
+            TextField(placeholder, text: $text)
+                .keyboardType(.decimalPad)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: maxWidth, minHeight: minHeight, alignment: .leading)
+        .background(.white)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// Date field (owner, Nov 15, 2026): the compact DatePicker
+/// renders as a grey pill — off brand under the Nov 11 no-pills
+/// rule, extended to date controls. This looks like the other
+/// fields — squarish white field with border, ink text — and opens
+/// a graphical calendar picker in a sheet. One implementation for
+/// every date entry (Add Purchase / Add Donation / Record Income).
+/// The Filters date-range calendar is already custom and stays
+/// as it is.
+public struct DateField: View {
+    @Binding public var date: Date
+    @State private var showingPicker = false
+
+    public init(date: Binding<Date>) {
+        self._date = date
+    }
+
+    private static let displayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter
+    }()
+
+    public var body: some View {
+        Button { showingPicker = true } label: {
+            HStack {
+                Text(Self.displayFormatter.string(from: date))
+                    .font(.system(size: 17))
+                    .foregroundStyle(DesignTokens.ink)
+                Spacer()
+                Image(systemName: "calendar")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Date, \(Self.displayFormatter.string(from: date))")
+        .sheet(isPresented: $showingPicker) {
+            VStack(alignment: .leading, spacing: 16) {
+                SheetHeader(title: "Choose Date", onClose: { showingPicker = false })
+                DatePicker("", selection: $date, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+                Button("Done") { showingPicker = false }
+                    .buttonStyle(PrimaryButtonStyle())
+            }
+            .padding()
+            .presentationSizing(.fitted)
+            .presentationBackground(.white)
         }
     }
 }

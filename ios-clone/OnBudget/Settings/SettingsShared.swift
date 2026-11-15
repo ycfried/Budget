@@ -358,6 +358,7 @@ struct HistoryDateFilterCard: View {
             // month grid is flexible (7 columns), so it uses the
             // extra width.
             .presentationDetents([.medium, .large])
+            .presentationBackground(.white)
             .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         }
     }

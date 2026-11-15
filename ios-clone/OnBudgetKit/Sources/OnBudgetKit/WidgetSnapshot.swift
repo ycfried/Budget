@@ -11,7 +11,8 @@
 //   - charityRemainingCents = CharitySummary.remainingCents
 //     (committed − given) — what's left to give.
 //   - spentCents = WeekResult.chargesCents — what's been spent this
-//     week (large widget only; optional, build 26).
+//     week (large / extra-large widget donut, build 28; the spent
+//     line it fed in build 26 is gone).
 // The app writes the snapshot at the end of HomeViewModel.refresh()
 // when BOTH loads succeeded, and deletes it on sign-out, so the widget
 // can never show another user's numbers. A failed load writes nothing:
@@ -32,7 +33,7 @@ import Foundation
 
 /// The two widget numbers, as the Home screen shows them.
 /// No session, household identifiers, merchant, or bank fields.
-/// `spentCents` (build 26) feeds the large widget's spent line;
+/// `spentCents` (build 26) feeds the large / extra-large donut;
 /// optional so snapshots written before build 26 still decode.
 public struct WidgetSnapshot: Codable, Equatable, Sendable {
     public let weekStart: String
@@ -60,6 +61,19 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
     /// staleness.
     public func isStale(at date: Date) -> Bool {
         date.timeIntervalSince(computedAt) > 3600 || computedAt > date
+    }
+
+    /// Spent share of the weekly allowance for the donut (build 28):
+    /// spent / (spent + available), clamped 0...1; nil when the
+    /// snapshot carries no spent figure (pre-build-26 snapshots).
+    /// Over budget (available < 0) reads as fully spent (1.0) — the
+    /// ring is full red. A zero allowance with no spending reads 0.
+    public var spentFraction: Double? {
+        guard let spent = spentCents else { return nil }
+        if availableCents < 0 { return 1.0 }
+        let allowance = spent + availableCents
+        guard allowance > 0 else { return 0.0 }
+        return min(1.0, max(0.0, Double(spent) / Double(allowance)))
     }
 }
 

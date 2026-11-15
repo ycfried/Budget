@@ -57,6 +57,7 @@
 		B70909090909090909090909 /* AddTransactionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70909090909090909090909 /* AddTransactionView.swift */; };
 		B70A0A0A0A0A0A0A0A0A0A0A /* TrashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70A0A0A0A0A0A0A0A0A0A0A /* TrashView.swift */; };
 		W20101010101010101010101 /* OnBudgetWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = W10101010101010101010101 /* OnBudgetWidget.swift */; };
+		W20404040404040404040404 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */; };
 		W20202020202020202020202 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = W50101010101010101010101 /* OnBudgetKit */; };
 		W20303030303030303030303 /* OnBudgetWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = W10202020202020202020202 /* OnBudgetWidget.appex */; };
 /* End PBXBuildFile section */
@@ -387,6 +388,7 @@
 			buildPhases = (
 				W60202020202020202020202 /* Sources */,
 				W60303030303030303030303 /* Frameworks */,
+				W60505050505050505050505 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -454,6 +456,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				B3B3B3B3B3B3B3B3B3B3B3B3 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		W60505050505050505050505 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				W20404040404040404040404 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

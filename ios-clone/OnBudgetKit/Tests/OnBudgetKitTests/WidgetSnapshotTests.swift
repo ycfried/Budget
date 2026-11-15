@@ -100,4 +100,36 @@ final class WidgetSnapshotTests: XCTestCase {
         WidgetSnapshotStore.write(fresh, to: testDefaults)
         XCTAssertEqual(WidgetSnapshotStore.read(from: testDefaults), fresh)
     }
+
+    // MARK: - Donut (build 28)
+
+    private func snapshot(spent: Int?, available: Int) -> WidgetSnapshot {
+        WidgetSnapshot(
+            weekStart: "2026-11-08",
+            availableCents: available,
+            charityRemainingCents: 0,
+            spentCents: spent,
+            computedAt: Date()
+        )
+    }
+
+    func testSpentFractionIsSpentOverAllowance() {
+        XCTAssertEqual(snapshot(spent: 10000, available: 30000).spentFraction, 0.25)
+    }
+
+    func testSpentFractionIsNilWithoutSpentFigure() {
+        XCTAssertNil(snapshot(spent: nil, available: 30000).spentFraction)
+    }
+
+    func testSpentFractionOverBudgetIsFull() {
+        XCTAssertEqual(snapshot(spent: 50000, available: -10000).spentFraction, 1.0)
+    }
+
+    func testSpentFractionZeroSpentIsZero() {
+        XCTAssertEqual(snapshot(spent: 0, available: 40000).spentFraction, 0.0)
+    }
+
+    func testSpentFractionZeroAllowanceIsZero() {
+        XCTAssertEqual(snapshot(spent: 0, available: 0).spentFraction, 0.0)
+    }
 }

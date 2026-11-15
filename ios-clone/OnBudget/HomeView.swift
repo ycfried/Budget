@@ -23,7 +23,7 @@
 // buttons on Home (actions belong on the Funds page). Both cards
 // are BIGGER and outlined (owner, Nov 12, 2026, corrected ~2:02 PM
 // the same day — NOT a wash: Charity green #16a34a outline, Extra
-// Fund brand-blue #2f6bff outline, both 2px, white inside like the
+// Fund amber #d97706 outline, both 2px, white inside like the
 // hero, shared StatCardTheme with the Funds page); the Weekly
 // Budget hero above them keeps its thicker 3px outline.
 // "Last synced" is shown once, quietly, under Automatic Sync in
@@ -319,6 +319,12 @@ public struct HomeView: View {
     @State private var showWeeklySheet = false
     @State private var showNotLoadedAlert = false
     @State private var notLoadedAlertTitle = "Weekly Budget"
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// iPad (regular size class): the Home figures scale up
+    /// (owner, Nov 15, 2026 — the hero and stat-card amounts +
+    /// icons were still too small on iPad). iPhone is untouched.
+    private var isIPad: Bool { horizontalSizeClass == .regular }
 
     public init(appState: AppViewModel, householdId: UUID) {
         self.appState = appState
@@ -379,6 +385,7 @@ public struct HomeView: View {
                     // (compact) the width stays full-screen and only
                     // the height hugs the content.
                     .presentationSizing(.fitted)
+                    .presentationBackground(.white)
             }
         }
         .alert(notLoadedAlertTitle, isPresented: $showNotLoadedAlert) {
@@ -529,7 +536,9 @@ public struct HomeView: View {
     /// block here.)
     private var heroSkeleton: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SkeletonBlock(width: 260, height: 56, cornerRadius: 8)
+            // Figure block sized to the loaded figure — 340×72 on
+            // iPad for the bigger 58pt figure, 260×56 on iPhone.
+            SkeletonBlock(width: isIPad ? 340 : 260, height: isIPad ? 72 : 56, cornerRadius: 8)
             SkeletonBlock(height: 8, cornerRadius: 4)
             SkeletonBlock(width: 180, height: 14)
         }
@@ -645,13 +654,15 @@ public struct HomeView: View {
     /// Hero big figure: dollars large, cents smaller
     /// (formatCentsHtml, live.js:3651-3659). Negative → the muted
     /// hero red (owner, Nov 14, 2026: the bright error red was
-    /// too stark — "too much colors").
+    /// too stark — "too much colors"). iPad (owner, Nov 15, 2026):
+    /// materially bigger — 58pt dollars / 32pt cents, where iPhone
+    /// stays 44pt / 24pt.
     private func heroFigure(cents: Int) -> some View {
         let parts = MoneyFormat.parts(cents: cents)
         return (Text(parts.sign + "$" + parts.dollars)
-            .font(.system(size: 44, weight: .heavy))
+            .font(.system(size: isIPad ? 58 : 44, weight: .heavy))
             + Text("." + parts.cents)
-            .font(.system(size: 24, weight: .heavy)))
+            .font(.system(size: isIPad ? 32 : 24, weight: .heavy)))
             .foregroundStyle(cents < 0 ? DesignTokens.heroOverBudget : DesignTokens.ink)
     }
 
@@ -778,6 +789,10 @@ public struct HomeView: View {
     /// smaller (14pt padding, 16pt title, 24pt amount, 32pt icon
     /// chip) and the detail rows do NOT render inside the card —
     /// they drop into a full-width statDetailCard below the row.
+    /// iPad (owner, Nov 15, 2026): the compact face scales back
+    /// up — 18pt padding, 18pt title, 32pt amount, 44pt icon chip
+    /// — because the half-width cards are ~340pt wide there and the
+    /// iPhone sizes read too small. Skeletons grow to match.
     private func statCard(
         title: String,
         face: String,
@@ -790,20 +805,33 @@ public struct HomeView: View {
         compact: Bool = false,
         onTap: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+        // One sizing table: compact (Home, iPhone) / compact on
+        // iPad / full (unused on Home today, kept for the shared
+        // theme). The skeleton blocks below use the same numbers,
+        // so loading and loaded share one shape.
+        let chip: CGFloat = compact ? (isIPad ? 44 : 32) : 36
+        let iconSize: CGFloat = compact ? (isIPad ? 20 : 16) : 18
+        let titleSize: CGFloat = compact ? (isIPad ? 18 : 16) : 18
+        let amountSize: CGFloat = compact ? (isIPad ? 32 : 24) : 28
+        let amountSkeletonWidth: CGFloat = compact ? (isIPad ? 150 : 110) : 190
+        let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 40 : 30) : 36
+        let statusSize: CGFloat = compact ? (isIPad ? 13 : 12) : 13
+        let chevronSize: CGFloat = compact ? (isIPad ? 15 : 14) : 15
+        let pad: CGFloat = compact ? (isIPad ? 18 : 14) : 20
+        return VStack(alignment: .leading, spacing: compact ? 8 : 10) {
             HStack(spacing: compact ? 8 : 12) {
                 if isLoading {
-                    SkeletonBlock(width: compact ? 32 : 36, height: compact ? 32 : 36, cornerRadius: 10)
+                    SkeletonBlock(width: chip, height: chip, cornerRadius: 10)
                 } else {
                     Image(systemName: theme.iconName)
-                        .font(.system(size: compact ? 16 : 18, weight: .semibold))
+                        .font(.system(size: iconSize, weight: .semibold))
                         // Owner, Nov 14, 2026 ("too much colors"):
                         // no colour inside the card — the icon is
                         // ink and its chip ring is plain light
                         // grey. ONLY the 2px card outline keeps
                         // colour.
                         .foregroundStyle(DesignTokens.ink)
-                        .frame(width: compact ? 32 : 36, height: compact ? 32 : 36)
+                        .frame(width: chip, height: chip)
                         .background(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(
@@ -812,7 +840,7 @@ public struct HomeView: View {
                         )
                 }
                 Text(title)
-                    .font(.system(size: compact ? 16 : 18, weight: .bold))
+                    .font(.system(size: titleSize, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
                     .lineLimit(1)
                 Spacer()
@@ -825,12 +853,12 @@ public struct HomeView: View {
                 // loaded), so a phantom line here would shrink the
                 // card — a layout jump — the moment the amount
                 // arrives.
-                SkeletonBlock(width: compact ? 110 : 190, height: compact ? 30 : 36, cornerRadius: 8)
+                SkeletonBlock(width: amountSkeletonWidth, height: amountSkeletonHeight, cornerRadius: 8)
             } else if statusIsError {
-                SkeletonBlock(width: compact ? 110 : 190, height: compact ? 30 : 36, cornerRadius: 8, animated: false)
+                SkeletonBlock(width: amountSkeletonWidth, height: amountSkeletonHeight, cornerRadius: 8, animated: false)
             } else {
                 Text(face)
-                    .font(.system(size: compact ? 24 : 28, weight: .heavy))
+                    .font(.system(size: amountSize, weight: .heavy))
                     // Owner, Nov 14, 2026 ("too much colors"): the
                     // amount is ink, never the deep theme colour —
                     // even when negative. ONLY the card outline
@@ -841,13 +869,13 @@ public struct HomeView: View {
             }
             if let statusText {
                 Text(statusText)
-                    .font(.system(size: compact ? 12 : 13, weight: statusIsError ? .semibold : .regular))
+                    .font(.system(size: statusSize, weight: statusIsError ? .semibold : .regular))
                     .foregroundStyle(statusIsError ? DesignTokens.errorText : Color(hex: "#6b7280"))
             }
             HStack {
                 Spacer()
                 Image(systemName: "chevron.down")
-                    .font(.system(size: compact ? 14 : 15, weight: .bold))
+                    .font(.system(size: chevronSize, weight: .bold))
                     // Owner, Nov 14, 2026 ("too much colors"): the
                     // chevron is muted grey, not brand blue.
                     .foregroundStyle(DesignTokens.muted)
@@ -855,7 +883,7 @@ public struct HomeView: View {
                     .animation(ExpandAnimation.animation, value: isExpanded)
             }
         }
-        .padding(compact ? 14 : 20)
+        .padding(pad)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white)
         .overlay(

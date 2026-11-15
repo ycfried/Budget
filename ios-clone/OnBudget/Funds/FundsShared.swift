@@ -197,7 +197,7 @@ public struct FundsQuietButton: View {
 /// A white card, radius 20, hairline shadow (spec §1.2). `background`
 /// / `padding` are overridable for the outlined stat cards (owner,
 /// Nov 12, 2026, corrected ~2:02 PM — Charity green / Extra Fund
-/// brand-blue 2px outline, white inside, never a wash); `outline`
+/// amber 2px outline, white inside, never a wash); `outline`
 /// is nil for the plain white cards, which stay outline-free.
 /// Everything else stays the default white / 16pt.
 public struct FundsCard<Content: View>: View {
@@ -290,7 +290,7 @@ public struct FundsBreakdownRow: View {
 /// spec §6.2/§9.1). Chevron `⌄` bottom-right, muted grey, flips to `⌃`.
 /// Bigger and outlined when a `theme` is given (owner, Nov 12, 2026,
 /// corrected ~2:02 PM — the same StatCardTheme as Home: Charity green
-/// #16a34a outline, Extra Fund brand-blue #2f6bff outline, both 2px,
+/// #16a34a outline, Extra Fund amber #d97706 outline, both 2px,
 /// white inside, never a wash; 20pt padding, 18pt title, 28pt amount,
 /// icon chip), so Home and Funds match. Loading shows the same bigger
 /// shape with a muted grey outline and muted grey shimmer, with NO
@@ -533,6 +533,10 @@ public struct FundsMuted: View {
 }
 
 /// Compact money field, capped at 220px (spec §1.2 card-sizing rule).
+/// The "$" is a fixed prefix inside the field (owner, Nov 15, 2026)
+/// — display only, never part of the typed text, so parsing is
+/// unchanged. Shared `DollarTextField`, same as every $ entry field
+/// cross-app.
 public struct FundsMoneyField: View {
     public let label: String
     @Binding public var text: String
@@ -547,10 +551,7 @@ public struct FundsMoneyField: View {
             Text(TitleCase.apply(to: label))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
-            TextField("$0.00", text: $text)
-                .keyboardType(.decimalPad)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 220)
+            DollarTextField(text: $text)
         }
     }
 }

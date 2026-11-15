@@ -1,7 +1,17 @@
 import SwiftUI
 import OnBudgetKit
 
-// MARK: - Funds & Charity Rules (admin edits, everyone reads)
+// MARK: - Per-fund rules & info (owner, Nov 15, 2026)
+//
+// The old shared "Funds & Charity Rules" card is split by fund —
+// the page reads as two fund sections now, and each fund's own
+// pieces sit under its card:
+// - Extra Fund: the shortfall line ("Nothing owed back right
+//   now." / "Owed back now: $X.") lives under the Extra Fund card.
+// - Charity: the Default Charity Rate editor + How It Works live
+//   under the Charity card.
+// Nothing was removed: the rate editor, the shortfall line, and
+// the three How It Works blocks are the same content, just re-homed.
 //
 // Owner rules, Nov 3, 2026 (R12 + R13, HANDOFF.md):
 // - Charity: 10% of money actually received + manually entered
@@ -18,28 +28,29 @@ import OnBudgetKit
 //   previews that split before saving; the server split is
 //   authoritative).
 //
-// The rate editor lives HERE and nowhere else: the income form
-// shows the current default rate but does not edit it, so the two
-// can never disagree. Rate changes go through the live
-// `set_charity_default_rate` RPC (admin-only, server-audited;
+// The rate editor lives in CharityRateSection and nowhere else:
+// the income form shows the current default rate but does not edit
+// it, so the two can never disagree. Rate changes go through the
+// live `set_charity_default_rate` RPC (admin-only, server-audited;
 // `r13-charity.sql:126-149`); the view model toasts success in
 // green (kind `.success`, owner rule Nov 11) and alerts on failure
 // with a sanitised message, never raw server text.
 //
-// Visibility decision: the section is visible to every role,
+// Visibility decision: the rate section is visible to every role,
 // read-only for regular members ("Only the admin can change the
 // default rate."). Members already see the fund and charity
 // balances; hiding the rules that produce those numbers would
 // leave them unexplained.
 
-public struct FundsRulesSection: View {
+/// Default Charity Rate, under the Charity card: the rate row plus
+/// the admin editor (field + Save sized to fit, Reset a small
+/// quiet link) and the preview line. No heading — the "Default
+/// Charity Rate" row says what it is, and the Charity card above
+/// is the section header.
+public struct CharityRateSection: View {
     @ObservedObject public var viewModel: FundsViewModel
     @State private var rateText = ""
     @State private var rateError: String?
-    /// "How it works" starts closed (owner, Nov 12, 2026): the
-    /// rules used to fill the card with paragraphs; now the card
-    /// is one compact rate row and the reading lives behind this.
-    @State private var showHowItWorks = false
 
     public init(viewModel: FundsViewModel) {
         self.viewModel = viewModel
@@ -58,7 +69,6 @@ public struct FundsRulesSection: View {
     public var body: some View {
         FundsCard {
             VStack(alignment: .leading, spacing: 12) {
-                FundsHeading("Funds & Charity Rules")
                 if viewModel.charitySettings == nil {
                     if let error = viewModel.charityError {
                         FundsErrorBox(error)
@@ -75,26 +85,10 @@ public struct FundsRulesSection: View {
                     } else {
                         FundsMuted("Only the admin can change the default rate.")
                     }
-                    if let summary = viewModel.fundSummary {
-                        FundsMuted(
-                            summary.shortfallCents > 0
-                                ? "Owed back now: \(MoneyFormat.formatCents(summary.shortfallCents))."
-                                : "Nothing owed back right now."
-                        )
-                    } else if viewModel.fundError != nil {
-                        // The shortfall line stays visible under the
-                        // rate row even when the fund fails to load,
-                        // with an error note in its place (F-P2-9).
-                        FundsMuted("Owed back: could not load fund balances — try again.")
-                    } else {
-                        FundsMuted("Owed back: loading…")
-                    }
                 }
-                Divider()
-                howItWorksRow
             }
         }
-        .accessibilityIdentifier("funds.rules")
+        .accessibilityIdentifier("funds.charityRate")
         .onAppear {
             if rateText.isEmpty { rateText = MoneyFormat.formatRateBp(defaultRateBp) }
         }
@@ -141,6 +135,79 @@ public struct FundsRulesSection: View {
         }
     }
 
+    private func saveRate() {
+        guard let bp = MoneyFormat.parseRatePercent(rateText) else {
+            rateError = "Enter a rate between 0 and 100."
+            return
+        }
+        guard bp != defaultRateBp else {
+            rateError = "That is already the default rate."
+            return
+        }
+        rateError = nil
+        Task { await viewModel.setDefaultRate(basisPoints: bp) }
+    }
+}
+
+/// The Extra Fund shortfall line, directly under the Extra Fund
+/// card: "Nothing owed back right now." or "Owed back now: $X."
+/// A bare muted line, not a card — the horizontal padding lines
+/// it up with the card's interior text. It reads the fund summary
+/// on its own: unlike the old shared rules card, it no longer
+/// waits for the charity settings to load first (its own loading
+/// and error lines cover those states).
+public struct FundShortfallLine: View {
+    @ObservedObject public var viewModel: FundsViewModel
+
+    public init(viewModel: FundsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
+        Group {
+            if let summary = viewModel.fundSummary {
+                FundsMuted(
+                    summary.shortfallCents > 0
+                        ? "Owed back now: \(MoneyFormat.formatCents(summary.shortfallCents))."
+                        : "Nothing owed back right now."
+                )
+            } else if viewModel.fundError != nil {
+                // The shortfall line stays visible even when the fund
+                // fails to load, with an error note in its place
+                // (F-P2-9).
+                FundsMuted("Owed back: could not load fund balances — try again.")
+            } else {
+                FundsMuted("Owed back: loading…")
+            }
+        }
+        .padding(.horizontal, 16)
+        .accessibilityIdentifier("funds.shortfall")
+    }
+}
+
+/// How It Works, under the Charity card: the three rule blocks
+/// behind one expandable row that starts closed (owner, Nov 12,
+/// 2026).
+public struct HowItWorksSection: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    /// "How it works" starts closed (owner, Nov 12, 2026): the
+    /// rules used to fill the card with paragraphs; now the card
+    /// is one compact rate row and the reading lives behind this.
+    @State private var showHowItWorks = false
+
+    public init(viewModel: FundsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    private var defaultRateBp: Int { viewModel.charitySettings?.defaultRateBp ?? 1000 }
+
+    public var body: some View {
+        FundsCard {
+            howItWorksRow
+        }
+        .accessibilityIdentifier("funds.howItWorks")
+    }
+
     /// The three rule paragraphs, behind one expandable row that
     /// starts closed (owner, Nov 12, 2026).
     private var howItWorksRow: some View {
@@ -158,7 +225,9 @@ public struct FundsRulesSection: View {
                         .foregroundStyle(DesignTokens.primary)
                         .rotationEffect(.degrees(showHowItWorks ? 180 : 0))
                 }
-                .padding(.vertical, 12)
+                // No extra vertical padding: the card's own padding
+                // is the air here (it was 12pt inside the old shared
+                // rules card, under a divider).
             }
             .buttonStyle(.plain)
             .animation(ExpandAnimation.animation, value: showHowItWorks)
@@ -177,6 +246,7 @@ public struct FundsRulesSection: View {
                         text: "Money added covers what the fund owes back first, then the rest increases spendable Available. The Add Money form shows that split before you save."
                     )
                 }
+                .padding(.top, 12)
                 .padding(.bottom, 12)
                 .transition(ExpandAnimation.transition)
             }
@@ -191,18 +261,5 @@ public struct FundsRulesSection: View {
                 .font(.system(size: 14))
                 .foregroundStyle(Color(hex: "#6b7280"))
         }
-    }
-
-    private func saveRate() {
-        guard let bp = MoneyFormat.parseRatePercent(rateText) else {
-            rateError = "Enter a rate between 0 and 100."
-            return
-        }
-        guard bp != defaultRateBp else {
-            rateError = "That is already the default rate."
-            return
-        }
-        rateError = nil
-        Task { await viewModel.setDefaultRate(basisPoints: bp) }
     }
 }

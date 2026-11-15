@@ -142,12 +142,110 @@ private struct FormField<Content: View>: View {
     }
 }
 
+/// Card / Account dropdown (owner, Nov 15, 2026): replaces the
+/// free-text Card Suffix field. Options are the household's
+/// connected accounts (institution + ••mask, from the view model),
+/// Cash ("0000"), and an "Add last 4…" entry that types 4 digits
+/// in context and adds them to the list (persisted per household
+/// in the view model). The saved value stays just the 4 digits,
+/// as before. `selection` is nil until the user picks — nil reads
+/// as `defaultSuffix`, so the first connected account (purchase)
+/// or Cash (donation) is used when the picker is never touched.
+/// Full-width, so a long institution name never truncates.
+private struct CardAccountField: View {
+    @Bindable var viewModel: TransactionsViewModel
+    @Binding var selection: String?
+    let defaultSuffix: String
+
+    private static let addCustomTag = "__add_custom__"
+    @State private var showingAddCustom = false
+    @State private var customText = ""
+    @State private var customError: String?
+
+    private var effectiveSuffix: String { selection ?? defaultSuffix }
+
+    private var selectionBinding: Binding<String> {
+        Binding(
+            get: { effectiveSuffix },
+            set: { new in
+                if new == Self.addCustomTag {
+                    customText = ""
+                    customError = nil
+                    showingAddCustom = true
+                } else {
+                    selection = new
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Card / Account", selection: selectionBinding) {
+                ForEach(viewModel.cardAccountOptions, id: \.suffix) { option in
+                    Text(option.label).tag(option.suffix)
+                }
+                Text("Add last 4…").tag(Self.addCustomTag)
+            }
+            .pickerStyle(.menu)
+            .tint(DesignTokens.ink)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 12)
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            if showingAddCustom {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Last 4 digits", text: $customText)
+                        .keyboardType(.numberPad)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .onChange(of: customText) { _, new in
+                            let digits = new.filter(\.isNumber)
+                            customText = String(digits.prefix(4))
+                        }
+                    if let customError {
+                        SoftErrorBox(customError)
+                    }
+                    HStack(spacing: 12) {
+                        Button("Add") {
+                            let digits = customText.filter(\.isNumber)
+                            guard digits.count == 4 else {
+                                customError = "Enter exactly 4 digits."
+                                return
+                            }
+                            viewModel.addCustomCardSuffix(digits)
+                            selection = digits
+                            showingAddCustom = false
+                        }
+                        .buttonStyle(SmallPrimaryButtonStyle())
+                        Button("Cancel") { showingAddCustom = false }
+                            .buttonStyle(SmallTertiaryButtonStyle())
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Purchase — Add a Transaction by Hand (§8.1)
 
 /// Heading "Add a Transaction by Hand". Note: "Counts as pending
 /// until the bank confirms it."
 /// Fields: Merchant (max 80, required), Amount ($) (required),
-/// Date (required), Card suffix (exactly 4 digits, required).
+/// Date (required), Card / Account (connected account, Cash, or an
+/// added last 4; required — defaults to the first connected
+/// account).
 /// Buttons: Add Transaction (primary) + Cancel (tertiary).
 /// Footnote: "Never enter a full card number."
 /// Validation, in order, each naming the field: amount must be a
@@ -168,7 +266,9 @@ public struct AddPurchaseForm: View {
     @State private var merchant: String = ""
     @State private var amountText: String = ""
     @State private var date: Date = Date()
-    @State private var cardSuffix: String = ""
+    /// Nil until the user picks — nil reads as the first connected
+    /// account (`viewModel.defaultCardSuffix`).
+    @State private var cardSuffix: String? = nil
     @State private var errorMessage: String?
     @State private var showingDuplicateConfirm: Bool = false
     @State private var duplicateLabel: String = ""
@@ -205,38 +305,19 @@ public struct AddPurchaseForm: View {
                 }
 
                 FormField("Amount ($)") {
-                    TextField("0.00", text: $amountText)
-                        .keyboardType(.decimalPad)
-                        .padding(.horizontal, 12)
-                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
-                        .background(.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    DollarTextField(text: $amountText)
                 }
 
                 FormField("Date") {
-                    DatePicker("", selection: $date, displayedComponents: .date)
-                        .labelsHidden()
+                    DateField(date: $date)
                 }
 
-                FormField("Card Suffix") {
-                    TextField("1005", text: $cardSuffix)
-                        .keyboardType(.numberPad)
-                        .padding(.horizontal, 12)
-                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
-                        .background(.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .onChange(of: cardSuffix) { _, new in
-                    let digits = new.filter(\.isNumber)
-                    cardSuffix = String(digits.prefix(4))
+                FormField("Card / Account") {
+                    CardAccountField(
+                        viewModel: viewModel,
+                        selection: $cardSuffix,
+                        defaultSuffix: viewModel.defaultCardSuffix
+                    )
                 }
 
                 if let errorMessage {
@@ -278,7 +359,7 @@ public struct AddPurchaseForm: View {
     private func clearAndClose() {
         merchant = ""
         amountText = ""
-        cardSuffix = ""
+        cardSuffix = nil
         errorMessage = nil
         onDone()
     }
@@ -289,8 +370,11 @@ public struct AddPurchaseForm: View {
             errorMessage = "Amount: enter a positive amount."
             return nil
         }
-        guard cardSuffix.count == 4, cardSuffix.allSatisfy(\.isNumber) else {
-            errorMessage = "Card Suffix: enter exactly 4 digits. Never enter a full card number."
+        // The dropdown only ever yields a 4-digit suffix, so this
+        // guard is defense-in-depth; it never fires from the picker.
+        let suffix = cardSuffix ?? viewModel.defaultCardSuffix
+        guard suffix.count == 4, suffix.allSatisfy(\.isNumber) else {
+            errorMessage = "Card / Account: enter exactly 4 digits. Never enter a full card number."
             return nil
         }
         let trimmedMerchant = merchant.trimmingCharacters(in: .whitespaces)
@@ -309,7 +393,7 @@ public struct AddPurchaseForm: View {
             errorMessage = "Date can't be in the future."
             return nil
         }
-        return (trimmedMerchant, cents, dateStr, cardSuffix)
+        return (trimmedMerchant, cents, dateStr, suffix)
     }
 
     private func save(force: Bool = false) {
@@ -341,10 +425,8 @@ public struct AddPurchaseForm: View {
 /// Heading "Give to Charity". Note: "Counts as given at once, never
 /// as weekly spending. Admin only." Admin-only (server-enforced).
 /// Fields: Organization (max 80, required), Amount ($), Date,
-/// Card suffix (4 digits, placeholder "only if paid by card" —
-/// optional), Note (Optional) (max 120). Submit: Record Gift.
-/// Footnote: "Leave the card suffix blank for a cash gift. Never
-/// enter a full card number."
+/// Card / Account (connected account, Cash, or an added last 4 —
+/// defaults to Cash), Note (Optional) (max 120). Submit: Record Gift.
 /// Validation: positive amount; organization required; date required;
 /// date ≥ 2026-11-01 ("Date: gifts before November 2026 are outside
 /// the charity period."); date must not be in the future (native-only
@@ -361,7 +443,8 @@ public struct AddDonationForm: View {
     @State private var organization: String = ""
     @State private var amountText: String = ""
     @State private var date: Date = Date()
-    @State private var cardSuffix: String = ""
+    /// Nil until the user picks — nil reads as Cash ("0000").
+    @State private var cardSuffix: String? = nil
     @State private var note: String = ""
     @State private var errorMessage: String?
     @State private var showingDuplicateConfirm: Bool = false
@@ -399,38 +482,19 @@ public struct AddDonationForm: View {
                 }
 
                 FormField("Amount ($)") {
-                    TextField("0.00", text: $amountText)
-                        .keyboardType(.decimalPad)
-                        .padding(.horizontal, 12)
-                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
-                        .background(.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    DollarTextField(text: $amountText)
                 }
 
                 FormField("Date") {
-                    DatePicker("", selection: $date, displayedComponents: .date)
-                        .labelsHidden()
+                    DateField(date: $date)
                 }
 
-                FormField("Card Suffix") {
-                    TextField("only if paid by card", text: $cardSuffix)
-                        .keyboardType(.numberPad)
-                        .padding(.horizontal, 12)
-                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
-                        .background(.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .onChange(of: cardSuffix) { _, new in
-                    let digits = new.filter(\.isNumber)
-                    cardSuffix = String(digits.prefix(4))
+                FormField("Card / Account") {
+                    CardAccountField(
+                        viewModel: viewModel,
+                        selection: $cardSuffix,
+                        defaultSuffix: "0000"
+                    )
                 }
 
                 FormField("Note (Optional)") {
@@ -460,10 +524,6 @@ public struct AddDonationForm: View {
                     Button("Cancel") { clearAndClose() }
                         .buttonStyle(TertiaryButtonStyle())
                 }
-
-                Text("Leave the card suffix blank for a cash gift. Never enter a full card number.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color(hex: "#6b7280"))
             }
         }
         .scrollIndicators(.hidden)
@@ -487,7 +547,7 @@ public struct AddDonationForm: View {
     private func clearAndClose() {
         organization = ""
         amountText = ""
-        cardSuffix = ""
+        cardSuffix = nil
         note = ""
         errorMessage = nil
         onDone()
@@ -514,11 +574,14 @@ public struct AddDonationForm: View {
             errorMessage = "Date can't be in the future."
             return nil
         }
-        if !cardSuffix.isEmpty, !(cardSuffix.count == 4 && cardSuffix.allSatisfy(\.isNumber)) {
-            errorMessage = "Card Suffix: enter exactly 4 digits. Never enter a full card number."
+        // The dropdown only ever yields a 4-digit suffix ("0000"
+        // for Cash), so this guard is defense-in-depth.
+        let suffix = cardSuffix ?? "0000"
+        if !(suffix.count == 4 && suffix.allSatisfy(\.isNumber)) {
+            errorMessage = "Card / Account: enter exactly 4 digits. Never enter a full card number."
             return nil
         }
-        return (trimmedOrg, cents, dateStr, cardSuffix, note.trimmingCharacters(in: .whitespaces))
+        return (trimmedOrg, cents, dateStr, suffix, note.trimmingCharacters(in: .whitespaces))
     }
 
     private func save(force: Bool = false) {

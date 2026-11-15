@@ -3,9 +3,12 @@ import XCTest
 
 /// The one shared kind→colour amount rule (owner, Nov 12, 2026):
 /// money-in kinds (income / refund / cashback) render green with a
-/// "+" prefix; charity renders blue; regular kinds render ink; red
-/// is never a transaction amount. The KIND, not the stored sign,
-/// decides — a negative charge still renders ink with its minus.
+/// "+" prefix; charity renders blue; regular kinds render ink. The
+/// KIND, not the stored sign, decides — a negative charge still
+/// renders ink with its minus. Exception (owner, Nov 15, 2026):
+/// transfers render in the muted deep red, by kind not direction —
+/// the Nov 12 "red is never a transaction amount" rule is
+/// superseded for transfers only.
 final class InflowAmountTests: XCTestCase {
     private func txn(kind: TransactionKind, amount: Int) -> Transaction {
         Transaction(id: UUID(), householdId: UUID(), date: "2026-11-11", merchant: "CHECK DEPOSIT",
@@ -63,6 +66,24 @@ final class InflowAmountTests: XCTestCase {
     func testAmountTextZeroIsPlainForEveryKind() {
         XCTAssertEqual(MoneyFormat.amountText(cents: 0, isMoneyIn: true), "$0.00")
         XCTAssertEqual(MoneyFormat.amountText(cents: 0, isMoneyIn: false), "$0.00")
+    }
+
+    func testFixedKindAmountColours() {
+        // Owner, Nov 15, 2026: a transfer amount renders in the
+        // muted deep red (the hero over-budget red), by kind not
+        // direction — so a transfer never reads as a regular
+        // purchase. The app's amountDisplay(for:) reads this
+        // mapping, so this pins the rule.
+        XCTAssertEqual(TransactionKind.transfer.fixedAmountColorHex, DesignTokens.heroOverBudgetHex)
+        XCTAssertEqual(DesignTokens.heroOverBudgetHex, "#991b1b")
+        // Charity keeps its blue.
+        XCTAssertEqual(TransactionKind.charity.fixedAmountColorHex, DesignTokens.primaryHex)
+        // Every other kind has no fixed colour: money-in kinds go
+        // green, regular kinds go ink.
+        for kind in [TransactionKind.income, .refund, .cashback, .charge, .payment, .fundCharge] {
+            XCTAssertNil(kind.fixedAmountColorHex, "\(kind.rawValue) has no fixed amount colour")
+        }
+        XCTAssertNil(TransactionKind.other("mystery").fixedAmountColorHex)
     }
 
     func testNetTotalText() {

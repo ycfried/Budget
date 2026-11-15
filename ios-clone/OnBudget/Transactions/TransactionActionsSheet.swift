@@ -326,10 +326,7 @@ public struct TransactionActionsSheet: View {
                 Text("Amount ($)")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
-                TextField("0.00", text: $extraFundAmount)
-                    .keyboardType(.decimalPad)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 220)
+                DollarTextField(text: $extraFundAmount)
             }
             if let extraFundError {
                 SoftErrorBox(extraFundError)

@@ -50,10 +50,16 @@ public enum TransactionFormatting {
     //   here, at the display layer only.
     // - Charity gifts (kind charity): BLUE (`DesignTokens.primary`,
     //   #2f6bff). Charity rows are outflows, but the kind decides.
-    // - Regular kinds (charge / payment / transfer / fund charge /
-    //   other): BLACK ink, stored sign kept ("$X" / "-$X").
-    // - RED is never a transaction amount: it stays reserved for
-    //   the over-budget hero figure, negative balances, and errors.
+    // - Transfers (kind transfer): MUTED RED
+    //   (`DesignTokens.heroOverBudget`, #991b1b) — by kind, not
+    //   direction: a negative transfer shows "-$X", a positive one
+    //   "+$X". The colour marks the kind, so a transfer never
+    //   reads as a regular purchase (owner, Nov 15, 2026). This
+    //   SUPERSEDES the Nov 12 "red is never a transaction amount"
+    //   rule FOR TRANSFERS ONLY — red stays reserved elsewhere
+    //   (over-budget hero figure, negative balances, errors).
+    // - Regular kinds (charge / payment / fund charge / other):
+    //   BLACK ink, stored sign kept ("$X" / "-$X").
     // - Zero is "$0.00" in ink for every kind.
     // Display only: the model cents, the week math, and the totals
     // are untouched — only the text and colour of a rendered row
@@ -71,8 +77,19 @@ public enum TransactionFormatting {
                 DesignTokens.success
             )
         }
-        if transaction.kind == .charity {
-            return (formatCents(transaction.amountCents), DesignTokens.primary)
+        if let fixedHex = transaction.kind.fixedAmountColorHex {
+            // Charity (blue) and transfer (muted red) render in
+            // their kind colour, by kind not direction — the colour
+            // comes from the kit mapping, so a kit test pins it.
+            // A positive transfer shows "+$X" (the sign still
+            // marks the direction); charity keeps the stored sign.
+            let text: String
+            if transaction.kind == .transfer, transaction.amountCents > 0 {
+                text = "+" + formatCents(transaction.amountCents)
+            } else {
+                text = formatCents(transaction.amountCents)
+            }
+            return (text, Color(hex: fixedHex))
         }
         return (formatCents(transaction.amountCents), DesignTokens.ink)
     }
@@ -319,9 +336,16 @@ public enum TransactionFormatting {
 // MARK: - Client-side list filtering (live.js:786-830)
 
 /// The Transactions status filter values (live.js §7.3).
+/// Spending + Extra Fund are native-only (owner, Nov 15, 2026):
+/// Spending is the regular weekly-budget spending (kind `charge`);
+/// Extra Fund is the rows the fund covered (kind `fund_charge` —
+/// "Extra Fund spending", AuditFormatting.swift:218 — a charge
+/// covered by the fund stops counting toward weekly spending).
 public enum TransactionStatusFilter: String, Equatable, CaseIterable {
     case all
     case charity
+    case spending
+    case extraFund
     case pending
     case posted
     case refunds
@@ -330,6 +354,8 @@ public enum TransactionStatusFilter: String, Equatable, CaseIterable {
         switch self {
         case .all: return "All transactions"
         case .charity: return "Charity gifts"
+        case .spending: return "Spending"
+        case .extraFund: return "Extra Fund"
         case .pending: return "Pending"
         case .posted: return "Posted"
         case .refunds: return "Refunds"
@@ -346,14 +372,14 @@ public enum TransactionSort: String, Equatable, CaseIterable {
     case amountAsc = "amount-asc"
 
     /// Menu label for the single Sort picker (one control, all four
-    /// options): "Newest first" / "Oldest first" / "Amount: high to
-    /// low" / "Amount: low to high".
+    /// options): short labels (owner, Nov 15, 2026) — "Newest" /
+    /// "Oldest" / "High to low" / "Low to high".
     public var label: String {
         switch self {
-        case .dateDesc: return "Newest first"
-        case .dateAsc: return "Oldest first"
-        case .amountDesc: return "Amount: high to low"
-        case .amountAsc: return "Amount: low to high"
+        case .dateDesc: return "Newest"
+        case .dateAsc: return "Oldest"
+        case .amountDesc: return "High to low"
+        case .amountAsc: return "Low to high"
         }
     }
 
@@ -572,6 +598,8 @@ public struct TransactionFilters: Equatable {
             case .posted: guard tx.state == .verified else { return false }
             case .refunds: guard tx.kind == .refund else { return false }
             case .charity: guard tx.kind == .charity else { return false }
+            case .spending: guard tx.kind == .charge else { return false }
+            case .extraFund: guard tx.kind == .fundCharge else { return false }
             case .all: break
             }
             if month != "all", !tx.date.hasPrefix(month) { return false }
