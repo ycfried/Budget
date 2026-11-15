@@ -50,10 +50,16 @@ public enum TransactionFormatting {
     //   here, at the display layer only.
     // - Charity gifts (kind charity): BLUE (`DesignTokens.primary`,
     //   #2f6bff). Charity rows are outflows, but the kind decides.
-    // - Regular kinds (charge / payment / transfer / fund charge /
-    //   other): BLACK ink, stored sign kept ("$X" / "-$X").
-    // - RED is never a transaction amount: it stays reserved for
-    //   the over-budget hero figure, negative balances, and errors.
+    // - Transfers (kind transfer): MUTED RED
+    //   (`DesignTokens.heroOverBudget`, #991b1b) — by kind, not
+    //   direction: a negative transfer shows "-$X", a positive one
+    //   "+$X". The colour marks the kind, so a transfer never
+    //   reads as a regular purchase (owner, Nov 15, 2026). This
+    //   SUPERSEDES the Nov 12 "red is never a transaction amount"
+    //   rule FOR TRANSFERS ONLY — red stays reserved elsewhere
+    //   (over-budget hero figure, negative balances, errors).
+    // - Regular kinds (charge / payment / fund charge / other):
+    //   BLACK ink, stored sign kept ("$X" / "-$X").
     // - Zero is "$0.00" in ink for every kind.
     // Display only: the model cents, the week math, and the totals
     // are untouched — only the text and colour of a rendered row
@@ -71,8 +77,19 @@ public enum TransactionFormatting {
                 DesignTokens.success
             )
         }
-        if transaction.kind == .charity {
-            return (formatCents(transaction.amountCents), DesignTokens.primary)
+        if let fixedHex = transaction.kind.fixedAmountColorHex {
+            // Charity (blue) and transfer (muted red) render in
+            // their kind colour, by kind not direction — the colour
+            // comes from the kit mapping, so a kit test pins it.
+            // A positive transfer shows "+$X" (the sign still
+            // marks the direction); charity keeps the stored sign.
+            let text: String
+            if transaction.kind == .transfer, transaction.amountCents > 0 {
+                text = "+" + formatCents(transaction.amountCents)
+            } else {
+                text = formatCents(transaction.amountCents)
+            }
+            return (text, Color(hex: fixedHex))
         }
         return (formatCents(transaction.amountCents), DesignTokens.ink)
     }

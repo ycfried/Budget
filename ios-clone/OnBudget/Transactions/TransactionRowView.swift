@@ -118,8 +118,15 @@ public struct TransactionRowView: View {
                 }
                 // The whole card is the tap target — the padding is
                 // inside the button, so taps on the card edge toggle
-                // too; the chevron is only a visual hint.
-                .padding(14)
+                // too; the chevron is only a visual hint. When
+                // expanded the detail follows directly underneath,
+                // so the header keeps only a small bottom gap
+                // (owner, Nov 15, 2026): the full 14pt plus the
+                // detail's own top padding left a dead blank line
+                // between the header and the Date row.
+                .padding(.top, 14)
+                .padding(.horizontal, 14)
+                .padding(.bottom, isExpanded ? 4 : 14)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -134,7 +141,7 @@ public struct TransactionRowView: View {
                     hasActions: hasActions,
                     onActions: onActions
                 )
-                .padding(.top, 12)
+                .padding(.top, 2)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 14)
                 .transition(ExpandAnimation.transition)

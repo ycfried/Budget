@@ -290,7 +290,7 @@ public struct FundsBreakdownRow: View {
 /// spec §6.2/§9.1). Chevron `⌄` bottom-right, muted grey, flips to `⌃`.
 /// Bigger and outlined when a `theme` is given (owner, Nov 12, 2026,
 /// corrected ~2:02 PM — the same StatCardTheme as Home: Charity green
-/// #16a34a outline, Extra Fund brand-blue #2f6bff outline, both 2px,
+/// #16a34a outline, Extra Fund amber #d97706 outline, both 2px,
 /// white inside, never a wash; 20pt padding, 18pt title, 28pt amount,
 /// icon chip), so Home and Funds match. Loading shows the same bigger
 /// shape with a muted grey outline and muted grey shimmer, with NO

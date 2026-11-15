@@ -91,6 +91,24 @@ public enum TransactionKind: Equatable, Codable, Sendable {
 
     /// True for the money-in kinds: income, refund, cashback.
     public var isMoneyIn: Bool { Self.moneyInKindNames.contains(rawValue) }
+
+    /// Fixed amount colour for kinds that always render in their
+    /// kind colour, regardless of direction — the colour marks the
+    /// kind (owner, Nov 12, 2026: charity blue; Nov 15, 2026:
+    /// transfer muted red). Nil for kinds whose colour depends on
+    /// something else: money-in kinds render green, regular kinds
+    /// render ink, and a zero amount renders ink for every kind.
+    /// Single source of truth for the fixed kind colours — the
+    /// app's `amountDisplay(for:)` reads it, so a kit test pins
+    /// the rule (the app test target has no host app and cannot
+    /// unit-test the app-level helper directly).
+    public var fixedAmountColorHex: String? {
+        switch self {
+        case .charity: return DesignTokens.primaryHex
+        case .transfer: return DesignTokens.heroOverBudgetHex
+        default: return nil
+        }
+    }
 }
 
 /// `provisional` (pending) / `verified` (posted) / `excluded` (trash) /

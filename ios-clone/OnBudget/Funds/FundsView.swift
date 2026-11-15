@@ -6,7 +6,10 @@ import OnBudgetKit
 // Top: two balance panels side by side in the web app — stacked here,
 // same face as the Home stat cards (Title + Amount only, chevron `⌄`
 // bottom-right) with the same in-place expansion, except the Funds
-// expansions INCLUDE action buttons (Home does not). At most one card
+// expansions INCLUDE action buttons (Home does not). Grouped by fund
+// (owner, Nov 15, 2026): each card heads its own section — Extra Fund
+// (shortfall line, activity, Past Savings Records), Charity (rate,
+// How It Works, activity) — then standalone Review. At most one card
 // expanded at a time.
 //
 // Forms: one at a time; the sections below the cards hide while a
@@ -35,7 +38,8 @@ public enum FundsForm: Equatable {
 }
 
 public enum FundsMoreSection: Equatable {
-    case activity
+    case fundActivity
+    case charityActivity
     case review
     case savings
 }
@@ -81,12 +85,26 @@ public struct FundsView: View {
                         TemporaryAllowanceView(viewModel: viewModel)
                     }
                 } else {
-                    fundCard
-                    charityCard
-                    rulesCard
-                    reviewSection
-                    activitySection
-                    savingsSection
+                    // Two fund sections (owner, Nov 15, 2026): each
+                    // fund's card is its section header, and its own
+                    // pieces follow directly under it — no shared
+                    // pile below. Review stays standalone after them
+                    // (household-wide, not fund-specific).
+                    VStack(spacing: 24) {
+                        VStack(spacing: 12) {
+                            fundCard
+                            fundShortfallLine
+                            fundActivitySection
+                            savingsSection
+                        }
+                        VStack(spacing: 12) {
+                            charityCard
+                            charityRateSection
+                            howItWorksSection
+                            charityActivitySection
+                        }
+                        reviewSection
+                    }
                 }
             }
             .padding()
@@ -307,10 +325,22 @@ public struct FundsView: View {
         return "Charity, \(MoneyFormat.formatCents(summary.remainingCents)) remaining, \(MoneyFormat.formatCents(summary.givenCents)) given, \(MoneyFormat.formatCents(summary.committedCents)) committed, show breakdown"
     }
 
-    // MARK: - Funds & Charity Rules (admin edits, everyone reads)
+    // MARK: - Per-fund sections (owner, Nov 15, 2026)
+    //
+    // The old shared "Funds & Charity Rules" card is split by
+    // fund: the shortfall line lives under the Extra Fund card,
+    // the rate editor + How It Works under the Charity card.
 
-    private var rulesCard: some View {
-        FundsRulesSection(viewModel: viewModel)
+    private var fundShortfallLine: some View {
+        FundShortfallLine(viewModel: viewModel)
+    }
+
+    private var charityRateSection: some View {
+        CharityRateSection(viewModel: viewModel)
+    }
+
+    private var howItWorksSection: some View {
+        HowItWorksSection(viewModel: viewModel)
     }
 
     /// Settings Budget → Temporary Allowance: open the form here
@@ -333,10 +363,13 @@ public struct FundsView: View {
     //
     // The old "More" card is gone (owner, Nov 12, 2026 — it was
     // unclear what it was for). Each section is now its own card
-    // under its own plain name: Review FIRST — it's work needing
-    // attention — then Fund Activity, then Past Savings Records.
-    // Same expand-in-place row as the old More card; the sections
-    // hide while a form is open (the else branch above).
+    // under its own plain name, grouped under its fund (owner,
+    // Nov 15, 2026): Extra Fund Activity + Past Savings Records
+    // under Extra Fund, Charity Activity under Charity. Review
+    // stays standalone after the two fund sections — it's work
+    // needing attention, household-wide. Same expand-in-place row
+    // as the old More card; the sections hide while a form is open
+    // (the else branch above).
 
     private var reviewSection: some View {
         fundsSection(
@@ -348,24 +381,30 @@ public struct FundsView: View {
         }
     }
 
-    private var activitySection: some View {
+    private var fundActivitySection: some View {
         fundsSection(
-            title: "Fund Activity",
-            section: .activity,
+            title: "Extra Fund Activity",
+            section: .fundActivity,
             isAdminOnly: true
         ) {
-            VStack(alignment: .leading, spacing: 16) {
-                FundTopupsHistory(viewModel: viewModel)
-                Divider()
-                CharityIncomeHistory(
-                    viewModel: viewModel,
-                    correcting: $correctingIncome,
-                    openIncomeForm: Binding(
-                        get: { openForm == .income },
-                        set: { if $0 { openForm = .income } }
-                    )
+            FundTopupsHistory(viewModel: viewModel)
+        }
+    }
+
+    private var charityActivitySection: some View {
+        fundsSection(
+            title: "Charity Activity",
+            section: .charityActivity,
+            isAdminOnly: true
+        ) {
+            CharityIncomeHistory(
+                viewModel: viewModel,
+                correcting: $correctingIncome,
+                openIncomeForm: Binding(
+                    get: { openForm == .income },
+                    set: { if $0 { openForm = .income } }
                 )
-            }
+            )
         }
     }
 
