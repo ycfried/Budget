@@ -41,6 +41,8 @@ public enum AppTab: String, CaseIterable {
 public enum ExpandedCard: Equatable {
     case charity
     case fund
+    /// Carried Debt (build 29) — a third fund card on the Funds page.
+    case debt
 }
 
 /// The outcome of a Face ID unlock attempt from the auth screen.

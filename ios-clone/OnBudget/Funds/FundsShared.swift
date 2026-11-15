@@ -339,16 +339,29 @@ public struct FundsExpandableCard<Expanded: View>: View {
     }
 
     public var body: some View {
-        FundsCard(
+        // The face padding (16 unthemed, 20 themed) lives INSIDE
+        // the toggle Button below, not on the card — see the note
+        // there.
+        let pad: CGFloat = theme == nil ? 16 : 20
+        return FundsCard(
             background: .white,
-            padding: theme == nil ? 16 : 20,
+            padding: 0,
             outline: theme?.outline
         ) {
             VStack(alignment: .leading, spacing: 10) {
-                // Whole-area tap target (owner rule, Nov 11 2026):
-                // the ENTIRE card face — title, amount AND the
-                // chevron row — is the toggle. The chevron is only a
-                // visual hint, never the only place that responds.
+                // Whole-area tap target (owner rule, Nov 11 2026,
+                // and the Nov 15, 2026 app-wide pass): the ENTIRE
+                // card face — title, amount AND the chevron row —
+                // is the toggle. The chevron is only a visual hint,
+                // never the only place that responds. Two things
+                // make that true, and both are load-bearing:
+                // (1) `.contentShape(Rectangle())` on the label —
+                // without it SwiftUI only hits the glyphs and the
+                // empty space between them is dead, which is how the
+                // card came to feel chevron-only; (2) the face
+                // padding lives INSIDE the Button — the card's own
+                // padding used to sit outside it, so the padding
+                // ring around the face never toggled either.
                 // The expanded content keeps its own buttons (Add
                 // Money / Spend / Request), so it is not part of the
                 // toggle — tapping an action must not collapse the
@@ -416,13 +429,25 @@ public struct FundsExpandableCard<Expanded: View>: View {
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         }
                     }
+                    // Face padding inside the Button (see the note
+                    // above): top + sides always; bottom only while
+                    // collapsed — while expanded the Divider below
+                    // is the air, and the expanded content carries
+                    // its own bottom padding.
+                    .padding(.horizontal, pad)
+                    .padding(.top, pad)
+                    .padding(.bottom, isExpanded ? 0 : pad)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(accessibilityLabel)
                 if isExpanded {
                     Divider()
+                        .padding(.horizontal, pad)
                         .transition(ExpandAnimation.transition)
                     expanded
+                        .padding(.horizontal, pad)
+                        .padding(.bottom, pad)
                         .transition(ExpandAnimation.transition)
                 }
             }

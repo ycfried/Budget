@@ -326,6 +326,11 @@ public struct AuthView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(DesignTokens.ink)
                 }
+                // Whole-row tap target (owner, Nov 15, 2026 app-wide
+                // pass): the row toggles anywhere across its width,
+                // not just on the checkbox and the words.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .accessibilityIdentifier("auth.rememberMe")
             .padding(.top, 4)

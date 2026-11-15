@@ -278,6 +278,9 @@ public struct DateField: View {
                     .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            // Whole-area tap target (owner, Nov 15, 2026 app-wide
+            // pass): the padded box responds across its full frame.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Date, \(Self.displayFormatter.string(from: date))")
@@ -625,15 +628,24 @@ public struct Card<Content: View>: View {
 public enum StatCardTheme {
     case charity
     case fund
+    /// Carried Debt (build 29): the outline is the muted deep red
+    /// #991b1b (`DesignTokens.heroOverBudget`) — distinct from
+    /// Charity green / Extra Fund amber, and debt is a negative
+    /// balance, so red reads correctly. Like the other two cards the
+    /// amount and icon stay ink and the chevron muted grey; ONLY the
+    /// outline keeps colour (owner, Nov 14, 2026 — "too much colors").
+    case debt
 
     /// Coloured outline of the card, loaded or loading: green
     /// #16a34a for Charity (its own token — NOT the success green,
     /// which went lighter Nov 14, 2026), amber #d97706 for Extra
-    /// Fund. White inside — never a wash.
+    /// Fund, muted deep red #991b1b for Carried Debt. White inside —
+    /// never a wash.
     public var outline: Color {
         switch self {
         case .charity: return DesignTokens.charity
         case .fund: return DesignTokens.fund
+        case .debt: return DesignTokens.heroOverBudget
         }
     }
 
@@ -664,6 +676,7 @@ public enum StatCardTheme {
         switch self {
         case .charity: return "gift.fill"
         case .fund: return "banknote.fill"
+        case .debt: return "minus.circle.fill"
         }
     }
 }

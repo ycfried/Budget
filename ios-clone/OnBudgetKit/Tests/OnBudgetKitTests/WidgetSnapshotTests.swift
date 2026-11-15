@@ -132,4 +132,20 @@ final class WidgetSnapshotTests: XCTestCase {
     func testSpentFractionZeroAllowanceIsZero() {
         XCTAssertEqual(snapshot(spent: 0, available: 0).spentFraction, 0.0)
     }
+
+    func testPlaceholderSnapshotSpentFractionIsSeventyPercent() {
+        // The placeholder entry the widget shows before any timeline
+        // arrives (OnBudgetWidget.Provider.placeholder): available
+        // 17307, charity 4200, spent 40349 — the donut reads 70%.
+        // Pins the sample data the owner saw on his iPad, so a
+        // placeholder change is a deliberate edit, not drift.
+        let placeholder = WidgetSnapshot(
+            weekStart: "2026-11-08",
+            availableCents: 17307,
+            charityRemainingCents: 4200,
+            spentCents: 40349,
+            computedAt: Date()
+        )
+        XCTAssertEqual(placeholder.spentFraction ?? -1, 40349.0 / 57656.0, accuracy: 0.001)
+    }
 }

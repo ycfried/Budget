@@ -693,3 +693,59 @@ extension RPCClient {
         ])
     }
 }
+
+// MARK: - Carried Debt fund (build 29, Nov 15, 2026)
+
+extension RPCClient {
+    /// `set_debt_repayment_rule(p_household_id, p_mode, p_percent_bp,
+    /// p_fixed_cents)` (`debt-fund.sql` §5). Admin only. The mode is
+    /// `percent` (p_percent_bp 0–10000), `fixed` (p_fixed_cents >= 0)
+    /// or `off` (both ignored). Future-only: it applies to the
+    /// current open week and future weeks; closed weeks keep their
+    /// stored payment. Server-audited, same as
+    /// `set_charity_default_rate`.
+    public func setDebtRepaymentRule(pHouseholdId: UUID, rule: DebtRule) async throws {
+        try await callVoid(name: "set_debt_repayment_rule", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_mode": rule.mode.rawValue,
+            "p_percent_bp": rule.percentBp,
+            "p_fixed_cents": rule.fixedCents,
+        ])
+    }
+
+    /// `pay_debt_from_fund(p_household_id, p_amount_cents, p_note,
+    /// p_override_reason)` (`debt-fund.sql` §6). Admin only. Moves
+    /// money from the Extra Fund to pay the debt down, through
+    /// `allocate_fund` — the same balance check and typed-override
+    /// rule as Spend from Fund, so a short fund refuses
+    /// "insufficient fund" unless an override reason is given (the
+    /// caller surfaces that as `.insufficientFund`, like
+    /// `allocateFund`). Refused when the amount exceeds the
+    /// remaining debt — never silently partial. Returns the remaining
+    /// debt in cents.
+    public func payDebtFromFund(
+        pHouseholdId: UUID,
+        pAmountCents: Int,
+        pNote: String,
+        pOverrideReason: String?
+    ) async throws -> Int {
+        var params: [String: Any] = [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_amount_cents": pAmountCents,
+            "p_note": pNote,
+        ]
+        params["p_override_reason"] = pOverrideReason ?? NSNull()
+        return try await callScalar(name: "pay_debt_from_fund", params: params)
+    }
+
+    /// `clear_debt(p_household_id, p_note)` (`debt-fund.sql` §7).
+    /// Admin only. Erases the balance — no money moves — and audits
+    /// it. Refused when there is no debt to clear. Returns the
+    /// cleared amount in cents.
+    public func clearDebt(pHouseholdId: UUID, pNote: String) async throws -> Int {
+        try await callScalar(name: "clear_debt", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_note": pNote,
+        ])
+    }
+}

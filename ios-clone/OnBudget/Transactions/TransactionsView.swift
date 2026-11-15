@@ -1136,6 +1136,10 @@ struct DateRangeCalendarView: View {
                     .foregroundStyle((isStart || isEnd) ? .white : DesignTokens.ink)
             }
             .frame(maxWidth: .infinity, minHeight: 44)
+            // Whole-cell tap target (owner, Nov 15, 2026 app-wide
+            // pass): an ordinary day is just a number with no
+            // background, so without this only the digits respond.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(TransactionFormatting.displayDay(TransactionFormatting.string(from: day)))\(isStart ? ", range start" : "")\(isEnd ? ", range end" : "")")

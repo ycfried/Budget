@@ -88,20 +88,29 @@ test('P2-M1: the previously-drifted symbols exist in every copy', () => {
 
 // --- P2-M2: N2 Option A residual — NO ACTION -------------------------------
 // Evidence (no code changed for this item, by the task's instruction):
-// restoration.mjs simulateWeeks(weeks, initialDebtCents) takes only an
-// entering-debt scalar — cuts posted inside the simulation horizon,
-// after the purchase week, are not applied week-by-week inside the
-// simulation. The owner picked Option A with this residual disclosed
-// (MATH_DECISIONS_N1_N2.md, "Cons: a residual gap remains"; HANDOFF.md
-// "Math fixes N1 + N2", N2: "Residual gap (brief Option B): cuts
+// restoration.mjs simulateWeeks takes an entering-debt scalar — cuts
 // posted inside the simulation horizon, after the purchase week, are
-// still not applied week-by-week inside the simulation — noted, not
-// fixed here"; test/math-fixes-n1-n2.test.mjs header: "owner-approved,
-// Option A each"). Fixing it would be Option B (pass cutsByWeek into
-// the simulation) — a math change, explicitly out of scope here.
-test('P2-M2: no-action — simulateWeeks still takes only initialDebtCents (Option A, owner-accepted)', () => {
-  assert.match(restoration, /export function simulateWeeks\(weeks, initialDebtCents\)/,
-    'the Option A signature is unchanged; Option B (cutsByWeek) was not smuggled in');
+// not applied week-by-week inside the simulation. The owner picked
+// Option A with this residual disclosed (MATH_DECISIONS_N1_N2.md,
+// "Cons: a residual gap remains"; HANDOFF.md "Math fixes N1 + N2", N2:
+// "Residual gap (brief Option B): cuts posted inside the simulation
+// horizon, after the purchase week, are still not applied week-by-week
+// inside the simulation — noted, not fixed here";
+// test/math-fixes-n1-n2.test.mjs header: "owner-approved, Option A
+// each"). Fixing it would be Option B (pass cutsByWeek into the
+// simulation) — a math change, explicitly out of scope here.
+//
+// Build 29 (Nov 15, 2026, owner-approved) added ONE optional third
+// parameter, `debtRule`, so the simulation applies the same debt
+// payment + surplus-to-debt step the walk applies at close. That is
+// NOT Option B: the rule is a per-week payment from the base, not
+// the cuts map. The guard below now pins the signature WITH the
+// rule and still forbids cutsByWeek.
+test('P2-M2: no-action — simulateWeeks takes initialDebtCents + optional debtRule, never cutsByWeek (Option A, owner-accepted)', () => {
+  assert.match(restoration, /export function simulateWeeks\(weeks, initialDebtCents, debtRule\)/,
+    'the Option A signature is unchanged apart from the build-29 optional debtRule');
+  assert.equal(restoration.includes('cutsByWeek'), false,
+    'Option B (cutsByWeek) was not smuggled in');
 });
 
 // --- P2-M3: stale fund-first flags -----------------------------------------

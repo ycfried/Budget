@@ -430,6 +430,19 @@ public struct HomeView: View {
                 .stroke(DesignTokens.primary, lineWidth: 3)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
+        .contentShape(Rectangle())
+        // Whole-card tap target (owner, Nov 15, 2026 app-wide
+        // pass): the whole hero opens the Weekly sheet, not just
+        // the figure row — the header and the empty space respond
+        // too. The sync button (and Try Again while failed) still
+        // win: a Button inside beats the parent tap gesture.
+        // Loading or failed weeks open nothing — the sheet needs a
+        // loaded week.
+        .onTapGesture {
+            if case .loaded = viewModel.week {
+                showWeeklySheet = true
+            }
+        }
         .accessibilityIdentifier("home.weeklyBudget")
         // Hero exception: outline, NO shadow (styles.css:1127).
     }
@@ -541,6 +554,12 @@ public struct HomeView: View {
             SkeletonBlock(width: isIPad ? 340 : 260, height: isIPad ? 72 : 56, cornerRadius: 8)
             SkeletonBlock(height: 8, cornerRadius: 4)
             SkeletonBlock(width: 180, height: 14)
+            // Carried Debt fund (build 29): the debt math line sits
+            // under the spent line in heroLoaded, so its skeleton
+            // block goes here — same order, so the page never jumps
+            // when the numbers arrive (audit H-P2-5). The owner's
+            // week carries debt, so his loading state shows it.
+            SkeletonBlock(width: 180, height: 14)
         }
         .accessibilityLabel("Spending, loading")
     }
@@ -612,6 +631,19 @@ public struct HomeView: View {
         }
         .font(.system(size: 14))
         .foregroundStyle(Color(hex: "#6b7280"))
+
+        // Carried Debt fund (build 29): the week explains itself —
+        // "Base $400.00 − Debt $100.00 = $300.00" — so the user
+        // always sees WHY the week starts where it does (closes the
+        // R6 P1-1 Home-side gap: Home used to show $0 with no
+        // reason). Nil on the old server or when nothing was paid
+        // this week, so the line appears exactly when it changes
+        // the number.
+        if let mathLine = result.debtMathLine(baseAllowanceCents: viewModel.allowanceCents) {
+            Text(mathLine)
+                .font(.system(size: 14))
+                .foregroundStyle(Color(hex: "#6b7280"))
+        }
 
         // Allowance-read failure (audit H-P1-4): the hero numbers
         // above already come from compute-week, so this is an error

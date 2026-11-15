@@ -7,10 +7,11 @@ import OnBudgetKit
 // same face as the Home stat cards (Title + Amount only, chevron `⌄`
 // bottom-right) with the same in-place expansion, except the Funds
 // expansions INCLUDE action buttons (Home does not). Grouped by fund
-// (owner, Nov 15, 2026): each card heads its own section — Extra Fund
-// (shortfall line, activity, Past Savings Records), Charity (rate,
-// How It Works, activity) — then standalone Review. At most one card
-// expanded at a time.
+// (owner, Nov 15, 2026): each fund is ONE container — its card heads
+// the block and its rules, info and transactions sit inside it.
+// Extra Fund (shortfall line, activity, Past Savings Records),
+// Charity (rate + ⓘ How It Works popup, activity), Carried Debt
+// (rule, activity, where it came from) — then standalone Review.
 //
 // Forms: one at a time; the sections below the cards hide while a
 // form is open. Back returns to the Funds list (swipe-right closes
@@ -35,11 +36,15 @@ public enum FundsForm: Equatable {
     /// Funds workstream, presented as a form, never duplicated in
     /// Settings.
     case temp
+    /// Pay Carried Debt from the Extra Fund (build 29).
+    case payDebt
 }
 
 public enum FundsMoreSection: Equatable {
     case fundActivity
     case charityActivity
+    case debtActivity
+    case debtHistory
     case review
     case savings
 }
@@ -52,6 +57,7 @@ public struct FundsView: View {
     @State private var openForm: FundsForm?
     @State private var openMore: FundsMoreSection?
     @State private var correctingIncome: CharityIncome?
+    @State private var showClearDebtConfirm = false
 
     public init(context: FundsContext, appState: AppViewModel) {
         self.appState = appState
@@ -83,25 +89,33 @@ public struct FundsView: View {
                         CharityIncomeForm(viewModel: viewModel, correcting: $correctingIncome, onClose: { openForm = nil })
                     case .temp:
                         TemporaryAllowanceView(viewModel: viewModel)
+                    case .payDebt:
+                        PayDebtForm(viewModel: viewModel, onClose: { openForm = nil })
                     }
                 } else {
-                    // Two fund sections (owner, Nov 15, 2026): each
-                    // fund's card is its section header, and its own
-                    // pieces follow directly under it — no shared
-                    // pile below. Review stays standalone after them
+                    // Three fund sections (owner, Nov 15, 2026): each
+                    // fund is ONE container — its card heads the
+                    // block and its rules, info and transactions sit
+                    // inside the same card, not as loose rows below
+                    // it. Review stays standalone after them
                     // (household-wide, not fund-specific).
                     VStack(spacing: 24) {
-                        VStack(spacing: 12) {
+                        fundContainer {
                             fundCard
                             fundShortfallLine
                             fundActivitySection
                             savingsSection
                         }
-                        VStack(spacing: 12) {
+                        fundContainer {
                             charityCard
                             charityRateSection
-                            howItWorksSection
                             charityActivitySection
+                        }
+                        fundContainer {
+                            debtCard
+                            debtRuleSection
+                            debtActivitySection
+                            debtHistorySection
                         }
                         reviewSection
                     }
@@ -185,6 +199,21 @@ public struct FundsView: View {
                         FundsErrorBox(error)
                     } else {
                         SkeletonBlock(width: 160, height: 16)
+                    }
+                }
+            }
+        case .payDebt:
+            FundsCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let debt = viewModel.debtBalanceCents {
+                        FundsBreakdownRow("Carried debt", value: MoneyFormat.formatCents(debt))
+                    } else if let error = viewModel.debtError {
+                        FundsErrorBox(error)
+                    } else {
+                        SkeletonBlock(width: 160, height: 16)
+                    }
+                    if let summary = viewModel.fundSummary {
+                        FundsBreakdownRow("Available in Extra Fund", value: MoneyFormat.formatCents(summary.availableCents), isNegative: summary.availableCents < 0)
                     }
                 }
             }
@@ -325,22 +354,119 @@ public struct FundsView: View {
         return "Charity, \(MoneyFormat.formatCents(summary.remainingCents)) remaining, \(MoneyFormat.formatCents(summary.givenCents)) given, \(MoneyFormat.formatCents(summary.committedCents)) committed, show breakdown"
     }
 
+    // MARK: - Carried Debt card (§9.1, build 29)
+    //
+    // The third fund section (owner, Nov 15, 2026): the debt
+    // balance, what it is from, the rule in effect, and its actions.
+    // The face is the current balance D, ink (like the other fund
+    // cards, only the outline keeps colour — muted deep red #991b1b).
+
+    private var debtCard: some View {
+        FundsExpandableCard(
+            title: "Carried Debt",
+            amountText: debtFaceText,
+            isExpanded: appState.expandedCard == .debt,
+            amountIsStatus: viewModel.debtWeek == nil,
+            isLoading: viewModel.debtWeek == nil && viewModel.debtError == nil,
+            theme: .debt,
+            accessibilityLabel: debtAccessibilityLabel,
+            onToggle: { toggleCard(.debt) }
+        ) {
+            if let error = viewModel.debtError {
+                FundsErrorBox(error)
+            } else if let week = viewModel.debtWeek {
+                FundsMuted("Money spent over past weekly allowances.")
+                if let payment = week.debtPaymentCents {
+                    FundsBreakdownRow("This Week's Payment", value: MoneyFormat.formatCents(payment))
+                    FundsBreakdownRow("Remaining After This Week", value: MoneyFormat.formatCents(max(0, week.carriedDebtCents - payment)))
+                } else {
+                    // Old server: the payment is unknown, so only
+                    // the balance shows — never a $0 that would be wrong.
+                    FundsBreakdownRow("Carried Debt", value: MoneyFormat.formatCents(week.carriedDebtCents))
+                }
+                HStack(spacing: 12) {
+                    if isAdmin && viewModel.debtRule != nil {
+                        FundsPrimaryButton("Pay from Extra Fund") { openForm = .payDebt }
+                        FundsTertiaryButton("Clear Debt") { showClearDebtConfirm = true }
+                    } else {
+                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 200, height: 16)
+                    SkeletonBlock(width: 170, height: 16)
+                    SkeletonBlock(width: 190, height: 16)
+                }
+            }
+        }
+        .accessibilityIdentifier("funds.carriedDebt")
+        .confirmationDialog(
+            "Clear Debt",
+            isPresented: $showClearDebtConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(TitleCase.apply(to: "Clear Debt"), role: .destructive) {
+                Task { await viewModel.clearDebt(note: "") }
+            }
+            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+        } message: {
+            if let debt = viewModel.debtBalanceCents {
+                Text("Erase the \(MoneyFormat.formatCents(debt)) carried debt? No money moves — the balance is written off, and it is recorded in the activity log.")
+            }
+        }
+    }
+
+    /// Face text is only rendered when loaded: loading shows the
+    /// shimmer amount block, failure the static grey block — never
+    /// a "Loading…" line or a bare "—" in amount type.
+    private var debtFaceText: String {
+        guard let week = viewModel.debtWeek else {
+            return ""
+        }
+        return MoneyFormat.formatCents(week.carriedDebtCents)
+    }
+
+    private var debtAccessibilityLabel: String {
+        guard let week = viewModel.debtWeek else {
+            return "Carried Debt, could not load, show breakdown"
+        }
+        if week.carriedDebtCents == 0 {
+            return "Carried Debt, no debt, show breakdown"
+        }
+        return "Carried Debt, \(MoneyFormat.formatCents(week.carriedDebtCents)) owed, show breakdown"
+    }
+
     // MARK: - Per-fund sections (owner, Nov 15, 2026)
     //
     // The old shared "Funds & Charity Rules" card is split by
     // fund: the shortfall line lives under the Extra Fund card,
-    // the rate editor + How It Works under the Charity card.
+    // the rate editor under the Charity card (How It Works opens
+    // from the ⓘ beside the rate row).
 
     private var fundShortfallLine: some View {
         FundShortfallLine(viewModel: viewModel)
     }
 
     private var charityRateSection: some View {
-        CharityRateSection(viewModel: viewModel)
+        CharityRateSection(viewModel: viewModel, bare: true)
     }
 
-    private var howItWorksSection: some View {
-        HowItWorksSection(viewModel: viewModel)
+    private var debtRuleSection: some View {
+        DebtRuleSection(viewModel: viewModel, bare: true)
+    }
+
+    /// One container per fund (owner, Nov 15, 2026): the fund's
+    /// card, rules, info and transactions read as one block. The
+    /// card keeps its coloured outline; the rows inside are bare
+    /// (no card of their own) so the block stays flat, and their
+    /// text lines up with the card's interior text.
+    private func fundContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        FundsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                content()
+            }
+        }
     }
 
     /// Settings Budget → Temporary Allowance: open the form here
@@ -372,30 +498,42 @@ public struct FundsView: View {
     // (the else branch above).
 
     private var reviewSection: some View {
-        fundsSection(
-            title: viewModel.reviewCount > 0 ? "Review (\(viewModel.reviewCount))" : "Review",
-            section: .review,
-            isAdminOnly: true
-        ) {
-            ReviewView(viewModel: viewModel)
+        // Standalone after the fund containers, in its own card —
+        // Review is household-wide work, not one fund's. The card
+        // is gated with the row: members see neither.
+        Group {
+            if isAdmin {
+                FundsCard(padding: 0) {
+                    fundsSectionRow(
+                        title: viewModel.reviewCount > 0 ? "Review (\(viewModel.reviewCount))" : "Review",
+                        section: .review,
+                        isAdminOnly: true,
+                        hPad: 16
+                    ) {
+                        ReviewView(viewModel: viewModel)
+                    }
+                }
+            }
         }
     }
 
     private var fundActivitySection: some View {
-        fundsSection(
-            title: "Extra Fund Activity",
+        fundsSectionRow(
+            title: "Activity",
             section: .fundActivity,
-            isAdminOnly: true
+            isAdminOnly: true,
+            hPad: 20
         ) {
             FundTopupsHistory(viewModel: viewModel)
         }
     }
 
     private var charityActivitySection: some View {
-        fundsSection(
-            title: "Charity Activity",
+        fundsSectionRow(
+            title: "Activity",
             section: .charityActivity,
-            isAdminOnly: true
+            isAdminOnly: true,
+            hPad: 20
         ) {
             CharityIncomeHistory(
                 viewModel: viewModel,
@@ -409,50 +547,85 @@ public struct FundsView: View {
     }
 
     private var savingsSection: some View {
-        fundsSection(
+        fundsSectionRow(
             title: "Past Savings Records",
             section: .savings,
-            isAdminOnly: false
+            isAdminOnly: false,
+            hPad: 20
         ) {
             SavingsSection(viewModel: viewModel)
         }
     }
 
+    private var debtActivitySection: some View {
+        fundsSectionRow(
+            title: "Activity",
+            section: .debtActivity,
+            isAdminOnly: false,
+            hPad: 20
+        ) {
+            DebtActivityView(viewModel: viewModel)
+        }
+    }
+
+    private var debtHistorySection: some View {
+        fundsSectionRow(
+            title: "Where It Came From",
+            section: .debtHistory,
+            isAdminOnly: false,
+            hPad: 20
+        ) {
+            DebtHistoryView(viewModel: viewModel)
+        }
+    }
+
+    /// The expandable row itself (title + chevron + content), with
+    /// no card chrome: the caller decides the chrome — bare inside
+    /// its fund's container, or its own FundsCard for standalone
+    /// Review. `hPad` lines the row's text up with its fund card's
+    /// interior text (container 16 + row 20 = 36 inside a fund;
+    /// 16 for the standalone Review card).
+    ///
+    /// Whole-row tap target (owner rule, Nov 11 2026, and the Nov
+    /// 15, 2026 app-wide pass): the entire row is the toggle; the
+    /// chevron is only a hint. `.contentShape(Rectangle())` makes
+    /// the empty space between the title and the chevron respond
+    /// too, and the row padding lives inside the Button so the
+    /// padded edge toggles as well.
     @ViewBuilder
-    private func fundsSection<Content: View>(
+    private func fundsSectionRow<Content: View>(
         title: String,
         section: FundsMoreSection,
         isAdminOnly: Bool,
+        hPad: CGFloat,
         @ViewBuilder content: () -> Content
     ) -> some View {
         if !isAdminOnly || isAdmin {
-            FundsCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Whole-row tap target (owner rule, Nov 11 2026):
-                    // the entire row is the toggle; the chevron is
-                    // only a hint.
-                    Button {
-                        openMore = openMore == section ? nil : section
-                    } label: {
-                        HStack {
-                            Text(TitleCase.apply(to: title))
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(DesignTokens.ink)
-                            Spacer()
-                            Text("⌄")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(DesignTokens.primary)
-                                .rotationEffect(.degrees(openMore == section ? 180 : 0))
-                        }
-                        .padding(.vertical, 12)
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    openMore = openMore == section ? nil : section
+                } label: {
+                    HStack {
+                        Text(TitleCase.apply(to: title))
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Spacer()
+                        Text("⌄")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                            .rotationEffect(.degrees(openMore == section ? 180 : 0))
                     }
-                    .buttonStyle(.plain)
-                    .animation(ExpandAnimation.animation, value: openMore == section)
-                    if openMore == section {
-                        content()
-                            .padding(.bottom, 12)
-                            .transition(ExpandAnimation.transition)
-                    }
+                    .padding(.horizontal, hPad)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .animation(ExpandAnimation.animation, value: openMore == section)
+                if openMore == section {
+                    content()
+                        .padding(.horizontal, hPad)
+                        .padding(.bottom, 12)
+                        .transition(ExpandAnimation.transition)
                 }
             }
         }
@@ -554,6 +727,116 @@ public struct SavingsSection: View {
                 }
                 if viewModel.savings.count > 20 {
                     FundsMuted("Showing the latest 20 records.")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Debt Activity + Where It Came From (§9.2, build 29)
+//
+// Debt Activity: every debt payment (all sources) plus the audit
+// rows for rule changes, newest first, max 20. Where It Came From:
+// the week_closes history — which weeks carried debt out, most
+// recent first, max 8. Per-week overspend attribution is NOT stored
+// anywhere (the engine's newDebt is never persisted), so no
+// fabricated "overspent $X" figures — only the carried-out amount
+// per week.
+
+public struct DebtActivityView: View {
+    @ObservedObject public var viewModel: FundsViewModel
+
+    public init(viewModel: FundsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    private struct Entry: Identifiable {
+        let id: String
+        let title: String
+        let detail: String
+    }
+
+    private var entries: [Entry] {
+        // Both sources carry ISO timestamps, so a plain string sort
+        // is newest-first. The detail line carries the date; the
+        // sort key itself is not shown.
+        var dated: [(Entry, String)] = viewModel.debtPayments.map { payment in
+            let label: String
+            switch payment.source {
+            case "extra_fund": label = "Paid from Extra Fund"
+            case "surplus": label = "Paid from Surplus"
+            case "clear": label = "Debt Cleared"
+            default: label = "Debt Payment"
+            }
+            let detail = "\(payment.createdAt.map { MoneyFormat.displayDay($0) } ?? "") · Week of \(MoneyFormat.fmtLong(payment.weekStart))\(payment.note.isEmpty ? "" : " · \(payment.note)")"
+            return (Entry(
+                id: "payment-\(payment.id.uuidString)",
+                title: "\(label) \(MoneyFormat.formatCents(payment.amountCents))",
+                detail: detail
+            ), payment.createdAt ?? "")
+        }
+        dated += viewModel.debtRuleAudit.map { row in
+            (Entry(
+                id: "audit-\(row.id.uuidString)",
+                title: "Rule Changed",
+                detail: "\(MoneyFormat.displayDay(row.createdAt)) · \(row.detail)"
+            ), row.createdAt)
+        }
+        return dated.sorted { $0.1 > $1.1 }.map(\.0)
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let error = viewModel.debtError {
+                FundsErrorBox(error)
+            } else if entries.isEmpty {
+                FundsMuted("No debt payments yet.")
+            } else {
+                ForEach(Array(entries.prefix(20).enumerated()), id: \.element.id) { index, entry in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.title)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Text(entry.detail)
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                    }
+                    if index < min(entries.count, 20) - 1 {
+                        Divider()
+                    }
+                }
+                if entries.count > 20 {
+                    FundsMuted("Showing the latest 20 entries.")
+                }
+            }
+        }
+    }
+}
+
+public struct DebtHistoryView: View {
+    @ObservedObject public var viewModel: FundsViewModel
+
+    public init(viewModel: FundsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let error = viewModel.debtError {
+                FundsErrorBox(error)
+            } else if viewModel.debtHistory.isEmpty {
+                FundsMuted("No closed weeks carried debt out.")
+            } else {
+                ForEach(Array(viewModel.debtHistory.prefix(8).enumerated()), id: \.element.weekStart) { index, close in
+                    Text("Week of \(MoneyFormat.fmtLong(close.weekStart)) — \(MoneyFormat.formatCents(close.outgoingDebtCents)) carried out")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                    if index < min(viewModel.debtHistory.count, 8) - 1 {
+                        Divider()
+                    }
+                }
+                if viewModel.debtHistory.count > 8 {
+                    FundsMuted("Showing the latest 8 weeks.")
                 }
             }
         }

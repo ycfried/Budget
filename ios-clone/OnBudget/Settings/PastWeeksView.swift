@@ -277,6 +277,9 @@ struct PastWeeksView: View {
             .padding(12)
             .background(DesignTokens.infoBackground)
             .cornerRadius(12)
+            // Whole-area tap target (owner, Nov 15, 2026 app-wide
+            // pass): the block responds across its full frame.
+            .contentShape(Rectangle())
         }
         .buttonStyle(DimOnPressButtonStyle())
         .accessibilityLabel("Week of \(week.heading) — show its transactions")

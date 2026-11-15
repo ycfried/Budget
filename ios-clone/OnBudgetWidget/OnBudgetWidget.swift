@@ -65,9 +65,10 @@ struct Provider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetEntry>) -> Void) {
-        // The app calls reloadAllTimelines() on every Home refresh, so
-        // the timeline only needs a backstop: re-read in 30 minutes so
-        // a stale label flips even if the app is never opened again.
+        // The app calls reloadAllTimelines() on launch, on every
+        // foreground, and on every Home refresh, so the timeline
+        // only needs a backstop: re-read in 30 minutes so a stale
+        // label flips even if the app is never opened again.
         let entry = WidgetEntry(date: Date(), snapshot: WidgetSnapshotStore.read())
         completion(Timeline(
             entries: [entry],
@@ -110,7 +111,27 @@ private func updatedText(_ computedAt: Date, stale: Bool) -> String {
 
 struct WidgetView: View {
     @Environment(\.widgetFamily) private var family
+    /// True while WidgetKit renders the placeholder entry (the
+    /// loading state): the redaction environment carries
+    /// `.placeholder` for it, and never for a live timeline entry.
+    @Environment(\.redactionReasons) private var redactionReasons
     let entry: WidgetEntry
+
+    /// The loading state renders explicit skeleton bars sized to
+    /// the loaded content (owner, Nov 15, 2026 — WidgetKit's own
+    /// redacted text bars came out too small on the XL widget).
+    private var isPlaceholder: Bool { redactionReasons.contains(.placeholder) }
+
+    /// A loading bar shaped exactly like the text it stands for:
+    /// same height as the loaded figure/label, same skeleton grey
+    /// as the app's SkeletonBlock (#ececf1). Shown only while the
+    /// view renders as a placeholder; the loaded entry always shows
+    /// real text.
+    private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(DesignTokens.skeleton)
+            .frame(width: width, height: height)
+    }
 
     /// Soft tinted background (owner, Nov 14, 2026): a faint cool
     /// grey-blue instead of flat white. The figures stay dark ink /
@@ -146,9 +167,13 @@ struct WidgetView: View {
                 .scaledToFit()
                 .frame(width: 20, height: 20)
                 .clipShape(Circle())
-            Text("OnBudget")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(DesignTokens.ink)
+            if isPlaceholder {
+                skeletonBar(width: 88, height: 16)
+            } else {
+                Text("OnBudget")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DesignTokens.ink)
+            }
         }
     }
 
@@ -163,43 +188,72 @@ struct WidgetView: View {
         return ZStack {
             Circle()
                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 10)
-            Circle()
-                .trim(from: 0, to: fraction)
-                .stroke(
-                    overBudget ? DesignTokens.heroOverBudget : DesignTokens.primary,
-                    style: StrokeStyle(lineWidth: 10, lineCap: fraction >= 1 ? .butt : .round)
-                )
-                .rotationEffect(.degrees(-90))
-            Text("\(Int((fraction * 100).rounded()))%")
-                .font(.system(size: size * 0.22, weight: .bold))
-                .monospacedDigit()
-                .foregroundStyle(DesignTokens.ink)
+            // While loading there is no real spent figure to show:
+            // the placeholder snapshot's 70% arc is sample data, so
+            // the ring stays a plain grey track with a skeleton bar
+            // in the centre instead of a coloured arc and a percent.
+            if !isPlaceholder {
+                Circle()
+                    .trim(from: 0, to: fraction)
+                    .stroke(
+                        overBudget ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                        style: StrokeStyle(lineWidth: 10, lineCap: fraction >= 1 ? .butt : .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+            }
+            if isPlaceholder {
+                skeletonBar(width: 36, height: 18)
+            } else {
+                Text("\(Int((fraction * 100).rounded()))%")
+                    .font(.system(size: size * 0.22, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(DesignTokens.ink)
+            }
         }
         .frame(width: size, height: size)
         .privacySensitive()
     }
 
     /// Muted small label above a figure.
+    @ViewBuilder
     private func figureLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(DesignTokens.muted)
+        if isPlaceholder {
+            skeletonBar(width: 84, height: 12)
+        } else {
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(DesignTokens.muted)
+        }
     }
 
     /// A figure: big, bold, tabular numerals so the amount never
     /// reflows as it changes.
+    @ViewBuilder
     private func figure(cents: Int, color: Color, size: CGFloat) -> some View {
-        Text(MoneyFormat.string(cents: cents))
-            .font(.system(size: size, weight: .bold))
-            .monospacedDigit()
-            .foregroundStyle(color)
-            .privacySensitive()
+        if isPlaceholder {
+            // The bar is the figure's own height (24/28/36/44 by
+            // family) and about as wide as a typical amount — the
+            // same size the loaded figure stands in.
+            skeletonBar(width: size * 3.9, height: size)
+                .privacySensitive()
+        } else {
+            Text(MoneyFormat.string(cents: cents))
+                .font(.system(size: size, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(color)
+                .privacySensitive()
+        }
     }
 
+    @ViewBuilder
     private func updatedLine(snapshot: WidgetSnapshot, stale: Bool) -> some View {
-        Text(updatedText(snapshot.computedAt, stale: stale))
-            .font(.caption2)
-            .foregroundStyle(DesignTokens.muted)
+        if isPlaceholder {
+            skeletonBar(width: 130, height: 11)
+        } else {
+            Text(updatedText(snapshot.computedAt, stale: stale))
+                .font(.caption2)
+                .foregroundStyle(DesignTokens.muted)
+        }
     }
 
     private func small(snapshot: WidgetSnapshot, stale: Bool) -> some View {
@@ -230,9 +284,13 @@ struct WidgetView: View {
                 wordmark
                 Spacer()
                 if let week = shortWeekStart(snapshot.weekStart) {
-                    Text("Week of \(week)")
-                        .font(.caption)
-                        .foregroundStyle(DesignTokens.muted)
+                    if isPlaceholder {
+                        skeletonBar(width: 110, height: 12)
+                    } else {
+                        Text("Week of \(week)")
+                            .font(.caption)
+                            .foregroundStyle(DesignTokens.muted)
+                    }
                 }
             }
             HStack(alignment: .top, spacing: 16) {
@@ -264,9 +322,13 @@ struct WidgetView: View {
                 wordmark
                 Spacer()
                 if let range = weekRange(snapshot.weekStart) {
-                    Text(range)
-                        .font(.caption)
-                        .foregroundStyle(DesignTokens.muted)
+                    if isPlaceholder {
+                        skeletonBar(width: 110, height: 12)
+                    } else {
+                        Text(range)
+                            .font(.caption)
+                            .foregroundStyle(DesignTokens.muted)
+                    }
                 }
             }
             // Two spacers, not one (owner, Nov 15, 2026): the
@@ -285,9 +347,13 @@ struct WidgetView: View {
                         size: 36
                     )
                     if let spent = snapshot.spentCents {
-                        Text("of \(MoneyFormat.string(cents: spent + snapshot.availableCents)) allowance")
-                            .font(.subheadline)
-                            .foregroundStyle(DesignTokens.muted)
+                        if isPlaceholder {
+                            skeletonBar(width: 170, height: 15)
+                        } else {
+                            Text("of \(MoneyFormat.string(cents: spent + snapshot.availableCents)) allowance")
+                                .font(.subheadline)
+                                .foregroundStyle(DesignTokens.muted)
+                        }
                     }
                 }
             }
@@ -313,9 +379,13 @@ struct WidgetView: View {
                 wordmark
                 Spacer()
                 if let range = weekRange(snapshot.weekStart) {
-                    Text(range)
-                        .font(.caption)
-                        .foregroundStyle(DesignTokens.muted)
+                    if isPlaceholder {
+                        skeletonBar(width: 110, height: 12)
+                    } else {
+                        Text(range)
+                            .font(.caption)
+                            .foregroundStyle(DesignTokens.muted)
+                    }
                 }
             }
             Spacer(minLength: 0)
@@ -332,9 +402,13 @@ struct WidgetView: View {
                             size: 44
                         )
                         if let spent = snapshot.spentCents {
-                            Text("of \(MoneyFormat.string(cents: spent + snapshot.availableCents)) allowance")
-                                .font(.subheadline)
-                                .foregroundStyle(DesignTokens.muted)
+                            if isPlaceholder {
+                                skeletonBar(width: 170, height: 15)
+                            } else {
+                                Text("of \(MoneyFormat.string(cents: spent + snapshot.availableCents)) allowance")
+                                    .font(.subheadline)
+                                    .foregroundStyle(DesignTokens.muted)
+                            }
                         }
                     }
                 }
