@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 import OnBudgetKit
 
 // MARK: - Funds tab (spec §9)
@@ -42,9 +44,58 @@ public enum FundsMoreSection: Equatable {
     case fundActivity
     case charityActivity
     case debtActivity
-    case debtHistory
     case review
-    case savings
+}
+
+/// The four reorderable funds on the Funds page (build 30).
+/// Raw values persist in UserDefaults under
+/// `hb-fund-order-<household-UUID>`; the default order is the
+/// order below (Spending first — the fund the week runs on).
+public enum FundSectionID: String, CaseIterable, Identifiable {
+    case spending
+    case fund
+    case charity
+    case debt
+
+    public var id: String { rawValue }
+
+    public static var defaultOrder: [FundSectionID] {
+        [.spending, .fund, .charity, .debt]
+    }
+
+    public var displayName: String {
+        switch self {
+        case .spending: return "Spending"
+        case .fund: return "Extra Fund"
+        case .charity: return "Charity"
+        case .debt: return "Carried Debt"
+        }
+    }
+}
+
+/// Reorder delegate for the Funds page (build 30): dragging a
+/// fund's handle over another container moves it live, so the order
+/// follows the finger; dropping saves via the order's onChange.
+/// The drag starts on the handle only, so scrolling and the cards'
+/// own taps are untouched.
+private struct FundDropDelegate: DropDelegate {
+    let fund: FundSectionID
+    @Binding var order: [FundSectionID]
+    @Binding var dragging: FundSectionID?
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging != fund,
+              let from = order.firstIndex(of: dragging),
+              let to = order.firstIndex(of: fund) else { return }
+        withAnimation(ExpandAnimation.animation) {
+            order.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
+    }
 }
 
 public struct FundsView: View {
@@ -56,6 +107,12 @@ public struct FundsView: View {
     @State private var openMore: FundsMoreSection?
     @State private var correctingIncome: CharityIncome?
     @State private var showClearDebtConfirm = false
+    /// The funds' order on this page (build 30 — rearrangeable by
+    /// dragging the handle in rearrange mode). Loaded per household,
+    /// saved on every change.
+    @State private var fundOrder: [FundSectionID] = FundSectionID.defaultOrder
+    @State private var isRearranging = false
+    @State private var draggingFund: FundSectionID?
 
     public init(context: FundsContext, appState: AppViewModel) {
         self.appState = appState
@@ -91,35 +148,22 @@ public struct FundsView: View {
                         PayDebtForm(viewModel: viewModel, onClose: { openForm = nil })
                     }
                 } else {
+                    rearrangeRow
                     // Four fund sections (owner, Nov 15, 2026): each
                     // fund is ONE container — its card heads the
                     // block and its rules, info and transactions sit
                     // inside the same card, not as loose rows below
                     // it. Review stays standalone after them
                     // (household-wide, not fund-specific). Spending
-                    // is first: the week's allowance is the fund the
-                    // week runs on (build 30 — moved from Settings).
+                    // is first by default: the week's allowance is
+                    // the fund the week runs on (build 30 — moved
+                    // from Settings). The order is the user's own:
+                    // rearrange mode drags the containers into any
+                    // order and remembers it per household.
                     VStack(spacing: 24) {
-                        fundContainer {
-                            spendingCard
-                            spendingAllowanceSection
-                        }
-                        fundContainer {
-                            fundCard
-                            fundShortfallLine
-                            fundActivitySection
-                            savingsSection
-                        }
-                        fundContainer {
-                            charityCard
-                            charityRateSection
-                            charityActivitySection
-                        }
-                        fundContainer {
-                            debtCard
-                            debtRuleSection
-                            debtActivitySection
-                            debtHistorySection
+                        ForEach(fundOrder) { id in
+                            fundContainer(for: id)
+                                .onDrop(of: [.text], delegate: FundDropDelegate(fund: id, order: $fundOrder, dragging: $draggingFund))
                         }
                         reviewSection
                     }
@@ -141,11 +185,48 @@ public struct FundsView: View {
             Text(viewModel.alertMessage ?? "")
         }
         .task {
+            loadFundOrder()
             await viewModel.refresh()
+        }
+        .onChange(of: fundOrder) { _, _ in
+            saveFundOrder()
         }
         .refreshable {
             await viewModel.refresh()
         }
+    }
+
+    /// Rearrange / Done, above the funds (build 30). Rearrange mode
+    /// shows a drag handle above each fund's card; Done exits and
+    /// the order is already saved.
+    private var rearrangeRow: some View {
+        HStack {
+            Spacer()
+            if isRearranging {
+                FundsSmallPrimaryButton("Done") { isRearranging = false }
+            } else {
+                FundsSmallTertiaryButton("Rearrange") { isRearranging = true }
+            }
+        }
+    }
+
+    /// The user's fund order, per household (build 30): Spending,
+    /// Extra Fund, Charity, Carried Debt by default; a stored order
+    /// with anything missing or extra is ignored, not repaired
+    /// into a wrong order.
+    private var fundOrderKey: String {
+        "hb-fund-order-\(viewModel.context.householdId.uuidString)"
+    }
+
+    private func loadFundOrder() {
+        guard let raw = UserDefaults.standard.array(forKey: fundOrderKey) as? [String] else { return }
+        let ids = raw.compactMap { FundSectionID(rawValue: $0) }
+        guard Set(ids) == Set(FundSectionID.allCases), ids.count == FundSectionID.allCases.count else { return }
+        fundOrder = ids
+    }
+
+    private func saveFundOrder() {
+        UserDefaults.standard.set(fundOrder.map(\.rawValue), forKey: fundOrderKey)
     }
 
     private var backButton: some View {
@@ -553,6 +634,56 @@ public struct FundsView: View {
         }
     }
 
+    /// One fund's container, by id (build 30): the card heads the
+    /// block and its rules, info and transactions sit inside it.
+    /// In rearrange mode a drag handle sits above the card;
+    /// dragging it over another container reorders live
+    /// (FundDropDelegate).
+    @ViewBuilder
+    private func fundContainer(for id: FundSectionID) -> some View {
+        fundContainer {
+            if isRearranging {
+                rearrangeHandle(for: id)
+            }
+            switch id {
+            case .spending:
+                spendingCard
+                spendingAllowanceSection
+            case .fund:
+                fundCard
+                fundShortfallLine
+                fundActivitySection
+            case .charity:
+                charityCard
+                charityRateSection
+                charityActivitySection
+            case .debt:
+                debtCard
+                debtRuleSection
+                debtActivitySection
+            }
+        }
+    }
+
+    /// The drag handle shown above a fund's card in rearrange mode:
+    /// the drag starts here only, so scrolling and the card's own
+    /// tap are untouched.
+    private func rearrangeHandle(for id: FundSectionID) -> some View {
+        HStack {
+            Spacer()
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color(hex: "#6b7280"))
+                .padding(8)
+                .contentShape(Rectangle())
+                .onDrag {
+                    draggingFund = id
+                    return NSItemProvider(object: id.rawValue as NSString)
+                }
+                .accessibilityLabel("Drag to reorder \(id.displayName)")
+        }
+    }
+
     /// The Spending fund container's allowance editor (build 30):
     /// Weekly Allowance + Temporary Allowance, moved from the
     /// Settings Budget card. The button opens the Temporary
@@ -574,14 +705,16 @@ public struct FundsView: View {
     // MARK: - Dissolved More sections (§9.2)
     //
     // The old "More" card is gone (owner, Nov 12, 2026 — it was
-    // unclear what it was for). Each section is now its own card
-    // under its own plain name, grouped under its fund (owner,
-    // Nov 15, 2026): Extra Fund Activity + Past Savings Records
-    // under Extra Fund, Charity Activity under Charity. Review
-    // stays standalone after the two fund sections — it's work
-    // needing attention, household-wide. Same expand-in-place row
-    // as the old More card; the sections hide while a form is open
-    // (the else branch above).
+    // unclear what it was for). Each fund has ONE "Activity"
+    // expandable (owner, Nov 15, 2026 — build 30, fewer headers):
+    // the Extra Fund's top-ups and past savings records share one,
+    // the Debt fund's payments and where the debt came from share
+    // one, Charity's income is its one. Sub-parts keep a quiet
+    // muted inline label, never a bold sub-header. Review stays
+    // standalone after the fund sections — it's work needing
+    // attention, household-wide. Same expand-in-place row as the
+    // old More card; the sections hide while a form is open (the
+    // else branch above).
 
     private var reviewSection: some View {
         // Standalone after the fund containers, in its own card —
@@ -604,13 +737,28 @@ public struct FundsView: View {
     }
 
     private var fundActivitySection: some View {
+        // ONE activity header per fund (owner, Nov 15, 2026 —
+        // build 30): the top-ups and the past savings records share
+        // this one expandable. The savings part keeps a quiet inline
+        // label ("Past Savings", muted — not a bold header).
+        // Top-ups stay admin-only; the savings records stay visible
+        // to every role.
         fundsSectionRow(
             title: "Activity",
             section: .fundActivity,
-            isAdminOnly: true,
+            isAdminOnly: false,
             hPad: 20
         ) {
-            FundTopupsHistory(viewModel: viewModel)
+            VStack(alignment: .leading, spacing: 8) {
+                if isAdmin {
+                    FundTopupsHistory(viewModel: viewModel)
+                    Divider()
+                }
+                Text("Past Savings")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                SavingsSection(viewModel: viewModel)
+            }
         }
     }
 
@@ -632,36 +780,24 @@ public struct FundsView: View {
         }
     }
 
-    private var savingsSection: some View {
-        fundsSectionRow(
-            title: "Past Savings Records",
-            section: .savings,
-            isAdminOnly: false,
-            hPad: 20
-        ) {
-            SavingsSection(viewModel: viewModel)
-        }
-    }
-
     private var debtActivitySection: some View {
+        // ONE activity header (build 30): the payments and where
+        // the debt came from share this expandable; the origin
+        // keeps a quiet inline label, not its own bold header.
         fundsSectionRow(
             title: "Activity",
             section: .debtActivity,
             isAdminOnly: false,
             hPad: 20
         ) {
-            DebtActivityView(viewModel: viewModel)
-        }
-    }
-
-    private var debtHistorySection: some View {
-        fundsSectionRow(
-            title: "Where It Came From",
-            section: .debtHistory,
-            isAdminOnly: false,
-            hPad: 20
-        ) {
-            DebtHistoryView(viewModel: viewModel)
+            VStack(alignment: .leading, spacing: 8) {
+                DebtActivityView(viewModel: viewModel)
+                Divider()
+                Text("Where it came from")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                DebtHistoryView(viewModel: viewModel)
+            }
         }
     }
 

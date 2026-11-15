@@ -226,8 +226,6 @@ public struct CharityIncomeHistory: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Charity Income")
-                .font(.system(size: 17, weight: .bold))
             if let error = viewModel.charityIncomeError {
                 FundsErrorBox(error)
             } else if viewModel.charityIncome.isEmpty {
@@ -278,8 +276,6 @@ public struct FundTopupsHistory: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Money Added")
-                .font(.system(size: 17, weight: .bold))
             if let error = viewModel.topupsError {
                 FundsErrorBox(error)
             } else if viewModel.topups.isEmpty {
