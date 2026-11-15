@@ -537,11 +537,10 @@ public struct HomeView: View {
     /// arrive (audit H-P2-5). The header row itself is real even
     /// while loading (icon + title, with a skeleton block in the
     /// sync spot for admins), so the skeleton starts at the figure.
-    /// Sized to the loaded content (owner, Nov 14, 2026: the
-    /// first skeleton boxes were too small and the card looked
-    /// empty): the figure block is as wide as a big loaded figure,
-    /// and each stat is TWO stacked blocks — label bar over value
-    /// bar — exactly like the loaded stat's label + value lines.
+    /// Full-width bars (owner, Nov 15, 2026: the shorter lines
+    /// stopped well short of the right edge — every bar now runs
+    /// edge-to-edge within the card padding). Heights still match
+    /// the loaded rows, so the card holds its size while loading.
     /// Verified against heroLoaded, Nov 14 2026: figure / progress
     /// bar / spent line, all present, all the same sizes. (The
     /// stats row — Weekly Allowance + Purchases — moved into the
@@ -549,17 +548,18 @@ public struct HomeView: View {
     /// block here.)
     private var heroSkeleton: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // Figure block sized to the loaded figure — 340×72 on
-            // iPad for the bigger 58pt figure, 260×56 on iPhone.
-            SkeletonBlock(width: isIPad ? 340 : 260, height: isIPad ? 72 : 56, cornerRadius: 8)
+            // Figure block, full width, same height as the loaded
+            // figure — 72 on iPad for the bigger 58pt figure,
+            // 56 on iPhone.
+            SkeletonBlock(height: isIPad ? 72 : 56, cornerRadius: 8)
             SkeletonBlock(height: 8, cornerRadius: 4)
-            SkeletonBlock(width: 180, height: 14)
+            SkeletonBlock(height: 14)
             // Carried Debt fund (build 29): the debt math line sits
             // under the spent line in heroLoaded, so its skeleton
             // block goes here — same order, so the page never jumps
             // when the numbers arrive (audit H-P2-5). The owner's
             // week carries debt, so his loading state shows it.
-            SkeletonBlock(width: 180, height: 14)
+            SkeletonBlock(height: 14)
         }
         .accessibilityLabel("Spending, loading")
     }
@@ -846,7 +846,6 @@ public struct HomeView: View {
         let iconSize: CGFloat = compact ? (isIPad ? 20 : 16) : 18
         let titleSize: CGFloat = compact ? (isIPad ? 18 : 16) : 18
         let amountSize: CGFloat = compact ? (isIPad ? 32 : 24) : 28
-        let amountSkeletonWidth: CGFloat = compact ? (isIPad ? 150 : 110) : 190
         let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 40 : 30) : 36
         let statusSize: CGFloat = compact ? (isIPad ? 13 : 12) : 13
         let chevronSize: CGFloat = compact ? (isIPad ? 15 : 14) : 15
@@ -879,16 +878,18 @@ public struct HomeView: View {
                 Spacer()
             }
             if isLoading {
-                // Sized to the loaded amount (owner, Nov 14,
-                // 2026: the 150-wide block was too small and the
-                // card looked empty while loading). No second line:
-                // the loaded face has none (statusText is nil when
-                // loaded), so a phantom line here would shrink the
-                // card — a layout jump — the moment the amount
+                // Full-width bar (owner, Nov 15, 2026: the
+                // amount-sized block stopped short of the right
+                // edge — it now runs edge-to-edge within the card
+                // padding). Same height as the loaded amount, so
+                // the card holds its size while loading. No second
+                // line: the loaded face has none (statusText is nil
+                // when loaded), so a phantom line here would shrink
+                // the card — a layout jump — the moment the amount
                 // arrives.
-                SkeletonBlock(width: amountSkeletonWidth, height: amountSkeletonHeight, cornerRadius: 8)
+                SkeletonBlock(height: amountSkeletonHeight, cornerRadius: 8)
             } else if statusIsError {
-                SkeletonBlock(width: amountSkeletonWidth, height: amountSkeletonHeight, cornerRadius: 8, animated: false)
+                SkeletonBlock(height: amountSkeletonHeight, cornerRadius: 8, animated: false)
             } else {
                 Text(face)
                     .font(.system(size: amountSize, weight: .heavy))
@@ -1063,9 +1064,13 @@ public struct HomeView: View {
             case .loading:
                 // Shimmer skeletons shaped like the loaded rows —
                 // no spinner, no "Loading…" line (owner loading
-                // language, Nov 12, 2026).
+                // language, Nov 12, 2026). Ten rows (owner, Nov 15,
+                // 2026): three rows left empty white space below
+                // them while loading — ten fills the viewport on
+                // iPhone and iPad portrait, so there is no gap at
+                // the bottom during loading.
                 VStack(spacing: 12) {
-                    ForEach(0..<3, id: \.self) { _ in TransactionRowSkeleton() }
+                    ForEach(0..<10, id: \.self) { _ in TransactionRowSkeleton() }
                 }
                 .padding(.vertical, 12)
                 .accessibilityLabel("Loading recent transactions")

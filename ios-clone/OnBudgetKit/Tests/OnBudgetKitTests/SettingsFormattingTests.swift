@@ -14,6 +14,18 @@ final class SettingsFormattingTests: XCTestCase {
         XCTAssertEqual(MoneyFormat.formatCents(37500), "$375.00")
     }
 
+    func testWholeDollars() {
+        // Widget-only, owner Nov 15 2026: whole dollars, rounded.
+        XCTAssertEqual(MoneyFormat.wholeDollars(cents: 39365), "$394")
+        XCTAssertEqual(MoneyFormat.wholeDollars(cents: 66300), "$663")
+        XCTAssertEqual(MoneyFormat.wholeDollars(cents: 40000), "$400")
+        XCTAssertEqual(MoneyFormat.wholeDollars(cents: 0), "$0")
+        XCTAssertEqual(MoneyFormat.wholeDollars(cents: 123456), "$1,235")
+        XCTAssertEqual(MoneyFormat.wholeDollars(cents: -15897), "-$159")
+        XCTAssertEqual(MoneyFormat.wholeDollars(cents: 50), "$1")
+        XCTAssertEqual(MoneyFormat.wholeDollars(cents: 49), "$0")
+    }
+
     func testFmtLongAndShort() {
         XCTAssertEqual(MoneyFormat.fmtLong("2026-11-08"), "Nov 8, 2026")
         XCTAssertEqual(MoneyFormat.fmtShort("2026-11-08"), "Nov 8")

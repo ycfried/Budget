@@ -199,16 +199,18 @@ public struct FundsView: View {
         }
     }
 
-    /// Rearrange / Done, above the funds (build 30). Rearrange mode
+    /// Reorder / Done, above the funds (build 30). Reorder mode
     /// shows a drag handle above each fund's card; Done exits and
-    /// the order is already saved.
+    /// the order is already saved. The Reorder control is a blue
+    /// primary button (owner, Nov 15, 2026 — the grey "Rearrange"
+    /// pill looked ugly); same treatment as Save.
     private var rearrangeRow: some View {
         HStack {
             Spacer()
             if isRearranging {
                 FundsSmallPrimaryButton("Done") { isRearranging = false }
             } else {
-                FundsSmallTertiaryButton("Rearrange") { isRearranging = true }
+                FundsSmallPrimaryButton("Reorder") { isRearranging = true }
             }
         }
     }

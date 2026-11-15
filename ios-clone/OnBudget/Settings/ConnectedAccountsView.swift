@@ -687,7 +687,17 @@ struct ConnectedAccountsView: View {
                 .font(.subheadline)
                 .foregroundStyle(Color(hex: "#6b7280"))
             TextField("Nickname", text: $viewModel.nicknameText)
-                .textFieldStyle(.roundedBorder)
+                // Light-grey filled field, no hard border (owner,
+                // Nov 15, 2026): the .roundedBorder white box with
+                // its thin grey border read stark against the soft
+                // popup. Same treatment as the Search field
+                // ("Search transactions", owner Nov 12, 2026):
+                // systemGray6 fill, comfortably rounded, no border.
+                .font(.system(size: 17))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             HStack(spacing: 12) {
                 Button("Save") {
                     Task { await viewModel.saveNickname() }

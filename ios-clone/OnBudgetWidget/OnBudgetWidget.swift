@@ -27,12 +27,15 @@
 // the update time and "may be out of date" — a stale number is never
 // presented as if it were live.
 //
-// Colours mirror Home: the weekly figure is ink, red when over budget
-// (negative); the charity figure is charity green, and stays green
-// when negative (ahead on giving). Figures are privacySensitive so
-// they hide on the lock screen like other financial widgets.
-// Tapping the widget opens the app (no widgetURL — the app has no
-// deep link for the widget to land on).
+// Colours mirror Home: the weekly figure is brand blue, red when
+// over budget (negative); the charity figure is ink (owner, Nov 15,
+// 2026 — the green charity figure and the ink weekly figure were
+// swapped: the main budget amount is blue, charity is black).
+// All figures are whole dollars, no cents (owner, Nov 15, 2026).
+// Figures are privacySensitive so they hide on the lock screen
+// like other financial widgets. Tapping the widget opens the app
+// (no widgetURL — the app has no deep link for the widget to
+// land on).
 //
 // Label note (owner, Nov 14, 2026): his screenshot reads "Left left
 // this week", but the label in every version of this file in the
@@ -134,9 +137,11 @@ struct WidgetView: View {
     }
 
     /// Soft tinted background (owner, Nov 14, 2026): a faint cool
-    /// grey-blue instead of flat white. The figures stay dark ink /
-    /// red / green on it — a tint, not a wash.
-    private var background: Color { Color(hex: "#f5f7fb") }
+    /// grey-blue instead of flat white. The figures stay brand blue
+    /// / ink / red on it — a tint, not a wash. Owner, Nov 15, 2026
+    /// (widget polish): a very pale blue tint #f2f7ff so the card
+    /// reads less plain.
+    private var background: Color { Color(hex: "#f2f7ff") }
 
     var body: some View {
         if let snapshot = entry.snapshot {
@@ -179,25 +184,27 @@ struct WidgetView: View {
 
     /// Donut: spent vs left of the weekly allowance (owner, Nov 15,
     /// 2026). Spent slice brand blue, over budget the muted red
-    /// #991b1b (full ring), remaining slice light grey. The centre
-    /// shows the spent percentage. Shown only when the snapshot
-    /// carries a spent figure. privacySensitive like the figures.
+    /// #991b1b (full ring), remaining slice pale light blue #dbeafe
+    /// (owner, Nov 15, 2026 — widget polish: thicker ring, pale
+    /// blue track instead of plain grey). The centre shows the
+    /// spent percentage. Shown only when the snapshot carries a
+    /// spent figure. privacySensitive like the figures.
     private func donut(snapshot: WidgetSnapshot, size: CGFloat) -> some View {
         let fraction = snapshot.spentFraction ?? 0
         let overBudget = snapshot.availableCents < 0
         return ZStack {
             Circle()
-                .stroke(Color(hex: "#e5e7eb"), lineWidth: 10)
+                .stroke(Color(hex: "#dbeafe"), lineWidth: 14)
             // While loading there is no real spent figure to show:
             // the placeholder snapshot's 70% arc is sample data, so
-            // the ring stays a plain grey track with a skeleton bar
+            // the ring stays a plain pale-blue track with a skeleton bar
             // in the centre instead of a coloured arc and a percent.
             if !isPlaceholder {
                 Circle()
                     .trim(from: 0, to: fraction)
                     .stroke(
                         overBudget ? DesignTokens.heroOverBudget : DesignTokens.primary,
-                        style: StrokeStyle(lineWidth: 10, lineCap: fraction >= 1 ? .butt : .round)
+                        style: StrokeStyle(lineWidth: 14, lineCap: fraction >= 1 ? .butt : .round)
                     )
                     .rotationEffect(.degrees(-90))
             }
@@ -227,7 +234,8 @@ struct WidgetView: View {
     }
 
     /// A figure: big, bold, tabular numerals so the amount never
-    /// reflows as it changes.
+    /// reflows as it changes. Whole dollars, no cents (owner,
+    /// Nov 15, 2026 — widget polish).
     @ViewBuilder
     private func figure(cents: Int, color: Color, size: CGFloat) -> some View {
         if isPlaceholder {
@@ -237,7 +245,7 @@ struct WidgetView: View {
             skeletonBar(width: size * 3.9, height: size)
                 .privacySensitive()
         } else {
-            Text(MoneyFormat.string(cents: cents))
+            Text(MoneyFormat.wholeDollars(cents: cents))
                 .font(.system(size: size, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(color)
@@ -263,13 +271,13 @@ struct WidgetView: View {
                 figureLabel("Left this week")
                 figure(
                     cents: snapshot.availableCents,
-                    color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.ink,
+                    color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
                     size: 24
                 )
             }
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel("Charity left")
-                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.charityDeep, size: 20)
+                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 20)
             }
             Spacer(minLength: 0)
             updatedLine(snapshot: snapshot, stale: stale)
@@ -298,14 +306,14 @@ struct WidgetView: View {
                     figureLabel("Left this week")
                     figure(
                         cents: snapshot.availableCents,
-                        color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.ink,
+                        color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
                         size: 28
                     )
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 2) {
                     figureLabel("Charity left")
-                    figure(cents: snapshot.charityRemainingCents, color: DesignTokens.charityDeep, size: 28)
+                    figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 28)
                 }
                 Spacer(minLength: 0)
             }
@@ -343,14 +351,14 @@ struct WidgetView: View {
                     figureLabel("Left this week")
                     figure(
                         cents: snapshot.availableCents,
-                        color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.ink,
+                        color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
                         size: 36
                     )
                     if let spent = snapshot.spentCents {
                         if isPlaceholder {
                             skeletonBar(width: 170, height: 15)
                         } else {
-                            Text("of \(MoneyFormat.string(cents: spent + snapshot.availableCents)) allowance")
+                            Text("of \(MoneyFormat.wholeDollars(cents: spent + snapshot.availableCents)) allowance")
                                 .font(.subheadline)
                                 .foregroundStyle(DesignTokens.muted)
                         }
@@ -360,7 +368,7 @@ struct WidgetView: View {
             Divider()
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel("Charity left")
-                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.charityDeep, size: 36)
+                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 36)
             }
             Spacer(minLength: 0)
             updatedLine(snapshot: snapshot, stale: stale)
@@ -398,14 +406,14 @@ struct WidgetView: View {
                         figureLabel("Left this week")
                         figure(
                             cents: snapshot.availableCents,
-                            color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.ink,
+                            color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
                             size: 44
                         )
                         if let spent = snapshot.spentCents {
                             if isPlaceholder {
                                 skeletonBar(width: 170, height: 15)
                             } else {
-                                Text("of \(MoneyFormat.string(cents: spent + snapshot.availableCents)) allowance")
+                                Text("of \(MoneyFormat.wholeDollars(cents: spent + snapshot.availableCents)) allowance")
                                     .font(.subheadline)
                                     .foregroundStyle(DesignTokens.muted)
                             }
@@ -415,7 +423,7 @@ struct WidgetView: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 2) {
                     figureLabel("Charity left")
-                    figure(cents: snapshot.charityRemainingCents, color: DesignTokens.charityDeep, size: 44)
+                    figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 44)
                 }
                 Spacer(minLength: 0)
             }
