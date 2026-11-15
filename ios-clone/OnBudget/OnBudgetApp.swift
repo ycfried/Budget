@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 /// OnBudget native iOS clone — app entry point.
 /// Clone basis: live web v66 (branch ios-clone-v66). The app uses
@@ -8,6 +9,7 @@ import SwiftUI
 @main
 struct OnBudgetApp: App {
     @StateObject private var appState = AppViewModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // Bottom tab bar on iPad too (owner, Nov 11 2026): iPadOS 18+
@@ -34,6 +36,24 @@ struct OnBudgetApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                // Widget timelines (owner, Nov 15, 2026 — the XL
+                // widget sat on its placeholder and never loaded):
+                // Home refresh already reloads timelines after a
+                // successful load, but a widget added while the app
+                // was closed — or a Home refresh that failed — never
+                // got that signal. Reload on launch and on every
+                // foreground too, so a stuck widget gets a fresh
+                // timeline the next time the app opens. WidgetKit
+                // coalesces the calls; the snapshot itself is
+                // untouched (a failed load writes nothing).
+                .task {
+                    WidgetCenter.shared.reloadAllTimelines()
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .active {
+                        WidgetCenter.shared.reloadAllTimelines()
+                    }
+                }
                 .onOpenURL { url in
                     // Deep links on the `onbudget` scheme (registered
                     // in ios-clone/OnBudget/Info.plist):
