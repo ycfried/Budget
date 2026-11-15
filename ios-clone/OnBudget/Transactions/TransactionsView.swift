@@ -555,8 +555,8 @@ public struct TransactionsView: View {
 ///   compare to the SIGNED amount; either end alone works; blank /
 ///   unparseable = no limit; min > max is a validation state, not an
 ///   empty result.
-/// - Sort by: ONE picker with all four options (Newest first / Oldest
-///   first / Amount: high to low / Amount: low to high). Amount sort
+/// - Sort by: ONE picker with all four options (Newest / Oldest /
+///   High to low / Low to high). Amount sort
 ///   is by absolute value. Sort persists (`hb-tx-sort`); month/card
 ///   persist (`hb-tx-month`, `hb-tx-card`).
 /// - Fields: clean neutral — white with a light border, dark ink
@@ -609,7 +609,7 @@ public struct TransactionsFilterSheet: View {
                 // Compact (owner, Nov 14, 2026): the section
                 // headers are gone — each field's own value says
                 // what it is ("All transactions", "Choose Dates",
-                // "All cards", "Newest first") — and the fields
+                // "All cards", "Newest") — and the fields
                 // are shorter (40pt, was 44pt), so the whole sheet
                 // fits on one screen without scrolling. Only the
                 // Min / Max labels stay: two side-by-side amount
