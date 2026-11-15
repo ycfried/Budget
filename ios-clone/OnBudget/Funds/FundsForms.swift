@@ -542,6 +542,10 @@ public struct FundRequestQueue: View {
                     Text(expandedId == request.id ? "⌃" : "⌄")
                         .foregroundStyle(DesignTokens.primary)
                 }
+                // Whole-row tap target (owner, Nov 15, 2026 app-wide
+                // pass): the empty space between the text and the
+                // chevron responds too, not just the glyphs.
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             if expandedId == request.id {

@@ -8,8 +8,10 @@ import OnBudgetKit
 // pieces sit under its card:
 // - Extra Fund: the shortfall line ("Nothing owed back right
 //   now." / "Owed back now: $X.") lives under the Extra Fund card.
-// - Charity: the Default Charity Rate editor + How It Works live
-//   under the Charity card.
+// - Charity: the Default Charity Rate editor lives under the
+//   Charity card; How It Works opens from the ⓘ at the right of
+//   the rate row (owner, Nov 15, 2026 — no longer an expandable
+//   row).
 // - Carried Debt (build 29): the Debt Repayment Rule editor lives
 //   under the Carried Debt card.
 // Nothing was removed: the rate editor, the shortfall line, and
@@ -48,14 +50,21 @@ import OnBudgetKit
 /// the admin editor (field + Save sized to fit, Reset a small
 /// quiet link) and the preview line. No heading — the "Default
 /// Charity Rate" row says what it is, and the Charity card above
-/// is the section header.
+/// is the section header. The ⓘ at the right of the rate row opens
+/// How It Works as a popup (owner, Nov 15, 2026 — the expandable
+/// row is gone); the content itself is unchanged.
 public struct CharityRateSection: View {
     @ObservedObject public var viewModel: FundsViewModel
     @State private var rateText = ""
     @State private var rateError: String?
+    /// The ⓘ beside the rate row opens How It Works as a sheet.
+    @State private var showHowItWorks = false
+    /// True inside the Charity fund container: no card of its own.
+    public let bare: Bool
 
-    public init(viewModel: FundsViewModel) {
+    public init(viewModel: FundsViewModel, bare: Bool = false) {
         self.viewModel = viewModel
+        self.bare = bare
     }
 
     private var isAdmin: Bool { viewModel.context.isAdmin }
@@ -69,24 +78,13 @@ public struct CharityRateSection: View {
     }
 
     public var body: some View {
-        FundsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                if viewModel.charitySettings == nil {
-                    if let error = viewModel.charityError {
-                        FundsErrorBox(error)
-                    } else {
-                        FundsMuted("Loading rules…")
-                    }
-                } else {
-                    FundsBreakdownRow(
-                        "Default Charity Rate",
-                        value: "\(MoneyFormat.formatRateBp(defaultRateBp))%"
-                    )
-                    if isAdmin {
-                        rateEditor
-                    } else {
-                        FundsMuted("Only the admin can change the default rate.")
-                    }
+        Group {
+            if bare {
+                rateContent
+                    .padding(.horizontal, 20)
+            } else {
+                FundsCard {
+                    rateContent
                 }
             }
         }
@@ -98,6 +96,47 @@ public struct CharityRateSection: View {
             // A saved rate (or a refresh) re-syncs the field so it
             // always shows the live default, not a stale edit.
             rateText = MoneyFormat.formatRateBp(newValue)
+        }
+        .sheet(isPresented: $showHowItWorks) {
+            HowItWorksSheet(defaultRateBp: defaultRateBp)
+        }
+    }
+
+    /// The rate row + editor, without chrome: the caller (the
+    /// Charity fund container) wraps it, or FundsCard when
+    /// standalone.
+    private var rateContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if viewModel.charitySettings == nil {
+                if let error = viewModel.charityError {
+                    FundsErrorBox(error)
+                } else {
+                    FundsMuted("Loading rules…")
+                }
+            } else {
+                HStack(spacing: 8) {
+                    FundsBreakdownRow(
+                        "Default Charity Rate",
+                        value: "\(MoneyFormat.formatRateBp(defaultRateBp))%"
+                    )
+                    Button {
+                        showHowItWorks = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                            .padding(6)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("How it works")
+                }
+                if isAdmin {
+                    rateEditor
+                } else {
+                    FundsMuted("Only the admin can change the default rate.")
+                }
+            }
         }
     }
 
@@ -182,76 +221,58 @@ public struct FundShortfallLine: View {
                 FundsMuted("Owed back: loading…")
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 20)
         .accessibilityIdentifier("funds.shortfall")
     }
 }
 
-/// How It Works, under the Charity card: the three rule blocks
-/// behind one expandable row that starts closed (owner, Nov 12,
-/// 2026).
-public struct HowItWorksSection: View {
-    @ObservedObject public var viewModel: FundsViewModel
-    /// "How it works" starts closed (owner, Nov 12, 2026): the
-    /// rules used to fill the card with paragraphs; now the card
-    /// is one compact rate row and the reading lives behind this.
-    @State private var showHowItWorks = false
+/// How It Works, as a popup (owner, Nov 15, 2026 — the expandable
+/// row under the Charity card is gone; the ⓘ at the right of the
+/// Default Charity Rate row opens this sheet instead). The three
+/// rule blocks are unchanged.
+public struct HowItWorksSheet: View {
+    public let defaultRateBp: Int
+    @Environment(\.dismiss) private var dismiss
 
-    public init(viewModel: FundsViewModel) {
-        self.viewModel = viewModel
+    public init(defaultRateBp: Int) {
+        self.defaultRateBp = defaultRateBp
     }
-
-    private var defaultRateBp: Int { viewModel.charitySettings?.defaultRateBp ?? 1000 }
 
     public var body: some View {
-        FundsCard {
-            howItWorksRow
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: "How It Works") { dismiss() }
+            HowItWorksContent(defaultRateBp: defaultRateBp)
+            Spacer(minLength: 0)
         }
-        .accessibilityIdentifier("funds.howItWorks")
+        .padding()
+        .presentationDetents([.medium, .large])
+        .presentationBackground(.white)
+    }
+}
+
+/// The three rule blocks: Charity Basis, Rate per Entry, Extra Fund
+/// Top-Ups.
+public struct HowItWorksContent: View {
+    public let defaultRateBp: Int
+
+    public init(defaultRateBp: Int) {
+        self.defaultRateBp = defaultRateBp
     }
 
-    /// The three rule paragraphs, behind one expandable row that
-    /// starts closed (owner, Nov 12, 2026).
-    private var howItWorksRow: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                showHowItWorks.toggle()
-            } label: {
-                HStack {
-                    Text("How It Works")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(DesignTokens.ink)
-                    Spacer()
-                    Text("⌄")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(DesignTokens.primary)
-                        .rotationEffect(.degrees(showHowItWorks ? 180 : 0))
-                }
-                // No extra vertical padding: the card's own padding
-                // is the air here (it was 12pt inside the old shared
-                // rules card, under a divider).
-            }
-            .buttonStyle(.plain)
-            .animation(ExpandAnimation.animation, value: showHowItWorks)
-            if showHowItWorks {
-                VStack(alignment: .leading, spacing: 12) {
-                    ruleBlock(
-                        title: "Charity Basis",
-                        text: "Charity is \(MoneyFormat.formatRateBp(defaultRateBp))% of money actually received and manually entered amounts, from November 2026. Transfers, refunds, reimbursements, loans, and Extra Fund top-ups do not count on their own — nothing is pulled in automatically."
-                    )
-                    ruleBlock(
-                        title: "Rate per Entry",
-                        text: "A rate set on one income replaces the default for that entry only — it never adds to it. Correcting an old income reverses it and adds a replacement; the old entry stays, marked reversed."
-                    )
-                    ruleBlock(
-                        title: "Extra Fund Top-Ups",
-                        text: "Money added covers what the fund owes back first, then the rest increases spendable Available. The Add Money form shows that split before you save."
-                    )
-                }
-                .padding(.top, 12)
-                .padding(.bottom, 12)
-                .transition(ExpandAnimation.transition)
-            }
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ruleBlock(
+                title: "Charity Basis",
+                text: "Charity is \(MoneyFormat.formatRateBp(defaultRateBp))% of money actually received and manually entered amounts, from November 2026. Transfers, refunds, reimbursements, loans, and Extra Fund top-ups do not count on their own — nothing is pulled in automatically."
+            )
+            ruleBlock(
+                title: "Rate per Entry",
+                text: "A rate set on one income replaces the default for that entry only — it never adds to it. Correcting an old income reverses it and adds a replacement; the old entry stays, marked reversed."
+            )
+            ruleBlock(
+                title: "Extra Fund Top-Ups",
+                text: "Money added covers what the fund owes back first, then the rest increases spendable Available. The Add Money form shows that split before you save."
+            )
         }
     }
 
@@ -287,9 +308,12 @@ public struct DebtRuleSection: View {
     @State private var percentText = ""
     @State private var fixedText = ""
     @State private var ruleError: String?
+    /// True inside the Carried Debt fund container: no card of its own.
+    public let bare: Bool
 
-    public init(viewModel: FundsViewModel) {
+    public init(viewModel: FundsViewModel, bare: Bool = false) {
         self.viewModel = viewModel
+        self.bare = bare
     }
 
     private var isAdmin: Bool { viewModel.context.isAdmin }
@@ -325,27 +349,41 @@ public struct DebtRuleSection: View {
     }
 
     public var body: some View {
-        FundsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                if viewModel.debtRule == nil {
-                    if let error = viewModel.debtError {
-                        FundsErrorBox(error)
-                    } else {
-                        FundsMuted("Loading rules…")
-                    }
-                } else {
-                    FundsBreakdownRow("Debt Repayment Rule", value: ruleText)
-                    if isAdmin {
-                        ruleEditor
-                    } else {
-                        FundsMuted("Only the admin can change the debt repayment rule.")
-                    }
+        Group {
+            if bare {
+                ruleContent
+                    .padding(.horizontal, 20)
+            } else {
+                FundsCard {
+                    ruleContent
                 }
             }
         }
         .accessibilityIdentifier("funds.debtRule")
         .onAppear { syncFromSaved() }
         .onChange(of: savedRule) { _, _ in syncFromSaved() }
+    }
+
+    /// The rule row + editor, without chrome: the caller (the
+    /// Carried Debt fund container) wraps it, or FundsCard when
+    /// standalone.
+    private var ruleContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if viewModel.debtRule == nil {
+                if let error = viewModel.debtError {
+                    FundsErrorBox(error)
+                } else {
+                    FundsMuted("Loading rules…")
+                }
+            } else {
+                FundsBreakdownRow("Debt Repayment Rule", value: ruleText)
+                if isAdmin {
+                    ruleEditor
+                } else {
+                    FundsMuted("Only the admin can change the debt repayment rule.")
+                }
+            }
+        }
     }
 
     private func syncFromSaved() {

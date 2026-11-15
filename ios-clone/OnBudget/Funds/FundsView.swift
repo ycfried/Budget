@@ -7,11 +7,11 @@ import OnBudgetKit
 // same face as the Home stat cards (Title + Amount only, chevron `⌄`
 // bottom-right) with the same in-place expansion, except the Funds
 // expansions INCLUDE action buttons (Home does not). Grouped by fund
-// (owner, Nov 15, 2026): each card heads its own section — Extra Fund
-// (shortfall line, activity, Past Savings Records), Charity (rate,
-// How It Works, activity), Carried Debt (rule, activity, where it
-// came from) — then standalone Review. At most one card expanded at
-// a time.
+// (owner, Nov 15, 2026): each fund is ONE container — its card heads
+// the block and its rules, info and transactions sit inside it.
+// Extra Fund (shortfall line, activity, Past Savings Records),
+// Charity (rate + ⓘ How It Works popup, activity), Carried Debt
+// (rule, activity, where it came from) — then standalone Review.
 //
 // Forms: one at a time; the sections below the cards hide while a
 // form is open. Back returns to the Funds list (swipe-right closes
@@ -94,24 +94,24 @@ public struct FundsView: View {
                     }
                 } else {
                     // Three fund sections (owner, Nov 15, 2026): each
-                    // fund's card is its section header, and its own
-                    // pieces follow directly under it — no shared
-                    // pile below. Review stays standalone after them
+                    // fund is ONE container — its card heads the
+                    // block and its rules, info and transactions sit
+                    // inside the same card, not as loose rows below
+                    // it. Review stays standalone after them
                     // (household-wide, not fund-specific).
                     VStack(spacing: 24) {
-                        VStack(spacing: 12) {
+                        fundContainer {
                             fundCard
                             fundShortfallLine
                             fundActivitySection
                             savingsSection
                         }
-                        VStack(spacing: 12) {
+                        fundContainer {
                             charityCard
                             charityRateSection
-                            howItWorksSection
                             charityActivitySection
                         }
-                        VStack(spacing: 12) {
+                        fundContainer {
                             debtCard
                             debtRuleSection
                             debtActivitySection
@@ -441,22 +441,32 @@ public struct FundsView: View {
     //
     // The old shared "Funds & Charity Rules" card is split by
     // fund: the shortfall line lives under the Extra Fund card,
-    // the rate editor + How It Works under the Charity card.
+    // the rate editor under the Charity card (How It Works opens
+    // from the ⓘ beside the rate row).
 
     private var fundShortfallLine: some View {
         FundShortfallLine(viewModel: viewModel)
     }
 
     private var charityRateSection: some View {
-        CharityRateSection(viewModel: viewModel)
+        CharityRateSection(viewModel: viewModel, bare: true)
     }
 
     private var debtRuleSection: some View {
-        DebtRuleSection(viewModel: viewModel)
+        DebtRuleSection(viewModel: viewModel, bare: true)
     }
 
-    private var howItWorksSection: some View {
-        HowItWorksSection(viewModel: viewModel)
+    /// One container per fund (owner, Nov 15, 2026): the fund's
+    /// card, rules, info and transactions read as one block. The
+    /// card keeps its coloured outline; the rows inside are bare
+    /// (no card of their own) so the block stays flat, and their
+    /// text lines up with the card's interior text.
+    private func fundContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        FundsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                content()
+            }
+        }
     }
 
     /// Settings Budget → Temporary Allowance: open the form here
@@ -488,30 +498,42 @@ public struct FundsView: View {
     // (the else branch above).
 
     private var reviewSection: some View {
-        fundsSection(
-            title: viewModel.reviewCount > 0 ? "Review (\(viewModel.reviewCount))" : "Review",
-            section: .review,
-            isAdminOnly: true
-        ) {
-            ReviewView(viewModel: viewModel)
+        // Standalone after the fund containers, in its own card —
+        // Review is household-wide work, not one fund's. The card
+        // is gated with the row: members see neither.
+        Group {
+            if isAdmin {
+                FundsCard(padding: 0) {
+                    fundsSectionRow(
+                        title: viewModel.reviewCount > 0 ? "Review (\(viewModel.reviewCount))" : "Review",
+                        section: .review,
+                        isAdminOnly: true,
+                        hPad: 16
+                    ) {
+                        ReviewView(viewModel: viewModel)
+                    }
+                }
+            }
         }
     }
 
     private var fundActivitySection: some View {
-        fundsSection(
-            title: "Extra Fund Activity",
+        fundsSectionRow(
+            title: "Activity",
             section: .fundActivity,
-            isAdminOnly: true
+            isAdminOnly: true,
+            hPad: 20
         ) {
             FundTopupsHistory(viewModel: viewModel)
         }
     }
 
     private var charityActivitySection: some View {
-        fundsSection(
-            title: "Charity Activity",
+        fundsSectionRow(
+            title: "Activity",
             section: .charityActivity,
-            isAdminOnly: true
+            isAdminOnly: true,
+            hPad: 20
         ) {
             CharityIncomeHistory(
                 viewModel: viewModel,
@@ -525,70 +547,85 @@ public struct FundsView: View {
     }
 
     private var savingsSection: some View {
-        fundsSection(
+        fundsSectionRow(
             title: "Past Savings Records",
             section: .savings,
-            isAdminOnly: false
+            isAdminOnly: false,
+            hPad: 20
         ) {
             SavingsSection(viewModel: viewModel)
         }
     }
 
     private var debtActivitySection: some View {
-        fundsSection(
-            title: "Debt Activity",
+        fundsSectionRow(
+            title: "Activity",
             section: .debtActivity,
-            isAdminOnly: false
+            isAdminOnly: false,
+            hPad: 20
         ) {
             DebtActivityView(viewModel: viewModel)
         }
     }
 
     private var debtHistorySection: some View {
-        fundsSection(
+        fundsSectionRow(
             title: "Where It Came From",
             section: .debtHistory,
-            isAdminOnly: false
+            isAdminOnly: false,
+            hPad: 20
         ) {
             DebtHistoryView(viewModel: viewModel)
         }
     }
 
+    /// The expandable row itself (title + chevron + content), with
+    /// no card chrome: the caller decides the chrome — bare inside
+    /// its fund's container, or its own FundsCard for standalone
+    /// Review. `hPad` lines the row's text up with its fund card's
+    /// interior text (container 16 + row 20 = 36 inside a fund;
+    /// 16 for the standalone Review card).
+    ///
+    /// Whole-row tap target (owner rule, Nov 11 2026, and the Nov
+    /// 15, 2026 app-wide pass): the entire row is the toggle; the
+    /// chevron is only a hint. `.contentShape(Rectangle())` makes
+    /// the empty space between the title and the chevron respond
+    /// too, and the row padding lives inside the Button so the
+    /// padded edge toggles as well.
     @ViewBuilder
-    private func fundsSection<Content: View>(
+    private func fundsSectionRow<Content: View>(
         title: String,
         section: FundsMoreSection,
         isAdminOnly: Bool,
+        hPad: CGFloat,
         @ViewBuilder content: () -> Content
     ) -> some View {
         if !isAdminOnly || isAdmin {
-            FundsCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Whole-row tap target (owner rule, Nov 11 2026):
-                    // the entire row is the toggle; the chevron is
-                    // only a hint.
-                    Button {
-                        openMore = openMore == section ? nil : section
-                    } label: {
-                        HStack {
-                            Text(TitleCase.apply(to: title))
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(DesignTokens.ink)
-                            Spacer()
-                            Text("⌄")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(DesignTokens.primary)
-                                .rotationEffect(.degrees(openMore == section ? 180 : 0))
-                        }
-                        .padding(.vertical, 12)
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    openMore = openMore == section ? nil : section
+                } label: {
+                    HStack {
+                        Text(TitleCase.apply(to: title))
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Spacer()
+                        Text("⌄")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                            .rotationEffect(.degrees(openMore == section ? 180 : 0))
                     }
-                    .buttonStyle(.plain)
-                    .animation(ExpandAnimation.animation, value: openMore == section)
-                    if openMore == section {
-                        content()
-                            .padding(.bottom, 12)
-                            .transition(ExpandAnimation.transition)
-                    }
+                    .padding(.horizontal, hPad)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .animation(ExpandAnimation.animation, value: openMore == section)
+                if openMore == section {
+                    content()
+                        .padding(.horizontal, hPad)
+                        .padding(.bottom, 12)
+                        .transition(ExpandAnimation.transition)
                 }
             }
         }
