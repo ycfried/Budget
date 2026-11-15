@@ -97,7 +97,7 @@ test('classifier: deposit pattern, widened payment pattern, income kind, deposit
 test('classifier: plaid-sync passes the account type through', () => {
   assert.match(plaidSync, /const typeByAccount = new Map<string, string>\(\);/);
   assert.match(plaidSync, /typeByAccount\.set\(acc\.account_id, String\(acc\.type\)\)/);
-  assert.match(plaidSync, /upsertPlaidTx\(supabaseAdmin, householdId, tx, maskByAccount, typeByAccount\)/);
+  assert.match(plaidSync, /upsertPlaidTx\(supabaseAdmin, householdId, tx, maskByAccount, typeByAccount(, merchantRules)?\)/);
   assert.match(plaidSync, /classifyKind\(tx, merchantRaw, signed, typeByAccount\?\.get\(tx\.account_id\)\)/);
 });
 

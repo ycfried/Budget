@@ -66,10 +66,13 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
+  applyMerchantRuleToMerchant,
   canonicalHash,
   classifyMerchantOnly,
+  findCoveringBankRow,
   flagLookalikes,
   hmacSha256Hex,
+  loadMerchantRules,
   normalizeMerchant,
   timingSafeEqualHex,
 } from './canonical.ts';
@@ -188,8 +191,16 @@ Deno.serve(async (req) => {
     if (amountCents === null || !merchantRaw || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return json({ quarantined: true, stored: false, reason: 'unparseable alert' }, 202);
     }
-    const merchant = normalizeMerchant(merchantRaw).slice(0, 80);
+    // Build 30 (merchant rules): the rule's display name is what is
+    // stored AND hashed, so this alert hashes like its bank row.
+    const merchantRules = await loadMerchantRules(supabase, householdId);
+    const ruled = applyMerchantRuleToMerchant(
+      merchantRules, normalizeMerchant(merchantRaw).slice(0, 80), amountCents);
+    const merchant = ruled.merchant;
     const dedupeHash = await canonicalHash(merchant, date, amountCents, cardSuffix);
+    // A rule's fixed kind overrides the classifier (sign-guarded
+    // inside); otherwise classify on the ORIGINAL merchant text.
+    const kind = ruled.kindOverride ?? classifyMerchantOnly(merchantRaw, amountCents);
 
     // 5. Dedupe by message identity, NOT by hash alone — checked
     //    BEFORE the nonce claim (NEW-R4-C4, Nov 9, 2026): a
@@ -219,33 +230,36 @@ Deno.serve(async (req) => {
     }
 
     // 5b. Bank-first guard (Nov 12, 2026 — provisional-merge miss,
-    //     owner-reported doubles): when the Plaid row arrived BEFORE
-    //     the alert, inserting here creates a second row for the same
-    //     purchase and nothing later merges them (plaid-sync only
-    //     claims alert rows at bank-ingest time). So before inserting,
-    //     skip when a Plaid row with the same canonical hash already
-    //     covers this purchase — the bank row IS the purchase; the
+    //     owner-reported doubles; widened build 30): when the Plaid
+    //     row arrived BEFORE the alert, inserting here creates a
+    //     second row for the same purchase and nothing later merges
+    //     them (plaid-sync only claims alert rows at bank-ingest
+    //     time). So before inserting, skip when a Plaid row covers
+    //     this purchase — same amount + same card (or unknown
+    //     suffix) + date within 2 days + merchant-related (same
+    //     kind, same household). The bank row IS the purchase; the
     //     alert adds nothing. Plaid rows only, never an amex_alert
     //     row: two real identical purchases with no bank row must
     //     both insert (spec test 20), and two real identical
     //     purchases with bank rows still yield two rows (each alert
     //     is dropped against its own bank row; a bank row arriving
-    //     later inserts its own row). Suffix-unknown alerts ('0000')
-    //     also match a Plaid row on merchant + date + amount, since
-    //     their hash can never equal the bank row's. Same merchant-
-    //     string limit as plaid-sync step 3b: a store-number gap
-    //     ("ROYAL FARMS #123" vs "ROYAL FARMS") still misses.
-    const { data: bankRow } = await supabase.from('transactions')
-      .select('id').eq('household_id', householdId).eq('source', 'plaid')
-      .eq('dedupe_hash', dedupeHash).limit(1).maybeSingle();
-    let bankCovered = !!bankRow;
-    if (!bankCovered && cardSuffix === '0000') {
-      const { data: bankRowByFields } = await supabase.from('transactions')
-        .select('id').eq('household_id', householdId).eq('source', 'plaid')
-        .eq('merchant', merchant).eq('date', date).eq('amount_cents', amountCents)
-        .limit(1).maybeSingle();
-      bankCovered = !!bankRowByFields;
+    //     later inserts its own row). The exact-hash case is the
+    //     special case where all of those are equalities. A
+    //     TOIREMORG alert is never swallowed here: the eligibility
+    //     check refuses TOIREMORG pairs, so the alert inserts and
+    //     the pair stays two real gifts (owner ruling Nov 3).
+    let aliasPairs: Array<{ name_a: string; name_b: string }> = [];
+    try {
+      const { data: aliasData } = await supabase.from('merchant_aliases')
+        .select('name_a, name_b').eq('household_id', householdId);
+      aliasPairs = aliasData ?? [];
+    } catch {
+      aliasPairs = [];
     }
+    const coveringBankRow = await findCoveringBankRow(supabase, householdId, {
+      merchant, date, amount_cents: amountCents, card_suffix: cardSuffix, kind,
+    }, { aliases: aliasPairs, rules: merchantRules });
+    const bankCovered = !!coveringBankRow;
     if (bankCovered) return json({ stored: true, duplicate: true, state: 'provisional' });
 
     // 2. Replay: claim the nonce AFTER the quarantine checks and
@@ -260,7 +274,6 @@ Deno.serve(async (req) => {
     });
     if (nonceError) return json({ error: AUTH_FAILED }, 401);
 
-    const kind = classifyMerchantOnly(merchantRaw, amountCents);
     const { data: inserted, error } = await supabase.from('transactions').insert({
       household_id: householdId,
       date,
