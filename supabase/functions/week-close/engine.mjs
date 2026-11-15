@@ -142,16 +142,21 @@ export function computePartialClear(balanceCents, opts = {}) {
   }
   let cleared;
   if (hasAmount) {
+    // Validate the raw value first, so a negative or fractional
+    // amount gets the specific refusal (not int()'s generic one) —
+    // same order as the SQL, which checks <= 0 before anything else.
+    if (!Number.isInteger(opts.amountCents) || opts.amountCents <= 0) {
+      throw new Error('engine: amount must be positive');
+    }
     cleared = int(opts.amountCents);
-    if (cleared <= 0) throw new Error('engine: amount must be positive');
     if (cleared > balance) {
       throw new Error(`engine: amount exceeds remaining debt: ${balance} cents`);
     }
   } else if (hasPercent) {
-    const bp = int(opts.percentBp);
-    if (bp < 1 || bp > 10000) {
+    if (!Number.isInteger(opts.percentBp) || opts.percentBp < 1 || opts.percentBp > 10000) {
       throw new Error('engine: percent must be between 1 and 10000 basis points');
     }
+    const bp = int(opts.percentBp);
     cleared = Math.floor((balance * bp) / 10000);
     if (cleared <= 0) throw new Error('engine: percentage clears nothing at this balance');
   } else {

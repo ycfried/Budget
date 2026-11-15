@@ -154,6 +154,7 @@ begin
         else v_dup.pre_exclusion_state
       end
       where id = v_cand.duplicate_transaction_id;
+
     if v_note is null then v_note := 'merge'; end if;
     update duplicate_candidates
       set status = 'merged', resolved_at = now(), resolved_by = auth.uid(), resolution_note = v_note
