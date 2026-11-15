@@ -471,21 +471,25 @@ public struct BrandedLoader: View {
 /// opening/closing effect"): Charity / Extra Fund cards, transaction
 /// detail rows, fund rows, sheets' inner expands — all share the same
 /// smooth ease-in-out, 0.25s. No abrupt snaps, no per-screen timing.
-/// Owner rule, Nov 12 2026 ~10:00 PM — MAKE IT TYPICAL: the
-/// move-only dropdown still looked odd ("funny"), so the transition
-/// is the standard iOS disclosure feel — a smooth ease with a subtle
-/// opacity, like Apple's own disclosure groups. This SUPERSEDES the
-/// Nov 12 ~8:47 AM no-fade rule (the fade is back, by the owner's
-/// own latest call). Apply with `.animation(ExpandAnimation.animation,
-/// value: <the expanded flag>)` at the toggle site and
-/// `.transition(ExpandAnimation.transition)` on the expanding content;
-/// chevrons rotate 180° with the same animation (down when collapsed,
-/// up when expanded). Sheets keep the system presentation animation.
+/// NO-FADE, LOCKED IN (owner rule, Nov 12 2026 ~8:47 AM, re-confirmed
+/// Nov 15 2026): the transition is height/position ONLY — the words
+/// stay fully solid and opaque throughout, visible as the row drops
+/// open, and stay solid until covered when it closes. There is no
+/// opacity component anywhere in this transition. Do NOT reintroduce
+/// a fade: the fade was put back on Nov 12 ~10:00 PM ("make it
+/// typical", iOS disclosure feel) and the owner still called the
+/// animation "funny" and said it "keeps going in circles" (Nov 15),
+/// then re-confirmed no-fade. The fade stays out. Apply with
+/// `.animation(ExpandAnimation.animation, value: <the expanded flag>)`
+/// at the toggle site and `.transition(ExpandAnimation.transition)`
+/// on the expanding content; chevrons rotate 180° with the same
+/// animation (down when collapsed, up when expanded). Sheets keep
+/// the system presentation animation.
 public enum ExpandAnimation {
     public static let duration = 0.25
     public static var animation: Animation { .easeInOut(duration: duration) }
     public static var transition: AnyTransition {
-        .opacity.combined(with: .move(edge: .top))
+        .move(edge: .top)
     }
 }
 

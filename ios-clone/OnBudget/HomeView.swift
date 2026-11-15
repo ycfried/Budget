@@ -94,6 +94,19 @@ public final class HomeViewModel: ObservableObject {
     /// Card suffix → institution name (best-effort, for bank icons).
     @Published public var institutionBySuffix: [String: String] = [:]
 
+    /// The in-flight refresh, if any — so a second caller (Home
+    /// appearing while the boot preload is still running) awaits
+    /// the same load instead of starting a second one. Cleared
+    /// when the load finishes.
+    private var refreshTask: Task<Void, Never>?
+
+    /// True once the dashboard has loaded (or failed) — every
+    /// section has left the initial `.loading` state. The boot
+    /// preload uses it to know when Home is ready to show.
+    public var isLoaded: Bool {
+        !week.isLoading && !recent.isLoading && !fund.isLoading && !charity.isLoading
+    }
+
     public init(client: SupabaseClient, appState: AppViewModel, householdId: UUID) {
         self.client = client
         self.appState = appState
@@ -102,24 +115,114 @@ public final class HomeViewModel: ObservableObject {
 
     public var isAdmin: Bool { appState.isAdmin }
 
-    /// The single data load (live.js refresh() order, Home subset):
+    /// Force a refresh (pull-to-refresh, retry, sync,
+    /// Settings-close, boot preload). Coalesces: if a refresh is
+    /// already running, awaits it instead of starting a second one.
+    public func refresh() async {
+        if let task = refreshTask {
+            await task.value
+            return
+        }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performRefresh()
+        }
+        refreshTask = task
+        await task.value
+        refreshTask = nil
+    }
+
+    /// Load only if the dashboard is not already loaded (and not
+    /// already loading). The boot preload starts the load while the
+    /// loading screen shows; Home appearing later reuses it instead
+    /// of re-fetching and re-showing skeletons. A failed load stays
+    /// failed until an explicit refresh.
+    public func refreshIfNeeded() async {
+        if refreshTask != nil {
+            await refresh()
+            return
+        }
+        guard !isLoaded else { return }
+        await refresh()
+    }
+
+    /// The actual load (live.js refresh() order, Home subset):
     /// compute-week (+ admin week-close once per session), allowance
     /// flag, transactions page, fund ledger + releases, charity
-    /// income + settings, Plaid items for the last-sync stamp.
-    /// Each section fails independently with a real error state.
-    public func refresh() async {
+    /// income + settings, Plaid institutions + masks for the
+    /// last-sync stamp. Called by `refresh()` (which coalesces
+    /// concurrent callers onto one in-flight load).
+    ///
+    /// SPEED (owner, Nov 15, 2026): the sections used to await one
+    /// after another — ~8–9 sequential round trips, so Home took
+    /// seconds to load. The fetches are independent (only the
+    /// client-side derivations need each other's results), so they
+    /// now all start together and the load takes roughly the
+    /// slowest single call. Each fetch is its own Task so one
+    /// failure never cancels the others; every section still fails
+    /// independently with its own error state. The redundant
+    /// `plaidItems` fetch is gone — its result was never used (the
+    /// icon map only needs institutions + masks).
+    private func performRefresh() async {
         week = .loading
         fund = .loading
         charity = .loading
         recent = .loading
 
-        // Week numbers first — everything else keys off the week.
-        do {
+        // Kick off every independent fetch at once. The tasks only
+        // fetch and return; the section assignments below are the
+        // only writes to this view model.
+        let weekTask = Task<WeekResult, Error> {
             var result = try await client.functions.computeWeek(householdId: householdId)
             if await appState.runWeekCloseIfDue() {
                 result = try await client.functions.computeWeek(householdId: householdId)
             }
+            return result
+        }
+        let allowanceTask = Task<(baseAllowanceCents: Int?, allowanceExplicitlySet: Bool), Error> {
+            try await client.postgrest.householdAllowance(householdId: householdId)
+        }
+        let txTask = Task<([Transaction], Bool), Error> {
+            try await client.postgrest.transactionsPage(householdId: householdId)
+        }
+        let charityIncomeTask = Task<[CharityIncome], Error> {
+            try await client.postgrest.activeCharityIncome(householdId: householdId)
+        }
+        let charitySettingsTask = Task<CharitySettings?, Error> {
+            try await client.postgrest.charitySettings(householdId: householdId)
+        }
+        let fundLedgerTask = Task<[FundLedgerEntry], Error> {
+            try await client.postgrest.fundLedger(householdId: householdId)
+        }
+        let fundReleasesTask = Task<[SurplusRelease], Error> {
+            try await client.postgrest.surplusReleases(householdId: householdId)
+        }
+        let fundShortfallTask = Task<Int, Error> {
+            try await client.postgrest.fundShortfallCents(householdId: householdId)
+        }
+        let plaidTask = Task<[String: String], Error> {
+            // Suffix → institution map for bank icons (best-effort).
+            // Masks need the item ids, so institutions then masks
+            // stay sequential inside this one task.
+            let pairs = try await client.postgrest.plaidItemInstitutions(householdId: householdId)
+            let masks = try await client.postgrest.plaidAccountMasks(
+                itemIds: pairs.map(\.itemId))
+            var map: [String: String] = [:]
+            for (itemId, mask) in masks {
+                guard let mask,
+                      let pair = pairs.first(where: { $0.itemId == itemId }),
+                      let name = pair.institutionName else { continue }
+                map[mask] = name
+            }
+            return map
+        }
+
+        // Week numbers — everything else keys off the week.
+        var weekStart: String?
+        do {
+            let result = try await weekTask.value
             week = .loaded(result)
+            weekStart = result.weekStart
         } catch let error as OnBudgetError {
             if error == .sessionExpired { appState.showSessionExpired(); return }
             week = .failed(error)
@@ -133,7 +236,7 @@ public final class HomeViewModel: ObservableObject {
         // rows; both clear together when the household read fails so
         // a stale base can never explain a fresh week.
         do {
-            let allowance = try await client.postgrest.householdAllowance(householdId: householdId)
+            let allowance = try await allowanceTask.value
             allowanceSet = allowance.allowanceExplicitlySet
             allowanceCents = allowance.baseAllowanceCents
             allowanceError = nil
@@ -148,13 +251,13 @@ public final class HomeViewModel: ObservableObject {
             allowanceError = .unknown("Could not load your allowance setting.")
         }
 
-        // Transactions page (100 + probe row): recent 6, purchases
-        // count, charity gifts. A failure here is an error state,
-        // never a silent empty list.
-        var weekStart: String?
-        if case .loaded(let result) = week { weekStart = result.weekStart }
+        // Transactions page: recent 6, purchases count, charity
+        // gifts. A failure here is an error state, never a silent
+        // empty list. The charity summary is derived from the same
+        // rows + the concurrently fetched income and settings.
+        var charityRows: [Transaction] = []
         do {
-            let (rows, _) = try await client.postgrest.transactionsPage(householdId: householdId)
+            let (rows, _) = try await txTask.value
             let visible = rows.filter { !$0.isInTrash }
             recent = .loaded(Array(visible.prefix(6)))
             if let weekStart {
@@ -170,8 +273,7 @@ public final class HomeViewModel: ObservableObject {
             } else {
                 purchasesThisWeek = nil
             }
-            // Charity summary needs the charity rows + income.
-            await loadCharity(charityRows: visible.filter { $0.kind == .charity })
+            charityRows = visible.filter { $0.kind == .charity }
         } catch let error as OnBudgetError {
             if error == .sessionExpired { appState.showSessionExpired(); return }
             recent = .failed(error)
@@ -183,14 +285,32 @@ public final class HomeViewModel: ObservableObject {
             charity = .failed(.unknown("Could not load charity."))
         }
 
+        // Charity summary (only when the transactions load above
+        // succeeded — a failed transactions load already failed the
+        // charity section with it, as before).
+        if case .loaded = recent {
+            do {
+                let income = try await charityIncomeTask.value
+                let settings = try await charitySettingsTask.value
+                let summary = CharitySummary.compute(
+                    activeIncome: income,
+                    charityTransactions: charityRows,
+                    defaultRateBp: settings?.defaultRateBp ?? 1000)
+                charity = .loaded(summary)
+            } catch let error as OnBudgetError {
+                if error == .sessionExpired { appState.showSessionExpired(); return }
+                charity = .failed(error)
+            } catch {
+                charity = .failed(.unknown("Could not load charity."))
+            }
+        }
+
         // Extra Fund display aggregation (sums over server rows).
         do {
-            async let ledger = client.postgrest.fundLedger(householdId: householdId)
-            async let releases = client.postgrest.surplusReleases(householdId: householdId)
-            async let shortfall = client.postgrest.fundShortfallCents(householdId: householdId)
             let summary = FundSummary.compute(
-                ledger: try await ledger, releases: try await releases,
-                shortfallCents: try await shortfall)
+                ledger: try await fundLedgerTask.value,
+                releases: try await fundReleasesTask.value,
+                shortfallCents: try await fundShortfallTask.value)
             fund = .loaded(summary)
         } catch let error as OnBudgetError {
             if error == .sessionExpired { appState.showSessionExpired(); return }
@@ -199,23 +319,11 @@ public final class HomeViewModel: ObservableObject {
             fund = .failed(.unknown("Could not load Extra Fund balances."))
         }
 
-        // Plaid items: only for the suffix → institution map (bank
-        // icons). Best-effort — never blocks Home. No sync stamp is
-        // kept here: the sync line lives in Settings only.
+        // Plaid suffix → institution map (bank icons). Best-effort —
+        // never blocks Home. No sync stamp is kept here: the sync
+        // line lives in Settings only.
         do {
-            let items = try await client.postgrest.plaidItems(householdId: householdId)
-            // Suffix → institution map for bank icons (best-effort).
-            let pairs = try await client.postgrest.plaidItemInstitutions(householdId: householdId)
-            let masks = try await client.postgrest.plaidAccountMasks(
-                itemIds: pairs.map(\.itemId))
-            var map: [String: String] = [:]
-            for (itemId, mask) in masks {
-                guard let mask,
-                      let pair = pairs.first(where: { $0.itemId == itemId }),
-                      let name = pair.institutionName else { continue }
-                map[mask] = name
-            }
-            institutionBySuffix = map
+            institutionBySuffix = try await plaidTask.value
         } catch {
             // Best-effort only: no stamp, no error state.
         }
@@ -239,22 +347,6 @@ public final class HomeViewModel: ObservableObject {
         }
     }
 
-    private func loadCharity(charityRows: [Transaction]) async {
-        do {
-            async let income = client.postgrest.activeCharityIncome(householdId: householdId)
-            async let settings = client.postgrest.charitySettings(householdId: householdId)
-            let summary = CharitySummary.compute(
-                activeIncome: try await income,
-                charityTransactions: charityRows,
-                defaultRateBp: try await settings?.defaultRateBp ?? 1000)
-            charity = .loaded(summary)
-        } catch let error as OnBudgetError {
-            if error == .sessionExpired { appState.showSessionExpired(); return }
-            charity = .failed(error)
-        } catch {
-            charity = .failed(.unknown("Could not load charity."))
-        }
-    }
 
     // MARK: - Bank sync
 
@@ -315,7 +407,10 @@ public final class HomeViewModel: ObservableObject {
 
 public struct HomeView: View {
     @ObservedObject var appState: AppViewModel
-    @StateObject private var viewModel: HomeViewModel
+    /// Owned by AppState (created at boot so the dashboard can be
+    /// preloaded behind the loading screen); Home only observes
+    /// it. Falls back to a fresh one if AppState has none yet.
+    @ObservedObject var viewModel: HomeViewModel
     @State private var showWeeklySheet = false
     @State private var showNotLoadedAlert = false
     @State private var notLoadedAlertTitle = "Weekly Budget"
@@ -328,8 +423,8 @@ public struct HomeView: View {
 
     public init(appState: AppViewModel, householdId: UUID) {
         self.appState = appState
-        self._viewModel = StateObject(wrappedValue: HomeViewModel(
-            client: appState.client, appState: appState, householdId: householdId))
+        self.viewModel = appState.homeViewModel ?? HomeViewModel(
+            client: appState.client, appState: appState, householdId: householdId)
     }
 
     public var body: some View {
@@ -364,7 +459,7 @@ public struct HomeView: View {
             .padding(16)
         }
         .background(DesignTokens.background)
-        .task { await viewModel.refresh() }
+        .task { await viewModel.refreshIfNeeded() }
         .refreshable { await viewModel.refresh() }
         // Settings dismiss (audit H-P1-5): the Settings cover sits
         // over this tab and never re-ran the load, so a just-set

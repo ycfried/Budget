@@ -53,14 +53,25 @@ public final class TransactionsViewModel {
 
     // MARK: - List state
 
-    /// Raw loaded page (up to `pageSize` rows, date desc). Filters
-    /// apply client-side; Trash rows live here too.
+    /// Rows fetched so far, date desc, append-only: the first load
+    /// fetches `pageSize` rows; each Load More appends the next
+    /// `pageSize` via `offset` (owner, Nov 15, 2026 — the list
+    /// loads 25 per page). Filters apply client-side to everything
+    /// loaded, so a filter/search/sort change needs no refetch and
+    /// no reset — the list re-filters from the rows already here.
     public private(set) var loadedPage: [Transaction] = []
     public private(set) var loadState: LoadState<[Transaction]> = .idle
-    /// Page size: 100, +100 per Load More tap (live.js `txLimit`).
-    public private(set) var pageSize: Int = 100
-    /// True exactly when the probe row came back (older rows exist).
+    /// Per-page fetch size: 25 (was 100 — the list loaded everything
+    /// at once, which is why it felt slow). Load More appends the
+    /// next 25; it never refetches what is already loaded.
+    public private(set) var pageSize: Int = 25
+    /// True exactly when the probe row came back on the latest fetch
+    /// (older rows exist on the server).
     public private(set) var hasMore: Bool = false
+    /// A Load More fetch is in flight: the button disables while
+    /// appending so a double-tap cannot fire two appends. The
+    /// existing rows stay visible — Load More never blanks the list.
+    public private(set) var isLoadingMore: Bool = false
     /// Whether the $375 schema-default allowance was ever explicitly
     /// set — the sync button is primary blue only when it was set.
     public private(set) var allowanceSet: Bool = false
@@ -176,24 +187,23 @@ public final class TransactionsViewModel {
     // MARK: - Derived list
 
     /// The filtered, sorted rows actually shown (excluded rows never
-    /// appear here). The page is the first `pageSize` rows of the
-    /// fetched page (live.js: `all` = fetched rows sliced to
-    /// `txLimit`); filters then apply client-side to that page.
+    /// appear here). Filters apply client-side to everything loaded
+    /// so far — the page is the loaded set, not a slice of it.
     public var shownTransactions: [Transaction] {
-        filters.apply(to: Array(loadedPage.prefix(pageSize)))
+        filters.apply(to: loadedPage)
     }
 
     /// Trashed rows, from the same load as Transactions (live.js §11).
     public var trashTransactions: [Transaction] {
-        Array(loadedPage.prefix(pageSize)).filter(\.isInTrash)
+        loadedPage.filter(\.isInTrash)
     }
 
     public var monthsPresent: [String] {
-        TransactionFilters.months(in: Array(loadedPage.prefix(pageSize)))
+        TransactionFilters.months(in: loadedPage)
     }
 
     public var cardsPresent: [String] {
-        TransactionFilters.cards(in: Array(loadedPage.prefix(pageSize)))
+        TransactionFilters.cards(in: loadedPage)
     }
 
     /// The count line (live.js:863-886, wording per owner Nov 12,
@@ -231,10 +241,13 @@ public final class TransactionsViewModel {
 
     // MARK: - Loading
 
-    /// First load / pull-to-refresh / retry. A failed read is an
-    /// error state, never a silent empty list or an endless spinner
-    /// (the web app has a live "Loading…" hang; the clone must not
-    /// copy it). Requests time out at 30s server-side in the client.
+    /// First load / pull-to-refresh / retry / after a mutation.
+    /// Fetches the first page (offset 0, `pageSize` rows) and
+    /// REPLACES the loaded set — a refresh starts from the top.
+    /// A failed read is an error state, never a silent empty list
+    /// or an endless spinner (the web app has a live "Loading…"
+    /// hang; the clone must not copy it). Requests time out at 30s
+    /// server-side in the client.
     public func load() async {
         loadTask?.cancel()
         let task = Task { [weak self] in
@@ -243,7 +256,8 @@ public final class TransactionsViewModel {
             do {
                 let (rows, hasMore) = try await self.client.postgrest.transactionsPage(
                     householdId: self.householdId,
-                    pageSize: self.pageSize
+                    pageSize: self.pageSize,
+                    offset: 0
                 )
                 guard !Task.isCancelled else { return }
                 self.loadedPage = rows
@@ -270,29 +284,42 @@ public final class TransactionsViewModel {
         await task.value
     }
 
-    /// Every filter / search / sort change is a new list: the page
-    /// resets to 100 (live.js `resetTxLimit`). Filtering is
-    /// client-side over the loaded page, so this needs no refetch —
-    /// the page is re-sliced from the rows already loaded.
-    public func resetPage() {
-        pageSize = 100
-    }
-
-    /// Load More: +100 per tap, then reload (live.js:888-900).
+    /// Load More: appends the next `pageSize` rows (offset =
+    /// rows already loaded) and never refetches what is here —
+    /// the old "raise the limit and reload everything" re-read
+    /// the whole list on every tap. The existing rows stay visible
+    /// while the next page loads (the list is not blanked); a
+    /// failed append keeps the rows and the button, so the user
+    /// can retry. A double-tap while appending is ignored.
     public func loadMore() async {
-        pageSize += 100
-        await load()
+        guard !isLoadingMore, hasMore else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            let (rows, hasMore) = try await client.postgrest.transactionsPage(
+                householdId: householdId,
+                pageSize: pageSize,
+                offset: loadedPage.count
+            )
+            loadedPage.append(contentsOf: rows)
+            self.hasMore = hasMore
+            loadState = .loaded(loadedPage)
+        } catch let error as OnBudgetError {
+            toastManager.showError(error.displayMessage)
+        } catch {
+            toastManager.showError(OnBudgetError.displayMessage(for: error))
+        }
     }
 
-    /// Search is debounced 250ms; a new search resets the page to 100
-    /// (live.js:4490-4497). Searches loaded transactions only.
+    /// Search is debounced 250ms. Searches loaded transactions
+    /// only — filtering is client-side over the rows already
+    /// loaded, so a new search needs no refetch and no page reset.
     public func applySearch(_ text: String) {
         searchTask?.cancel()
         searchTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled, let self else { return }
             self.filters.search = text
-            self.resetPage()
         }
     }
 
@@ -300,11 +327,11 @@ public final class TransactionsViewModel {
     /// re-renders (live.js:1033-1042). Also bumps `searchResetNonce`
     /// so the visible search box clears with the filters (T-P1-1) —
     /// the Past Weeks and Home-row jumps call this first, so they
-    /// clear the box too.
+    /// clear the box too. Filtering is client-side over the rows
+    /// already loaded, so clearing needs no refetch.
     public func clearSearchAndFilters() {
         filters = TransactionFilters()
         persistFilters()
-        resetPage()
         searchResetNonce += 1
     }
 
@@ -330,12 +357,11 @@ public final class TransactionsViewModel {
         }
     }
 
-    /// Apply a filter change that resets the page (status / month /
-    /// card / week / dates / bounds / sort). Client-side only — no
-    /// refetch; the list re-renders from the loaded page.
+    /// Apply a filter change (status / month / card / week / dates /
+    /// bounds / sort). Client-side only — no refetch; the list
+    /// re-filters from the rows already loaded.
     public func filterChanged() {
         persistFilters()
-        resetPage()
     }
 
     public func persistFilters() {

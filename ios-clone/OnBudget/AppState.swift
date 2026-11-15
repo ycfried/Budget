@@ -117,6 +117,12 @@ public final class AppViewModel: ObservableObject {
     @Published public var ownerId: UUID?
     @Published public var householdName: String?
 
+    /// The Home dashboard's view model, owned here (not by HomeView)
+    /// so boot can preload it behind the loading screen (owner,
+    /// Nov 15, 2026). Created once the household is known
+    /// (`boot()` / `enterHousehold()`), cleared on sign-out.
+    public var homeViewModel: HomeViewModel?
+
     /// Boot failure state (audit F-P1-1, Nov 11, 2026): when the
     /// membership read fails, the Household screen shows this
     /// persistently with a Retry — never a vanishing toast, and the
@@ -264,6 +270,24 @@ public final class AppViewModel: ObservableObject {
             role = membership.role
             householdName = try? await client.postgrest.householdName(householdId: membership.householdId)
             ownerId = try? await client.postgrest.householdOwnerId(householdId: membership.householdId)
+            // Preload the dashboard behind the loading screen
+            // (owner, Nov 15, 2026): start the Home load now and
+            // hold the branded loading screen until it is ready or
+            // ~2s pass, whichever first, so Home arrives ready
+            // instead of skeleton-filled. The preload keeps running
+            // in the background if the timeout wins, so the data
+            // still arrives after Home appears; the shimmer
+            // skeletons stay as the fallback for anything still
+            // loading. The loading screen itself still appears
+            // immediately on launch — this only extends it.
+            let home = HomeViewModel(client: client, appState: self, householdId: membership.householdId)
+            homeViewModel = home
+            Task { await home.refresh() }
+            let preloadDeadline = Date().addingTimeInterval(2.0)
+            while Date() < preloadDeadline {
+                if home.isLoaded { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
             phase = .app
             selectedTab = .home
         } catch let error as OnBudgetError where error == .sessionExpired {
@@ -292,6 +316,12 @@ public final class AppViewModel: ObservableObject {
         if role == .admin {
             ownerId = client.currentSession?.user.id
         }
+        // Own the Home view model here too (same as boot's preload,
+        // minus the loading-screen hold — the user is already past
+        // it). HomeView reuses it instead of creating its own.
+        let home = HomeViewModel(client: client, appState: self, householdId: id)
+        homeViewModel = home
+        Task { await home.refresh() }
         phase = .app
         selectedTab = .home
     }
@@ -321,6 +351,7 @@ public final class AppViewModel: ObservableObject {
         // The widget must never show the previous user's numbers.
         WidgetSnapshotStore.delete()
         householdId = nil
+        homeViewModel = nil
         role = nil
         ownerId = nil
         householdName = nil

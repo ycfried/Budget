@@ -235,7 +235,10 @@ struct WidgetView: View {
 
     /// A figure: big, bold, tabular numerals so the amount never
     /// reflows as it changes. Whole dollars, no cents (owner,
-    /// Nov 15, 2026 — widget polish).
+    /// Nov 15, 2026 — widget polish). Single line, never wrapped:
+    /// a wide amount wrapping to two lines would blow the small
+    /// widget's height (owner, Nov 15, 2026 — the small size
+    /// overflowed its 155pt canvas).
     @ViewBuilder
     private func figure(cents: Int, color: Color, size: CGFloat) -> some View {
         if isPlaceholder {
@@ -248,6 +251,7 @@ struct WidgetView: View {
             Text(MoneyFormat.wholeDollars(cents: cents))
                 .font(.system(size: size, weight: .bold))
                 .monospacedDigit()
+                .lineLimit(1)
                 .foregroundStyle(color)
                 .privacySensitive()
         }
@@ -264,20 +268,27 @@ struct WidgetView: View {
         }
     }
 
+    /// Small (155pt square): the two figures stack vertically,
+    /// so the layout is compact — tight spacing and slightly
+    /// smaller figures than medium, or the content overflows the
+    /// canvas (owner, Nov 15, 2026 — the small size did not load /
+    /// render properly: wordmark + two figure blocks + updated line
+    /// came to ~153pt in a 155pt canvas, ~2pt of slack, so it
+    /// clipped. Spacing 6 and figures 22/18 leave ~19pt of slack).
     private func small(snapshot: WidgetSnapshot, stale: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             wordmark
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel("Left this week")
                 figure(
                     cents: snapshot.availableCents,
                     color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
-                    size: 24
+                    size: 22
                 )
             }
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel("Charity left")
-                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 20)
+                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 18)
             }
             Spacer(minLength: 0)
             updatedLine(snapshot: snapshot, stale: stale)
