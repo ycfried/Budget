@@ -3,8 +3,11 @@ import OnBudgetKit
 
 /// Transaction Actions sheet (CLONE_SPEC §7.4, live.js:3763-3970).
 ///
-/// Sheet header: Cancel (top-left text link), title "Actions",
-/// subtitle "Merchant — $X". Rows are tappable list rows (label bold
+/// Sheet header: X close (top-left symbol) on the list flow, back
+/// chevron on a sub-flow, title centred (owner, Nov 14, 2026 — the
+/// toolbar "Cancel" text truncated to "Ca…" and the NavigationStack
+/// root broke fitted sizing, so the sheet rendered tall and mostly
+/// empty). Subtitle "Merchant — $X". Rows are tappable list rows (label bold
 /// + muted sub-line + ›). Which actions appear is decided by the
 /// `actionsForTxKind` table — the clone uses this exact table
 /// (relaxed Nov 8, 2026: Charity is offered on ANY charge;
@@ -145,37 +148,33 @@ public struct TransactionActionsSheet: View {
     // MARK: - Body
 
     public var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                switch flow {
-                case .list: listContent
-                case .charityConfirm: charityConfirmContent
-                case .extraFund: extraFundContent
-                case .linkCandidates: linkCandidatesContent
-                case .unlinkConfirm: unlinkConfirmContent
-                case .reclassifyKind: reclassifyKindContent
-                case .reclassifyReason(let kind): reclassifyReasonContent(kind: kind)
-                case .deleteConfirm: deleteConfirmContent
-                }
-            }
-            .padding()
-            .navigationTitle(flowTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        if flow == .list {
-                            onDismiss()
-                        } else {
-                            flow = .list
-                        }
-                    }
-                    // T-P2-10: the owner Back treatment (light blue
-                    // #3b82f6, bold 700, 15px).
-                    .buttonStyle(BackButtonStyle())
-                }
+        // No NavigationStack root (owner, Nov 14, 2026): the
+        // toolbar "Cancel" truncated to "Ca…", and a NavigationStack
+        // reports an unbounded ideal height, so the fitted sheet
+        // rendered tall and mostly empty (build 24) — a single
+        // "Use Extra Fund" row in a full-height card. A plain VStack
+        // root + SheetHeader lets .presentationSizing(.fitted) at
+        // the presentation site measure the real content. On the
+        // list flow the header shows X (dismiss); on a sub-flow it
+        // shows a back chevron (return to the list).
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(
+                title: flowTitle,
+                onClose: { onDismiss() },
+                onBack: flow == .list ? nil : { flow = .list }
+            )
+            switch flow {
+            case .list: listContent
+            case .charityConfirm: charityConfirmContent
+            case .extraFund: extraFundContent
+            case .linkCandidates: linkCandidatesContent
+            case .unlinkConfirm: unlinkConfirmContent
+            case .reclassifyKind: reclassifyKindContent
+            case .reclassifyReason(let kind): reclassifyReasonContent(kind: kind)
+            case .deleteConfirm: deleteConfirmContent
             }
         }
+        .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
         // size class, full-width on iPhone — same treatment as the
         // Weekly Budget sheet. The trailing Spacer is gone: it

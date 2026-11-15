@@ -512,6 +512,10 @@ struct MembersSettingsView: View {
             }
             .font(.subheadline)
             .foregroundStyle(DesignTokens.mid)
+            // Centred at the bottom of the page (owner, Nov 14,
+            // 2026) — the links sat left-aligned under Delete
+            // Account.
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.top, 4)
         }
     }

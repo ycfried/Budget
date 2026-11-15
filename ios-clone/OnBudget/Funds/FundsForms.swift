@@ -509,22 +509,24 @@ public struct ApproveRequestSheet: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                FundsMuted("Approve how much of this \(MoneyFormat.formatCents(request.amountCents)) request? Enter less for a split approval.")
-                FundsMoneyField("Amount ($)", text: $amountText)
-                if let error {
-                    FundsErrorBox(error)
-                }
-                HStack(spacing: 12) {
-                    FundsPrimaryButton("Approve", action: onApprove)
-                    FundsTertiaryButton("Cancel", action: onCancel)
-                }
+        // No NavigationStack root (owner, Nov 14, 2026 — same
+        // fitted-sizing rule as the Actions sheet): a NavigationStack
+        // reports an unbounded ideal height, so the fitted sheet
+        // rendered tall and mostly empty. Plain VStack + SheetHeader
+        // lets fitted measure the real content.
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: TitleCase.apply(to: "Approve from the Fund"), onClose: onCancel)
+            FundsMuted("Approve how much of this \(MoneyFormat.formatCents(request.amountCents)) request? Enter less for a split approval.")
+            FundsMoneyField("Amount ($)", text: $amountText)
+            if let error {
+                FundsErrorBox(error)
             }
-            .padding()
-            .navigationTitle(TitleCase.apply(to: "Approve from the Fund"))
-            .navigationBarTitleDisplayMode(.inline)
+            HStack(spacing: 12) {
+                FundsPrimaryButton("Approve", action: onApprove)
+                FundsTertiaryButton("Cancel", action: onCancel)
+            }
         }
+        .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
         // size class, full-width on iPhone — same treatment as the
         // Weekly Budget sheet. The trailing Spacer is gone: it

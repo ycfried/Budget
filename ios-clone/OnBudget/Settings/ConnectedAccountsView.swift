@@ -650,28 +650,30 @@ struct ConnectedAccountsView: View {
     }
 
     private func nicknameSheet(for row: ConnectedAccountRow) -> some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Give this account a short name (up to 40 characters). Leave it blank to remove the nickname. The nickname is only a label — it never changes bank links, matching, or week math.")
-                    .font(.subheadline)
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                TextField("Nickname", text: $viewModel.nicknameText)
-                    .textFieldStyle(.roundedBorder)
-                HStack(spacing: 12) {
-                    Button("Save") {
-                        Task { await viewModel.saveNickname() }
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    Button("Cancel") {
-                        viewModel.nicknameTarget = nil
-                    }
-                    .buttonStyle(TertiaryButtonStyle())
+        // No NavigationStack root (owner, Nov 14, 2026 — same
+        // fitted-sizing rule as the Actions sheet): a NavigationStack
+        // reports an unbounded ideal height, so the fitted sheet
+        // rendered tall and mostly empty. Plain VStack + SheetHeader
+        // lets fitted measure the real content.
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: "Nickname", onClose: { viewModel.nicknameTarget = nil })
+            Text("Give this account a short name (up to 40 characters). Leave it blank to remove the nickname. The nickname is only a label — it never changes bank links, matching, or week math.")
+                .font(.subheadline)
+                .foregroundStyle(Color(hex: "#6b7280"))
+            TextField("Nickname", text: $viewModel.nicknameText)
+                .textFieldStyle(.roundedBorder)
+            HStack(spacing: 12) {
+                Button("Save") {
+                    Task { await viewModel.saveNickname() }
                 }
+                .buttonStyle(PrimaryButtonStyle())
+                Button("Cancel") {
+                    viewModel.nicknameTarget = nil
+                }
+                .buttonStyle(TertiaryButtonStyle())
             }
-            .padding()
-            .navigationTitle("Nickname")
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
         // size class, full-width on iPhone — same treatment as the
         // Weekly Budget sheet. The trailing Spacer is gone: it

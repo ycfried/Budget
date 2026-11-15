@@ -233,6 +233,7 @@ public final class HomeViewModel: ObservableObject {
                 weekStart: result.weekStart,
                 availableCents: result.availableCents,
                 charityRemainingCents: summary.remainingCents,
+                spentCents: result.chargesCents,
                 computedAt: Date()))
             WidgetCenter.shared.reloadAllTimelines()
         }
@@ -329,8 +330,25 @@ public struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 heroCard
-                charityCard
-                fundCard
+                // Charity + Extra Fund share one row, half-width
+                // each (owner, Nov 14, 2026 — supersedes the Nov 12
+                // bigger full-width stacked cards). The expanded
+                // detail drops below the row, full width; one card
+                // open at a time (accordion rule unchanged).
+                HStack(alignment: .top, spacing: 12) {
+                    charityCard
+                    fundCard
+                }
+                if appState.expandedCard == .charity {
+                    statDetailCard(theme: .charity, onTap: {
+                        withAnimation(ExpandAnimation.animation) { appState.expandedCard = nil }
+                    }) { charityRows }
+                }
+                if appState.expandedCard == .fund {
+                    statDetailCard(theme: .fund, onTap: {
+                        withAnimation(ExpandAnimation.animation) { appState.expandedCard = nil }
+                    }) { fundRows }
+                }
                 recentSection
                     // Breathing room (owner, Nov 12 2026): the section
                     // sat too tight under the Extra Fund card — 8pt
@@ -351,7 +369,7 @@ public struct HomeView: View {
         }
         .sheet(isPresented: $showWeeklySheet) {
             if case .loaded(let result) = viewModel.week {
-                WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, appState: appState)
+                WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, purchasesThisWeek: viewModel.purchasesThisWeek, appState: appState)
                     // iPad width (owner, Nov 12 2026): a plain .sheet
                     // is a ~540pt form sheet on iPad — narrow and
                     // cramped for this content. .fitted sizes the
@@ -411,15 +429,16 @@ public struct HomeView: View {
 
     // Hero header — the same style as the Charity / Extra Fund
     // cards (owner, Nov 14, 2026): icon chip + title in ONE row,
-    // with the week date inline after the title ("Weekly Budget ·
-    // Nov 8") instead of on a line of its own, and the sync button
-    // at the trailing end — the top-right corner of the card. The
-    // title is 18pt bold like the stat cards (was 24pt on its own
-    // line); the hero stays the anchor by its 3px outline and
-    // the big figure below. The date shows only once loaded (it
-    // comes from compute-week); while loading the sync spot holds
-    // a skeleton block so the header never jumps when the numbers
-    // arrive.
+    // with the sync button at the trailing end — the top-right
+    // corner of the card. The title is "Spending" and there is NO
+    // date anywhere on the card (owner, Nov 14, 2026 — this
+    // supersedes the inline-date "Weekly Budget · Nov 8" from
+    // earlier the same day; the date lived only in the Weekly
+    // sheet now). The title is 18pt bold like the stat cards
+    // (was 24pt on its own line); the hero stays the anchor by
+    // its 3px outline and the big figure below. While loading
+    // the sync spot holds a skeleton block so the header never
+    // jumps when the numbers arrive.
     private var heroHeaderRow: some View {
         HStack(spacing: 8) {
             Image(systemName: "calendar")
@@ -432,16 +451,10 @@ public struct HomeView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(DesignTokens.primary, lineWidth: 1)
                 )
-            Text("Weekly Budget")
+            Text("Spending")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
                 .lineLimit(1)
-            if case .loaded(let result) = viewModel.week {
-                Text("· \(AppDates.shortWeekLabel(weekStart: result.weekStart))")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                    .lineLimit(1)
-            }
             Spacer()
             if viewModel.isAdmin {
                 switch viewModel.week {
@@ -506,24 +519,17 @@ public struct HomeView: View {
     /// and each stat is TWO stacked blocks — label bar over value
     /// bar — exactly like the loaded stat's label + value lines.
     /// Verified against heroLoaded, Nov 14 2026: figure / progress
-    /// bar / spent line / stats row, all present, all the same sizes.
+    /// bar / spent line, all present, all the same sizes. (The
+    /// stats row — Weekly Allowance + Purchases — moved into the
+    /// Weekly sheet, owner Nov 14, 2026, so it has no skeleton
+    /// block here.)
     private var heroSkeleton: some View {
         VStack(alignment: .leading, spacing: 14) {
             SkeletonBlock(width: 260, height: 56, cornerRadius: 8)
             SkeletonBlock(height: 8, cornerRadius: 4)
             SkeletonBlock(width: 180, height: 14)
-            HStack(spacing: 24) {
-                VStack(alignment: .leading, spacing: 2) {
-                    SkeletonBlock(width: 110, height: 12, cornerRadius: 4)
-                    SkeletonBlock(width: 110, height: 20, cornerRadius: 6)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    SkeletonBlock(width: 70, height: 12, cornerRadius: 4)
-                    SkeletonBlock(width: 80, height: 20, cornerRadius: 6)
-                }
-            }
         }
-        .accessibilityLabel("Weekly Budget, loading")
+        .accessibilityLabel("Spending, loading")
     }
 
     private func weekErrorText(_ error: OnBudgetError) -> String {
@@ -538,10 +544,10 @@ public struct HomeView: View {
     @ViewBuilder
     private func heroLoaded(_ result: WeekResult) -> some View {
         // Big figure — the whole figure row opens the Weekly sheet.
-        // The week date and the sync button live in the header row
-        // now (owner, Nov 14, 2026), not here: the date had its own
-        // line and the sync button sat mid-right over the progress
-        // bar.
+        // The sync button lives in the header row now (owner,
+        // Nov 14, 2026); the date is gone from the card entirely,
+        // and the Weekly Allowance + Purchases stats moved into
+        // the Weekly sheet (owner, Nov 14, 2026).
         Button { showWeeklySheet = true } label: {
             heroFigure(cents: result.availableCents)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -549,8 +555,8 @@ public struct HomeView: View {
         }
         .accessibilityLabel(
             result.availableCents < 0
-                ? "Weekly Budget, over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
-                : "Weekly Budget, \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
+                ? "Spending, over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
+                : "Spending, \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
         )
 
         // Progress bar: charges / capacity, capped at 100%; red
@@ -590,27 +596,6 @@ public struct HomeView: View {
         }
         .font(.system(size: 14))
         .foregroundStyle(Color(hex: "#6b7280"))
-
-        // Hero stats row: Weekly allowance (effective) + Purchases.
-        HStack(spacing: 24) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Weekly Allowance")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                Text(viewModel.allowanceSet == false
-                     ? "Not set"
-                     : MoneyFormat.string(cents: capacity))
-                    .font(.system(size: 17, weight: viewModel.allowanceSet == false ? .regular : .bold))
-                    .foregroundStyle(viewModel.allowanceSet == false ? DesignTokens.muted : DesignTokens.ink)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Purchases")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                Text(viewModel.purchasesThisWeek.map(String.init) ?? "N/A")
-                    .font(.system(size: 17, weight: .bold))
-            }
-        }
 
         // Allowance-read failure (audit H-P1-4): the hero numbers
         // above already come from compute-week, so this is an error
@@ -661,7 +646,7 @@ public struct HomeView: View {
             .foregroundStyle(cents < 0 ? DesignTokens.errorText : DesignTokens.ink)
     }
 
-    // MARK: Stat cards — Charity above Extra Fund
+    // MARK: Stat cards — Charity + Extra Fund, half-size side by side
 
     private var charityCard: some View {
         statCard(
@@ -674,6 +659,7 @@ public struct HomeView: View {
             statusIsError: viewModel.charity.isFailed,
             isExpanded: appState.expandedCard == .charity,
             ariaLabel: charityAriaLabel,
+            compact: true,
             onTap: {
                 switch viewModel.charity {
                 case .loading:
@@ -687,7 +673,13 @@ public struct HomeView: View {
                     }
                 }
             }
-        ) {
+        )
+    }
+
+    /// Charity detail rows, rendered full-width below the
+    /// half-size row when the Charity card is expanded.
+    private var charityRows: some View {
+        Group {
             if case .failed = viewModel.charity {
                 ErrorBox("Could not load charity.")
                 Button("Try Again") { Task { await viewModel.refresh() } }
@@ -711,6 +703,7 @@ public struct HomeView: View {
             statusIsError: viewModel.fund.isFailed,
             isExpanded: appState.expandedCard == .fund,
             ariaLabel: fundAriaLabel,
+            compact: true,
             onTap: {
                 switch viewModel.fund {
                 case .loading:
@@ -722,7 +715,13 @@ public struct HomeView: View {
                     }
                 }
             }
-        ) {
+        )
+    }
+
+    /// Extra Fund detail rows, rendered full-width below the
+    /// half-size row when the Extra Fund card is expanded.
+    private var fundRows: some View {
+        Group {
             if case .failed = viewModel.fund {
                 ErrorBox("Could not load Extra Fund balances.")
                 Button("Try Again") { Task { await viewModel.refresh() } }
@@ -766,7 +765,13 @@ public struct HomeView: View {
     /// fires (audit H-P1-3). A child Button wins over an ancestor
     /// tap gesture, so the retry taps while the rest of the card
     /// still toggles.
-    private func statCard<Rows: View>(
+    ///
+    /// Compact (owner, Nov 14, 2026): on Home the Charity and
+    /// Extra Fund cards are half-width in one row, so the face is
+    /// smaller (14pt padding, 16pt title, 24pt amount, 32pt icon
+    /// chip) and the detail rows do NOT render inside the card —
+    /// they drop into a full-width statDetailCard below the row.
+    private func statCard(
         title: String,
         face: String,
         theme: StatCardTheme,
@@ -776,18 +781,18 @@ public struct HomeView: View {
         statusIsError: Bool = false,
         isExpanded: Bool,
         ariaLabel: String,
-        onTap: @escaping () -> Void,
-        @ViewBuilder rows: () -> Rows
+        compact: Bool = false,
+        onTap: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+            HStack(spacing: compact ? 8 : 12) {
                 if isLoading {
-                    SkeletonBlock(width: 36, height: 36, cornerRadius: 10)
+                    SkeletonBlock(width: compact ? 32 : 36, height: compact ? 32 : 36, cornerRadius: 10)
                 } else {
                     Image(systemName: theme.iconName)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: compact ? 16 : 18, weight: .semibold))
                         .foregroundStyle(theme.deep)
-                        .frame(width: 36, height: 36)
+                        .frame(width: compact ? 32 : 36, height: compact ? 32 : 36)
                         .background(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(
@@ -796,46 +801,44 @@ public struct HomeView: View {
                         )
                 }
                 Text(title)
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: compact ? 16 : 18, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
                 Spacer()
             }
             if isLoading {
-                // Sized to the loaded 28pt amount (owner, Nov 14,
+                // Sized to the loaded amount (owner, Nov 14,
                 // 2026: the 150-wide block was too small and the
                 // card looked empty while loading). No second line:
                 // the loaded face has none (statusText is nil when
                 // loaded), so a phantom line here would shrink the
                 // card — a layout jump — the moment the amount
                 // arrives.
-                SkeletonBlock(width: 190, height: 36, cornerRadius: 8)
+                SkeletonBlock(width: compact ? 110 : 190, height: compact ? 30 : 36, cornerRadius: 8)
             } else if statusIsError {
-                SkeletonBlock(width: 190, height: 36, cornerRadius: 8, animated: false)
+                SkeletonBlock(width: compact ? 110 : 190, height: compact ? 30 : 36, cornerRadius: 8, animated: false)
             } else {
                 Text(face)
-                    .font(.system(size: 28, weight: .heavy))
+                    .font(.system(size: compact ? 24 : 28, weight: .heavy))
                     .foregroundStyle(faceIsNegative ? DesignTokens.errorText : theme.deep)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             if let statusText {
                 Text(statusText)
-                    .font(.system(size: 13, weight: statusIsError ? .semibold : .regular))
+                    .font(.system(size: compact ? 12 : 13, weight: statusIsError ? .semibold : .regular))
                     .foregroundStyle(statusIsError ? DesignTokens.errorText : Color(hex: "#6b7280"))
-            }
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 6) { rows() }
-                    .padding(.top, 4)
-                    .transition(ExpandAnimation.transition)
             }
             HStack {
                 Spacer()
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: compact ? 14 : 15, weight: .bold))
                     .foregroundStyle(DesignTokens.primary)
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     .animation(ExpandAnimation.animation, value: isExpanded)
             }
         }
-        .padding(20)
+        .padding(compact ? 14 : 20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white)
         .overlay(
@@ -853,6 +856,34 @@ public struct HomeView: View {
         .animation(ExpandAnimation.animation, value: isExpanded)
         .accessibilityLabel(ariaLabel)
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// Full-width detail card for an expanded half-size stat card
+    /// (owner, Nov 14, 2026): when a half-size Charity / Extra
+    /// Fund card is tapped, its rows drop here, below the row —
+    /// the compact card has no room for them. Same outline, white
+    /// inside, same shadow as the card itself. Tapping the detail
+    /// collapses it; a "Try Again" button inside still wins over
+    /// the tap gesture (audit H-P1-3 pattern).
+    private func statDetailCard<Rows: View>(
+        theme: StatCardTheme,
+        onTap: @escaping () -> Void,
+        @ViewBuilder rows: () -> Rows
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) { rows() }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(theme.outline, lineWidth: theme.outlineWidth)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 40 / 255, opacity: 0.05),
+                    radius: 2, x: 0, y: 1)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onTap)
+            .transition(ExpandAnimation.transition)
     }
 
     /// Row labels are Title Case, like headings and button labels
@@ -1048,7 +1079,10 @@ public struct HomeView: View {
 /// tapping the hero number. Rows, exactly three, in order:
 /// Allowance (= base room + temp) / Spent (server charges_cents) /
 /// Balance (available_cents). Fourth row only when non-zero:
-/// Unlinked refunds. No explainer line under the header (owner,
+/// Unlinked refunds. Then the Purchases count (owner, Nov 14,
+/// 2026 — moved here from the hero card, which now shows only
+/// the "Spending" header, the big figure, the progress bar and
+/// the spent line). No explainer line under the header (owner,
 /// Nov 12 2026): the "Pending transactions are included and
 /// marked." line crowded the header, and pending state is already
 /// marked on the rows. Show Transactions (primary) + Close
@@ -1058,13 +1092,15 @@ public struct HomeView: View {
 public struct WeeklySheet: View {
     let week: WeekResult
     let baseAllowanceCents: Int?
+    let purchasesThisWeek: Int?
     @ObservedObject var appState: AppViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    public init(week: WeekResult, baseAllowanceCents: Int?, appState: AppViewModel) {
+    public init(week: WeekResult, baseAllowanceCents: Int?, purchasesThisWeek: Int?, appState: AppViewModel) {
         self.week = week
         self.baseAllowanceCents = baseAllowanceCents
+        self.purchasesThisWeek = purchasesThisWeek
         self.appState = appState
     }
 
@@ -1092,6 +1128,12 @@ public struct WeeklySheet: View {
                 // (audit H-P2-2) so Base $375 → Allowance $325 adds
                 // up on sight; the model cents stay positive.
                 sheetRow(label: row.label, value: MoneyFormat.string(cents: row.isDeduction ? -row.cents : row.cents))
+            }
+            // Purchases count (owner, Nov 14, 2026): moved here
+            // from the hero card. A count, not money — same row
+            // shape, no dollar sign.
+            if let purchases = purchasesThisWeek {
+                sheetRow(label: "Purchases", value: String(purchases))
             }
             HStack(spacing: 12) {
                 Button("Show Transactions") {

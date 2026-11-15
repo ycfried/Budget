@@ -30,36 +30,42 @@ public struct AddTransactionView: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                switch step {
-                case .options:
-                    optionsContent
-                case .purchase:
-                    AddPurchaseForm(viewModel: viewModel, onBack: { step = .options }, onDone: onDismiss)
-                case .donation:
-                    AddDonationForm(viewModel: viewModel, onBack: { step = .options }, onDone: onDismiss)
-                }
-            }
-            .padding()
-            .navigationTitle("Add Transaction")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // T-P1-3: Cancel lives ONLY on the options screen.
-                // On the form screens the form's own "← Back"
-                // (BackButtonStyle) is the top-left button — the two
-                // must never render side by side. The forms keep
-                // their in-body Cancel, which discards the draft and
-                // closes. T-P2-10: Cancel wears the owner Back
-                // treatment here too.
-                if step == .options {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancel") { onDismiss() }
-                            .buttonStyle(BackButtonStyle())
-                    }
-                }
+        // No NavigationStack root (owner, Nov 14, 2026): the
+        // toolbar "Cancel" truncated to "Ca…", and a NavigationStack
+        // reports an unbounded ideal height, so a fitted sheet
+        // rendered tall and mostly empty (build 24). A plain VStack
+        // root + SheetHeader (X close, centred title) lets the
+        // options step size itself to its content; the forms keep
+        // real detents because their ScrollView content has no
+        // ideal height (build-23 lesson).
+        Group {
+            if step == .options {
+                sheetContent
+                    .presentationSizing(.fitted)
+            } else {
+                sheetContent
+                    .presentationDetents([.medium, .large])
             }
         }
+    }
+
+    private var sheetContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(
+                title: "Add Transaction",
+                onClose: { onDismiss() },
+                onBack: step == .options ? nil : { step = .options }
+            )
+            switch step {
+            case .options:
+                optionsContent
+            case .purchase:
+                AddPurchaseForm(viewModel: viewModel, onDone: onDismiss)
+            case .donation:
+                AddDonationForm(viewModel: viewModel, onDone: onDismiss)
+            }
+        }
+        .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
         // size class, full-width on iPhone — same treatment as the
         // Weekly Budget sheet. The trailing Spacer is gone: it
@@ -157,7 +163,6 @@ private struct FormField<Content: View>: View {
 /// Purchases-only: no refund option here (owner decision Nov 3).
 public struct AddPurchaseForm: View {
     @Bindable var viewModel: TransactionsViewModel
-    let onBack: () -> Void
     let onDone: () -> Void
 
     @State private var merchant: String = ""
@@ -168,9 +173,8 @@ public struct AddPurchaseForm: View {
     @State private var showingDuplicateConfirm: Bool = false
     @State private var duplicateLabel: String = ""
 
-    public init(viewModel: TransactionsViewModel, onBack: @escaping () -> Void, onDone: @escaping () -> Void) {
+    public init(viewModel: TransactionsViewModel, onDone: @escaping () -> Void) {
         self.viewModel = viewModel
-        self.onBack = onBack
         self.onDone = onDone
     }
 
@@ -254,11 +258,9 @@ public struct AddPurchaseForm: View {
             }
         }
         .scrollIndicators(.hidden)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                BackButton(action: onBack)
-            }
-        }
+        // No toolbar Back here (owner, Nov 14, 2026): the sheet
+        // has no NavigationStack any more — the back chevron lives
+        // in the SheetHeader above this form.
         .alert("Possible Duplicate", isPresented: $showingDuplicateConfirm) {
             Button("Add Anyway") {
                 Task { await save(force: true) }
@@ -354,7 +356,6 @@ public struct AddPurchaseForm: View {
 /// record charity gifts."
 public struct AddDonationForm: View {
     @Bindable var viewModel: TransactionsViewModel
-    let onBack: () -> Void
     let onDone: () -> Void
 
     @State private var organization: String = ""
@@ -366,9 +367,8 @@ public struct AddDonationForm: View {
     @State private var showingDuplicateConfirm: Bool = false
     @State private var duplicateLabel: String = ""
 
-    public init(viewModel: TransactionsViewModel, onBack: @escaping () -> Void, onDone: @escaping () -> Void) {
+    public init(viewModel: TransactionsViewModel, onDone: @escaping () -> Void) {
         self.viewModel = viewModel
-        self.onBack = onBack
         self.onDone = onDone
     }
 
@@ -467,11 +467,9 @@ public struct AddDonationForm: View {
             }
         }
         .scrollIndicators(.hidden)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                BackButton(action: onBack)
-            }
-        }
+        // No toolbar Back here (owner, Nov 14, 2026): the sheet
+        // has no NavigationStack any more — the back chevron lives
+        // in the SheetHeader above this form.
         .alert("Possible Duplicate", isPresented: $showingDuplicateConfirm) {
             Button("Record Anyway") {
                 Task { await save(force: true) }

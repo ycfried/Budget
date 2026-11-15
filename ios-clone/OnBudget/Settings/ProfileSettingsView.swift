@@ -338,41 +338,46 @@ struct ProfileSettingsView: View {
     }
 
     private var changePasswordSheet: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Enter a new password for this account. Password requirement: at least 8 characters.")
-                    .font(.subheadline)
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                HStack {
-                    Group {
-                        if viewModel.showNewPassword {
-                            TextField("New password", text: $viewModel.newPassword)
-                        } else {
-                            SecureField("New password", text: $viewModel.newPassword)
-                        }
+        // No NavigationStack root (owner, Nov 14, 2026 — same
+        // fitted-sizing rule as the Actions sheet): a NavigationStack
+        // reports an unbounded ideal height, so the fitted sheet
+        // rendered tall and mostly empty. Plain VStack + SheetHeader
+        // lets fitted measure the real content.
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: "Change Password", onClose: {
+                viewModel.newPassword = ""
+                viewModel.showChangePassword = false
+            })
+            Text("Enter a new password for this account. Password requirement: at least 8 characters.")
+                .font(.subheadline)
+                .foregroundStyle(Color(hex: "#6b7280"))
+            HStack {
+                Group {
+                    if viewModel.showNewPassword {
+                        TextField("New password", text: $viewModel.newPassword)
+                    } else {
+                        SecureField("New password", text: $viewModel.newPassword)
                     }
-                    .textFieldStyle(.roundedBorder)
-                    Button(viewModel.showNewPassword ? "Hide" : "Show") {
-                        viewModel.showNewPassword.toggle()
-                    }
-                    .buttonStyle(QuietButtonStyle())
                 }
-                HStack(spacing: 12) {
-                    Button("Change Password") {
-                        Task { await viewModel.submitNewPassword() }
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    Button("Cancel") {
-                        viewModel.newPassword = ""
-                        viewModel.showChangePassword = false
-                    }
-                    .buttonStyle(TertiaryButtonStyle())
+                .textFieldStyle(.roundedBorder)
+                Button(viewModel.showNewPassword ? "Hide" : "Show") {
+                    viewModel.showNewPassword.toggle()
                 }
+                .buttonStyle(QuietButtonStyle())
             }
-            .padding()
-            .navigationTitle("Change Password")
-            .navigationBarTitleDisplayMode(.inline)
+            HStack(spacing: 12) {
+                Button("Change Password") {
+                    Task { await viewModel.submitNewPassword() }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                Button("Cancel") {
+                    viewModel.newPassword = ""
+                    viewModel.showChangePassword = false
+                }
+                .buttonStyle(TertiaryButtonStyle())
+            }
         }
+        .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
         // size class, full-width on iPhone — same treatment as the
         // Weekly Budget sheet. The trailing Spacer is gone: it

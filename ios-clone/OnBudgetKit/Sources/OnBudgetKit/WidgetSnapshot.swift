@@ -10,6 +10,8 @@
 //     Edge Function — what's left to spend this week (may be negative).
 //   - charityRemainingCents = CharitySummary.remainingCents
 //     (committed − given) — what's left to give.
+//   - spentCents = WeekResult.chargesCents — what's been spent this
+//     week (large widget only; optional, build 26).
 // The app writes the snapshot at the end of HomeViewModel.refresh()
 // when BOTH loads succeeded, and deletes it on sign-out, so the widget
 // can never show another user's numbers. A failed load writes nothing:
@@ -30,21 +32,26 @@ import Foundation
 
 /// The two widget numbers, as the Home screen shows them.
 /// No session, household identifiers, merchant, or bank fields.
+/// `spentCents` (build 26) feeds the large widget's spent line;
+/// optional so snapshots written before build 26 still decode.
 public struct WidgetSnapshot: Codable, Equatable, Sendable {
     public let weekStart: String
     public let availableCents: Int
     public let charityRemainingCents: Int
+    public let spentCents: Int?
     public let computedAt: Date
 
     public init(
         weekStart: String,
         availableCents: Int,
         charityRemainingCents: Int,
+        spentCents: Int? = nil,
         computedAt: Date
     ) {
         self.weekStart = weekStart
         self.availableCents = availableCents
         self.charityRemainingCents = charityRemainingCents
+        self.spentCents = spentCents
         self.computedAt = computedAt
     }
 

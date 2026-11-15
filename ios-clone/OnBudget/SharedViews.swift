@@ -135,6 +135,62 @@ public struct BackButton: View {
     }
 }
 
+/// Sheet header (owner, Nov 14, 2026): an X close symbol at
+/// top-left, the title centred, and a balancing 44pt spacer at
+/// top-right so the title stays centred. Replaces the toolbar
+/// "Cancel" text button, which truncated to "Ca…" in the sheet
+/// toolbar, and the NavigationStack root, which broke
+/// .presentationSizing(.fitted) — a NavigationStack reports an
+/// unbounded ideal height, so fitted sheets rendered tall and
+/// mostly empty (Add / Actions sheets, build 24). A plain VStack
+/// root + this header lets fitted measure the real content. When
+/// onBack is given, the leading control is a back chevron that
+/// returns to the previous step instead of closing.
+public struct SheetHeader: View {
+    let title: String
+    let onClose: () -> Void
+    let onBack: (() -> Void)?
+
+    public init(title: String, onClose: @escaping () -> Void, onBack: (() -> Void)? = nil) {
+        self.title = title
+        self.onClose = onClose
+        self.onBack = onBack
+    }
+
+    public var body: some View {
+        HStack {
+            if let onBack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.mid)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back")
+            } else {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.mid)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
+            Spacer()
+            Text(title)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(DesignTokens.ink)
+                .lineLimit(1)
+            Spacer()
+            Color.clear.frame(width: 44, height: 44)
+        }
+    }
+}
+
 // MARK: - Error / info boxes
 
 /// Inline soft-red error box (`.result.error` in the web app).

@@ -3,12 +3,15 @@ import OnBudgetKit
 
 /// One Transactions row + its detail panel (CLONE_SPEC §7.2).
 ///
-/// Row line 1: icon, Title-Cased merchant (bold), signed amount,
-/// chevron (rotates when open). Line 2 (collapsed only): state pill
-/// + source pill + "`Today` · ••1005" meta — the badges hide while
-/// the card is open, because the detail already says all of it
-/// (owner, Nov 12, 2026). Row accessible name: merchant + amount +
-/// day + status + "— show detail".
+/// The text column is exactly as tall as the 40pt icon, split
+/// into two halves (owner, Nov 14, 2026): the merchant name sits
+/// centred on the icon's top half, the badges line centred on its
+/// bottom half. Row line 1: icon, Title-Cased merchant (bold),
+/// signed amount, chevron (rotates when open). Line 2 (collapsed
+/// only): state pill + source pill + "`Today` · ••1005" meta — the
+/// badges hide while the card is open, because the detail already
+/// says all of it (owner, Nov 12, 2026). Row accessible name:
+/// merchant + amount + day + status + "— show detail".
 ///
 /// Detail panel: labelled rows Date (long) / Account / Status
 /// (pill) / Source (pill) (+ Refund Link row for refunds); then
@@ -52,52 +55,65 @@ public struct TransactionRowView: View {
         TransactionFormatting.amountDisplay(for: transaction)
     }
 
+    /// The icon's edge — the text column is exactly this tall, split
+    /// into two equal halves (owner, Nov 14, 2026): the merchant
+    /// name sits centred on the icon's top half, the badges line
+    /// centred on its bottom half, so the two lines are spread
+    /// across the icon instead of the name hugging the top with the
+    /// badges crammed just under it.
+    private let iconSize: CGFloat = 40
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: onToggle) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 10) {
-                        TransactionIconView(
-                            merchant: transaction.merchant,
-                            institutionName: institutionName
-                        )
-                        Text(TransactionFormatting.displayMerchant(transaction.merchant))
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(DesignTokens.ink)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(amount.text)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(amount.color)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                            .animation(ExpandAnimation.animation, value: isExpanded)
-                    }
-                    // Badges + date meta show only while the card is
-                    // collapsed — when open, the detail below says
-                    // all of it (owner, Nov 12, 2026). The row
-                    // carries the shared ExpandAnimation transition
-                    // (owner, Nov 14, 2026): without it the badges
-                    // vanished instantly while the detail faded and
-                    // slid in, so half the row popped and half
-                    // glided, and the rows below jumped.
-                    if !isExpanded {
-                        HStack(spacing: 8) {
-                            StatePill(transaction)
-                            SourcePill(transaction)
-                            Spacer()
-                            // Date + card sit at the row's trailing edge —
-                            // a fixed column that never moves with the
-                            // badge widths (owner, Nov 11, 2026).
-                            Text("\(TransactionFormatting.displayDay(transaction.date)) · \(TransactionFormatting.cardLabel(for: transaction))")
-                                .font(.system(size: 13))
-                                .foregroundStyle(Color(hex: "#6b7280"))
+                HStack(alignment: .top, spacing: 10) {
+                    TransactionIconView(
+                        merchant: transaction.merchant,
+                        institutionName: institutionName,
+                        size: iconSize
+                    )
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Top half: merchant + amount + chevron.
+                        HStack(spacing: 10) {
+                            Text(TransactionFormatting.displayMerchant(transaction.merchant))
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(DesignTokens.ink)
                                 .lineLimit(1)
+                            Spacer()
+                            Text(amount.text)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(amount.color)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                                .animation(ExpandAnimation.animation, value: isExpanded)
                         }
-                        .padding(.leading, 50)
-                        .transition(ExpandAnimation.transition)
+                        .frame(height: iconSize / 2)
+                        // Bottom half: badges + date meta, collapsed
+                        // only — when open, the detail below says
+                        // all of it (owner, Nov 12, 2026). The row
+                        // carries the shared ExpandAnimation transition
+                        // (owner, Nov 14, 2026): without it the badges
+                        // vanished instantly while the detail faded and
+                        // slid in, so half the row popped and half
+                        // glided, and the rows below jumped.
+                        if !isExpanded {
+                            HStack(spacing: 8) {
+                                StatePill(transaction)
+                                SourcePill(transaction)
+                                Spacer()
+                                // Date + card sit at the row's trailing edge —
+                                // a fixed column that never moves with the
+                                // badge widths (owner, Nov 11, 2026).
+                                Text("\(TransactionFormatting.displayDay(transaction.date)) · \(TransactionFormatting.cardLabel(for: transaction))")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Color(hex: "#6b7280"))
+                                    .lineLimit(1)
+                            }
+                            .frame(height: iconSize / 2)
+                            .transition(ExpandAnimation.transition)
+                        }
                     }
                 }
                 // The whole card is the tap target — the padding is
@@ -162,12 +178,14 @@ public struct TransactionDetailView: View {
                 }
             }
 
+            // Bottom-centre, in the brand-blue outline treatment
+            // (owner, Nov 14, 2026): the small grey pill at the
+            // bottom-left got lost — it now spans the detail width
+            // in white with a #2f6bff border and text, clearly a
+            // button.
             if hasActions {
-                HStack {
-                    Button("Actions", action: onActions)
-                        .buttonStyle(SmallTertiaryButtonStyle())
-                    Spacer()
-                }
+                Button("Actions", action: onActions)
+                    .buttonStyle(OutlineButtonStyle())
             }
         }
     }

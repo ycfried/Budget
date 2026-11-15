@@ -127,16 +127,20 @@ public struct TransactionsView: View {
                 // give it a real height on iPhone; on iPad they
                 // are ignored and the sheet takes the default
                 // form-sheet height. Width stays 600pt (regular)
-                // via the frame inside the sheet content.
-                .presentationDetents([.medium, .large])
+                // via the frame inside the sheet content. Opens
+                // at the LARGE detent only (owner, Nov 14, 2026):
+                // at [.medium, .large] it opened half-height and
+                // cut "Sort by" off at the bottom edge.
+                .presentationDetents([.large])
         }
         .sheet(isPresented: $showingAdd) {
             AddTransactionView(viewModel: viewModel, onDismiss: { showingAdd = false })
-                // iPad sheet height (owner, Nov 13, 2026): the
-                // purchase/donation forms are ScrollViews — see
-                // the Filters note above. .fitted collapsed them
-                // in build 23; detents give a real height.
-                .presentationDetents([.medium, .large])
+                // No sizing here (owner, Nov 14, 2026): the size
+                // depends on the step, so AddTransactionView sets
+                // it itself — fitted on the options step, detents
+                // [.medium, .large] on the purchase / donation
+                // forms (ScrollViews — .fitted collapsed them in
+                // build 23).
         }
         .sheet(isPresented: $showingTrash) {
             TrashView(viewModel: viewModel, onBack: { showingTrash = false })
@@ -553,7 +557,7 @@ public struct TransactionsView: View {
 /// - Fields: clean neutral — white with a light border, dark ink
 ///   lettering (the pale blue fill + blue lettering the owner called
 ///   ugly is gone; the dark-ink lettering is his narrower fix, kept).
-///   Every control shares the same height (44pt minimum), squarish
+///   Every control shares the same height (40pt minimum), squarish
 ///   with rounded edges (cornerRadius 10) — no round pills.
 /// - Everything is draft-held: nothing applies until Apply. Apply
 ///   commits the whole draft and closes; Cancel restores the snapshot
@@ -597,77 +601,52 @@ public struct TransactionsFilterSheet: View {
     public var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    // Status
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Status")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
-                        Picker("Status", selection: $draftStatus) {
-                            ForEach(TransactionStatusFilter.allCases, id: \.self) { status in
-                                Text(status.label).tag(status)
-                            }
+                // Compact (owner, Nov 14, 2026): the section
+                // headers are gone — each field's own value says
+                // what it is ("All transactions", "Choose Dates",
+                // "All cards", "Newest first") — and the fields
+                // are shorter (40pt, was 44pt), so the whole sheet
+                // fits on one screen without scrolling. Only the
+                // Min / Max labels stay: two side-by-side amount
+                // fields need them to tell the ends apart.
+                VStack(alignment: .leading, spacing: 12) {
+                    // Status — the picker value says it.
+                    Picker("Status", selection: $draftStatus) {
+                        ForEach(TransactionStatusFilter.allCases, id: \.self) { status in
+                            Text(status.label).tag(status)
                         }
-                        .pickerStyle(.menu)
-                        // Owner, Nov 13, 2026: the picked value
-                        // reads black, not blue — the menu label
-                        // follows the tint.
-                        .tint(DesignTokens.ink)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .background(.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
+                    .pickerStyle(.menu)
+                    // Owner, Nov 13, 2026: the picked value
+                    // reads black, not blue — the menu label
+                    // follows the tint.
+                    .tint(DesignTokens.ink)
+                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .background(.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     // When — ONE button + ONE calendar (owner, Nov 11,
                     // 2026). The button shows the range; the calendar
                     // picks a start date, then an end date.
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("When")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
-                        NavigationLink {
-                            DateRangeCalendarView(selection: $draftWhen)
-                        } label: {
-                            HStack {
-                                Text(draftWhen.label)
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(DesignTokens.ink)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color(hex: "#6b7280"))
-                            }
-                            .padding(12)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .background(.white)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    NavigationLink {
+                        DateRangeCalendarView(selection: $draftWhen)
+                    } label: {
+                        HStack {
+                            Text(draftWhen.label)
+                                .font(.system(size: 15))
+                                .foregroundStyle(DesignTokens.ink)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(hex: "#6b7280"))
                         }
-                    }
-
-                    // Card / Account
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Card / Account")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
-                        Picker("Card", selection: $draftCard) {
-                            Text("All cards").tag("all")
-                            ForEach(viewModel.cardsPresent, id: \.self) { card in
-                                Text("••\(card)").tag(card)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(DesignTokens.ink)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .padding(.horizontal, 12)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
                         .background(.white)
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
@@ -675,6 +654,24 @@ public struct TransactionsFilterSheet: View {
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
+
+                    // Card / Account — the picker value says it.
+                    Picker("Card", selection: $draftCard) {
+                        Text("All cards").tag("all")
+                        ForEach(viewModel.cardsPresent, id: \.self) { card in
+                            Text("••\(card)").tag(card)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(DesignTokens.ink)
+                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .background(.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     // Amount — draft-held like the rest; the
                     // validation reads the draft text, not the live
@@ -684,11 +681,10 @@ public struct TransactionsFilterSheet: View {
                     // cornerRadius 10 treatment (T-P2-4). The $ is a
                     // fixed prefix inside the field (owner, Nov 13,
                     // 2026) — display only, never part of the typed
-                    // text, so parsing is unchanged.
+                    // text, so parsing is unchanged. No "Amount"
+                    // header (owner, Nov 14, 2026): the Min / Max
+                    // labels say what the fields are.
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Amount")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Min")
@@ -702,8 +698,8 @@ public struct TransactionsFilterSheet: View {
                                         .keyboardType(.decimalPad)
                                         .focused($focusedField, equals: .min)
                                 }
-                                    .padding(.horizontal, 12)
-                                    .frame(maxWidth: 140, minHeight: 44, alignment: .leading)
+                                    .padding(.horizontal, 10)
+                                    .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
                                     .background(.white)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
@@ -723,8 +719,8 @@ public struct TransactionsFilterSheet: View {
                                         .keyboardType(.decimalPad)
                                         .focused($focusedField, equals: .max)
                                 }
-                                    .padding(.horizontal, 12)
-                                    .frame(maxWidth: 140, minHeight: 44, alignment: .leading)
+                                    .padding(.horizontal, 10)
+                                    .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
                                     .background(.white)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
@@ -740,27 +736,22 @@ public struct TransactionsFilterSheet: View {
 
                     // Sort — one picker with all four options (was a
                     // "Date"/"Amount" dropdown plus a separate
-                    // direction button).
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Sort by")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
-                        Picker("Sort by", selection: $draftSort) {
-                            ForEach(TransactionSort.allCases, id: \.self) { sort in
-                                Text(sort.label).tag(sort)
-                            }
+                    // direction button). The picker value says it.
+                    Picker("Sort by", selection: $draftSort) {
+                        ForEach(TransactionSort.allCases, id: \.self) { sort in
+                            Text(sort.label).tag(sort)
                         }
-                        .pickerStyle(.menu)
-                        .tint(DesignTokens.ink)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .background(.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
+                    .pickerStyle(.menu)
+                    .tint(DesignTokens.ink)
+                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .background(.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     TwoButtonRow {
                         Button("Apply") { apply() }
@@ -774,13 +765,14 @@ public struct TransactionsFilterSheet: View {
                             .buttonStyle(TertiaryButtonStyle())
                     }
 
-                    // Reset is a small plain link, not a third button.
-                    HStack {
-                        Spacer()
-                        Button("Reset Filters") { reset() }
-                            .buttonStyle(QuietButtonStyle())
-                        Spacer()
-                    }
+                    // Reset is a real button (owner, Nov 14, 2026):
+                    // as a plain grey link under Apply / Cancel it
+                    // did not read as tappable. Full-width outline,
+                    // below the Apply / Cancel row — a third button
+                    // in a different treatment, so no two adjacent
+                    // buttons share a colour.
+                    Button("Reset Filters") { reset() }
+                        .buttonStyle(OutlineButtonStyle())
                 }
                 .padding()
             }

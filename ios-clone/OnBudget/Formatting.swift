@@ -61,15 +61,6 @@ public enum AppDates {
         return formatter
     }()
 
-    /// Short month-day formatter ("Nov 8") for the hero header date.
-    private static let shortDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        formatter.timeZone = newYork
-        formatter.locale = Locale(identifier: "en_US")
-        return formatter
-    }()
-
     /// "2026-11-08" -> Date, or nil when the string is malformed.
     public static func date(from yyyyMMdd: String) -> Date? {
         dayFormatter.date(from: yyyyMMdd)
@@ -86,17 +77,6 @@ public enum AppDates {
     /// alone, audit H-P2-9).
     public static func weekLabel(weekStart: String) -> String {
         long(weekStart)
-    }
-
-    /// Hero header date: "Nov 8" — the week start inline in the
-    /// header row (owner, Nov 14, 2026: the date must not have a
-    /// line of its own). The year is dropped on purpose: the full
-    /// "Nov 8, 2026" does not fit on one header line with the icon,
-    /// title and sync button on a 360pt phone; the week is always
-    /// the current week, so the year carries no information here.
-    public static func shortWeekLabel(weekStart: String) -> String {
-        guard let date = date(from: weekStart) else { return weekStart }
-        return shortDateFormatter.string(from: date)
     }
 
     /// Today / Yesterday (New York date) or "Mon D, YYYY" short form.
