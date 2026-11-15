@@ -85,6 +85,7 @@ import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
   chargeContribution, linkedRefundNormalPortionCents,
   restorationDebtCutsAfterClose,
+  debtRulePayment, debtPaymentsAfterClose,
 } from './engine.mjs';
 import {
   computeRestorationTotal, computeIncrementalRestoration,
@@ -212,7 +213,7 @@ Deno.serve(async (req) => {
     let closes: any[] = [];
     const closesRes = await supabase
       .from('week_closes')
-      .select('week_start, surplus_cents, outgoing_debt_cents, late_adjustment_cents, base_allowance_cents, temp_increase_cents, created_at')
+      .select('week_start, surplus_cents, outgoing_debt_cents, late_adjustment_cents, base_allowance_cents, temp_increase_cents, debt_payment_cents, created_at')
       .eq('household_id', householdId);
     if (closesRes.error) {
       const retry = await supabase
@@ -220,7 +221,7 @@ Deno.serve(async (req) => {
         .select('week_start, surplus_cents, outgoing_debt_cents, created_at')
         .eq('household_id', householdId);
       if (retry.error) return json({ error: 'week close read failed' }, 500);
-      closes = (retry.data ?? []).map((c: any) => ({ ...c, late_adjustment_cents: 0, base_allowance_cents: null, temp_increase_cents: null }));
+      closes = (retry.data ?? []).map((c: any) => ({ ...c, late_adjustment_cents: 0, base_allowance_cents: null, temp_increase_cents: null, debt_payment_cents: null }));
     } else {
       closes = closesRes.data ?? [];
     }
@@ -264,6 +265,48 @@ Deno.serve(async (req) => {
         .select('refund_transaction_id, held_cents, status')
         .eq('household_id', householdId);
       if (!heldRes.error) heldRows = heldRes.data ?? [];
+    }
+
+    // Debt repayment rule (Carried Debt fund, build 29): read once
+    // for the whole walk, same fallbacks as compute-week. A missing
+    // table (the SQL not applied yet) means the OLD behaviour for
+    // the entire walk — no rule, no surplus-to-debt step. A missing
+    // ROW means the default: 25% of the base allowance.
+    let debtRule: { mode: string; percentBp?: number; fixedCents?: number } | null = null;
+    let debtRuleMissing = false;
+    const ruleRes = await supabase
+      .from('debt_settings')
+      .select('mode, percent_bp, fixed_cents')
+      .eq('household_id', householdId)
+      .maybeSingle();
+    if (ruleRes.error) {
+      debtRuleMissing = true;
+    } else if (ruleRes.data) {
+      debtRule = { mode: ruleRes.data.mode, percentBp: ruleRes.data.percent_bp, fixedCents: ruleRes.data.fixed_cents };
+    } else {
+      debtRule = { mode: 'percent', percentBp: 2500 };
+    }
+
+    // Debt payments (Pay from Extra Fund / Clear rows) posted
+    // after a close, keyed by week — they reduce the incoming debt
+    // for later weeks in the walk. 'surplus' rows are NOT in this
+    // map: they are already inside the close that recorded them
+    // (see engine.mjs debtPaymentsAfterClose). A missing table
+    // means no payments. The raw rows are kept too: the restoration
+    // phase needs them for the same window helper.
+    const debtPaymentsByWeek = new Map<string, number>();
+    let debtPaymentRows: any[] = [];
+    const payRes = await supabase
+      .from('debt_payments')
+      .select('week_start, amount_cents, source')
+      .eq('household_id', householdId);
+    if (!payRes.error) {
+      debtPaymentRows = payRes.data ?? [];
+      for (const p of debtPaymentRows) {
+        if (p.source === 'extra_fund' || p.source === 'clear') {
+          debtPaymentsByWeek.set(p.week_start, (debtPaymentsByWeek.get(p.week_start) ?? 0) + p.amount_cents);
+        }
+      }
     }
 
     const today = nyTodayString();
@@ -576,23 +619,89 @@ Deno.serve(async (req) => {
         + (lockedNow ? 0 : linkedPostedToWeek(ws))
         + unlinkedPostedInWeek(ws)
         + lateWs;
-      const Dws = Math.max(0, Dchain - (cutsByWeek.get(ws) ?? 0));
-      const result = computeWeek({ B, T, D: Dws, C: Math.max(0, Cnet) });
+      const Dws = Math.max(0, Dchain - (cutsByWeek.get(ws) ?? 0) - (debtPaymentsByWeek.get(ws) ?? 0));
+      // Debt payment for this week (Carried Debt fund, build 29):
+      // the rule in effect now, from the base only. No rule (the
+      // SQL not applied yet) means the old behaviour — P = Dws, the
+      // base absorbs the whole debt — and the surplus-to-debt step
+      // below is skipped entirely, so the walk is the old walk.
+      const P = debtRuleMissing ? Dws : debtRulePayment(debtRule, B);
+      const result = computeWeek({ B, T, D: Dws, C: Math.max(0, Cnet), P });
+
+      // Surplus pays the debt down FIRST (same shortfall-first
+      // logic as the Extra Fund top-up rule, Nov 3, 2026): only the
+      // remainder becomes surplus for the fund. The close stores
+      // the outgoing debt NET of this payment, and the
+      // surplus_releases row stores only the fund-bound remainder —
+      // so the payment is never counted twice: a 'surplus'
+      // debt_payments row is not subtracted again from D (see
+      // engine.mjs debtPaymentsAfterClose).
+      const surplusToDebt = debtRuleMissing ? 0 : Math.min(result.earnedSurplus, result.outgoingDebt);
+      const outgoingStored = result.outgoingDebt - surplusToDebt;
+      const fundBoundSurplus = result.earnedSurplus - surplusToDebt;
 
       await upsertClose({
         household_id: householdId, week_start: ws,
-        surplus_cents: result.earnedSurplus,
-        outgoing_debt_cents: result.outgoingDebt,
+        surplus_cents: fundBoundSurplus,
+        outgoing_debt_cents: outgoingStored,
         base_allowance_cents: B,
         temp_increase_cents: T,
         late_adjustment_cents: lateWs,
+        debt_payment_cents: P,
       });
       closeByWeek.set(ws, {
-        week_start: ws, surplus_cents: result.earnedSurplus,
-        outgoing_debt_cents: result.outgoingDebt, late_adjustment_cents: lateWs,
+        week_start: ws, surplus_cents: fundBoundSurplus,
+        outgoing_debt_cents: outgoingStored, late_adjustment_cents: lateWs,
         base_allowance_cents: B, temp_increase_cents: T,
+        debt_payment_cents: P,
         created_at: existingClose?.created_at ?? new Date().toISOString(),
       });
+      // Surplus-to-debt payment ledger (build 29): one 'surplus'
+      // row per week. A partial unique index on (household_id,
+      // week_start) WHERE source = 'surplus' keeps re-runs
+      // idempotent — the row is selected first, then inserted or
+      // updated (a plain upsert cannot target a partial index), and
+      // deleted when a recompute yields zero, so a payment that no
+      // longer happens leaves no trace.
+      if (!debtRuleMissing) {
+        if (surplusToDebt > 0) {
+          const existing = await supabaseAdmin.from('debt_payments')
+            .select('id, amount_cents').eq('household_id', householdId)
+            .eq('week_start', ws).eq('source', 'surplus').maybeSingle();
+          check(existing, 'debt_payments surplus read');
+          if (existing.data) {
+            if (existing.data.amount_cents !== surplusToDebt) {
+              check(await supabaseAdmin.from('debt_payments').update({ amount_cents: surplusToDebt }).eq('id', existing.data.id), 'debt_payments surplus update');
+            }
+          } else {
+            const ins = await supabaseAdmin.from('debt_payments').insert({
+              household_id: householdId, amount_cents: surplusToDebt, source: 'surplus', week_start: ws, note: '', created_by: null,
+            });
+            if (ins.error) {
+              if (ins.error.code === '23505') {
+                // A concurrent run inserted the same row; align it.
+                const again = await supabaseAdmin.from('debt_payments')
+                  .select('id, amount_cents').eq('household_id', householdId)
+                  .eq('week_start', ws).eq('source', 'surplus').maybeSingle();
+                if (again.data && again.data.amount_cents !== surplusToDebt) {
+                  check(await supabaseAdmin.from('debt_payments').update({ amount_cents: surplusToDebt }).eq('id', again.data.id), 'debt_payments surplus update');
+                }
+              } else {
+                check(ins, 'debt_payments surplus insert');
+              }
+            }
+          }
+          check(await supabaseAdmin.from('audit_log').insert({
+            household_id: householdId, actor: user.id, actor_name: 'admin',
+            action: 'Surplus paid toward debt',
+            detail: `Surplus ${surplusToDebt} cents for week ${ws} paid toward the carried debt before the remainder became surplus.`,
+          }), 'audit_log insert');
+        } else {
+          check(await supabaseAdmin.from('debt_payments').delete()
+            .eq('household_id', householdId).eq('week_start', ws).eq('source', 'surplus'),
+            'debt_payments surplus delete');
+        }
+      }
       weeksClosed += 1;
       // Defence in depth (Nov 5, 2026): record any unlinked-refund
       // excess for this week so it is visible in the response instead
@@ -609,18 +718,18 @@ Deno.serve(async (req) => {
           heldLegacy += 1;
         } else if (existingRelease.status === 'released') {
           const oldSurplus = existingRelease.surplus_cents ?? 0;
-          if (result.earnedSurplus < oldSurplus) {
+          if (fundBoundSurplus < oldSurplus) {
             // Reduction after release (A4): fund to at most zero,
             // remainder becomes shortfall. Re-read the fund first
             // (design-questions, owner, Nov 5): a concurrent top-up
             // is visible to this reduction, not just to the persist.
             await refreshFundState();
-            const reduction = oldSurplus - result.earnedSurplus;
+            const reduction = oldSurplus - fundBoundSurplus;
             const applied = Math.min(reduction, fundAvailable);
             if (applied > 0) {
               check(await supabaseAdmin.from('fund_ledger').insert({
                 household_id: householdId, kind: 'adjustment', amount_cents: -applied,
-                week_start: ws, note: `Late reduction for week ${ws}`, created_by: user.id,
+                week_start: ws, note: `Surplus correction for week ${ws}`, created_by: user.id,
               }), 'fund_ledger adjustment insert');
               fundAvailable -= applied;
             }
@@ -632,23 +741,23 @@ Deno.serve(async (req) => {
             const newReleasedCents = Math.max(0, (existingRelease.released_cents ?? 0) - applied);
             await upsertRelease({
               household_id: householdId, week_start: ws,
-              surplus_cents: result.earnedSurplus,
+              surplus_cents: fundBoundSurplus,
               release_date: existingRelease.release_date,
               status: 'released',
               released_cents: newReleasedCents,
             });
-            releaseByWeek.set(ws, { ...existingRelease, surplus_cents: result.earnedSurplus, released_cents: newReleasedCents });
-          } else if (result.earnedSurplus > oldSurplus) {
+            releaseByWeek.set(ws, { ...existingRelease, surplus_cents: fundBoundSurplus, released_cents: newReleasedCents });
+          } else if (fundBoundSurplus > oldSurplus) {
             // Increase after release (P1-7): release the delta net
             // of shortfall. Re-read the fund first (design-questions,
             // owner, Nov 5): the claim below and the offset after it
             // must see a concurrent top-up. Claim first (optimistic on old surplus)
             // so a concurrent run cannot double-release the delta.
             await refreshFundState();
-            const delta = result.earnedSurplus - oldSurplus;
+            const delta = fundBoundSurplus - oldSurplus;
             const claim = await supabaseAdmin.from('surplus_releases')
               .update({
-                surplus_cents: result.earnedSurplus,
+                surplus_cents: fundBoundSurplus,
                 released_cents: (existingRelease.released_cents ?? 0) + Math.max(0, delta - shortfall),
               })
               .eq('household_id', householdId)
@@ -678,7 +787,7 @@ Deno.serve(async (req) => {
                 throw e;
               }
               releaseByWeek.set(ws, {
-                ...existingRelease, surplus_cents: result.earnedSurplus,
+                ...existingRelease, surplus_cents: fundBoundSurplus,
                 released_cents: (existingRelease.released_cents ?? 0) + toFund,
               });
               releasesDone += 1;
@@ -702,14 +811,14 @@ Deno.serve(async (req) => {
           }
           await upsertRelease({
             household_id: householdId, week_start: ws,
-            surplus_cents: result.earnedSurplus,
+            surplus_cents: fundBoundSurplus,
             release_date: releaseDate,
             status: 'pending',
             released_cents: existingRelease.released_cents ?? 0,
             closed_at: closedAt,
           });
           releaseByWeek.set(ws, {
-            ...existingRelease, surplus_cents: result.earnedSurplus,
+            ...existingRelease, surplus_cents: fundBoundSurplus,
             release_date: releaseDate, closed_at: closedAt,
           });
         }
@@ -717,7 +826,7 @@ Deno.serve(async (req) => {
         // New release: pending 7 days from the ACTUAL close (today).
         const rel = {
           household_id: householdId, week_start: ws,
-          surplus_cents: result.earnedSurplus,
+          surplus_cents: fundBoundSurplus,
           release_date: addDays(today, 7),
           status: 'pending',
           released_cents: 0,
@@ -733,7 +842,7 @@ Deno.serve(async (req) => {
       if (rel && rel.status === 'pending' && rel.release_date <= today) {
         if (await releaseDue(ws, rel.surplus_cents ?? 0)) releasesDone += 1;
       }
-      Dchain = result.outgoingDebt;
+      Dchain = outgoingStored;
     }
 
     // Second pass: due releases for weeks not walked (locked +
@@ -833,7 +942,18 @@ Deno.serve(async (req) => {
               // this week stay, as booked.)
               charges += linkedNormalPortionByPurchase(purchaseWeek).get(purchaseId) ?? 0;
             }
-            simWeeks.push({ week_start: ws, B, T, charges_cents: Math.max(0, charges) });
+            simWeeks.push({
+              week_start: ws, B, T, charges_cents: Math.max(0, charges),
+              // Debt payment for this simulated week (Carried Debt
+              // fund, build 29): a closed week's STORED payment wins
+              // (same snapshot rule as weekPolicy's B/T); otherwise
+              // the rule in effect now, from the base only. No rule
+              // (the SQL not applied yet) means the field is absent
+              // and the simulation is exactly the old one.
+              ...(debtRuleMissing ? {} : {
+                debtPaymentCents: closeByWeek.get(ws)?.debt_payment_cents ?? debtRulePayment(debtRule, B),
+              }),
+            });
           }
           // Initial debt into the purchase week: latest close
           // before it (steady state: the immediately preceding
@@ -863,8 +983,16 @@ Deno.serve(async (req) => {
           const priorCuts = priorClose
             ? restorationDebtCutsAfterClose(restorationEntries, priorClose.week_start, purchaseWeek)
             : 0;
+          // Carried Debt fund (build 29): debt payments posted after
+          // the prior close reduce the incoming debt in the same
+          // window as the cuts ('surplus' rows are already inside
+          // the close that recorded them — see
+          // engine.mjs debtPaymentsAfterClose).
+          const priorPayments = priorClose
+            ? debtPaymentsAfterClose(debtPaymentRows, priorClose.week_start, purchaseWeek)
+            : 0;
           const initialDebt = priorClose
-            ? Math.max(0, (priorClose.outgoing_debt_cents ?? 0) - priorCuts)
+            ? Math.max(0, (priorClose.outgoing_debt_cents ?? 0) - priorCuts - priorPayments)
             : 0;
 
           const sortedRefunds = [...refundList].sort((a: any, b: any) =>
@@ -874,6 +1002,7 @@ Deno.serve(async (req) => {
             weeks: simWeeks, purchaseWeekStart: purchaseWeek,
             purchaseAmountCents: purchaseAmount, fundAllocationCents: fundAllocation,
             totalRefundedCents: n, initialDebtCents: initialDebt,
+            debtRule: debtRuleMissing ? null : debtRule,
           });
           for (const refund of sortedRefunds) {
             const refundAmount = Math.abs(refund.amount_cents ?? 0);

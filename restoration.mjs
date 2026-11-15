@@ -39,12 +39,19 @@
 //   (pending refunds are never passed in — see postedRefundTotalCents).
 //
 // Outputs (per cumulative refund total):
-// - restoredSurplusCents: increase in TOTAL earned surplus across the
-//   simulated weeks, reduced run minus baseline run. The temp-covered
-//   portion restores $0 automatically: reducing the charge first
-//   removes the temp-covered slice (base-covered spending stays),
-//   so a $475 purchase in a $375 + $100-temp week refunded $100
-//   yields $0, and refunded $150 yields $50. No special-casing.
+// - restoredSurplusCents: increase in TOTAL surplus bound for the
+//   fund across the simulated weeks, reduced run minus baseline run.
+//   (Carried Debt fund, build 29: when a debt rule is supplied,
+//   each simulated week's earned surplus first pays its outgoing
+//   debt down — the same step week-close applies at close — and only
+//   the remainder is totalled, so a restoration never pays the fund
+//   money the debt was owed first. With no rule, this is the plain
+//   earned surplus, exactly as before.)
+//   The temp-covered portion restores $0 automatically: reducing the
+//   charge first removes the temp-covered slice (base-covered
+//   spending stays), so a $475 purchase in a $375 + $100-temp week
+//   refunded $100 yields $0, and refunded $150 yields $50. No
+//   special-casing.
 // - debtReductionCents: drop in debt still outstanding at the END of
 //   the simulation (outgoing debt of the last simulated week).
 //   If later weeks already absorbed the debt, this is $0.
@@ -83,7 +90,7 @@
 // recorded fund shortfall FIRST (via update_fund_shortfall), and only
 // the remainder reaches the fund ledger as spendable money.
 
-import { computeWeek, weekStartsBetween } from './engine.mjs';
+import { computeWeek, weekStartsBetween, debtRulePayment } from './engine.mjs';
 
 function int(v, name) {
   const n = Number(v ?? 0);
@@ -95,21 +102,42 @@ function int(v, name) {
 
 // Simulate a chain of weeks. Returns per-week results plus totals.
 // Pure: does not mutate `weeks`.
-export function simulateWeeks(weeks, initialDebtCents) {
+//
+// `debtRule` (optional, Carried Debt fund, build 29): the household
+// debt rule { mode, percentBp?, fixedCents? }, or null/undefined for
+// the old behaviour. When present, each week's debt payment P is
+// the week's stored `debtPaymentCents` when the caller supplied one
+// (a closed week's snapshot wins, same as weekPolicy's B/T rule)
+// and otherwise the rule's payment from the base; the week's earned
+// surplus then pays the outgoing debt down first and only the
+// remainder is totalled. When absent, no P is passed (the engine
+// defaults P = D) and the totals are exactly as before.
+export function simulateWeeks(weeks, initialDebtCents, debtRule) {
   const sorted = [...(weeks ?? [])].sort((a, b) => (a.week_start < b.week_start ? -1 : 1));
   let D = int(initialDebtCents, 'initialDebtCents');
   const perWeek = [];
   let totalSurplus = 0;
   for (const w of sorted) {
+    const B = int(w.B, 'B');
+    const P = debtRule == null
+      ? undefined
+      : (w.debtPaymentCents != null ? w.debtPaymentCents : debtRulePayment(debtRule, B));
     const result = computeWeek({
-      B: int(w.B, 'B'),
+      B,
       T: int(w.T, 'T'),
       D,
       C: int(w.charges_cents, 'charges_cents'),
+      ...(P === undefined ? {} : { P }),
     });
     perWeek.push({ week_start: w.week_start, ...result });
-    totalSurplus += result.earnedSurplus;
-    D = result.outgoingDebt;
+    if (debtRule == null) {
+      totalSurplus += result.earnedSurplus;
+      D = result.outgoingDebt;
+    } else {
+      const surplusToDebt = Math.min(result.earnedSurplus, result.outgoingDebt);
+      totalSurplus += result.earnedSurplus - surplusToDebt;
+      D = result.outgoingDebt - surplusToDebt;
+    }
   }
   return { perWeek, totalSurplus, outgoingDebt: D };
 }
@@ -124,6 +152,7 @@ export function computeRestorationTotal(args) {
     fundAllocationCents = 0,
     totalRefundedCents,
     initialDebtCents = 0,
+    debtRule = null,
   } = args ?? {};
   const purchaseAmount = int(purchaseAmountCents, 'purchaseAmountCents');
   const fundAllocation = int(fundAllocationCents, 'fundAllocationCents');
@@ -144,7 +173,7 @@ export function computeRestorationTotal(args) {
   const fundCreditCents = Math.min(refundableCents, fundAllocation);
   const normalRefundCents = refundableCents - fundCreditCents;
 
-  const baseline = simulateWeeks(sorted, initialDebtCents);
+  const baseline = simulateWeeks(sorted, initialDebtCents, debtRule);
   const reducedWeeks = sorted.map((w) => {
     if (w.week_start !== purchaseWeekStart) return w;
     return {
@@ -152,7 +181,7 @@ export function computeRestorationTotal(args) {
       charges_cents: Math.max(0, int(w.charges_cents, 'charges_cents') - normalRefundCents),
     };
   });
-  const reduced = simulateWeeks(reducedWeeks, initialDebtCents);
+  const reduced = simulateWeeks(reducedWeeks, initialDebtCents, debtRule);
 
   const restoredSurplusCents = Math.max(0, reduced.totalSurplus - baseline.totalSurplus);
   const debtReductionCents = Math.max(0, baseline.outgoingDebt - reduced.outgoingDebt);
