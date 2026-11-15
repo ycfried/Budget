@@ -177,6 +177,59 @@ test('debtPaymentsAfterClose: only extra_fund/clear in the window count; surplus
   assert.equal(debtPaymentsAfterClose(payments, null, '2026-11-15'), 24000);
 });
 
+test('restoration simulation with a 25% rule: the week\'s $300 surplus pays the debt first, the fund gets $0', () => {
+  const rule = { mode: 'percent', percentBp: 2500 };
+  const sim = simulateWeeks(
+    [{ week_start: '2026-11-15', B: 40000, T: 0, charges_cents: 0 }], 348546, rule);
+  assert.equal(sim.perWeek[0].debtPayment, 10000);
+  assert.equal(sim.perWeek[0].earnedSurplus, 30000);
+  assert.equal(sim.totalSurplus, 0);
+  assert.equal(sim.outgoingDebt, 308546);
+  // Same week, no rule: the old behaviour — the base absorbs the
+  // whole debt, the week earns nothing, the same debt carries out.
+  const old = simulateWeeks(
+    [{ week_start: '2026-11-15', B: 40000, T: 0, charges_cents: 0 }], 348546);
+  assert.equal(old.perWeek[0].debtPayment, 40000);
+  assert.equal(old.perWeek[0].earnedSurplus, 0);
+  assert.equal(old.totalSurplus, 0);
+  assert.equal(old.outgoingDebt, 308546);
+});
+
+test('restoration simulation: a small debt is paid off and the surplus remains', () => {
+  const sim = simulateWeeks(
+    [{ week_start: '2026-11-15', B: 40000, T: 0, charges_cents: 0 }], 5000,
+    { mode: 'percent', percentBp: 2500 });
+  assert.equal(sim.perWeek[0].debtPayment, 5000);
+  assert.equal(sim.totalSurplus, 35000);
+  assert.equal(sim.outgoingDebt, 0);
+});
+
+test('restoration simulation: a stored per-week payment wins over the rule', () => {
+  const sim = simulateWeeks(
+    [{ week_start: '2026-11-15', B: 40000, T: 0, charges_cents: 0, debtPaymentCents: 20000 }],
+    348546, { mode: 'percent', percentBp: 2500 });
+  assert.equal(sim.perWeek[0].debtPayment, 20000);
+  assert.equal(sim.totalSurplus, 0);
+  assert.equal(sim.outgoingDebt, 308546);
+});
+
+test('restoration total with a 25% rule: a $100 refund restores $100 of surplus, no debt cut', () => {
+  const weeks = [
+    { week_start: '2026-11-01', B: 37500, T: 0, charges_cents: 40000 },
+    { week_start: '2026-11-08', B: 37500, T: 0, charges_cents: 0 },
+  ];
+  const total = computeRestorationTotal({
+    weeks, purchaseWeekStart: '2026-11-01',
+    purchaseAmountCents: 40000, fundAllocationCents: 0,
+    totalRefundedCents: 10000, initialDebtCents: 20000,
+    debtRule: { mode: 'percent', percentBp: 2500 },
+  });
+  assert.equal(total.baseline.totalSurplus, 15000);
+  assert.equal(total.reduced.totalSurplus, 25000);
+  assert.equal(total.restoredSurplusCents, 10000);
+  assert.equal(total.debtReductionCents, 0);
+});
+
 test('$75 released / $60 fund spend / $50 late reduction -> fund $0, shortfall $35', () => {
   const afterSpend = 7500 - 6000; // $15 left in the fund
   const res = reduceFundForLateCharge(afterSpend, 5000);

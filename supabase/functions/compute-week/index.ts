@@ -56,6 +56,10 @@
 //   week_locked: boolean (28-day open window, FINAL A4),
 //   pending_refund_excluded_cents: absolute total of provisional
 //     refunds excluded from this week's math (display only)
+//   debt_payment_cents: the base allowance paid toward the incoming
+//     debt this week (Carried Debt fund, build 29) — the effective
+//     payment, capped at the debt and at the base. Under the old
+//     model (no rule) it is min(D, B): the base the debt consumed.
 // }
 // Pre-migration fallbacks: if the restoration-snapshots migration has
 // not been applied yet (no snapshot columns, no restoration_entries
@@ -70,6 +74,7 @@ import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
   chargeContribution,
   linkedRefundNormalPortionCents, restorationDebtCutsAfterClose,
+  debtRulePayment, debtPaymentsAfterClose,
 } from './engine.mjs';
 
 const corsHeaders = {
@@ -168,13 +173,34 @@ Deno.serve(async (req) => {
       .single();
     if (hhErr || !household) return json({ error: 'household not found' }, 404);
 
+    // Debt repayment rule (Carried Debt fund, build 29): one row per
+    // household in debt_settings. A missing table (the SQL not
+    // applied yet) means the OLD behaviour — no rule, P defaults to
+    // D in the engine. A missing ROW means the default: 25% of the
+    // base allowance (the migration backfills existing households;
+    // new households get the same default here).
+    let debtRule: { mode: string; percentBp?: number; fixedCents?: number } | null = null;
+    let debtRuleMissing = false;
+    const ruleRes = await supabase
+      .from('debt_settings')
+      .select('mode, percent_bp, fixed_cents')
+      .eq('household_id', householdId)
+      .maybeSingle();
+    if (ruleRes.error) {
+      debtRuleMissing = true;
+    } else if (ruleRes.data) {
+      debtRule = { mode: ruleRes.data.mode, percentBp: ruleRes.data.percent_bp, fixedCents: ruleRes.data.fixed_cents };
+    } else {
+      debtRule = { mode: 'percent', percentBp: 2500 };
+    }
+
     // Week closes, with snapshot columns when the migration exists.
     // FALLBACK: without the migration, snapshot fields are null and
     // the live allowance / temp sums below are used instead.
     let closes: any[] = [];
     const closesRes = await supabase
       .from('week_closes')
-      .select('week_start, surplus_cents, outgoing_debt_cents, late_adjustment_cents, base_allowance_cents, temp_increase_cents, created_at')
+      .select('week_start, surplus_cents, outgoing_debt_cents, late_adjustment_cents, base_allowance_cents, temp_increase_cents, debt_payment_cents, created_at')
       .eq('household_id', householdId);
     if (closesRes.error) {
       const retry = await supabase
@@ -182,7 +208,7 @@ Deno.serve(async (req) => {
         .select('week_start, surplus_cents, outgoing_debt_cents, created_at')
         .eq('household_id', householdId);
       if (retry.error) return json({ error: 'week close read failed' }, 500);
-      closes = (retry.data ?? []).map((c: any) => ({ ...c, late_adjustment_cents: 0, base_allowance_cents: null, temp_increase_cents: null }));
+      closes = (retry.data ?? []).map((c: any) => ({ ...c, late_adjustment_cents: 0, base_allowance_cents: null, temp_increase_cents: null, debt_payment_cents: null }));
     } else {
       closes = closesRes.data ?? [];
     }
@@ -234,6 +260,24 @@ Deno.serve(async (req) => {
         // close and up to this week; cuts already inside the close
         // are never subtracted twice.
         restorationCuts = restorationDebtCutsAfterClose(restRes.data ?? [], latestCloseBefore.week_start, weekStart);
+      }
+    }
+
+    // Debt payments posted after the latest close (Carried Debt
+    // fund, build 29): Pay from Extra Fund and Clear rows reduce
+    // the incoming debt in the same window as the restoration
+    // cuts. 'surplus' payments are NOT subtracted — they are
+    // already inside the close that recorded them (see
+    // engine.mjs debtPaymentsAfterClose). A missing table (the SQL
+    // not applied yet) means no payments.
+    let debtPaymentsAfter = 0;
+    if (latestCloseBefore) {
+      const payRes = await supabase
+        .from('debt_payments')
+        .select('week_start, amount_cents, source')
+        .eq('household_id', householdId);
+      if (!payRes.error) {
+        debtPaymentsAfter = debtPaymentsAfterClose(payRes.data ?? [], latestCloseBefore.week_start, weekStart);
       }
     }
 
@@ -380,11 +424,23 @@ Deno.serve(async (req) => {
       ? 0
       : tempSum;
     const D = latestCloseBefore
-      ? Math.max(0, (latestCloseBefore.outgoing_debt_cents ?? 0) - restorationCuts)
+      ? Math.max(0, (latestCloseBefore.outgoing_debt_cents ?? 0) - restorationCuts - debtPaymentsAfter)
       : 0;
     const C = Math.max(0, chargesNet);
 
-    const result = computeWeek({ B, T, D, C });
+    // Debt payment for this week (Carried Debt fund, build 29). A
+    // closed week's STORED payment wins — a later rule change never
+    // rewrites a closed week, same as the B/T snapshot rule.
+    // Otherwise the rule in effect now, from the base only. No rule
+    // (the debt_settings table not migrated) means the old
+    // behaviour: P = D, the base absorbs the whole debt.
+    const storedP = thisClose?.debt_payment_cents;
+    const P = storedP != null
+      ? storedP
+      : debtRuleMissing
+      ? D
+      : debtRulePayment(debtRule, B);
+    const result = computeWeek({ B, T, D, C, P });
 
     // Response shape: the fields above plus unlinked_excess_cents
     // (Nov 5, 2026) — the part of unlinked refunds that exceeded the
@@ -395,6 +451,7 @@ Deno.serve(async (req) => {
       base_available_cents: result.baseAvailable,
       temp_cents: result.T,
       carried_debt_cents: result.D,
+      debt_payment_cents: result.debtPayment,
       charges_cents: result.C,
       available_cents: result.available,
       week_locked: weekLocked,
