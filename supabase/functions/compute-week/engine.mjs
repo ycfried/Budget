@@ -40,10 +40,20 @@ export function computeWeek(input) {
   // sends) are deliberately IGNORED, never read into the math. A stale
   // caller therefore cannot reintroduce refund credit through this function.
 
-  // 1. Debt not absorbed by this week's base becomes carried debt.
-  const carriedDebt = Math.max(0, D - B);
+  // Debt payment P (Carried Debt fund, build 29, Nov 15, 2026): the
+  // base allowance pays at most P toward the incoming debt; the rest
+  // of the debt carries on. P defaults to D — the pre-build-29
+  // behaviour, where the base absorbs the whole debt — so callers
+  // that do not pass P (and every existing test) see exactly the old
+  // numbers. The effective payment is capped at D (no overpaying)
+  // and at B (the base is the only money the payment comes from;
+  // a fixed-$ rule larger than the base pays at most the base).
+  const Praw = input.P == null ? D : int(input.P);
+  const debtPayment = Math.min(D, Praw, B);
+  // 1. Debt remaining after this week's payment (before new debt).
+  const carriedDebt = D - debtPayment;
   // 2. Base capacity left after paying debt.
-  const baseAvailable = Math.max(0, B - D);
+  const baseAvailable = B - debtPayment;
   // 3. Charges covered by base.
   const coveredBase = Math.min(C, baseAvailable);
   // 4. Charges above base.
@@ -61,6 +71,7 @@ export function computeWeek(input) {
 
   return {
     B, T, D, C,
+    debtPayment,
     carriedDebt,
     baseAvailable,
     coveredBase,
@@ -71,6 +82,43 @@ export function computeWeek(input) {
     earnedSurplus,
     available,
   };
+}
+
+// Debt repayment rule (Carried Debt fund, build 29, Nov 15, 2026):
+// the weekly payment toward the incoming debt, from the base
+// allowance ONLY — temporary increases never feed it (owner's
+// numbers are all base-only). mode: 'percent' — percentBp basis
+// points of B; 'fixed' — fixedCents per week; 'off' — no payment.
+// Returns the RULE amount (uncapped); callers cap it at D and B via
+// computeWeek's P input. A null rule (the debt_settings table not
+// yet migrated) means the OLD behaviour — the caller passes no P at
+// all, it does not call this.
+export function debtRulePayment(rule, baseCents) {
+  if (rule == null || rule.mode === 'off') return 0;
+  const B = int(baseCents);
+  if (rule.mode === 'percent') {
+    const bp = int(rule.percentBp);
+    if (bp < 0 || bp > 10000) throw new Error('engine: percentBp must be between 0 and 10000');
+    return Math.floor((B * bp) / 10000);
+  }
+  if (rule.mode === 'fixed') return int(rule.fixedCents);
+  throw new Error(`engine: unknown debt rule mode ${String(rule.mode)}`);
+}
+
+// Debt payments after a close (Carried Debt fund, build 29): the
+// same window as restorationDebtCutsAfterClose — payments posted
+// after the latest close's week and up to the requested week. Only
+// 'extra_fund' and 'clear' payments reduce the incoming debt;
+// 'surplus' payments are already inside the close that recorded
+// them (the close stores outgoing net of the surplus payment), so
+// they are never subtracted here — subtracting them would count the
+// same payment twice.
+export function debtPaymentsAfterClose(payments, latestCloseWeekStart, weekStart) {
+  return (payments ?? [])
+    .filter((p) => (p.source === 'extra_fund' || p.source === 'clear')
+      && (latestCloseWeekStart == null || p.week_start > latestCloseWeekStart)
+      && (weekStart == null || p.week_start <= weekStart))
+    .reduce((s, p) => s + (p.amount_cents ?? 0), 0);
 }
 
 function int(v) {

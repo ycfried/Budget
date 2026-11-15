@@ -12,6 +12,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeWeek,
+  debtRulePayment,
+  debtPaymentsAfterClose,
   weekStartOf,
   addDays,
   surplusReleaseDate,
@@ -96,6 +98,83 @@ test('legacy credit fields sent by a stale caller are ignored, never computed', 
   assert.deepEqual(stale, plain);
   assert.equal('outgoingCredit' in stale, false);
   assert.equal('coveredCredit' in stale, false);
+});
+
+// --- Carried Debt fund (build 29, Nov 15, 2026) -------------------------
+//
+// The base allowance pays at most P toward the incoming debt; the
+// rest carries on. P defaults to D (the old behaviour), so every
+// test above is unchanged. The real household today: B $400,
+// D $3,485.46 — old model: baseAvailable $0; 25% rule: $300.
+
+test('debt rule: 25% of a $400 base pays $100, week starts at $300', () => {
+  const rule = debtRulePayment({ mode: 'percent', percentBp: 2500 }, 40000);
+  assert.equal(rule, 10000);
+  const w = computeWeek({ B: 40000, D: 348546, C: 0, P: rule });
+  assert.equal(w.debtPayment, 10000);
+  assert.equal(w.baseAvailable, 30000);
+  assert.equal(w.carriedDebt, 338546);
+  assert.equal(w.outgoingDebt, 338546);
+  assert.equal(w.earnedSurplus, 30000);
+  assert.equal(w.available, 30000);
+});
+
+test('debt rule: no P passed is the old behaviour — base absorbs the whole debt', () => {
+  const w = computeWeek({ B: 40000, D: 348546, C: 0 });
+  assert.equal(w.debtPayment, 40000);
+  assert.equal(w.baseAvailable, 0);
+  assert.equal(w.carriedDebt, 308546);
+  assert.equal(w.outgoingDebt, 308546);
+});
+
+test('debt rule: fixed $50 pays $50; off pays $0 and the week keeps the full base', () => {
+  const fixed = computeWeek({ B: 40000, D: 348546, C: 0, P: debtRulePayment({ mode: 'fixed', fixedCents: 5000 }, 40000) });
+  assert.equal(fixed.debtPayment, 5000);
+  assert.equal(fixed.baseAvailable, 35000);
+  const off = computeWeek({ B: 40000, D: 348546, C: 0, P: debtRulePayment({ mode: 'off' }, 40000) });
+  assert.equal(off.debtPayment, 0);
+  assert.equal(off.baseAvailable, 40000);
+  assert.equal(off.carriedDebt, 348546);
+});
+
+test('debt rule: payment never exceeds the debt or the base', () => {
+  // Fixed $500 rule on a $400 base: the base is the only money, so
+  // at most $400 is paid even though the rule says $500.
+  const overBase = computeWeek({ B: 40000, D: 348546, C: 0, P: 50000 });
+  assert.equal(overBase.debtPayment, 40000);
+  assert.equal(overBase.baseAvailable, 0);
+  assert.equal(overBase.carriedDebt, 308546);
+  // Small debt: the payment stops at the debt, the week keeps the rest.
+  const smallDebt = computeWeek({ B: 40000, D: 3000, C: 0, P: 10000 });
+  assert.equal(smallDebt.debtPayment, 3000);
+  assert.equal(smallDebt.baseAvailable, 37000);
+  assert.equal(smallDebt.carriedDebt, 0);
+  assert.equal(smallDebt.outgoingDebt, 0);
+});
+
+test('debtRulePayment: percent floors, 0% and null rule pay nothing, 100% pays the base', () => {
+  assert.equal(debtRulePayment({ mode: 'percent', percentBp: 2500 }, 40000), 10000);
+  assert.equal(debtRulePayment({ mode: 'percent', percentBp: 3333 }, 40000), 13332);
+  assert.equal(debtRulePayment({ mode: 'percent', percentBp: 0 }, 40000), 0);
+  assert.equal(debtRulePayment(null, 40000), 0);
+  assert.equal(debtRulePayment({ mode: 'percent', percentBp: 10000 }, 40000), 40000);
+  assert.equal(debtRulePayment({ mode: 'fixed', fixedCents: 5000 }, 40000), 5000);
+});
+
+test('debtPaymentsAfterClose: only extra_fund/clear in the window count; surplus never does', () => {
+  const payments = [
+    { week_start: '2026-11-08', amount_cents: 10000, source: 'extra_fund' },
+    { week_start: '2026-11-15', amount_cents: 5000, source: 'clear' },
+    { week_start: '2026-11-15', amount_cents: 7000, source: 'surplus' },
+    { week_start: '2026-11-01', amount_cents: 9000, source: 'extra_fund' },
+    { week_start: '2026-11-22', amount_cents: 3000, source: 'extra_fund' },
+  ];
+  // Latest close week Nov 8, requested week Nov 15: the Nov 8 payment
+  // is inside the close, the Nov 1 payment is before it, the Nov 22
+  // payment is after the requested week, the surplus payment is
+  // already inside the close that recorded it. Only the clear counts.
+  assert.equal(debtPaymentsAfterClose(payments, '2026-11-08', '2026-11-15'), 5000);
+  assert.equal(debtPaymentsAfterClose(payments, null, '2026-11-15'), 24000);
 });
 
 test('$75 released / $60 fund spend / $50 late reduction -> fund $0, shortfall $35', () => {
