@@ -663,7 +663,7 @@ private struct WeekResultFlat: Decodable {
 /// base. `percentBp` is basis points (2500 = 25%). The rule applies
 /// to the base only — temporary increases never feed it — and a rule
 /// change is future-only: a closed week keeps its stored payment.
-public struct DebtRule: Equatable, Codable {
+public struct DebtRule: Equatable, Codable, Sendable {
     public enum Mode: String, Equatable, Codable {
         case percent, fixed, off
     }
@@ -712,7 +712,7 @@ public struct DebtRule: Equatable, Codable {
 /// `surplus` (week-close: unspent allowance paid the debt first) or
 /// `clear` (the balance erased by hand). `weekStart` is the Sunday of
 /// the week the payment is attributed to.
-public struct DebtPayment: Equatable, Codable, Identifiable {
+public struct DebtPayment: Equatable, Codable, Identifiable, Sendable {
     public let id: UUID
     public let householdId: UUID
     public let amountCents: Int
@@ -740,7 +740,7 @@ public struct DebtPayment: Equatable, Codable, Identifiable {
 /// static descriptors; the Extra Fund and Charity sections keep their
 /// existing code for now — the full migration to descriptors is the
 /// custom-funds build's job.
-public struct FundDescriptor: Equatable, Hashable {
+public struct FundDescriptor: Equatable, Hashable, Sendable {
     public enum Kind: String, Equatable, Hashable {
         case spending, debt, charity, savings
     }
