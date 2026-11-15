@@ -170,8 +170,11 @@ begin
   )
   update public.transactions t
      set merchant = v_rule.display_name,
+         -- extensions.digest: pgcrypto lives in schema 'extensions'
+         -- and this function sets search_path = public, so the
+         -- unqualified digest() does not resolve (live bug, Nov 15).
          dedupe_hash = encode(
-           digest(v_rule.display_name || '|' || t.date::text || '|' ||
+           extensions.digest(v_rule.display_name || '|' || t.date::text || '|' ||
                   t.amount_cents::text || '|' || t.card_suffix, 'sha256'), 'hex'),
          kind = case
            when v_rule.fixed_kind is null then t.kind
