@@ -311,6 +311,29 @@ final class MembersSettingsViewModel: ObservableObject {
     }
 }
 
+/// Member-row action buttons (owner, Nov 15, 2026): "Make Admin"
+/// and "Remove" share ONE size/format — same font, padding and
+/// corner radius — and differ ONLY in colour (grey vs red). The old
+/// pair mixed TertiaryButtonStyle (large, maxWidth .infinity, so it
+/// grabbed the row and squeezed Remove off the right edge) with
+/// SmallDangerButtonStyle (smaller, 1pt larger font), and the two
+/// did not match. Both tones are content-sized and fixedSize in the
+/// row, so neither compresses nor clips.
+private struct MemberActionButtonStyle: ButtonStyle {
+    enum Tone { case grey, red }
+    let tone: Tone
+    func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(tone == .red ? DesignTokens.errorText : DesignTokens.ink)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(tone == .red ? DesignTokens.errorBackground : Color(hex: "#e5e7eb"))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}
+
 struct MembersSettingsView: View {
     @StateObject private var viewModel: MembersSettingsViewModel
     private let context: SettingsContext
@@ -456,14 +479,16 @@ struct MembersSettingsView: View {
                 Button(action.label) {
                     viewModel.confirmRoleChange(member, to: action.toRole)
                 }
-                .buttonStyle(TertiaryButtonStyle())
+                .buttonStyle(MemberActionButtonStyle(tone: .grey))
+                .fixedSize(horizontal: true, vertical: false)
                 .accessibilityLabel("\(action.label) \(viewModel.displayName(for: member))")
             }
             if viewModel.isOwner && !viewModel.isOwnRow(member) {
                 Button("Remove") {
                     viewModel.confirmRemove(member)
                 }
-                .buttonStyle(SmallDangerButtonStyle())
+                .buttonStyle(MemberActionButtonStyle(tone: .red))
+                .fixedSize(horizontal: true, vertical: false)
                 .accessibilityLabel("Remove \(viewModel.displayName(for: member)) from the household")
             }
         }
