@@ -354,3 +354,5 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - Nov 15, 2026 (build-31 batch, widget polish only): whole dollars on the widget (new MoneyFormat.wholeDollars, rounded; $393.65 → $394), weekly figure brand blue, charity figure ink, donut ring 10 → 14 with pale-blue #dbeafe track, card background #f2f7ff. Owner-approved with the colour swap (main budget blue, charity black).
 
 - Nov 15, 2026 (build-31 batch, additions): Home skeletons full-length (hero figure/spent/debt bars + fund-card amount bars now edge-to-edge; the 3-row Recent Transactions skeleton is now 10 rows to fill the viewport), Funds "Rearrange" grey pill becomes a blue primary "Reorder" button, Nickname popup field restyled to the Search-field treatment (systemGray6 fill, no hard border).
+
+- Nov 15, 2026 (build-31 batch, Members addition): Make Admin + Remove now share one button size/format (new MemberActionButtonStyle: 14pt semibold, 8/12 padding, radius 10; grey vs red only) — the old TertiaryButtonStyle grabbed the row width and squeezed Remove off the right edge. Both fixedSize so nothing clips.
