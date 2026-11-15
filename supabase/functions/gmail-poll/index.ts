@@ -67,7 +67,7 @@ import {
   headerValue,
   parseAmexAlertText,
 } from './gmail-parse.ts';
-import { canonicalHash, classifyMerchantOnly, flagLookalikes, normalizeMerchant } from './canonical.ts';
+import { applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, findCoveringBankRow, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -182,6 +182,22 @@ Deno.serve(async (req) => {
 
     const totals = { connections: connections?.length ?? 0, checked: 0, stored: 0, duplicates: 0, quarantined: 0, unparseable: 0 };
     const errors: { connection_id: string; error: string }[] = [];
+    // Build 30 (merchant rules + auto-merge): load the household's
+    // rules and confirmed aliases once for the whole poll. Alerts
+    // are ruled BEFORE the hash (so they hash like their bank row),
+    // and the bank-first guard below uses the widened
+    // findCoveringBankRow (amount + card + 2-day window +
+    // merchant-related), not just the exact hash. Best-effort: no
+    // rules/aliases = old behaviour.
+    const merchantRules = await loadMerchantRules(supabaseAdmin, householdId);
+    let aliasPairs: Array<{ name_a: string; name_b: string }> = [];
+    try {
+      const { data: aliasData } = await supabaseAdmin.from('merchant_aliases')
+        .select('name_a, name_b').eq('household_id', householdId);
+      aliasPairs = aliasData ?? [];
+    } catch {
+      aliasPairs = [];
+    }
     // P2-C5: gap since the previous successful poll, read BEFORE
     // this run updates last_poll_at. The worst gap across
     // connections is reported, so one dead connection is visible.
@@ -301,32 +317,36 @@ Deno.serve(async (req) => {
               totals.duplicates += 1;
               continue;
             }
-            const merchant = normalizeMerchant(parsed.merchant).slice(0, 80);
+            // Build 30 (merchant rules): the rule's display name is
+            // what is stored AND hashed, so this alert hashes like
+            // its bank row. A rule's fixed kind overrides the
+            // classifier (sign-guarded inside); otherwise classify
+            // on the ORIGINAL merchant text, so name patterns still
+            // match as before.
+            const ruled = applyMerchantRuleToMerchant(
+              merchantRules, normalizeMerchant(parsed.merchant).slice(0, 80), parsed.amountCents);
+            const merchant = ruled.merchant;
             const dedupeHash = await canonicalHash(merchant, parsed.date, parsed.amountCents, parsed.cardSuffix);
-            const kind = classifyMerchantOnly(parsed.merchant, parsed.amountCents);
+            const kind = ruled.kindOverride ?? classifyMerchantOnly(parsed.merchant, parsed.amountCents);
             // Bank-first guard (Nov 12, 2026 — provisional-merge
-            // miss, owner-reported doubles): same rule as
-            // ingest-amex-alert step 5b — when the Plaid row arrived
-            // BEFORE the alert, inserting here creates a second row
-            // for the same purchase and nothing later merges them.
-            // Skip when a Plaid row with the same canonical hash
-            // already covers this purchase (Plaid rows only, never
-            // an amex_alert row, so two real identical purchases
-            // with no bank row still both insert). Suffix-unknown
-            // alerts ('0000') also match a Plaid row on merchant +
-            // date + amount. Same merchant-string limit as
-            // plaid-sync step 3b: a store-number gap still misses.
-            const { data: bankRow } = await supabaseAdmin.from('transactions')
-              .select('id').eq('household_id', householdId).eq('source', 'plaid')
-              .eq('dedupe_hash', dedupeHash).limit(1).maybeSingle();
-            let bankCovered = !!bankRow;
-            if (!bankCovered && parsed.cardSuffix === '0000') {
-              const { data: bankRowByFields } = await supabaseAdmin.from('transactions')
-                .select('id').eq('household_id', householdId).eq('source', 'plaid')
-                .eq('merchant', merchant).eq('date', parsed.date).eq('amount_cents', parsed.amountCents)
-                .limit(1).maybeSingle();
-              bankCovered = !!bankRowByFields;
-            }
+            // miss, owner-reported doubles; widened build 30): when
+            // the Plaid row arrived BEFORE the alert, inserting here
+            // creates a second row for the same purchase and nothing
+            // later merges them. Skip when a Plaid row covers this
+            // purchase — same amount + same card (or unknown suffix)
+            // + date within 2 days + merchant-related (same kind,
+            // same household). Plaid rows only, never an amex_alert
+            // row, so two real identical purchases with no bank row
+            // still both insert. The exact-hash case is the special
+            // case where all of those are equalities. A TOIREMORG
+            // alert is never swallowed here: the eligibility check
+            // refuses TOIREMORG pairs, so the alert inserts and the
+            // pair stays two real gifts (owner ruling Nov 3).
+            const coveringBankRow = await findCoveringBankRow(supabaseAdmin, householdId, {
+              merchant, date: parsed.date, amount_cents: parsed.amountCents,
+              card_suffix: parsed.cardSuffix, kind,
+            }, { aliases: aliasPairs, rules: merchantRules });
+            const bankCovered = !!coveringBankRow;
             if (bankCovered) {
               await supabaseAdmin.from('processed_email_ids').insert({
                 connection_id: conn.id, message_id: messageId, disposition: 'duplicate',
