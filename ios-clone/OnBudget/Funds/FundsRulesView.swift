@@ -14,6 +14,9 @@ import OnBudgetKit
 //   row).
 // - Carried Debt (build 29): the Debt Repayment Rule editor lives
 //   under the Carried Debt card.
+// - Spending (build 30): the Weekly Allowance editor + Temporary
+//   Allowance block live under the Spending card (moved from the
+//   Settings Budget card — ALL fund settings live on the Funds page).
 // Nothing was removed: the rate editor, the shortfall line, and
 // the three How It Works blocks are the same content, just re-homed.
 //
@@ -478,5 +481,179 @@ public struct DebtRuleSection: View {
         }
         ruleError = nil
         Task { await viewModel.setDebtRule(pending) }
+    }
+}
+
+/// Weekly Allowance, under the Spending card (build 30 — moved from
+/// the Settings Budget card; owner, Nov 15, 2026: ALL fund settings
+/// live on the Funds page, and the base allowance is the spending
+/// fund's setting). The row + the admin editor (field + Save sized
+/// to fit, Reset a small quiet link) and the preview line, then the
+/// Temporary Allowance block below it. No heading — the "Weekly
+/// Allowance" row says what it is, and the Spending card above is
+/// the section header. A change applies from the current week
+/// onward; closed weeks are never rewritten (the confirm dialog
+/// says so, as the Settings card did).
+///
+/// Visibility decision (same as the rate/rule sections): visible to
+/// every role, read-only for regular members ("Only the admin can
+/// change the weekly allowance."). Members already see the week's
+/// allowance; hiding the setting that produces it would leave it
+/// unexplained.
+public struct SpendingAllowanceSection: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    @State private var allowanceText = ""
+    @State private var allowanceError: String?
+    @State private var confirmChange: AllowanceConfirm?
+    /// True inside the Spending fund container: no card of its own.
+    public let bare: Bool
+    /// Opens the Temporary Allowance form (owned by FundsView).
+    public let onOpenTemp: () -> Void
+
+    public init(viewModel: FundsViewModel, bare: Bool = false, onOpenTemp: @escaping () -> Void) {
+        self.viewModel = viewModel
+        self.bare = bare
+        self.onOpenTemp = onOpenTemp
+    }
+
+    private struct AllowanceConfirm: Identifiable {
+        let oldCents: Int?
+        let newCents: Int
+        var id: String { "change-\(newCents)" }
+    }
+
+    private var isAdmin: Bool { viewModel.context.isAdmin }
+    private var savedBase: Int? { viewModel.baseAllowanceCents }
+
+    private var pendingCents: Int? {
+        MoneyFormat.parseDollarsStrict(allowanceText)
+    }
+
+    private var pendingDiffers: Bool {
+        guard let pending = pendingCents, let base = savedBase else { return false }
+        return pending != base
+    }
+
+    /// The week's temporary total, when a Temporary Allowance
+    /// override is in effect for the current week.
+    private var tempOverrideCents: Int? {
+        viewModel.debtWeek?.overrideCents
+    }
+
+    public var body: some View {
+        Group {
+            if bare {
+                allowanceContent
+                    .padding(.horizontal, 20)
+            } else {
+                FundsCard {
+                    allowanceContent
+                }
+            }
+        }
+        .accessibilityIdentifier("funds.spendingAllowance")
+        .onAppear { syncField() }
+        .onChange(of: savedBase) { _, _ in syncField() }
+        .alert(item: $confirmChange) { change in
+            let message: String
+            if let old = change.oldCents {
+                message = "Change the weekly allowance from \(MoneyFormat.formatCents(old)) to \(MoneyFormat.formatCents(change.newCents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
+            } else {
+                message = "Set the weekly allowance to \(MoneyFormat.formatCents(change.newCents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
+            }
+            return Alert(
+                title: Text("Change Allowance"),
+                message: Text(message),
+                primaryButton: .default(Text("Change Allowance")) {
+                    Task { await viewModel.setBaseAllowance(cents: change.newCents) }
+                },
+                secondaryButton: .cancel(Text("Keep Current"))
+            )
+        }
+    }
+
+    /// The row + editor + Temporary Allowance block, without chrome:
+    /// the caller (the Spending fund container) wraps it, or
+    /// FundsCard when standalone.
+    private var allowanceContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let base = savedBase {
+                FundsBreakdownRow("Weekly Allowance", value: MoneyFormat.formatCents(base))
+                if isAdmin {
+                    allowanceEditor
+                } else {
+                    FundsMuted("Only the admin can change the weekly allowance.")
+                }
+                tempBlock
+            } else if let error = viewModel.allowanceError {
+                FundsErrorBox(error)
+                FundsSmallTertiaryButton("Try Again") {
+                    Task { await viewModel.reloadAllowance() }
+                }
+            } else {
+                FundsMuted("Loading allowance…")
+            }
+        }
+    }
+
+    private func syncField() {
+        if let base = savedBase {
+            allowanceText = String(format: "%.2f", Double(base) / 100)
+        }
+    }
+
+    private var allowanceEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                DollarTextField(text: $allowanceText, placeholder: "0.00", maxWidth: 140)
+                FundsSmallPrimaryButton("Save", isBusy: viewModel.busyAction == "base-allowance") {
+                    saveTapped()
+                }
+                FundsQuietButton("Reset") {
+                    syncField()
+                    allowanceError = nil
+                }
+            }
+            if pendingDiffers {
+                FundsMuted("Applies from the current week onward. It does not rewrite closed weeks.")
+            } else if pendingCents != nil {
+                FundsMuted("This is already the weekly allowance.")
+            } else {
+                FundsMuted("Enter a valid allowance (empty is not 0).")
+            }
+            if let allowanceError {
+                FundsErrorBox(allowanceError)
+            }
+        }
+    }
+
+    private func saveTapped() {
+        guard let cents = pendingCents, cents >= 0 else {
+            allowanceError = "Enter a valid allowance (empty is not 0)."
+            return
+        }
+        guard pendingDiffers else {
+            allowanceError = "That is already the weekly allowance."
+            return
+        }
+        allowanceError = nil
+        confirmChange = AllowanceConfirm(oldCents: savedBase, newCents: cents)
+    }
+
+    private var tempBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            FundsBreakdownRow(
+                "Temporary Allowance",
+                value: tempOverrideCents.map { MoneyFormat.formatCents($0) } ?? "Not set"
+            )
+            if let temp = tempOverrideCents, let base = savedBase, temp != base {
+                FundsMuted("This week's total is \(MoneyFormat.formatCents(temp)) instead of \(MoneyFormat.formatCents(base)).")
+            }
+            if isAdmin {
+                FundsSmallTertiaryButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance") {
+                    onOpenTemp()
+                }
+            }
+        }
     }
 }

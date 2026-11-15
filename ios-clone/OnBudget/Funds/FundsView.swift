@@ -23,18 +23,16 @@ import OnBudgetKit
 // The view model is owned here. Card expansion is the SHARED
 // `appState.expandedCard` (integration, Nov 9, 2026 — the local
 // `FundsExpandedCard` state is deleted): one-open-at-a-time spans
-// Home + Funds. Temporary Allowance opens as a form here when the
-// shell sets `appState.pendingTemporaryAllowance` (Settings Budget
-// link).
+// Home + Funds. Temporary Allowance opens as a form from the
+// Spending section (build 30 — the Settings Budget link is gone).
 
 public enum FundsForm: Equatable {
     case add
     case use
     case ask
     case income
-    /// Temporary Allowance (Settings Budget link) — owned by the
-    /// Funds workstream, presented as a form, never duplicated in
-    /// Settings.
+    /// Temporary Allowance — opened from the Spending section,
+    /// presented as a form, never duplicated in Settings.
     case temp
     /// Pay Carried Debt from the Extra Fund (build 29).
     case payDebt
@@ -51,8 +49,8 @@ public enum FundsMoreSection: Equatable {
 
 public struct FundsView: View {
     @StateObject private var viewModel: FundsViewModel
-    /// Shared shell state: card expansion + the Temporary Allowance
-    /// handoff from Settings Budget.
+    /// Shared shell state: card expansion, one-open-at-a-time
+    /// across Home + Funds.
     @ObservedObject var appState: AppViewModel
     @State private var openForm: FundsForm?
     @State private var openMore: FundsMoreSection?
@@ -93,13 +91,19 @@ public struct FundsView: View {
                         PayDebtForm(viewModel: viewModel, onClose: { openForm = nil })
                     }
                 } else {
-                    // Three fund sections (owner, Nov 15, 2026): each
+                    // Four fund sections (owner, Nov 15, 2026): each
                     // fund is ONE container — its card heads the
                     // block and its rules, info and transactions sit
                     // inside the same card, not as loose rows below
                     // it. Review stays standalone after them
-                    // (household-wide, not fund-specific).
+                    // (household-wide, not fund-specific). Spending
+                    // is first: the week's allowance is the fund the
+                    // week runs on (build 30 — moved from Settings).
                     VStack(spacing: 24) {
+                        fundContainer {
+                            spendingCard
+                            spendingAllowanceSection
+                        }
                         fundContainer {
                             fundCard
                             fundShortfallLine
@@ -137,11 +141,7 @@ public struct FundsView: View {
             Text(viewModel.alertMessage ?? "")
         }
         .task {
-            consumeTemporaryAllowanceHandoff()
             await viewModel.refresh()
-        }
-        .onChange(of: appState.pendingTemporaryAllowance) { _, _ in
-            consumeTemporaryAllowanceHandoff()
         }
         .refreshable {
             await viewModel.refresh()
@@ -218,6 +218,90 @@ public struct FundsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Spending card (§9.1, build 30)
+    //
+    // The weekly budget fund (moved from the Settings Budget card):
+    // the face is this week's total allowance — base, plus a
+    // temporary total when one is in effect, less this week's debt
+    // payment — the same figure as the Home hero's effective
+    // allowance. The breakdown reconciles: Base ± Temporary
+    // increase/decrease − Debt Payment = Total. The Weekly
+    // Allowance editor + Temporary Allowance live in the section
+    // below the card, like the rate/rule editors of the other funds.
+
+    private var spendingCard: some View {
+        FundsExpandableCard(
+            title: "Spending",
+            amountText: spendingFaceText,
+            isExpanded: appState.expandedCard == .spending,
+            amountIsStatus: spendingFaceCents == nil,
+            isLoading: spendingFaceCents == nil && viewModel.allowanceError == nil,
+            theme: .spending,
+            accessibilityLabel: spendingAccessibilityLabel,
+            onToggle: { toggleCard(.spending) }
+        ) {
+            if let base = viewModel.baseAllowanceCents {
+                FundsBreakdownRow("Base", value: MoneyFormat.formatCents(base))
+                if let override = viewModel.debtWeek?.overrideCents, override != base {
+                    let delta = override - base
+                    FundsBreakdownRow(
+                        delta > 0 ? "Temporary Increase" : "Temporary Decrease",
+                        value: "\(delta > 0 ? "+" : "−")\(MoneyFormat.formatCents(abs(delta)))"
+                    )
+                }
+                if let payment = viewModel.debtWeek?.debtPaymentCents, payment > 0 {
+                    FundsBreakdownRow("Less Debt Payment", value: "−\(MoneyFormat.formatCents(payment))")
+                }
+                if let total = spendingFaceCents {
+                    FundsBreakdownRow("Total", value: MoneyFormat.formatCents(total))
+                }
+                HStack(spacing: 12) {
+                    if isAdmin {
+                        FundsPrimaryButton("Temporary Allowance") { openForm = .temp }
+                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                    } else {
+                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                    }
+                }
+            } else if let error = viewModel.allowanceError {
+                FundsErrorBox(error)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 200, height: 16)
+                    SkeletonBlock(width: 170, height: 16)
+                    SkeletonBlock(width: 190, height: 16)
+                }
+            }
+        }
+        .accessibilityIdentifier("funds.spending")
+    }
+
+    /// This week's total allowance: the week's base available
+    /// (base less this week's debt payment) plus any temporary
+    /// amount — the same figure as the Home hero's effective
+    /// allowance. Falls back to the stored base while the week's
+    /// figures are still loading.
+    private var spendingFaceCents: Int? {
+        if let week = viewModel.debtWeek {
+            return week.baseAvailableCents + week.tempCents
+        }
+        return viewModel.baseAllowanceCents
+    }
+
+    private var spendingFaceText: String {
+        guard let cents = spendingFaceCents else {
+            return ""
+        }
+        return MoneyFormat.formatCents(cents)
+    }
+
+    private var spendingAccessibilityLabel: String {
+        guard let cents = spendingFaceCents else {
+            return "Spending, could not load allowance, show breakdown"
+        }
+        return "Spending, \(MoneyFormat.formatCents(cents)) this week, show breakdown"
     }
 
     // MARK: - Extra Fund card (§9.1)
@@ -469,12 +553,14 @@ public struct FundsView: View {
         }
     }
 
-    /// Settings Budget → Temporary Allowance: open the form here
-    /// and clear the flag so a later tab switch does not re-open it.
-    private func consumeTemporaryAllowanceHandoff() {
-        guard appState.pendingTemporaryAllowance else { return }
-        appState.pendingTemporaryAllowance = false
-        openForm = .temp
+    /// The Spending fund container's allowance editor (build 30):
+    /// Weekly Allowance + Temporary Allowance, moved from the
+    /// Settings Budget card. The button opens the Temporary
+    /// Allowance form.
+    private var spendingAllowanceSection: some View {
+        SpendingAllowanceSection(viewModel: viewModel, bare: true) {
+            openForm = .temp
+        }
     }
 
     private func toggleCard(_ card: ExpandedCard) {

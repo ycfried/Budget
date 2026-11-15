@@ -43,6 +43,9 @@ public enum ExpandedCard: Equatable {
     case fund
     /// Carried Debt (build 29) — a third fund card on the Funds page.
     case debt
+    /// Spending (build 30) — the weekly budget fund, moved from
+    /// Settings. Its card heads the Spending fund container.
+    case spending
 }
 
 /// The outcome of a Face ID unlock attempt from the auth screen.
@@ -103,11 +106,6 @@ public final class AppViewModel: ObservableObject {
     /// Settings is not a tab (CLONE_SPEC §2.2): the profile menu
     /// opens it as a full-screen cover over the current tab.
     @Published public var showSettings = false
-    /// Where Settings should land when it opens, if a caller asked
-    /// for a section (owner decision #27: "Set Your Weekly
-    /// Allowance" lands on the Budget card). Nil = top of Settings.
-    /// Cleared when Settings closes so the next open starts at top.
-    @Published public var settingsScrollTarget: SettingsScrollTarget?
     @Published public var toast: Toast?
 
     /// The signed-in user's membership, once known.
@@ -147,11 +145,6 @@ public final class AppViewModel: ObservableObject {
     /// with search/filters cleared first, like the recent-row jump.
     /// Cleared by the Transactions screen once consumed.
     @Published public var pendingClearTransactionFilters = false
-
-    /// Handoff from Settings Budget → Temporary Allowance (spec
-    /// §10.4): switch to the Funds tab and open the Temporary
-    /// Allowance form there. Cleared by FundsView once consumed.
-    @Published public var pendingTemporaryAllowance = false
 
     /// Deep-link password reset in progress (a recovery code arrived
     /// via onbudget://reset-password?code=…).
@@ -337,7 +330,6 @@ public final class AppViewModel: ObservableObject {
         expandedCard = nil
         pendingTransactionJump = nil
         pendingWeekFilter = nil
-        pendingTemporaryAllowance = false
         showSettings = false
         weekCloseAttempted = false
         selectedTab = .home
@@ -393,14 +385,20 @@ public final class AppViewModel: ObservableObject {
     // MARK: - Navigation handoffs
 
     /// Settings (CLONE_SPEC §2.2): not a tab — opened from the
-    /// profile menu (or a Home link) as a full-screen cover over
-    /// the current tab. The tab underneath is left alone so
-    /// dismissing Settings returns to where the user was.
-    /// `to` scrolls Settings to that section on open (owner
-    /// decision #27); nil opens at the top.
-    public func openSettings(to target: SettingsScrollTarget? = nil) {
-        settingsScrollTarget = target
+    /// profile menu as a full-screen cover over the current tab.
+    /// The tab underneath is left alone so dismissing Settings
+    /// returns to where the user was.
+    public func openSettings() {
         showSettings = true
+    }
+
+    /// Open the Funds tab on the Spending fund (build 30): the
+    /// Budget card moved out of Settings, so Home's "Set Your
+    /// Weekly Allowance" (never-set state) lands here instead of
+    /// on a Settings Budget card (owner decision #27, re-pointed).
+    public func openSpendingFund() {
+        expandedCard = .spending
+        selectedTab = .funds
     }
 
     /// Dismiss Settings (full-screen cover, no tab bar): also
@@ -439,17 +437,6 @@ public final class AppViewModel: ObservableObject {
         pendingWeekFilter = weekStart
         pendingTransactionJump = nil
         selectedTab = .transactions
-    }
-
-    /// Settings Budget "Open Temporary Allowance" (spec §10.4): the
-    /// box itself lives on Funds — switch there and let FundsView
-    /// open its Temporary Allowance form. Dismissing Settings first
-    /// (the link lives inside the Settings cover) so the Funds tab
-    /// is visible when the form opens.
-    public func openTemporaryAllowance() {
-        dismissSettings()
-        pendingTemporaryAllowance = true
-        selectedTab = .funds
     }
 
     // MARK: - Deep links

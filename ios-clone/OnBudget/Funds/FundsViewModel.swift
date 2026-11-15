@@ -643,6 +643,18 @@ public final class FundsViewModel: ObservableObject {
 
     // MARK: - Carried Debt fund (admin only, build 29)
 
+    /// Set the base weekly allowance via `set_base_allowance`
+    /// (build 30 — the Budget card moved from Settings to the
+    /// Spending fund container). Applies from the current week
+    /// onward; closed weeks are never rewritten.
+    public func setBaseAllowance(cents: Int) async {
+        await guarded("base-allowance", title: "Could Not Save Allowance") {
+            try await context.client.rpcs.setBaseAllowance(pHouseholdId: context.householdId, pCents: cents)
+            succeed("Allowance saved.")
+            await refresh()
+        }
+    }
+
     /// Set the repayment rule via `set_debt_repayment_rule`.
     /// Future-only: it applies to the current open week and future
     /// weeks; closed weeks keep their stored payment.

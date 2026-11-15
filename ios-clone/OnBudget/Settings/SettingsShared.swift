@@ -42,10 +42,6 @@ struct SettingsContext {
     /// Called when a Past Week is tapped: the Transactions agent
     /// opens Transactions filtered to that Sun–Sat week.
     var onShowWeekTransactions: (String) -> Void
-    /// Called from Budget when the owner taps Temporary Allowance.
-    /// The Temporary Allowance box itself is owned by the Funds
-    /// agent — Settings only links to it. Nil hides the link.
-    var onOpenTemporaryAllowance: (() -> Void)?
     /// Best-effort push-token unregister (APNS_DESIGN §3: fire-and-
     /// forget on sign-out / account deletion). Nil = no token store
     /// wired yet; deletion still proceeds.
@@ -63,7 +59,6 @@ struct SettingsContext {
         onSignOut: @escaping () -> Void = {},
         onAccountDeleted: @escaping (String) -> Void = { _ in },
         onShowWeekTransactions: @escaping (String) -> Void = { _ in },
-        onOpenTemporaryAllowance: (() -> Void)? = nil,
         unregisterPushToken: (() async -> Void)? = nil
     ) {
         self.client = client
@@ -77,7 +72,6 @@ struct SettingsContext {
         self.onSignOut = onSignOut
         self.onAccountDeleted = onAccountDeleted
         self.onShowWeekTransactions = onShowWeekTransactions
-        self.onOpenTemporaryAllowance = onOpenTemporaryAllowance
         self.unregisterPushToken = unregisterPushToken
     }
 }

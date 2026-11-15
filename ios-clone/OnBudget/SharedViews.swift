@@ -635,6 +635,10 @@ public enum StatCardTheme {
     /// amount and icon stay ink and the chevron muted grey; ONLY the
     /// outline keeps colour (owner, Nov 14, 2026 — "too much colors").
     case debt
+    /// Spending (build 30): the weekly budget fund — the base
+    /// allowance lives here. Blue outline #2f6bff (the primary /
+    /// hero blue): this is the week's spending money.
+    case spending
 
     /// Coloured outline of the card, loaded or loading: green
     /// #16a34a for Charity (its own token — NOT the success green,
@@ -646,6 +650,7 @@ public enum StatCardTheme {
         case .charity: return DesignTokens.charity
         case .fund: return DesignTokens.fund
         case .debt: return DesignTokens.heroOverBudget
+        case .spending: return DesignTokens.primary
         }
     }
 
@@ -677,6 +682,7 @@ public enum StatCardTheme {
         case .charity: return "gift.fill"
         case .fund: return "banknote.fill"
         case .debt: return "minus.circle.fill"
+        case .spending: return "dollarsign.circle.fill"
         }
     }
 }

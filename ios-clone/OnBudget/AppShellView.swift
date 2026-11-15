@@ -29,12 +29,10 @@
 //   Trash is reached from the Transactions "Trash (N)" link only
 //   (CLONE_SPEC §11; admin-only, hidden at 0).
 // - Funds: `FundsView(context:appState:)`; shares `expandedCard`
-//   with Home and opens Temporary Allowance on
-//   `pendingTemporaryAllowance` (Settings Budget link).
+//   with Home.
 // - Settings: `SettingsView` in a full-screen cover; its context
 //   carries `onShowWeekTransactions` → `showTransactionsForWeek`
-//   (Past Weeks tap opens Transactions filtered to that week) and
-//   `onOpenTemporaryAllowance` → `openTemporaryAllowance`.
+//   (Past Weeks tap opens Transactions filtered to that week).
 // Toasts render at the ContentView root so they also show on the
 // Auth screen (account-created / account-deleted notices).
 //
@@ -111,20 +109,16 @@ public struct AppShellView: View {
 
     /// Settings as a full-screen cover (CLONE_SPEC §2.2 — not a
     /// tab). The tab underneath is left alone so dismissing Settings
-    /// returns to where the user was; the "Open Temporary Allowance"
-    /// link is the one exception — it closes Settings and switches
-    /// to Funds (see `AppViewModel.openTemporaryAllowance`).
+    /// returns to where the user was.
     private var settingsCover: some View {
         NavigationStack {
             if let context = settingsContext() {
                 SettingsView(
                     context: context,
                     onBack: {
-                        appState.settingsScrollTarget = nil
                         appState.dismissSettings()
                     },
-                    plaidLauncher: PlaidLinkKitLauncher(),
-                    scrollTarget: appState.settingsScrollTarget
+                    plaidLauncher: PlaidLinkKitLauncher()
                 )
             } else {
                 LoadingView()
@@ -134,8 +128,7 @@ public struct AppShellView: View {
 
     /// The Settings context the shell owns: session + household from
     /// AppViewModel, handoffs back into the shell. Past Weeks taps
-    /// land on Transactions filtered to that week; the Budget card's
-    /// Temporary Allowance link lands on the Funds form.
+    /// land on Transactions filtered to that week.
     private func settingsContext() -> SettingsContext? {
         guard let householdId = appState.householdId,
               let role = appState.role else { return nil }
@@ -153,8 +146,7 @@ public struct AppShellView: View {
                 Task { await appState.signOut() }
                 appState.showToast(message, kind: .info)
             },
-            onShowWeekTransactions: { appState.showTransactionsForWeek($0) },
-            onOpenTemporaryAllowance: { appState.openTemporaryAllowance() }
+            onShowWeekTransactions: { appState.showTransactionsForWeek($0) }
         )
     }
 

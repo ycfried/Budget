@@ -121,6 +121,45 @@ export function debtPaymentsAfterClose(payments, latestCloseWeekStart, weekStart
     .reduce((s, p) => s + (p.amount_cents ?? 0), 0);
 }
 
+// Partial debt clear (build 30, task K): how much of the current
+// balance a clear_debt call writes off. Mirrors the SQL in
+// supabase/partial-debt-clear.sql exactly — same refusals, same
+// floor. opts: exactly one of { amountCents } or { percentBp };
+// neither means clear all. A partial clear WRITES OFF that part
+// of the debt (a 'clear' debt_payments row, same audit trail as a
+// full clear); it is NOT a payment from the Extra Fund. The balance
+// after the clear is balance - cleared, never below zero; an amount
+// larger than the balance is refused (never silently partial).
+// Percent is basis points of the CURRENT balance at call time,
+// floored like debtRulePayment above. Throws on any refusal.
+export function computePartialClear(balanceCents, opts = {}) {
+  const balance = int(balanceCents);
+  if (balance <= 0) throw new Error('engine: there is no debt to clear');
+  const hasAmount = opts.amountCents !== null && opts.amountCents !== undefined;
+  const hasPercent = opts.percentBp !== null && opts.percentBp !== undefined;
+  if (hasAmount && hasPercent) {
+    throw new Error('engine: specify an amount or a percentage, not both');
+  }
+  let cleared;
+  if (hasAmount) {
+    cleared = int(opts.amountCents);
+    if (cleared <= 0) throw new Error('engine: amount must be positive');
+    if (cleared > balance) {
+      throw new Error(`engine: amount exceeds remaining debt: ${balance} cents`);
+    }
+  } else if (hasPercent) {
+    const bp = int(opts.percentBp);
+    if (bp < 1 || bp > 10000) {
+      throw new Error('engine: percent must be between 1 and 10000 basis points');
+    }
+    cleared = Math.floor((balance * bp) / 10000);
+    if (cleared <= 0) throw new Error('engine: percentage clears nothing at this balance');
+  } else {
+    cleared = balance;
+  }
+  return { clearedCents: cleared, remainingCents: Math.max(0, balance - cleared) };
+}
+
 function int(v) {
   const n = Number(v ?? 0);
   if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
