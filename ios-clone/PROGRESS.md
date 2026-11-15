@@ -332,3 +332,5 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - Nov 15, 2026 (build-28 batch): items 1-3 folded in (transfer amounts in muted red #991b1b by kind, expanded-row top gap removed, Funds page reorganised into Extra Fund + Charity sections with standalone Review) — simulator run pending.
 
 - Nov 15, 2026 (build-28 batch): items 4-15 folded in (Add-form $ prefix + squarish date fields + Card/Account dropdown + donation footnote removed, white form sheets, calendar back chevron, Spending/Extra Fund filters, short sort labels + iPad Amount/Sort row, widget extra-large + donut + logo, spent line removed, "Charity left") — commit a7a750c, simulator run pending.
+
+- Nov 15, 2026 (build-28 batch): item 16 folded in (Home hero + stat cards scale up on iPad only, skeletons match; stale "brand-blue" / old sort-label comments fixed) — simulator run pending (run 43713960383 cancelled: stale head, item 16 not in it).
