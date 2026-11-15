@@ -40,6 +40,9 @@ public struct TransactionActionsSheet: View {
         case reclassifyKind
         case reclassifyReason(TransactionKind)
         case deleteConfirm
+        /// Build 30: teachable merchant rename (name + optional
+        /// fixed kind, remembered for all matching rows).
+        case rename
     }
 
     enum ActionKind: Hashable {
@@ -48,7 +51,21 @@ public struct TransactionActionsSheet: View {
         case linkRefund
         case reclassify
         case delete
+        case rename
     }
+
+    /// Fixed-kind options for the rename flow: the server's kind
+    /// values with plain labels. "No Fixed Kind" (nil) is name-only.
+    private static let fixedKindOptions: [(raw: String, label: String)] = [
+        ("charge", "Charge"),
+        ("refund", "Refund"),
+        ("fund_charge", "Fund Charge"),
+        ("payment", "Payment"),
+        ("cashback", "Cash Back"),
+        ("charity", "Charity"),
+        ("transfer", "Transfer"),
+        ("income", "Income"),
+    ]
 
     struct SheetAction: Identifiable {
         let id: ActionKind
@@ -69,6 +86,9 @@ public struct TransactionActionsSheet: View {
     @State private var reclassifyReasonError: String?
     @State private var deleteReason: String = ""
     @State private var deleteReasonError: String?
+    @State private var renameName: String = ""
+    @State private var renameFixedKind: String?
+    @State private var renameError: String?
     @State private var linkCandidates: [Transaction]?
     @State private var linkedSummary: (merchant: String, amountCents: Int, date: String)?
     @State private var isWorking: Bool = false
@@ -102,6 +122,7 @@ public struct TransactionActionsSheet: View {
                     SheetAction(id: .charity, label: "Mark as Charity", subline: charitySubline),
                     SheetAction(id: .extraFund, label: "Use Extra Fund", subline: "Ask for this charge to be covered from the fund"),
                     SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
+                    SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
                     SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
                 ]
             }
@@ -118,21 +139,27 @@ public struct TransactionActionsSheet: View {
             return [
                 SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline),
                 SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
+                SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
                 SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
             ]
         case .transfer, .payment, .cashback, .fundCharge:
             guard isAdmin else { return [] }
             return [
                 SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
+                SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
                 SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
             ]
         case .charity:
             guard isAdmin else { return [] }
-            return [SheetAction(id: .delete, label: "Delete", subline: deleteSubline)]
+            return [
+                SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
+                SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
+            ]
         case .income, .other:
             guard isAdmin else { return [] }
             return [
                 SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
+                SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
                 SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
             ]
         }
@@ -172,6 +199,7 @@ public struct TransactionActionsSheet: View {
             case .reclassifyKind: reclassifyKindContent
             case .reclassifyReason(let kind): reclassifyReasonContent(kind: kind)
             case .deleteConfirm: deleteConfirmContent
+            case .rename: renameContent
             }
         }
         .padding()
@@ -209,6 +237,7 @@ public struct TransactionActionsSheet: View {
         case .unlinkConfirm: return "Unlink Refund"
         case .reclassifyKind: return "Reclassify Transaction"
         case .reclassifyReason: return "Reclassify Transaction"
+        case .rename: return "Rename Merchant"
         case .deleteConfirm:
             return transaction.source == .manual ? "Delete Transaction" : "Move to Trash"
         }
@@ -284,6 +313,11 @@ public struct TransactionActionsSheet: View {
             }
         case .reclassify:
             flow = .reclassifyKind
+        case .rename:
+            renameName = TitleCase.apply(to: transaction.merchant.lowercased())
+            renameFixedKind = nil
+            renameError = nil
+            flow = .rename
         case .delete:
             flow = .deleteConfirm
         }
@@ -353,6 +387,58 @@ public struct TransactionActionsSheet: View {
                         }
                         isWorking = true
                         let ok = await viewModel.requestExtraFund(for: transaction, amountCents: cents)
+                        isWorking = false
+                        if ok { onDismiss() }
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(isWorking)
+            } secondary: {
+                Button("Cancel") { flow = .list }
+                    .buttonStyle(TertiaryButtonStyle())
+            }
+        }
+    }
+
+    // MARK: - Rename merchant (build 30, teachable rules)
+
+    private var renameContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Rename “\(TransactionFormatting.displayMerchant(transaction.merchant))” everywhere — old rows and new ones. The name is remembered, so future rows with this name arrive renamed.")
+                .font(.system(size: 15))
+                .foregroundStyle(DesignTokens.ink)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Merchant Name")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                TextField("", text: $renameName)
+                    .textFieldStyle(.roundedBorder)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Always Count As")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Picker("", selection: $renameFixedKind) {
+                    Text("No Fixed Kind").tag(nil as String?)
+                    ForEach(Self.fixedKindOptions, id: \.0) { option in
+                        Text(option.label).tag(option.raw as String?)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+            if let renameError {
+                SoftErrorBox(renameError)
+            }
+            TwoButtonRow {
+                Button("Save Name") {
+                    Task {
+                        let name = renameName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !name.isEmpty else {
+                            renameError = "Enter a name."
+                            return
+                        }
+                        isWorking = true
+                        let ok = await viewModel.renameMerchant(transaction, to: name, fixedKind: renameFixedKind)
                         isWorking = false
                         if ok { onDismiss() }
                     }

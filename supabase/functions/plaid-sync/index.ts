@@ -105,7 +105,7 @@
 // file; no new auth flow is invented.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { canonicalHash, classifyKind, flagLookalikes, normalizeMerchant } from './canonical.ts';
+import { applyMerchantRuleToMerchant, canonicalHash, classifyKind, flagLookalikes, loadMerchantRules, normalizeMerchant, type MerchantRule } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -260,6 +260,11 @@ Deno.serve(async (req) => {
     const { data: items } = await supabaseAdmin.from('plaid_items')
       .select('plaid_item_id, institution_name, institution_id, sync_cursor, status, created_at, last_sync_at')
       .eq('household_id', householdId);
+    // Build 30 (merchant rules): load the household's rules once
+    // for the whole sync; upsertPlaidTx applies the best rule to
+    // each merchant BEFORE the hash, so a bank row and its email
+    // alert hash identically. Best-effort: no rules = old behaviour.
+    const merchantRules = await loadMerchantRules(supabaseAdmin, householdId);
     const allItems = items ?? [];
     // Oldest first: the duplicate guard keeps the oldest connection
     // and removes a newer one that fully duplicates it.
@@ -510,7 +515,7 @@ Deno.serve(async (req) => {
           // ignored entirely. Past transactions already in the
           // database are untouched.
           if (tx.account_id && disconnectedAccounts.has(String(tx.account_id))) { logSkip(item.plaid_item_id, 'account-disconnected'); continue; }
-          const upsert = await upsertPlaidTx(supabaseAdmin, householdId, tx, maskByAccount, typeByAccount);
+          const upsert = await upsertPlaidTx(supabaseAdmin, householdId, tx, maskByAccount, typeByAccount, merchantRules);
           if (upsert.result === 'added') added++;
           else if (upsert.result === 'updated') updated++;
           else logSkip(item.plaid_item_id, upsert.reason ?? 'upsert-skipped');
@@ -615,22 +620,33 @@ async function upsertPlaidTx(
   tx: Record<string, any>,
   maskByAccount: Map<string, string>,
   typeByAccount?: Map<string, string>,
+  rules: MerchantRule[] = [],
 ): Promise<{ result: 'added' | 'updated' | 'skipped'; reason?: string }> {
   const signed = Math.round(Number(tx.amount) * 100);
   if (!Number.isFinite(signed)) return { result: 'skipped', reason: 'invalid-amount' };
   const merchantRaw = String(tx.merchant_name ?? tx.name ?? 'UNKNOWN');
   const merchant = normalizeMerchant(merchantRaw).slice(0, 80);
+  // Build 30 (merchant rules): the rule's display name is what is
+  // stored AND hashed, so the bank row and its email alert (ruled
+  // the same way) hash identically. A rule's fixed kind overrides
+  // the classifier (sign-guarded inside); otherwise classify on the
+  // ORIGINAL name, so name patterns (PAYMENT, INTERNAL TRANSFER,
+  // CHARITY, ...) still match as before.
+  const ruled = applyMerchantRuleToMerchant(rules, merchant, signed);
+  const displayMerchant = ruled.merchant;
   const date = String(tx.date ?? '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { result: 'skipped', reason: 'invalid-date' };
   const suffix = maskByAccount.get(tx.account_id) ?? '0000';
-  const hash = await canonicalHash(merchant, date, signed, suffix);
-  const kind = classifyKind(tx, merchantRaw, signed, typeByAccount?.get(tx.account_id));
+  const hash = await canonicalHash(displayMerchant, date, signed, suffix);
+  const kind = ruled.kindOverride
+    ? (ruled.kindOverride as ReturnType<typeof classifyKind>)
+    : classifyKind(tx, merchantRaw, signed, typeByAccount?.get(tx.account_id));
   const state = tx.pending ? 'provisional' : 'verified';
   const txId = tx.transaction_id ? String(tx.transaction_id) : null;
   const pendingTxId = tx.pending_transaction_id ? String(tx.pending_transaction_id) : null;
 
   const row = {
-    household_id: householdId, date, merchant,
+    household_id: householdId, date, merchant: displayMerchant,
     amount_cents: signed, card_suffix: suffix, source: 'plaid',
     state, kind,
     external_id: txId, dedupe_hash: hash,
@@ -686,12 +702,15 @@ async function upsertPlaidTx(
   //     does not close a merchant-string gap — if Plaid's merchant
   //     carries a store number the alert lacks (e.g. "ROYAL FARMS
   //     #123" vs "ROYAL FARMS"), neither the hash nor this match
-  //     fires; that needs a merchant-normalization decision, not a
-  //     looser merge (see the diagnosis SQL in the fix report).
+  //     fires; that gap is now closed one merchant at a time by
+  //     merchant_rules (build 30): both sides are ruled to the same
+  //     display name before hashing, so the hash matches. The
+  //     remaining gap is only for merchants nobody has taught yet,
+  //     and those fall through to the auto-merge / review path below.
   if (!existing) {
     const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
       .eq('household_id', householdId)
-      .eq('merchant', merchant).eq('date', date).eq('amount_cents', signed)
+      .eq('merchant', displayMerchant).eq('date', date).eq('amount_cents', signed)
       .eq('source', 'amex_alert').eq('card_suffix', '0000')
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
     existing = data;
@@ -706,7 +725,7 @@ async function upsertPlaidTx(
     // also gets its pending->posted state transition.
     const trashed = existing.excluded === true || existing.state === 'excluded';
     const update: Record<string, unknown> = {
-      date, merchant, amount_cents: signed, card_suffix: suffix,
+      date, merchant: displayMerchant, amount_cents: signed, card_suffix: suffix,
       external_id: txId, dedupe_hash: hash,
       plaid_transaction_id: txId, plaid_pending_transaction_id: pendingTxId,
     };
@@ -749,11 +768,28 @@ async function upsertPlaidTx(
   } catch (e) {
     logLinkError(e);
   }
+  // Build 30 auto-merge (task I): a new bank row may complete a
+  // Bank+Email pair the exact-hash / suffix-0000 claims above did
+  // not catch (different spellings, dates up to 2 days apart).
+  // try_auto_merge_bank_email merges it server-side (bank row kept,
+  // email row excluded) or refuses — TOIREMORG pairs, already
+  // resolved pairs, ambiguous pairs and two-bank pairs never merge.
+  // Best-effort: never fails the sync; a missing SQL apply is
+  // logged, not swallowed.
+  try {
+    const { data: mergeResult, error: mergeErr } = await supabaseAdmin.rpc('try_auto_merge_bank_email', { p_bank_txn_id: inserted.id });
+    if (mergeErr) console.error('plaid-sync: auto-merge RPC failed (best-effort):', mergeErr.message ?? mergeErr);
+    else if (mergeResult && String(mergeResult).startsWith('merged')) {
+      console.log(`plaid-sync: auto-merged email row into bank row ${inserted.id} (${mergeResult})`);
+    }
+  } catch (e) {
+    console.error('plaid-sync: auto-merge RPC failed (best-effort):', (e as Error)?.message ?? e);
+  }
   // Lookalike review (Nov 3 Amazon case): a same-date/amount/suffix
   // row with a related merchant name is flagged for admin review,
   // never auto-merged. Best-effort: never fails the sync.
   await flagLookalikes(supabaseAdmin, householdId, {
-    id: inserted.id, merchant, date, amount_cents: signed,
+    id: inserted.id, merchant: displayMerchant, date, amount_cents: signed,
     card_suffix: suffix, source: 'plaid', created_at: inserted.created_at,
   });
   return { result: 'added' };

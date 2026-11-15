@@ -49,11 +49,15 @@ final class OnBudgetKitTests: XCTestCase {
 
     /// Success toasts are GREEN, not blue (owner rule, Nov 11 2026 —
     /// native only; the web app keeps brand-blue success toasts).
-    /// Info stays brand blue; errors stay soft red.
+    /// Info stays brand blue; errors stay soft red. The success
+    /// toast uses the Posted status badge treatment (owner, Nov 15,
+    /// 2026): light green background #dcfce7, dark green text
+    /// #166534 — NOT the solid #22c55e bar with white text.
     func testToastStyleSuccessIsGreen() {
-        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), DesignTokens.successHex)
-        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), "#22c55e")
-        XCTAssertEqual(ToastStyle.textHex(for: .success), "#ffffff")
+        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), DesignTokens.toastSuccessBackgroundHex)
+        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), "#dcfce7")
+        XCTAssertEqual(ToastStyle.textHex(for: .success), DesignTokens.toastSuccessTextHex)
+        XCTAssertEqual(ToastStyle.textHex(for: .success), "#166534")
         XCTAssertEqual(ToastStyle.textHex(for: .info), "#ffffff")
         XCTAssertEqual(ToastStyle.textHex(for: .error), DesignTokens.errorTextHex)
         XCTAssertEqual(ToastStyle.autoDismissSeconds, 4.0)

@@ -67,14 +67,38 @@ final class MembersSettingsViewModel: ObservableObject {
     /// box used to clear the failure into the empty state).
     @Published var loadFailed = false
     @Published var isLoading = false
-    @Published var memberToRemove: MemberListRow?
-    @Published var removeFailed = false
-    @Published var roleChangeRequest: RoleChangeRequest?
-    @Published var roleChangeFailed = false
+    /// The ONE alert this screen can show. SwiftUI only honours a
+    /// single `.alert` modifier on a view, so the six separate alerts
+    /// this screen used to stack (remove confirm/failed, role
+    /// confirm/failed, delete steps/failed) collapsed into one: the
+    /// Remove / Make Admin confirms never appeared (owner report,
+    /// Nov 15, 2026 — tapping did nothing). Build 30 folds them all
+    /// into this single enum state, driven by one `.alert(item:)`.
+    @Published var alert: MembersAlert?
     @Published var copiedCode = false
     @Published var showShareSheet = false
-    @Published var deleteStep: DeleteStep?
-    @Published var deleteFailed = false
+
+    /// The single alert state for the Members screen (build 30).
+    /// One `.alert(item:)` in the view switches over the case.
+    enum MembersAlert: Identifiable {
+        case removeMember(MemberListRow)
+        case removeFailed
+        case changeRole(RoleChangeRequest)
+        case roleChangeFailed
+        case delete(DeleteStep)
+        case deleteFailed
+
+        var id: String {
+            switch self {
+            case .removeMember(let member): return "remove-\(member.userId.uuidString)"
+            case .removeFailed: return "removeFailed"
+            case .changeRole(let request): return "role-\(request.id)"
+            case .roleChangeFailed: return "roleChangeFailed"
+            case .delete(let step): return "delete-\(step.id)"
+            case .deleteFailed: return "deleteFailed"
+            }
+        }
+    }
 
     /// A pending promote/demote, captured for the confirm alert.
     struct RoleChangeRequest: Identifiable {
@@ -189,7 +213,7 @@ final class MembersSettingsViewModel: ObservableObject {
     // MARK: - Change role (promote / demote)
 
     func confirmRoleChange(_ member: MemberListRow, to role: HouseholdRole) {
-        roleChangeRequest = RoleChangeRequest(member: member, toRole: role)
+        alert = .changeRole(RoleChangeRequest(member: member, toRole: role))
     }
 
     /// The request arrives as a parameter, captured by the alert's
@@ -197,7 +221,7 @@ final class MembersSettingsViewModel: ObservableObject {
     /// (the binding is nilled when the alert dismisses, before an
     /// unstructured Task runs).
     func roleChangeConfirmed(_ request: RoleChangeRequest) async {
-        roleChangeRequest = nil
+        alert = nil
         let label = displayName(for: request.member)
         do {
             try await context.client.rpcs.setHouseholdMemberRole(pUserId: request.member.userId, pRole: request.toRole)
@@ -206,14 +230,14 @@ final class MembersSettingsViewModel: ObservableObject {
                        : "\(label) is now a regular member.", kind: .success)
             await load()
         } catch {
-            roleChangeFailed = true
+            alert = .roleChangeFailed
         }
     }
 
     // MARK: - Remove member
 
     func confirmRemove(_ member: MemberListRow) {
-        memberToRemove = member
+        alert = .removeMember(member)
     }
 
     /// The member arrives as a parameter, captured by the alert's
@@ -224,14 +248,14 @@ final class MembersSettingsViewModel: ObservableObject {
     /// 2026: Remove on "Jack friedman" did nothing). The same pitfall
     /// is fixed the same way in confirmSave / disconnectConfirmed.
     func removeConfirmed(_ member: MemberListRow) async {
-        memberToRemove = nil
+        alert = nil
         let label = displayName(for: member)
         do {
             try await context.client.rpcs.removeHouseholdMember(pUserId: member.userId)
             toast.show("\(label) was removed from the household.", kind: .success)
             await load()
         } catch {
-            removeFailed = true
+            alert = .removeFailed
         }
     }
 
@@ -255,19 +279,19 @@ final class MembersSettingsViewModel: ObservableObject {
     // MARK: - Delete Account (two-step)
 
     func startDelete() {
-        deleteStep = .confirmDelete
+        alert = .delete(.confirmDelete)
     }
 
     func confirmDeleteStepOne() {
-        deleteStep = .confirmEverything
+        alert = .delete(.confirmEverything)
     }
 
     func confirmDeleteStepTwo() async {
-        deleteStep = nil
+        alert = nil
         do {
             let result = try await context.client.functions.deleteAccount()
             guard result.deleted else {
-                deleteFailed = true
+                alert = .deleteFailed
                 return
             }
             // Push-token unregister, best-effort: never blocks the
@@ -282,7 +306,7 @@ final class MembersSettingsViewModel: ObservableObject {
             // nothing was deleted. The user stays signed in. The
             // failure is reported in plain language only — never
             // the server's step or error text (audit S-P1-3).
-            deleteFailed = true
+            alert = .deleteFailed
         }
     }
 }
@@ -345,72 +369,76 @@ struct MembersSettingsView: View {
             deleteAccountSection
         }
         .task { await viewModel.load() }
-        .alert(item: $viewModel.memberToRemove) { member in
-            let label = viewModel.displayName(for: member)
-            return Alert(
-                title: Text("Remove Member"),
-                message: Text("Remove \(label) from the household? They will lose access to the household's data."),
-                primaryButton: .destructive(Text("Remove")) {
-                    Task { await viewModel.removeConfirmed(member) }
-                },
-                secondaryButton: .cancel()
-            )
-        }
-        .alert("Could Not Remove Member", isPresented: $viewModel.removeFailed) {
-            Button("Close", role: .cancel) {}
-        } message: {
-            Text("Could not remove this member. Try again.")
-        }
-        .alert(item: $viewModel.roleChangeRequest) { request in
-            let label = viewModel.displayName(for: request.member)
-            let role = request.toRole
-            return Alert(
-                title: Text(role == .admin ? "Make Admin" : "Make Member"),
-                message: Text(role == .admin
-                              ? "Make \(label) an admin? \(HouseholdRole.admin.capabilityNote)"
-                              : "Change \(label) to a regular member? \(HouseholdRole.member.capabilityNote)"),
-                primaryButton: .default(Text(role == .admin ? "Make Admin" : "Make Member")) {
-                    Task { await viewModel.roleChangeConfirmed(request) }
-                },
-                secondaryButton: .cancel()
-            )
-        }
-        .alert("Could Not Change Role", isPresented: $viewModel.roleChangeFailed) {
-            Button("Close", role: .cancel) {}
-        } message: {
-            Text("Could not change this member's role. Try again.")
-        }
-        .alert(item: $viewModel.deleteStep) { step in
-            switch step {
-            case .confirmDelete:
+        // ONE alert for the whole screen (build 30): SwiftUI only
+        // honours a single `.alert` modifier on a view, so the six
+        // this screen used to stack meant only one ever fired — the
+        // Remove / Make Admin confirms never appeared. Every case
+        // below is one branch of `viewModel.alert`.
+        .alert(item: $viewModel.alert) { alert in
+            switch alert {
+            case .removeMember(let member):
+                let label = viewModel.displayName(for: member)
                 return Alert(
-                    title: Text("Delete Account"),
-                    message: Text("Delete your account and remove yourself from this household? If you are the last member, the household is deleted too. This cannot be undone."),
-                    primaryButton: .destructive(Text("Delete Account")) {
-                        viewModel.confirmDeleteStepOne()
+                    title: Text("Remove Member"),
+                    message: Text("Remove \(label) from the household? They will lose access to the household's data."),
+                    primaryButton: .destructive(Text("Remove")) {
+                        Task { await viewModel.removeConfirmed(member) }
                     },
                     secondaryButton: .cancel()
                 )
-            case .confirmEverything:
+            case .removeFailed:
                 return Alert(
-                    title: Text("Delete Everything?"),
-                    message: Text("This permanently deletes your account and, if you are the last member, the whole household. Are you sure?"),
-                    primaryButton: .destructive(Text("Yes, Delete Everything")) {
-                        Task { await viewModel.confirmDeleteStepTwo() }
+                    title: Text("Could Not Remove Member"),
+                    message: Text("Could not remove this member. Try again."),
+                    dismissButton: .cancel(Text("Close"))
+                )
+            case .changeRole(let request):
+                let label = viewModel.displayName(for: request.member)
+                let role = request.toRole
+                return Alert(
+                    title: Text(role == .admin ? "Make Admin" : "Make Member"),
+                    message: Text(role == .admin
+                                  ? "Make \(label) an admin? \(HouseholdRole.admin.capabilityNote)"
+                                  : "Change \(label) to a regular member? \(HouseholdRole.member.capabilityNote)"),
+                    primaryButton: .default(Text(role == .admin ? "Make Admin" : "Make Member")) {
+                        Task { await viewModel.roleChangeConfirmed(request) }
                     },
                     secondaryButton: .cancel()
                 )
+            case .roleChangeFailed:
+                return Alert(
+                    title: Text("Could Not Change Role"),
+                    message: Text("Could not change this member's role. Try again."),
+                    dismissButton: .cancel(Text("Close"))
+                )
+            case .delete(let step):
+                switch step {
+                case .confirmDelete:
+                    return Alert(
+                        title: Text("Delete Account"),
+                        message: Text("Delete your account and remove yourself from this household? If you are the last member, the household is deleted too. This cannot be undone."),
+                        primaryButton: .destructive(Text("Delete Account")) {
+                            viewModel.confirmDeleteStepOne()
+                        },
+                        secondaryButton: .cancel()
+                    )
+                case .confirmEverything:
+                    return Alert(
+                        title: Text("Delete Everything?"),
+                        message: Text("This permanently deletes your account and, if you are the last member, the whole household. Are you sure?"),
+                        primaryButton: .destructive(Text("Yes, Delete Everything")) {
+                            Task { await viewModel.confirmDeleteStepTwo() }
+                        },
+                        secondaryButton: .cancel()
+                    )
+                }
+            case .deleteFailed:
+                return Alert(
+                    title: Text("Could Not Delete Account"),
+                    message: Text("Could not delete your account. Nothing was deleted — try again."),
+                    dismissButton: .cancel(Text("Close"))
+                )
             }
-        }
-        .alert(
-            "Could Not Delete Account",
-            isPresented: $viewModel.deleteFailed
-        ) {
-            Button("Close", role: .cancel) {
-                viewModel.deleteFailed = false
-            }
-        } message: {
-            Text("Could not delete your account. Nothing was deleted — try again.")
         }
         .sheet(isPresented: $viewModel.showShareSheet) {
             ShareSheet(text: viewModel.shareText)
@@ -457,7 +485,7 @@ struct MembersSettingsView: View {
     @ViewBuilder
     private var inviteCodeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Members join with the invite code below.")
+            Text("Members join with this invite code.")
                 .font(.subheadline)
                 .foregroundStyle(Color(hex: "#6b7280"))
             if !viewModel.inviteCodeLoaded {
@@ -469,22 +497,30 @@ struct MembersSettingsView: View {
             } else if viewModel.inviteCodeLoadFailed {
                 ErrorBox("Could not load the invite code. Try again.")
             } else if let code = viewModel.inviteCode, !code.isEmpty {
-                Text(code)
-                    .font(.system(.title3, design: .monospaced))
-                    .fontWeight(.semibold)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(hex: "#eef4ff"))
-                    .cornerRadius(12)
-                HStack(spacing: 12) {
+                // Compact chip (owner, Nov 15, 2026): the code used
+                // to take a whole full-width line of its own. Now
+                // the code, Copy and Share sit on one row; the
+                // buttons are content-sized (fixedSize) so they do
+                // not stretch across the row.
+                HStack(spacing: 8) {
+                    Text(code)
+                        .font(.system(.headline, design: .monospaced))
+                        .fontWeight(.semibold)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 12)
+                        .background(Color(hex: "#eef4ff"))
+                        .cornerRadius(10)
                     Button(viewModel.copiedCode ? "Copied" : "Copy") {
                         viewModel.copyInviteCode()
                     }
                     .buttonStyle(PrimaryButtonStyle())
+                    .fixedSize(horizontal: true, vertical: false)
                     Button("Share") {
                         viewModel.showShareSheet = true
                     }
                     .buttonStyle(TertiaryButtonStyle())
+                    .fixedSize(horizontal: true, vertical: false)
+                    Spacer()
                 }
             } else {
                 MutedLine(text: "No invite code is set up for this household yet.")
@@ -501,10 +537,14 @@ struct MembersSettingsView: View {
             Text("Deleting removes you from this household. If you are the last member, the household is deleted too. This cannot be undone.")
                 .font(.subheadline)
                 .foregroundStyle(Color(hex: "#6b7280"))
+            // Centred with room around it (owner, Nov 15, 2026) —
+            // it sat left-aligned and tight against the text above.
             Button("Delete Account") {
                 viewModel.startDelete()
             }
             .buttonStyle(DangerButtonStyle())
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 10)
             HStack(spacing: 4) {
                 Link("Privacy", destination: URL(string: "https://ycfried.github.io/Budget/privacy.html")!)
                 Text("·")

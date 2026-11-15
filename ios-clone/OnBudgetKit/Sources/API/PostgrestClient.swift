@@ -937,6 +937,18 @@ public struct PostgrestClient {
         ))
     }
 
+    /// Merchant name rules (build 30, `merchant_rules`), ordered
+    /// by display name. RLS: household members can read their own
+    /// household's rules.
+    public func merchantRules(householdId: UUID) async throws -> [MerchantRule] {
+        try await fetch(PostgrestQuery(
+            table: "merchant_rules",
+            columns: "id,household_id,pattern_text,match_type,display_name,fixed_kind,created_at",
+            filters: [.householdId(householdId)],
+            orders: [PostgrestOrder("display_name", ascending: true)]
+        ))
+    }
+
     /// Refund-link dismissals (live.js:2074).
     public func refundLinkDismissals(householdId: UUID) async throws -> [RefundLinkDismissal] {
         try await fetch(PostgrestQuery(

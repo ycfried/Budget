@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 import OnBudgetKit
 
 // MARK: - Funds tab (spec §9)
@@ -23,41 +25,94 @@ import OnBudgetKit
 // The view model is owned here. Card expansion is the SHARED
 // `appState.expandedCard` (integration, Nov 9, 2026 — the local
 // `FundsExpandedCard` state is deleted): one-open-at-a-time spans
-// Home + Funds. Temporary Allowance opens as a form here when the
-// shell sets `appState.pendingTemporaryAllowance` (Settings Budget
-// link).
+// Home + Funds. Temporary Allowance opens as a form from the
+// Spending section (build 30 — the Settings Budget link is gone).
 
 public enum FundsForm: Equatable {
     case add
     case use
     case ask
     case income
-    /// Temporary Allowance (Settings Budget link) — owned by the
-    /// Funds workstream, presented as a form, never duplicated in
-    /// Settings.
+    /// Temporary Allowance — opened from the Spending section,
+    /// presented as a form, never duplicated in Settings.
     case temp
     /// Pay Carried Debt from the Extra Fund (build 29).
     case payDebt
+    /// Clear Carried Debt in part or in full (build 30 — slider).
+    case clearDebt
 }
 
 public enum FundsMoreSection: Equatable {
     case fundActivity
     case charityActivity
     case debtActivity
-    case debtHistory
-    case review
-    case savings
+}
+
+/// The four reorderable funds on the Funds page (build 30).
+/// Raw values persist in UserDefaults under
+/// `hb-fund-order-<household-UUID>`; the default order is the
+/// order below (Spending first — the fund the week runs on).
+public enum FundSectionID: String, CaseIterable, Identifiable {
+    case spending
+    case fund
+    case charity
+    case debt
+
+    public var id: String { rawValue }
+
+    public static var defaultOrder: [FundSectionID] {
+        [.spending, .fund, .charity, .debt]
+    }
+
+    public var displayName: String {
+        switch self {
+        case .spending: return "Spending"
+        case .fund: return "Extra Fund"
+        case .charity: return "Charity"
+        case .debt: return "Carried Debt"
+        }
+    }
+}
+
+/// Reorder delegate for the Funds page (build 30): dragging a
+/// fund's handle over another container moves it live, so the order
+/// follows the finger; dropping saves via the order's onChange.
+/// The drag starts on the handle only, so scrolling and the cards'
+/// own taps are untouched.
+private struct FundDropDelegate: DropDelegate {
+    let fund: FundSectionID
+    @Binding var order: [FundSectionID]
+    @Binding var dragging: FundSectionID?
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging != fund,
+              let from = order.firstIndex(of: dragging),
+              let to = order.firstIndex(of: fund) else { return }
+        withAnimation(ExpandAnimation.animation) {
+            order.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
+    }
 }
 
 public struct FundsView: View {
     @StateObject private var viewModel: FundsViewModel
-    /// Shared shell state: card expansion + the Temporary Allowance
-    /// handoff from Settings Budget.
+    /// Shared shell state: card expansion, one-open-at-a-time
+    /// across Home + Funds.
     @ObservedObject var appState: AppViewModel
     @State private var openForm: FundsForm?
     @State private var openMore: FundsMoreSection?
     @State private var correctingIncome: CharityIncome?
-    @State private var showClearDebtConfirm = false
+    /// The funds' order on this page (build 30 — rearrangeable by
+    /// dragging the handle in rearrange mode). Loaded per household,
+    /// saved on every change.
+    @State private var fundOrder: [FundSectionID] = FundSectionID.defaultOrder
+    @State private var isRearranging = false
+    @State private var draggingFund: FundSectionID?
 
     public init(context: FundsContext, appState: AppViewModel) {
         self.appState = appState
@@ -91,33 +146,29 @@ public struct FundsView: View {
                         TemporaryAllowanceView(viewModel: viewModel)
                     case .payDebt:
                         PayDebtForm(viewModel: viewModel, onClose: { openForm = nil })
+                    case .clearDebt:
+                        ClearDebtForm(viewModel: viewModel, onClose: { openForm = nil })
                     }
                 } else {
-                    // Three fund sections (owner, Nov 15, 2026): each
+                    rearrangeRow
+                    // Four fund sections (owner, Nov 15, 2026): each
                     // fund is ONE container — its card heads the
                     // block and its rules, info and transactions sit
                     // inside the same card, not as loose rows below
-                    // it. Review stays standalone after them
-                    // (household-wide, not fund-specific).
+                    // it. Review is NOT here any more (build 30): it
+                    // lives on its own page off Transactions, with a
+                    // count badge on the Review button there.
+                    // Spending is first by default: the week's
+                    // allowance is the fund the week runs on
+                    // (build 30 — moved from Settings). The order is
+                    // the user's own: rearrange mode drags the
+                    // containers into any order and remembers it per
+                    // household.
                     VStack(spacing: 24) {
-                        fundContainer {
-                            fundCard
-                            fundShortfallLine
-                            fundActivitySection
-                            savingsSection
+                        ForEach(fundOrder) { id in
+                            fundContainer(for: id)
+                                .onDrop(of: [.text], delegate: FundDropDelegate(fund: id, order: $fundOrder, dragging: $draggingFund))
                         }
-                        fundContainer {
-                            charityCard
-                            charityRateSection
-                            charityActivitySection
-                        }
-                        fundContainer {
-                            debtCard
-                            debtRuleSection
-                            debtActivitySection
-                            debtHistorySection
-                        }
-                        reviewSection
                     }
                 }
             }
@@ -137,15 +188,48 @@ public struct FundsView: View {
             Text(viewModel.alertMessage ?? "")
         }
         .task {
-            consumeTemporaryAllowanceHandoff()
+            loadFundOrder()
             await viewModel.refresh()
         }
-        .onChange(of: appState.pendingTemporaryAllowance) { _, _ in
-            consumeTemporaryAllowanceHandoff()
+        .onChange(of: fundOrder) { _, _ in
+            saveFundOrder()
         }
         .refreshable {
             await viewModel.refresh()
         }
+    }
+
+    /// Rearrange / Done, above the funds (build 30). Rearrange mode
+    /// shows a drag handle above each fund's card; Done exits and
+    /// the order is already saved.
+    private var rearrangeRow: some View {
+        HStack {
+            Spacer()
+            if isRearranging {
+                FundsSmallPrimaryButton("Done") { isRearranging = false }
+            } else {
+                FundsSmallTertiaryButton("Rearrange") { isRearranging = true }
+            }
+        }
+    }
+
+    /// The user's fund order, per household (build 30): Spending,
+    /// Extra Fund, Charity, Carried Debt by default; a stored order
+    /// with anything missing or extra is ignored, not repaired
+    /// into a wrong order.
+    private var fundOrderKey: String {
+        "hb-fund-order-\(viewModel.context.householdId.uuidString)"
+    }
+
+    private func loadFundOrder() {
+        guard let raw = UserDefaults.standard.array(forKey: fundOrderKey) as? [String] else { return }
+        let ids = raw.compactMap { FundSectionID(rawValue: $0) }
+        guard Set(ids) == Set(FundSectionID.allCases), ids.count == FundSectionID.allCases.count else { return }
+        fundOrder = ids
+    }
+
+    private func saveFundOrder() {
+        UserDefaults.standard.set(fundOrder.map(\.rawValue), forKey: fundOrderKey)
     }
 
     private var backButton: some View {
@@ -217,7 +301,103 @@ public struct FundsView: View {
                     }
                 }
             }
+        case .clearDebt:
+            FundsCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let debt = viewModel.debtBalanceCents {
+                        FundsBreakdownRow("Carried debt", value: MoneyFormat.formatCents(debt))
+                    } else if let error = viewModel.debtError {
+                        FundsErrorBox(error)
+                    } else {
+                        SkeletonBlock(width: 160, height: 16)
+                    }
+                }
+            }
         }
+    }
+
+    // MARK: - Spending card (§9.1, build 30)
+    //
+    // The weekly budget fund (moved from the Settings Budget card):
+    // the face is this week's total allowance — base, plus a
+    // temporary total when one is in effect, less this week's debt
+    // payment — the same figure as the Home hero's effective
+    // allowance. The breakdown reconciles: Base ± Temporary
+    // increase/decrease − Debt Payment = Total. The Weekly
+    // Allowance editor + Temporary Allowance live in the section
+    // below the card, like the rate/rule editors of the other funds.
+
+    private var spendingCard: some View {
+        FundsExpandableCard(
+            title: "Spending",
+            amountText: spendingFaceText,
+            isExpanded: appState.expandedCard == .spending,
+            amountIsStatus: spendingFaceCents == nil,
+            isLoading: spendingFaceCents == nil && viewModel.allowanceError == nil,
+            theme: .spending,
+            accessibilityLabel: spendingAccessibilityLabel,
+            onToggle: { toggleCard(.spending) }
+        ) {
+            if let base = viewModel.baseAllowanceCents {
+                FundsBreakdownRow("Base", value: MoneyFormat.formatCents(base))
+                if let override = viewModel.debtWeek?.overrideCents, override != base {
+                    let delta = override - base
+                    FundsBreakdownRow(
+                        delta > 0 ? "Temporary Increase" : "Temporary Decrease",
+                        value: "\(delta > 0 ? "+" : "−")\(MoneyFormat.formatCents(abs(delta)))"
+                    )
+                }
+                if let payment = viewModel.debtWeek?.debtPaymentCents, payment > 0 {
+                    FundsBreakdownRow("Less Debt Payment", value: "−\(MoneyFormat.formatCents(payment))")
+                }
+                if let total = spendingFaceCents {
+                    FundsBreakdownRow("Total", value: MoneyFormat.formatCents(total))
+                }
+                HStack(spacing: 12) {
+                    if isAdmin {
+                        FundsPrimaryButton("Temporary Allowance") { openForm = .temp }
+                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                    } else {
+                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                    }
+                }
+            } else if let error = viewModel.allowanceError {
+                FundsErrorBox(error)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 200, height: 16)
+                    SkeletonBlock(width: 170, height: 16)
+                    SkeletonBlock(width: 190, height: 16)
+                }
+            }
+        }
+        .accessibilityIdentifier("funds.spending")
+    }
+
+    /// This week's total allowance: the week's base available
+    /// (base less this week's debt payment) plus any temporary
+    /// amount — the same figure as the Home hero's effective
+    /// allowance. Falls back to the stored base while the week's
+    /// figures are still loading.
+    private var spendingFaceCents: Int? {
+        if let week = viewModel.debtWeek {
+            return week.baseAvailableCents + week.tempCents
+        }
+        return viewModel.baseAllowanceCents
+    }
+
+    private var spendingFaceText: String {
+        guard let cents = spendingFaceCents else {
+            return ""
+        }
+        return MoneyFormat.formatCents(cents)
+    }
+
+    private var spendingAccessibilityLabel: String {
+        guard let cents = spendingFaceCents else {
+            return "Spending, could not load allowance, show breakdown"
+        }
+        return "Spending, \(MoneyFormat.formatCents(cents)) this week, show breakdown"
     }
 
     // MARK: - Extra Fund card (§9.1)
@@ -387,7 +567,11 @@ public struct FundsView: View {
                 HStack(spacing: 12) {
                     if isAdmin && viewModel.debtRule != nil {
                         FundsPrimaryButton("Pay from Extra Fund") { openForm = .payDebt }
-                        FundsTertiaryButton("Clear Debt") { showClearDebtConfirm = true }
+                        // No button that cannot work (owner, Nov 13):
+                        // with no debt left there is nothing to clear.
+                        if week.carriedDebtCents > 0 {
+                            FundsTertiaryButton("Clear Debt") { openForm = .clearDebt }
+                        }
                     } else {
                         FundsTertiaryButton("Close") { appState.expandedCard = nil }
                     }
@@ -401,20 +585,6 @@ public struct FundsView: View {
             }
         }
         .accessibilityIdentifier("funds.carriedDebt")
-        .confirmationDialog(
-            "Clear Debt",
-            isPresented: $showClearDebtConfirm,
-            titleVisibility: .visible
-        ) {
-            Button(TitleCase.apply(to: "Clear Debt"), role: .destructive) {
-                Task { await viewModel.clearDebt(note: "") }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            if let debt = viewModel.debtBalanceCents {
-                Text("Erase the \(MoneyFormat.formatCents(debt)) carried debt? No money moves — the balance is written off, and it is recorded in the activity log.")
-            }
-        }
     }
 
     /// Face text is only rendered when loaded: loading shows the
@@ -469,12 +639,64 @@ public struct FundsView: View {
         }
     }
 
-    /// Settings Budget → Temporary Allowance: open the form here
-    /// and clear the flag so a later tab switch does not re-open it.
-    private func consumeTemporaryAllowanceHandoff() {
-        guard appState.pendingTemporaryAllowance else { return }
-        appState.pendingTemporaryAllowance = false
-        openForm = .temp
+    /// One fund's container, by id (build 30): the card heads the
+    /// block and its rules, info and transactions sit inside it.
+    /// In rearrange mode a drag handle sits above the card;
+    /// dragging it over another container reorders live
+    /// (FundDropDelegate).
+    @ViewBuilder
+    private func fundContainer(for id: FundSectionID) -> some View {
+        fundContainer {
+            if isRearranging {
+                rearrangeHandle(for: id)
+            }
+            switch id {
+            case .spending:
+                spendingCard
+                spendingAllowanceSection
+            case .fund:
+                fundCard
+                fundShortfallLine
+                fundActivitySection
+            case .charity:
+                charityCard
+                charityRateSection
+                charityActivitySection
+            case .debt:
+                debtCard
+                debtRuleSection
+                debtActivitySection
+            }
+        }
+    }
+
+    /// The drag handle shown above a fund's card in rearrange mode:
+    /// the drag starts here only, so scrolling and the card's own
+    /// tap are untouched.
+    private func rearrangeHandle(for id: FundSectionID) -> some View {
+        HStack {
+            Spacer()
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color(hex: "#6b7280"))
+                .padding(8)
+                .contentShape(Rectangle())
+                .onDrag {
+                    draggingFund = id
+                    return NSItemProvider(object: id.rawValue as NSString)
+                }
+                .accessibilityLabel("Drag to reorder \(id.displayName)")
+        }
+    }
+
+    /// The Spending fund container's allowance editor (build 30):
+    /// Weekly Allowance + Temporary Allowance, moved from the
+    /// Settings Budget card. The button opens the Temporary
+    /// Allowance form.
+    private var spendingAllowanceSection: some View {
+        SpendingAllowanceSection(viewModel: viewModel, bare: true) {
+            openForm = .temp
+        }
     }
 
     private func toggleCard(_ card: ExpandedCard) {
@@ -488,43 +710,40 @@ public struct FundsView: View {
     // MARK: - Dissolved More sections (§9.2)
     //
     // The old "More" card is gone (owner, Nov 12, 2026 — it was
-    // unclear what it was for). Each section is now its own card
-    // under its own plain name, grouped under its fund (owner,
-    // Nov 15, 2026): Extra Fund Activity + Past Savings Records
-    // under Extra Fund, Charity Activity under Charity. Review
-    // stays standalone after the two fund sections — it's work
-    // needing attention, household-wide. Same expand-in-place row
-    // as the old More card; the sections hide while a form is open
-    // (the else branch above).
-
-    private var reviewSection: some View {
-        // Standalone after the fund containers, in its own card —
-        // Review is household-wide work, not one fund's. The card
-        // is gated with the row: members see neither.
-        Group {
-            if isAdmin {
-                FundsCard(padding: 0) {
-                    fundsSectionRow(
-                        title: viewModel.reviewCount > 0 ? "Review (\(viewModel.reviewCount))" : "Review",
-                        section: .review,
-                        isAdminOnly: true,
-                        hPad: 16
-                    ) {
-                        ReviewView(viewModel: viewModel)
-                    }
-                }
-            }
-        }
-    }
+    // unclear what it was for). Each fund has ONE "Activity"
+    // expandable (owner, Nov 15, 2026 — build 30, fewer headers):
+    // the Extra Fund's top-ups and past savings records share one,
+    // the Debt fund's payments and where the debt came from share
+    // one, Charity's income is its one. Sub-parts keep a quiet
+    // muted inline label, never a bold sub-header. Review is NOT
+    // here any more (build 30): it lives on its own page off
+    // Transactions. Same expand-in-place row as the old More card;
+    // the sections hide while a form is open (the else branch
+    // above).
 
     private var fundActivitySection: some View {
+        // ONE activity header per fund (owner, Nov 15, 2026 —
+        // build 30): the top-ups and the past savings records share
+        // this one expandable. The savings part keeps a quiet inline
+        // label ("Past Savings", muted — not a bold header).
+        // Top-ups stay admin-only; the savings records stay visible
+        // to every role.
         fundsSectionRow(
             title: "Activity",
             section: .fundActivity,
-            isAdminOnly: true,
+            isAdminOnly: false,
             hPad: 20
         ) {
-            FundTopupsHistory(viewModel: viewModel)
+            VStack(alignment: .leading, spacing: 8) {
+                if isAdmin {
+                    FundTopupsHistory(viewModel: viewModel)
+                    Divider()
+                }
+                Text("Past Savings")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                SavingsSection(viewModel: viewModel)
+            }
         }
     }
 
@@ -546,36 +765,24 @@ public struct FundsView: View {
         }
     }
 
-    private var savingsSection: some View {
-        fundsSectionRow(
-            title: "Past Savings Records",
-            section: .savings,
-            isAdminOnly: false,
-            hPad: 20
-        ) {
-            SavingsSection(viewModel: viewModel)
-        }
-    }
-
     private var debtActivitySection: some View {
+        // ONE activity header (build 30): the payments and where
+        // the debt came from share this expandable; the origin
+        // keeps a quiet inline label, not its own bold header.
         fundsSectionRow(
             title: "Activity",
             section: .debtActivity,
             isAdminOnly: false,
             hPad: 20
         ) {
-            DebtActivityView(viewModel: viewModel)
-        }
-    }
-
-    private var debtHistorySection: some View {
-        fundsSectionRow(
-            title: "Where It Came From",
-            section: .debtHistory,
-            isAdminOnly: false,
-            hPad: 20
-        ) {
-            DebtHistoryView(viewModel: viewModel)
+            VStack(alignment: .leading, spacing: 8) {
+                DebtActivityView(viewModel: viewModel)
+                Divider()
+                Text("Where it came from")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                DebtHistoryView(viewModel: viewModel)
+            }
         }
     }
 

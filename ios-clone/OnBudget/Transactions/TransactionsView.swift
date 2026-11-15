@@ -58,12 +58,17 @@ public struct TransactionsView: View {
     /// (Past Weeks / Weekly sheet) and `pendingTransactionJump`
     /// (Home recent-row tap). Consumed on appear and on change.
     @ObservedObject var appState: AppViewModel
+    /// The shell-owned Review view model (build 30): the Review
+    /// button's count badge reads `reviewCount` live from it, and
+    /// the Review page shares the same instance.
+    @ObservedObject var reviewViewModel: FundsViewModel
 
     /// Wired by the app shell: both handlers push the matching
     /// subpage onto the Transactions NavigationStack. The links are
     /// hidden until a handler is supplied, so they never lead nowhere.
     var onShowPastWeeks: (() -> Void)?
     var onShowActivity: (() -> Void)?
+    var onShowReview: (() -> Void)?
 
     @State private var searchText: String = ""
     @State private var showingFilters: Bool = false
@@ -74,13 +79,17 @@ public struct TransactionsView: View {
     public init(
         viewModel: TransactionsViewModel,
         appState: AppViewModel,
+        reviewViewModel: FundsViewModel,
         onShowPastWeeks: (() -> Void)? = nil,
-        onShowActivity: (() -> Void)? = nil
+        onShowActivity: (() -> Void)? = nil,
+        onShowReview: (() -> Void)? = nil
     ) {
         self.viewModel = viewModel
         self.appState = appState
+        self.reviewViewModel = reviewViewModel
         self.onShowPastWeeks = onShowPastWeeks
         self.onShowActivity = onShowActivity
+        self.onShowReview = onShowReview
     }
 
     public var body: some View {
@@ -111,6 +120,11 @@ public struct TransactionsView: View {
             if case .idle = viewModel.loadState {
                 await viewModel.load()
             }
+            // Build 30: the Review badge count loads with the tab.
+            // The Review page refreshes the same instance on open,
+            // and every review action reloads it, so the badge
+            // stays live without a second load here.
+            await reviewViewModel.refreshReview()
             consumeHandoffs()
         }
         .onChange(of: appState.pendingWeekFilter) { _, _ in consumeHandoffs() }
@@ -300,6 +314,28 @@ public struct TransactionsView: View {
             if let onShowPastWeeks {
                 Button("Past Weeks", action: onShowPastWeeks)
                     .buttonStyle(SmallOutlineButtonStyle())
+            }
+            // Build 30: Review moved off the Funds page — an
+            // admin-only button here opens the dedicated Review
+            // page, with a count badge while anything is waiting
+            // (held refunds + possible duplicates + refund links).
+            // The badge is a small squarish count chip, not a pill.
+            if viewModel.isAdmin, let onShowReview {
+                Button(action: onShowReview) {
+                    HStack(spacing: 6) {
+                        Text("Review")
+                        if reviewViewModel.reviewCount > 0 {
+                            Text("\(reviewViewModel.reviewCount)")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(DesignTokens.primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+                }
+                .buttonStyle(SmallOutlineButtonStyle())
             }
             Spacer(minLength: 0)
             if viewModel.isAdmin {

@@ -9,11 +9,14 @@ import OnBudgetKit
 // - Extra Fund: the shortfall line ("Nothing owed back right
 //   now." / "Owed back now: $X.") lives under the Extra Fund card.
 // - Charity: the Default Charity Rate editor lives under the
-//   Charity card; How It Works opens from the ⓘ at the right of
-//   the rate row (owner, Nov 15, 2026 — no longer an expandable
-//   row).
+//   Charity card; How It Works opens from the ⓘ next to the label
+//   (owner, Nov 15, 2026 — no longer an expandable row, and no
+//   longer floating at the far right of the row).
 // - Carried Debt (build 29): the Debt Repayment Rule editor lives
 //   under the Carried Debt card.
+// - Spending (build 30): the Weekly Allowance editor + Temporary
+//   Allowance block live under the Spending card (moved from the
+//   Settings Budget card — ALL fund settings live on the Funds page).
 // Nothing was removed: the rate editor, the shortfall line, and
 // the three How It Works blocks are the same content, just re-homed.
 //
@@ -46,13 +49,19 @@ import OnBudgetKit
 // balances; hiding the rules that produce those numbers would
 // leave them unexplained.
 
-/// Default Charity Rate, under the Charity card: the rate row plus
-/// the admin editor (field + Save sized to fit, Reset a small
-/// quiet link) and the preview line. No heading — the "Default
-/// Charity Rate" row says what it is, and the Charity card above
-/// is the section header. The ⓘ at the right of the rate row opens
-/// How It Works as a popup (owner, Nov 15, 2026 — the expandable
-/// row is gone); the content itself is unchanged.
+/// Default Charity Rate, under the Charity card: ONE compact row
+/// (owner, Nov 15, 2026 — the old layout scattered the row: label
+/// left, "20%" + ⓘ floating far right, field + Save + Reset on a
+/// second line, a grey note on a third). Now the label, the ⓘ
+/// (next to the label, where it belongs), the field with its %,
+/// Save and Reset sit together on one row; the field IS the value,
+/// so nothing floats far right. Only the pending-rate preview
+/// shows below — the "already the default rate" note restated the
+/// obvious and is gone. No heading — the "Default Charity Rate"
+/// row says what it is, and the Charity card above is the section
+/// header. The ⓘ opens How It Works as a popup (owner, Nov 15,
+/// 2026 — the expandable row is gone); the content itself is
+/// unchanged.
 public struct CharityRateSection: View {
     @ObservedObject public var viewModel: FundsViewModel
     @State private var rateText = ""
@@ -104,7 +113,8 @@ public struct CharityRateSection: View {
 
     /// The rate row + editor, without chrome: the caller (the
     /// Charity fund container) wraps it, or FundsCard when
-    /// standalone.
+    /// standalone. Admins get the one-row editor; members get the
+    /// read-only row (label + value) and the admin-only line.
     private var rateContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             if viewModel.charitySettings == nil {
@@ -113,6 +123,8 @@ public struct CharityRateSection: View {
                 } else {
                     FundsMuted("Loading rules…")
                 }
+            } else if isAdmin {
+                rateEditor
             } else {
                 HStack(spacing: 8) {
                     FundsBreakdownRow(
@@ -131,27 +143,45 @@ public struct CharityRateSection: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("How it works")
                 }
-                if isAdmin {
-                    rateEditor
-                } else {
-                    FundsMuted("Only the admin can change the default rate.")
-                }
+                FundsMuted("Only the admin can change the default rate.")
             }
         }
     }
 
     // MARK: - Admin rate editor
 
-    /// ONE compact row (owner, Nov 12, 2026): the field and Save
-    /// sized to fit each other — not a stretched full-width blue
-    /// button — with Reset as a small quiet link beside them.
+    /// ONE compact row (owner, Nov 15, 2026): label + ⓘ + field
+    /// with its % + Save + Reset, together. The field shows the
+    /// live default, so there is no separate far-right value. Only
+    /// the pending-rate preview shows below — the "already the
+    /// default rate" and "enter a rate" notes restated the obvious
+    /// and are gone; a bad Save still reports via the error box.
     private var rateEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Text("Default Charity Rate")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Button {
+                    showHowItWorks = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("How it works")
                 TextField(MoneyFormat.formatRateBp(defaultRateBp), text: $rateText)
                     .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 90)
+                    .frame(maxWidth: 56)
+                Text("%")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
                 FundsSmallPrimaryButton("Save", isBusy: viewModel.busyAction == "rate") {
                     saveRate()
                 }
@@ -162,13 +192,6 @@ public struct CharityRateSection: View {
             }
             if let pending = pendingRateBp {
                 FundsMuted("New incomes will commit \(MoneyFormat.formatRateBp(pending))% — future incomes only. Past incomes stay as they are.")
-            } else if MoneyFormat.parseRatePercent(rateText) != nil {
-                FundsMuted("This is already the default rate.")
-            } else {
-                // Unparseable or empty rate text must never fall
-                // through to a line describing a rate that does not
-                // exist (F-P2-10).
-                FundsMuted("Enter a rate to see how it applies.")
             }
             if let rateError {
                 FundsErrorBox(rateError)
@@ -289,13 +312,17 @@ public struct HowItWorksContent: View {
 
 /// Debt Repayment Rule, under the Carried Debt card (build 29): the
 /// rule row plus the admin editor (Percent / Fixed $ / Off + value
-/// + Save, Reset a small quiet link) and the preview line. No
-/// heading — the "Debt Repayment Rule" row says what it is, and the
-/// Carried Debt card above is the section header. A rule change is
-/// future-only: it applies to the current open week and future
-/// weeks; closed weeks keep their stored payment. The rule lives
-/// here and nowhere else — never in Settings (owner, Nov 15, 2026:
-/// ALL fund-related settings belong on the Funds page).
+/// + Save, Reset a small quiet link) and the preview line. Same
+/// compact pattern as the Charity rate editor (owner, Nov 15,
+/// 2026): the label, the mode picker, the field with its unit, Save
+/// and Reset sit together — the field IS the value, so nothing
+/// floats far right. No heading — the "Debt Repayment Rule" row
+/// says what it is, and the Carried Debt card above is the section
+/// header. A rule change is future-only: it applies to the current
+/// open week and future weeks; closed weeks keep their stored
+/// payment. The rule lives here and nowhere else — never in
+/// Settings (owner, Nov 15, 2026: ALL fund-related settings belong
+/// on the Funds page).
 ///
 /// Visibility decision: the rule section is visible to every role,
 /// read-only for regular members ("Only the admin can change the
@@ -366,7 +393,8 @@ public struct DebtRuleSection: View {
 
     /// The rule row + editor, without chrome: the caller (the
     /// Carried Debt fund container) wraps it, or FundsCard when
-    /// standalone.
+    /// standalone. Admins get the compact editor; members get the
+    /// read-only row (label + value) and the admin-only line.
     private var ruleContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             if viewModel.debtRule == nil {
@@ -375,13 +403,11 @@ public struct DebtRuleSection: View {
                 } else {
                     FundsMuted("Loading rules…")
                 }
+            } else if isAdmin {
+                ruleEditor
             } else {
                 FundsBreakdownRow("Debt Repayment Rule", value: ruleText)
-                if isAdmin {
-                    ruleEditor
-                } else {
-                    FundsMuted("Only the admin can change the debt repayment rule.")
-                }
+                FundsMuted("Only the admin can change the debt repayment rule.")
             }
         }
     }
@@ -392,28 +418,38 @@ public struct DebtRuleSection: View {
         fixedText = savedRule.fixedCents > 0 ? String(format: "%.2f", Double(savedRule.fixedCents) / 100.0) : ""
     }
 
+    /// The compact editor (owner, Nov 15, 2026 — same pattern as
+    /// the Charity rate editor): label + mode picker on one row,
+    /// then the field with its unit + Save + Reset on the next.
+    /// The field IS the value, so nothing floats far right. The
+    /// preview shows below only when it says something useful.
     private var ruleEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Rule", selection: $selectedMode) {
-                Text("Percent").tag(DebtRule.Mode.percent)
-                Text("Fixed $").tag(DebtRule.Mode.fixed)
-                Text("Off").tag(DebtRule.Mode.off)
+            HStack(spacing: 8) {
+                Text("Debt Repayment Rule")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Picker("Rule", selection: $selectedMode) {
+                    Text("Percent").tag(DebtRule.Mode.percent)
+                    Text("Fixed $").tag(DebtRule.Mode.fixed)
+                    Text("Off").tag(DebtRule.Mode.off)
+                }
+                .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
-            if selectedMode == .percent {
-                HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                if selectedMode == .percent {
                     TextField(MoneyFormat.formatRateBp(savedRule.percentBp), text: $percentText)
                         .keyboardType(.decimalPad)
                         .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 90)
+                        .frame(maxWidth: 56)
                     Text("% of base")
                         .font(.system(size: 14))
                         .foregroundStyle(Color(hex: "#6b7280"))
+                } else if selectedMode == .fixed {
+                    DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: 140)
                 }
-            } else if selectedMode == .fixed {
-                DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: 140)
-            }
-            HStack(spacing: 10) {
                 FundsSmallPrimaryButton("Save", isBusy: viewModel.busyAction == "debt-rule") {
                     saveRule()
                 }
@@ -444,11 +480,10 @@ public struct DebtRuleSection: View {
             FundsMuted("The rule is off — no part of the base goes to debt each week. Unspent allowance at week close still pays the debt first.")
         } else if let preview = viewModel.debtPaymentPreview() {
             FundsMuted("Each week \(MoneyFormat.formatCents(preview.payment)) goes to debt — the week starts at \(MoneyFormat.formatCents(preview.weekStartsAt)).")
-        } else if pendingRule == nil && selectedMode != .off {
-            // Unparseable or empty value text must never fall through
-            // to a line describing a rule that does not exist (F-P2-10).
-            FundsMuted("Enter a value to see how it applies.")
         }
+        // No "Enter a value" line (build 30): an empty field states
+        // itself; the note restated the obvious. A bad Save still
+        // reports via the error box.
     }
 
     private func pendingRuleText(_ rule: DebtRule) -> String {
@@ -478,5 +513,179 @@ public struct DebtRuleSection: View {
         }
         ruleError = nil
         Task { await viewModel.setDebtRule(pending) }
+    }
+}
+
+/// Weekly Allowance, under the Spending card (build 30 — moved from
+/// the Settings Budget card; owner, Nov 15, 2026: ALL fund settings
+/// live on the Funds page, and the base allowance is the spending
+/// fund's setting). The row + the admin editor (field + Save sized
+/// to fit, Reset a small quiet link) and the preview line, then the
+/// Temporary Allowance block below it. No heading — the "Weekly
+/// Allowance" row says what it is, and the Spending card above is
+/// the section header. A change applies from the current week
+/// onward; closed weeks are never rewritten (the confirm dialog
+/// says so, as the Settings card did).
+///
+/// Visibility decision (same as the rate/rule sections): visible to
+/// every role, read-only for regular members ("Only the admin can
+/// change the weekly allowance."). Members already see the week's
+/// allowance; hiding the setting that produces it would leave it
+/// unexplained.
+public struct SpendingAllowanceSection: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    @State private var allowanceText = ""
+    @State private var allowanceError: String?
+    @State private var confirmChange: AllowanceConfirm?
+    /// True inside the Spending fund container: no card of its own.
+    public let bare: Bool
+    /// Opens the Temporary Allowance form (owned by FundsView).
+    public let onOpenTemp: () -> Void
+
+    public init(viewModel: FundsViewModel, bare: Bool = false, onOpenTemp: @escaping () -> Void) {
+        self.viewModel = viewModel
+        self.bare = bare
+        self.onOpenTemp = onOpenTemp
+    }
+
+    private struct AllowanceConfirm: Identifiable {
+        let oldCents: Int?
+        let newCents: Int
+        var id: String { "change-\(newCents)" }
+    }
+
+    private var isAdmin: Bool { viewModel.context.isAdmin }
+    private var savedBase: Int? { viewModel.baseAllowanceCents }
+
+    private var pendingCents: Int? {
+        MoneyFormat.parseDollarsStrict(allowanceText)
+    }
+
+    private var pendingDiffers: Bool {
+        guard let pending = pendingCents, let base = savedBase else { return false }
+        return pending != base
+    }
+
+    /// The week's temporary total, when a Temporary Allowance
+    /// override is in effect for the current week.
+    private var tempOverrideCents: Int? {
+        viewModel.debtWeek?.overrideCents
+    }
+
+    public var body: some View {
+        Group {
+            if bare {
+                allowanceContent
+                    .padding(.horizontal, 20)
+            } else {
+                FundsCard {
+                    allowanceContent
+                }
+            }
+        }
+        .accessibilityIdentifier("funds.spendingAllowance")
+        .onAppear { syncField() }
+        .onChange(of: savedBase) { _, _ in syncField() }
+        .alert(item: $confirmChange) { change in
+            let message: String
+            if let old = change.oldCents {
+                message = "Change the weekly allowance from \(MoneyFormat.formatCents(old)) to \(MoneyFormat.formatCents(change.newCents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
+            } else {
+                message = "Set the weekly allowance to \(MoneyFormat.formatCents(change.newCents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
+            }
+            return Alert(
+                title: Text("Change Allowance"),
+                message: Text(message),
+                primaryButton: .default(Text("Change Allowance")) {
+                    Task { await viewModel.setBaseAllowance(cents: change.newCents) }
+                },
+                secondaryButton: .cancel(Text("Keep Current"))
+            )
+        }
+    }
+
+    /// The row + editor + Temporary Allowance block, without chrome:
+    /// the caller (the Spending fund container) wraps it, or
+    /// FundsCard when standalone.
+    private var allowanceContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let base = savedBase {
+                FundsBreakdownRow("Weekly Allowance", value: MoneyFormat.formatCents(base))
+                if isAdmin {
+                    allowanceEditor
+                } else {
+                    FundsMuted("Only the admin can change the weekly allowance.")
+                }
+                tempBlock
+            } else if let error = viewModel.allowanceError {
+                FundsErrorBox(error)
+                FundsSmallTertiaryButton("Try Again") {
+                    Task { await viewModel.reloadAllowance() }
+                }
+            } else {
+                FundsMuted("Loading allowance…")
+            }
+        }
+    }
+
+    private func syncField() {
+        if let base = savedBase {
+            allowanceText = String(format: "%.2f", Double(base) / 100)
+        }
+    }
+
+    private var allowanceEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                DollarTextField(text: $allowanceText, placeholder: "0.00", maxWidth: 140)
+                FundsSmallPrimaryButton("Save", isBusy: viewModel.busyAction == "base-allowance") {
+                    saveTapped()
+                }
+                FundsQuietButton("Reset") {
+                    syncField()
+                    allowanceError = nil
+                }
+            }
+            if pendingDiffers {
+                FundsMuted("Applies from the current week onward. It does not rewrite closed weeks.")
+            } else if pendingCents != nil {
+                FundsMuted("This is already the weekly allowance.")
+            } else {
+                FundsMuted("Enter a valid allowance (empty is not 0).")
+            }
+            if let allowanceError {
+                FundsErrorBox(allowanceError)
+            }
+        }
+    }
+
+    private func saveTapped() {
+        guard let cents = pendingCents, cents >= 0 else {
+            allowanceError = "Enter a valid allowance (empty is not 0)."
+            return
+        }
+        guard pendingDiffers else {
+            allowanceError = "That is already the weekly allowance."
+            return
+        }
+        allowanceError = nil
+        confirmChange = AllowanceConfirm(oldCents: savedBase, newCents: cents)
+    }
+
+    private var tempBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            FundsBreakdownRow(
+                "Temporary Allowance",
+                value: tempOverrideCents.map { MoneyFormat.formatCents($0) } ?? "Not set"
+            )
+            if let temp = tempOverrideCents, let base = savedBase, temp != base {
+                FundsMuted("This week's total is \(MoneyFormat.formatCents(temp)) instead of \(MoneyFormat.formatCents(base)).")
+            }
+            if isAdmin {
+                FundsSmallTertiaryButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance") {
+                    onOpenTemp()
+                }
+            }
+        }
     }
 }

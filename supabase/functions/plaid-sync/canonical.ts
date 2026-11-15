@@ -164,6 +164,276 @@ export async function hmacSha256Hex(secret: string, message: string): Promise<st
   return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// --- Merchant rules (build 30, Nov 15, 2026) ---
+// Household-scoped teachable renames: `merchant_rules` maps a
+// normalized pattern to a clean display name plus an optional fixed
+// kind. Rules apply at ingestion (before the hash is computed, so a
+// bank row and its email alert hash identically) and via the
+// rename/apply RPCs in supabase/merchant-rules.sql (which recompute
+// dedupe_hash for renamed rows). Matching is deliberately strict —
+// normalized exact / prefix / squashed-exact only, never fuzzy:
+// a rule must never rename a merchant it was not taught.
+//   key    = UPPER, trimmed, whitespace collapsed, leading
+//            non-alphanumeric bank artifacts stripped ('=TENYAD...'
+//            -> 'TENYAD...').
+//   squash = key with ALL non-alphanumerics removed, so
+//            'TENYADKALLAHGEMACH' matches 'TENYAD KALLAH GEMACH'.
+// Priority: exact-key match beats prefix, which beats squash-exact;
+// within a tier the longest pattern wins, then the earliest rule.
+// Display names are stored UPPER, like every transactions.merchant
+// value; clients title-case on render (as they already do).
+// Fixed kinds: a rule's fixed kind auto-applies to matching NEW
+// transactions (and to rows a rename applies to) — EXCEPT the sign
+// guard below: a money-out kind (charge/charity/fund_charge) never
+// overrides a money-in (negative) row, and a money-in kind
+// (refund/payment/cashback/income) never overrides a money-out
+// row. A refund of a gift keeps the classifier's kind. 'transfer'
+// applies to either sign.
+
+export function merchantRuleKey(name: string): string {
+  return String(name ?? '')
+    .toUpperCase()
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/^[^A-Z0-9]+/, '');
+}
+
+export function merchantRuleSquash(name: string): string {
+  return merchantRuleKey(name).replace(/[^A-Z0-9]/g, '');
+}
+
+export type MerchantRule = {
+  pattern_key: string;
+  pattern_squash: string;
+  match_type: 'exact' | 'prefix';
+  display_name: string;
+  fixed_kind?: string | null;
+  created_at?: string;
+};
+
+const MONEY_OUT_KINDS = new Set(['charge', 'charity', 'fund_charge']);
+const MONEY_IN_KINDS = new Set(['refund', 'payment', 'cashback', 'income']);
+
+export function fixedKindApplies(fixedKind: string | null | undefined, amountCents: number): boolean {
+  if (!fixedKind) return false;
+  if (amountCents > 0 && MONEY_IN_KINDS.has(fixedKind)) return false;
+  if (amountCents < 0 && MONEY_OUT_KINDS.has(fixedKind)) return false;
+  return true;
+}
+
+export function matchMerchantRule(
+  rules: MerchantRule[],
+  merchant: string,
+): MerchantRule | null {
+  const key = merchantRuleKey(merchant);
+  const squash = merchantRuleSquash(merchant);
+  if (!key) return null;
+  let best: MerchantRule | null = null;
+  let bestTier = 99;
+  let bestLen = -1;
+  for (const r of rules ?? []) {
+    const pk = merchantRuleKey(r.pattern_key);
+    if (!pk) continue;
+    let tier = -1;
+    if (pk === key) tier = 0;
+    else if (r.match_type === 'prefix' && key.startsWith(pk)) tier = 1;
+    else if (r.pattern_squash && merchantRuleSquash(r.pattern_key) === squash) tier = 2;
+    else if (merchantRuleSquash(r.pattern_key) === squash) tier = 2;
+    if (tier < 0) continue;
+    if (tier < bestTier || (tier === bestTier && pk.length > bestLen)) {
+      best = r;
+      bestTier = tier;
+      bestLen = pk.length;
+    }
+  }
+  return best;
+}
+
+// Apply the best matching rule to a merchant name. Returns the
+// display merchant (normalized UPPER) and a kind override (null
+// when the rule has no fixed kind or the sign guard blocks it).
+export function applyMerchantRuleToMerchant(
+  rules: MerchantRule[],
+  merchant: string,
+  amountCents: number,
+): { merchant: string; kindOverride: string | null } {
+  const rule = matchMerchantRule(rules, merchant);
+  if (!rule) return { merchant: normalizeMerchant(merchant), kindOverride: null };
+  const kindOverride = fixedKindApplies(rule.fixed_kind ?? null, amountCents)
+    ? String(rule.fixed_kind)
+    : null;
+  return { merchant: normalizeMerchant(rule.display_name), kindOverride };
+}
+
+// Best-effort rule load for one household (ingestion path). Never
+// throws: on any error the caller proceeds with no rules, i.e. the
+// pre-rules behaviour.
+export async function loadMerchantRules(
+  supabaseAdmin: SupaAdmin,
+  householdId: string,
+): Promise<MerchantRule[]> {
+  try {
+    const { data, error } = await supabaseAdmin.from('merchant_rules')
+      .select('pattern_key, pattern_squash, match_type, display_name, fixed_kind, created_at')
+      .eq('household_id', householdId)
+      .order('created_at', { ascending: true });
+    if (error || !data) return [];
+    return data as MerchantRule[];
+  } catch {
+    return [];
+  }
+}
+
+// --- Bank+Email auto-merge eligibility (build 30, task I) ---
+// The approved provisional-merge take: a bank row and an email row
+// for the SAME purchase merge automatically — bank row kept, email
+// row merged away, no manual review. Conservative by design: ALL
+// of these must hold, or the pair stays for manual review.
+//   * bank source 'plaid', email source 'amex_alert' (NEVER two
+//     bank rows, NEVER two email rows);
+//   * same household, same signed amount, same kind;
+//   * dates within 2 days (either direction);
+//   * card suffix equal, or either side '0000' (unknown, not a
+//     different card — the same rule as plaid-sync step 3b);
+//   * neither row already excluded;
+//   * merchant names related: identical, one contains the other,
+//     a confirmed alias pair, or both map to the same rule display
+//     name (the merchant-string gap that used to defeat the hash);
+//   * NEVER a TOIREMORG pair (owner ruling Nov 3: the $2 bank
+//     "TOIREMORG" and $2 email "TOIREMORG CHARITY" rows are TWO
+//     real gifts, not a duplicate) — checked on both spellings.
+// `resolvedPair` is true when a duplicate_candidates row already
+// links the pair in ANY status: a pair the owner already resolved
+// as Separate is never auto-merged, and an already-merged pair is
+// never merged twice.
+
+export function isToiremorgMerchant(merchant: string): boolean {
+  return normalizeMerchant(merchant).includes('TOIREMORG');
+}
+
+export type MergeRow = {
+  id: string;
+  household_id?: string;
+  merchant: string;
+  source: string;
+  date: string;
+  amount_cents: number;
+  card_suffix: string;
+  kind?: string;
+  excluded?: boolean | null;
+  state?: string | null;
+};
+
+export function daysBetweenDates(a: string, b: string): number | null {
+  const ta = Date.parse(`${a}T00:00:00Z`);
+  const tb = Date.parse(`${b}T00:00:00Z`);
+  if (!Number.isFinite(ta) || !Number.isFinite(tb)) return null;
+  return Math.abs(Math.round((ta - tb) / 86400000));
+}
+
+export function addDaysToDate(dateStr: string, days: number): string {
+  const t = Date.parse(`${dateStr}T00:00:00Z`);
+  if (!Number.isFinite(t)) return dateStr;
+  return new Date(t + days * 86400000).toISOString().slice(0, 10);
+}
+
+export function autoMergeEligible(
+  bankRow: MergeRow,
+  emailRow: MergeRow,
+  opts: {
+    aliases?: Array<{ name_a: string; name_b: string }>;
+    rules?: MerchantRule[];
+    resolvedPair?: boolean;
+  } = {},
+): { eligible: boolean; reason: string } {
+  if (bankRow.source !== 'plaid') return { eligible: false, reason: 'bank row is not plaid' };
+  if (emailRow.source !== 'amex_alert') return { eligible: false, reason: 'email row is not amex_alert' };
+  if (opts.resolvedPair) return { eligible: false, reason: 'pair already resolved' };
+  if (bankRow.household_id && emailRow.household_id && bankRow.household_id !== emailRow.household_id) {
+    return { eligible: false, reason: 'different households' };
+  }
+  if (bankRow.amount_cents !== emailRow.amount_cents) return { eligible: false, reason: 'amount differs' };
+  if (bankRow.kind && emailRow.kind && bankRow.kind !== emailRow.kind) {
+    return { eligible: false, reason: 'kind differs' };
+  }
+  const gap = daysBetweenDates(bankRow.date, emailRow.date);
+  if (gap === null) return { eligible: false, reason: 'bad date' };
+  if (gap > 2) return { eligible: false, reason: 'dates more than 2 days apart' };
+  const bs = String(bankRow.card_suffix ?? '0000');
+  const es = String(emailRow.card_suffix ?? '0000');
+  if (bs !== es && bs !== '0000' && es !== '0000') {
+    return { eligible: false, reason: 'card suffix differs' };
+  }
+  if (bankRow.excluded === true || bankRow.state === 'excluded') {
+    return { eligible: false, reason: 'bank row excluded' };
+  }
+  if (emailRow.excluded === true || emailRow.state === 'excluded') {
+    return { eligible: false, reason: 'email row excluded' };
+  }
+  if (isToiremorgMerchant(bankRow.merchant) || isToiremorgMerchant(emailRow.merchant)) {
+    return { eligible: false, reason: 'toiremorg pair never auto-merges' };
+  }
+  const nb = normalizeMerchant(bankRow.merchant);
+  const ne = normalizeMerchant(emailRow.merchant);
+  let related = nb === ne || merchantsRelated(bankRow.merchant, emailRow.merchant);
+  if (!related) {
+    for (const a of opts.aliases ?? []) {
+      const x = normalizeMerchant(a.name_a);
+      const y = normalizeMerchant(a.name_b);
+      if ((x === nb && y === ne) || (x === ne && y === nb)) { related = true; break; }
+    }
+  }
+  if (!related && opts.rules) {
+    const rb = matchMerchantRule(opts.rules, bankRow.merchant);
+    const re = matchMerchantRule(opts.rules, emailRow.merchant);
+    if (rb && re && normalizeMerchant(rb.display_name) === normalizeMerchant(re.display_name)) related = true;
+  }
+  if (!related) return { eligible: false, reason: 'merchants not related' };
+  return { eligible: true, reason: 'ok' };
+}
+
+// Bank-first guard, widened (build 30): when an email alert
+// arrives, skip the insert when a Plaid row already covers the
+// purchase — same amount + same card (or unknown suffix) + date
+// within 2 days + merchant-related (exact hash is the special case
+// where all of those are equalities). Returns the covering bank row
+// or null. Pure-DB-query half lives here so the callers
+// (gmail-poll, ingest-amex-alert) share it; the TOIREMORG and
+// kind checks run through autoMergeEligible, so a TOIREMORG alert
+// is never swallowed by this guard.
+export async function findCoveringBankRow(
+  supabaseAdmin: SupaAdmin,
+  householdId: string,
+  alert: { merchant: string; date: string; amount_cents: number; card_suffix: string; kind?: string },
+  opts: {
+    aliases?: Array<{ name_a: string; name_b: string }>;
+    rules?: MerchantRule[];
+  } = {},
+): Promise<MergeRow | null> {
+  try {
+    const { data: rows } = await supabaseAdmin.from('transactions')
+      .select('id, household_id, merchant, source, date, amount_cents, card_suffix, kind, excluded, state')
+      .eq('household_id', householdId)
+      .eq('source', 'plaid')
+      .eq('amount_cents', alert.amount_cents)
+      .gte('date', addDaysToDate(alert.date, -2))
+      .lte('date', addDaysToDate(alert.date, 2))
+      .limit(20);
+    for (const row of rows ?? []) {
+      const bank = row as MergeRow;
+      const emailLike: MergeRow = {
+        id: '', household_id: householdId, merchant: alert.merchant,
+        source: 'amex_alert', date: alert.date, amount_cents: alert.amount_cents,
+        card_suffix: alert.card_suffix, kind: alert.kind,
+      };
+      if (autoMergeEligible(bank, emailLike, opts).eligible) return bank;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Lookalike detection (Nov 3 Amazon case) ---
 // Exact-hash and provider-ID merges already ran before this is used.
 // A lookalike is same household + date + signed amount + card suffix
@@ -227,6 +497,15 @@ export async function flagLookalikes(
     } catch {
       aliases = [];
     }
+    // Build 30: merchant rules are also relatedness evidence — two
+    // spellings the household taught to one display name are the
+    // same merchant for review, same as a confirmed alias pair.
+    let rules: MerchantRule[] = [];
+    try {
+      rules = await loadMerchantRules(supabaseAdmin, householdId);
+    } catch {
+      rules = [];
+    }
     const aliasSet = new Set<string>();
     for (const a of aliases) {
       const x = normalizeMerchant(a.name_a);
@@ -236,7 +515,10 @@ export async function flagLookalikes(
     }
     const related = (m1: string, m2: string): boolean => {
       if (merchantsRelated(m1, m2)) return true;
-      return aliasSet.has(`${normalizeMerchant(m1)}|${normalizeMerchant(m2)}`);
+      if (aliasSet.has(`${normalizeMerchant(m1)}|${normalizeMerchant(m2)}`)) return true;
+      const r1 = matchMerchantRule(rules, m1);
+      const r2 = matchMerchantRule(rules, m2);
+      return !!r1 && !!r2 && normalizeMerchant(r1.display_name) === normalizeMerchant(r2.display_name);
     };
     let flagged = 0;
     for (const r of rows ?? []) {

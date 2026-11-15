@@ -657,11 +657,12 @@ public struct HomeView: View {
         }
 
         // Set Your Weekly Allowance: admin only, never-set state.
-        // Lands scrolled to the Budget card in Settings (owner
-        // decision #27).
+        // Lands on the Funds page's Spending fund (build 30 — the
+        // Budget card moved out of Settings; owner decision #27,
+        // re-pointed).
         if viewModel.isAdmin, viewModel.allowanceSet == false {
             Button("Set Your Weekly Allowance") {
-                appState.openSettings(to: .budget)
+                appState.openSpendingFund()
             }
             .buttonStyle(PrimaryButtonStyle())
         }

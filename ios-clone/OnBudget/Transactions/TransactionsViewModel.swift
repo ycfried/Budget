@@ -491,6 +491,40 @@ public final class TransactionsViewModel {
         }
     }
 
+    /// Rename merchant (build 30, teachable rules). Teaches a rule
+    /// from this transaction's spelling and renames every matching
+    /// row, old and new. Admin only; applies to every kind.
+    /// `fixedKind` is a `TransactionKind` raw value (charge /
+    /// refund / fund_charge / payment / cashback / charity /
+    /// transfer / income) or nil for name-only.
+    public func renameMerchant(_ transaction: Transaction, to displayName: String, fixedKind: String?) async -> Bool {
+        guard isAdmin else {
+            showAlert(title: "Admin Only", message: "Only the admin can rename merchants.")
+            return false
+        }
+        do {
+            let renamed = try await client.rpcs.renameTransactionAndApplyRule(
+                pTransactionId: transaction.id,
+                pDisplayName: displayName,
+                pFixedKind: fixedKind
+            )
+            toastManager.show(
+                renamed == 1
+                    ? "Renamed 1 transaction."
+                    : "Renamed \(renamed) transactions.",
+                kind: .success
+            )
+            await reloadAfterMutation()
+            return true
+        } catch let error as OnBudgetError {
+            showAlert(title: "Could Not Rename", message: error.displayMessage)
+            return false
+        } catch {
+            showAlert(title: "Could Not Rename", message: OnBudgetError.displayMessage(for: error))
+            return false
+        }
+    }
+
     /// Extra Fund request for a charge (live.js:3834-3861). Refuses
     /// charity rows and non-charges with the web's exact wording,
     /// and any amount above the charge itself (T-P2-6 — the fund

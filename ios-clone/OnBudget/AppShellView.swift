@@ -29,12 +29,10 @@
 //   Trash is reached from the Transactions "Trash (N)" link only
 //   (CLONE_SPEC §11; admin-only, hidden at 0).
 // - Funds: `FundsView(context:appState:)`; shares `expandedCard`
-//   with Home and opens Temporary Allowance on
-//   `pendingTemporaryAllowance` (Settings Budget link).
+//   with Home.
 // - Settings: `SettingsView` in a full-screen cover; its context
 //   carries `onShowWeekTransactions` → `showTransactionsForWeek`
-//   (Past Weeks tap opens Transactions filtered to that week) and
-//   `onOpenTemporaryAllowance` → `openTemporaryAllowance`.
+//   (Past Weeks tap opens Transactions filtered to that week).
 // Toasts render at the ContentView root so they also show on the
 // Auth screen (account-created / account-deleted notices).
 //
@@ -49,11 +47,19 @@ import OnBudgetKit
 enum TransactionsSubpage: Hashable {
     case pastWeeks
     case activity
+    /// Build 30: Review moved off the Funds page to its own page
+    /// here (Transactions "Review" button with a count badge).
+    case review
 }
 
 public struct AppShellView: View {
     @ObservedObject var appState: AppViewModel
     @State private var transactionsViewModel: TransactionsViewModel?
+    /// The Review page's FundsViewModel, owned by the shell so the
+    /// Transactions tab's Review badge and the Review page share
+    /// one live instance (build 30). It only ever loads review
+    /// data (`refreshReview()`), never the fund loads.
+    @State private var reviewViewModel: FundsViewModel?
     /// The Transactions tab's navigation path. Owned by the shell
     /// (not the tab) so it survives tab switches and the week-tap
     /// pop in `historyContext()` can reach it.
@@ -105,26 +111,22 @@ public struct AppShellView: View {
         .onChange(of: appState.selectedTab) { _, _ in
             appState.toast = nil
         }
-        .task { ensureTransactionsViewModel() }
-        .onChange(of: appState.householdId) { _, _ in ensureTransactionsViewModel() }
+        .task { ensureTransactionsViewModel(); ensureReviewViewModel() }
+        .onChange(of: appState.householdId) { _, _ in ensureTransactionsViewModel(); ensureReviewViewModel() }
     }
 
     /// Settings as a full-screen cover (CLONE_SPEC §2.2 — not a
     /// tab). The tab underneath is left alone so dismissing Settings
-    /// returns to where the user was; the "Open Temporary Allowance"
-    /// link is the one exception — it closes Settings and switches
-    /// to Funds (see `AppViewModel.openTemporaryAllowance`).
+    /// returns to where the user was.
     private var settingsCover: some View {
         NavigationStack {
             if let context = settingsContext() {
                 SettingsView(
                     context: context,
                     onBack: {
-                        appState.settingsScrollTarget = nil
                         appState.dismissSettings()
                     },
-                    plaidLauncher: PlaidLinkKitLauncher(),
-                    scrollTarget: appState.settingsScrollTarget
+                    plaidLauncher: PlaidLinkKitLauncher()
                 )
             } else {
                 LoadingView()
@@ -134,8 +136,7 @@ public struct AppShellView: View {
 
     /// The Settings context the shell owns: session + household from
     /// AppViewModel, handoffs back into the shell. Past Weeks taps
-    /// land on Transactions filtered to that week; the Budget card's
-    /// Temporary Allowance link lands on the Funds form.
+    /// land on Transactions filtered to that week.
     private func settingsContext() -> SettingsContext? {
         guard let householdId = appState.householdId,
               let role = appState.role else { return nil }
@@ -153,8 +154,7 @@ public struct AppShellView: View {
                 Task { await appState.signOut() }
                 appState.showToast(message, kind: .info)
             },
-            onShowWeekTransactions: { appState.showTransactionsForWeek($0) },
-            onOpenTemporaryAllowance: { appState.openTemporaryAllowance() }
+            onShowWeekTransactions: { appState.showTransactionsForWeek($0) }
         )
     }
 
@@ -232,13 +232,16 @@ public struct AppShellView: View {
     /// the stack so the week-tap toast survives the pop.
     @ViewBuilder
     private var transactionsTab: some View {
-        if let viewModel = transactionsViewModel {
+        if let viewModel = transactionsViewModel,
+           let reviewViewModel = reviewViewModel {
             NavigationStack(path: $transactionsPath) {
                 TransactionsView(
                     viewModel: viewModel,
                     appState: appState,
+                    reviewViewModel: reviewViewModel,
                     onShowPastWeeks: { transactionsPath.append(.pastWeeks) },
-                    onShowActivity: { transactionsPath.append(.activity) }
+                    onShowActivity: { transactionsPath.append(.activity) },
+                    onShowReview: { transactionsPath.append(.review) }
                 )
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: TransactionsSubpage.self) { page in
@@ -261,6 +264,13 @@ public struct AppShellView: View {
             case .activity:
                 ActivityView(context: context, filter: historyFilter, onBack: popTransactionsSubpage)
                     .toolbar(.hidden, for: .navigationBar)
+            case .review:
+                if let reviewViewModel = reviewViewModel {
+                    ReviewPageView(viewModel: reviewViewModel, onBack: popTransactionsSubpage)
+                        .toolbar(.hidden, for: .navigationBar)
+                } else {
+                    LoadingView()
+                }
             }
         } else {
             LoadingView()
@@ -322,5 +332,22 @@ public struct AppShellView: View {
         )
         viewModel.onSignInAgain = { appState.showSessionExpired() }
         transactionsViewModel = viewModel
+    }
+
+    /// Build 30: the shell-owned FundsViewModel behind the
+    /// Transactions "Review" badge and the Review page. Same
+    /// household-change guard as the Transactions view model, and
+    /// the same FundsContext the Funds tab builds for itself.
+    private func ensureReviewViewModel() {
+        guard let householdId = appState.householdId,
+              let role = appState.role,
+              let userId = appState.client.currentSession?.user.id else { return }
+        guard reviewViewModel?.context.householdId != householdId else { return }
+        reviewViewModel = FundsViewModel(context: FundsContext(
+            client: appState.client,
+            householdId: householdId,
+            role: role,
+            userId: userId
+        ))
     }
 }

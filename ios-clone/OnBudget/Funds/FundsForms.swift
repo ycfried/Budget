@@ -348,6 +348,150 @@ public struct PayDebtForm: View {
     }
 }
 
+// MARK: - Clear Carried Debt, in part or in full (build 30)
+//
+// The owner asked for a slider, not a choice of amount / % / all:
+// one slider from $0 to the full debt, an editable number above it
+// (two-way bound — typing moves the slider, dragging updates the
+// number), and 10 / 25 / 50 / 75 % quick buttons below it. The
+// slider at max IS "all". A preview shows the remaining debt, then
+// a confirm writes the amount off — audited like the full clear,
+// NOT a payment from the Extra Fund ("Pay from Extra Fund" covers
+// paying). The % buttons floor to the cent, the same as the
+// server's percentage clear.
+
+public struct ClearDebtForm: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    /// Closes the form back to the Funds list (owned by FundsView).
+    public var onClose: () -> Void = {}
+    @State private var amountCents = 0
+    @State private var amountText = "0"
+    @State private var showConfirm = false
+    @State private var pendingCents: Int?
+
+    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
+        self.viewModel = viewModel
+        self.onClose = onClose
+    }
+
+    private var debtCents: Int? { viewModel.debtBalanceCents }
+    private var debtDollars: Double { Double(debtCents ?? 0) / 100 }
+
+    /// The slider's value in dollars, two-way bound to
+    /// `amountCents`: dragging writes the field text, and the
+    /// field / % buttons write the slider (through `setAmount`).
+    /// Step is one cent, so a % button's floored amount sits
+    /// exactly where the slider says it does.
+    private var sliderDollars: Binding<Double> {
+        Binding(
+            get: { Double(amountCents) / 100 },
+            set: { newValue in
+                amountCents = Int((newValue * 100).rounded())
+                amountText = dollarsText(amountCents)
+            }
+        )
+    }
+
+    /// Plain dollars for the field (`parseDollarsStrict` takes no
+    /// commas or $): whole dollars bare, cents with two decimals.
+    private func dollarsText(_ cents: Int) -> String {
+        if cents % 100 == 0 { return "\(cents / 100)" }
+        return String(format: "%.2f", Double(cents) / 100)
+    }
+
+    private func setAmount(_ cents: Int) {
+        let debt = debtCents ?? 0
+        amountCents = min(max(cents, 0), debt)
+        amountText = dollarsText(amountCents)
+    }
+
+    private var remainingCents: Int? {
+        guard let debt = debtCents else { return nil }
+        return max(0, debt - amountCents)
+    }
+
+    public var body: some View {
+        FundsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                FundsHeading("Clear Debt")
+                FundsMuted("Write off part of the carried debt — or all of it. No money moves; the amount is recorded in the activity log.")
+                if let debt = debtCents {
+                    FundsMoneyField("Amount to Clear ($)", text: $amountText)
+                        .onChange(of: amountText) { _, newValue in
+                            // Typing moves the slider. A value that
+                            // does not parse yet (mid-type) leaves
+                            // the slider where it was.
+                            if let cents = MoneyFormat.parseDollarsStrict(newValue) {
+                                amountCents = min(max(cents, 0), debt)
+                            }
+                        }
+                    Slider(value: sliderDollars, in: 0...max(debtDollars, 0), step: 0.01)
+                        .tint(DesignTokens.primary)
+                    HStack {
+                        Text("$0")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                        Spacer()
+                        Text(MoneyFormat.formatCents(debt))
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                    }
+                    HStack(spacing: 8) {
+                        ForEach([10, 25, 50, 75], id: \.self) { pct in
+                            FundsSmallTertiaryButton("\(pct)%") {
+                                setAmount((debt * pct) / 100)
+                            }
+                        }
+                        Spacer()
+                        FundsMuted("Slide to the end for all of it.")
+                    }
+                    if amountCents > 0, let remaining = remainingCents {
+                        FundsBreakdownRow("Remaining Debt", value: MoneyFormat.formatCents(remaining))
+                    } else {
+                        FundsMuted("Drag the slider or type an amount.")
+                    }
+                    HStack(spacing: 12) {
+                        // No greyed-out buttons (owner, Nov 13): the
+                        // confirm only appears once there is an
+                        // amount to clear.
+                        if amountCents > 0 {
+                            FundsPrimaryButton("Clear \(MoneyFormat.formatCents(amountCents))") {
+                                pendingCents = amountCents
+                                showConfirm = true
+                            }
+                        }
+                        FundsTertiaryButton("Cancel") { onClose() }
+                    }
+                } else if let error = viewModel.debtError {
+                    FundsErrorBox(error)
+                } else {
+                    SkeletonBlock(width: 200, height: 16)
+                }
+            }
+        }
+        .confirmationDialog(
+            "Clear Debt",
+            isPresented: $showConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(TitleCase.apply(to: "Clear Debt"), role: .destructive) {
+                if let pendingCents {
+                    Task {
+                        if await viewModel.clearDebt(amountCents: pendingCents, note: "") {
+                            onClose()
+                        }
+                    }
+                }
+            }
+            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+        } message: {
+            if let pendingCents, let remaining = remainingCents {
+                Text("Write off \(MoneyFormat.formatCents(pendingCents)) of the carried debt? \(MoneyFormat.formatCents(remaining)) will remain. No money moves.")
+            }
+        }
+    }
+}
+
 // MARK: - Ask for Fund Money (all roles — spec §9.3)
 //
 // "The admin approves or declines each request." Below the form:

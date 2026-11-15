@@ -9,9 +9,9 @@ import OnBudgetKit
 // — never `add_temp_increase`, which cannot represent a lower total
 // and must not be used as a fallback.
 //
-// Lives in the Settings Budget card (spec §10.4); built here because
-// the Funds workstream owns the allowance-override wiring. The
-// Settings builder embeds this view with the shared FundsViewModel.
+// Lives on the Funds page, as a form opened from the Spending fund
+// (build 30 — the Settings Budget card is gone); built here because
+// the Funds workstream owns the allowance-override wiring.
 
 public struct TemporaryAllowanceView: View {
     @ObservedObject public var viewModel: FundsViewModel

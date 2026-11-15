@@ -6,6 +6,9 @@ import Foundation
 /// (owner rule, Nov 11 2026 — native only, supersedes the web app's
 /// brand-blue success toasts; the web app stays blue); errors use the
 /// soft-red palette in `DesignTokens` instead.
+/// Success toasts use the Posted status badge treatment (owner,
+/// Nov 15, 2026): light green background #dcfce7 with dark green
+/// text #166534 — NOT the solid #22c55e bar they used to be.
 /// This is the style spec (hex values + behaviour); the SwiftUI
 /// rendering is built with the screens.
 public enum ToastStyle {
@@ -16,24 +19,28 @@ public enum ToastStyle {
         case error
     }
 
-    /// Toast background: brand primary blue for info, GREEN for
-    /// success, soft-red background for errors.
+    /// Toast background: brand primary blue for info, the Posted
+    /// badge's light green for success, soft-red background for
+    /// errors.
     public static func backgroundHex(for kind: Kind) -> String {
         switch kind {
         case .info:
             return DesignTokens.primaryHex
         case .success:
-            return DesignTokens.successHex
+            return DesignTokens.toastSuccessBackgroundHex
         case .error:
             return DesignTokens.errorBackgroundHex
         }
     }
 
-    /// Toast text: white on blue/green, dark red on soft-red.
+    /// Toast text: white on blue, the Posted badge's dark green on
+    /// the light-green success background, dark red on soft-red.
     public static func textHex(for kind: Kind) -> String {
         switch kind {
-        case .info, .success:
+        case .info:
             return "#ffffff"
+        case .success:
+            return DesignTokens.toastSuccessTextHex
         case .error:
             return DesignTokens.errorTextHex
         }

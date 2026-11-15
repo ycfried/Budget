@@ -742,10 +742,81 @@ extension RPCClient {
     /// Admin only. Erases the balance — no money moves — and audits
     /// it. Refused when there is no debt to clear. Returns the
     /// cleared amount in cents.
-    public func clearDebt(pHouseholdId: UUID, pNote: String) async throws -> Int {
-        try await callScalar(name: "clear_debt", params: [
+    /// `clear_debt(p_household_id, p_note, p_amount_cents, p_percent_bp)`
+    /// (build 30 — partial clear). Pass `pAmountCents` for an amount
+    /// clear, `pPercentBp` for a percentage clear (basis points,
+    /// floored server-side), or neither for a full clear. Only the
+    /// given params are sent, so the server defaults apply. Returns
+    /// the cleared cents.
+    public func clearDebt(pHouseholdId: UUID, pNote: String, pAmountCents: Int? = nil, pPercentBp: Int? = nil) async throws -> Int {
+        var params: [String: Any] = [
             "p_household_id": pHouseholdId.uuidString,
             "p_note": pNote,
+        ]
+        if let pAmountCents { params["p_amount_cents"] = pAmountCents }
+        if let pPercentBp { params["p_percent_bp"] = pPercentBp }
+        return try await callScalar(name: "clear_debt", params: params)
+    }
+
+    // MARK: - Merchant name rules (build 30, task E)
+    //
+    // Teachable rename + saved list. All four RPCs are admin-only
+    // server-side. `pFixedKind` is one of charge / refund /
+    // fund_charge / payment / cashback / charity / transfer /
+    // income, or nil for name-only. The server stores display
+    // names UPPER (like every `transactions.merchant` value).
+
+    /// `create_merchant_rule(p_household_id, p_pattern,
+    /// p_match_type, p_display_name, p_fixed_kind)` — returns the
+    /// rule id. `pMatchType` is "exact" or "prefix".
+    public func createMerchantRule(pHouseholdId: UUID, pPattern: String, pMatchType: String, pDisplayName: String, pFixedKind: String?) async throws -> UUID {
+        try await callScalar(name: "create_merchant_rule", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_pattern": pPattern,
+            "p_match_type": pMatchType,
+            "p_display_name": pDisplayName,
+            "p_fixed_kind": pFixedKind ?? NSNull(),
+        ])
+    }
+
+    /// `update_merchant_rule(p_rule_id, p_display_name,
+    /// p_fixed_kind, p_match_type)` — the pattern itself is
+    /// immutable: to teach a different spelling, delete the rule
+    /// and create a new one.
+    public func updateMerchantRule(pRuleId: UUID, pDisplayName: String, pFixedKind: String?, pMatchType: String) async throws {
+        try await callVoid(name: "update_merchant_rule", params: [
+            "p_rule_id": pRuleId.uuidString,
+            "p_display_name": pDisplayName,
+            "p_fixed_kind": pFixedKind ?? NSNull(),
+            "p_match_type": pMatchType,
+        ])
+    }
+
+    /// `delete_merchant_rule(p_rule_id)`.
+    public func deleteMerchantRule(pRuleId: UUID) async throws {
+        try await callVoid(name: "delete_merchant_rule", params: [
+            "p_rule_id": pRuleId.uuidString,
+        ])
+    }
+
+    /// `rename_transaction_and_apply_rule(p_transaction_id,
+    /// p_display_name, p_fixed_kind, p_match_type)` — teaches the
+    /// rule from this transaction's spelling and applies it to all
+    /// matching old rows. Returns the count of renamed rows.
+    public func renameTransactionAndApplyRule(pTransactionId: UUID, pDisplayName: String, pFixedKind: String?, pMatchType: String = "exact") async throws -> Int {
+        try await callScalar(name: "rename_transaction_and_apply_rule", params: [
+            "p_transaction_id": pTransactionId.uuidString,
+            "p_display_name": pDisplayName,
+            "p_fixed_kind": pFixedKind ?? NSNull(),
+            "p_match_type": pMatchType,
+        ])
+    }
+
+    /// `apply_merchant_rules_to_household(p_household_id)` —
+    /// re-applies every rule to every row in the household.
+    public func applyMerchantRulesToHousehold(pHouseholdId: UUID) async throws {
+        try await callVoid(name: "apply_merchant_rules_to_household", params: [
+            "p_household_id": pHouseholdId.uuidString,
         ])
     }
 }
