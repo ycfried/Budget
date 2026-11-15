@@ -17,11 +17,6 @@ public struct ReviewView: View {
     @State private var dedupeShownCount = 20
     @State private var resolvedShownCount = 20
     @State private var refundLinkShownCount = 20
-    @State private var confirmingRelease: HeldRefund?
-    @State private var confirmingDedupe: (candidate: DuplicateCandidate, action: DuplicateResolutionAction, rememberAlias: Bool)?
-    @State private var confirmingReopen: DuplicateCandidate?
-    @State private var confirmingLink: RefundSuggestion?
-    @State private var confirmingDismiss: RefundSuggestion?
 
     public init(viewModel: FundsViewModel) {
         self.viewModel = viewModel
@@ -33,112 +28,6 @@ public struct ReviewView: View {
             duplicatesSection
             resolvedSection
             refundLinksSection
-        }
-        .confirmationDialog(
-            "Release Held Refund",
-            isPresented: Binding(
-                get: { confirmingRelease != nil },
-                set: { if !$0 { confirmingRelease = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(TitleCase.apply(to: "Release")) {
-                if let held = confirmingRelease {
-                    Task { await viewModel.releaseHeldRefund(held) }
-                }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            if let held = confirmingRelease {
-                Text("Release \(MoneyFormat.formatCents(held.heldCents)) to spendable surplus? Any amount owed back is covered first.")
-            }
-        }
-        .confirmationDialog(
-            "Same Purchase",
-            isPresented: Binding(
-                get: { confirmingDedupe?.action == .merge },
-                set: { if !$0 { confirmingDedupe = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(TitleCase.apply(to: "Same Purchase")) {
-                if let pair = confirmingDedupe {
-                    Task { await viewModel.resolveDuplicate(pair.candidate, action: .merge, rememberAlias: pair.rememberAlias) }
-                }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            Text("Keep one transaction and exclude the other from counts? Neither row is deleted.")
-        }
-        .confirmationDialog(
-            "Separate Purchases",
-            isPresented: Binding(
-                get: { confirmingDedupe?.action == .separate },
-                set: { if !$0 { confirmingDedupe = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(TitleCase.apply(to: "Separate")) {
-                if let pair = confirmingDedupe {
-                    Task { await viewModel.resolveDuplicate(pair.candidate, action: .separate, rememberAlias: false) }
-                }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            Text("Keep both transactions and never flag this pair again?")
-        }
-        .confirmationDialog(
-            "Reopen Duplicate Review",
-            isPresented: Binding(
-                get: { confirmingReopen != nil },
-                set: { if !$0 { confirmingReopen = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(TitleCase.apply(to: "Reopen")) {
-                if let candidate = confirmingReopen {
-                    Task { await viewModel.reopenDuplicate(candidate) }
-                }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            Text("Show this pair in Possible Duplicates again?")
-        }
-        .confirmationDialog(
-            "Link Refund",
-            isPresented: Binding(
-                get: { confirmingLink != nil },
-                set: { if !$0 { confirmingLink = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(TitleCase.apply(to: "Link Refund")) {
-                if let suggestion = confirmingLink {
-                    Task { await viewModel.linkRefund(suggestion) }
-                }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            if let suggestion = confirmingLink {
-                Text("Link this \(TransactionFormatting.amountDisplay(for: suggestion.refund).text) refund from \(TitleCase.apply(to: suggestion.refund.merchant.lowercased())) to \(TitleCase.apply(to: suggestion.purchase.merchant.lowercased())) \(MoneyFormat.formatCents(suggestion.purchase.amountCents))?")
-            }
-        }
-        .confirmationDialog(
-            "Dismiss Suggestion",
-            isPresented: Binding(
-                get: { confirmingDismiss != nil },
-                set: { if !$0 { confirmingDismiss = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(TitleCase.apply(to: "Dismiss")) {
-                if let suggestion = confirmingDismiss {
-                    Task { await viewModel.dismissSuggestion(suggestion) }
-                }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            Text("Hide this suggestion? It will not be shown again.")
         }
     }
 
@@ -182,24 +71,12 @@ public struct ReviewView: View {
                 FundsMuted("Nothing held for review.")
             } else {
                 ForEach(viewModel.heldRefunds) { held in
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(MoneyFormat.formatCents(held.heldCents))
-                                .font(.system(size: 15, weight: .semibold))
-                            Text(heldStatusText(held))
-                                .font(.system(size: 14))
-                                .foregroundStyle(Color(hex: "#6b7280"))
-                        }
-                        Spacer()
-                        // PR #62 (live Nov 9, 2026): the server releases
-                        // on status='held'; the 'pending' arm is kept
-                        // only so a legacy row is not stranded.
-                        if held.status == "held" || held.status == "pending" {
-                            FundsSmallPrimaryButton("Release", isBusy: viewModel.busyAction == "release-\(held.id.uuidString)") {
-                                confirmingRelease = held
-                            }
-                        }
-                    }
+                    HeldRefundRow(
+                        held: held,
+                        statusText: heldStatusText(held),
+                        isBusy: viewModel.busyAction == "release-\(held.id.uuidString)",
+                        onRelease: { Task { await viewModel.releaseHeldRefund(held) } }
+                    )
                     if held.id != viewModel.heldRefunds.last?.id {
                         Divider()
                     }
@@ -230,10 +107,10 @@ public struct ReviewView: View {
                         duplicate: viewModel.duplicateTransactions[candidate.duplicateTransactionId],
                         isBusy: viewModel.busyAction == "dedupe-\(candidate.id.uuidString)",
                         onSamePurchase: { rememberAlias in
-                            confirmingDedupe = (candidate: candidate, action: .merge, rememberAlias: rememberAlias)
+                            Task { await viewModel.resolveDuplicate(candidate, action: .merge, rememberAlias: rememberAlias) }
                         },
                         onSeparate: {
-                            confirmingDedupe = (candidate: candidate, action: .separate, rememberAlias: false)
+                            Task { await viewModel.resolveDuplicate(candidate, action: .separate, rememberAlias: false) }
                         }
                     )
                 }
@@ -246,13 +123,16 @@ public struct ReviewView: View {
         }
     }
 
-    private func labeledRow(_ label: String, _ value: String, valueColor: Color? = nil) -> some View {
-        HStack {
-            Text(label).foregroundStyle(Color(hex: "#6b7280"))
-            Spacer()
-            Text(value).fontWeight(.medium).foregroundStyle(valueColor ?? DesignTokens.ink)
+    /// Resolved row, second line (build 30 redesign — shorter,
+    /// clearer): merchant names Title Cased above, then one short
+    /// line — status + date + a brief restore note for merges.
+    private func resolvedStatusLine(for row: DuplicateCandidate) -> String {
+        let when = row.resolvedAt.map { MoneyFormat.displayDay($0) } ?? ""
+        let datePart = when.isEmpty ? "" : " · \(when)"
+        if row.status == "merged" {
+            return "Merged\(datePart) — Restore from Trash."
         }
-        .font(.system(size: 14))
+        return "Kept separate\(datePart)."
     }
 
     // MARK: 3 — Resolved Duplicates
@@ -274,24 +154,12 @@ public struct ReviewView: View {
                     FundsMuted("Showing the first \(shown.count) of \(viewModel.resolvedDuplicates.count) resolved duplicates.")
                 }
                 ForEach(shown) { row in
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(row.merchantA) / \(row.merchantB)")
-                                .font(.system(size: 15, weight: .semibold))
-                            let when = row.resolvedAt.map { " · \(MoneyFormat.displayDay($0))" } ?? ""
-                            Text(row.status == "merged"
-                                 ? "Merged\(when) — the duplicate can be restored from Trash."
-                                 : "Kept separate\(when).")
-                                .font(.system(size: 14))
-                                .foregroundStyle(Color(hex: "#6b7280"))
-                        }
-                        Spacer()
-                        if row.status == "separate" {
-                            FundsSmallTertiaryButton("Reopen", isBusy: viewModel.busyAction == "reopen-\(row.id.uuidString)") {
-                                confirmingReopen = row
-                            }
-                        }
-                    }
+                    ResolvedDuplicateRow(
+                        row: row,
+                        statusLine: resolvedStatusLine(for: row),
+                        isBusy: viewModel.busyAction == "reopen-\(row.id.uuidString)",
+                        onReopen: { Task { await viewModel.reopenDuplicate(row) } }
+                    )
                     if row.id != shown.last?.id {
                         Divider()
                     }
@@ -323,7 +191,13 @@ public struct ReviewView: View {
                     FundsMuted("Showing the first \(shown.count) of \(viewModel.refundSuggestions.count) refund link suggestions.")
                 }
                 ForEach(shown) { suggestion in
-                    refundLinkCard(suggestion)
+                    RefundLinkCard(
+                        suggestion: suggestion,
+                        isLinkBusy: viewModel.busyAction == "link-\(suggestion.id)",
+                        isDismissBusy: viewModel.busyAction == "dismiss-\(suggestion.id)",
+                        onLink: { Task { await viewModel.linkRefund(suggestion) } },
+                        onDismiss: { Task { await viewModel.dismissSuggestion(suggestion) } }
+                    )
                 }
                 if viewModel.refundSuggestions.count > shown.count {
                     FundsSmallTertiaryButton("Show More") {
@@ -334,8 +208,100 @@ public struct ReviewView: View {
         }
     }
 
-    @ViewBuilder
-    private func refundLinkCard(_ suggestion: RefundSuggestion) -> some View {
+}
+
+/// One held-refund row. Its Release confirm hangs off the row's
+/// own button (build 30 anchoring fix — see DuplicatePairCard).
+private struct HeldRefundRow: View {
+    let held: HeldRefund
+    let statusText: String
+    let isBusy: Bool
+    let onRelease: () -> Void
+    @State private var showReleaseConfirm = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(MoneyFormat.formatCents(held.heldCents))
+                    .font(.system(size: 15, weight: .semibold))
+                Text(statusText)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
+            Spacer()
+            // PR #62 (live Nov 9, 2026): the server releases on
+            // status='held'; the 'pending' arm is kept only so a
+            // legacy row is not stranded.
+            if held.status == "held" || held.status == "pending" {
+                FundsSmallPrimaryButton("Release", isBusy: isBusy) {
+                    showReleaseConfirm = true
+                }
+                .confirmationDialog(
+                    "Release Held Refund",
+                    isPresented: $showReleaseConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button(TitleCase.apply(to: "Release")) { onRelease() }
+                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+                } message: {
+                    Text("Release \(MoneyFormat.formatCents(held.heldCents)) to spendable surplus? Any amount owed back is covered first.")
+                }
+            }
+        }
+    }
+}
+
+/// One resolved-duplicate row (build 30 redesign: Title-Cased
+/// names, one short status line). Its Reopen confirm hangs off
+/// the row's own button.
+private struct ResolvedDuplicateRow: View {
+    let row: DuplicateCandidate
+    let statusLine: String
+    let isBusy: Bool
+    let onReopen: () -> Void
+    @State private var showReopenConfirm = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(TitleCase.apply(to: row.merchantA.lowercased())) / \(TitleCase.apply(to: row.merchantB.lowercased()))")
+                    .font(.system(size: 15, weight: .semibold))
+                Text(statusLine)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
+            Spacer()
+            if row.status == "separate" {
+                FundsSmallTertiaryButton("Reopen", isBusy: isBusy) {
+                    showReopenConfirm = true
+                }
+                .confirmationDialog(
+                    "Reopen Duplicate Review",
+                    isPresented: $showReopenConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button(TitleCase.apply(to: "Reopen")) { onReopen() }
+                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+                } message: {
+                    Text("Show this pair in Possible Duplicates again?")
+                }
+            }
+        }
+    }
+}
+
+/// One refund-link suggestion card. Its Link / Dismiss confirms
+/// hang off their own buttons (build 30 anchoring fix).
+private struct RefundLinkCard: View {
+    let suggestion: RefundSuggestion
+    let isLinkBusy: Bool
+    let isDismissBusy: Bool
+    let onLink: () -> Void
+    let onDismiss: () -> Void
+    @State private var showLinkConfirm = false
+    @State private var showDismissConfirm = false
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(suggestion.reason.text)
                 .font(.system(size: 14, weight: .semibold))
@@ -344,11 +310,31 @@ public struct ReviewView: View {
                 refundLinkSide(label: "Purchase", transaction: suggestion.purchase)
             }
             HStack(spacing: 12) {
-                FundsSmallPrimaryButton("Link", isBusy: viewModel.busyAction == "link-\(suggestion.id)") {
-                    confirmingLink = suggestion
+                FundsSmallPrimaryButton("Link", isBusy: isLinkBusy) {
+                    showLinkConfirm = true
                 }
-                FundsSmallTertiaryButton("Dismiss", isBusy: viewModel.busyAction == "dismiss-\(suggestion.id)") {
-                    confirmingDismiss = suggestion
+                .confirmationDialog(
+                    "Link Refund",
+                    isPresented: $showLinkConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button(TitleCase.apply(to: "Link Refund")) { onLink() }
+                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+                } message: {
+                    Text("Link this \(TransactionFormatting.amountDisplay(for: suggestion.refund).text) refund from \(TitleCase.apply(to: suggestion.refund.merchant.lowercased())) to \(TitleCase.apply(to: suggestion.purchase.merchant.lowercased())) \(MoneyFormat.formatCents(suggestion.purchase.amountCents))?")
+                }
+                FundsSmallTertiaryButton("Dismiss", isBusy: isDismissBusy) {
+                    showDismissConfirm = true
+                }
+                .confirmationDialog(
+                    "Dismiss Suggestion",
+                    isPresented: $showDismissConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button(TitleCase.apply(to: "Dismiss")) { onDismiss() }
+                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+                } message: {
+                    Text("Hide this suggestion? It will not be shown again.")
                 }
             }
         }
@@ -375,6 +361,15 @@ public struct ReviewView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    private func labeledRow(_ label: String, _ value: String, valueColor: Color? = nil) -> some View {
+        HStack {
+            Text(label).foregroundStyle(Color(hex: "#6b7280"))
+            Spacer()
+            Text(value).fontWeight(.medium).foregroundStyle(valueColor ?? DesignTokens.ink)
+        }
+        .font(.system(size: 14))
+    }
 }
 
 // MARK: - One possible-duplicate comparison card (spec §9.4)
@@ -394,6 +389,8 @@ public struct DuplicatePairCard: View {
     public let onSamePurchase: (Bool) -> Void
     public let onSeparate: () -> Void
     @State private var rememberAlias = false
+    @State private var showSamePurchaseConfirm = false
+    @State private var showSeparateConfirm = false
 
     public init(
         candidate: DuplicateCandidate,
@@ -414,36 +411,55 @@ public struct DuplicatePairCard: View {
     private var matchLine: String {
         guard let keep, let duplicate else { return "Compare the two records below." }
         var parts: [String] = []
-        if keep.amountCents == duplicate.amountCents { parts.append("same amount") }
-        if keep.date == duplicate.date { parts.append("same date") }
-        if keep.cardSuffix == duplicate.cardSuffix { parts.append("same card") }
-        if keep.source == duplicate.source { parts.append("same source") }
-        return parts.isEmpty ? "Compare the two records below." : "Match: \(parts.joined(separator: ", "))."
+        if keep.amountCents == duplicate.amountCents { parts.append("Same Amount") }
+        if keep.date == duplicate.date { parts.append("Same Date") }
+        if keep.cardSuffix == duplicate.cardSuffix { parts.append("Same Card") }
+        if keep.source == duplicate.source { parts.append("Same Source") }
+        return parts.isEmpty ? "Compare the two records below." : parts.joined(separator: ", ")
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(matchLine)
                 .font(.system(size: 14, weight: .semibold))
-            if !candidate.merchantA.isEmpty, !candidate.merchantB.isEmpty {
-                Text("Flagged as a lookalike — merchant names look related: \(candidate.merchantA) / \(candidate.merchantB).")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-            }
             HStack(alignment: .top, spacing: 16) {
                 DuplicateSide(label: "Keep", transaction: keep, fallback: "Keep: transaction not found")
                 DuplicateSide(label: "Possible Duplicate", transaction: duplicate, fallback: "Possible duplicate: transaction not found")
             }
             HStack(spacing: 12) {
+                // Build 30: each confirm is a confirmationDialog on
+                // ITS button, not on the Review root — on iPad the
+                // root-anchored dialogs floated at the top of the
+                // page instead of next to the button tapped.
                 FundsSmallPrimaryButton("Same Purchase", isBusy: isBusy) {
-                    onSamePurchase(rememberAlias)
+                    showSamePurchaseConfirm = true
+                }
+                .confirmationDialog(
+                    "Same Purchase",
+                    isPresented: $showSamePurchaseConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button(TitleCase.apply(to: "Same Purchase")) { onSamePurchase(rememberAlias) }
+                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+                } message: {
+                    Text("Keep one transaction and exclude the other from counts? Neither row is deleted.")
                 }
                 FundsSmallTertiaryButton("Separate", isBusy: isBusy) {
-                    onSeparate()
+                    showSeparateConfirm = true
+                }
+                .confirmationDialog(
+                    "Separate Purchases",
+                    isPresented: $showSeparateConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button(TitleCase.apply(to: "Separate")) { onSeparate() }
+                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+                } message: {
+                    Text("Keep both transactions and never flag this pair again?")
                 }
             }
             Toggle(isOn: $rememberAlias) {
-                Text("Remember as same merchant — remembers these two merchant names as the same for future review, so similar pairs are treated as the same merchant next time.")
+                Text("Remember as same merchant")
                     .font(.system(size: 14))
             }
         }

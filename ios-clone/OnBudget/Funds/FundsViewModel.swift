@@ -186,6 +186,20 @@ public final class FundsViewModel: ObservableObject {
         await loadDebt()
     }
 
+    /// Review-only refresh (build 30): the Review page lives on
+    /// the Transactions tab now, on its own FundsViewModel instance
+    /// owned by the shell. It needs the transactions (refund
+    /// suggestions are computed from them) plus the review queues —
+    /// not the fund/charity/debt loads. The review actions keep
+    /// calling the full `refresh()` above, which still includes
+    /// `loadReview()`, so counts stay fresh after every resolve.
+    public func refreshReview() async {
+        isLoading = true
+        defer { isLoading = false }
+        await loadTransactions()
+        await loadReview()
+    }
+
     private func loadTransactions() async {
         do {
             allTransactions = try await context.client.postgrest.fetchAllPages(
@@ -686,11 +700,31 @@ public final class FundsViewModel: ObservableObject {
 
     /// Clear (erase) the debt balance via `clear_debt`. No money
     /// moves; the RPC audits it. Refused when there is no debt.
-    public func clearDebt(note: String) async {
-        await guarded("debt-clear", title: "Could Not Clear Debt") {
-            let cleared = try await context.client.rpcs.clearDebt(pHouseholdId: context.householdId, pNote: note)
-            succeed("Debt cleared — \(MoneyFormat.formatCents(cleared)) erased.")
+    /// Clear carried debt (admin only). `amountCents == nil` clears
+    /// ALL of it (build 29 behaviour); a value clears exactly that
+    /// much — a partial write-off, audited the same way, NOT a
+    /// payment from the Extra Fund (build 30). Returns true only
+    /// when the clear committed, so the form can close on success.
+    public func clearDebt(amountCents: Int? = nil, note: String = "") async -> Bool {
+        guard busyAction == nil else { return false }
+        busyAction = "debt-clear"
+        defer { busyAction = nil }
+        let before = debtBalanceCents ?? 0
+        do {
+            let cleared = try await context.client.rpcs.clearDebt(
+                pHouseholdId: context.householdId, pNote: note, pAmountCents: amountCents
+            )
+            let remaining = max(0, before - cleared)
+            if cleared >= before {
+                succeed("Debt cleared — \(MoneyFormat.formatCents(cleared)) erased.")
+            } else {
+                succeed("Cleared \(MoneyFormat.formatCents(cleared)) — \(MoneyFormat.formatCents(remaining)) of carried debt left.")
+            }
             await refresh()
+            return true
+        } catch {
+            fail(title: "Could Not Clear Debt", error: error)
+            return false
         }
     }
 

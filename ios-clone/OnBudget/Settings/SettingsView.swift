@@ -3,9 +3,9 @@
 // Entry: profile menu → Settings. Heading "Settings" + "← Back"
 // (returns to `previousView`, or Home after a reload — the
 // coordinator supplies `onBack`). Cards in order: Profile, Bank
-// Connection, Email Alerts, Account & Household. (The Budget card
-// moved to the Funds page's Spending fund, build 30 — ALL fund
-// settings live there now.)
+// Connection, Email Alerts, Account & Household, Merchant Names.
+// (The Budget card moved to the Funds page's Spending fund, build
+// 30 — ALL fund settings live there now.)
 //
 // Each card is its own view (ProfileSettingsView,
 // ConnectedAccountsView, EmailAlertsView, MembersSettingsView) so
@@ -48,6 +48,7 @@ struct SettingsView: View {
                 ConnectedAccountsView(context: context, toast: toast, plaidLauncher: plaidLauncher)
                 EmailAlertsView(context: context, toast: toast)
                 MembersSettingsView(context: context, toast: toast)
+                MerchantNamesSettingsView(context: context, toast: toast)
             }
             .padding()
         }

@@ -77,6 +77,17 @@ final class FundsReadDecodingTests: XCTestCase {
         XCTAssertEqual(rows[0].nameA, "AMAZON")
     }
 
+    func testMerchantRulesDecodeFromFixedColumns() throws {
+        let rows = try decode([MerchantRule].self, """
+            [{"id":"11111111-1111-1111-1111-111111111111","household_id":"\(householdId)","pattern_text":"BALTIMORE GAS AND ELECTRIC COMPANY","match_type":"exact","display_name":"BGE","fixed_kind":null,"created_at":"2026-11-15T12:00:00Z"},{"id":"22222222-2222-2222-2222-222222222222","household_id":"\(householdId)","pattern_text":"TOIREMORG","match_type":"prefix","display_name":"TOIREMORG","fixed_kind":"charity","created_at":"2026-11-15T12:00:00Z"}]
+            """)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].displayName, "BGE")
+        XCTAssertNil(rows[0].fixedKind)
+        XCTAssertEqual(rows[1].matchType, "prefix")
+        XCTAssertEqual(rows[1].fixedKind, "charity")
+    }
+
     func testRefundLinkDismissalsDecodeFromFixedColumns() throws {
         let rows = try decode([RefundLinkDismissal].self, """
             [{"household_id":"\(householdId)","refund_id":"11111111-1111-1111-1111-111111111111","purchase_id":"33333333-3333-3333-3333-333333333333"}]

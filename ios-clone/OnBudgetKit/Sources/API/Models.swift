@@ -1264,6 +1264,32 @@ public struct DuplicateCandidate: Equatable, Codable, Identifiable {
 
 /// One row of `merchant_aliases` — admin-confirmed evidence that two
 /// merchant spellings are the same place (live.js:2068).
+/// A merchant name rule (build 30, `merchant_rules`): one pattern
+/// maps to a clean display name plus an optional fixed kind
+/// (charity/income/transfer/payment/etc.). Rules apply at
+/// ingestion to new rows and to all matching old rows on rename.
+/// `pattern_key` / `pattern_squash` are server internals and are
+/// not fetched.
+public struct MerchantRule: Equatable, Codable, Identifiable {
+    public let id: UUID
+    public let householdId: UUID
+    public let patternText: String
+    public let matchType: String
+    public let displayName: String
+    public let fixedKind: String?
+    public let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case householdId = "household_id"
+        case patternText = "pattern_text"
+        case matchType = "match_type"
+        case displayName = "display_name"
+        case fixedKind = "fixed_kind"
+        case createdAt = "created_at"
+    }
+}
+
 public struct MerchantAlias: Equatable, Codable {
     public let id: UUID?
     public let householdId: UUID

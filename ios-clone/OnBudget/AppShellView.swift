@@ -47,11 +47,19 @@ import OnBudgetKit
 enum TransactionsSubpage: Hashable {
     case pastWeeks
     case activity
+    /// Build 30: Review moved off the Funds page to its own page
+    /// here (Transactions "Review" button with a count badge).
+    case review
 }
 
 public struct AppShellView: View {
     @ObservedObject var appState: AppViewModel
     @State private var transactionsViewModel: TransactionsViewModel?
+    /// The Review page's FundsViewModel, owned by the shell so the
+    /// Transactions tab's Review badge and the Review page share
+    /// one live instance (build 30). It only ever loads review
+    /// data (`refreshReview()`), never the fund loads.
+    @State private var reviewViewModel: FundsViewModel?
     /// The Transactions tab's navigation path. Owned by the shell
     /// (not the tab) so it survives tab switches and the week-tap
     /// pop in `historyContext()` can reach it.
@@ -103,8 +111,8 @@ public struct AppShellView: View {
         .onChange(of: appState.selectedTab) { _, _ in
             appState.toast = nil
         }
-        .task { ensureTransactionsViewModel() }
-        .onChange(of: appState.householdId) { _, _ in ensureTransactionsViewModel() }
+        .task { ensureTransactionsViewModel(); ensureReviewViewModel() }
+        .onChange(of: appState.householdId) { _, _ in ensureTransactionsViewModel(); ensureReviewViewModel() }
     }
 
     /// Settings as a full-screen cover (CLONE_SPEC §2.2 — not a
@@ -224,13 +232,16 @@ public struct AppShellView: View {
     /// the stack so the week-tap toast survives the pop.
     @ViewBuilder
     private var transactionsTab: some View {
-        if let viewModel = transactionsViewModel {
+        if let viewModel = transactionsViewModel,
+           let reviewViewModel = reviewViewModel {
             NavigationStack(path: $transactionsPath) {
                 TransactionsView(
                     viewModel: viewModel,
                     appState: appState,
+                    reviewViewModel: reviewViewModel,
                     onShowPastWeeks: { transactionsPath.append(.pastWeeks) },
-                    onShowActivity: { transactionsPath.append(.activity) }
+                    onShowActivity: { transactionsPath.append(.activity) },
+                    onShowReview: { transactionsPath.append(.review) }
                 )
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: TransactionsSubpage.self) { page in
@@ -253,6 +264,13 @@ public struct AppShellView: View {
             case .activity:
                 ActivityView(context: context, filter: historyFilter, onBack: popTransactionsSubpage)
                     .toolbar(.hidden, for: .navigationBar)
+            case .review:
+                if let reviewViewModel = reviewViewModel {
+                    ReviewPageView(viewModel: reviewViewModel, onBack: popTransactionsSubpage)
+                        .toolbar(.hidden, for: .navigationBar)
+                } else {
+                    LoadingView()
+                }
             }
         } else {
             LoadingView()
@@ -314,5 +332,22 @@ public struct AppShellView: View {
         )
         viewModel.onSignInAgain = { appState.showSessionExpired() }
         transactionsViewModel = viewModel
+    }
+
+    /// Build 30: the shell-owned FundsViewModel behind the
+    /// Transactions "Review" badge and the Review page. Same
+    /// household-change guard as the Transactions view model, and
+    /// the same FundsContext the Funds tab builds for itself.
+    private func ensureReviewViewModel() {
+        guard let householdId = appState.householdId,
+              let role = appState.role,
+              let userId = appState.client.currentSession?.user.id else { return }
+        guard reviewViewModel?.context.householdId != householdId else { return }
+        reviewViewModel = FundsViewModel(context: FundsContext(
+            client: appState.client,
+            householdId: householdId,
+            role: role,
+            userId: userId
+        ))
     }
 }

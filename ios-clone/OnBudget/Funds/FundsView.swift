@@ -38,13 +38,14 @@ public enum FundsForm: Equatable {
     case temp
     /// Pay Carried Debt from the Extra Fund (build 29).
     case payDebt
+    /// Clear Carried Debt in part or in full (build 30 — slider).
+    case clearDebt
 }
 
 public enum FundsMoreSection: Equatable {
     case fundActivity
     case charityActivity
     case debtActivity
-    case review
 }
 
 /// The four reorderable funds on the Funds page (build 30).
@@ -106,7 +107,6 @@ public struct FundsView: View {
     @State private var openForm: FundsForm?
     @State private var openMore: FundsMoreSection?
     @State private var correctingIncome: CharityIncome?
-    @State private var showClearDebtConfirm = false
     /// The funds' order on this page (build 30 — rearrangeable by
     /// dragging the handle in rearrange mode). Loaded per household,
     /// saved on every change.
@@ -146,6 +146,8 @@ public struct FundsView: View {
                         TemporaryAllowanceView(viewModel: viewModel)
                     case .payDebt:
                         PayDebtForm(viewModel: viewModel, onClose: { openForm = nil })
+                    case .clearDebt:
+                        ClearDebtForm(viewModel: viewModel, onClose: { openForm = nil })
                     }
                 } else {
                     rearrangeRow
@@ -153,19 +155,20 @@ public struct FundsView: View {
                     // fund is ONE container — its card heads the
                     // block and its rules, info and transactions sit
                     // inside the same card, not as loose rows below
-                    // it. Review stays standalone after them
-                    // (household-wide, not fund-specific). Spending
-                    // is first by default: the week's allowance is
-                    // the fund the week runs on (build 30 — moved
-                    // from Settings). The order is the user's own:
-                    // rearrange mode drags the containers into any
-                    // order and remembers it per household.
+                    // it. Review is NOT here any more (build 30): it
+                    // lives on its own page off Transactions, with a
+                    // count badge on the Review button there.
+                    // Spending is first by default: the week's
+                    // allowance is the fund the week runs on
+                    // (build 30 — moved from Settings). The order is
+                    // the user's own: rearrange mode drags the
+                    // containers into any order and remembers it per
+                    // household.
                     VStack(spacing: 24) {
                         ForEach(fundOrder) { id in
                             fundContainer(for: id)
                                 .onDrop(of: [.text], delegate: FundDropDelegate(fund: id, order: $fundOrder, dragging: $draggingFund))
                         }
-                        reviewSection
                     }
                 }
             }
@@ -295,6 +298,18 @@ public struct FundsView: View {
                     }
                     if let summary = viewModel.fundSummary {
                         FundsBreakdownRow("Available in Extra Fund", value: MoneyFormat.formatCents(summary.availableCents), isNegative: summary.availableCents < 0)
+                    }
+                }
+            }
+        case .clearDebt:
+            FundsCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let debt = viewModel.debtBalanceCents {
+                        FundsBreakdownRow("Carried debt", value: MoneyFormat.formatCents(debt))
+                    } else if let error = viewModel.debtError {
+                        FundsErrorBox(error)
+                    } else {
+                        SkeletonBlock(width: 160, height: 16)
                     }
                 }
             }
@@ -552,7 +567,11 @@ public struct FundsView: View {
                 HStack(spacing: 12) {
                     if isAdmin && viewModel.debtRule != nil {
                         FundsPrimaryButton("Pay from Extra Fund") { openForm = .payDebt }
-                        FundsTertiaryButton("Clear Debt") { showClearDebtConfirm = true }
+                        // No button that cannot work (owner, Nov 13):
+                        // with no debt left there is nothing to clear.
+                        if week.carriedDebtCents > 0 {
+                            FundsTertiaryButton("Clear Debt") { openForm = .clearDebt }
+                        }
                     } else {
                         FundsTertiaryButton("Close") { appState.expandedCard = nil }
                     }
@@ -566,20 +585,6 @@ public struct FundsView: View {
             }
         }
         .accessibilityIdentifier("funds.carriedDebt")
-        .confirmationDialog(
-            "Clear Debt",
-            isPresented: $showClearDebtConfirm,
-            titleVisibility: .visible
-        ) {
-            Button(TitleCase.apply(to: "Clear Debt"), role: .destructive) {
-                Task { await viewModel.clearDebt(note: "") }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            if let debt = viewModel.debtBalanceCents {
-                Text("Erase the \(MoneyFormat.formatCents(debt)) carried debt? No money moves — the balance is written off, and it is recorded in the activity log.")
-            }
-        }
     }
 
     /// Face text is only rendered when loaded: loading shows the
@@ -710,31 +715,11 @@ public struct FundsView: View {
     // the Extra Fund's top-ups and past savings records share one,
     // the Debt fund's payments and where the debt came from share
     // one, Charity's income is its one. Sub-parts keep a quiet
-    // muted inline label, never a bold sub-header. Review stays
-    // standalone after the fund sections — it's work needing
-    // attention, household-wide. Same expand-in-place row as the
-    // old More card; the sections hide while a form is open (the
-    // else branch above).
-
-    private var reviewSection: some View {
-        // Standalone after the fund containers, in its own card —
-        // Review is household-wide work, not one fund's. The card
-        // is gated with the row: members see neither.
-        Group {
-            if isAdmin {
-                FundsCard(padding: 0) {
-                    fundsSectionRow(
-                        title: viewModel.reviewCount > 0 ? "Review (\(viewModel.reviewCount))" : "Review",
-                        section: .review,
-                        isAdminOnly: true,
-                        hPad: 16
-                    ) {
-                        ReviewView(viewModel: viewModel)
-                    }
-                }
-            }
-        }
-    }
+    // muted inline label, never a bold sub-header. Review is NOT
+    // here any more (build 30): it lives on its own page off
+    // Transactions. Same expand-in-place row as the old More card;
+    // the sections hide while a form is open (the else branch
+    // above).
 
     private var fundActivitySection: some View {
         // ONE activity header per fund (owner, Nov 15, 2026 —
