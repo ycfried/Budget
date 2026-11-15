@@ -27,16 +27,20 @@ import OnBudgetKit
 ///   system-grey filled field, magnifier inside on the left, short
 ///   "Search transactions" placeholder, no explainer underneath.
 ///   Searches loaded transactions only (merchant / date / amount;
-///   250ms debounce; a new search resets the page to 100).
+///   250ms debounce). Filters apply client-side to the rows already
+///   loaded, so a search or filter change needs no refetch.
 /// - Active-filter chips: one removable chip per applied filter.
 /// - Count line: "`N` transactions · Total `$X`" (+ the
 ///   older-rows suffix when the probe row came back) — one quiet
 ///   muted line.
-/// - List: pages of 100. Fetch asks for `txLimit + 1`; the probe row
-///   decides whether Load More shows — a page of exactly 100 with no
-///   probe row does NOT show the button. Load More raises the limit
-///   by 100 and refreshes. Every filter/search/sort change is a new
-///   list: the page resets to 100.
+/// - List: pages of 25 (owner, Nov 15, 2026 — the list loaded
+///   everything at once and felt slow). Fetch asks for `pageSize +
+///   1`; the probe row decides whether Load More shows — a page of
+///   exactly 25 with no probe row does NOT show the button. Load
+///   More appends the next 25 (offset) and never refetches what is
+///   already loaded; the existing rows stay visible while it
+///   appends. Filters, search, and sort apply client-side to
+///   everything loaded so far.
 /// - Pull-to-refresh + manual sync icon (admin only), at the right
 ///   end of the Trash / Activity / Past Weeks row: the same
 ///   `arrow.clockwise` symbol as the Home Weekly Budget card, in a
@@ -568,6 +572,7 @@ public struct TransactionsView: View {
                 Task { await viewModel.loadMore() }
             }
             .buttonStyle(PrimaryButtonStyle())
+            .disabled(viewModel.isLoadingMore)
             .accessibilityLabel("Load more transactions")
         }
     }
