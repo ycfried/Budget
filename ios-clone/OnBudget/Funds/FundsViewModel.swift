@@ -53,6 +53,25 @@ public final class FundsViewModel: ObservableObject {
     @Published public var charityIncome: [CharityIncome] = []
     @Published public var charityIncomeError: String?
 
+    // MARK: - Carried Debt fund (build 29)
+
+    /// The repayment rule in effect. Nil until loaded; a missing row
+    /// means the default 25% rule. Nil after a failed read (the
+    /// tables not applied yet) — the rule editor and the debt
+    /// actions hide then, while the balance still shows.
+    @Published public var debtRule: DebtRule?
+    /// Every debt payment, newest first (all sources).
+    @Published public var debtPayments: [DebtPayment] = []
+    /// The current week's figures from compute-week: D is
+    /// `carriedDebtCents`, P is `debtPaymentCents` (nil on the old
+    /// server — then the old display).
+    @Published public var debtWeek: WeekResult?
+    /// Closed weeks, newest first — "Where it came from".
+    @Published public var debtHistory: [WeekClose] = []
+    /// Rule rows the audit log recorded ("Debt repayment rule changed").
+    @Published public var debtRuleAudit: [AuditLogEntry] = []
+    @Published public var debtError: String?
+
     // MARK: - Fund requests
 
     @Published public var fundRequests: [FundRequest] = []
@@ -130,6 +149,24 @@ public final class FundsViewModel: ObservableObject {
         return (covered: covered, added: amountCents - covered, after: shortfall - covered)
     }
 
+    // MARK: - Carried Debt fund (build 29)
+
+    /// The current carried-debt balance D, from this week's compute-week.
+    public var debtBalanceCents: Int? { debtWeek?.carriedDebtCents }
+    /// This week's payment P, from compute-week (nil on the old server).
+    public var debtPaymentCents: Int? { debtWeek?.debtPaymentCents }
+
+    /// The rule's preview: the weekly payment and the week-starts-at
+    /// figure, from the base only ("Each week $X goes to debt — the
+    /// week starts at $Y"). Nil when the base, the balance, or the
+    /// rule is unknown. The server's payment is authoritative; this
+    /// shares the engine's rule exactly (DebtRule.paymentCents).
+    public func debtPaymentPreview() -> (payment: Int, weekStartsAt: Int)? {
+        guard let base = baseAllowanceCents, let debt = debtBalanceCents, let rule = debtRule else { return nil }
+        let payment = DebtRule.paymentCents(baseCents: base, debtCents: debt, rule: rule)
+        return (payment: payment, weekStartsAt: base - payment)
+    }
+
     // MARK: - Refresh
 
     /// Loads every section. Each section fails independently (a failed
@@ -146,6 +183,7 @@ public final class FundsViewModel: ObservableObject {
         await loadSavings()
         await loadReview()
         await loadAllowance()
+        await loadDebt()
     }
 
     private func loadTransactions() async {
@@ -353,6 +391,51 @@ public final class FundsViewModel: ObservableObject {
         await loadAllowance()
     }
 
+    // MARK: - Carried Debt fund (build 29)
+
+    /// Loads the Debt section. The current week's figures are the
+    /// core: D is the balance, P is this week's payment. compute-week
+    /// answers on the old server too (without debt_payment_cents);
+    /// the rule and payments reads need the new tables, so each
+    /// fails independently — a failed rule/payments read hides the
+    /// editor and the actions, while the balance still shows.
+    private func loadDebt() async {
+        do {
+            debtWeek = try await context.client.functions.computeWeek(householdId: context.householdId)
+        } catch {
+            debtWeek = nil
+            debtRule = nil
+            debtPayments = []
+            debtHistory = []
+            debtRuleAudit = []
+            debtError = "Could not load debt. Try again."
+            return
+        }
+        debtError = nil
+        do {
+            debtRule = try await context.client.postgrest.debtSettings(householdId: context.householdId) ?? .default
+        } catch {
+            debtRule = nil
+        }
+        do {
+            debtPayments = try await context.client.postgrest.debtPayments(householdId: context.householdId)
+        } catch {
+            debtPayments = []
+        }
+        do {
+            debtHistory = try await context.client.postgrest.weekCloses(householdId: context.householdId)
+                .sorted { $0.weekStart > $1.weekStart }
+        } catch {
+            debtHistory = []
+        }
+        do {
+            let page = try await context.client.postgrest.auditLogPage(householdId: context.householdId, limit: 100)
+            debtRuleAudit = page.rows.filter { $0.action == "Debt repayment rule changed" }
+        } catch {
+            debtRuleAudit = []
+        }
+    }
+
     // MARK: - Errors / toasts
 
     public func userMessage(for error: Error) -> String {
@@ -554,6 +637,47 @@ public final class FundsViewModel: ObservableObject {
                 weeks: weeks
             )
             succeed("Weekly allowance override removed — the base allowance applies again.")
+            await refresh()
+        }
+    }
+
+    // MARK: - Carried Debt fund (admin only, build 29)
+
+    /// Set the repayment rule via `set_debt_repayment_rule`.
+    /// Future-only: it applies to the current open week and future
+    /// weeks; closed weeks keep their stored payment.
+    public func setDebtRule(_ rule: DebtRule) async {
+        await guarded("debt-rule", title: "Could Not Save Rule") {
+            try await context.client.rpcs.setDebtRepaymentRule(pHouseholdId: context.householdId, rule: rule)
+            succeed("Debt repayment rule saved.")
+            await refresh()
+        }
+    }
+
+    /// Pay debt from the Extra Fund via `pay_debt_from_fund`.
+    /// Returns the remaining debt in cents. Throws `.insufficientFund`
+    /// so the view can offer the typed-reason override retry, like
+    /// `allocateFund` — the form surfaces that sheet instead of
+    /// alerting. Refused when the amount exceeds the remaining debt
+    /// (never silently partial).
+    public func payDebtFromFund(amountCents: Int, note: String, overrideReason: String?) async throws -> Int {
+        let remaining = try await context.client.rpcs.payDebtFromFund(
+            pHouseholdId: context.householdId,
+            pAmountCents: amountCents,
+            pNote: note,
+            pOverrideReason: overrideReason
+        )
+        succeed("Debt payment recorded — \(MoneyFormat.formatCents(remaining)) left.")
+        await refresh()
+        return remaining
+    }
+
+    /// Clear (erase) the debt balance via `clear_debt`. No money
+    /// moves; the RPC audits it. Refused when there is no debt.
+    public func clearDebt(note: String) async {
+        await guarded("debt-clear", title: "Could Not Clear Debt") {
+            let cleared = try await context.client.rpcs.clearDebt(pHouseholdId: context.householdId, pNote: note)
+            succeed("Debt cleared — \(MoneyFormat.formatCents(cleared)) erased.")
             await refresh()
         }
     }
