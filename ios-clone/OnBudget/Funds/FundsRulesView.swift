@@ -4,12 +4,14 @@ import OnBudgetKit
 // MARK: - Per-fund rules & info (owner, Nov 15, 2026)
 //
 // The old shared "Funds & Charity Rules" card is split by fund —
-// the page reads as two fund sections now, and each fund's own
+// the page reads as three fund sections now, and each fund's own
 // pieces sit under its card:
 // - Extra Fund: the shortfall line ("Nothing owed back right
 //   now." / "Owed back now: $X.") lives under the Extra Fund card.
 // - Charity: the Default Charity Rate editor + How It Works live
 //   under the Charity card.
+// - Carried Debt (build 29): the Debt Repayment Rule editor lives
+//   under the Carried Debt card.
 // Nothing was removed: the rate editor, the shortfall line, and
 // the three How It Works blocks are the same content, just re-homed.
 //
@@ -261,5 +263,182 @@ public struct HowItWorksSection: View {
                 .font(.system(size: 14))
                 .foregroundStyle(Color(hex: "#6b7280"))
         }
+    }
+}
+
+/// Debt Repayment Rule, under the Carried Debt card (build 29): the
+/// rule row plus the admin editor (Percent / Fixed $ / Off + value
+/// + Save, Reset a small quiet link) and the preview line. No
+/// heading — the "Debt Repayment Rule" row says what it is, and the
+/// Carried Debt card above is the section header. A rule change is
+/// future-only: it applies to the current open week and future
+/// weeks; closed weeks keep their stored payment. The rule lives
+/// here and nowhere else — never in Settings (owner, Nov 15, 2026:
+/// ALL fund-related settings belong on the Funds page).
+///
+/// Visibility decision: the rule section is visible to every role,
+/// read-only for regular members ("Only the admin can change the
+/// debt repayment rule."). Members already see the debt balance;
+/// hiding the rule that produces this week's payment would leave
+/// it unexplained.
+public struct DebtRuleSection: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    @State private var selectedMode: DebtRule.Mode = .percent
+    @State private var percentText = ""
+    @State private var fixedText = ""
+    @State private var ruleError: String?
+
+    public init(viewModel: FundsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    private var isAdmin: Bool { viewModel.context.isAdmin }
+    private var savedRule: DebtRule { viewModel.debtRule ?? .default }
+
+    /// The rule the admin has picked in the editor, when it parses.
+    private var pendingRule: DebtRule? {
+        switch selectedMode {
+        case .percent:
+            guard let bp = MoneyFormat.parseRatePercent(percentText) else { return nil }
+            return DebtRule(mode: .percent, percentBp: bp)
+        case .fixed:
+            guard let cents = MoneyFormat.parseDollarsStrict(fixedText), cents > 0 else { return nil }
+            return DebtRule(mode: .fixed, fixedCents: cents)
+        case .off:
+            return DebtRule(mode: .off)
+        }
+    }
+
+    /// True when the editor holds a valid rule that differs from the
+    /// saved one — the only case the preview describes the new rule.
+    private var pendingDiffers: Bool {
+        guard let pending = pendingRule else { return false }
+        return pending != savedRule
+    }
+
+    private var ruleText: String {
+        switch savedRule.mode {
+        case .percent: return "\(MoneyFormat.formatRateBp(savedRule.percentBp))% of Base"
+        case .fixed: return "\(MoneyFormat.formatCents(savedRule.fixedCents)) per Week"
+        case .off: return "Off"
+        }
+    }
+
+    public var body: some View {
+        FundsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                if viewModel.debtRule == nil {
+                    if let error = viewModel.debtError {
+                        FundsErrorBox(error)
+                    } else {
+                        FundsMuted("Loading rules…")
+                    }
+                } else {
+                    FundsBreakdownRow("Debt Repayment Rule", value: ruleText)
+                    if isAdmin {
+                        ruleEditor
+                    } else {
+                        FundsMuted("Only the admin can change the debt repayment rule.")
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier("funds.debtRule")
+        .onAppear { syncFromSaved() }
+        .onChange(of: savedRule) { _, _ in syncFromSaved() }
+    }
+
+    private func syncFromSaved() {
+        selectedMode = savedRule.mode
+        percentText = MoneyFormat.formatRateBp(savedRule.percentBp)
+        fixedText = savedRule.fixedCents > 0 ? String(format: "%.2f", Double(savedRule.fixedCents) / 100.0) : ""
+    }
+
+    private var ruleEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Rule", selection: $selectedMode) {
+                Text("Percent").tag(DebtRule.Mode.percent)
+                Text("Fixed $").tag(DebtRule.Mode.fixed)
+                Text("Off").tag(DebtRule.Mode.off)
+            }
+            .pickerStyle(.segmented)
+            if selectedMode == .percent {
+                HStack(spacing: 10) {
+                    TextField(MoneyFormat.formatRateBp(savedRule.percentBp), text: $percentText)
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 90)
+                    Text("% of base")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+            } else if selectedMode == .fixed {
+                DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: 140)
+            }
+            HStack(spacing: 10) {
+                FundsSmallPrimaryButton("Save", isBusy: viewModel.busyAction == "debt-rule") {
+                    saveRule()
+                }
+                FundsQuietButton("Reset") {
+                    syncFromSaved()
+                    ruleError = nil
+                }
+            }
+            previewLine
+            if let ruleError {
+                FundsErrorBox(ruleError)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var previewLine: some View {
+        if pendingDiffers, let pending = pendingRule {
+            // The preview describes the PENDING rule, from the base
+            // only — the same caps the server applies.
+            if let base = viewModel.baseAllowanceCents, let debt = viewModel.debtBalanceCents {
+                let payment = DebtRule.paymentCents(baseCents: base, debtCents: debt, rule: pending)
+                FundsMuted("Each week \(MoneyFormat.formatCents(payment)) goes to debt — the week starts at \(MoneyFormat.formatCents(base - payment)). Future weeks only; closed weeks keep their stored payment.")
+            } else {
+                FundsMuted("Each week \(pendingRuleText(pending)) goes to debt. Future weeks only; closed weeks keep their stored payment.")
+            }
+        } else if savedRule.mode == .off {
+            FundsMuted("The rule is off — no part of the base goes to debt each week. Unspent allowance at week close still pays the debt first.")
+        } else if let preview = viewModel.debtPaymentPreview() {
+            FundsMuted("Each week \(MoneyFormat.formatCents(preview.payment)) goes to debt — the week starts at \(MoneyFormat.formatCents(preview.weekStartsAt)).")
+        } else if pendingRule == nil && selectedMode != .off {
+            // Unparseable or empty value text must never fall through
+            // to a line describing a rule that does not exist (F-P2-10).
+            FundsMuted("Enter a value to see how it applies.")
+        }
+    }
+
+    private func pendingRuleText(_ rule: DebtRule) -> String {
+        switch rule.mode {
+        case .percent: return "\(MoneyFormat.formatRateBp(rule.percentBp))% of the base"
+        case .fixed: return MoneyFormat.formatCents(rule.fixedCents)
+        case .off: return "nothing"
+        }
+    }
+
+    private func saveRule() {
+        guard let pending = pendingRule else {
+            ruleError = selectedMode == .percent
+                ? "Enter a percent between 0 and 100."
+                : "Enter an amount over $0."
+            return
+        }
+        guard pending != savedRule else {
+            ruleError = "That is already the rule."
+            return
+        }
+        if pending.mode == .fixed,
+           let base = viewModel.baseAllowanceCents,
+           pending.fixedCents > base {
+            ruleError = "The fixed amount cannot be more than the base allowance (\(MoneyFormat.formatCents(base)))."
+            return
+        }
+        ruleError = nil
+        Task { await viewModel.setDebtRule(pending) }
     }
 }

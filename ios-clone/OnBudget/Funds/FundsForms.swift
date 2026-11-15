@@ -223,6 +223,131 @@ public struct UseFundForm: View {
     }
 }
 
+// MARK: - Pay Carried Debt from Extra Fund (admin only, build 29)
+//
+// Mirrors UseFundForm: amount + note + confirmation dialog, and the
+// same "Fund Is Short" typed-reason override sheet when the Extra
+// Fund does not cover the amount. The server refuses an amount over
+// the remaining debt (never silently partial) and returns the debt
+// left after the payment.
+
+public struct PayDebtForm: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    /// Closes the form back to the Funds list (owned by FundsView).
+    public var onClose: () -> Void = {}
+    @State private var amountText = ""
+    @State private var note = ""
+    @State private var fieldError: String?
+    @State private var showConfirm = false
+    @State private var showOverride = false
+    @State private var overrideReason = ""
+    @State private var pendingCents: Int?
+
+    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
+        self.viewModel = viewModel
+        self.onClose = onClose
+    }
+
+    private var amountCents: Int? { MoneyFormat.parseDollarsStrict(amountText) }
+
+    /// The preview line: what leaves the Extra Fund and what the
+    /// debt becomes. Client-side only — the server's remaining debt
+    /// (returned by the RPC) is authoritative.
+    private var previewText: String? {
+        guard let cents = amountCents, cents > 0,
+              let debt = viewModel.debtBalanceCents else { return nil }
+        return "\(MoneyFormat.formatCents(cents)) leaves the Extra Fund, debt becomes \(MoneyFormat.formatCents(max(0, debt - cents)))."
+    }
+
+    public var body: some View {
+        FundsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                FundsHeading("Pay Debt from Extra Fund")
+                FundsMuted("Lowers the carried debt and the Extra Fund balance.")
+                FundsMoneyField("Amount ($)", text: $amountText)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Note (optional)")
+                        .font(.system(size: 14, weight: .semibold))
+                    TextField("", text: $note)
+                        .textFieldStyle(.roundedBorder)
+                }
+                if let previewText {
+                    FundsMuted(previewText)
+                }
+                if let fieldError {
+                    FundsErrorBox(fieldError)
+                }
+                HStack(spacing: 12) {
+                    FundsPrimaryButton("Pay Debt") {
+                        guard let cents = amountCents, cents > 0 else {
+                            fieldError = "Enter a valid amount."
+                            return
+                        }
+                        if let debt = viewModel.debtBalanceCents, cents > debt {
+                            fieldError = "That is more than the \(MoneyFormat.formatCents(debt)) debt left."
+                            return
+                        }
+                        fieldError = nil
+                        pendingCents = cents
+                        showConfirm = true
+                    }
+                    FundsTertiaryButton("Cancel") {
+                        amountText = ""
+                        note = ""
+                        fieldError = nil
+                        onClose()
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            "Pay Debt from Extra Fund",
+            isPresented: $showConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(TitleCase.apply(to: "Pay Debt")) {
+                Task { await record(overrideReason: nil) }
+            }
+            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+        } message: {
+            if let pendingCents {
+                Text(previewText ?? "Pay \(MoneyFormat.formatCents(pendingCents)) toward the carried debt?")
+            }
+        }
+        .alert("Fund Is Short", isPresented: $showOverride) {
+            TextField("Reason for overriding", text: $overrideReason)
+            Button(TitleCase.apply(to: "Pay Anyway")) {
+                Task { await record(overrideReason: overrideReason.trimmingCharacters(in: .whitespaces)) }
+            }
+            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+        } message: {
+            if let pendingCents {
+                Text("The fund does not cover \(MoneyFormat.formatCents(pendingCents)). Pay it anyway with a typed reason — it will be logged.")
+            }
+        }
+    }
+
+    private func record(overrideReason: String?) async {
+        guard let cents = pendingCents else { return }
+        do {
+            _ = try await viewModel.payDebtFromFund(amountCents: cents, note: note.trimmingCharacters(in: .whitespaces), overrideReason: overrideReason)
+            amountText = ""
+            note = ""
+            pendingCents = nil
+        } catch let error as OnBudgetError {
+            if case .insufficientFund = error, overrideReason == nil {
+                showOverride = true
+            } else {
+                viewModel.alertTitle = "Could Not Pay Debt"
+                viewModel.alertMessage = error.displayMessage
+            }
+        } catch {
+            viewModel.alertTitle = "Could Not Pay Debt"
+            viewModel.alertMessage = OnBudgetError.displayMessage(for: error)
+        }
+    }
+}
+
 // MARK: - Ask for Fund Money (all roles — spec §9.3)
 //
 // "The admin approves or declines each request." Below the form:
