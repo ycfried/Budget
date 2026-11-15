@@ -63,10 +63,7 @@ public struct TemporaryAllowanceView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("New Total")
                         .font(.system(size: 14, weight: .semibold))
-                    TextField("$0.00", text: $newTotalText)
-                        .keyboardType(.decimalPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 200, height: 46)
+                    DollarTextField(text: $newTotalText, maxWidth: 200, minHeight: 46)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Weeks")

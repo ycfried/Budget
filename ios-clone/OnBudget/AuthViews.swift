@@ -161,6 +161,7 @@ public struct AuthView: View {
                 // narrow form sheet on iPad and the content floated
                 // in dead space. .fitted hugs the content height.
                 .presentationSizing(.fitted)
+                .presentationBackground(.white)
         }
         .onAppear {
             // Sign-out lands here fresh: password and message

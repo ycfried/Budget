@@ -3,7 +3,8 @@
 // Home-screen widget (native build 17, owner-approved Nov 12, 2026;
 // redesigned build 26, owner Nov 14, 2026): the weekly spending
 // balance and the charity balance — the same two numbers the Home
-// screen shows, nothing else. Small, medium and large.
+// screen shows, nothing else. Small, medium, large and extra-large
+// (extra-large is iPad-only).
 //
 // Redesign (owner, Nov 14, 2026 — the medium widget was "super
 // ugly.. basic.. like a kindergartener made it"): no more plain
@@ -13,8 +14,9 @@
 // between the two numbers. The data is unchanged: the same two
 // numbers (weekly balance, charity remaining) from the same
 // WidgetSnapshot, the same freshness rule and "Updated …" line,
-// the same privacySensitive figures. Large adds the week range and
-// a spent-this-week line — only when the snapshot carries it.
+// the same privacySensitive figures. Large and extra-large add the
+// week range and a donut — spent vs left of the weekly allowance
+// (owner, Nov 15, 2026; the spent line the donut replaces is gone).
 //
 // Data path: the app writes a WidgetSnapshot into the shared App
 // Groups container at the end of every Home refresh; the widget only
@@ -86,8 +88,8 @@ private func shortWeekStart(_ weekStart: String) -> String? {
 }
 
 /// "Nov 7 – Nov 13" from a "2026-11-07" week-start string (weeks run
-/// 7 days); nil when unparseable. The large widget shows the range;
-/// medium keeps the shorter "Week of Nov 7".
+/// 7 days); nil when unparseable. The large and extra-large widgets
+/// show the range; medium keeps the shorter "Week of Nov 7".
 private func weekRange(_ weekStart: String) -> String? {
     let parser = DateFormatter()
     parser.dateFormat = "yyyy-MM-dd"
@@ -119,6 +121,8 @@ struct WidgetView: View {
         if let snapshot = entry.snapshot {
             let stale = snapshot.isStale(at: entry.date)
             switch family {
+            case .systemExtraLarge:
+                extraLarge(snapshot: snapshot, stale: stale)
             case .systemLarge:
                 large(snapshot: snapshot, stale: stale)
             case .systemMedium:
@@ -131,11 +135,48 @@ struct WidgetView: View {
         }
     }
 
-    /// Quiet wordmark: ink, semibold — not the old blue text.
+    /// Quiet brandmark: the real logo mark beside the ink wordmark
+    /// (owner, Nov 15, 2026 — the header showed only the plain
+    /// "OnBudget" wordmark). AppLogo comes from the shared asset
+    /// catalog, which the widget target includes.
     private var wordmark: some View {
-        Text("OnBudget")
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(DesignTokens.ink)
+        HStack(spacing: 6) {
+            Image("AppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 20, height: 20)
+                .clipShape(Circle())
+            Text("OnBudget")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DesignTokens.ink)
+        }
+    }
+
+    /// Donut: spent vs left of the weekly allowance (owner, Nov 15,
+    /// 2026). Spent slice brand blue, over budget the muted red
+    /// #991b1b (full ring), remaining slice light grey. The centre
+    /// shows the spent percentage. Shown only when the snapshot
+    /// carries a spent figure. privacySensitive like the figures.
+    private func donut(snapshot: WidgetSnapshot, size: CGFloat) -> some View {
+        let fraction = snapshot.spentFraction ?? 0
+        let overBudget = snapshot.availableCents < 0
+        return ZStack {
+            Circle()
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 10)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(
+                    overBudget ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                    style: StrokeStyle(lineWidth: 10, lineCap: fraction >= 1 ? .butt : .round)
+                )
+                .rotationEffect(.degrees(-90))
+            Text("\(Int((fraction * 100).rounded()))%")
+                .font(.system(size: size * 0.22, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(DesignTokens.ink)
+        }
+        .frame(width: size, height: size)
+        .privacySensitive()
     }
 
     /// Muted small label above a figure.
@@ -173,7 +214,7 @@ struct WidgetView: View {
                 )
             }
             VStack(alignment: .leading, spacing: 2) {
-                figureLabel("Charity left to give")
+                figureLabel("Charity left")
                 figure(cents: snapshot.charityRemainingCents, color: DesignTokens.charityDeep, size: 20)
             }
             Spacer(minLength: 0)
@@ -205,7 +246,7 @@ struct WidgetView: View {
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 2) {
-                    figureLabel("Charity left to give")
+                    figureLabel("Charity left")
                     figure(cents: snapshot.charityRemainingCents, color: DesignTokens.charityDeep, size: 28)
                 }
                 Spacer(minLength: 0)
@@ -228,26 +269,81 @@ struct WidgetView: View {
                         .foregroundStyle(DesignTokens.muted)
                 }
             }
-            VStack(alignment: .leading, spacing: 2) {
-                figureLabel("Left this week")
-                figure(
-                    cents: snapshot.availableCents,
-                    color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.ink,
-                    size: 36
-                )
-                // Spent line (only when the snapshot carries it —
-                // snapshots written before build 26 have none).
-                if let spent = snapshot.spentCents {
-                    Text("Spent \(MoneyFormat.string(cents: spent)) this week")
-                        .font(.subheadline)
-                        .foregroundStyle(DesignTokens.muted)
-                        .padding(.top, 2)
+            // Two spacers, not one (owner, Nov 15, 2026): the
+            // single spacer above "Updated" left one dead gap —
+            // the slack is now split above and below the content.
+            Spacer(minLength: 0)
+            HStack(alignment: .center, spacing: 20) {
+                if snapshot.spentCents != nil {
+                    donut(snapshot: snapshot, size: 110)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    figureLabel("Left this week")
+                    figure(
+                        cents: snapshot.availableCents,
+                        color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.ink,
+                        size: 36
+                    )
+                    if let spent = snapshot.spentCents {
+                        Text("of \(MoneyFormat.string(cents: spent + snapshot.availableCents)) allowance")
+                            .font(.subheadline)
+                            .foregroundStyle(DesignTokens.muted)
+                    }
                 }
             }
             Divider()
             VStack(alignment: .leading, spacing: 2) {
-                figureLabel("Charity left to give")
+                figureLabel("Charity left")
                 figure(cents: snapshot.charityRemainingCents, color: DesignTokens.charityDeep, size: 36)
+            }
+            Spacer(minLength: 0)
+            updatedLine(snapshot: snapshot, stale: stale)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .containerBackground(background, for: .widget)
+    }
+
+    /// Extra-large (iPad-only): the large layout's design language
+    /// on the wide canvas — weekly block (donut + figure) and
+    /// charity block side by side with a vertical divider between
+    /// them, same two numbers, same freshness line.
+    private func extraLarge(snapshot: WidgetSnapshot, stale: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                wordmark
+                Spacer()
+                if let range = weekRange(snapshot.weekStart) {
+                    Text(range)
+                        .font(.caption)
+                        .foregroundStyle(DesignTokens.muted)
+                }
+            }
+            Spacer(minLength: 0)
+            HStack(alignment: .center, spacing: 32) {
+                HStack(alignment: .center, spacing: 20) {
+                    if snapshot.spentCents != nil {
+                        donut(snapshot: snapshot, size: 120)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        figureLabel("Left this week")
+                        figure(
+                            cents: snapshot.availableCents,
+                            color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.ink,
+                            size: 44
+                        )
+                        if let spent = snapshot.spentCents {
+                            Text("of \(MoneyFormat.string(cents: spent + snapshot.availableCents)) allowance")
+                                .font(.subheadline)
+                                .foregroundStyle(DesignTokens.muted)
+                        }
+                    }
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 2) {
+                    figureLabel("Charity left")
+                    figure(cents: snapshot.charityRemainingCents, color: DesignTokens.charityDeep, size: 44)
+                }
+                Spacer(minLength: 0)
             }
             Spacer(minLength: 0)
             updatedLine(snapshot: snapshot, stale: stale)
@@ -280,6 +376,8 @@ struct OnBudgetWidget: Widget {
         }
         .configurationDisplayName("OnBudget")
         .description("Weekly spending balance and charity balance.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        // Extra-large is iPad-only — it never appears on iPhone,
+        // where large stays the biggest.
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }
 }

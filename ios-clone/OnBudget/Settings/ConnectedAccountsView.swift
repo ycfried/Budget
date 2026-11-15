@@ -600,6 +600,7 @@ struct ConnectedAccountsView: View {
                 // as the Weekly Budget sheet — fitted height + 600pt
                 // width in the regular size class.
                 .presentationSizing(.fitted)
+                .presentationBackground(.white)
         }
     }
 

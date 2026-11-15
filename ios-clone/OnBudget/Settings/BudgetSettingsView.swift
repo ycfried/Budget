@@ -131,15 +131,7 @@ struct BudgetSettingsView: View {
             } else if let error = viewModel.loadError {
                 DismissableErrorBox(error) { viewModel.loadError = nil }
             }
-            HStack(spacing: 8) {
-                Text("$")
-                    .font(.headline)
-                    .foregroundStyle(DesignTokens.ink)
-                TextField("0.00", text: $viewModel.allowanceText)
-                    .keyboardType(.decimalPad)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 220)
-            }
+            DollarTextField(text: $viewModel.allowanceText)
             Button(viewModel.isSaving ? "Saving…" : "Save Allowance") {
                 viewModel.saveTapped()
             }

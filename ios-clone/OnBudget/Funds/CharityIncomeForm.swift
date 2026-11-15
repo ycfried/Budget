@@ -70,7 +70,7 @@ public struct CharityIncomeForm: View {
                 FundsMuted("Admin only. Nothing is pulled in automatically.")
                 Text("Current default rate: \(MoneyFormat.formatRateBp(defaultRateBp))%.")
                     .font(.system(size: 15))
-                FundsMuted("Change the default rate in Funds & Charity Rules on the Funds page. A change affects future incomes only.")
+                FundsMuted("Change the default rate in Default Charity Rate under Charity on the Funds page. A change affects future incomes only.")
 
                 Divider()
 
@@ -92,9 +92,7 @@ public struct CharityIncomeForm: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Date")
                         .font(.system(size: 14, weight: .semibold))
-                    DatePicker("", selection: $incomeDate, displayedComponents: .date)
-                        .labelsHidden()
-                        .datePickerStyle(.compact)
+                    DateField(date: $incomeDate)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Rate % (blank = default)")

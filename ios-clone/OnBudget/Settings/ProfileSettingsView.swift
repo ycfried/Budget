@@ -299,6 +299,7 @@ struct ProfileSettingsView: View {
                 // as the Weekly Budget sheet — fitted height + 600pt
                 // width in the regular size class.
                 .presentationSizing(.fitted)
+                .presentationBackground(.white)
         }
         .alert(item: $viewModel.passwordAlert) { alert in
             switch alert {

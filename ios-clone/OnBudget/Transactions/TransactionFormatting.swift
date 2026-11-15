@@ -336,9 +336,16 @@ public enum TransactionFormatting {
 // MARK: - Client-side list filtering (live.js:786-830)
 
 /// The Transactions status filter values (live.js §7.3).
+/// Spending + Extra Fund are native-only (owner, Nov 15, 2026):
+/// Spending is the regular weekly-budget spending (kind `charge`);
+/// Extra Fund is the rows the fund covered (kind `fund_charge` —
+/// "Extra Fund spending", AuditFormatting.swift:218 — a charge
+/// covered by the fund stops counting toward weekly spending).
 public enum TransactionStatusFilter: String, Equatable, CaseIterable {
     case all
     case charity
+    case spending
+    case extraFund
     case pending
     case posted
     case refunds
@@ -347,6 +354,8 @@ public enum TransactionStatusFilter: String, Equatable, CaseIterable {
         switch self {
         case .all: return "All transactions"
         case .charity: return "Charity gifts"
+        case .spending: return "Spending"
+        case .extraFund: return "Extra Fund"
         case .pending: return "Pending"
         case .posted: return "Posted"
         case .refunds: return "Refunds"
@@ -363,14 +372,14 @@ public enum TransactionSort: String, Equatable, CaseIterable {
     case amountAsc = "amount-asc"
 
     /// Menu label for the single Sort picker (one control, all four
-    /// options): "Newest first" / "Oldest first" / "Amount: high to
-    /// low" / "Amount: low to high".
+    /// options): short labels (owner, Nov 15, 2026) — "Newest" /
+    /// "Oldest" / "High to low" / "Low to high".
     public var label: String {
         switch self {
-        case .dateDesc: return "Newest first"
-        case .dateAsc: return "Oldest first"
-        case .amountDesc: return "Amount: high to low"
-        case .amountAsc: return "Amount: low to high"
+        case .dateDesc: return "Newest"
+        case .dateAsc: return "Oldest"
+        case .amountDesc: return "High to low"
+        case .amountAsc: return "Low to high"
         }
     }
 
@@ -589,6 +598,8 @@ public struct TransactionFilters: Equatable {
             case .posted: guard tx.state == .verified else { return false }
             case .refunds: guard tx.kind == .refund else { return false }
             case .charity: guard tx.kind == .charity else { return false }
+            case .spending: guard tx.kind == .charge else { return false }
+            case .extraFund: guard tx.kind == .fundCharge else { return false }
             case .all: break
             }
             if month != "all", !tx.date.hasPrefix(month) { return false }

@@ -379,6 +379,7 @@ public struct HomeView: View {
                     // (compact) the width stays full-screen and only
                     // the height hugs the content.
                     .presentationSizing(.fitted)
+                    .presentationBackground(.white)
             }
         }
         .alert(notLoadedAlertTitle, isPresented: $showNotLoadedAlert) {

@@ -132,9 +132,13 @@ public struct TransactionsView: View {
                 // at [.medium, .large] it opened half-height and
                 // cut "Sort by" off at the bottom edge.
                 .presentationDetents([.large])
+                // White sheet background (owner, Nov 15, 2026): the
+                // default sheet grey is off brand for form sheets.
+                .presentationBackground(.white)
         }
         .sheet(isPresented: $showingAdd) {
             AddTransactionView(viewModel: viewModel, onDismiss: { showingAdd = false })
+                .presentationBackground(.white)
                 // No sizing here (owner, Nov 14, 2026): the size
                 // depends on the step, so AddTransactionView sets
                 // it itself — fitted on the options step, detents
@@ -161,6 +165,7 @@ public struct TransactionsView: View {
                 // as the Weekly Budget sheet — fitted height + 600pt
                 // width in the regular size class.
                 .presentationSizing(.fitted)
+                .presentationBackground(.white)
         }
         // NOTE (T-P2-1): no `.alert` here — the failure alert lives
         // on the Actions and Trash sheets themselves, because an
@@ -544,8 +549,8 @@ public struct TransactionsView: View {
 ///   (owner, Nov 12, 2026 — All Time is gone, Clear does that job).
 ///   No month dropdown, no "This week" toggle, no From/To fields on
 ///   this page.
-/// - Status select: All transactions / Charity gifts / Pending /
-///   Posted / Refunds. Card / Account select ("All cards" default).
+/// - Status select: All transactions / Charity gifts / Spending /
+///   Extra Fund / Pending / Posted / Refunds. Card / Account select ("All cards" default).
 /// - Amount: Min / Max side by side (placeholders `$0.00`). Bounds
 ///   compare to the SIGNED amount; either end alone works; blank /
 ///   unparseable = no limit; min > max is a validation state, not an
@@ -673,85 +678,29 @@ public struct TransactionsFilterSheet: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 10))
 
-                    // Amount — draft-held like the rest; the
-                    // validation reads the draft text, not the live
-                    // filter. Min / Max carry visible labels above
-                    // the fields (T-P1-4), and the fields share the
-                    // sheet's white-bg + 1pt #e5e7eb border +
-                    // cornerRadius 10 treatment (T-P2-4). The $ is a
-                    // fixed prefix inside the field (owner, Nov 13,
-                    // 2026) — display only, never part of the typed
-                    // text, so parsing is unchanged. No "Amount"
-                    // header (owner, Nov 14, 2026): the Min / Max
-                    // labels say what the fields are.
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 12) {
+                    // Amount + Sort on one row on iPad (regular size
+                    // class, owner Nov 15, 2026): the sheet is 600pt
+                    // wide there, so the shrunk sort box fits beside
+                    // the Min/Max fields. On iPhone the row would not
+                    // fit (343pt), so it stays stacked. The "Sort"
+                    // label only appears on the shared row — stacked,
+                    // the picker's own value says what it is, like
+                    // the other fields (owner, Nov 14, 2026).
+                    if horizontalSizeClass == .regular {
+                        HStack(alignment: .top, spacing: 12) {
+                            amountBlock
                             VStack(alignment: .leading, spacing: 6) {
-                                Text("Min")
+                                Text("Sort")
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(DesignTokens.ink)
-                                HStack(spacing: 2) {
-                                    Text("$")
-                                        .font(.system(size: 17))
-                                        .foregroundStyle(DesignTokens.ink)
-                                    TextField("0.00", text: $minText)
-                                        .keyboardType(.decimalPad)
-                                        .focused($focusedField, equals: .min)
-                                }
-                                    .padding(.horizontal, 10)
-                                    .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
-                                    .background(.white)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                sortPicker
                             }
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Max")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(DesignTokens.ink)
-                                HStack(spacing: 2) {
-                                    Text("$")
-                                        .font(.system(size: 17))
-                                        .foregroundStyle(DesignTokens.ink)
-                                    TextField("0.00", text: $maxText)
-                                        .keyboardType(.decimalPad)
-                                        .focused($focusedField, equals: .max)
-                                }
-                                    .padding(.horizontal, 10)
-                                    .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
-                                    .background(.white)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
+                            .frame(maxWidth: .infinity)
                         }
-                        if draftAmountInvalid {
-                            SoftErrorBox("Minimum amount is above the maximum amount — change one of them to see transactions.")
-                        }
+                    } else {
+                        amountBlock
+                        sortPicker
                     }
-
-                    // Sort — one picker with all four options (was a
-                    // "Date"/"Amount" dropdown plus a separate
-                    // direction button). The picker value says it.
-                    Picker("Sort by", selection: $draftSort) {
-                        ForEach(TransactionSort.allCases, id: \.self) { sort in
-                            Text(sort.label).tag(sort)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .tint(DesignTokens.ink)
-                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .background(.white)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     TwoButtonRow {
                         Button("Apply") { apply() }
@@ -807,6 +756,87 @@ public struct TransactionsFilterSheet: View {
         guard let min = TransactionFormatting.parseDollarsStrict(minText),
               let max = TransactionFormatting.parseDollarsStrict(maxText) else { return false }
         return min > max
+    }
+
+    /// Amount — draft-held like the rest; the validation reads the
+    /// draft text, not the live filter. Min / Max carry visible
+    /// labels above the fields (T-P1-4), and the fields share the
+    /// sheet's white-bg + 1pt #e5e7eb border + cornerRadius 10
+    /// treatment (T-P2-4). The $ is a fixed prefix inside the field
+    /// (owner, Nov 13, 2026) — display only, never part of the typed
+    /// text, so parsing is unchanged. No "Amount" header (owner,
+    /// Nov 14, 2026): the Min / Max labels say what the fields are.
+    private var amountBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Min")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    HStack(spacing: 2) {
+                        Text("$")
+                            .font(.system(size: 17))
+                            .foregroundStyle(DesignTokens.ink)
+                        TextField("0.00", text: $minText)
+                            .keyboardType(.decimalPad)
+                            .focused($focusedField, equals: .min)
+                    }
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Max")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    HStack(spacing: 2) {
+                        Text("$")
+                            .font(.system(size: 17))
+                            .foregroundStyle(DesignTokens.ink)
+                        TextField("0.00", text: $maxText)
+                            .keyboardType(.decimalPad)
+                            .focused($focusedField, equals: .max)
+                    }
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            if draftAmountInvalid {
+                SoftErrorBox("Minimum amount is above the maximum amount — change one of them to see transactions.")
+            }
+        }
+    }
+
+    /// Sort — one picker with all four options (was a "Date" /
+    /// "Amount" dropdown plus a separate direction button). The
+    /// picker value says it.
+    private var sortPicker: some View {
+        Picker("Sort by", selection: $draftSort) {
+            ForEach(TransactionSort.allCases, id: \.self) { sort in
+                Text(sort.label).tag(sort)
+            }
+        }
+        .pickerStyle(.menu)
+        .tint(DesignTokens.ink)
+        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+        .padding(.horizontal, 10)
+        .background(.white)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     /// Apply commits the whole draft (status, when, card, sort,
@@ -918,10 +948,17 @@ struct DateRangeCalendarView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             // T-P2-10: the owner Back treatment (light blue #3b82f6,
-            // bold 700, 15px), not the system back button.
+            // bold 700, 15px), not the system back button. Bare
+            // chevron, no text (owner, Nov 15, 2026): "← Back"
+            // truncated to "←…" here — the centred title + trailing
+            // Clear squeeze the leading item — and a truncated
+            // button must never ship. A symbol cannot truncate.
             ToolbarItem(placement: .topBarLeading) {
-                Button("← Back") { dismiss() }
-                    .buttonStyle(BackButtonStyle())
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(BackButtonStyle())
+                .accessibilityLabel("Back")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Clear") { choose(.allTime) }
