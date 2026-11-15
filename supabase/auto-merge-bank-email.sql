@@ -177,15 +177,23 @@ begin
   select * into v_email from public.transactions where id = p_email_id for update;
   if not found then raise exception 'merge pair: row not found'; end if;
   -- Keep the bank row counted: if it was excluded (pending-queue
-  -- pass only — see §4), bring it back. A posted bank row returns
-  -- to 'verified'; a pending one keeps its state.
+  -- pass only — see §4), bring it back to its prior state (or
+  -- 'verified' when no prior state was recorded), not forced
+  -- 'verified' — a pending bank row keeps its state.
   update public.transactions
      set excluded = false,
-         state = case when state = 'excluded' then 'verified' else state end
+         state = case when state = 'excluded' then coalesce(pre_exclusion_state, 'verified') else state end,
+         pre_exclusion_state = null
    where id = p_bank_id and (excluded or state = 'excluded');
   update public.transactions
      set excluded = true,
          state = 'excluded',
+         -- Build 30 fix (coordinator): snapshot the prior state
+         -- like exclude_transaction does — without it,
+         -- restore_transaction refuses the row ('cannot restore:
+         -- no prior state recorded') and the merged row is
+         -- unrestorable from Trash.
+         pre_exclusion_state = case when v_email.state <> 'excluded' then v_email.state else v_email.pre_exclusion_state end,
          exclude_reason = 'Auto-merged into bank row ' || p_bank_id::text
            || ' (' || coalesce(v_bank.merchant, '') || '); same purchase, email alert kept as evidence, not deleted.'
    where id = p_email_id;

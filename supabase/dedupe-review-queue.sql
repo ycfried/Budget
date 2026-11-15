@@ -133,8 +133,14 @@ begin
     -- Deep audit Nov 5: must also set state='excluded' (as
     -- exclude_transaction does) — restore_transaction refuses any
     -- row whose state is not 'excluded', so a merge-only flag made
-    -- a merged row unrestorable from Trash.
-    update transactions set excluded = true, state = 'excluded' where id = v_cand.duplicate_transaction_id;
+    -- a merged row unrestorable from Trash. Build 30: also snapshot
+    -- the prior state — restore_transaction ALSO refuses a row
+    -- whose pre_exclusion_state is null ('cannot restore: no prior
+    -- state recorded'), and the Nov 12 merges never snapshotted it.
+    update transactions
+       set excluded = true, state = 'excluded',
+           pre_exclusion_state = case when v_dup.state <> 'excluded' then v_dup.state else v_dup.pre_exclusion_state end
+     where id = v_cand.duplicate_transaction_id;
     if v_note is null then v_note := 'merge'; end if;
     update duplicate_candidates
       set status = 'merged', resolved_at = now(), resolved_by = auth.uid(), resolution_note = v_note
