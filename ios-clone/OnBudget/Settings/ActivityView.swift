@@ -1,10 +1,15 @@
 // OnBudget — Activity (live web v66, §13).
 //
 // General Activity: who did what, and when — not the transaction
-// list. Grouped by day (newest day first), each entry: small
-// coloured dot per type, short bold title, one plain detail line
-// (only when it adds something the title does not say), muted
-// "Actor · Mon D, h:mm AM".
+// list. Grouped by day (newest day first), each entry: small muted
+// dot, short bold title, one plain detail line (only when it adds
+// something the title does not say), muted "Actor · Mon D, h:mm AM"
+// — or just the time when the row has no real actor (system rows
+// never name a fake person). Every row reads as one plain sentence
+// (owner, Nov 14, 2026): no database words, no unexplained
+// numbers, no title repeating its subtitle, merchant names in
+// normal case, no colour coding on the dots — the type chips above
+// the list do the categorising.
 //
 // Wiring (exact API calls):
 // - `PostgrestClient.auditLogPage(householdId:limit:from:to:)` —
@@ -25,9 +30,11 @@
 //   count ("N weeks closed"); user actions never collapse.
 // - The date filter is the shared one-button + one-calendar range
 //   picker (`HistoryDateFilterCard`, same calendar as
-//   Transactions); the type filter is a chip row of the types
-//   actually present in the log (single-select, combines with the
-//   date filter). Reset Filters clears both.
+//   Transactions) — live-apply on this page (owner, Nov 14, 2026):
+//   no Apply/Cancel, the range applies when picked; the type
+//   filter is a chip row of the types actually present in the log
+//   (single-select, combines with the date filter). Reset Filters
+//   clears both.
 
 import SwiftUI
 import OnBudgetKit
@@ -110,6 +117,12 @@ final class ActivityViewModel: ObservableObject {
                     actor: AuditFormatting.formatActor(row.actorName),
                     time: OnBudgetKit.MoneyFormat.fmtDateTime(row.createdAt)
                 )
+                // A no-op allowance row (e.g. $400 → $400, stored
+                // Nov 11, 2026) changed nothing — it never renders
+                // as a row at all (owner, Nov 14, 2026).
+                if AuditFormatting.isNoOpAllowanceChange(action: entry.action, detail: entry.detail) {
+                    continue
+                }
                 if byDay[day] == nil { dayOrder.append(day) }
                 byDay[day, default: []].append(entry)
             }
@@ -212,11 +225,25 @@ struct ActivityView: View {
                     filter: viewModel.filter,
                     onApply: { Task { await viewModel.applyFilter() } },
                     onClear: { Task { await viewModel.clearFilter() } },
-                    onResetAll: { Task { await viewModel.resetAllFilters() } }
+                    onResetAll: { Task { await viewModel.resetAllFilters() } },
+                    // Live-apply (owner, Nov 14, 2026): no
+                    // Apply/Cancel on this page — the range applies
+                    // the moment both dates are picked, Reset
+                    // Filters clears it. The Transactions Filters
+                    // sheet keeps Apply/Cancel.
+                    liveApply: true
                 )
 
                 if viewModel.isLoading && viewModel.groups.isEmpty {
-                    ProgressView()
+                    // Branded logo loader, centred (owner, Nov 14,
+                    // 2026 — the bare spinner sat top-left under
+                    // the Filter card). No ProgressView remains.
+                    HStack {
+                        Spacer()
+                        BrandedLoader()
+                        Spacer()
+                    }
+                    .padding(.top, 24)
                 } else if let error = viewModel.loadError {
                     DismissableErrorBox(error) { viewModel.loadError = nil }
                 } else if viewModel.groups.isEmpty {
@@ -293,8 +320,12 @@ struct ActivityView: View {
 
     private func activityRow(_ entry: AuditDisplayEntry) -> some View {
         HStack(alignment: .top, spacing: 10) {
+            // One muted dot for every row (owner, Nov 14, 2026):
+            // the green/blue/grey dots meant nothing without a
+            // legend, so the colour coding is gone — the type chips
+            // above the list do the categorising.
             Circle()
-                .fill(dotColor(for: entry))
+                .fill(DesignTokens.muted)
                 .frame(width: 10, height: 10)
                 .padding(.top, 6)
             VStack(alignment: .leading, spacing: 2) {
@@ -303,7 +334,10 @@ struct ActivityView: View {
                     .fontWeight(.bold)
                     // Wrap, never truncate at the right edge: the
                     // row must read in full at narrow phone widths
-                    // (owner, Nov 12 2026).
+                    // (owner, Nov 12 2026). The frame pins the
+                    // text column to the available width — without
+                    // it a long detail could run past the edge
+                    // (owner, Nov 14, 2026: Member Removed).
                     .fixedSize(horizontal: false, vertical: true)
                 // The detail line renders only when it adds
                 // something the title does not say — a detail that
@@ -314,19 +348,15 @@ struct ActivityView: View {
                         .font(.subheadline)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text("\(entry.actor) · \(entry.time)")
+                // No actor, no "Admin ·" prefix: system rows show
+                // the time only (owner, Nov 14, 2026 — "Admin" is
+                // a role, not a person).
+                Text(entry.actor.isEmpty ? entry.time : "\(entry.actor) · \(entry.time)")
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        }
-    }
-
-    private func dotColor(for entry: AuditDisplayEntry) -> Color {
-        switch AuditFormatting.dotClass(action: entry.action, detail: entry.detail) {
-        case "charity": return Color(hex: "#16a34a")
-        case "system": return DesignTokens.muted
-        default: return DesignTokens.primary
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

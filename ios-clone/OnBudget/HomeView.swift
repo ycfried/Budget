@@ -500,16 +500,27 @@ public struct HomeView: View {
     /// arrive (audit H-P2-5). The header row itself is real even
     /// while loading (icon + title, with a skeleton block in the
     /// sync spot for admins), so the skeleton starts at the figure.
+    /// Sized to the loaded content (owner, Nov 14, 2026: the
+    /// first skeleton boxes were too small and the card looked
+    /// empty): the figure block is as wide as a big loaded figure,
+    /// and each stat is TWO stacked blocks — label bar over value
+    /// bar — exactly like the loaded stat's label + value lines.
     /// Verified against heroLoaded, Nov 14 2026: figure / progress
     /// bar / spent line / stats row, all present, all the same sizes.
     private var heroSkeleton: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SkeletonBlock(width: 230, height: 54, cornerRadius: 8)
+            SkeletonBlock(width: 260, height: 56, cornerRadius: 8)
             SkeletonBlock(height: 8, cornerRadius: 4)
             SkeletonBlock(width: 180, height: 14)
             HStack(spacing: 24) {
-                SkeletonBlock(width: 110, height: 40)
-                SkeletonBlock(width: 80, height: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    SkeletonBlock(width: 110, height: 12, cornerRadius: 4)
+                    SkeletonBlock(width: 110, height: 20, cornerRadius: 6)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    SkeletonBlock(width: 70, height: 12, cornerRadius: 4)
+                    SkeletonBlock(width: 80, height: 20, cornerRadius: 6)
+                }
             }
         }
         .accessibilityLabel("Weekly Budget, loading")
@@ -790,9 +801,16 @@ public struct HomeView: View {
                 Spacer()
             }
             if isLoading {
-                SkeletonBlock(width: 150, height: 34, cornerRadius: 8)
+                // Sized to the loaded 28pt amount (owner, Nov 14,
+                // 2026: the 150-wide block was too small and the
+                // card looked empty while loading). No second line:
+                // the loaded face has none (statusText is nil when
+                // loaded), so a phantom line here would shrink the
+                // card — a layout jump — the moment the amount
+                // arrives.
+                SkeletonBlock(width: 190, height: 36, cornerRadius: 8)
             } else if statusIsError {
-                SkeletonBlock(width: 150, height: 34, cornerRadius: 8, animated: false)
+                SkeletonBlock(width: 190, height: 36, cornerRadius: 8, animated: false)
             } else {
                 Text(face)
                     .font(.system(size: 28, weight: .heavy))

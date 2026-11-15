@@ -94,12 +94,9 @@ final class SettingsFormattingTests: XCTestCase {
     }
 
     func testFormatDetailBasisPointsAndProvisional() {
-        // NOTE: the "20%." (trailing dot kept) is the web's own
-        // output — the greedy `[^ ]+` capture swallows the sentence
-        // dot, exactly as filterState.mjs does. Ported faithfully.
         XCTAssertEqual(
             AuditFormatting.formatDetail("Default charity rate set to 2000 basis points."),
-            "Charity rate: 20%. for future income."
+            "Charity rate: 20% for future income."
         )
         XCTAssertEqual(
             AuditFormatting.formatDetail("Row reclassified as provisional."),
@@ -116,10 +113,21 @@ final class SettingsFormattingTests: XCTestCase {
     }
 
     func testFormatActor() {
-        XCTAssertEqual(AuditFormatting.formatActor("admin"), "Admin")
-        XCTAssertEqual(AuditFormatting.formatActor("member"), "Member")
+        // "admin"/"member" are role placeholders, not people — a
+        // system row never names a fake person (owner, Nov 14,
+        // 2026); the view shows the time only for those rows.
+        XCTAssertEqual(AuditFormatting.formatActor("admin"), "")
+        XCTAssertEqual(AuditFormatting.formatActor("member"), "")
         XCTAssertEqual(AuditFormatting.formatActor("shuki@example.com"), "shuki")
         XCTAssertEqual(AuditFormatting.formatActor("Shuki Friedman"), "Shuki Friedman")
+    }
+
+    func testNormalCaseMerchant() {
+        XCTAssertEqual(AuditFormatting.normalCaseMerchant("TOIREMORG CHARITY"), "Toiremorg Charity")
+        XCTAssertEqual(AuditFormatting.normalCaseMerchant("WALMART $56.34"), "Walmart $56.34")
+        XCTAssertEqual(AuditFormatting.normalCaseMerchant("7-ELEVEN"), "7-Eleven")
+        XCTAssertEqual(AuditFormatting.normalCaseMerchant("MCDONALD'S"), "Mcdonald's")
+        XCTAssertEqual(AuditFormatting.normalCaseMerchant("SUNOCO INSIDE SALES"), "Sunoco Inside Sales")
     }
 
     func testSimplifyMergedDuplicate() {
@@ -127,7 +135,7 @@ final class SettingsFormattingTests: XCTestCase {
             AuditFormatting.simplifyDetail(
                 "Merged duplicate (TOIREMORG CHARITY $1.00) into the original bank row (TOIREMORG $1.00). Duplicate excluded, not deleted. Note: merge"
             ),
-            "Counted once: TOIREMORG CHARITY $1.00."
+            "Toiremorg Charity $1.00 counted once."
         )
     }
 
@@ -159,12 +167,34 @@ final class SettingsFormattingTests: XCTestCase {
             AuditFormatting.formatDetail("Base allowance changed from 37500 cents to 40000 cents."),
             "From $375.00 to $400.00."
         )
+        // And the row itself never renders at all: the view drops
+        // no-op allowance entries (owner, Nov 14, 2026 — the
+        // $400 → $400 row stored Nov 11 still showed as a change).
+        XCTAssertTrue(AuditFormatting.isNoOpAllowanceChange(
+            action: "Base allowance changed", detail: "Base allowance: $400.00."))
+        XCTAssertFalse(AuditFormatting.isNoOpAllowanceChange(
+            action: "Base allowance changed", detail: "From $375.00 to $400.00."))
+        XCTAssertFalse(AuditFormatting.isNoOpAllowanceChange(
+            action: "Base allowance set", detail: "Base allowance: $400.00."))
     }
 
     func testSimplifyCharityMarkIsOneShortLine() {
+        // The detail names the transaction only — the title already
+        // says it was marked as a charity gift (owner, Nov 14,
+        // 2026: no title repeating its subtitle).
         XCTAssertEqual(
             AuditFormatting.formatDetail("Walmart 5634 cents on 2026-11-10 marked as a charity gift (now outside weekly spending)."),
-            "Walmart $56.34 — marked as a charity gift."
+            "Walmart $56.34."
+        )
+    }
+
+    func testSimplifyMemberRemovedIsOneShortLine() {
+        // One line naming who — the stored "They can no longer see
+        // the household." tail is wordy and pushed the line past
+        // the right edge (owner, Nov 14, 2026).
+        XCTAssertEqual(
+            AuditFormatting.simplifyDetail("Removed chayasf1 from the household. They can no longer see the household."),
+            "Removed Chayasf1 from the household."
         )
     }
 
@@ -173,6 +203,7 @@ final class SettingsFormattingTests: XCTestCase {
         // renders empty and the row hides the line (owner, Nov 12
         // 2026).
         XCTAssertEqual(AuditFormatting.simplifyDetail("Joined the household."), "")
+        XCTAssertEqual(AuditFormatting.simplifyDetail("Joined via invite code."), "")
         XCTAssertEqual(AuditFormatting.simplifyDetail("Household created."), "")
         XCTAssertEqual(AuditFormatting.simplifyDetail("Request approved."), "")
         XCTAssertEqual(AuditFormatting.simplifyDetail("Request approved for $50.00."), "$50.00.")
@@ -185,10 +216,10 @@ final class SettingsFormattingTests: XCTestCase {
         XCTAssertEqual(ActivityType.classify(action: "Member promoted", detail: ""), .members)
         XCTAssertEqual(ActivityType.classify(action: "Base allowance changed", detail: "Base allowance: $400.00."), .allowance)
         XCTAssertEqual(ActivityType.classify(action: "Temporary increase added", detail: ""), .allowance)
-        XCTAssertEqual(ActivityType.classify(action: "Transaction marked as charity gift", detail: "Walmart $56.34 — marked as a charity gift."), .charity)
+        XCTAssertEqual(ActivityType.classify(action: "Transaction marked as charity gift", detail: "Walmart $56.34."), .charity)
         XCTAssertEqual(ActivityType.classify(action: "Income recorded", detail: "Income $700.00 — $70.00 to charity."), .charity)
-        XCTAssertEqual(ActivityType.classify(action: "Duplicate merged", detail: "Counted once: TOIREMORG CHARITY $1.00."), .duplicates)
-        XCTAssertEqual(ActivityType.classify(action: "Transaction excluded", detail: "Removed from the week: TRADER JOES $12.00."), .trash)
+        XCTAssertEqual(ActivityType.classify(action: "Duplicate merged", detail: "Toiremorg Charity $1.00 counted once."), .duplicates)
+        XCTAssertEqual(ActivityType.classify(action: "Transaction excluded", detail: "Removed from the week: Trader Joes $12.00."), .trash)
         XCTAssertEqual(ActivityType.classify(action: "Transaction deleted", detail: "Deleted for good: X $1.00."), .trash)
         XCTAssertEqual(ActivityType.classify(action: "CSV import", detail: "3 added."), .other)
         XCTAssertEqual(ActivityType.classify(action: "Extra Fund request approved", detail: "$50.00."), .other)
@@ -204,17 +235,20 @@ final class SettingsFormattingTests: XCTestCase {
     func testSimplifyExcludedAndRestored() {
         XCTAssertEqual(
             AuditFormatting.simplifyDetail("TRADER JOES $12.00 excluded — reason: Duplicate."),
-            "Removed from the week: TRADER JOES $12.00 (Duplicate)."
+            "Removed from the week: Trader Joes $12.00 (Duplicate)."
         )
         XCTAssertEqual(
             AuditFormatting.simplifyDetail("TRADER JOES $12.00 restored to the week as posted."),
-            "Back in the week: TRADER JOES $12.00."
+            "Back in the week: Trader Joes $12.00."
         )
     }
 
     func testActivityTitleAndGrouping() {
-        XCTAssertEqual(AuditFormatting.activityTitle(action: "Weeks processed", count: 3), "3 Weeks Closed")
-        XCTAssertEqual(AuditFormatting.activityTitle(action: "Weeks processed", count: 1), "1 Week Closed")
+        // No unexplained count (owner, Nov 14, 2026): the stored
+        // rows do not name which weeks were closed, so the title
+        // carries no number — singular/plural only.
+        XCTAssertEqual(AuditFormatting.activityTitle(action: "Weeks processed", count: 3), "Weeks Closed")
+        XCTAssertEqual(AuditFormatting.activityTitle(action: "Weeks processed", count: 1), "Week Closed")
         XCTAssertEqual(AuditFormatting.activityTitle(action: "CSV import", count: 2), "CSV Import")
         XCTAssertEqual(AuditFormatting.activityTitle(action: "Transaction added by hand", count: 1), "Transaction Added by Hand")
         let entries = [
@@ -228,11 +262,9 @@ final class SettingsFormattingTests: XCTestCase {
         XCTAssertEqual(grouped[1].count, 1)
     }
 
-    func testDotClass() {
-        XCTAssertEqual(AuditFormatting.dotClass(action: "Gift recorded", detail: "Charity gift"), "charity")
-        XCTAssertEqual(AuditFormatting.dotClass(action: "Weeks processed", detail: ""), "system")
-        XCTAssertEqual(AuditFormatting.dotClass(action: "CSV import", detail: ""), "money")
-    }
+    // No dot-colour test any more (owner, Nov 14, 2026): the dots
+    // are one muted grey for every row — the colour key is gone,
+    // and `dotClass` was deleted with it.
 
     func testHistoryPeriodLabel() {
         XCTAssertEqual(AuditFormatting.historyPeriodLabel(from: nil, to: nil), "")

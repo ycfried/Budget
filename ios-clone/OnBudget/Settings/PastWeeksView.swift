@@ -224,7 +224,12 @@ struct PastWeeksView: View {
 
                 SettingsCard(title: "Week History") {
                     if viewModel.isLoading && viewModel.weeks.isEmpty {
-                        ProgressView()
+                        HStack {
+                            Spacer()
+                            BrandedLoader()
+                            Spacer()
+                        }
+                        .padding(.top, 24)
                     } else if let error = viewModel.loadError {
                         DismissableErrorBox(error) { viewModel.loadError = nil }
                     } else if viewModel.weeks.isEmpty {

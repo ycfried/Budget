@@ -272,7 +272,11 @@ struct CSVImportView: View {
             }
 
             if viewModel.isReading {
-                ProgressView()
+                HStack {
+                    Spacer()
+                    BrandedLoader(size: 40)
+                    Spacer()
+                }
             }
 
             if viewModel.hasPreview {

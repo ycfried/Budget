@@ -77,7 +77,12 @@ public struct TransactionRowView: View {
                     }
                     // Badges + date meta show only while the card is
                     // collapsed — when open, the detail below says
-                    // all of it (owner, Nov 12, 2026).
+                    // all of it (owner, Nov 12, 2026). The row
+                    // carries the shared ExpandAnimation transition
+                    // (owner, Nov 14, 2026): without it the badges
+                    // vanished instantly while the detail faded and
+                    // slid in, so half the row popped and half
+                    // glided, and the rows below jumped.
                     if !isExpanded {
                         HStack(spacing: 8) {
                             StatePill(transaction)
@@ -92,6 +97,7 @@ public struct TransactionRowView: View {
                                 .lineLimit(1)
                         }
                         .padding(.leading, 50)
+                        .transition(ExpandAnimation.transition)
                     }
                 }
                 // The whole card is the tap target — the padding is

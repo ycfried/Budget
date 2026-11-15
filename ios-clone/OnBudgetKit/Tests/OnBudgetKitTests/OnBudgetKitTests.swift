@@ -36,7 +36,10 @@ final class OnBudgetKitTests: XCTestCase {
         XCTAssertEqual(DesignTokens.primaryHex, "#2f6bff")
         XCTAssertEqual(DesignTokens.paleHex, "#bfdbfe")
         XCTAssertEqual(DesignTokens.errorTextHex, "#dc2626")
-        XCTAssertEqual(DesignTokens.successHex, "#16a34a")
+        XCTAssertEqual(DesignTokens.successHex, "#22c55e")
+        // Charity keeps its own deeper green even though the
+        // success green went lighter (owner, Nov 14, 2026).
+        XCTAssertEqual(DesignTokens.charityHex, "#16a34a")
     }
 
     func testToastStyleIsBrandBlue() {
@@ -49,7 +52,7 @@ final class OnBudgetKitTests: XCTestCase {
     /// Info stays brand blue; errors stay soft red.
     func testToastStyleSuccessIsGreen() {
         XCTAssertEqual(ToastStyle.backgroundHex(for: .success), DesignTokens.successHex)
-        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), "#16a34a")
+        XCTAssertEqual(ToastStyle.backgroundHex(for: .success), "#22c55e")
         XCTAssertEqual(ToastStyle.textHex(for: .success), "#ffffff")
         XCTAssertEqual(ToastStyle.textHex(for: .info), "#ffffff")
         XCTAssertEqual(ToastStyle.textHex(for: .error), DesignTokens.errorTextHex)

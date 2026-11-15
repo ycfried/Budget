@@ -270,6 +270,12 @@ struct HistoryDateFilterCard: View {
     let onApply: () -> Void
     let onClear: () -> Void
     var onResetAll: (() -> Void)? = nil
+    /// Live-apply (General Activity only, owner Nov 14, 2026):
+    /// no Apply/Cancel — the range applies the moment both dates
+    /// are picked, and Reset Filters clears it. The Transactions
+    /// Filters sheet and Past Weeks keep Apply/Cancel (a
+    /// multi-field batch there, not a single tap).
+    var liveApply: Bool = false
 
     @State private var showingCalendar = false
     @State private var calendarSelection: WhenSelection = .allTime
@@ -311,12 +317,17 @@ struct HistoryDateFilterCard: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Choose dates, \(rangeLabel)")
 
-            TwoButtonRow {
-                Button("Apply") { onApply() }
-                    .buttonStyle(PrimaryButtonStyle())
-            } secondary: {
-                Button("Cancel") { cancelDrafts() }
-                    .buttonStyle(TertiaryButtonStyle())
+            // Live-apply pages (General Activity) have no
+            // Apply/Cancel: the range applies when the calendar
+            // commits it, and Reset Filters below clears it.
+            if !liveApply {
+                TwoButtonRow {
+                    Button("Apply") { onApply() }
+                        .buttonStyle(PrimaryButtonStyle())
+                } secondary: {
+                    Button("Cancel") { cancelDrafts() }
+                        .buttonStyle(TertiaryButtonStyle())
+                }
             }
 
             HStack {
@@ -376,7 +387,9 @@ struct HistoryDateFilterCard: View {
     }
 
     /// Commit the calendar's pick into the drafts (still
-    /// unapplied until Apply). Quick picks become concrete bounds.
+    /// unapplied until Apply — unless this card live-applies, in
+    /// which case the range applies right here). Quick picks become
+    /// concrete bounds.
     private func commitCalendarSelection() {
         guard calendarChose else { return }
         switch calendarSelection {
@@ -394,6 +407,9 @@ struct HistoryDateFilterCard: View {
         case .custom(let from, let to):
             draftFrom = from
             draftTo = to
+        }
+        if liveApply {
+            onApply()
         }
     }
 

@@ -34,9 +34,13 @@ public enum DesignTokens {
 
     // MARK: - Success green (owner rule, Nov 11 2026: success toasts
     // are GREEN, not blue — native only; the web app keeps brand-blue
-    // toasts. Info toasts stay brand blue.)
+    // toasts. Info toasts stay brand blue. Owner, Nov 14, 2026: the
+    // green was too dark — #16a34a → #22c55e, lighter and brighter,
+    // white text still readable on banners. Charity keeps its own
+    // deeper green below (charityHex) — the card outline does NOT
+    // follow this token.)
 
-    public static let successHex = "#16a34a"
+    public static let successHex = "#22c55e"
 
     // MARK: - Stat-card deep colours (owner direction, Nov 12 2026,
     // corrected ~2:02 PM the same day: the Home/Funds Charity +
@@ -54,6 +58,12 @@ public enum DesignTokens {
 
     public static let skeletonHex = "#ececf1"
     public static let charityDeepHex = "#15803d"
+
+    /// Charity card outline green (owner, Nov 14, 2026): the
+    /// success green went lighter (#22c55e), but the Charity card
+    /// outline stays the deeper #16a34a — it has its own token now
+    /// so the success change cannot move it.
+    public static let charityHex = "#16a34a"
     public static let fundHex = "#d97706"
     public static let fundDeepHex = "#b45309"
 
@@ -85,6 +95,7 @@ public enum DesignTokens {
     public static var successText: Color { Color(hex: successTextHex) }
     public static var successBorder: Color { Color(hex: successBorderHex) }
     public static var skeleton: Color { Color(hex: skeletonHex) }
+    public static var charity: Color { Color(hex: charityHex) }
     public static var charityDeep: Color { Color(hex: charityDeepHex) }
     public static var fund: Color { Color(hex: fundHex) }
     public static var fundDeep: Color { Color(hex: fundDeepHex) }

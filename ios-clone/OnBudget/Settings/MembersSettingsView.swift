@@ -323,7 +323,12 @@ struct MembersSettingsView: View {
                 .buttonStyle(TertiaryButtonStyle())
             }
             if viewModel.isLoading && viewModel.members.isEmpty {
-                ProgressView()
+                HStack {
+                    Spacer()
+                    BrandedLoader()
+                    Spacer()
+                }
+                .padding(.top, 24)
             } else if !viewModel.members.isEmpty {
                 ForEach(viewModel.members) { member in
                     memberRow(member)
@@ -456,7 +461,11 @@ struct MembersSettingsView: View {
                 .font(.subheadline)
                 .foregroundStyle(Color(hex: "#6b7280"))
             if !viewModel.inviteCodeLoaded {
-                ProgressView()
+                HStack {
+                    Spacer()
+                    BrandedLoader(size: 40)
+                    Spacer()
+                }
             } else if viewModel.inviteCodeLoadFailed {
                 ErrorBox("Could not load the invite code. Try again.")
             } else if let code = viewModel.inviteCode, !code.isEmpty {

@@ -417,8 +417,11 @@ public struct TransactionActionsSheet: View {
                     }
                 }
             } else {
-                ProgressView()
-                    .progressViewStyle(.circular)
+                HStack {
+                    Spacer()
+                    BrandedLoader(size: 40)
+                    Spacer()
+                }
             }
             Button("Cancel") { flow = .list }
                 .buttonStyle(TertiaryButtonStyle())

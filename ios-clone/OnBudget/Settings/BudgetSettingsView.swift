@@ -123,7 +123,11 @@ struct BudgetSettingsView: View {
                 .font(.headline)
                 .padding(.top, 4)
             if viewModel.isLoading {
-                ProgressView()
+                HStack {
+                    Spacer()
+                    BrandedLoader(size: 40)
+                    Spacer()
+                }
             } else if let error = viewModel.loadError {
                 DismissableErrorBox(error) { viewModel.loadError = nil }
             }

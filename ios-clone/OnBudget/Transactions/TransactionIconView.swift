@@ -1,10 +1,12 @@
 import SwiftUI
 import OnBudgetKit
 
-/// Transaction icon: the bank's Google favicon when the card suffix
-/// maps to a connected institution, else the merchant favicon from
-/// the curated keyword map. A loaded logo FILLS the whole tile
-/// edge-to-edge (owner, Nov 12, 2026 — the Amex tiles in Recent
+/// Transaction icon: the MERCHANT's Google favicon first — the
+/// row is about where the money went, not which card paid (owner,
+/// Nov 14, 2026: every row showed the Amex logo instead of the
+/// merchant's). The bank favicon is only the fallback, when the
+/// merchant has no domain in the map; a loaded logo FILLS the whole
+/// tile edge-to-edge (owner, Nov 12, 2026 — the Amex tiles in Recent
 /// Transactions showed a white margin inside the tile): aspect-fill
 /// + clip, cropping overflow, never stretched. No inner padding
 /// between the image and the tile edge; the 1pt border and corner
@@ -86,13 +88,16 @@ public struct TransactionIconView: View {
         .accessibilityHidden(true)
     }
 
-    /// Bank favicon wins when the suffix maps to a known institution;
-    /// otherwise the merchant favicon (live.js `iconForTx`).
+    /// Merchant favicon first; the bank favicon only when the
+    /// merchant has no domain in the map (owner, Nov 14, 2026 —
+    /// bank-first made every row wear the Amex logo). The
+    /// institution name is still passed in: it is the fallback,
+    /// and the Settings bank tiles are untouched.
     private var faviconURL: URL? {
-        if let domain = TransactionIconLookup.bankDomain(for: institutionName) {
+        if let domain = TransactionIconLookup.merchantDomain(for: merchant) {
             return TransactionIconLookup.faviconURL(forDomain: domain)
         }
-        guard let domain = TransactionIconLookup.merchantDomain(for: merchant) else {
+        guard let domain = TransactionIconLookup.bankDomain(for: institutionName) else {
             return nil
         }
         return TransactionIconLookup.faviconURL(forDomain: domain)
@@ -128,13 +133,14 @@ public struct TransactionIconView: View {
         return Color(hex: TransactionIconLookup.fallbackBrandHex)
     }
 
-    /// The brand colour for this row, when the map knows one.
+    /// The brand colour for this row, when the map knows one —
+    /// merchant first, bank only as the fallback (owner, Nov 14,
+    /// 2026, same flip as the favicon above).
     private var brandHex: String? {
-        if let name = institutionName,
-           TransactionIconLookup.bankDomain(for: name) != nil {
-            return TransactionIconLookup.bankBrandHex(for: name)
+        if let hex = TransactionIconLookup.merchantBrandHex(for: merchant) {
+            return hex
         }
-        return TransactionIconLookup.merchantBrandHex(for: merchant)
+        return TransactionIconLookup.bankBrandHex(for: institutionName)
     }
 }
 
@@ -176,7 +182,13 @@ public struct StatePill: View {
     }
 }
 
-/// Source pill: Bank / By hand / File / Email.
+/// Source pill: Bank / By hand / File / Email. Each source has its
+/// own colour (owner, Nov 14, 2026 — "should the bank and email
+/// badges be different colors": yes): Bank keeps the blue, Email is
+/// purple, By hand and File are neutral grey, so blue keeps meaning
+/// Bank and purple keeps meaning Email. Colour is a redundant cue
+/// only — the word is always there. The colours stay clear of the
+/// state pills (Posted green, Pending amber, Reversed red).
 public struct SourcePill: View {
     let transaction: Transaction
 
@@ -189,8 +201,24 @@ public struct SourcePill: View {
             .font(.system(size: 12, weight: .semibold))
             .padding(.vertical, 3)
             .padding(.horizontal, 8)
-            .background(Color(hex: "#eef4ff"))
-            .foregroundStyle(Color(hex: "#1e3a8a"))
+            .background(pillBackground)
+            .foregroundStyle(pillForeground)
             .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var pillBackground: Color {
+        switch transaction.source {
+        case .plaid: return Color(hex: "#eef4ff")
+        case .amexAlert: return Color(hex: "#f3e8ff")
+        case .manual, .csv: return Color(hex: "#f3f4f6")
+        }
+    }
+
+    private var pillForeground: Color {
+        switch transaction.source {
+        case .plaid: return Color(hex: "#1e3a8a")
+        case .amexAlert: return Color(hex: "#6b21a8")
+        case .manual, .csv: return Color(hex: "#374151")
+        }
     }
 }

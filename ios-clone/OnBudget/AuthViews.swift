@@ -808,11 +808,13 @@ public struct ResetPasswordView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(Color(hex: "#6b7280"))
                     if exchanging {
-                        // Labelled spinner (audit A-P2-6): the bare
-                        // ProgressView said nothing about what was
-                        // happening. Back stays the exit.
+                        // Labelled loader (audit A-P2-6): the bare
+                        // spinner said nothing about what was
+                        // happening. Back stays the exit. The
+                        // branded logo loader replaces ProgressView
+                        // app-wide (owner, Nov 14, 2026).
                         VStack(spacing: 12) {
-                            ProgressView()
+                            BrandedLoader(size: 40)
                             Text("Checking your link…")
                                 .font(.system(size: 15))
                                 .foregroundStyle(Color(hex: "#6b7280"))

@@ -381,9 +381,17 @@ public struct FundsExpandableCard<Expanded: View>: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         if isLoading {
-                            SkeletonBlock(width: 150, height: 34, cornerRadius: 8)
+                            // Sized to the loaded 28pt amount
+                            // (owner, Nov 14, 2026: the 150-wide
+                            // block was too small and the card looked
+                            // empty while loading). No second line:
+                            // the loaded face has none, so a phantom
+                            // line here would shrink the card — a
+                            // layout jump — the moment the amount
+                            // arrives.
+                            SkeletonBlock(width: 190, height: 36, cornerRadius: 8)
                         } else if amountIsStatus {
-                            SkeletonBlock(width: 150, height: 34, cornerRadius: 8, animated: false)
+                            SkeletonBlock(width: 190, height: 36, cornerRadius: 8, animated: false)
                         } else {
                             Text(amountText)
                                 .font(.system(size: 28, weight: .bold))
@@ -416,9 +424,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
 //
 // Bottom only, floating clear of the tab bar, auto-dismiss 4s, tap
 // dismisses sooner, tab switch clears it. Info: brand blue
-// #2f6bff, white text. Success: green #16a34a
+// #2f6bff, white text. Success: green #22c55e
 // (`DesignTokens.success`), white text (owner rule, Nov 11, 2026 —
-// native only; the web app stays blue for success). Error: soft
+// native only; the web app stays blue for success. Owner, Nov 14,
+// 2026: the green went lighter, #16a34a → #22c55e). Error: soft
 // red bg/text/border.
 // NOTE (integration, Nov 9, 2026): the auto-dismiss sleeps on the
 // one shared value `ToastStyle.autoDismissSeconds` (4.0, spec §2.3);

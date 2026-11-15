@@ -45,7 +45,7 @@ public enum TransactionFormatting {
     // amount renders — every screen routes its row amounts through
     // `amountDisplay(for:)`, never through its own colour logic.
     // - Money in (kind income / refund / cashback): GREEN
-    //   (`DesignTokens.success`, #16a34a) with a "+" prefix
+    //   (`DesignTokens.success`, #22c55e) with a "+" prefix
     //   ("+$75.00"). The stored Plaid negative is flipped to "+"
     //   here, at the display layer only.
     // - Charity gifts (kind charity): BLUE (`DesignTokens.primary`,

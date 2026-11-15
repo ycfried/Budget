@@ -535,7 +535,12 @@ struct ConnectedAccountsView: View {
                 .buttonStyle(TertiaryButtonStyle())
             }
             if viewModel.isLoading && viewModel.rows.isEmpty {
-                ProgressView()
+                HStack {
+                    Spacer()
+                    BrandedLoader()
+                    Spacer()
+                }
+                .padding(.top, 24)
             } else if !viewModel.rows.isEmpty {
                 ForEach(viewModel.rows) { row in
                     accountRow(row)

@@ -6,7 +6,7 @@
 //
 // Sources: `formatAuditDetail` / `formatAuditAction` /
 // `formatAuditActor` (live.js:3662-3694), `householdActivityText` /
-// `activityDotClass` / `activityTitle` / `simplifyActivityDetail` /
+// `activityTitle` / `simplifyActivityDetail` /
 // `groupDayActivity` / `historyPeriodLabel` / `filterRowsByDate`
 // (filterState.mjs).
 
@@ -139,13 +139,48 @@ public enum AuditFormatting {
         return action
     }
 
-    /// "Admin"/"Member", or the name before '@' — never a raw
-    /// username or UUID (live.js:3688-3694).
+    /// "Admin"/"Member" are role placeholders, not people — a
+    /// system row (week closes) was written with the role instead
+    /// of a name, and rendering "Admin" names a person who does
+    /// not exist (owner, Nov 14, 2026). Those render as NO actor:
+    /// the row shows the time only. A real name, or the part
+    /// before '@', is kept as-is.
     public static func formatActor(_ name: String) -> String {
-        if name == "admin" { return "Admin" }
-        if name == "member" { return "Member" }
+        if name == "admin" { return "" }
+        if name == "member" { return "" }
         if name.contains("@") { return String(name.split(separator: "@").first ?? Substring(name)) }
         return name
+    }
+
+    /// Merchant names in normal case ("TOIREMORG CHARITY" →
+    /// "Toiremorg Charity"), never ALL CAPS (owner, Nov 14, 2026).
+    /// Tokens without letters ($ amounts, dates) pass through
+    /// untouched; the first letter of each word is upper-cased,
+    /// the rest lower-cased ("7-ELEVEN" → "7-Eleven",
+    /// "MCDONALD'S" → "Mcdonald's").
+    public static func normalCaseMerchant(_ text: String) -> String {
+        text.split(separator: " ").map { word -> String in
+            var result = ""
+            var seenLetter = false
+            for ch in word {
+                if ch.isLetter {
+                    result.append(seenLetter ? ch.lowercased() : ch.uppercased())
+                    seenLetter = true
+                } else {
+                    result.append(ch)
+                }
+            }
+            return result
+        }.joined(separator: " ")
+    }
+
+    /// A no-op allowance row (stored Nov 11, 2026: $400 → $400)
+    /// changed nothing — it never renders as a row at all (owner,
+    /// Nov 14, 2026). The formatted detail for a no-op is the plain
+    /// value ("Base allowance: $400.00."); a real change reads
+    /// "From $X to $Y.", so only no-ops match this.
+    public static func isNoOpAllowanceChange(action: String, detail: String) -> Bool {
+        action == "Base allowance changed" && detail.hasPrefix("Base allowance: ")
     }
 
     // MARK: - householdActivityText (filterState.mjs:172-186)
@@ -197,12 +232,15 @@ public enum AuditFormatting {
         var text = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return text }
 
-        // Merged duplicate -> "Counted once: <merchant $X>."
+        // Merged duplicate -> "<merchant $X> counted once." — a
+        // plain sentence, merchant in normal case (owner, Nov 14,
+        // 2026: "Counted once: TOIREMORG CHARITY $1.00" is jargon
+        // in ALL CAPS).
         if let groups = firstMatch(
             text,
             pattern: "^Merged duplicate \\(([^)]+)\\) into (?:the original bank row|original) \\([^)]+\\)[^.]*\\.?"
         ), let merged = groups[1] {
-            return "Counted once: \(merged.trimmingCharacters(in: .whitespaces))."
+            return "\(normalCaseMerchant(merged.trimmingCharacters(in: .whitespaces))) counted once."
         }
         // Kept separate.
         if matches(text, pattern: "^Kept .*as separate purchases") {
@@ -252,21 +290,23 @@ public enum AuditFormatting {
             return "Refund for the week of \(week.trimmingCharacters(in: .whitespaces)): \(kept.joined(separator: " · "))."
         }
         // Excluded / restored / reclassified / deleted / trash.
+        // Merchant subjects read in normal case, never ALL CAPS
+        // (owner, Nov 14, 2026).
         if let groups = firstMatch(
             text,
             pattern: "^(.+?) excluded(?: — reason: (.+?)| — no reason given)?\\.?$"
         ), let subject = groups[1] {
             let reason = (groups[2] ?? "")?.trimmingCharacters(in: .whitespaces) ?? ""
             if !reason.isEmpty && !reason.lowercased().contains("no reason given") {
-                return "Removed from the week: \(subject.trimmingCharacters(in: .whitespaces)) (\(reason))."
+                return "Removed from the week: \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces))) (\(reason))."
             }
-            return "Removed from the week: \(subject.trimmingCharacters(in: .whitespaces))."
+            return "Removed from the week: \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces)))."
         }
         if let groups = firstMatch(
             text,
             pattern: "^(.+?) restored to the week as (?:posted|pending)\\.?$"
         ), let subject = groups[1] {
-            return "Back in the week: \(subject.trimmingCharacters(in: .whitespaces))."
+            return "Back in the week: \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces)))."
         }
         if let groups = firstMatch(
             text,
@@ -275,31 +315,42 @@ public enum AuditFormatting {
             let to = kindWords[toKind.lowercased()] ?? toKind
             let reason = (groups[4] ?? "")?.trimmingCharacters(in: .whitespaces) ?? ""
             if !reason.isEmpty && !reason.lowercased().contains("no reason given") {
-                return "Now counts as \(to): \(subject.trimmingCharacters(in: .whitespaces)) (\(reason))."
+                return "Now counts as \(to): \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces))) (\(reason))."
             }
-            return "Now counts as \(to): \(subject.trimmingCharacters(in: .whitespaces))."
+            return "Now counts as \(to): \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces)))."
         }
         if let groups = firstMatch(
             text,
             pattern: "^(.+?) \\(manual entry\\) deleted by admin\\.?$"
         ), let subject = groups[1] {
-            return "Deleted for good: \(subject.trimmingCharacters(in: .whitespaces))."
+            return "Deleted for good: \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces)))."
         }
         if let groups = firstMatch(
             text,
             pattern: "^(.+?) moved to trash(?: — reason: (.+?))?\\.?$"
         ), let subject = groups[1] {
-            return "Moved to the Trash: \(subject.trimmingCharacters(in: .whitespaces))."
+            return "Moved to the Trash: \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces)))."
         }
-        // Marked as a charity gift: one short line, no
-        // parenthetical restatement, no date (the actor/time line
-        // below already carries it) — "Walmart $56.34 — marked as
-        // a charity gift" (owner, Nov 12 2026).
+        // Member removed: one short line naming who, and nothing
+        // else — the stored "They can no longer see the
+        // household." tail is wordy and it pushed the line past
+        // the right edge (owner, Nov 14, 2026).
+        if let groups = firstMatch(
+            text,
+            pattern: "^Removed (.+?) from the household\\..*$"
+        ), let name = groups[1] {
+            return "Removed \(normalCaseMerchant(name.trimmingCharacters(in: .whitespaces))) from the household."
+        }
+        // Marked as a charity gift: the detail names the
+        // transaction only — "Walmart $56.34." The title already
+        // says it was marked as a charity gift, so restating it
+        // here repeats the title (owner, Nov 14, 2026). No date:
+        // the actor/time line below already carries it.
         if let groups = firstMatch(
             text,
             pattern: "^(.+?) (\\$[\\d,]+\\.\\d{2}) on (.+?) marked as a charity gift.*$"
         ), let subject = groups[1], let amount = groups[2] {
-            return "\(subject.trimmingCharacters(in: .whitespaces)) \(amount) — marked as a charity gift."
+            return "\(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces))) \(amount)."
         }
         // Base allowance change: a no-op ("changed from $X to
         // $X") never renders as a change — the entry is written
@@ -328,7 +379,11 @@ public enum AuditFormatting {
         if matches(text, pattern: "^Request.*declined\\.?$") { return "" }
         // Charity / fund / household / allowance: strip internal wording.
         text = replace(text, pattern: "^Default charity rate set to ([^ ]+)( \\(applies to future incomes only\\))?\\.?$") { groups in
-            "Charity rate: \(groups[1] ?? "") for future income."
+            // The greedy capture swallows the sentence dot
+            // ("20%."); strip it so the rate reads "20%", not
+            // "20%." (owner, Nov 14, 2026 — plain language).
+            let rate = (groups[1] ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            return "Charity rate: \(rate) for future income."
         }
         text = replace(text, pattern: "^Income (.+?) at ([^ ]+) commits (.+?) to charity\\.?$") { groups in
             "Income \(groups[1] ?? "") — \(groups[3] ?? "") to charity."
@@ -358,23 +413,26 @@ public enum AuditFormatting {
         text = replace(text, pattern: "^Fund shortfall changed from (.+?) to (.+?)\\.?$") { groups in
             "Extra Fund shortfall: \(groups[2] ?? "")."
         }
-        text = replace(text, pattern: "^Created via create_household RPC.*$") { _ in "Household created." }
-        text = replace(text, pattern: "^Joined via invite code\\.?$") { _ in "Joined the household." }
+        // A join or a household creation says nothing the title
+        // does not say — the detail stays empty and the row shows
+        // title + actor/time only. (Was "Joined the household." /
+        // "Household created.": the restatement check above runs
+        // BEFORE these replaces, so the invite-code form slipped
+        // through and rendered under its own title — owner,
+        // Nov 14, 2026.)
+        text = replace(text, pattern: "^Created via create_household RPC.*$") { _ in "" }
+        text = replace(text, pattern: "^Joined via invite code\\.?$") { _ in "" }
         return collapseWhitespaceAndDots(text)
     }
 
-    // MARK: - Activity dots, titles, grouping
+    // MARK: - Activity titles, grouping
 
-    /// Dot colour key: charity -> green, system rows (week closes,
-    /// household creation) -> grey, everything else -> brand blue.
-    public static func dotClass(action: String, detail: String) -> String {
-        let text = "\(action) \(detail)"
-        if text.range(of: "charity", options: .caseInsensitive) != nil { return "charity" }
-        if text.range(of: "weeks processed|week.*closed|household created", options: [.caseInsensitive, .regularExpression]) != nil {
-            return "system"
-        }
-        return "money"
-    }
+    // No dot-colour key any more (owner, Nov 14, 2026): the dots
+    // were green/blue/grey with no meaning unless you already knew
+    // the code, so every row now carries the same muted dot — the
+    // type chips above the list do the categorising. `dotClass`
+    // was deleted with the colour rule; the view renders one
+    // neutral dot for all entries.
 
     // MARK: - Activity types (type filter, owner Nov 12 2026)
 
@@ -429,21 +487,29 @@ public enum AuditFormatting {
         }
     }
 
-    /// A collapsed "Weeks processed ×N" group reads as "N weeks
-    /// closed", never with the internal "processed" wording.
+    /// A collapsed "Weeks processed" group reads as "Week closed"
+    /// (one) or "Weeks closed" (more than one) — never with the
+    /// internal "processed" wording, and never with a number:
+    /// the stored rows do not name which weeks were closed, so a
+    /// count ("8 Weeks Closed") is a number nobody can explain
+    /// (owner, Nov 14, 2026). The count survives only as the
+    /// singular/plural decision. The detail carries what actually
+    /// resulted (surplus released, refunds restored, held).
     /// Titles are Title-Cased at DISPLAY time only (audit X-P2-3,
     /// Nov 12 2026): the stored/translated action stays sentence
     /// case in `formatAction`, so e.g. "Transaction added by hand"
     /// renders "Transaction Added by Hand" here and nowhere else.
     public static func activityTitle(action: String, count: Int) -> String {
         if action == "Weeks processed" {
-            return TitleCase.apply(to: "\(count) \(count == 1 ? "week" : "weeks") closed")
+            return TitleCase.apply(to: count == 1 ? "week closed" : "weeks closed")
         }
         return TitleCase.apply(to: action)
     }
 
     /// Collapse repeated weekly-processing events inside one day's
-    /// activity. User actions never collapse.
+    /// activity. User actions never collapse. The collapsed count
+    /// only decides the title's singular/plural — it is never
+    /// rendered as a number (see activityTitle).
     public static func groupDayActivity(_ entries: [AuditDisplayEntry]) -> [AuditDisplayEntry] {
         var output: [AuditDisplayEntry] = []
         var seen: [String: Int] = [:]

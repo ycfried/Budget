@@ -403,7 +403,12 @@ struct EmailAlertsView: View {
                 .buttonStyle(TertiaryButtonStyle())
             }
             if viewModel.isLoading && viewModel.connections.isEmpty {
-                ProgressView()
+                HStack {
+                    Spacer()
+                    BrandedLoader()
+                    Spacer()
+                }
+                .padding(.top, 24)
             } else if !viewModel.connections.isEmpty {
                 ForEach(viewModel.connections) { connection in
                     connectionRow(connection)

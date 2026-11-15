@@ -226,36 +226,76 @@ public struct SuccessBox: View {
 
 // MARK: - Loading screen
 
-/// Full-screen loading view (live.html:39-43): S-mark ring + logo,
+/// Full-screen loading view (live.html:39-43): logo + blue ring,
 /// "OnBudget", "Loading Your Household". Shown on first paint and
 /// kept until the first data load completes or fails — never a blank
 /// or half-built page, and never an endless spinner with no error.
+/// The logo wears the animated blue ring (BrandedLoader) — the
+/// iOS spinner is abolished app-wide (owner, Nov 14, 2026).
 public struct LoadingView: View {
     public init() {}
     public var body: some View {
         VStack(spacing: 12) {
             // The real logo (Assets.xcassets/AppLogo), not the "S"
-            // placeholder ring (owner, Nov 11, 2026).
-            Image("AppLogo")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 72, height: 72)
-                .clipShape(Circle())
+            // placeholder ring (owner, Nov 11, 2026), with the
+            // animated brand-blue ring around it.
+            BrandedLoader(size: 72)
             Text("OnBudget")
                 .font(.system(size: 28, weight: .bold, design: .default))
                 .foregroundStyle(DesignTokens.ink)
             Text("Loading Your Household")
                 .font(.system(size: 15))
                 .foregroundStyle(Color(hex: "#6b7280"))
-            // Modern native system spinner — the one spinner style
-            // used for every load in the app (owner, Nov 11, 2026:
-            // the old loading sign was ugly and dated).
-            ProgressView()
-                .progressViewStyle(.circular)
-                .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.background)
+    }
+}
+
+// MARK: - Branded loader
+
+/// Branded loading indicator (owner, Nov 14, 2026): the real app
+/// logo with an animated brand-blue ring around it. This replaces
+/// EVERY ProgressView in the app — the iOS asterisk spinner is
+/// abolished app-wide. The logo itself is static; only the ring
+/// moves (a 270° arc rotating once a second). Use it for full-page
+/// or section loading states. Where a shimmer skeleton already
+/// stands in for the content, keep the skeleton and do NOT stack
+/// this on top of it. The sync button's rotating arrow is a
+/// different thing (the sync affordance the owner approved) and is
+/// untouched.
+public struct BrandedLoader: View {
+    /// Logo size; the ring sits 6pt outside it on every side.
+    public let size: CGFloat
+
+    @State private var spinning = false
+
+    public init(size: CGFloat = 56) {
+        self.size = size
+    }
+
+    public var body: some View {
+        ZStack {
+            Image("AppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+            Circle()
+                .trim(from: 0, to: 0.75)
+                .stroke(
+                    DesignTokens.primary,
+                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                )
+                .frame(width: size + 12, height: size + 12)
+                .rotationEffect(.degrees(spinning ? 360 : 0))
+                .animation(
+                    .linear(duration: 1.0).repeatForever(autoreverses: false),
+                    value: spinning
+                )
+        }
+        .onAppear { spinning = true }
+        .accessibilityLabel("Loading")
     }
 }
 
@@ -423,11 +463,12 @@ public enum StatCardTheme {
     case fund
 
     /// Coloured outline of the card, loaded or loading: green
-    /// #16a34a (the native success green) for Charity, amber
-    /// #d97706 for Extra Fund. White inside — never a wash.
+    /// #16a34a for Charity (its own token — NOT the success green,
+    /// which went lighter Nov 14, 2026), amber #d97706 for Extra
+    /// Fund. White inside — never a wash.
     public var outline: Color {
         switch self {
-        case .charity: return DesignTokens.success
+        case .charity: return DesignTokens.charity
         case .fund: return DesignTokens.fund
         }
     }

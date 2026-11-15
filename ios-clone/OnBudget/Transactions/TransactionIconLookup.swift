@@ -64,6 +64,16 @@ public enum TransactionIconLookup {
         ("lyft", "lyft.com"),
         ("netflix", "netflix.com"),
         ("spotify", "spotify.com"),
+        // Added Nov 14, 2026 (owner: rows showed the bank logo
+        // because these merchants were unmapped): PayPal
+        // ("MARK PAYPAL" rows contain "paypal"), T-Mobile, Sunoco
+        // and Tello. Sunoco / Tello have a domain but no verified
+        // brand colour, so their monograms stay on the neutral
+        // tile — same rule as the local merchants below.
+        ("paypal", "paypal.com"),
+        ("t-mobile", "t-mobile.com"),
+        ("sunoco", "sunoco.com"),
+        ("tello", "tello.com"),
         // Local / regional merchants (owner feedback, Nov 11, 2026).
         // Domains verified by web search Nov 11, 2026 — do not
         // change them without re-verifying:
@@ -106,6 +116,8 @@ public enum TransactionIconLookup {
         ("netflix", "#e50914"),
         ("spotify", "#1db954"),
         ("apple", "#000000"),
+        ("paypal", "#003087"),
+        ("t-mobile", "#e20074"),
     ]
 
     // No brand colour is invented for the local merchants above
