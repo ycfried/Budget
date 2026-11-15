@@ -443,13 +443,17 @@ public struct HomeView: View {
         HStack(spacing: 8) {
             Image(systemName: "calendar")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(DesignTokens.primary)
+                // Owner, Nov 14, 2026 ("too much colors"): the
+                // hero icon is neutral ink, and its chip ring is a
+                // plain light grey — no blue anywhere on the card
+                // except the sync button and the 3px outline.
+                .foregroundStyle(DesignTokens.ink)
                 .frame(width: 36, height: 36)
                 .background(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(DesignTokens.primary, lineWidth: 1)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
             Text("Spending")
                 .font(.system(size: 18, weight: .bold))
@@ -573,7 +577,10 @@ public struct HomeView: View {
                     .fill(Color(hex: "#ececf1"))
                     .frame(height: 8)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(overBudget ? DesignTokens.errorText : DesignTokens.primary)
+                    // Owner, Nov 14, 2026 ("too much colors"): the
+                    // over-budget bar is the muted hero red, not
+                    // the bright error red.
+                    .fill(overBudget ? DesignTokens.heroOverBudget : DesignTokens.primary)
                     .frame(width: geometry.size.width * fraction, height: 8)
             }
         }
@@ -636,14 +643,16 @@ public struct HomeView: View {
     }
 
     /// Hero big figure: dollars large, cents smaller
-    /// (formatCentsHtml, live.js:3651-3659). Negative → red.
+    /// (formatCentsHtml, live.js:3651-3659). Negative → the muted
+    /// hero red (owner, Nov 14, 2026: the bright error red was
+    /// too stark — "too much colors").
     private func heroFigure(cents: Int) -> some View {
         let parts = MoneyFormat.parts(cents: cents)
         return (Text(parts.sign + "$" + parts.dollars)
             .font(.system(size: 44, weight: .heavy))
             + Text("." + parts.cents)
             .font(.system(size: 24, weight: .heavy)))
-            .foregroundStyle(cents < 0 ? DesignTokens.errorText : DesignTokens.ink)
+            .foregroundStyle(cents < 0 ? DesignTokens.heroOverBudget : DesignTokens.ink)
     }
 
     // MARK: Stat cards — Charity + Extra Fund, half-size side by side
@@ -654,7 +663,6 @@ public struct HomeView: View {
             face: charityFaceText,
             theme: .charity,
             isLoading: viewModel.charity.isLoading,
-            faceIsNegative: false,
             statusText: charityStatusText,
             statusIsError: viewModel.charity.isFailed,
             isExpanded: appState.expandedCard == .charity,
@@ -698,7 +706,6 @@ public struct HomeView: View {
             face: fundFaceText,
             theme: .fund,
             isLoading: viewModel.fund.isLoading,
-            faceIsNegative: fundFaceIsNegative,
             statusText: fundStatusText,
             statusIsError: viewModel.fund.isFailed,
             isExpanded: appState.expandedCard == .fund,
@@ -776,7 +783,6 @@ public struct HomeView: View {
         face: String,
         theme: StatCardTheme,
         isLoading: Bool,
-        faceIsNegative: Bool = false,
         statusText: String? = nil,
         statusIsError: Bool = false,
         isExpanded: Bool,
@@ -791,13 +797,18 @@ public struct HomeView: View {
                 } else {
                     Image(systemName: theme.iconName)
                         .font(.system(size: compact ? 16 : 18, weight: .semibold))
-                        .foregroundStyle(theme.deep)
+                        // Owner, Nov 14, 2026 ("too much colors"):
+                        // no colour inside the card — the icon is
+                        // ink and its chip ring is plain light
+                        // grey. ONLY the 2px card outline keeps
+                        // colour.
+                        .foregroundStyle(DesignTokens.ink)
                         .frame(width: compact ? 32 : 36, height: compact ? 32 : 36)
                         .background(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(theme.outline, lineWidth: 1)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                         )
                 }
                 Text(title)
@@ -820,7 +831,11 @@ public struct HomeView: View {
             } else {
                 Text(face)
                     .font(.system(size: compact ? 24 : 28, weight: .heavy))
-                    .foregroundStyle(faceIsNegative ? DesignTokens.errorText : theme.deep)
+                    // Owner, Nov 14, 2026 ("too much colors"): the
+                    // amount is ink, never the deep theme colour —
+                    // even when negative. ONLY the card outline
+                    // keeps colour.
+                    .foregroundStyle(DesignTokens.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
@@ -833,7 +848,9 @@ public struct HomeView: View {
                 Spacer()
                 Image(systemName: "chevron.down")
                     .font(.system(size: compact ? 14 : 15, weight: .bold))
-                    .foregroundStyle(DesignTokens.primary)
+                    // Owner, Nov 14, 2026 ("too much colors"): the
+                    // chevron is muted grey, not brand blue.
+                    .foregroundStyle(DesignTokens.muted)
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     .animation(ExpandAnimation.animation, value: isExpanded)
             }
@@ -936,14 +953,6 @@ public struct HomeView: View {
         case .loaded(let summary): return MoneyFormat.signedString(cents: summary.availableCents)
         case .failed, .loading: return ""
         }
-    }
-
-    /// A negative Extra Fund balance reads red, like the hero's
-    /// over-budget figure. (A negative Charity remaining means
-    /// ahead on giving, so it stays deep green.)
-    private var fundFaceIsNegative: Bool {
-        if case .loaded(let summary) = viewModel.fund { return summary.availableCents < 0 }
-        return false
     }
 
     private var charityAriaLabel: String {

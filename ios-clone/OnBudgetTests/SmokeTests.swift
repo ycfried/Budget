@@ -72,10 +72,20 @@ final class SmokeTests: XCTestCase {
 
     func testExtraFundAccentIsAmber() {
         // Owner, Nov 12 2026: Extra Fund is amber, not blue like
-        // the Weekly Budget hero. Outline amber-600, deep tint
-        // amber-700 — the card accent on Home + Funds, loaded
-        // and loading alike.
+        // the Weekly Budget hero. Outline amber-600; the deep tint
+        // amber-700 hex is retained as a token (pinned here) but
+        // since Nov 14, 2026 ("too much colors") it no longer
+        // colours the card face — only the outline keeps colour.
         XCTAssertEqual(DesignTokens.fundHex, "#d97706")
         XCTAssertEqual(DesignTokens.fundDeepHex, "#b45309")
+    }
+
+    func testHeroOverBudgetIsMutedRed() {
+        // Owner, Nov 14 2026 ("too much colors"): the Spending
+        // hero's over-budget figure + progress bar use a quieter,
+        // deeper muted red — NOT the bright error red, which stays
+        // for error text, toasts, and failed loads.
+        XCTAssertEqual(DesignTokens.heroOverBudgetHex, "#991b1b")
+        XCTAssertEqual(DesignTokens.errorTextHex, "#dc2626")
     }
 }

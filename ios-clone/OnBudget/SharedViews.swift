@@ -507,11 +507,13 @@ public struct Card<Content: View>: View {
 // colour); Extra Fund is amber (savings — amber, not blue like
 // the Weekly Budget hero, so the two cards tell apart). NOT a
 // wash: the card is white inside, exactly like the Weekly Budget
-// hero, with a 2px coloured outline. Amounts are the deep tint
-// colour, never mid-tone. The hero stays the anchor by size and
-// by the thickest outline (2.5px). While loading the card keeps
-// its coloured outline — only the amount/icon faces are grey
-// skeleton blocks in the same bigger shape.
+// hero, with a 2px coloured outline. SUPERSEDED Nov 14, 2026
+// (~11:28 PM, "too much colors"): amounts and icons are ink,
+// chevrons muted grey — ONLY the coloured outline keeps colour.
+// The hero stays the anchor by size and by the thickest outline
+// (2.5px). While loading the card keeps its coloured outline —
+// only the amount/icon faces are grey skeleton blocks in the same
+// bigger shape.
 
 /// The shared outline/identity of a Charity or Extra Fund stat card.
 public enum StatCardTheme {
@@ -533,13 +535,13 @@ public enum StatCardTheme {
     /// thicker (2.5px), so the hero stays the anchor card.
     public var outlineWidth: CGFloat { 2 }
 
-    /// Deep tint colour of the amount (and the icon).
-    public var deep: Color {
-        switch self {
-        case .charity: return DesignTokens.charityDeep
-        case .fund: return DesignTokens.fundDeep
-        }
-    }
+    // NOTE (owner, Nov 14, 2026 — "too much colors"): there is
+    // deliberately NO deep amount/icon colour on this theme any
+    // more. The old `deep` property (charity #15803d, fund
+    // #b45309) coloured the amount and icon; both are ink now and
+    // the chevron is muted grey, so ONLY the outline above keeps
+    // colour. The hex tokens stay in DesignTokens (the widget
+    // still uses charityDeep; a smoke test pins fundDeepHex).
 
     /// SF Symbol for the card. There is no piggy-bank symbol, so
     /// Extra Fund uses a banknote; Charity uses a giving glyph.

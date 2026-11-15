@@ -32,6 +32,15 @@ public enum DesignTokens {
     public static let errorTextHex = "#dc2626"
     public static let errorBorderHex = "#fecaca"
 
+    // MARK: - Hero over-budget red (owner rule, Nov 14 2026: the
+    // Spending hero's negative figure + progress bar in the bright
+    // error red #dc2626 were too stark — "too much colors". This
+    // quieter, deeper muted red is the over-budget signal ONLY on
+    // the hero figure and its progress bar. The bright errorText
+    // above stays for error text, toasts, and failed loads.)
+
+    public static let heroOverBudgetHex = "#991b1b"
+
     // MARK: - Success green (owner rule, Nov 11 2026: success toasts
     // are GREEN, not blue — native only; the web app keeps brand-blue
     // toasts. Info toasts stay brand blue. Owner, Nov 14, 2026: the
@@ -48,13 +57,17 @@ public enum DesignTokens {
     // wash — a coloured OUTLINE on a white card, like the Weekly
     // Budget hero. Charity keeps a green identity, Extra Fund an
     // amber one (Nov 12 ~9:55 PM: amber, not blue like the hero,
-    // so the two cards tell apart); the deep amount colours below
-    // stay (they are the colour identity, not a wash). The soft-wash tokens that the
+    // so the two cards tell apart). SUPERSEDED Nov 14, 2026
+    // (~11:28 PM, "too much colors"): the deep amount/icon colours
+    // below NO LONGER colour the card faces — amounts and icons
+    // are ink, chevrons muted grey, and ONLY the coloured outline
+    // keeps colour. The deep hexes stay as tokens (the widget
+    // still uses charityDeep; a smoke test pins fundDeepHex), not
+    // as card-face colours. The soft-wash tokens that the
     // first pass added (charityTint/fundTint, charityChip/fundChip)
     // are REMOVED: nothing else referenced them — they only
     // duplicated the success/info backgrounds (#f0fdf4 / #eef4ff)
-    // — and no wash remains on these cards. Text stays dark ink;
-    // amounts are the deep colour, never mid-tone.
+    // — and no wash remains on these cards. Text stays dark ink.
 
     public static let skeletonHex = "#ececf1"
     public static let charityDeepHex = "#15803d"
@@ -90,6 +103,7 @@ public enum DesignTokens {
     public static var errorBackground: Color { Color(hex: errorBackgroundHex) }
     public static var errorText: Color { Color(hex: errorTextHex) }
     public static var errorBorder: Color { Color(hex: errorBorderHex) }
+    public static var heroOverBudget: Color { Color(hex: heroOverBudgetHex) }
     public static var success: Color { Color(hex: successHex) }
     public static var successBackground: Color { Color(hex: successBackgroundHex) }
     public static var successText: Color { Color(hex: successTextHex) }

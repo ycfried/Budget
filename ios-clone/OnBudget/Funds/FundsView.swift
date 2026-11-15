@@ -180,7 +180,6 @@ public struct FundsView: View {
             title: "Extra Fund",
             amountText: fundFaceText,
             isExpanded: appState.expandedCard == .fund,
-            isNegative: (viewModel.fundSummary?.availableCents ?? 0) < 0,
             amountIsStatus: viewModel.fundSummary == nil,
             isLoading: viewModel.fundSummary == nil && viewModel.fundError == nil,
             theme: .fund,
@@ -248,9 +247,6 @@ public struct FundsView: View {
             title: "Charity",
             amountText: charityFaceText,
             isExpanded: appState.expandedCard == .charity,
-            isNegative: false, // A negative Charity remaining means
-            // ahead on giving, not an error — it stays deep green,
-            // matching Home (a negative Extra Fund balance stays red).
             amountIsStatus: viewModel.charitySummary == nil,
             isLoading: viewModel.charitySummary == nil && viewModel.charityError == nil,
             theme: .charity,

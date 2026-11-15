@@ -287,7 +287,7 @@ public struct FundsBreakdownRow: View {
 }
 
 /// A Title + Amount face that expands in place (no sheet, no overlay —
-/// spec §6.2/§9.1). Chevron `⌄` bottom-right, brand blue, flips to `⌃`.
+/// spec §6.2/§9.1). Chevron `⌄` bottom-right, muted grey, flips to `⌃`.
 /// Bigger and outlined when a `theme` is given (owner, Nov 12, 2026,
 /// corrected ~2:02 PM — the same StatCardTheme as Home: Charity green
 /// #16a34a outline, Extra Fund brand-blue #2f6bff outline, both 2px,
@@ -302,7 +302,6 @@ public struct FundsExpandableCard<Expanded: View>: View {
     public let title: String
     public let amountText: String
     public let isExpanded: Bool
-    public let isNegative: Bool
     /// When true the face text is a loading/error status, not an
     /// amount — render it as a skeleton/static block (matching the
     /// Home failure presentation), never in 28pt bold amount type
@@ -321,7 +320,6 @@ public struct FundsExpandableCard<Expanded: View>: View {
         title: String,
         amountText: String,
         isExpanded: Bool,
-        isNegative: Bool = false,
         amountIsStatus: Bool = false,
         isLoading: Bool = false,
         theme: StatCardTheme? = nil,
@@ -332,7 +330,6 @@ public struct FundsExpandableCard<Expanded: View>: View {
         self.title = title
         self.amountText = amountText
         self.isExpanded = isExpanded
-        self.isNegative = isNegative
         self.amountIsStatus = amountIsStatus
         self.isLoading = isLoading
         self.theme = theme
@@ -365,13 +362,19 @@ public struct FundsExpandableCard<Expanded: View>: View {
                                 } else {
                                     Image(systemName: theme.iconName)
                                         .font(.system(size: 18, weight: .semibold))
-                                        .foregroundStyle(theme.deep)
+                                        // Owner, Nov 14, 2026 ("too
+                                        // much colors"): no colour
+                                        // inside the card — icon ink,
+                                        // chip ring plain light grey.
+                                        // ONLY the 2px outline keeps
+                                        // colour (same as Home).
+                                        .foregroundStyle(DesignTokens.ink)
                                         .frame(width: 36, height: 36)
                                         .background(.white)
                                         .clipShape(RoundedRectangle(cornerRadius: 10))
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 10)
-                                                .stroke(theme.outline, lineWidth: 1)
+                                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                                         )
                                 }
                             }
@@ -395,13 +398,21 @@ public struct FundsExpandableCard<Expanded: View>: View {
                         } else {
                             Text(amountText)
                                 .font(.system(size: 28, weight: .bold))
-                                .foregroundStyle(isNegative ? DesignTokens.errorText : (theme?.deep ?? DesignTokens.ink))
+                                // Owner, Nov 14, 2026 ("too much
+                                // colors"): the amount is ink, never
+                                // the deep theme colour — even when
+                                // negative. ONLY the outline keeps
+                                // colour (same as Home).
+                                .foregroundStyle(DesignTokens.ink)
                         }
                         HStack {
                             Spacer()
                             Text("⌄")
                                 .font(.system(size: 17, weight: .bold))
-                                .foregroundStyle(DesignTokens.primary)
+                                // Owner, Nov 14, 2026 ("too much
+                                // colors"): the chevron is muted
+                                // grey, not brand blue.
+                                .foregroundStyle(DesignTokens.muted)
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         }
                     }
