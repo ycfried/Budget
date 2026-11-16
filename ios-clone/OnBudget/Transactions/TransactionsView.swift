@@ -187,6 +187,7 @@ public struct TransactionsView: View {
                 transaction: transaction,
                 isAdmin: viewModel.isAdmin,
                 viewModel: viewModel,
+                fundNames: appState.fundNames,
                 onDismiss: { actionsTransaction = nil }
             )
                 // Size (owner, Nov 15, 2026 — build 34): the Actions
@@ -422,7 +423,7 @@ public struct TransactionsView: View {
 
     @ViewBuilder
     private var activeChips: some View {
-        let chips = viewModel.filters.activeChips
+        let chips = viewModel.filters.activeChips(customNames: appState.fundNames)
         if !chips.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -689,7 +690,7 @@ public struct TransactionsFilterSheet: View {
                     // Status — the picker value says it.
                     Picker("Status", selection: $draftStatus) {
                         ForEach(TransactionStatusFilter.allCases, id: \.self) { status in
-                            Text(status.label).tag(status)
+                            Text(status.label(customNames: appState.fundNames)).tag(status)
                         }
                     }
                     .pickerStyle(.menu)

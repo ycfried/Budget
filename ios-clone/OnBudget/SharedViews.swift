@@ -488,14 +488,21 @@ public struct BrandedLoader: View {
 /// sooner.
 ///
 /// `clearTabBar` (audit X-P2-1, Nov 12 2026): true where a tab bar
-/// is actually present (the three tabs) — the banner floats 120pt
-/// above the bottom edge, clear of it. False on Auth/Household and
-/// inside the Settings cover, where there is no tab bar — the banner
-/// sits 16pt above the bottom edge instead of hovering mid-screen.
+/// is actually present (the three tabs) — the banner sits just
+/// above it, as low as it can go (owner, Nov 16, 2026: the 120pt
+/// float left a gap under the toast on iPad). False on Auth/
+/// Household and inside the Settings cover, where there is no tab
+/// bar — the banner sits 16pt above the bottom edge instead.
+/// On iPad (regular size class) the banner spans the app's 900pt
+/// centered content column, like the tabs — it read as a thin
+/// narrow pill before (owner, Nov 16, 2026). iPhone stays
+/// full-width.
 public struct ToastBanner: View {
     public let toast: Toast
     public let onDismiss: () -> Void
     public let clearTabBar: Bool
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.safeAreaInsets) private var safeAreaInsets
     public init(toast: Toast, clearTabBar: Bool = true, onDismiss: @escaping () -> Void) {
         self.toast = toast
         self.clearTabBar = clearTabBar
@@ -532,8 +539,13 @@ public struct ToastBanner: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .shadow(radius: 4)
         }
+        .frame(maxWidth: horizontalSizeClass == .regular ? 900 : .infinity)
         .padding(.horizontal, 16)
-        .padding(.bottom, clearTabBar ? 120 : 16) // Clear of the tab bar (web: bottom 120px); 16pt where there is none.
+        // Pinned to the bottom (owner, Nov 16, 2026): just above the
+        // tab bar — safe-area bottom + tab bar (49pt) + a small gap —
+        // not floating 120pt up with a gap underneath. 16pt where
+        // there is no tab bar.
+        .padding(.bottom, clearTabBar ? safeAreaInsets.bottom + 65 : 16)
     }
 }
 
@@ -608,66 +620,53 @@ public struct Card<Content: View>: View {
 // the value is genuinely unset) — never a bare bold "—" in amount
 // type, never a sentence in amount type.
 
-// MARK: - Stat-card themes (owner direction, Nov 12 2026,
-// corrected ~2:02 PM the same day; corrected again ~9:55 PM:
-// skeletons keep their coloured outlines — the muted-grey
-// loading outline is gone)
-//
-// The Home + Funds Charity / Extra Fund cards share ONE theme each
-// (same outline, icon, amount size on both screens). Charity is
-// green (giving/growth — green is already the native success
-// colour); Extra Fund is amber (savings — amber, not blue like
-// the Weekly Budget hero, so the two cards tell apart). NOT a
-// wash: the card is white inside, exactly like the Weekly Budget
-// hero, with a 2px coloured outline. SUPERSEDED Nov 14, 2026
-// (~11:28 PM, "too much colors"): amounts and icons are ink,
-// chevrons muted grey — ONLY the coloured outline keeps colour.
-// The hero stays the anchor by size and by the thickest outline
-// (2.5px). While loading the card keeps its coloured outline —
-// only the amount/icon faces are grey skeleton blocks in the same
-// bigger shape.
+// MARK: - Stat-card themes (owner direction, Nov 12 2026;
+// the coloured-outline design (Charity green / Extra Fund
+// amber / Debt muted red / Spending blue, 2px on a white card)
+// was SUPERSEDED Nov 16, 2026 (owner choice, Mockup C): the
+// outlines did not fit the branding and the thin lines read
+// cheap/childish. Each fund is now a SECTION with a COLOURED
+// BANNER — the banner holds the icon, name and amount in white,
+// and the detail below it sits on plain white, with no outline
+// or border anywhere. The Home + Funds cards share ONE theme
+// each (same banner colour, icon, amount size on both screens).
+// While loading the banner is a muted grey block with grey
+// skeleton faces — no colour until the numbers arrive.
 
-/// The shared outline/identity of a Charity or Extra Fund stat card.
+/// The shared banner identity of a fund section.
 public enum StatCardTheme {
     case charity
     case fund
-    /// Carried Debt (build 29): the outline is the muted deep red
-    /// #991b1b (`DesignTokens.heroOverBudget`) — distinct from
-    /// Charity green / Extra Fund amber, and debt is a negative
-    /// balance, so red reads correctly. Like the other two cards the
-    /// amount and icon stay ink and the chevron muted grey; ONLY the
-    /// outline keeps colour (owner, Nov 14, 2026 — "too much colors").
+    /// Carried Debt (build 29): black ink banner.
     case debt
     /// Spending (build 30): the weekly budget fund — the base
-    /// allowance lives here. Blue outline #2f6bff (the primary /
-    /// hero blue): this is the week's spending money.
+    /// allowance lives here. Primary blue banner #2f6bff.
     case spending
 
-    /// Coloured outline of the card, loaded or loading: green
-    /// #16a34a for Charity (its own token — NOT the success green,
-    /// which went lighter Nov 14, 2026), amber #d97706 for Extra
-    /// Fund, muted deep red #991b1b for Carried Debt. White inside —
-    /// never a wash.
-    public var outline: Color {
+    /// Banner colour of the fund section (owner, Nov 16, 2026 —
+    /// Mockup C): Carried Debt black ink, Spending primary blue,
+    /// Extra Fund medium grey, Charity deep blue. The green
+    /// (#16a34a) / amber (#d97706) / muted-red (#991b1b) outlines
+    /// are gone from the fund cards. (The tokens stay in
+    /// DesignTokens — the widget uses them, and tests pin them —
+    /// but no fund card reads them any more.)
+    public var banner: Color {
         switch self {
-        case .charity: return DesignTokens.charity
-        case .fund: return DesignTokens.fund
-        case .debt: return DesignTokens.heroOverBudget
+        case .charity: return DesignTokens.deep
+        case .fund: return DesignTokens.muted
+        case .debt: return DesignTokens.ink
         case .spending: return DesignTokens.primary
         }
     }
 
-    /// Outline width: 2px for both stat cards. The hero's is
-    /// thicker (2.5px), so the hero stays the anchor card.
-    public var outlineWidth: CGFloat { 2 }
-
-    // NOTE (owner, Nov 14, 2026 — "too much colors"): there is
-    // deliberately NO deep amount/icon colour on this theme any
-    // more. The old `deep` property (charity #15803d, fund
-    // #b45309) coloured the amount and icon; both are ink now and
-    // the chevron is muted grey, so ONLY the outline above keeps
-    // colour. The hex tokens stay in DesignTokens (the widget
-    // still uses charityDeep; a smoke test pins fundDeepHex).
+    // NOTE (owner, Nov 14, 2026 — "too much colors", and Nov 16,
+    // 2026 — banners): there is deliberately NO deep amount/icon
+    // colour on this theme any more. The old `deep` property
+    // (charity #15803d, fund #b45309) coloured the amount and
+    // icon; the banner now carries the colour instead, and the
+    // amount/icon/chevron inside it are white. The hex tokens stay
+    // in DesignTokens (the widget still uses charityDeep; a smoke
+    // test pins fundDeepHex).
 
     /// SF Symbol for the card. There is no piggy-bank symbol, so
     /// Extra Fund uses a banknote; Charity uses a giving glyph.

@@ -9,10 +9,11 @@ import OnBudgetKit
 // same face as the Home stat cards (Title + Amount only, chevron `⌄`
 // bottom-right) with the same in-place expansion, except the Funds
 // expansions INCLUDE action buttons (Home does not). One fund IS one
-// card (owner, Nov 15, 2026; redesigned build 33): the card's
-// coloured outline wraps its header AND its detail — breakdown,
-// actions, editor, Activity — so each fund reads as one group, not
-// a card with loose rows hanging below it. Spending (Weekly
+// section (owner, Nov 15, 2026; redesigned build 33; banner
+// redesign build 37): the fund's coloured BANNER heads its section
+// and its detail — breakdown, actions, editor, Activity — sits below
+// it on plain white, so each fund reads as one group, not a card
+// with loose rows hanging below it. Spending (Weekly
 // Allowance editor + Temporary Allowance), Extra Fund (shortfall
 // row, Activity), Charity (rate editor + Activity), Carried Debt
 // (rule editor, Activity) — then standalone Review.
@@ -74,6 +75,21 @@ public enum FundSectionID: String, CaseIterable, Identifiable {
         case .debt: return "Carried Debt"
         }
     }
+
+    /// The name to SHOW (build 37 — fund rename, owner Nov 16,
+    /// 2026): the household's custom name for this fund when one
+    /// is stored, else the default above. The custom name is shown
+    /// exactly as typed — no Title Case forcing. A blank stored
+    /// value falls back to the default, so a reset is just a
+    /// missing/empty key. This is the ONE resolution every view
+    /// uses (Funds, Home, Transactions filters, buttons, widget),
+    /// reading the same `appState.fundNames` source.
+    public func displayName(customNames: [String: String]) -> String {
+        if let custom = customNames[rawValue]?.trimmingCharacters(in: .whitespacesAndNewlines), !custom.isEmpty {
+            return custom
+        }
+        return displayName
+    }
 }
 
 public struct FundsView: View {
@@ -82,6 +98,11 @@ public struct FundsView: View {
     /// across Home + Funds.
     @ObservedObject var appState: AppViewModel
     @State private var openForm: FundsForm?
+    /// The fund being renamed (build 37 — fund rename, owner Nov
+    /// 16, 2026): set by the Rename button in a fund's expanded
+    /// detail, opens the rename sheet. Admin-only — the button is
+    /// hidden for non-admins.
+    @State private var renamingFund: FundSectionID?
     @State private var openMore: FundsMoreSection?
     @State private var correctingIncome: CharityIncome?
     /// The funds' order on this page (build 30 — reorderable with
@@ -102,6 +123,20 @@ public struct FundsView: View {
     public var fundsViewModel: FundsViewModel { viewModel }
 
     private var isAdmin: Bool { viewModel.context.isAdmin }
+
+    /// Rename button for a fund's expanded detail (build 37 —
+    /// fund rename, owner Nov 16, 2026): admin-only, opens the
+    /// rename sheet. It sits at the TOP of the detail, first thing
+    /// seen when the card expands — the owner could not find a
+    /// rename control before, because there was not one, so it
+    /// must be obvious. Full-width grey tertiary, like the other
+    /// fund action buttons.
+    @ViewBuilder
+    private func renameButton(for section: FundSectionID) -> some View {
+        if isAdmin {
+            FundsTertiaryButton("Rename") { renamingFund = section }
+        }
+    }
 
     public var body: some View {
         ScrollView {
@@ -184,6 +219,21 @@ public struct FundsView: View {
             Button(TitleCase.apply(to: "Close"), role: .cancel) {}
         } message: {
             Text(viewModel.alertMessage ?? "")
+        }
+        // Rename sheet (build 37 — fund rename, owner Nov 16,
+        // 2026): a fund's Rename button sets `renamingFund`. On a
+        // successful save the shared `appState.fundNames` is
+        // refreshed from the RPC result, so the new name updates
+        // everywhere at once (Funds, Home, Transactions, widget).
+        .sheet(item: $renamingFund) { section in
+            RenameFundSheet(
+                section: section,
+                currentName: section.displayName(customNames: appState.fundNames),
+                viewModel: viewModel,
+                onSaved: { names in appState.fundNames = names },
+                onClose: { renamingFund = nil }
+            )
+            .presentationSizing(.fitted)
         }
         .task {
             loadFundOrder()
@@ -290,14 +340,14 @@ public struct FundsView: View {
             FundsCard {
                 VStack(alignment: .leading, spacing: 8) {
                     if let debt = viewModel.debtBalanceCents {
-                        FundsBreakdownRow("Carried debt", value: MoneyFormat.formatCents(debt))
+                        FundsBreakdownRow(FundSectionID.debt.displayName(customNames: appState.fundNames), value: MoneyFormat.formatCents(debt))
                     } else if let error = viewModel.debtError {
                         FundsErrorBox(error)
                     } else {
                         SkeletonBlock(width: 160, height: 16)
                     }
                     if let summary = viewModel.fundSummary {
-                        FundsBreakdownRow("Available in Extra Fund", value: MoneyFormat.formatCents(summary.availableCents), isNegative: summary.availableCents < 0)
+                        FundsBreakdownRow("Available in \(FundSectionID.fund.displayName(customNames: appState.fundNames))", value: MoneyFormat.formatCents(summary.availableCents), isNegative: summary.availableCents < 0)
                     }
                 }
             }
@@ -305,7 +355,7 @@ public struct FundsView: View {
             FundsCard {
                 VStack(alignment: .leading, spacing: 8) {
                     if let debt = viewModel.debtBalanceCents {
-                        FundsBreakdownRow("Carried debt", value: MoneyFormat.formatCents(debt))
+                        FundsBreakdownRow(FundSectionID.debt.displayName(customNames: appState.fundNames), value: MoneyFormat.formatCents(debt))
                     } else if let error = viewModel.debtError {
                         FundsErrorBox(error)
                     } else {
@@ -324,14 +374,14 @@ public struct FundsView: View {
     // payment — the same figure as the Home hero's effective
     // allowance. The breakdown reconciles: Base ± Temporary
     // increase/decrease − Debt Payment = Total. The Weekly
-    // Allowance editor + Temporary Allowance live INSIDE the card
-    // (build 33): the card's outline wraps the header and the
-    // detail, so the whole thing reads as one group — the editor
-    // used to sit below the card, outside its outline.
+    // Allowance editor + Temporary Allowance live INSIDE the section
+    // (build 33): the banner heads the section and the detail sits
+    // below it on plain white, so the whole thing reads as one group
+    // — the editor used to sit below the card, outside it.
 
     private var spendingCard: some View {
         FundsExpandableCard(
-            title: "Spending",
+            title: FundSectionID.spending.displayName(customNames: appState.fundNames),
             amountText: spendingFaceText,
             isExpanded: appState.expandedCard == .spending,
             amountIsStatus: spendingFaceCents == nil,
@@ -347,6 +397,7 @@ public struct FundsView: View {
                 // so the rows and the buttons breathe. Same
                 // treatment on all four fund cards.
                 VStack(alignment: .leading, spacing: 16) {
+                    renameButton(for: .spending)
                     VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow("Base", value: MoneyFormat.formatCents(base))
                         if let override = viewModel.debtWeek?.overrideCents, override != base {
@@ -362,9 +413,6 @@ public struct FundsView: View {
                         if let total = spendingFaceCents {
                             FundsBreakdownRow("Total", value: MoneyFormat.formatCents(total))
                         }
-                    }
-                    HStack(spacing: 12) {
-                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
                     }
                     Divider()
                     SpendingAllowanceSection(viewModel: viewModel, bare: true) {
@@ -414,7 +462,7 @@ public struct FundsView: View {
 
     private var fundCard: some View {
         FundsExpandableCard(
-            title: "Extra Fund",
+            title: FundSectionID.fund.displayName(customNames: appState.fundNames),
             amountText: fundFaceText,
             isExpanded: appState.expandedCard == .fund,
             amountIsStatus: viewModel.fundSummary == nil,
@@ -427,6 +475,7 @@ public struct FundsView: View {
                 FundsErrorBox(error)
             } else if let summary = viewModel.fundSummary {
                 VStack(alignment: .leading, spacing: 16) {
+                    renameButton(for: .fund)
                     VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow(
                             isAdmin ? "Spendable Available" : "Available to Request",
@@ -501,7 +550,7 @@ public struct FundsView: View {
 
     private var charityCard: some View {
         FundsExpandableCard(
-            title: "Charity",
+            title: FundSectionID.charity.displayName(customNames: appState.fundNames),
             amountText: charityFaceText,
             isExpanded: appState.expandedCard == .charity,
             amountIsStatus: viewModel.charitySummary == nil,
@@ -514,6 +563,7 @@ public struct FundsView: View {
                 FundsErrorBox(error)
             } else if let summary = viewModel.charitySummary {
                 VStack(alignment: .leading, spacing: 16) {
+                    renameButton(for: .charity)
                     VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents))
                         FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
@@ -525,15 +575,16 @@ public struct FundsView: View {
                         }
                         FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.committedCents))
                     }
-                    HStack(spacing: 12) {
-                        if isAdmin {
+                    // Build 37 (owner, Nov 16, 2026): the grey
+                    // "Close" button is gone — the card already
+                    // collapses by tapping its header/chevron, so
+                    // the button was redundant clutter.
+                    if isAdmin {
+                        HStack(spacing: 12) {
                             FundsPrimaryButton("Record Income") {
                                 correctingIncome = nil
                                 openForm = .income
                             }
-                            FundsTertiaryButton("Close") { appState.expandedCard = nil }
-                        } else {
-                            FundsTertiaryButton("Close") { appState.expandedCard = nil }
                         }
                     }
                     Divider()
@@ -576,12 +627,12 @@ public struct FundsView: View {
     //
     // The third fund section (owner, Nov 15, 2026): the debt
     // balance, what it is from, the rule in effect, and its actions.
-    // The face is the current balance D, ink (like the other fund
-    // cards, only the outline keeps colour — muted deep red #991b1b).
+    // The face is the current balance D, white on the black banner
+    // (build 37 — the muted deep red #991b1b outline is gone).
 
     private var debtCard: some View {
         FundsExpandableCard(
-            title: "Carried Debt",
+            title: FundSectionID.debt.displayName(customNames: appState.fundNames),
             amountText: debtFaceText,
             isExpanded: appState.expandedCard == .debt,
             amountIsStatus: viewModel.debtWeek == nil,
@@ -594,6 +645,7 @@ public struct FundsView: View {
                 FundsErrorBox(error)
             } else if let week = viewModel.debtWeek {
                 VStack(alignment: .leading, spacing: 16) {
+                    renameButton(for: .debt)
                     VStack(alignment: .leading, spacing: 12) {
                         FundsMuted("Money spent over past weekly allowances.")
                         if let payment = week.debtPaymentCents {
@@ -602,7 +654,7 @@ public struct FundsView: View {
                         } else {
                             // Old server: the payment is unknown, so only
                             // the balance shows — never a $0 that would be wrong.
-                            FundsBreakdownRow("Carried Debt", value: MoneyFormat.formatCents(week.carriedDebtCents))
+                            FundsBreakdownRow(FundSectionID.debt.displayName(customNames: appState.fundNames), value: MoneyFormat.formatCents(week.carriedDebtCents))
                         }
                     }
                     HStack(spacing: 12) {
@@ -618,8 +670,9 @@ public struct FundsView: View {
                             if week.carriedDebtCents > 0 {
                                 FundsTertiaryButton("Clear Debt") { openForm = .clearDebt }
                             }
-                        } else {
-                            FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                            // Build 37 (owner, Nov 16, 2026): the
+                            // grey "Close" button is gone — the card
+                            // collapses by tapping its header/chevron.
                         }
                     }
                     Divider()
@@ -661,10 +714,10 @@ public struct FundsView: View {
     // MARK: - One container per fund (owner, Nov 15, 2026;
     // redesigned build 33)
     //
-    // One fund IS one card: the fund's `FundsExpandableCard`
-    // carries its coloured outline, and the detail — breakdown,
-    // actions, editor, Activity — lives INSIDE that outline, so
-    // the whole thing reads as one group. There is no outer
+    // One fund IS one section: the fund's `FundsExpandableCard`
+    // carries its coloured banner, and the detail — breakdown,
+    // actions, editor, Activity — sits below that banner on plain
+    // white, so the whole thing reads as one group. There is no outer
     // wrapper card any more (build 33): it was a plain white card
     // whose faint shadow was invisible against the page, so the
     // card and the sections below it read as loose rows instead

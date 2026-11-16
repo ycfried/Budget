@@ -474,7 +474,7 @@ struct WidgetView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
-                figureLabel("Charity left")
+                figureLabel(snapshot.charityLeftLabel)
                 figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 18)
             }
             Spacer(minLength: 0)
@@ -542,7 +542,7 @@ struct WidgetView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Divider()
                 VStack(alignment: .leading, spacing: 1) {
-                    figureLabel("Charity left")
+                    figureLabel(snapshot.charityLeftLabel)
                     figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 28)
                     if isPlaceholder {
                         skeletonBar(width: 90, height: 6)
@@ -617,7 +617,7 @@ struct WidgetView: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 2) {
-                figureLabel("Charity left")
+                figureLabel(snapshot.charityLeftLabel)
                 figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 36)
                 if isPlaceholder {
                     skeletonBar(width: 170, height: 6)
@@ -692,7 +692,7 @@ struct WidgetView: View {
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 2) {
-                    figureLabel("Charity left")
+                    figureLabel(snapshot.charityLeftLabel)
                     figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 44)
                     if isPlaceholder {
                         skeletonBar(width: 170, height: 6)

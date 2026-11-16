@@ -47,6 +47,12 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
     public let spentCents: Int?
     public let charityGivenCents: Int?
     public let charityCommittedCents: Int?
+    /// Custom fund names (build 37 — fund rename, owner Nov 16,
+    /// 2026): the household's `fund_names` map (fund key → custom
+    /// name as typed), so the widget shows a renamed fund's name
+    /// too. Optional so snapshots written before build 37 still
+    /// decode; a missing map means the default names.
+    public let fundNames: [String: String]?
     public let computedAt: Date
 
     public init(
@@ -56,6 +62,7 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
         spentCents: Int? = nil,
         charityGivenCents: Int? = nil,
         charityCommittedCents: Int? = nil,
+        fundNames: [String: String]? = nil,
         computedAt: Date
     ) {
         self.weekStart = weekStart
@@ -64,7 +71,26 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
         self.spentCents = spentCents
         self.charityGivenCents = charityGivenCents
         self.charityCommittedCents = charityCommittedCents
+        self.fundNames = fundNames
         self.computedAt = computedAt
+    }
+
+    /// The charity fund's display name (build 37 — fund rename):
+    /// the custom name when stored, else "Charity". The custom name
+    /// is shown exactly as typed. (The "Left this week" label needs
+    /// no fund name — it never says "Spending" — so only the
+    /// charity label reads from the map.)
+    public var charityDisplayName: String {
+        if let custom = fundNames?["charity"]?.trimmingCharacters(in: .whitespacesAndNewlines), !custom.isEmpty {
+            return custom
+        }
+        return "Charity"
+    }
+
+    /// The widget's charity figure label (build 37): "<Name> left"
+    /// — "Charity left" by default, the custom name when renamed.
+    public var charityLeftLabel: String {
+        "\(charityDisplayName) left"
     }
 
     /// Stale 1 hour after computation, or when computedAt is in the

@@ -76,10 +76,14 @@ public struct AddMoneyForm: View {
                 FundsMuted("Log each deposit only once.")
             }
         }
-        .confirmationDialog(
+        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
+        // confirmationDialog — on iPad a confirmationDialog is a
+        // popover anchored at the top of the screen (same fix as the
+        // Clear Debt confirm). An .alert is centred on iPhone and
+        // iPad alike.
+        .alert(
             "Save Top-Up",
-            isPresented: $showConfirm,
-            titleVisibility: .visible
+            isPresented: $showConfirm
         ) {
             Button(TitleCase.apply(to: "Save Top-Up")) {
                 Task {
@@ -175,10 +179,14 @@ public struct UseFundForm: View {
                 }
             }
         }
-        .confirmationDialog(
+        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
+        // confirmationDialog — on iPad a confirmationDialog is a
+        // popover anchored at the top of the screen (same fix as the
+        // Clear Debt confirm). An .alert is centred on iPhone and
+        // iPad alike.
+        .alert(
             "Record Fund Spending",
-            isPresented: $showConfirm,
-            titleVisibility: .visible
+            isPresented: $showConfirm
         ) {
             Button(TitleCase.apply(to: "Record It")) {
                 Task { await record(overrideReason: nil) }
@@ -300,10 +308,14 @@ public struct PayDebtForm: View {
                 }
             }
         }
-        .confirmationDialog(
+        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
+        // confirmationDialog — on iPad a confirmationDialog is a
+        // popover anchored at the top of the screen (same fix as the
+        // Clear Debt confirm). An .alert is centred on iPhone and
+        // iPad alike.
+        .alert(
             "Pay Debt from Extra Fund",
-            isPresented: $showConfirm,
-            titleVisibility: .visible
+            isPresented: $showConfirm
         ) {
             Button(TitleCase.apply(to: "Pay Debt")) {
                 Task { await record(overrideReason: nil) }
@@ -368,6 +380,10 @@ public struct ClearDebtForm: View {
     @State private var amountText = "0"
     @State private var showConfirm = false
     @State private var pendingCents: Int?
+    /// iPad (build 37, owner Nov 16, 2026): the % and action
+    /// buttons are larger/taller on the tablet form factor.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    private var isIPad: Bool { horizontalSizeClass == .regular }
 
     public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
@@ -381,10 +397,18 @@ public struct ClearDebtForm: View {
     /// `amountCents`: dragging writes the field text, and the
     /// field / % buttons write the slider (through `setAmount`).
     /// Step is one cent, so a % button's floored amount sits
-    /// exactly where the slider says it does.
+    /// exactly where the slider says it does. The getter CLAMPS
+    /// to the current debt (build 37, owner Nov 16, 2026 — the
+    /// iPad crash around the Clear Debt flow): after a full clear
+    /// `refresh()` drops the debt to $0 while this form is still
+    /// open, and an unclamped value ($2,988.24) outside a range
+    /// that has collapsed to 0...0 is a degenerate Slider state —
+    /// the one concrete hazard found in the post-clear path. The
+    /// form closes right after, but the re-render in between must
+    /// never hand the Slider an out-of-range value.
     private var sliderDollars: Binding<Double> {
         Binding(
-            get: { Double(amountCents) / 100 },
+            get: { min(max(Double(amountCents) / 100, 0), debtDollars) },
             set: { newValue in
                 amountCents = Int((newValue * 100).rounded())
                 amountText = dollarsText(amountCents)
@@ -425,7 +449,10 @@ public struct ClearDebtForm: View {
                                 amountCents = min(max(cents, 0), debt)
                             }
                         }
-                    Slider(value: sliderDollars, in: 0...max(debtDollars, 0), step: 0.01)
+                    // The range is never zero-width (build 37 —
+                    // see sliderDollars): at $0 debt the range is
+                    // 0...0.01, not 0...0.
+                    Slider(value: sliderDollars, in: 0...max(debtDollars, 0.01), step: 0.01)
                         .tint(DesignTokens.primary)
                     HStack {
                         Text("$0")
@@ -437,13 +464,16 @@ public struct ClearDebtForm: View {
                             .foregroundStyle(Color(hex: "#6b7280"))
                     }
                     HStack(spacing: 8) {
-                        ForEach([10, 25, 50, 75], id: \.self) { pct in
-                            FundsSmallTertiaryButton("\(pct)%") {
+                        // Build 37 (owner, Nov 16, 2026): a 100%
+                        // button joins 10 / 25 / 50 / 75% — one tap
+                        // clears the full debt instead of sliding to
+                        // the end. The "Slide to the end" hint is
+                        // gone: the 100% button says it.
+                        ForEach([10, 25, 50, 75, 100], id: \.self) { pct in
+                            FundsSmallTertiaryButton("\(pct)%", isLarge: isIPad) {
                                 setAmount((debt * pct) / 100)
                             }
                         }
-                        Spacer()
-                        FundsMuted("Slide to the end for all of it.")
                     }
                     if amountCents > 0, let remaining = remainingCents {
                         FundsBreakdownRow("Remaining Debt", value: MoneyFormat.formatCents(remaining))
@@ -455,12 +485,12 @@ public struct ClearDebtForm: View {
                         // confirm only appears once there is an
                         // amount to clear.
                         if amountCents > 0 {
-                            FundsPrimaryButton("Clear \(MoneyFormat.formatCents(amountCents))") {
+                            FundsPrimaryButton("Clear \(MoneyFormat.formatCents(amountCents))", isLarge: isIPad) {
                                 pendingCents = amountCents
                                 showConfirm = true
                             }
                         }
-                        FundsTertiaryButton("Cancel") { onClose() }
+                        FundsTertiaryButton("Cancel", isLarge: isIPad) { onClose() }
                     }
                 } else if let error = viewModel.debtError {
                     FundsErrorBox(error)
@@ -469,10 +499,16 @@ public struct ClearDebtForm: View {
                 }
             }
         }
-        .confirmationDialog(
+        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
+        // confirmationDialog — on iPad a confirmationDialog is a
+        // popover anchored at the top of the screen, and the owner
+        // reported the Clear Debt confirm floating up there. An
+        // .alert is centred on iPhone and iPad alike (same
+        // precedent as the ReviewView Same Purchase / Separate
+        // confirms). The bottom success toast is untouched.
+        .alert(
             "Clear Debt",
-            isPresented: $showConfirm,
-            titleVisibility: .visible
+            isPresented: $showConfirm
         ) {
             Button(TitleCase.apply(to: "Clear Debt"), role: .destructive) {
                 if let pendingCents {
@@ -626,13 +662,17 @@ public struct FundRequestQueue: View {
                 Text("The fund does not cover \(MoneyFormat.formatCents(cents)). You can still approve with a typed reason — it will be logged.")
             }
         }
-        .confirmationDialog(
+        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
+        // confirmationDialog — on iPad a confirmationDialog is a
+        // popover anchored at the top of the screen (same fix as the
+        // Clear Debt confirm). An .alert is centred on iPhone and
+        // iPad alike.
+        .alert(
             "Decline Request",
             isPresented: Binding(
                 get: { declining != nil },
                 set: { if !$0 { declining = nil } }
-            ),
-            titleVisibility: .visible
+            )
         ) {
             Button(TitleCase.apply(to: "Decline"), role: .destructive) {
                 if let declining {
@@ -806,5 +846,103 @@ public struct ApproveRequestSheet: View {
         // Weekly Budget sheet. The trailing Spacer is gone: it
         // stretched the middle empty against the tall form sheet.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+    }
+}
+
+// MARK: - Rename Fund (admin only, build 37)
+//
+// Rename a fund (owner, Nov 16, 2026): renaming was a confirmed rule
+// (Nov 15) but never built — the owner asked how to rename the
+// funds. The editor is a sheet with one field, pre-filled with the
+// current name, + Save / Cancel at the build-36 editor sizing
+// (17pt, proper height). The name is stored exactly as typed (no
+// Title Case forcing) via the `set_fund_name` RPC
+// (supabase/fund-names.sql), per household, so it persists and syncs
+// — the caller updates the shared `appState.fundNames`, the ONE
+// source every view reads from, so the new name updates everywhere
+// (Funds, Home, Transactions filters, buttons, widget). An empty
+// name resets that fund to its default. Admin-only: the Rename
+// button that opens this sheet is hidden for non-admins.
+
+public struct RenameFundSheet: View {
+    public let section: FundSectionID
+    /// The name to show, pre-filled (the current display name —
+    /// custom when set, else the default).
+    public let currentName: String
+    @ObservedObject public var viewModel: FundsViewModel
+    /// Called with the household's updated fund_names map on a
+    /// successful save, so the caller refreshes the shared source.
+    public var onSaved: ([String: String]) -> Void
+    public var onClose: () -> Void
+    @State private var nameText: String
+    @State private var fieldError: String?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    public init(
+        section: FundSectionID,
+        currentName: String,
+        viewModel: FundsViewModel,
+        onSaved: @escaping ([String: String]) -> Void,
+        onClose: @escaping () -> Void = {}
+    ) {
+        self.section = section
+        self.currentName = currentName
+        self.viewModel = viewModel
+        self.onSaved = onSaved
+        self.onClose = onClose
+        self._nameText = State(initialValue: currentName)
+    }
+
+    public var body: some View {
+        // No NavigationStack root (owner, Nov 14, 2026 — same
+        // fitted-sizing rule as the Actions sheet): a NavigationStack
+        // reports an unbounded ideal height, so the fitted sheet
+        // rendered tall and mostly empty. Plain VStack + SheetHeader
+        // lets fitted measure the real content.
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: TitleCase.apply(to: "Rename \(section.displayName)"), onClose: onClose)
+            TextField("Fund name", text: $nameText)
+                .font(.system(size: 17))
+                .textFieldStyle(.roundedBorder)
+                .frame(minHeight: 48)
+                .autocorrectionDisabled()
+            FundsMuted("Leave blank to use the default name (\(section.displayName)).")
+            if let fieldError {
+                FundsErrorBox(fieldError)
+            }
+            HStack(spacing: 12) {
+                FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename") {
+                    saveTapped()
+                }
+                FundsTertiaryButton("Cancel") { onClose() }
+            }
+        }
+        .padding()
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // Weekly Budget sheet.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+    }
+
+    private func saveTapped() {
+        let trimmed = nameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count <= 40 else {
+            fieldError = "Keep the name to 40 characters or fewer."
+            return
+        }
+        guard trimmed != currentName.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            fieldError = "That is already the name."
+            return
+        }
+        fieldError = nil
+        Task {
+            if let names = await viewModel.renameFund(section: section, name: nameText) {
+                onSaved(names)
+                onClose()
+            }
+            // On failure the view model raises its alert (FundsView
+            // presents it) and this sheet stays open with the typed
+            // name intact.
+        }
     }
 }
