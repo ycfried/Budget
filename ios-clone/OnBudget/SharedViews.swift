@@ -643,22 +643,38 @@ public enum StatCardTheme {
     /// Carried Debt (build 29): black ink banner.
     case debt
     /// Spending (build 30): the weekly budget fund — the base
-    /// allowance lives here. Primary blue banner #2f6bff.
+    /// allowance lives here. Deep blue banner #1d4ed8 (owner,
+    /// Nov 16, 2026 — build 38: the bright primary blue #2f6bff
+    /// was the wrong colour).
     case spending
 
     /// Banner colour of the fund section (owner, Nov 16, 2026 —
-    /// Mockup C): Carried Debt black ink, Spending primary blue,
-    /// Extra Fund medium grey, Charity deep blue. The green
-    /// (#16a34a) / amber (#d97706) / muted-red (#991b1b) outlines
-    /// are gone from the fund cards. (The tokens stay in
-    /// DesignTokens — the widget uses them, and tests pin them —
-    /// but no fund card reads them any more.)
+    /// build 38 correction of the Mockup C assignment): Carried
+    /// Debt black ink, Spending dark blue, Extra Fund light grey,
+    /// Charity light blue. The bright primary blue #2f6bff and the
+    /// medium grey #6b7280 leave the banners. The green (#16a34a)
+    /// / amber (#d97706) / muted-red (#991b1b) outlines are gone
+    /// from the fund cards. (The tokens stay in DesignTokens —
+    /// the widget uses them, and tests pin them — but no fund card
+    /// reads them any more.)
     public var banner: Color {
         switch self {
-        case .charity: return DesignTokens.deep
-        case .fund: return DesignTokens.muted
+        case .charity: return DesignTokens.light
+        case .fund: return DesignTokens.bannerLightGrey
         case .debt: return DesignTokens.ink
-        case .spending: return DesignTokens.primary
+        case .spending: return DesignTokens.deep
+        }
+    }
+
+    /// Text/icon colour on the banner: white on the dark banners
+    /// (Spending deep blue, Debt black), dark ink on the light
+    /// banners (Charity light blue #60a5fa, Extra Fund light grey
+    /// #d1d5db) — white does not read on the light backgrounds
+    /// (owner, Nov 16, 2026 — build 38).
+    public var onBanner: Color {
+        switch self {
+        case .charity, .fund: return DesignTokens.ink
+        case .debt, .spending: return .white
         }
     }
 

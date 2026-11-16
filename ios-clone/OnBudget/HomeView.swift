@@ -505,23 +505,25 @@ public struct HomeView: View {
     // Hero — Weekly Budget. Bigger and more prominent than the
     // other cards (owner, Nov 11, 2026: it is the most important
     // number on the page). Owner, Nov 16, 2026 (Mockup C): the hero
-    // is a SECTION with a COLOURED BANNER — regular primary blue,
-    // holding the icon, the "Spending" title and the big figure in
-    // white; the progress bar, spent line and the rest sit below it
-    // on plain white. The 3px blue outline is gone. The loading
-    // state renders at the same full hero size (shimmer skeleton
-    // blocks, no spinner), so the layout never jumps when the
-    // number arrives.
+    // is a SECTION with a COLOURED BANNER — deep blue, holding the
+    // icon, the "Spending" title and the big figure in white; the
+    // progress bar, spent line and the rest sit below it on plain
+    // white. The 3px blue outline is gone. The loading state renders
+    // at the same full hero size (shimmer skeleton blocks, no
+    // spinner), so the layout never jumps when the number arrives.
+    // Owner, Nov 16, 2026 (build 38, "a bit too heavy"): the banner
+    // is SHORTER and the figure a bit SMALLER than build 37 — less
+    // padding, smaller type — so it stops dominating the page.
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Banner: header row + big figure, white on primary
-            // blue. While loading or failed the banner is a muted
-            // grey block with no colour.
-            VStack(alignment: .leading, spacing: 14) {
+            // Banner: header row + big figure, white on deep blue.
+            // While loading or failed the banner is a muted grey
+            // block with no colour.
+            VStack(alignment: .leading, spacing: 10) {
                 heroHeaderRow
                 switch viewModel.week {
                 case .loading:
-                    SkeletonBlock(height: isIPad ? 72 : 56, cornerRadius: 8)
+                    SkeletonBlock(height: isIPad ? 60 : 48, cornerRadius: 8)
                 case .failed:
                     EmptyView()
                 case .loaded(let result):
@@ -537,7 +539,7 @@ public struct HomeView: View {
                     )
                 }
             }
-            .padding(20)
+            .padding(16)
             .background(heroBannerColor)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
@@ -574,11 +576,14 @@ public struct HomeView: View {
         }
     }
 
-    /// Banner colour: primary blue when loaded, muted grey while
-    /// loading or failed (no colour until the numbers arrive).
+    /// Banner colour: the Spending theme's banner (deep blue
+    /// #1d4ed8, build 38 — the bright primary blue was the wrong
+    /// colour), muted grey while loading or failed (no colour until
+    /// the numbers arrive). The theme is the single source — the
+    /// hero reads it, never a hard-coded hex.
     private var heroBannerColor: Color {
         switch viewModel.week {
-        case .loaded: return DesignTokens.primary
+        case .loaded: return StatCardTheme.spending.banner
         case .loading, .failed: return Color(hex: "#e5e7eb")
         }
     }
@@ -805,7 +810,9 @@ public struct HomeView: View {
     /// banner it keeps the ink / muted-red rule (owner, Nov 14,
     /// 2026: the bright error red was too stark — "too much
     /// colors"). iPad (owner, Nov 15, 2026): materially bigger —
-    /// 58pt dollars / 32pt cents, where iPhone stays 44pt / 24pt.
+    /// 50pt dollars / 28pt cents, where iPhone stays 38pt / 21pt
+    /// (owner, Nov 16, 2026 — build 38, "a bit too heavy": down
+    /// from 58/32 iPad and 44/24 iPhone).
     private func heroFigure(cents: Int, onBanner: Bool = false) -> some View {
         let parts = MoneyFormat.parts(cents: cents)
         let color: Color = {
@@ -813,9 +820,9 @@ public struct HomeView: View {
             return cents < 0 ? DesignTokens.heroOverBudget : DesignTokens.ink
         }()
         return (Text(parts.sign + "$" + parts.dollars)
-            .font(.system(size: isIPad ? 58 : 44, weight: .heavy))
+            .font(.system(size: isIPad ? 50 : 38, weight: .heavy))
             + Text("." + parts.cents)
-            .font(.system(size: isIPad ? 32 : 24, weight: .heavy)))
+            .font(.system(size: isIPad ? 28 : 21, weight: .heavy)))
             .foregroundStyle(color)
     }
 
@@ -954,15 +961,17 @@ public struct HomeView: View {
         // One sizing table: compact (Home, iPhone) / compact on
         // iPad / full (unused on Home today, kept for the shared
         // theme). The skeleton blocks below use the same numbers,
-        // so loading and loaded share one shape.
+        // so loading and loaded share one shape. (Owner, Nov 16,
+        // 2026 — build 38, "a bit too heavy": the compact amounts
+        // and padding are a touch smaller than build 37.)
         let chip: CGFloat = compact ? (isIPad ? 44 : 32) : 36
         let iconSize: CGFloat = compact ? (isIPad ? 20 : 16) : 18
         let titleSize: CGFloat = compact ? (isIPad ? 18 : 16) : 18
-        let amountSize: CGFloat = compact ? (isIPad ? 32 : 24) : 28
-        let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 40 : 30) : 36
+        let amountSize: CGFloat = compact ? (isIPad ? 28 : 20) : 28
+        let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 36 : 26) : 36
         let statusSize: CGFloat = compact ? (isIPad ? 13 : 12) : 13
         let chevronSize: CGFloat = compact ? (isIPad ? 15 : 14) : 15
-        let pad: CGFloat = compact ? (isIPad ? 18 : 14) : 20
+        let pad: CGFloat = compact ? (isIPad ? 16 : 12) : 20
         // Banner colour: the theme colour when loaded, muted grey
         // while loading or failed (no colour until the numbers
         // arrive). The grey is #e5e7eb, a shade darker than the
@@ -971,14 +980,15 @@ public struct HomeView: View {
             if isLoading || statusIsError { return Color(hex: "#e5e7eb") }
             return theme.banner
         }()
-        // Text/icon colour on the banner: white on a theme colour,
-        // ink on the grey loading/failed banner.
+        // Text/icon colour on the banner: the theme's onBanner
+        // colour (white on the dark banners, ink on the light
+        // ones), ink on the grey loading/failed banner.
         let onBanner: Color = {
             if isLoading || statusIsError { return DesignTokens.ink }
-            return .white
+            return theme.onBanner
         }()
         return VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+            VStack(alignment: .leading, spacing: compact ? 6 : 10) {
                 HStack(spacing: compact ? 8 : 12) {
                     if isLoading {
                         SkeletonBlock(width: chip, height: chip, cornerRadius: 10)
@@ -1018,7 +1028,7 @@ public struct HomeView: View {
                     Spacer()
                     Image(systemName: "chevron.down")
                         .font(.system(size: chevronSize, weight: .bold))
-                        .foregroundStyle(isLoading || statusIsError ? DesignTokens.muted : .white)
+                        .foregroundStyle(isLoading || statusIsError ? DesignTokens.muted : theme.onBanner)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                 }
             }

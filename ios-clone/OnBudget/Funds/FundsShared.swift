@@ -590,12 +590,17 @@ public struct FundsExpandableCard<Expanded: View>: View {
     }
 
     /// The banner face (owner, Nov 16, 2026 — Mockup C): icon +
-    /// title + amount + chevron, white on the theme colour. The
-    /// banner is the fund's header and shows the amount; the detail
-    /// below it sits on plain white, with no outline or border.
-    /// Loading / failed show the same banner shape in muted grey
-    /// with grey skeleton faces — no colour until the numbers
-    /// arrive, and never a bare "—" in amount type.
+    /// title + amount + chevron, on the theme colour. The text
+    /// colour is the theme's onBanner colour — white on the dark
+    /// banners (Spending, Debt), ink on the light ones (Charity,
+    /// Extra Fund). The banner is the fund's header and shows the
+    /// amount; the detail below it sits on plain white, with no
+    /// outline or border. Loading / failed show the same banner
+    /// shape in muted grey with grey skeleton faces — no colour
+    /// until the numbers arrive, and never a bare "—" in amount
+    /// type. (Owner, Nov 16, 2026 — build 38, "a bit too heavy":
+    /// the amount is a touch smaller and the banner a touch
+    /// shorter than build 37.)
     private func bannerFace(pad: CGFloat) -> some View {
         // Banner colour: the theme colour when loaded, a muted grey
         // while loading or failed — #e5e7eb, a shade darker than the
@@ -604,17 +609,17 @@ public struct FundsExpandableCard<Expanded: View>: View {
             if isLoading || amountIsStatus { return Color(hex: "#e5e7eb") }
             return theme?.banner ?? .white
         }()
-        // Title colour on the banner: white on a theme colour, ink
-        // on the plain unthemed face or on a grey loading banner
-        // (the title always shows, even while loading).
+        // Title colour on the banner: the theme's onBanner colour,
+        // ink on the plain unthemed face or on a grey loading
+        // banner (the title always shows, even while loading).
         let titleColor: Color = {
             if theme == nil || isLoading || amountIsStatus { return DesignTokens.ink }
-            return .white
+            return theme?.onBanner ?? .white
         }()
-        // Chevron colour: white on a loaded theme banner, muted
-        // grey everywhere else.
+        // Chevron colour: the theme's onBanner colour on a loaded
+        // theme banner, muted grey everywhere else.
         let chevronColor: Color = {
-            if theme != nil && !isLoading && !amountIsStatus { return .white }
+            if theme != nil && !isLoading && !amountIsStatus { return theme?.onBanner ?? .white }
             return DesignTokens.muted
         }()
         return HStack(spacing: 12) {
@@ -624,7 +629,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 } else {
                     Image(systemName: theme.iconName)
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(theme.onBanner)
                         .frame(width: 36, height: 36)
                 }
             }
@@ -634,16 +639,16 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 .lineLimit(1)
             Spacer()
             if isLoading || amountIsStatus {
-                // Sized to the loaded 28pt amount (owner, Nov 14,
+                // Sized to the loaded 24pt amount (owner, Nov 14,
                 // 2026: the 150-wide block was too small and the
                 // card looked empty while loading). Static (not
                 // shimmering) when failed — a failed load is not a
                 // loading state.
-                SkeletonBlock(width: 190, height: 36, cornerRadius: 8, animated: isLoading)
+                SkeletonBlock(width: 190, height: 32, cornerRadius: 8, animated: isLoading)
             } else {
                 Text(amountText)
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(theme == nil ? DesignTokens.ink : .white)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(theme == nil ? DesignTokens.ink : (theme?.onBanner ?? .white))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
@@ -653,7 +658,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
         }
         .padding(.horizontal, pad)
-        .padding(.vertical, 16)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(bannerColor)
         .clipShape(RoundedRectangle(cornerRadius: 12))
