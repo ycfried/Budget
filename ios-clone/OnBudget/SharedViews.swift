@@ -564,6 +564,16 @@ public extension View {
     func toastOverlay(_ toast: Binding<Toast?>, clearTabBar: Bool = true) -> some View {
         modifier(ToastOverlayModifier(toast: toast, clearTabBar: clearTabBar))
     }
+
+    /// Main tab content width (build 36, owner Nov 16, 2026 — iPad):
+    /// on iPad (regular size class) the tabs read as a centered
+    /// 900pt column — clearly wider than the 600pt sheet columns
+    /// used elsewhere on iPad, and never stretched edge-to-edge on
+    /// a wide screen. On iPhone (compact) the content stays
+    /// full-width, unchanged.
+    func mainContentWidth(horizontalSizeClass: UserInterfaceSizeClass?) -> some View {
+        frame(maxWidth: horizontalSizeClass == .regular ? 900 : .infinity)
+    }
 }
 
 // MARK: - Cards

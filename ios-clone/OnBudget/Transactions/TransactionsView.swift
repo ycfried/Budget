@@ -80,6 +80,9 @@ public struct TransactionsView: View {
     @State private var showingAdd: Bool = false
     @State private var showingTrash: Bool = false
     @State private var actionsTransaction: Transaction?
+    /// iPad content width (build 36): the tab reads as a centered
+    /// 900pt column on the regular size class.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(
         viewModel: TransactionsViewModel,
@@ -123,6 +126,10 @@ public struct TransactionsView: View {
                 }
             }
         }
+        // Build 36 (owner, Nov 16, 2026 — iPad): the tab reads as a
+        // centered 900pt column on the regular size class (see
+        // mainContentWidth), never stretched edge-to-edge.
+        .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
         .task {
             if case .idle = viewModel.loadState {
                 await viewModel.load()

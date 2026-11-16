@@ -192,6 +192,200 @@ public struct FundsQuietButton: View {
     }
 }
 
+// MARK: - Fund editor controls (build 36)
+//
+// The controls inside an expanded fund's editor — the Charity rate
+// row, the Debt Repayment Rule picker, the Weekly Allowance field —
+// were the small list-row sizes (14pt text, 8pt padding) and looked
+// small and cheap next to the 28pt card faces (owner, Nov 16, 2026).
+// The editor controls are sized up to proper controls: 17pt text,
+// 13pt vertical padding, 48pt+ fields. These are SEPARATE from the
+// FundsSmall* buttons on purpose: the small sizes stay for list-row
+// actions (Approve, Release, Correct, Same Purchase) — only the
+// fund editors use the bigger treatment. Values never change here:
+// only sizes.
+
+/// Editor primary (Save in the rate / rule / allowance editors):
+/// the FundsPrimaryButton's text and padding, without its
+/// full-width frame — it sits inline in an editor row.
+public struct FundsEditorPrimaryButton: View {
+    public let label: String
+    public let isBusy: Bool
+    public let action: () -> Void
+
+    public init(_ label: String, isBusy: Bool = false, action: @escaping () -> Void) {
+        self.label = label
+        self.isBusy = isBusy
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(TitleCase.apply(to: label))
+                .font(.system(size: 17, weight: .semibold))
+                .padding(.vertical, 13)
+                .padding(.horizontal, 18)
+                .background(DesignTokens.primary)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.6 : 1.0)
+    }
+}
+
+/// Editor tertiary (Set / Change Temporary Allowance): the small
+/// tertiary's grey fill, at editor size.
+public struct FundsEditorTertiaryButton: View {
+    public let label: String
+    public let isBusy: Bool
+    public let action: () -> Void
+
+    public init(_ label: String, isBusy: Bool = false, action: @escaping () -> Void) {
+        self.label = label
+        self.isBusy = isBusy
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(TitleCase.apply(to: label))
+                .font(.system(size: 16, weight: .semibold))
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color(hex: "#e5e7eb"))
+                .foregroundStyle(DesignTokens.ink)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.6 : 1.0)
+    }
+}
+
+/// Editor quiet (Reset in the rate / rule / allowance editors,
+/// Remove Override in Temporary Allowance): the quiet text button
+/// at editor size.
+public struct FundsEditorQuietButton: View {
+    public let label: String
+    public let isBusy: Bool
+    public let action: () -> Void
+
+    public init(_ label: String, isBusy: Bool = false, action: @escaping () -> Void) {
+        self.label = label
+        self.isBusy = isBusy
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(TitleCase.apply(to: label))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color(hex: "#6b7280"))
+                .padding(.vertical, 13)
+                .padding(.horizontal, 14)
+        }
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.6 : 1.0)
+    }
+}
+
+// MARK: - Activity rows (build 36)
+//
+// Minimal overview rows for "Activity & Transactions" (owner, Nov 16,
+// 2026): the overview shows only the essential — what it is + the
+// amount — and tapping the row expands the full detail inline (date,
+// rate, commits, approval, split, note). The full sentence per row
+// ("Mobile Check Deposit · +$7,000.00 on Nov 2, 2026 at 10% → commits
+// $700.00 · Owner approved Nov 5") is gone from the overview; it
+// lives in the expanded detail. Actions (e.g. Correct on a charity
+// income row) live in the expanded detail too — never nested inside
+// the toggle button, so the row tap and the action tap stay separate
+// buttons.
+
+/// One minimal activity row: a tappable summary line with a chevron,
+/// expanding in place (instant, no animation — the build-34 rule) to
+/// the full detail. The chevron is the same "⌄" the fund section
+/// rows use.
+public struct FundsActivityRow<Summary: View, Detail: View>: View {
+    public let summary: Summary
+    public let detail: Detail
+    @State private var isExpanded = false
+
+    public init(@ViewBuilder summary: () -> Summary, @ViewBuilder detail: () -> Detail) {
+        self.summary = summary()
+        self.detail = detail()
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    summary
+                    Spacer()
+                    Text("⌄")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.muted)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if isExpanded {
+                detail
+            }
+        }
+    }
+}
+
+/// One transaction inside "Activity & Transactions": minimal summary
+/// (merchant + amount in its kind colour) with the detail on tap
+/// (date, source, card, state). The amount uses the one shared kind
+/// rule (`TransactionFormatting.amountDisplay`): charity blue,
+/// money-in green with "+", everything else ink.
+public struct FundTransactionRow: View {
+    public let transaction: Transaction
+
+    public init(_ transaction: Transaction) {
+        self.transaction = transaction
+    }
+
+    public var body: some View {
+        let display = TransactionFormatting.amountDisplay(for: transaction)
+        FundsActivityRow {
+            HStack(spacing: 4) {
+                Text(transaction.merchant)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
+                Text("·")
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                Text(display.text)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(display.color)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+        } detail: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(MoneyFormat.fmtLong(transaction.date))
+                Text("\(sourceLabel(transaction.source))\(transaction.cardSuffix == "0000" ? "" : " · Card ••\(transaction.cardSuffix)")")
+                if transaction.state == .provisional {
+                    Text("Pending — not posted yet.")
+                } else if transaction.state == .reversed {
+                    Text("Reversed.")
+                }
+                if transaction.fundAllocationCents > 0 {
+                    Text("\(MoneyFormat.formatCents(transaction.fundAllocationCents)) covered by the Extra Fund.")
+                }
+            }
+            .font(.system(size: 14))
+            .foregroundStyle(Color(hex: "#6b7280"))
+        }
+    }
+}
+
 // MARK: - Cards, rows, error boxes
 
 /// A white card, radius 20, hairline shadow (spec §1.2). `background`

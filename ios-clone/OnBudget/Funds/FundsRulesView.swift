@@ -171,7 +171,7 @@ public struct CharityRateSection: View {
     /// Nov 15, 2026 — the expandable row is gone); the content
     /// itself is unchanged.
     private var rateEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Text("Default Charity Rate")
                     .font(.system(size: 15, weight: .semibold))
@@ -189,17 +189,23 @@ public struct CharityRateSection: View {
                 .accessibilityLabel("How it works")
             }
             HStack(spacing: 8) {
+                // Build 36 (owner, Nov 16, 2026): the editor controls
+                // were small and cheap — the field is now 17pt /
+                // 48pt tall and the Save / Reset are the editor
+                // sizes, not the small list-row sizes. The value is
+                // untouched: the field still shows the live default.
                 TextField(MoneyFormat.formatRateBp(defaultRateBp), text: $rateText)
                     .keyboardType(.decimalPad)
+                    .font(.system(size: 17))
                     .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 56)
+                    .frame(maxWidth: 72, minHeight: 48)
                 Text("%")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
-                FundsSmallPrimaryButton("Save", isBusy: viewModel.busyAction == "rate") {
+                FundsEditorPrimaryButton("Save", isBusy: viewModel.busyAction == "rate") {
                     saveRate()
                 }
-                FundsQuietButton("Reset") {
+                FundsEditorQuietButton("Reset") {
                     rateText = MoneyFormat.formatRateBp(defaultRateBp)
                     rateError = nil
                 }
@@ -404,7 +410,7 @@ public struct DebtRuleSection: View {
     /// This Week, the Spending card's week start — so it is gone).
     /// A bad Save still reports via the error box.
     private var ruleEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Debt Repayment Rule")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
@@ -414,22 +420,29 @@ public struct DebtRuleSection: View {
                 Text("Off").tag(DebtRule.Mode.off)
             }
             .pickerStyle(.segmented)
+            // Build 36 (owner, Nov 16, 2026): the picker segments
+            // were small and cheap — taller segments with larger
+            // text, like the other fund editors. The rule value is
+            // untouched: the picker still shows the saved rule.
+            .font(.system(size: 16, weight: .semibold))
+            .frame(minHeight: 44)
             HStack(spacing: 8) {
                 if selectedMode == .percent {
                     TextField(MoneyFormat.formatRateBp(savedRule.percentBp), text: $percentText)
                         .keyboardType(.decimalPad)
+                        .font(.system(size: 17))
                         .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 56)
+                        .frame(maxWidth: 72, minHeight: 48)
                     Text("% of base")
-                        .font(.system(size: 14))
+                        .font(.system(size: 16))
                         .foregroundStyle(Color(hex: "#6b7280"))
                 } else if selectedMode == .fixed {
-                    DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: 140)
+                    DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: 160, minHeight: 52)
                 }
-                FundsSmallPrimaryButton("Save", isBusy: viewModel.busyAction == "debt-rule") {
+                FundsEditorPrimaryButton("Save", isBusy: viewModel.busyAction == "debt-rule") {
                     saveRule()
                 }
-                FundsQuietButton("Reset") {
+                FundsEditorQuietButton("Reset") {
                     syncFromSaved()
                     ruleError = nil
                 }
@@ -589,16 +602,20 @@ public struct SpendingAllowanceSection: View {
     }
 
     private var allowanceEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Weekly Allowance")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
             HStack(spacing: 10) {
-                DollarTextField(text: $allowanceText, placeholder: "0.00", maxWidth: 140)
-                FundsSmallPrimaryButton("Save", isBusy: viewModel.busyAction == "base-allowance") {
+                // Build 36 (owner, Nov 16, 2026): the allowance
+                // field and Save were the small sizes — the field is
+                // now 52pt tall and Save / Reset are the editor
+                // sizes. The value is untouched: still $400.00.
+                DollarTextField(text: $allowanceText, placeholder: "0.00", maxWidth: 180, minHeight: 52)
+                FundsEditorPrimaryButton("Save", isBusy: viewModel.busyAction == "base-allowance") {
                     saveTapped()
                 }
-                FundsQuietButton("Reset") {
+                FundsEditorQuietButton("Reset") {
                     syncField()
                     allowanceError = nil
                 }
@@ -631,15 +648,27 @@ public struct SpendingAllowanceSection: View {
 
     private var tempBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
-            FundsBreakdownRow(
-                "Temporary Allowance",
-                value: tempOverrideCents.map { MoneyFormat.formatCents($0) } ?? "Not set"
-            )
+            // Build 36 (owner, Nov 16, 2026): the old row was a
+            // FundsBreakdownRow — label left, "Not set" stranded at
+            // the far right edge, disconnected from its label. The
+            // label and its status now sit together in one group:
+            // the status directly under the label, so the two read
+            // as one row. The "Set Temporary Allowance" button stays,
+            // at the editor size. No values change: still "Not set"
+            // until an override is in effect.
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Temporary Allowance")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Text(tempOverrideCents.map { MoneyFormat.formatCents($0) } ?? "Not set")
+                    .font(.system(size: 15))
+                    .foregroundStyle(tempOverrideCents == nil ? Color(hex: "#6b7280") : DesignTokens.ink)
+            }
             if let temp = tempOverrideCents, let base = savedBase, temp != base {
                 FundsMuted("This week's total is \(MoneyFormat.formatCents(temp)) instead of \(MoneyFormat.formatCents(base)).")
             }
             if isAdmin {
-                FundsSmallTertiaryButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance") {
+                FundsEditorTertiaryButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance") {
                     onOpenTemp()
                 }
             }

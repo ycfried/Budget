@@ -191,4 +191,93 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertNil(decoded.charityGivenFraction)
         XCTAssertEqual(decoded.spentFraction, 3000.0 / 40000.0)
     }
+
+    // MARK: - Timeline (build 36)
+
+    // Build 35 returned a single entry expiring after 15 minutes,
+    // so the widget fell back to the grey placeholder 4×/hour and
+    // got stuck on it overnight. Build 36 returns 24 hourly
+    // entries over the next day, so a valid entry always exists.
+
+    func testTimelineHasTwentyFourHourlyEntries() {
+        let start = Date(timeIntervalSince1970: 1_763_000_000)
+        let dates = WidgetTimeline.entryDates(from: start)
+        XCTAssertEqual(dates.count, 24)
+        XCTAssertEqual(WidgetTimeline.entryCount, 24)
+        XCTAssertEqual(WidgetTimeline.entryInterval, 3600)
+    }
+
+    func testTimelineEntriesAreOneHourApart() {
+        let start = Date(timeIntervalSince1970: 1_763_000_000)
+        let dates = WidgetTimeline.entryDates(from: start)
+        XCTAssertEqual(dates.first, start)
+        for index in 1..<dates.count {
+            XCTAssertEqual(
+                dates[index].timeIntervalSince(dates[index - 1]),
+                3600, accuracy: 0.001,
+                "entry \(index) must be exactly one hour after entry \(index - 1)"
+            )
+        }
+    }
+
+    func testTimelineSpansTwentyFourHours() {
+        let start = Date(timeIntervalSince1970: 1_763_000_000)
+        let dates = WidgetTimeline.entryDates(from: start)
+        // First entry now, last entry 23 hours later: the timeline
+        // covers a full day (24 hourly slots, not a single expiry).
+        XCTAssertEqual(dates.last?.timeIntervalSince(start) ?? -1, 23 * 3600, accuracy: 0.001)
+    }
+
+    func testTimelineReloadDateIsLastEntryDate() {
+        let start = Date(timeIntervalSince1970: 1_763_000_000)
+        let dates = WidgetTimeline.entryDates(from: start)
+        XCTAssertEqual(WidgetTimeline.reloadAfterDate(from: start), dates.last)
+    }
+
+    func testTimelineEntriesCarryTheSnapshot() {
+        let start = Date(timeIntervalSince1970: 1_763_000_000)
+        let snapshot = WidgetSnapshot(
+            weekStart: "2026-11-08",
+            availableCents: 37000,
+            charityRemainingCents: 4200,
+            spentCents: 3000,
+            computedAt: start
+        )
+        let entries = WidgetTimeline.entries(from: start, snapshot: snapshot)
+        XCTAssertEqual(entries.count, 24)
+        // Every entry carries the SAME snapshot (read once), so no
+        // hour of the day shows different numbers than any other.
+        XCTAssertTrue(entries.allSatisfy { $0.snapshot == snapshot })
+        XCTAssertEqual(entries.map(\.date), WidgetTimeline.entryDates(from: start))
+    }
+
+    func testTimelineEntriesCarryNilSnapshotWhenNoneExists() {
+        let start = Date(timeIntervalSince1970: 1_763_000_000)
+        let entries = WidgetTimeline.entries(from: start, snapshot: nil)
+        XCTAssertEqual(entries.count, 24)
+        XCTAssertTrue(entries.allSatisfy { $0.snapshot == nil })
+    }
+
+    func testTimelineStalenessAdvancesWithEntryDates() {
+        // The view computes staleness from entry.date, so the hourly
+        // entry dates must actually advance past the 1-hour rule —
+        // a single far-future entry (or a .never policy) would never
+        // go stale. A snapshot computed at `start` is fresh at the
+        // first entry; the second entry is EXACTLY one hour later,
+        // and the rule is strictly-after-1-hour, so that entry is
+        // still fresh; staleness flips at the third entry (2 hours)
+        // and holds for the rest of the day.
+        let start = Date(timeIntervalSince1970: 1_763_000_000)
+        let snapshot = WidgetSnapshot(
+            weekStart: "2026-11-08",
+            availableCents: 37000,
+            charityRemainingCents: 4200,
+            computedAt: start
+        )
+        let entries = WidgetTimeline.entries(from: start, snapshot: snapshot)
+        XCTAssertFalse(snapshot.isStale(at: entries[0].date))
+        XCTAssertFalse(snapshot.isStale(at: entries[1].date))
+        XCTAssertTrue(snapshot.isStale(at: entries[2].date))
+        XCTAssertTrue(snapshot.isStale(at: entries[23].date))
+    }
 }

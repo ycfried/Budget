@@ -209,9 +209,14 @@ public struct CharityIncomeForm: View {
 
 // MARK: - Charity income history (Fund Activity, admin only — spec §9.2)
 //
-// "`Source` · `$X` on `Mon D, YYYY` at `R`% → commits `$Y` · note" +
-// " (Reversed — replaced)" for reversed rows; active rows get a
-// Correct button (opens the income form prefilled).
+// Build 36 (owner, Nov 16, 2026): "Activity & Transactions" — ONE
+// combined feed, newest first: the income events AND the charity
+// gift transactions themselves (kind == .charity), capped at 20.
+// Overview rows are MINIMAL — source + amount only — and tapping a
+// row expands the full detail inline (date, rate, commits, note,
+// reversed status). The full sentence per row is gone from the
+// overview. Active rows keep their Correct button, in the expanded
+// detail (never nested inside the row toggle).
 
 public struct CharityIncomeHistory: View {
     @ObservedObject public var viewModel: FundsViewModel
@@ -224,39 +229,120 @@ public struct CharityIncomeHistory: View {
         self._openIncomeForm = openIncomeForm
     }
 
+    /// One combined feed item. Both dates are `YYYY-MM-DD`, so a
+    /// plain string sort is newest-first.
+    private enum FeedItem: Identifiable {
+        case income(CharityIncome)
+        case gift(Transaction)
+
+        var id: String {
+            switch self {
+            case .income(let row): return "income-\(row.id.uuidString)"
+            case .gift(let tx): return "gift-\(tx.id.uuidString)"
+            }
+        }
+
+        var sortDate: String {
+            switch self {
+            case .income(let row): return row.incomeDate
+            case .gift(let tx): return tx.date
+            }
+        }
+    }
+
+    /// The charity gift transactions in this feed: verified or
+    /// pending gifts, never trash or reversed, November 2026 onward
+    /// (the same filter the charity summary uses).
+    private var giftTransactions: [Transaction] {
+        viewModel.allTransactions.filter {
+            $0.kind == .charity && !$0.isInTrash && $0.state != .reversed && $0.date >= MoneyFormat.dataFloor
+        }
+    }
+
+    private var feed: [FeedItem] {
+        var items: [FeedItem] = viewModel.charityIncome.map { .income($0) }
+        items += giftTransactions.map { .gift($0) }
+        return Array(items.sorted { $0.sortDate > $1.sortDate }.prefix(20))
+    }
+
+    private var totalCount: Int {
+        viewModel.charityIncome.count + giftTransactions.count
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let error = viewModel.charityIncomeError {
                 FundsErrorBox(error)
-            } else if viewModel.charityIncome.isEmpty {
+            } else if let transactionsError = viewModel.transactionsError, feed.isEmpty {
+                // The gift half of the feed could not load — say so
+                // instead of silently showing income only.
+                FundsErrorBox(transactionsError)
+            } else if feed.isEmpty {
                 FundsMuted("No income recorded yet.")
             } else {
-                ForEach(viewModel.charityIncome) { row in
-                    // The income amount is money in: green with a
-                    // "+" prefix under the shared kind rule
-                    // (inflowDisplay). The committed figure stays
-                    // plain — it is an obligation, not an inflow.
-                    let display = TransactionFormatting.inflowDisplay(cents: row.amountCents)
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            (Text(row.sourceLabel)
-                                + Text(" · ")
-                                + Text(display.text).foregroundStyle(display.color)
-                                + Text(" on \(MoneyFormat.fmtLong(row.incomeDate)) at \(MoneyFormat.formatRateBp(row.rateBp))% → commits \(MoneyFormat.formatCents(row.committedCents))\(row.note.isEmpty ? "" : " · \(row.note)")\(row.status == "reversed" ? " (Reversed — replaced)" : "")"))
-                                .font(.system(size: 14))
-                        }
-                        Spacer()
-                        if row.status == "active" {
-                            FundsSmallTertiaryButton("Correct") {
-                                correcting = row
-                                openIncomeForm = true
-                            }
-                        }
+                ForEach(Array(feed.enumerated()), id: \.element.id) { index, item in
+                    switch item {
+                    case .income(let row):
+                        incomeRow(row)
+                    case .gift(let tx):
+                        FundTransactionRow(tx)
                     }
-                    if row.id != viewModel.charityIncome.last?.id {
+                    if index < feed.count - 1 {
                         Divider()
                     }
                 }
+                if totalCount > 20 {
+                    FundsMuted("Showing the latest 20 entries.")
+                }
+            }
+        }
+    }
+
+    /// Minimal overview (source + amount); the full detail — date,
+    /// rate, commits, note, reversed status — expands on tap, with
+    /// the Correct action in the expanded detail.
+    private func incomeRow(_ row: CharityIncome) -> some View {
+        // The income amount is money in: green with a "+" prefix
+        // under the shared kind rule (inflowDisplay). The committed
+        // figure stays plain — it is an obligation, not an inflow.
+        let display = TransactionFormatting.inflowDisplay(cents: row.amountCents)
+        return FundsActivityRow {
+            HStack(spacing: 4) {
+                Text(row.sourceLabel)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
+                Text("·")
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                Text(display.text)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(display.color)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                if row.status == "reversed" {
+                    Text("(Reversed)")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+            }
+        } detail: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("On \(MoneyFormat.fmtLong(row.incomeDate)) at \(MoneyFormat.formatRateBp(row.rateBp))% → commits \(MoneyFormat.formatCents(row.committedCents)).")
+                if !row.note.isEmpty {
+                    Text(row.note)
+                }
+                if row.status == "reversed" {
+                    Text("Reversed — replaced by a correction.")
+                }
+            }
+            .font(.system(size: 14))
+            .foregroundStyle(Color(hex: "#6b7280"))
+            if row.status == "active" {
+                FundsSmallTertiaryButton("Correct") {
+                    correcting = row
+                    openIncomeForm = true
+                }
+                .padding(.top, 4)
             }
         }
     }
@@ -264,8 +350,12 @@ public struct CharityIncomeHistory: View {
 
 // MARK: - Money Added history (Fund Activity, admin only — spec §9.2)
 //
-// "`$X` · `Mon D, YYYY` · `$Y` covered owed back · `$Z` added to fund ·
-// Owed back after `$W` · note".
+// Build 36 (owner, Nov 16, 2026): "Activity & Transactions" — ONE
+// combined feed, newest first: the top-ups AND the transactions
+// that touched the Extra Fund (kind == .fundCharge, or any charge
+// with fundAllocationCents > 0 — partly covered by the fund),
+// capped at 20. Overview rows are MINIMAL — amount only for a
+// top-up — and tapping expands the full split detail.
 
 public struct FundTopupsHistory: View {
     @ObservedObject public var viewModel: FundsViewModel
@@ -274,34 +364,95 @@ public struct FundTopupsHistory: View {
         self.viewModel = viewModel
     }
 
+    /// The transactions that touched the Extra Fund: spent-from-fund
+    /// charges, plus charges partly covered by the fund. Never trash
+    /// or reversed, November 2026 onward.
+    private var fundTransactions: [Transaction] {
+        viewModel.allTransactions.filter {
+            ($0.kind == .fundCharge || $0.fundAllocationCents > 0)
+                && !$0.isInTrash && $0.state != .reversed && $0.date >= MoneyFormat.dataFloor
+        }
+    }
+
+    /// One combined feed item. Top-ups sort by their created date;
+    /// transactions by their date — both `YYYY-MM-DD` prefixes, so
+    /// a plain string sort is newest-first.
+    private enum FeedItem: Identifiable {
+        case topup(FundTopup)
+        case transaction(Transaction)
+
+        var id: String {
+            switch self {
+            case .topup(let row): return "topup-\(row.clientKey)"
+            case .transaction(let tx): return "tx-\(tx.id.uuidString)"
+            }
+        }
+
+        var sortDate: String {
+            switch self {
+            case .topup(let row): return String(row.createdAt?.prefix(10) ?? "")
+            case .transaction(let tx): return tx.date
+            }
+        }
+    }
+
+    private var feed: [FeedItem] {
+        var items: [FeedItem] = viewModel.topups.map { .topup($0) }
+        items += fundTransactions.map { .transaction($0) }
+        return Array(items.sorted { $0.sortDate > $1.sortDate }.prefix(20))
+    }
+
+    private var totalCount: Int {
+        viewModel.topups.count + fundTransactions.count
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let error = viewModel.topupsError {
                 FundsErrorBox(error)
-            } else if viewModel.topups.isEmpty {
-                FundsMuted("No money added yet.")
+            } else if feed.isEmpty {
+                FundsMuted("No fund activity yet.")
             } else {
-                ForEach(viewModel.topups, id: \.clientKey) { row in
-                    // The top-up is money into the fund: green with
-                    // a "+" prefix under the shared kind rule
-                    // (inflowDisplay). The split detail line below
-                    // stays muted and plain — its parts are
-                    // destinations of the top-up, not standalone
-                    // inflows.
-                    let display = TransactionFormatting.inflowDisplay(cents: row.amountCents)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(display.text)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(display.color)
-                        Text("\(row.createdAt.map { MoneyFormat.displayDay($0) } ?? "") · \(MoneyFormat.formatCents(row.shortfallCoveredCents)) covered owed back · \(MoneyFormat.formatCents(row.fundAddedCents)) added to fund · Owed back after \(MoneyFormat.formatCents(row.shortfallAfterCents))\(row.note.isEmpty ? "" : " · \(row.note)")")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color(hex: "#6b7280"))
+                ForEach(Array(feed.enumerated()), id: \.element.id) { index, item in
+                    switch item {
+                    case .topup(let row):
+                        topupRow(row)
+                    case .transaction(let tx):
+                        FundTransactionRow(tx)
                     }
-                    if row.clientKey != viewModel.topups.last?.clientKey {
+                    if index < feed.count - 1 {
                         Divider()
                     }
                 }
+                if totalCount > 20 {
+                    FundsMuted("Showing the latest 20 entries.")
+                }
             }
+        }
+    }
+
+    /// Minimal overview (amount only); the full split detail —
+    /// date, covered owed back, added to fund, owed back after,
+    /// note — expands on tap.
+    private func topupRow(_ row: FundTopup) -> some View {
+        // The top-up is money into the fund: green with a "+"
+        // prefix under the shared kind rule (inflowDisplay).
+        let display = TransactionFormatting.inflowDisplay(cents: row.amountCents)
+        return FundsActivityRow {
+            Text(display.text)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(display.color)
+        } detail: {
+            // The split detail stays muted and plain — its parts are
+            // destinations of the top-up, not standalone inflows.
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(row.createdAt.map { MoneyFormat.displayDay($0) } ?? "") · \(MoneyFormat.formatCents(row.shortfallCoveredCents)) covered owed back · \(MoneyFormat.formatCents(row.fundAddedCents)) added to fund · Owed back after \(MoneyFormat.formatCents(row.shortfallAfterCents))")
+                if !row.note.isEmpty {
+                    Text(row.note)
+                }
+            }
+            .font(.system(size: 14))
+            .foregroundStyle(Color(hex: "#6b7280"))
         }
     }
 }

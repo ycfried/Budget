@@ -124,3 +124,73 @@ public enum WidgetSnapshotStore {
         store?.removeObject(forKey: key)
     }
 }
+
+/// Widget timeline shape (build 36 — the build-35 15-minute backstop
+/// was the bug, not the fix).
+///
+/// Build 35 returned a SINGLE timeline entry with policy
+/// `.after(now + 15 min)`: the timeline expired 4×/hour, and every
+/// expiry left a window in which WidgetKit had no valid entry and
+/// rendered the placeholder — grey skeleton bars — until it got
+/// around to calling `getTimeline` again. On an idle / throttled
+/// device that window stretched indefinitely, so the widget got
+/// stuck on grey bars overnight (owner, Nov 16, 2026: small + one
+/// medium stuck on placeholder while another medium showed real
+/// numbers).
+///
+/// The fix: a timeline of HOURLY entries spanning the next 24 hours,
+/// each carrying the current snapshot, with policy `.after(last
+/// entry date)`. There is always a valid entry, so WidgetKit never
+/// falls back to the placeholder once a snapshot exists — a stale
+/// snapshot keeps showing its last-known numbers with the amber dot
+/// + "may be out of date" instead of grey bars. The entry dates
+/// MUST advance hourly (a single far-future entry, or a `.never`
+/// policy, would break staleness: the view computes `isStale(at:
+/// entry.date)`, so a frozen entry date would never go stale).
+/// Freshness still comes from the app: it calls
+/// `reloadAllTimelines()` on launch, on every foreground, and on
+/// every Home refresh, which re-reads the snapshot and rebuilds
+/// this timeline.
+///
+/// Pure Foundation, so the package tests cover it; the Provider in
+/// the widget target (no test target of its own) just maps these
+/// entries onto `WidgetEntry`.
+public struct WidgetTimelineEntry: Sendable {
+    public let date: Date
+    public let snapshot: WidgetSnapshot?
+
+    public init(date: Date, snapshot: WidgetSnapshot?) {
+        self.date = date
+        self.snapshot = snapshot
+    }
+}
+
+public enum WidgetTimeline {
+    /// One entry per hour — 24 entries cover a full day.
+    public static let entryCount = 24
+    /// Entries are one hour apart, matching the snapshot's 1-hour
+    /// staleness rule: the amber dot flips at the first hourly
+    /// boundary after the snapshot goes stale.
+    public static let entryInterval: TimeInterval = 3600
+
+    /// The 24 hourly entry dates starting at `start` (inclusive):
+    /// `start`, `start + 1h`, …, `start + 23h`.
+    public static func entryDates(from start: Date) -> [Date] {
+        (0..<entryCount).map { start.addingTimeInterval(TimeInterval($0) * entryInterval) }
+    }
+
+    /// The 24 hourly entries starting at `start`, each carrying the
+    /// same snapshot (read once by the caller). A nil snapshot means
+    /// the widget has never loaded one — the view then shows its
+    /// "Open the app" empty state, never sample data.
+    public static func entries(from start: Date, snapshot: WidgetSnapshot?) -> [WidgetTimelineEntry] {
+        entryDates(from: start).map { WidgetTimelineEntry(date: $0, snapshot: snapshot) }
+    }
+
+    /// The reload-after date for a timeline starting at `start`: the
+    /// LAST entry's date, so WidgetKit asks for a fresh timeline
+    /// exactly when the last hourly entry becomes current.
+    public static func reloadAfterDate(from start: Date) -> Date {
+        start.addingTimeInterval(TimeInterval(entryCount - 1) * entryInterval)
+    }
+}
