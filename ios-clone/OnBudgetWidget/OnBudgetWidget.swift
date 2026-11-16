@@ -67,7 +67,16 @@ struct WidgetEntry: TimelineEntry {
 
 struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> WidgetEntry {
-        WidgetEntry(date: Date(), snapshot: WidgetSnapshot(
+        // Build 36: the placeholder carries the last-known snapshot
+        // when one exists, so even the placeholder entry shows real
+        // numbers rather than sample data. Only when the widget has
+        // NEVER loaded a snapshot (never opened the app, signed out)
+        // does it fall back to the hardcoded sample — and the view
+        // renders that entry as skeleton bars either way, because
+        // the placeholder redaction applies to the entry, not the
+        // data. The sample is pinned by
+        // WidgetSnapshotTests.testPlaceholderSnapshotSpentFractionIsSeventyPercent.
+        WidgetEntry(date: Date(), snapshot: WidgetSnapshotStore.read() ?? WidgetSnapshot(
             weekStart: "2026-11-08",
             availableCents: 17307,
             charityRemainingCents: 4200,
@@ -81,19 +90,40 @@ struct Provider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetEntry>) -> Void) {
-        // The app calls reloadAllTimelines() on launch, on every
-        // foreground, and on every Home refresh, so the timeline
-        // only needs a backstop: re-read in 15 minutes so a stale
-        // label flips even if the app is never opened again. The
-        // 15-minute backstop (build 35, was 30) also narrows the
-        // window in which an expired timeline shows the placeholder
-        // while WidgetKit fetches the next one — the owner caught a
-        // small widget on its placeholder bars beside a loaded one,
-        // most consistent with a timeline expiring mid-day.
-        let entry = WidgetEntry(date: Date(), snapshot: WidgetSnapshotStore.read())
+        // Build 36: 24 HOURLY entries spanning the next day, each
+        // carrying the snapshot read once here, policy .after the
+        // LAST entry's date — so there is always a valid entry and
+        // WidgetKit never falls back to the placeholder once a
+        // snapshot exists. A stale snapshot keeps showing its
+        // last-known numbers with the amber dot + "may be out of
+        // date"; the grey skeleton bars appear ONLY when the widget
+        // has never loaded a snapshot.
+        //
+        // The build-35 single entry with a 15-minute backstop was
+        // the bug, not the fix: the timeline expired 4×/hour, and
+        // every expiry left a window with no valid entry while
+        // WidgetKit fetched the next one — on an idle / throttled
+        // device (overnight, low power) that window stretched
+        // indefinitely and the widget got stuck on grey bars
+        // (owner, Nov 16, 2026: small + one medium stuck on
+        // placeholder while another medium showed real numbers).
+        // Shortening the backstop again would only expire the
+        // timeline MORE often — the wrong direction.
+        //
+        // The entry dates MUST advance hourly: the view computes
+        // staleness from entry.date, so a single far-future entry
+        // or a .never policy would never go stale. Freshness still
+        // comes from the app — it calls reloadAllTimelines() on
+        // launch, on every foreground, and on every Home refresh —
+        // which re-reads the snapshot and rebuilds this timeline.
+        // The entry-date math lives in OnBudgetKit.WidgetTimeline
+        // (pure, unit-tested); this Provider just maps it.
+        let now = Date()
+        let entries = WidgetTimeline.entries(from: now, snapshot: WidgetSnapshotStore.read())
+            .map { WidgetEntry(date: $0.date, snapshot: $0.snapshot) }
         completion(Timeline(
-            entries: [entry],
-            policy: .after(Date().addingTimeInterval(900))
+            entries: entries,
+            policy: .after(WidgetTimeline.reloadAfterDate(from: now))
         ))
     }
 }
@@ -246,6 +276,8 @@ struct WidgetView: View {
                 Text("\(Int((fraction * 100).rounded()))%")
                     .font(.system(size: size * 0.22, weight: .bold))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .foregroundStyle(DesignTokens.ink)
             }
         }
@@ -270,7 +302,11 @@ struct WidgetView: View {
     /// Nov 15, 2026 — widget polish). Single line, never wrapped:
     /// a wide amount wrapping to two lines would blow the small
     /// widget's height (owner, Nov 15, 2026 — the small size
-    /// overflowed its 155pt canvas).
+    /// overflowed its 155pt canvas). Build 36: minimumScaleFactor
+    /// 0.6 — the amount SHRINKS to fit its column before it ever
+    /// truncates. Without it, "$370" rendered as "$3..." in the
+    /// owner's Nov 16 screenshot: lineLimit(1) alone truncates
+    /// with an ellipsis when the text is wider than the column.
     @ViewBuilder
     private func figure(cents: Int, color: Color, size: CGFloat) -> some View {
         if isPlaceholder {
@@ -284,6 +320,7 @@ struct WidgetView: View {
                 .font(.system(size: size, weight: .bold))
                 .monospacedDigit()
                 .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(color)
                 .privacySensitive()
         }
@@ -427,6 +464,8 @@ struct WidgetView: View {
                             Text("of \(MoneyFormat.wholeDollars(cents: spent + snapshot.availableCents)) allowance")
                                 .font(.caption)
                                 .foregroundStyle(DesignTokens.muted)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                         }
                         if isPlaceholder {
                             skeletonBar(width: 110, height: 6)
@@ -442,6 +481,8 @@ struct WidgetView: View {
                             Text("Spent \(MoneyFormat.wholeDollars(cents: spent))")
                                 .font(.caption2)
                                 .foregroundStyle(DesignTokens.muted)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                         }
                     }
                 }
@@ -497,6 +538,8 @@ struct WidgetView: View {
                             Text("of \(MoneyFormat.wholeDollars(cents: spent + snapshot.availableCents)) allowance")
                                 .font(.subheadline)
                                 .foregroundStyle(DesignTokens.muted)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                         }
                         if isPlaceholder {
                             skeletonBar(width: 170, height: 6)
@@ -512,6 +555,8 @@ struct WidgetView: View {
                             Text("Spent \(MoneyFormat.wholeDollars(cents: spent))")
                                 .font(.caption)
                                 .foregroundStyle(DesignTokens.muted)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                         }
                     }
                 }
@@ -567,6 +612,8 @@ struct WidgetView: View {
                                 Text("of \(MoneyFormat.wholeDollars(cents: spent + snapshot.availableCents)) allowance")
                                     .font(.subheadline)
                                     .foregroundStyle(DesignTokens.muted)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
                             }
                             if isPlaceholder {
                                 skeletonBar(width: 170, height: 6)
@@ -582,6 +629,8 @@ struct WidgetView: View {
                                 Text("Spent \(MoneyFormat.wholeDollars(cents: spent))")
                                     .font(.caption)
                                     .foregroundStyle(DesignTokens.muted)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
                             }
                         }
                     }
@@ -636,4 +685,55 @@ struct OnBudgetWidget: Widget {
         // where large stays the biggest.
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }
+}
+
+// MARK: - Previews (build 36)
+//
+// Regression previews for the Nov 16 truncation bug: "$370" rendered
+// as "$3..." because figure() had lineLimit(1) with no
+// minimumScaleFactor. Each size is previewed at $370 (the owner's
+// screenshot amount) and at $3,700 (one digit wider, with a comma —
+// the widest realistic weekly figure) so a future layout change that
+// re-introduces truncation is visible in Xcode before it ships.
+// These previews render the live WidgetView, not a mock, and are
+// never shown to the owner — they exist for the developer to eyeball
+// in Xcode. The simulator workflow compiles this file (so a preview
+// typo breaks the build) but cannot render previews; the visual
+// check itself happens in Xcode on a Mac.
+
+private func previewSnapshot(availableCents: Int, spentCents: Int) -> WidgetSnapshot {
+    WidgetSnapshot(
+        weekStart: "2026-11-15",
+        availableCents: availableCents,
+        charityRemainingCents: 4200,
+        spentCents: spentCents,
+        charityGivenCents: 3000,
+        charityCommittedCents: 10000,
+        computedAt: Date()
+    )
+}
+
+#Preview("Medium — $370 left") {
+    WidgetView(entry: WidgetEntry(date: Date(), snapshot: previewSnapshot(availableCents: 37000, spentCents: 3000)))
+        .previewContext(WidgetPreviewContext(family: .systemMedium))
+}
+
+#Preview("Medium — $3,700 left") {
+    WidgetView(entry: WidgetEntry(date: Date(), snapshot: previewSnapshot(availableCents: 370000, spentCents: 30000)))
+        .previewContext(WidgetPreviewContext(family: .systemMedium))
+}
+
+#Preview("Small — $370 left") {
+    WidgetView(entry: WidgetEntry(date: Date(), snapshot: previewSnapshot(availableCents: 37000, spentCents: 3000)))
+        .previewContext(WidgetPreviewContext(family: .systemSmall))
+}
+
+#Preview("Small — $3,700 left") {
+    WidgetView(entry: WidgetEntry(date: Date(), snapshot: previewSnapshot(availableCents: 370000, spentCents: 30000)))
+        .previewContext(WidgetPreviewContext(family: .systemSmall))
+}
+
+#Preview("Large — $3,700 left") {
+    WidgetView(entry: WidgetEntry(date: Date(), snapshot: previewSnapshot(availableCents: 370000, spentCents: 30000)))
+        .previewContext(WidgetPreviewContext(family: .systemLarge))
 }
