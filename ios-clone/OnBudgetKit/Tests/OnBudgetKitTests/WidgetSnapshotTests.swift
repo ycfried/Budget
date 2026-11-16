@@ -225,7 +225,7 @@ final class WidgetSnapshotTests: XCTestCase {
         let dates = WidgetTimeline.entryDates(from: start)
         // First entry now, last entry 23 hours later: the timeline
         // covers a full day (24 hourly slots, not a single expiry).
-        XCTAssertEqual(dates.last?.timeIntervalSince(start), 23 * 3600, accuracy: 0.001)
+        XCTAssertEqual(dates.last?.timeIntervalSince(start) ?? -1, 23 * 3600, accuracy: 0.001)
     }
 
     func testTimelineReloadDateIsLastEntryDate() {
