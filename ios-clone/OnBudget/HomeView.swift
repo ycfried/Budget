@@ -1286,11 +1286,13 @@ public struct WeeklySheet: View {
             // on the rows themselves, so nothing replaces it.
             // Reconciliation rows (live.js v69): Base / Temporary /
             // Carried debt appear exactly when they change the number;
-            // a normal week keeps the approved three rows.
+            // a normal week keeps the approved two rows (Spent,
+            // Balance) — the redundant Allowance row is gone
+            // (owner, Nov 15, 2026 — build 34).
             ForEach(week.sheetRows(baseAllowanceCents: baseAllowanceCents), id: \.label) { row in
                 // Deduction rows print with a leading minus
-                // (audit H-P2-2) so Base $375 → Allowance $325 adds
-                // up on sight; the model cents stay positive.
+                // (audit H-P2-2) so Base $375 − Debt $50 = Balance
+                // $325 adds up on sight; the model cents stay positive.
                 sheetRow(label: row.label, value: MoneyFormat.string(cents: row.isDeduction ? -row.cents : row.cents))
             }
             // Purchases count (owner, Nov 14, 2026): moved here

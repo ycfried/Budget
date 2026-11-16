@@ -943,7 +943,7 @@ public struct PostgrestClient {
     public func merchantRules(householdId: UUID) async throws -> [MerchantRule] {
         try await fetch(PostgrestQuery(
             table: "merchant_rules",
-            columns: "id,household_id,pattern_text,match_type,display_name,fixed_kind,created_at",
+            columns: "id,household_id,pattern_text,match_type,display_name,fixed_kind,created_at,source_merchant",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("display_name", ascending: true)]
         ))

@@ -180,8 +180,10 @@ public struct TransactionActionsSheet: View {
         // reports an unbounded ideal height, so the fitted sheet
         // rendered tall and mostly empty (build 24) — a single
         // "Use Extra Fund" row in a full-height card. A plain VStack
-        // root + SheetHeader lets .presentationSizing(.fitted) at
-        // the presentation site measure the real content. On the
+        // root + SheetHeader keeps the content short; the sheet is
+        // sized by .presentationDetents([.medium, .large]) at the
+        // presentation site (owner, Nov 15, 2026 — build 34: fitted
+        // still rendered nearly full-screen on the phone). On the
         // list flow the header shows X (dismiss); on a sub-flow it
         // shows a back chevron (return to the list).
         VStack(alignment: .leading, spacing: 16) {

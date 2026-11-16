@@ -24,9 +24,9 @@
 --   squash = key with ALL non-alphanumerics removed, so
 --            'TENYADKALLAHGEMACH' matches 'TENYAD KALLAH GEMACH'.
 --   A rule matches when: exact-key equal (any match_type), or
---   match_type='prefix' and the key starts with the pattern, or
---   squash equal. Priority: exact > prefix > squash; within a tier
---   the longest pattern wins, then the earliest rule.
+--   match_type='includes' and the key CONTAINS the pattern anywhere,
+--   or squash equal. Priority: exact > includes > squash; within a
+--   tier the longest pattern wins, then the earliest rule.
 -- Fixed kind: auto-applies to matching NEW transactions (and to
 -- rows a rename applies to) with one sign guard — a money-out kind
 -- (charge/charity/fund_charge) never overrides a money-in
@@ -46,6 +46,14 @@
 --
 -- BACKWARDS COMPATIBILITY: new table + new RPCs only. No existing
 -- column is renamed, dropped or retyped; no existing RPC changes.
+--
+-- BUILD 34 (Nov 15, 2026): 'prefix' becomes 'includes' (substring:
+-- the name must CONTAIN the pattern anywhere, not only start with
+-- it); the pattern is editable via update_merchant_rule; and the
+-- table gains source_merchant (the original spelling, for
+-- reference). Existing 'prefix' rows are migrated by
+-- merchant-rules-includes.sql; this file is the record for fresh
+-- installs.
 -- The frozen web app (v69) reads transactions.merchant as before
 -- and simply shows the cleaner names once rules have renamed rows.
 
@@ -86,7 +94,11 @@ create table if not exists public.merchant_rules (
   pattern_text text not null,
   pattern_key text not null,
   pattern_squash text not null,
-  match_type text not null default 'exact' check (match_type in ('exact', 'prefix')),
+  -- The merchant name as it originally appeared (build 34): the
+  -- pattern can be shortened for an Includes rule, but the original
+  -- spelling stays visible in the editor for reference.
+  source_merchant text,
+  match_type text not null default 'exact' check (match_type in ('exact', 'includes')),
   display_name text not null,
   fixed_kind text check (fixed_kind is null or fixed_kind in
     ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer', 'income')),
@@ -95,6 +107,11 @@ create table if not exists public.merchant_rules (
   updated_at timestamptz not null default now(),
   unique (household_id, pattern_key, match_type)
 );
+-- Build 34: the column for existing tables (the CREATE above only
+-- covers fresh installs) + backfill from the pattern, which until
+-- now always was the original merchant name.
+alter table public.merchant_rules add column if not exists source_merchant text;
+update public.merchant_rules set source_merchant = pattern_text where source_merchant is null;
 create index if not exists merchant_rules_household_idx
   on public.merchant_rules (household_id);
 
@@ -108,7 +125,7 @@ grant select on public.merchant_rules to authenticated;
 
 -- 3. Best matching rule for one merchant name in one household.
 -- Returns the rule id, display name and fixed kind, or no row when
--- nothing matches. Priority: exact-key (0) > prefix (1) >
+-- nothing matches. Priority: exact-key (0) > includes (1) >
 -- squash-exact (2); within a tier the longest pattern wins, then
 -- the earliest-created rule.
 create or replace function public.merchant_rule_match(
@@ -122,15 +139,15 @@ as $$
     from public.merchant_rules r
    where r.household_id = p_household_id
      and (public.merchant_rule_key(r.pattern_text) = public.merchant_rule_key(p_merchant)
-       or (r.match_type = 'prefix'
-           and starts_with(public.merchant_rule_key(p_merchant),
-                           public.merchant_rule_key(r.pattern_text)))
+       or (r.match_type = 'includes'
+           and strpos(public.merchant_rule_key(p_merchant),
+                      public.merchant_rule_key(r.pattern_text)) > 0)
        or public.merchant_rule_squash(r.pattern_text) = public.merchant_rule_squash(p_merchant))
    order by
      case when public.merchant_rule_key(r.pattern_text) = public.merchant_rule_key(p_merchant) then 0
-          when r.match_type = 'prefix'
-           and starts_with(public.merchant_rule_key(p_merchant),
-                           public.merchant_rule_key(r.pattern_text)) then 1
+          when r.match_type = 'includes'
+           and strpos(public.merchant_rule_key(p_merchant),
+                      public.merchant_rule_key(r.pattern_text)) > 0 then 1
           else 2 end,
      length(public.merchant_rule_key(r.pattern_text)) desc,
      r.created_at asc
@@ -164,14 +181,17 @@ begin
       from public.transactions t
      where t.household_id = p_household_id
        and (public.merchant_rule_key(t.merchant) = v_rule.pattern_key
-         or (v_rule.match_type = 'prefix'
-             and starts_with(public.merchant_rule_key(t.merchant), v_rule.pattern_key))
+         or (v_rule.match_type = 'includes'
+             and strpos(public.merchant_rule_key(t.merchant), v_rule.pattern_key) > 0)
          or public.merchant_rule_squash(t.merchant) = v_rule.pattern_squash)
   )
   update public.transactions t
      set merchant = v_rule.display_name,
+         -- extensions.digest: pgcrypto lives in schema 'extensions'
+         -- and this function sets search_path = public, so the
+         -- unqualified digest() does not resolve (live bug, Nov 15).
          dedupe_hash = encode(
-           digest(v_rule.display_name || '|' || t.date::text || '|' ||
+           extensions.digest(v_rule.display_name || '|' || t.date::text || '|' ||
                   t.amount_cents::text || '|' || t.card_suffix, 'sha256'), 'hex'),
          kind = case
            when v_rule.fixed_kind is null then t.kind
@@ -220,8 +240,8 @@ begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   if v_key = '' then raise exception 'pattern must not be empty'; end if;
   if v_display = '' then raise exception 'display name must not be empty'; end if;
-  if p_match_type is null or p_match_type not in ('exact', 'prefix') then
-    raise exception 'match_type must be exact or prefix';
+  if p_match_type is null or p_match_type not in ('exact', 'includes') then
+    raise exception 'match_type must be exact or includes';
   end if;
   if p_fixed_kind is not null and p_fixed_kind not in
     ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer', 'income') then
@@ -233,10 +253,10 @@ begin
     raise exception 'admin only';
   end if;
   insert into public.merchant_rules
-    (household_id, pattern_text, pattern_key, pattern_squash, match_type,
+    (household_id, pattern_text, pattern_key, pattern_squash, source_merchant, match_type,
      display_name, fixed_kind, created_by)
   values (p_household_id, btrim(p_pattern), v_key, public.merchant_rule_squash(p_pattern),
-          p_match_type, v_display, p_fixed_kind, auth.uid())
+          btrim(p_pattern), p_match_type, v_display, p_fixed_kind, auth.uid())
   on conflict (household_id, pattern_key, match_type) do nothing
   returning id into v_id;
   if v_id is null then
@@ -249,11 +269,22 @@ $$;
 revoke execute on function public.create_merchant_rule(uuid, text, text, text, text) from public;
 grant execute on function public.create_merchant_rule(uuid, text, text, text, text) to authenticated;
 
--- Update a rule's display name, fixed kind and/or match type.
--- The pattern itself is immutable: to teach a different spelling,
--- delete the rule and create a new one. Returns void.
+-- Update a rule's display name, fixed kind, match type and/or
+-- pattern. The pattern is editable (owner, Nov 15, 2026 — build
+-- 34): pass a new pattern to set it, normalized the same way
+-- create does (uppercase, trimmed, whitespace collapsed); pass
+-- null or blank to keep the existing pattern — the server never
+-- saves a blank pattern. Saving re-applies the rule to matching
+-- rows, so existing transactions get renamed by the new pattern.
+-- A pattern that would collide with another rule's (pattern,
+-- match_type) in the household is rejected. Returns void.
+-- (The old 4-arg signature is dropped first — CREATE OR REPLACE
+-- with a new parameter list would leave the old overload behind,
+-- and PostgREST would see two update_merchant_rule functions.)
+drop function if exists public.update_merchant_rule(uuid, text, text, text);
 create or replace function public.update_merchant_rule(
-  p_rule_id uuid, p_display_name text, p_fixed_kind text, p_match_type text)
+  p_rule_id uuid, p_display_name text, p_fixed_kind text, p_match_type text,
+  p_pattern text default null)
 returns void
 language plpgsql
 security definer
@@ -262,6 +293,9 @@ as $$
 declare
   v_rule public.merchant_rules%rowtype;
   v_display text;
+  v_key text;
+  v_new_key text;
+  v_new_match text;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_rule from public.merchant_rules where id = p_rule_id for update;
@@ -274,24 +308,49 @@ begin
     ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer', 'income') then
     raise exception 'invalid fixed kind: %', p_fixed_kind;
   end if;
-  if p_match_type is not null and p_match_type not in ('exact', 'prefix') then
-    raise exception 'match_type must be exact or prefix';
+  if p_match_type is not null and p_match_type not in ('exact', 'includes') then
+    raise exception 'match_type must be exact or includes';
   end if;
   if not exists (select 1 from public.household_members
                  where household_id = v_rule.household_id
                    and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';
   end if;
+  -- A blank pattern keeps the existing one (the client sends null
+  -- for it, but a blank string must not save a blank pattern).
+  if p_pattern is not null then
+    v_key := public.merchant_rule_key(p_pattern);
+    if v_key = '' then v_key := null; end if;
+  end if;
+  v_new_key := coalesce(v_key, v_rule.pattern_key);
+  v_new_match := coalesce(p_match_type, v_rule.match_type);
+  if (v_new_key, v_new_match) <> (v_rule.pattern_key, v_rule.match_type) then
+    if exists (select 1 from public.merchant_rules
+                where household_id = v_rule.household_id
+                  and id <> p_rule_id
+                  and pattern_key = v_new_key
+                  and match_type = v_new_match) then
+      raise exception 'a rule with that pattern already exists';
+    end if;
+  end if;
   update public.merchant_rules
      set display_name = coalesce(v_display, display_name),
          fixed_kind = p_fixed_kind,
          match_type = coalesce(p_match_type, match_type),
+         pattern_text = case when v_key is not null then btrim(p_pattern) else pattern_text end,
+         pattern_key = case when v_key is not null then v_key else pattern_key end,
+         pattern_squash = case when v_key is not null then public.merchant_rule_squash(p_pattern) else pattern_squash end,
          updated_at = now()
    where id = p_rule_id;
+  -- Re-apply the rule to matching rows, the same re-apply the
+  -- rename path does — a changed pattern renames the rows it now
+  -- matches, and a changed display name / match type takes effect
+  -- on old rows too.
+  perform public.apply_merchant_rule_to_rows(v_rule.household_id, p_rule_id);
 end;
 $$;
-revoke execute on function public.update_merchant_rule(uuid, text, text, text) from public;
-grant execute on function public.update_merchant_rule(uuid, text, text, text) to authenticated;
+revoke execute on function public.update_merchant_rule(uuid, text, text, text, text) from public;
+grant execute on function public.update_merchant_rule(uuid, text, text, text, text) to authenticated;
 
 -- Delete a rule. Already-renamed rows are NOT reverted: the rule
 -- only taught future rows and past renames; deleting it stops
@@ -324,7 +383,7 @@ grant execute on function public.delete_merchant_rule(uuid) to authenticated;
 -- it to ALL matching rows, old and new (new rows pick it up at
 -- ingestion). Returns the number of rows renamed. The rule's
 -- match_type defaults to 'exact' — a rename teaches that spelling
--- only; pass 'prefix' when the spelling is a stem (e.g. 'AMAZON'
+-- only; pass 'includes' when the spelling is a stem (e.g. 'AMAZON'
 -- should also catch 'AMAZON MARKEPLACE NA PA').
 -- NOTE: a rename with a fixed kind reclassifies matching rows
 -- under the sign guard (§4); a name-only rename never changes kind.
@@ -344,8 +403,8 @@ declare
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   if v_display = '' then raise exception 'display name must not be empty'; end if;
-  if p_match_type is null or p_match_type not in ('exact', 'prefix') then
-    raise exception 'match_type must be exact or prefix';
+  if p_match_type is null or p_match_type not in ('exact', 'includes') then
+    raise exception 'match_type must be exact or includes';
   end if;
   if p_fixed_kind is not null and p_fixed_kind not in
     ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'charity', 'transfer', 'income') then
@@ -361,11 +420,12 @@ begin
   perform 1 from public.households where id = v_txn.household_id for update;
   -- Teach (or reuse) the rule for this transaction's spelling.
   insert into public.merchant_rules
-    (household_id, pattern_text, pattern_key, pattern_squash, match_type,
+    (household_id, pattern_text, pattern_key, pattern_squash, source_merchant, match_type,
      display_name, fixed_kind, created_by)
   values (v_txn.household_id, v_txn.merchant,
           public.merchant_rule_key(v_txn.merchant),
           public.merchant_rule_squash(v_txn.merchant),
+          v_txn.merchant,
           p_match_type, v_display, p_fixed_kind, auth.uid())
   on conflict (household_id, pattern_key, match_type) do update
     set display_name = excluded.display_name,
@@ -428,16 +488,16 @@ grant execute on function public.apply_merchant_rules_to_household(uuid) to auth
 -- and teach their own; the native client can copy these defaults
 -- on demand, but this migration does not invent a household.
 --   * BALTIMORE GAS AND ELECTRIC COMPANY -> BGE (exact, name only)
---   * GOODYEAR (prefix) -> GOODYEAR — catches 'GOODYEAR TIRERUBBER'
---   * AMAZON (prefix) -> AMAZON — catches 'AMAZON MARKEPLACE NA PA'
---   * TOIREMORG (prefix) -> TOIREMORG — unifies the spellings to one
+--   * GOODYEAR (includes) -> GOODYEAR — catches 'GOODYEAR TIRERUBBER'
+--   * AMAZON (includes) -> AMAZON — catches 'AMAZON MARKEPLACE NA PA'
+--   * TOIREMORG (includes) -> TOIREMORG — unifies the spellings to one
 --     display name. Name only, NO fixed kind: the $2 bank TOIREMORG
 --     row and the $2 email TOIREMORG CHARITY row are different kinds
 --     and must stay two separate gifts (owner ruling Nov 3).
 --   * TENYAD KALLAH GEMACH (exact) -> TENYAD KALLAH GEMACH — the
 --     squash match catches the bank artifact '=TENYADKALLAHGEMACH'.
 --     Name only, NO fixed kind (kind is the owner's call, not ours).
---   * INTERNAL TRANSFER CREDIT: SAVINGS (prefix) -> TRANSFER TO
+--   * INTERNAL TRANSFER CREDIT: SAVINGS (includes) -> TRANSFER TO
 --     SAVINGS, kind transfer — catches '... Savings -5939' (the
 --     account suffix varies). classifyKind already returns transfer
 --     for INTERNAL TRANSFER; the fixed kind only reinforces it.
@@ -449,21 +509,22 @@ grant execute on function public.apply_merchant_rules_to_household(uuid) to auth
 --   * ONLINE TRANSFER / PAYMENT: DEBIT (exact) -> TRANSFER, kind
 --     transfer (the owner's own label for this row).
 insert into public.merchant_rules
-  (household_id, pattern_text, pattern_key, pattern_squash, match_type, display_name, fixed_kind)
+  (household_id, pattern_text, pattern_key, pattern_squash, source_merchant, match_type, display_name, fixed_kind)
 select h.id, s.pattern_text,
        public.merchant_rule_key(s.pattern_text),
        public.merchant_rule_squash(s.pattern_text),
+       s.pattern_text,
        s.match_type,
        public.merchant_rule_key(s.display_name),
        s.fixed_kind
   from public.households h
   cross join (values
     ('BALTIMORE GAS AND ELECTRIC COMPANY', 'exact', 'BGE', null),
-    ('GOODYEAR', 'prefix', 'GOODYEAR', null),
-    ('AMAZON', 'prefix', 'AMAZON', null),
-    ('TOIREMORG', 'prefix', 'TOIREMORG', null),
+    ('GOODYEAR', 'includes', 'GOODYEAR', null),
+    ('AMAZON', 'includes', 'AMAZON', null),
+    ('TOIREMORG', 'includes', 'TOIREMORG', null),
     ('TENYAD KALLAH GEMACH', 'exact', 'TENYAD KALLAH GEMACH', null),
-    ('INTERNAL TRANSFER CREDIT: SAVINGS', 'prefix', 'TRANSFER TO SAVINGS', 'transfer'),
+    ('INTERNAL TRANSFER CREDIT: SAVINGS', 'includes', 'TRANSFER TO SAVINGS', 'transfer'),
     ('WIRE TRANSFER DOMESTIC OUTGOING', 'exact', 'WIRE TRANSFER', null),
     ('WIRE TRANSFER FEE DOMESTIC OUTGOING', 'exact', 'WIRE TRANSFER FEE', null),
     ('ONLINE TRANSFER / PAYMENT: DEBIT', 'exact', 'TRANSFER', 'transfer')

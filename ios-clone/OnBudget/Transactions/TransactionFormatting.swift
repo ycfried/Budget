@@ -52,12 +52,18 @@ public enum TransactionFormatting {
     //   #2f6bff). Charity rows are outflows, but the kind decides.
     // - Transfers (kind transfer): MUTED RED
     //   (`DesignTokens.heroOverBudget`, #991b1b) — by kind, not
-    //   direction: a negative transfer shows "-$X", a positive one
-    //   "+$X". The colour marks the kind, so a transfer never
-    //   reads as a regular purchase (owner, Nov 15, 2026). This
-    //   SUPERSEDES the Nov 12 "red is never a transaction amount"
-    //   rule FOR TRANSFERS ONLY — red stays reserved elsewhere
-    //   (over-budget hero figure, negative balances, errors).
+    //   direction. The SIGN marks the direction of money flow:
+    //   money in shows "+", money out shows "-" (owner, Nov 15,
+    //   2026 — build 34: the signs were backwards). Plaid stores
+    //   money-out as a POSITIVE amount and money-in as a NEGATIVE
+    //   one, so the stored sign is flipped here, at the display
+    //   layer only — the same flip income already does. An
+    //   outgoing wire (stored +$10,000) reads "-$10,000.00", an
+    //   incoming transfer credit (stored -$9,000) reads
+    //   "+$9,000.00". This SUPERSEDES the Nov 12 "red is never a
+    //   transaction amount" rule FOR TRANSFERS ONLY — red stays
+    //   reserved elsewhere (over-budget hero figure, negative
+    //   balances, errors).
     // - Regular kinds (charge / payment / fund charge / other):
     //   BLACK ink, stored sign kept ("$X" / "-$X").
     // - Zero is "$0.00" in ink for every kind.
@@ -81,11 +87,14 @@ public enum TransactionFormatting {
             // Charity (blue) and transfer (muted red) render in
             // their kind colour, by kind not direction — the colour
             // comes from the kit mapping, so a kit test pins it.
-            // A positive transfer shows "+$X" (the sign still
-            // marks the direction); charity keeps the stored sign.
+            // A transfer's SIGN marks the money flow (owner, Nov 15,
+            // 2026 — build 34): Plaid stores money-out positive and
+            // money-in negative, so the sign is flipped — money in
+            // (stored negative) reads "+$X", money out (stored
+            // positive) reads "-$X". Charity keeps the stored sign.
             let text: String
-            if transaction.kind == .transfer, transaction.amountCents > 0 {
-                text = "+" + formatCents(transaction.amountCents)
+            if transaction.kind == .transfer {
+                text = (transaction.amountCents < 0 ? "+" : "-") + formatCents(abs(transaction.amountCents))
             } else {
                 text = formatCents(transaction.amountCents)
             }

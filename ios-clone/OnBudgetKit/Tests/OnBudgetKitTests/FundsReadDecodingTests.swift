@@ -84,7 +84,9 @@ final class FundsReadDecodingTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         XCTAssertEqual(rows[0].displayName, "BGE")
         XCTAssertNil(rows[0].fixedKind)
-        XCTAssertEqual(rows[1].matchType, "prefix")
+        // Build 34: the server renamed 'prefix' to 'includes' — a
+        // pre-migration 'prefix' row still decodes, as "includes".
+        XCTAssertEqual(rows[1].matchType, "includes")
         XCTAssertEqual(rows[1].fixedKind, "charity")
     }
 

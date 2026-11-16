@@ -536,9 +536,9 @@ public struct WeekResult: Equatable, Codable {
     /// week's debt payment, the sheet shows THAT as the deduction
     /// (the base pays P toward the debt) and the debt left after it
     /// as a trailing display row — never the old "Carried Debt"
-    /// deduction, which would no longer add up (Allowance is B − P,
-    /// not B − D). A nil payment means the old server: the old rows,
-    /// exactly as before.
+    /// deduction, which would no longer add up (the week's
+    /// available amount is B − P, not B − D). A nil payment means
+    /// the old server: the old rows, exactly as before.
     public func sheetRows(baseAllowanceCents: Int?) -> [WeekSheetRow] {
         let overrideDelta: Int
         if let override = overrideCents, let base = baseAllowanceCents, !weekLocked {
@@ -568,7 +568,6 @@ public struct WeekResult: Equatable, Codable {
         } else if hasDebt && debtPayment == nil {
             rows.append(WeekSheetRow(label: "Carried Debt", cents: carriedDebtCents, isDeduction: true))
         }
-        rows.append(WeekSheetRow(label: "Allowance", cents: baseAvailableCents + tempCents))
         rows.append(WeekSheetRow(label: "Spent", cents: chargesCents))
         rows.append(WeekSheetRow(label: "Balance", cents: availableCents))
         if debtPayment != nil && debtRemaining > 0 {
@@ -1269,7 +1268,12 @@ public struct DuplicateCandidate: Equatable, Codable, Identifiable {
 /// (charity/income/transfer/payment/etc.). Rules apply at
 /// ingestion to new rows and to all matching old rows on rename.
 /// `pattern_key` / `pattern_squash` are server internals and are
-/// not fetched.
+/// not fetched. `match_type` is "exact" or "includes" (build 34 —
+/// the server renamed "prefix" to "includes"; an old "prefix" row
+/// still decodes as "includes" until the migration lands).
+/// `source_merchant` (build 34) is the original merchant name the
+/// rule was taught from — the pattern can be shortened for an
+/// Includes rule, but the original stays visible for reference.
 public struct MerchantRule: Equatable, Codable, Identifiable {
     public let id: UUID
     public let householdId: UUID
@@ -1278,6 +1282,7 @@ public struct MerchantRule: Equatable, Codable, Identifiable {
     public let displayName: String
     public let fixedKind: String?
     public let createdAt: String?
+    public let sourceMerchant: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -1287,6 +1292,20 @@ public struct MerchantRule: Equatable, Codable, Identifiable {
         case displayName = "display_name"
         case fixedKind = "fixed_kind"
         case createdAt = "created_at"
+        case sourceMerchant = "source_merchant"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        householdId = try container.decode(UUID.self, forKey: .householdId)
+        patternText = try container.decode(String.self, forKey: .patternText)
+        let rawMatchType = try container.decode(String.self, forKey: .matchType)
+        matchType = rawMatchType == "prefix" ? "includes" : rawMatchType
+        displayName = try container.decode(String.self, forKey: .displayName)
+        fixedKind = try container.decodeIfPresent(String.self, forKey: .fixedKind)
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+        sourceMerchant = try container.decodeIfPresent(String.self, forKey: .sourceMerchant)
     }
 }
 

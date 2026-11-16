@@ -73,6 +73,7 @@ public struct TransactionsView: View {
     var onShowPastWeeks: (() -> Void)?
     var onShowActivity: (() -> Void)?
     var onShowReview: (() -> Void)?
+    var onShowMerchantNames: (() -> Void)?
 
     @State private var searchText: String = ""
     @State private var showingFilters: Bool = false
@@ -86,7 +87,8 @@ public struct TransactionsView: View {
         reviewViewModel: FundsViewModel,
         onShowPastWeeks: (() -> Void)? = nil,
         onShowActivity: (() -> Void)? = nil,
-        onShowReview: (() -> Void)? = nil
+        onShowReview: (() -> Void)? = nil,
+        onShowMerchantNames: (() -> Void)? = nil
     ) {
         self.viewModel = viewModel
         self.appState = appState
@@ -94,6 +96,7 @@ public struct TransactionsView: View {
         self.onShowPastWeeks = onShowPastWeeks
         self.onShowActivity = onShowActivity
         self.onShowReview = onShowReview
+        self.onShowMerchantNames = onShowMerchantNames
     }
 
     public var body: some View {
@@ -179,10 +182,17 @@ public struct TransactionsView: View {
                 viewModel: viewModel,
                 onDismiss: { actionsTransaction = nil }
             )
-                // iPad width (owner, Nov 12, 2026): same treatment
-                // as the Weekly Budget sheet — fitted height + 600pt
-                // width in the regular size class.
-                .presentationSizing(.fitted)
+                // Size (owner, Nov 15, 2026 — build 34): the Actions
+                // list flow and the Reclassify flow are one sheet —
+                // fitted sizing rendered it nearly full-screen on
+                // the phone with empty space above and below the
+                // short content. Detents open it at a compact
+                // medium height that fits the content, draggable to
+                // large when needed. iPad width stays 600pt
+                // (regular) via the frame inside the sheet content
+                // — detents are ignored on iPad, same as the
+                // Filters sheet.
+                .presentationDetents([.medium, .large])
                 .presentationBackground(.white)
         }
         // NOTE (T-P2-1): no `.alert` here — the failure alert lives
@@ -294,54 +304,67 @@ public struct TransactionsView: View {
 
     @ViewBuilder
     private var pageLinks: some View {
-        // Trash, Activity and Past Weeks on ONE line, as proper
-        // buttons (owner, Nov 11, 2026 — the quiet grey text read as
-        // labels, not as something tappable, so the row now has a
-        // clear button affordance — but low-key: small outline
-        // buttons, not big bulky filled ones). Trash shows no count.
-        // Three peer navigation buttons share the one treatment by
-        // design — the no-duplicates button rule governs action rows
-        // where one action must stand out, not peers. The manual
-        // sync icon sits right-aligned at the end of this row
-        // (owner, Nov 12 ~10:29 PM — option 2, lighter blue): it
-        // used to sit in the title row before "+ Add", where it
-        // read as a second blue button.
+        // Horizontally scrollable chip row (owner, Nov 15, 2026 —
+        // build 34): Activity, Review, Trash, Past Weeks and
+        // Merchants live in one row that swipes sideways — Activity
+        // and Review first, so they are visible without scrolling;
+        // swiping left reveals Trash, Past Weeks and Merchants. The
+        // chips keep their natural width inside the ScrollView, so
+        // no label wraps and none gets crushed (the old fixed HStack
+        // squeezed Review to "Revi" / "ew" and Past Weeks to two
+        // lines). A partially cut-off next chip at the right edge
+        // shows the row scrolls. The chips are small outline
+        // buttons (owner, Nov 11, 2026 — the quiet grey text read
+        // as labels, not as something tappable). The manual sync
+        // icon stays FIXED at the right end, outside the scrollable
+        // area (owner, Nov 12 ~10:29 PM — option 2, lighter blue).
         HStack(spacing: 12) {
-            if viewModel.isAdmin, !viewModel.trashTransactions.isEmpty {
-                Button("Trash") { showingTrash = true }
-                    .buttonStyle(SmallOutlineButtonStyle())
-            }
-            if let onShowActivity {
-                Button("Activity", action: onShowActivity)
-                    .buttonStyle(SmallOutlineButtonStyle())
-            }
-            if let onShowPastWeeks {
-                Button("Past Weeks", action: onShowPastWeeks)
-                    .buttonStyle(SmallOutlineButtonStyle())
-            }
-            // Build 30: Review moved off the Funds page — an
-            // admin-only button here opens the dedicated Review
-            // page, with a count badge while anything is waiting
-            // (held refunds + possible duplicates + refund links).
-            // The badge is a small squarish count chip, not a pill.
-            if viewModel.isAdmin, let onShowReview {
-                Button(action: onShowReview) {
-                    HStack(spacing: 6) {
-                        Text("Review")
-                        if reviewViewModel.reviewCount > 0 {
-                            Text("\(reviewViewModel.reviewCount)")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(DesignTokens.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    if let onShowActivity {
+                        Button("Activity", action: onShowActivity)
+                            .buttonStyle(SmallOutlineButtonStyle())
+                    }
+                    // Build 30: Review moved off the Funds page — an
+                    // admin-only button here opens the dedicated Review
+                    // page, with a count badge while anything is waiting
+                    // (held refunds + possible duplicates + refund links).
+                    // The badge is a small squarish count chip, not a pill.
+                    if viewModel.isAdmin, let onShowReview {
+                        Button(action: onShowReview) {
+                            HStack(spacing: 6) {
+                                Text("Review")
+                                if reviewViewModel.reviewCount > 0 {
+                                    Text("\(reviewViewModel.reviewCount)")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(DesignTokens.primary)
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                }
+                            }
                         }
+                        .buttonStyle(SmallOutlineButtonStyle())
+                    }
+                    if viewModel.isAdmin, !viewModel.trashTransactions.isEmpty {
+                        Button("Trash") { showingTrash = true }
+                            .buttonStyle(SmallOutlineButtonStyle())
+                    }
+                    if let onShowPastWeeks {
+                        Button("Past Weeks", action: onShowPastWeeks)
+                            .buttonStyle(SmallOutlineButtonStyle())
+                    }
+                    // Merchants (owner, Nov 15, 2026 — build 34):
+                    // the Merchant Names editor moved out of
+                    // Settings — it lives here now, as the last chip
+                    // in this row. Admin-only, like Review.
+                    if viewModel.isAdmin, let onShowMerchantNames {
+                        Button("Merchants", action: onShowMerchantNames)
+                            .buttonStyle(SmallOutlineButtonStyle())
                     }
                 }
-                .buttonStyle(SmallOutlineButtonStyle())
             }
-            Spacer(minLength: 0)
             if viewModel.isAdmin {
                 syncButton
             }

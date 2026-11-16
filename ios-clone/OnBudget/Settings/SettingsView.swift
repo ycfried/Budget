@@ -48,7 +48,10 @@ struct SettingsView: View {
                 ConnectedAccountsView(context: context, toast: toast, plaidLauncher: plaidLauncher)
                 EmailAlertsView(context: context, toast: toast)
                 MembersSettingsView(context: context, toast: toast)
-                MerchantNamesSettingsView(context: context, toast: toast)
+                // Merchant Names is NOT here anymore (owner, Nov 15,
+                // 2026 — build 34): it moved to the Transactions
+                // page ("Merchants" chip), where it felt less
+                // "thrown in" than in Settings.
             }
             .padding()
         }
