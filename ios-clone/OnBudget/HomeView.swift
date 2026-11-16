@@ -58,6 +58,15 @@ public enum HomeSectionState<Value> {
         if case .loading = self { return true }
         return false
     }
+
+    /// True only for the loaded state (a value is on screen).
+    /// A refresh keeps a loaded section's value instead of
+    /// blanking it back to `.loading` (owner, Nov 16, 2026 —
+    /// build 38: show last-known values while fresh data loads).
+    public var isLoaded: Bool {
+        if case .loaded = self { return true }
+        return false
+    }
 }
 
 // MARK: - View model
@@ -164,10 +173,13 @@ public final class HomeViewModel: ObservableObject {
     /// `plaidItems` fetch is gone — its result was never used (the
     /// icon map only needs institutions + masks).
     private func performRefresh() async {
-        week = .loading
-        fund = .loading
-        charity = .loading
-        recent = .loading
+        // Keep last-known values on screen during a refresh (owner,
+        // Nov 16, 2026 — build 38): only sections with no value yet
+        // show skeletons. A refresh never blanks loaded cards.
+        if !week.isLoaded { week = .loading }
+        if !fund.isLoaded { fund = .loading }
+        if !charity.isLoaded { charity = .loading }
+        if !recent.isLoaded { recent = .loading }
 
         // Kick off every independent fetch at once. The tasks only
         // fetch and return; the section assignments below are the
@@ -217,51 +229,128 @@ public final class HomeViewModel: ObservableObject {
             return map
         }
 
+        // Collect every result FIRST, then assign all sections
+        // TOGETHER (owner, Nov 16, 2026 — build 38): the old code
+        // assigned each section as its task finished, so the cards
+        // flipped from skeleton to loaded one by one. Now the four
+        // cards reveal in one step, after everything has resolved.
+        // The derivations below are unchanged — only their results
+        // are held in locals until the reveal.
+
         // Week numbers — everything else keys off the week.
-        var weekStart: String?
+        var weekResult: WeekResult?
+        var weekError: OnBudgetError?
         do {
-            let result = try await weekTask.value
-            week = .loaded(result)
-            weekStart = result.weekStart
+            weekResult = try await weekTask.value
         } catch let error as OnBudgetError {
             if error == .sessionExpired { appState.showSessionExpired(); return }
-            week = .failed(error)
+            weekError = error
         } catch {
-            week = .failed(.unknown("Could not load this week's numbers."))
+            weekError = .unknown("Could not load this week's numbers.")
         }
+        let weekStart = weekResult?.weekStart
 
         // Allowance-set flag ($375 is the schema default, not a
         // choice — allowanceSetAt == nil means never set). The stored
         // base travels with it for the Weekly sheet's reconciliation
         // rows; both clear together when the household read fails so
         // a stale base can never explain a fresh week.
+        var allowanceValue: (baseAllowanceCents: Int?, allowanceExplicitlySet: Bool)?
+        var allowanceErrorValue: OnBudgetError?
         do {
-            let allowance = try await allowanceTask.value
-            allowanceSet = allowance.allowanceExplicitlySet
-            allowanceCents = allowance.baseAllowanceCents
-            allowanceError = nil
+            allowanceValue = try await allowanceTask.value
         } catch let error as OnBudgetError {
             if error == .sessionExpired { appState.showSessionExpired(); return }
-            allowanceSet = nil
-            allowanceCents = nil
-            allowanceError = error
+            allowanceErrorValue = error
         } catch {
-            allowanceSet = nil
-            allowanceCents = nil
-            allowanceError = .unknown("Could not load your allowance setting.")
+            allowanceErrorValue = .unknown("Could not load your allowance setting.")
         }
 
         // Transactions page: recent 6, purchases count, charity
         // gifts. A failure here is an error state, never a silent
         // empty list. The charity summary is derived from the same
         // rows + the concurrently fetched income and settings.
-        var charityRows: [Transaction] = []
+        var txRows: [Transaction] = []
+        var txError: OnBudgetError?
         do {
             let (rows, _) = try await txTask.value
-            let visible = rows.filter { !$0.isInTrash }
-            recent = .loaded(Array(visible.prefix(6)))
+            txRows = rows.filter { !$0.isInTrash }
+        } catch let error as OnBudgetError {
+            if error == .sessionExpired { appState.showSessionExpired(); return }
+            txError = error
+        } catch {
+            txError = .unknown("Could not load recent transactions.")
+        }
+
+        // Charity summary (only when the transactions load above
+        // succeeded — a failed transactions load already failed the
+        // charity section with it, as before).
+        var charitySummary: CharitySummary?
+        var charityError: OnBudgetError?
+        if txError == nil {
+            do {
+                let income = try await charityIncomeTask.value
+                let settings = try await charitySettingsTask.value
+                let charityRows = txRows.filter { $0.kind == .charity }
+                charitySummary = CharitySummary.compute(
+                    activeIncome: income,
+                    charityTransactions: charityRows,
+                    defaultRateBp: settings?.defaultRateBp ?? 1000)
+            } catch let error as OnBudgetError {
+                if error == .sessionExpired { appState.showSessionExpired(); return }
+                charityError = error
+            } catch {
+                charityError = .unknown("Could not load charity.")
+            }
+        } else {
+            charityError = txError
+        }
+
+        // Extra Fund display aggregation (sums over server rows).
+        var fundSummary: FundSummary?
+        var fundError: OnBudgetError?
+        do {
+            fundSummary = FundSummary.compute(
+                ledger: try await fundLedgerTask.value,
+                releases: try await fundReleasesTask.value,
+                shortfallCents: try await fundShortfallTask.value)
+        } catch let error as OnBudgetError {
+            if error == .sessionExpired { appState.showSessionExpired(); return }
+            fundError = error
+        } catch {
+            fundError = .unknown("Could not load Extra Fund balances.")
+        }
+
+        // Plaid suffix → institution map (bank icons). Best-effort —
+        // never blocks Home. No sync stamp is kept here: the sync
+        // line lives in Settings only.
+        var institutionMap: [String: String]?
+        do {
+            institutionMap = try await plaidTask.value
+        } catch {
+            institutionMap = nil
+        }
+
+        // ---- Reveal together: every section assignment happens
+        // here, in one step, after all fetches have resolved. ----
+        if let weekResult {
+            week = .loaded(weekResult)
+        } else if let weekError {
+            week = .failed(weekError)
+        }
+        if let allowanceValue {
+            allowanceSet = allowanceValue.allowanceExplicitlySet
+            allowanceCents = allowanceValue.baseAllowanceCents
+            allowanceError = nil
+        } else {
+            allowanceSet = nil
+            allowanceCents = nil
+            allowanceError = allowanceErrorValue
+        }
+        if txError == nil {
+            recent = .loaded(Array(txRows.prefix(6)))
             if let weekStart {
-                let weekRows = visible.filter { AppDates.isInWeek($0.date, weekStart: weekStart) }
+                let weekRows = txRows.filter { AppDates.isInWeek($0.date, weekStart: weekStart) }
                 // Transfers never count as purchases (owner, Nov 14,
                 // 2026): countsAsPurchase is kind-based — only a
                 // charge that is not reversed. The hero's spent
@@ -273,59 +362,22 @@ public final class HomeViewModel: ObservableObject {
             } else {
                 purchasesThisWeek = nil
             }
-            charityRows = visible.filter { $0.kind == .charity }
-        } catch let error as OnBudgetError {
-            if error == .sessionExpired { appState.showSessionExpired(); return }
-            recent = .failed(error)
+        } else if let txError {
+            recent = .failed(txError)
             purchasesThisWeek = nil
-            charity = .failed(error)
-        } catch {
-            recent = .failed(.unknown("Could not load recent transactions."))
-            purchasesThisWeek = nil
-            charity = .failed(.unknown("Could not load charity."))
         }
-
-        // Charity summary (only when the transactions load above
-        // succeeded — a failed transactions load already failed the
-        // charity section with it, as before).
-        if case .loaded = recent {
-            do {
-                let income = try await charityIncomeTask.value
-                let settings = try await charitySettingsTask.value
-                let summary = CharitySummary.compute(
-                    activeIncome: income,
-                    charityTransactions: charityRows,
-                    defaultRateBp: settings?.defaultRateBp ?? 1000)
-                charity = .loaded(summary)
-            } catch let error as OnBudgetError {
-                if error == .sessionExpired { appState.showSessionExpired(); return }
-                charity = .failed(error)
-            } catch {
-                charity = .failed(.unknown("Could not load charity."))
-            }
+        if let charitySummary {
+            charity = .loaded(charitySummary)
+        } else if let charityError {
+            charity = .failed(charityError)
         }
-
-        // Extra Fund display aggregation (sums over server rows).
-        do {
-            let summary = FundSummary.compute(
-                ledger: try await fundLedgerTask.value,
-                releases: try await fundReleasesTask.value,
-                shortfallCents: try await fundShortfallTask.value)
-            fund = .loaded(summary)
-        } catch let error as OnBudgetError {
-            if error == .sessionExpired { appState.showSessionExpired(); return }
-            fund = .failed(error)
-        } catch {
-            fund = .failed(.unknown("Could not load Extra Fund balances."))
+        if let fundSummary {
+            fund = .loaded(fundSummary)
+        } else if let fundError {
+            fund = .failed(fundError)
         }
-
-        // Plaid suffix → institution map (bank icons). Best-effort —
-        // never blocks Home. No sync stamp is kept here: the sync
-        // line lives in Settings only.
-        do {
-            institutionBySuffix = try await plaidTask.value
-        } catch {
-            // Best-effort only: no stamp, no error state.
+        if let institutionMap {
+            institutionBySuffix = institutionMap
         }
 
         // Widget snapshot (build 17): the two numbers the Home-screen
@@ -578,13 +630,17 @@ public struct HomeView: View {
 
     /// Banner colour: the Spending theme's banner (deep blue
     /// #1d4ed8, build 38 — the bright primary blue was the wrong
-    /// colour), muted grey while loading or failed (no colour until
-    /// the numbers arrive). The theme is the single source — the
-    /// hero reads it, never a hard-coded hex.
+    /// colour) when loaded; pale brand tint #dbeafe while LOADING
+    /// (owner, Nov 16, 2026 — build 38: the solid muted grey
+    /// #e5e7eb read as a finished grey card, not a placeholder);
+    /// muted grey #e5e7eb when FAILED (a failed load stays distinct
+    /// from loading). The theme is the single source — the hero
+    /// reads it, never a hard-coded hex.
     private var heroBannerColor: Color {
         switch viewModel.week {
         case .loaded: return StatCardTheme.spending.banner
-        case .loading, .failed: return Color(hex: "#e5e7eb")
+        case .loading: return DesignTokens.loadingBanner
+        case .failed: return Color(hex: "#e5e7eb")
         }
     }
 
@@ -606,14 +662,22 @@ public struct HomeView: View {
     // arrive.
     private var heroHeaderRow: some View {
         HStack(spacing: 8) {
-            Image(systemName: "calendar")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(heroBannerTextColor)
-                .frame(width: 36, height: 36)
-            Text(FundSectionID.spending.displayName(customNames: appState.fundNames))
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(heroBannerTextColor)
-                .lineLimit(1)
+            if case .loading = viewModel.week {
+                // Skeleton icon + title while loading (owner, Nov 16,
+                // 2026 — build 38): real dark-ink text on the
+                // placeholder read as a finished card.
+                SkeletonBlock(width: 36, height: 36, cornerRadius: 10)
+                SkeletonBlock(width: 120, height: 20, cornerRadius: 6)
+            } else {
+                Image(systemName: "calendar")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(heroBannerTextColor)
+                    .frame(width: 36, height: 36)
+                Text(FundSectionID.spending.displayName(customNames: appState.fundNames))
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(heroBannerTextColor)
+                    .lineLimit(1)
+            }
             Spacer()
             if viewModel.isAdmin {
                 switch viewModel.week {
@@ -972,12 +1036,16 @@ public struct HomeView: View {
         let statusSize: CGFloat = compact ? (isIPad ? 13 : 12) : 13
         let chevronSize: CGFloat = compact ? (isIPad ? 15 : 14) : 15
         let pad: CGFloat = compact ? (isIPad ? 16 : 12) : 20
-        // Banner colour: the theme colour when loaded, muted grey
-        // while loading or failed (no colour until the numbers
-        // arrive). The grey is #e5e7eb, a shade darker than the
-        // #ececf1 skeleton blocks, so the blocks still read on it.
+        // Banner colour: pale brand tint while LOADING (#dbeafe —
+        // owner, Nov 16, 2026, build 38: the solid muted grey
+        // #e5e7eb read as a finished grey card, not a placeholder),
+        // muted grey #e5e7eb when FAILED (a failed load stays
+        // distinct from loading), the theme colour when loaded. The
+        // grey is a shade darker than the #ececf1 skeleton blocks,
+        // so the blocks still read on it.
         let bannerColor: Color = {
-            if isLoading || statusIsError { return Color(hex: "#e5e7eb") }
+            if isLoading { return DesignTokens.loadingBanner }
+            if statusIsError { return Color(hex: "#e5e7eb") }
             return theme.banner
         }()
         // Text/icon colour on the banner: the theme's onBanner
@@ -998,10 +1066,18 @@ public struct HomeView: View {
                             .foregroundStyle(onBanner)
                             .frame(width: chip, height: chip)
                     }
-                    Text(title)
-                        .font(.system(size: titleSize, weight: .bold))
-                        .foregroundStyle(onBanner)
-                        .lineLimit(1)
+                    if isLoading {
+                        // Skeleton title while loading (owner, Nov 16,
+                        // 2026 — build 38): real dark-ink text on the
+                        // placeholder read as a finished card. The
+                        // failed state keeps the real title.
+                        SkeletonBlock(width: 110, height: 18, cornerRadius: 6)
+                    } else {
+                        Text(title)
+                            .font(.system(size: titleSize, weight: .bold))
+                            .foregroundStyle(onBanner)
+                            .lineLimit(1)
+                    }
                     Spacer()
                 }
                 if isLoading {

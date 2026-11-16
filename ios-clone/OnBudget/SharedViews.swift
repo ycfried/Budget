@@ -480,31 +480,26 @@ public struct BrandedLoader: View {
 
 // MARK: - Toast
 
-/// Bottom toast, floating clear of the tab bar. Info is brand blue,
-/// success is the Posted badge treatment (owner, Nov 15, 2026 —
-/// build 33: the solid #22c55e bar with white text was the wrong
-/// green), errors are soft red. Auto-dismiss 4s
-/// (ToastStyle.autoDismissSeconds, CLONE_SPEC §2.3); tap dismisses
-/// sooner.
-///
-/// `clearTabBar` (audit X-P2-1, Nov 12 2026): true where a tab bar
-/// is actually present (the three tabs) — the banner sits just
-/// above it, as low as it can go (owner, Nov 16, 2026: the 120pt
-/// float left a gap under the toast on iPad). False on Auth/
-/// Household and inside the Settings cover, where there is no tab
-/// bar — the banner sits 16pt above the bottom edge instead.
-/// On iPad (regular size class) the banner spans the app's 900pt
-/// centered content column, like the tabs — it read as a thin
-/// narrow pill before (owner, Nov 16, 2026). iPhone stays
-/// full-width.
+/// Centered mid-screen popup (owner, Nov 16, 2026 — build 38):
+/// the bottom toast kept missing the bottom and reading as a thin
+/// strip, so the toast is now a CENTERED popup instead — the
+/// owner's own suggestion, accepted. Info is brand blue, success
+/// is the Posted badge treatment (owner, Nov 15, 2026 — build 33:
+/// the solid #22c55e bar with white text was the wrong green),
+/// errors are soft red. Auto-dismiss 4s (ToastStyle
+/// .autoDismissSeconds, CLONE_SPEC §2.3); tap dismisses sooner.
+/// It spans a good portion of the screen width (up to the 900pt
+/// iPad column), never a thin strip, and only the popup itself
+/// intercepts taps — taps outside it reach the page below. The
+/// build-37 bottom positioning (80pt iPad / 95pt iPhone clearance
+/// above the tab bar) is GONE — there is no bottom anchoring any
+/// more, and no `clearTabBar` (there is no tab bar to clear).
 public struct ToastBanner: View {
     public let toast: Toast
     public let onDismiss: () -> Void
-    public let clearTabBar: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    public init(toast: Toast, clearTabBar: Bool = true, onDismiss: @escaping () -> Void) {
+    public init(toast: Toast, onDismiss: @escaping () -> Void) {
         self.toast = toast
-        self.clearTabBar = clearTabBar
         self.onDismiss = onDismiss
     }
     /// Banner background + text by kind, straight from the
@@ -525,8 +520,8 @@ public struct ToastBanner: View {
                 .foregroundStyle(bannerText)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+                .padding(.horizontal, 20)
                 .background(bannerBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
@@ -538,34 +533,27 @@ public struct ToastBanner: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .shadow(radius: 4)
         }
+        // Centered popup width: a good portion of the screen, up
+        // to the 900pt iPad column — never a thin strip.
         .frame(maxWidth: horizontalSizeClass == .regular ? 900 : .infinity)
         .padding(.horizontal, 16)
-        // Pinned to the bottom (owner, Nov 16, 2026): just above the
-        // tab bar — tab bar (49pt) + safe-area bottom + a small gap —
-        // not floating 120pt up with a gap underneath. The clearance
-        // is by size class (the safe-area environment key does not
-        // resolve in this SDK — `\.safeAreaInsets` fails to compile,
-        // runs 43913465407 + 43917049013): iPad ~20pt safe area ->
-        // 80pt, iPhone ~34pt safe area -> 95pt. 16pt where there is
-        // no tab bar.
-        .padding(.bottom, clearTabBar ? (horizontalSizeClass == .regular ? 80 : 95) : 16)
     }
 }
 
-/// Overlays the current toast at the bottom of any screen, with the
+/// Overlays the current toast CENTERED on any screen, with the
 /// 4-second auto-dismiss (ToastStyle.autoDismissSeconds — the one
-/// shared value, CLONE_SPEC §2.3).
+/// shared value, CLONE_SPEC §2.3). (Owner, Nov 16, 2026 — build 38:
+/// the toast was a bottom banner and kept missing the bottom; it
+/// is a centered popup now.)
 public struct ToastOverlayModifier: ViewModifier {
     @Binding public var toast: Toast?
-    public let clearTabBar: Bool
-    public init(toast: Binding<Toast?>, clearTabBar: Bool = true) {
+    public init(toast: Binding<Toast?>) {
         self._toast = toast
-        self.clearTabBar = clearTabBar
     }
     public func body(content: Content) -> some View {
-        content.overlay(alignment: .bottom) {
+        content.overlay(alignment: .center) {
             if let toast {
-                ToastBanner(toast: toast, clearTabBar: clearTabBar) { self.toast = nil }
+                ToastBanner(toast: toast) { self.toast = nil }
                     .task(id: toast.id) {
                         try? await Task.sleep(for: .seconds(ToastStyle.autoDismissSeconds))
                         if self.toast?.id == toast.id { self.toast = nil }
@@ -576,8 +564,8 @@ public struct ToastOverlayModifier: ViewModifier {
 }
 
 public extension View {
-    func toastOverlay(_ toast: Binding<Toast?>, clearTabBar: Bool = true) -> some View {
-        modifier(ToastOverlayModifier(toast: toast, clearTabBar: clearTabBar))
+    func toastOverlay(_ toast: Binding<Toast?>) -> some View {
+        modifier(ToastOverlayModifier(toast: toast))
     }
 
     /// Main tab content width (build 36, owner Nov 16, 2026 — iPad):

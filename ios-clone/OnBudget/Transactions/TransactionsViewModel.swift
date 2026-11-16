@@ -263,8 +263,19 @@ public final class TransactionsViewModel {
                 self.loadedPage = rows
                 self.hasMore = hasMore
                 self.loadState = .loaded(rows)
-                await self.loadAllowanceState()
-                await self.loadInstitutionMap()
+                // Best-effort extras (allowance flag for the sync
+                // button, institution map for bank icons) run
+                // DETACHED, not awaited here (owner, Nov 16, 2026 —
+                // build 38): awaiting them inside this task kept the
+                // pull-to-refresh spinner stuck above the already
+                // loaded list whenever either was slow — the refresh
+                // must return the moment the rows are set. They fill
+                // in behind the list when they arrive.
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.loadAllowanceState()
+                    await self.loadInstitutionMap()
+                }
             } catch let error as OnBudgetError {
                 guard !Task.isCancelled else { return }
                 self.loadedPage = []

@@ -602,18 +602,23 @@ public struct FundsExpandableCard<Expanded: View>: View {
     /// the amount is a touch smaller and the banner a touch
     /// shorter than build 37.)
     private func bannerFace(pad: CGFloat) -> some View {
-        // Banner colour: the theme colour when loaded, a muted grey
-        // while loading or failed — #e5e7eb, a shade darker than the
-        // #ececf1 skeleton blocks, so the blocks still read on it.
+        // Banner colour: pale brand tint while LOADING (#dbeafe —
+        // owner, Nov 16, 2026, build 38: the solid muted grey
+        // #e5e7eb read as a finished grey card, not a placeholder),
+        // muted grey #e5e7eb when FAILED (a failed load stays
+        // distinct from loading), the theme colour when loaded.
         let bannerColor: Color = {
-            if isLoading || amountIsStatus { return Color(hex: "#e5e7eb") }
+            if isLoading { return DesignTokens.loadingBanner }
+            if amountIsStatus { return Color(hex: "#e5e7eb") }
             return theme?.banner ?? .white
         }()
         // Title colour on the banner: the theme's onBanner colour,
-        // ink on the plain unthemed face or on a grey loading
-        // banner (the title always shows, even while loading).
+        // ink on the plain unthemed face or on a grey failed banner
+        // (the title always shows, even on failure). While LOADING
+        // the title is a skeleton block, not real ink text — real
+        // text on the placeholder read as a finished card.
         let titleColor: Color = {
-            if theme == nil || isLoading || amountIsStatus { return DesignTokens.ink }
+            if theme == nil || amountIsStatus { return DesignTokens.ink }
             return theme?.onBanner ?? .white
         }()
         // Chevron colour: the theme's onBanner colour on a loaded
@@ -633,10 +638,18 @@ public struct FundsExpandableCard<Expanded: View>: View {
                         .frame(width: 36, height: 36)
                 }
             }
-            Text(TitleCase.apply(to: title))
-                .font(.system(size: theme == nil ? 17 : 18, weight: .bold))
-                .foregroundStyle(titleColor)
-                .lineLimit(1)
+            if isLoading {
+                // Skeleton title while loading (owner, Nov 16, 2026
+                // — build 38): real dark-ink text on the placeholder
+                // read as a finished card. The failed state keeps
+                // the real title in ink.
+                SkeletonBlock(width: 140, height: 20, cornerRadius: 6, animated: true)
+            } else {
+                Text(TitleCase.apply(to: title))
+                    .font(.system(size: theme == nil ? 17 : 18, weight: .bold))
+                    .foregroundStyle(titleColor)
+                    .lineLimit(1)
+            }
             Spacer()
             if isLoading || amountIsStatus {
                 // Sized to the loaded 24pt amount (owner, Nov 14,
@@ -682,6 +695,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
 public struct FundsToastOverlay: ViewModifier {
     @Binding public var toast: Toast?
     @State private var dismissTask: Task<Void, Never>?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(toast: Binding<Toast?>) {
         self._toast = toast
@@ -689,7 +703,9 @@ public struct FundsToastOverlay: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            .overlay(alignment: .bottom) {
+            // Centered mid-screen popup (owner, Nov 16, 2026 —
+            // build 38): the bottom banner kept missing the bottom.
+            .overlay(alignment: .center) {
                 if let toast {
                     Button {
                         dismissTask?.cancel()
@@ -698,8 +714,10 @@ public struct FundsToastOverlay: ViewModifier {
                         Text(toast.message)
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(Color(hex: ToastStyle.textHex(for: toast.kind)))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .padding(.horizontal, 20)
                             .background(Color(hex: ToastStyle.backgroundHex(for: toast.kind)))
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                             .overlay(
@@ -711,8 +729,8 @@ public struct FundsToastOverlay: ViewModifier {
                             )
                     }
                     .buttonStyle(.plain)
+                    .frame(maxWidth: horizontalSizeClass == .regular ? 900 : .infinity)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 120)
                 }
             }
             .onChange(of: toast) { _, newValue in
