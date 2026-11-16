@@ -502,7 +502,7 @@ public struct ToastBanner: View {
     public let onDismiss: () -> Void
     public let clearTabBar: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.safeAreaInsets) private var safeAreaInsets
+    @Environment(\.safeAreaInsets) private var safeAreaInsets: EdgeInsets
     public init(toast: Toast, clearTabBar: Bool = true, onDismiss: @escaping () -> Void) {
         self.toast = toast
         self.clearTabBar = clearTabBar
