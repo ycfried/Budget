@@ -273,17 +273,19 @@ public final class AppViewModel: ObservableObject {
             // Preload the dashboard behind the loading screen
             // (owner, Nov 15, 2026): start the Home load now and
             // hold the branded loading screen until it is ready or
-            // ~2s pass, whichever first, so Home arrives ready
-            // instead of skeleton-filled. The preload keeps running
-            // in the background if the timeout wins, so the data
-            // still arrives after Home appears; the shimmer
+            // ~1.5s pass, whichever first, so Home arrives ready
+            // instead of skeleton-filled. (Owner, Nov 15, 2026 —
+            // build 34: the ~2s hold was "a bit too long", "the
+            // tiniest amount shorter" — 1.5s. The preload keeps
+            // running in the background if the timeout wins, so the
+            // data still arrives after Home appears; the shimmer
             // skeletons stay as the fallback for anything still
             // loading. The loading screen itself still appears
-            // immediately on launch — this only extends it.
+            // immediately on launch — this only extends it.)
             let home = HomeViewModel(client: client, appState: self, householdId: membership.householdId)
             homeViewModel = home
             Task { await home.refresh() }
-            let preloadDeadline = Date().addingTimeInterval(2.0)
+            let preloadDeadline = Date().addingTimeInterval(1.5)
             while Date() < preloadDeadline {
                 if home.isLoaded { break }
                 try? await Task.sleep(for: .milliseconds(100))

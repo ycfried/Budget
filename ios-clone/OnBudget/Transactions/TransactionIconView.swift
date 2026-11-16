@@ -1,5 +1,51 @@
 import SwiftUI
+import UIKit
 import OnBudgetKit
+
+/// Shared favicon loader (build 34): one in-flight fetch per URL,
+/// in-memory cache, one retry after a short delay. Bare AsyncImage
+/// fired a fetch per row and never retried a failure, so a burst of
+/// list rows (or one flaky fetch) left merchant logos as monograms
+/// permanently — the bank logo rendered only because it was already
+/// cached from earlier screens. A load that still fails after the
+/// retry simply never publishes an image, so the monogram stays —
+/// the fallback for merchants with genuinely no logo. Rows that
+/// reappear re-trigger a load (deduped while in flight), so a
+/// transient failure recovers when the user scrolls back.
+@MainActor
+final class FaviconImageLoader: ObservableObject {
+    static let shared = FaviconImageLoader()
+
+    @Published private(set) var images: [URL: UIImage] = [:]
+    private var inFlight: Set<URL> = []
+
+    func image(for url: URL) -> UIImage? { images[url] }
+
+    func load(_ url: URL) {
+        if images[url] != nil || inFlight.contains(url) { return }
+        inFlight.insert(url)
+        Task {
+            let image = await Self.fetch(url, retries: 1)
+            inFlight.remove(url)
+            if let image { images[url] = image }
+        }
+    }
+
+    private static func fetch(_ url: URL, retries: Int) async -> UIImage? {
+        for attempt in 0...retries {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                if let image = UIImage(data: data) { return image }
+            } catch {
+                // Fall through to the retry below.
+            }
+            if attempt < retries {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+        return nil
+    }
+}
 
 /// Transaction icon: the MERCHANT's Google favicon first — the
 /// row is about where the money went, not which card paid (owner,
@@ -32,6 +78,11 @@ public struct TransactionIconView: View {
     let merchant: String
     let size: CGFloat
 
+    /// The shared favicon loader (build 34): cached images render
+    /// instantly, and a failed load retries instead of leaving the
+    /// monogram forever (see FaviconImageLoader above).
+    @ObservedObject private var faviconLoader = FaviconImageLoader.shared
+
     /// Single initializer (merchant-first, the spelling every call
     /// site uses). A second institutionName-first init existed here
     /// and made a merchant-only call ambiguous — both inits matched
@@ -47,35 +98,34 @@ public struct TransactionIconView: View {
         ZStack {
             monogram
             if let url = faviconURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        // Edge-to-edge fill (owner, Nov 12, 2026):
-                        // scaledToFill + clip crops overflow so the
-                        // logo reaches the tile edge on every side —
-                        // no inner padding, no letterbox. Fill by
-                        // cropping is not stretching: the aspect is
-                        // never distorted, wide logos lose their
-                        // sides, square logos (Amex) fill exactly.
-                        // High interpolation softens the upscale of
-                        // the small sources Google serves. The white
-                        // background sits behind the image only, so
-                        // a transparent source still reads on white
-                        // instead of the monogram underneath.
-                        image
-                            .resizable()
-                            .interpolation(.high)
-                            .scaledToFill()
-                            .frame(width: size, height: size)
-                            .clipped()
-                            .background(Color.white)
-                    case .empty, .failure:
-                        // Loading or failed: the monogram underneath
-                        // stays visible — never a blank tile.
-                        Color.clear
-                    @unknown default:
-                        Color.clear
-                    }
+                if let uiImage = faviconLoader.image(for: url) {
+                    // Edge-to-edge fill (owner, Nov 12, 2026):
+                    // scaledToFill + clip crops overflow so the
+                    // logo reaches the tile edge on every side —
+                    // no inner padding, no letterbox. Fill by
+                    // cropping is not stretching: the aspect is
+                    // never distorted, wide logos lose their
+                    // sides, square logos (Amex) fill exactly.
+                    // High interpolation softens the upscale of
+                    // the small sources Google serves. The white
+                    // background sits behind the image only, so
+                    // a transparent source still reads on white
+                    // instead of the monogram underneath.
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFill()
+                        .frame(width: size, height: size)
+                        .clipped()
+                        .background(Color.white)
+                } else {
+                    // Loading or failed: the monogram underneath
+                    // stays visible — never a blank tile. The task
+                    // triggers the (deduped, retried) load when the
+                    // row appears; a cached image replaces this on
+                    // the next render.
+                    Color.clear
+                        .task(id: url) { faviconLoader.load(url) }
                 }
             }
         }

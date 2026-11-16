@@ -50,6 +50,9 @@ enum TransactionsSubpage: Hashable {
     /// Build 30: Review moved off the Funds page to its own page
     /// here (Transactions "Review" button with a count badge).
     case review
+    /// Build 34: Merchant Names moved out of Settings to its own
+    /// page here (Transactions "Merchants" chip).
+    case merchantNames
 }
 
 public struct AppShellView: View {
@@ -241,7 +244,8 @@ public struct AppShellView: View {
                     reviewViewModel: reviewViewModel,
                     onShowPastWeeks: { transactionsPath.append(.pastWeeks) },
                     onShowActivity: { transactionsPath.append(.activity) },
-                    onShowReview: { transactionsPath.append(.review) }
+                    onShowReview: { transactionsPath.append(.review) },
+                    onShowMerchantNames: { transactionsPath.append(.merchantNames) }
                 )
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: TransactionsSubpage.self) { page in
@@ -271,6 +275,9 @@ public struct AppShellView: View {
                 } else {
                     LoadingView()
                 }
+            case .merchantNames:
+                MerchantNamesPageView(context: context, toast: historyToast, onBack: popTransactionsSubpage)
+                    .toolbar(.hidden, for: .navigationBar)
             }
         } else {
             LoadingView()

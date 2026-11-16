@@ -8,13 +8,17 @@ import OnBudgetKit
 // transaction kind, to old rows on rename and to new rows at
 // ingestion. Admin-only — members never see the card at all (owner
 // rule, Nov 13, 2026: no greyed-out controls, only actions that
-// work). The pattern itself is immutable server-side: to teach a
-// different spelling, delete the rule and add a new one.
+// work). The pattern is editable (owner, Nov 15, 2026 — build 34):
+// an Includes rule matches when the merchant name CONTAINS the
+// pattern anywhere, so a short pattern (e.g. "BALTIMORE") catches
+// more spellings; Exact uses the full original name. The original
+// name stays visible as "Name as It Appears" for reference.
 //
 // Wiring:
 // - List: `PostgrestClient.merchantRules(householdId:)`.
 // - Add: RPC `create_merchant_rule`.
-// - Edit: RPC `update_merchant_rule` (display name / kind / match).
+// - Edit: RPC `update_merchant_rule` (display name / kind / match /
+//   pattern; saving re-applies the rule to matching rows).
 // - Delete: RPC `delete_merchant_rule` after one confirm.
 // - Rename from a transaction: the Actions sheet ("Rename
 //   Merchant") teaches the same rules; this card manages them.
@@ -74,7 +78,10 @@ final class MerchantNamesSettingsViewModel: ObservableObject {
                     pRuleId: editing.id,
                     pDisplayName: displayName,
                     pFixedKind: fixedKind,
-                    pMatchType: matchType
+                    pMatchType: matchType,
+                    // Empty pattern keeps the existing one (the
+                    // server never saves a blank pattern).
+                    pPattern: pattern.isEmpty ? nil : pattern
                 )
                 toast.show("Name updated.", kind: .success)
             } else {
@@ -106,9 +113,44 @@ final class MerchantNamesSettingsViewModel: ObservableObject {
     }
 }
 
+/// Merchant Names as a Transactions subpage (owner, Nov 15, 2026 —
+/// build 34): the editor moved out of Settings — it lives on the
+/// Transactions page now, reached from the "Merchants" chip. Same
+/// editor (list + Edit Name sheet), just hosted here with a back
+/// button and title, like the other Transactions subpages.
+struct MerchantNamesPageView: View {
+    private let context: SettingsContext
+    private let toast: ToastState
+    private let onBack: () -> Void
+
+    init(context: SettingsContext, toast: ToastState, onBack: @escaping () -> Void) {
+        self.context = context
+        self.toast = toast
+        self.onBack = onBack
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    BackButton(action: onBack)
+                    Spacer()
+                }
+                Text("Merchant Names")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .foregroundStyle(DesignTokens.ink)
+                MerchantNamesSettingsView(context: context, toast: toast)
+            }
+            .padding()
+        }
+    }
+}
+
 struct MerchantNamesSettingsView: View {
     @StateObject private var viewModel: MerchantNamesSettingsViewModel
     private let context: SettingsContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// The rule being edited, or nil for the add form. The form
     /// opens as a sheet on Add or a row tap (build 33 — it used to
@@ -116,6 +158,10 @@ struct MerchantNamesSettingsView: View {
     @State private var editingRule: MerchantRule?
     @State private var showingForm = false
     @State private var patternText = ""
+    /// The editable Pattern (build 34): what an Includes rule
+    /// matches against. Defaults to the rule's current pattern;
+    /// only shown when Match is Includes (see ruleForm).
+    @State private var editablePatternText = ""
     @State private var displayNameText = ""
     @State private var matchType = "exact"
     @State private var fixedKind: String?
@@ -193,6 +239,7 @@ struct MerchantNamesSettingsView: View {
                 Button("Add a Name") {
                     editingRule = nil
                     patternText = ""
+                    editablePatternText = ""
                     displayNameText = ""
                     matchType = "exact"
                     fixedKind = nil
@@ -207,17 +254,24 @@ struct MerchantNamesSettingsView: View {
             // fields, same behaviour — just presented as a sheet
             // with a header, like the other editors.
             .sheet(isPresented: $showingForm) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        SheetHeader(title: editingRule == nil ? "Add a Name" : "Edit Name") {
-                            showingForm = false
-                            editingRule = nil
-                        }
-                        ruleForm
+                // iPad width (owner, Nov 15, 2026 — build 34): same
+                // treatment as the Weekly Budget sheet — fitted
+                // height + 600pt width in the regular size class.
+                // The sheet rendered as a ~400pt popup with cramped
+                // buttons on iPad. The content is a short fixed form,
+                // so the ScrollView root is gone: fitted must never
+                // be applied to a scrolling sheet, and a plain VStack
+                // lets fitted measure the real content.
+                VStack(alignment: .leading, spacing: 16) {
+                    SheetHeader(title: editingRule == nil ? "Add a Name" : "Edit Name") {
+                        showingForm = false
+                        editingRule = nil
                     }
-                    .padding()
+                    ruleForm
                 }
-                .presentationDetents([.medium, .large])
+                .padding()
+                .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+                .presentationSizing(.fitted)
                 .presentationBackground(.white)
                 // The alert lives on the sheet (delete confirm +
                 // save failures both come from this form).
@@ -249,7 +303,7 @@ struct MerchantNamesSettingsView: View {
 
     private func ruleDetailLine(_ rule: MerchantRule) -> String {
         var parts = ["“\(rule.patternText)”"]
-        parts.append(rule.matchType == "prefix" ? "Starts With" : "Exact")
+        parts.append(rule.matchType == "includes" ? "Includes" : "Exact")
         if let fixedKind = rule.fixedKind,
            let label = Self.fixedKindOptions.first(where: { $0.raw == fixedKind })?.label {
             parts.append("Always \(label)")
@@ -260,6 +314,7 @@ struct MerchantNamesSettingsView: View {
     private func startEditing(_ rule: MerchantRule) {
         editingRule = rule
         patternText = rule.patternText
+        editablePatternText = rule.patternText
         displayNameText = TitleCase.apply(to: rule.displayName.lowercased())
         matchType = rule.matchType
         fixedKind = rule.fixedKind
@@ -281,12 +336,29 @@ struct MerchantNamesSettingsView: View {
                     Text("Name as It Appears")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
-                    // The pattern is immutable server-side: to
-                    // teach a different spelling, delete this rule
-                    // and add a new one.
-                    Text(patternText)
+                    // The original merchant name, for reference —
+                    // the Pattern below is what the rule matches.
+                    // (source_merchant, build 34; falls back to the
+                    // pattern when the column is not there yet.)
+                    Text(editingRule?.sourceMerchant ?? patternText)
                         .font(.system(size: 15))
                         .foregroundStyle(Color(hex: "#6b7280"))
+                }
+            }
+            // Pattern (owner, Nov 15, 2026 — build 34): editable,
+            // and ONLY shown when Match is Includes — Exact uses
+            // the full "Name as It Appears" as the pattern, so
+            // there is nothing to set. Defaults to the rule's
+            // current pattern; shorten it (e.g. "BALTIMORE") so the
+            // Includes match catches more spellings. Normalizes on
+            // save and re-applies the rule to matching rows.
+            if editingRule != nil, matchType == "includes" {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Pattern")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    TextField("", text: $editablePatternText)
+                        .textFieldStyle(.roundedBorder)
                 }
             }
             VStack(alignment: .leading, spacing: 6) {
@@ -302,9 +374,14 @@ struct MerchantNamesSettingsView: View {
                     .foregroundStyle(DesignTokens.ink)
                 Picker("Match", selection: $matchType) {
                     Text("Exact").tag("exact")
-                    Text("Starts With").tag("prefix")
+                    Text("Includes").tag("includes")
                 }
                 .pickerStyle(.segmented)
+                // What Includes means (owner, Nov 15, 2026 —
+                // build 34): one short plain line, muted hint style.
+                // Label only — it explains the match; the Includes
+                // behaviour itself lives server-side.
+                MutedLine(text: "Includes: the name must contain the pattern above, anywhere in the name.")
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Always Count As")
@@ -321,14 +398,37 @@ struct MerchantNamesSettingsView: View {
             HStack(spacing: 12) {
                 Button(editingRule == nil ? "Save Name" : "Save Changes") {
                     Task {
-                        let pattern = patternText.trimmingCharacters(in: .whitespacesAndNewlines)
                         let display = displayNameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !pattern.isEmpty, !display.isEmpty else {
+                        guard !display.isEmpty else {
                             viewModel.alert = .failed(
                                 title: "Could Not Save Name",
-                                message: "Enter both the name as it appears and the name to show."
+                                message: "Enter the name to show."
                             )
                             return
+                        }
+                        // Which pattern to save (owner, Nov 15, 2026
+                        // — build 34): a new rule takes the pattern
+                        // from "Name as It Appears"; an Includes edit
+                        // takes the editable Pattern field (empty
+                        // keeps the existing pattern — the server
+                        // never saves a blank one); an Exact edit
+                        // takes the full original name as the pattern.
+                        let pattern: String
+                        if let editingRule {
+                            if matchType == "includes" {
+                                pattern = editablePatternText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            } else {
+                                pattern = editingRule.sourceMerchant ?? patternText
+                            }
+                        } else {
+                            pattern = patternText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !pattern.isEmpty else {
+                                viewModel.alert = .failed(
+                                    title: "Could Not Save Name",
+                                    message: "Enter the name as it appears."
+                                )
+                                return
+                            }
                         }
                         if await viewModel.saveRule(
                             pattern: pattern,

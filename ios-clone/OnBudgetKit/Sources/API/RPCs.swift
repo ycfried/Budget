@@ -768,7 +768,7 @@ extension RPCClient {
 
     /// `create_merchant_rule(p_household_id, p_pattern,
     /// p_match_type, p_display_name, p_fixed_kind)` — returns the
-    /// rule id. `pMatchType` is "exact" or "prefix".
+    /// rule id. `pMatchType` is "exact" or "includes".
     public func createMerchantRule(pHouseholdId: UUID, pPattern: String, pMatchType: String, pDisplayName: String, pFixedKind: String?) async throws -> UUID {
         try await callScalar(name: "create_merchant_rule", params: [
             "p_household_id": pHouseholdId.uuidString,
@@ -780,15 +780,19 @@ extension RPCClient {
     }
 
     /// `update_merchant_rule(p_rule_id, p_display_name,
-    /// p_fixed_kind, p_match_type)` — the pattern itself is
-    /// immutable: to teach a different spelling, delete the rule
-    /// and create a new one.
-    public func updateMerchantRule(pRuleId: UUID, pDisplayName: String, pFixedKind: String?, pMatchType: String) async throws {
+    /// p_fixed_kind, p_match_type, p_pattern)` — the pattern is
+    /// editable (owner, Nov 15, 2026 — build 34): pass the new
+    /// pattern, or nil to keep the existing one (an empty pattern
+    /// also keeps it — the server never saves a blank pattern).
+    /// Saving re-applies the rule to matching rows server-side.
+    /// `pMatchType` is "exact" or "includes".
+    public func updateMerchantRule(pRuleId: UUID, pDisplayName: String, pFixedKind: String?, pMatchType: String, pPattern: String? = nil) async throws {
         try await callVoid(name: "update_merchant_rule", params: [
             "p_rule_id": pRuleId.uuidString,
             "p_display_name": pDisplayName,
             "p_fixed_kind": pFixedKind ?? NSNull(),
             "p_match_type": pMatchType,
+            "p_pattern": pPattern ?? NSNull(),
         ])
     }
 
