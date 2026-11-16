@@ -18,6 +18,19 @@
 // week range and a donut — spent vs left of the weekly allowance
 // (owner, Nov 15, 2026; the spent line the donut replaces is gone).
 //
+// Major upgrade (owner, Nov 15, 2026 — build 35, mockup-approved):
+// the widget "looks dead and bland and not formatted properly" —
+// bigger logo and wordmark, the week range shortened to "Nov 14–20"
+// in brand blue (never truncated), a donut on medium too, a thin
+// progress bar under each figure (budget: spent/allowance in brand
+// blue; charity: given/committed in charity green), a "Spent $X"
+// line computed from the snapshot (allowance − left, never
+// invented), and a bigger freshness footer with a green/amber dot.
+// The mockup's extra solid blue circle beside the logo is a drawing
+// artifact — the real header is just the one S mark — and its donut
+// arc is drawn far too big for 8%: the real arc is the small sliver
+// the snapshot's spent fraction gives.
+//
 // Data path: the app writes a WidgetSnapshot into the shared App
 // Groups container at the end of every Home refresh; the widget only
 // ever READS that snapshot. It never signs in, never calls Supabase,
@@ -70,31 +83,28 @@ struct Provider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetEntry>) -> Void) {
         // The app calls reloadAllTimelines() on launch, on every
         // foreground, and on every Home refresh, so the timeline
-        // only needs a backstop: re-read in 30 minutes so a stale
-        // label flips even if the app is never opened again.
+        // only needs a backstop: re-read in 15 minutes so a stale
+        // label flips even if the app is never opened again. The
+        // 15-minute backstop (build 35, was 30) also narrows the
+        // window in which an expired timeline shows the placeholder
+        // while WidgetKit fetches the next one — the owner caught a
+        // small widget on its placeholder bars beside a loaded one,
+        // most consistent with a timeline expiring mid-day.
         let entry = WidgetEntry(date: Date(), snapshot: WidgetSnapshotStore.read())
         completion(Timeline(
             entries: [entry],
-            policy: .after(Date().addingTimeInterval(1800))
+            policy: .after(Date().addingTimeInterval(900))
         ))
     }
 }
 
-/// "Nov 9" from a "2026-11-09" week-start string; nil when unparseable.
-private func shortWeekStart(_ weekStart: String) -> String? {
-    let parser = DateFormatter()
-    parser.dateFormat = "yyyy-MM-dd"
-    parser.timeZone = TimeZone(secondsFromGMT: 0)
-    guard let date = parser.date(from: weekStart) else { return nil }
-    let formatter = DateFormatter()
-    formatter.dateFormat = "MMM d"
-    return formatter.string(from: date)
-}
-
-/// "Nov 7 – Nov 13" from a "2026-11-07" week-start string (weeks run
-/// 7 days); nil when unparseable. The large and extra-large widgets
-/// show the range; medium keeps the shorter "Week of Nov 7".
-private func weekRange(_ weekStart: String) -> String? {
+/// "Nov 14–20" from a "2026-11-14" week-start string (weeks run
+/// 7 days); nil when unparseable. The compact form, no spaces around
+/// the dash (owner, Nov 15, 2026 — build 35: the old "Week of Nov 7"
+/// and "Nov 7 – Nov 13" forms were too long and the medium dates
+/// clipped at the right edge). Every size that shows dates uses
+/// this one form, in brand blue, on one line.
+private func shortWeekRange(_ weekStart: String) -> String? {
     let parser = DateFormatter()
     parser.dateFormat = "yyyy-MM-dd"
     parser.timeZone = TimeZone(secondsFromGMT: 0)
@@ -102,14 +112,14 @@ private func weekRange(_ weekStart: String) -> String? {
     guard let end = Calendar(identifier: .gregorian).date(byAdding: .day, value: 6, to: start) else { return nil }
     let formatter = DateFormatter()
     formatter.dateFormat = "MMM d"
-    return "\(formatter.string(from: start)) – \(formatter.string(from: end))"
+    return "\(formatter.string(from: start))–\(formatter.string(from: end))"
 }
 
-private func updatedText(_ computedAt: Date, stale: Bool) -> String {
+/// "4:38 PM" from a computed-at date.
+private func updatedTimeString(_ computedAt: Date) -> String {
     let formatter = DateFormatter()
     formatter.dateFormat = "h:mm a"
-    let text = "Updated \(formatter.string(from: computedAt))"
-    return stale ? text + " · may be out of date" : text
+    return formatter.string(from: computedAt)
 }
 
 struct WidgetView: View {
@@ -164,20 +174,42 @@ struct WidgetView: View {
     /// Quiet brandmark: the real logo mark beside the ink wordmark
     /// (owner, Nov 15, 2026 — the header showed only the plain
     /// "OnBudget" wordmark). AppLogo comes from the shared asset
-    /// catalog, which the widget target includes.
-    private var wordmark: some View {
+    /// catalog, which the widget target includes. Build 35: bigger
+    /// than the old 20pt logo / subheadline wordmark — 24pt logo and
+    /// a headline wordmark by default; the small size takes the
+    /// compact 22pt form so the stacked layout still fits.
+    private func wordmark(logoSize: CGFloat = 24, font: Font = .headline.weight(.semibold)) -> some View {
         HStack(spacing: 6) {
             Image("AppLogo")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 20, height: 20)
+                .frame(width: logoSize, height: logoSize)
                 .clipShape(Circle())
             if isPlaceholder {
                 skeletonBar(width: 88, height: 16)
             } else {
                 Text("OnBudget")
-                    .font(.subheadline.weight(.semibold))
+                    .font(font)
                     .foregroundStyle(DesignTokens.ink)
+            }
+        }
+    }
+
+    /// Week-range dates for the header (build 35): the compact
+    /// "Nov 14–20" form in brand blue, semibold, one line — never
+    /// truncated. The minimum scale factor is a belt-and-braces
+    /// against a long month name clipping at the right edge.
+    @ViewBuilder
+    private func headerDates(_ weekStart: String) -> some View {
+        if let range = shortWeekRange(weekStart) {
+            if isPlaceholder {
+                skeletonBar(width: 64, height: 12)
+            } else {
+                Text(range)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DesignTokens.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
     }
@@ -189,12 +221,12 @@ struct WidgetView: View {
     /// blue track instead of plain grey). The centre shows the
     /// spent percentage. Shown only when the snapshot carries a
     /// spent figure. privacySensitive like the figures.
-    private func donut(snapshot: WidgetSnapshot, size: CGFloat) -> some View {
+    private func donut(snapshot: WidgetSnapshot, size: CGFloat, lineWidth: CGFloat = 14) -> some View {
         let fraction = snapshot.spentFraction ?? 0
         let overBudget = snapshot.availableCents < 0
         return ZStack {
             Circle()
-                .stroke(Color(hex: "#dbeafe"), lineWidth: 14)
+                .stroke(Color(hex: "#dbeafe"), lineWidth: lineWidth)
             // While loading there is no real spent figure to show:
             // the placeholder snapshot's 70% arc is sample data, so
             // the ring stays a plain pale-blue track with a skeleton bar
@@ -204,7 +236,7 @@ struct WidgetView: View {
                     .trim(from: 0, to: fraction)
                     .stroke(
                         overBudget ? DesignTokens.heroOverBudget : DesignTokens.primary,
-                        style: StrokeStyle(lineWidth: 14, lineCap: fraction >= 1 ? .butt : .round)
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: fraction >= 1 ? .butt : .round)
                     )
                     .rotationEffect(.degrees(-90))
             }
@@ -257,14 +289,66 @@ struct WidgetView: View {
         }
     }
 
+    /// Thin horizontal progress bar (build 35): a pale track with a
+    /// coloured fill of the given fraction, 6pt tall, filling the
+    /// column width. The budget bar fills spent/allowance in brand
+    /// blue (muted red when over budget); the charity bar fills
+    /// given/committed in charity green. A zero fraction shows an
+    /// empty track — no fill is ever faked.
+    private func progressBar(fraction: Double, fill: Color, track: Color) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(track)
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(fill)
+                    .frame(width: geo.size.width * CGFloat(min(1.0, max(0.0, fraction))))
+            }
+        }
+        .frame(height: 6)
+    }
+
+    /// Freshness footer (build 35): bigger than the old caption2
+    /// "Updated …" line — a freshness dot (green when the snapshot
+    /// is fresh, amber when stale) followed by "Updated <time>" in
+    /// caption, with "· may be out of date" in lighter grey when
+    /// stale. The dot is the at-a-glance signal; the words stay for
+    /// the exact time. The small widget takes the compact form (dot
+    /// + time only): the full stale suffix cannot fit its 155pt
+    /// canvas on one line, and the amber dot already says stale.
     @ViewBuilder
-    private func updatedLine(snapshot: WidgetSnapshot, stale: Bool) -> some View {
+    private func footer(snapshot: WidgetSnapshot, stale: Bool, compact: Bool = false) -> some View {
         if isPlaceholder {
-            skeletonBar(width: 130, height: 11)
+            skeletonBar(width: 150, height: 12)
+        } else if compact {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(stale ? DesignTokens.fund : DesignTokens.success)
+                    .frame(width: 7, height: 7)
+                Text("Updated \(updatedTimeString(snapshot.computedAt))")
+                    .font(.caption2)
+                    .foregroundStyle(DesignTokens.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
         } else {
-            Text(updatedText(snapshot.computedAt, stale: stale))
-                .font(.caption2)
-                .foregroundStyle(DesignTokens.muted)
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(stale ? DesignTokens.fund : DesignTokens.success)
+                    .frame(width: 7, height: 7)
+                if stale {
+                    Text("Updated \(updatedTimeString(snapshot.computedAt))")
+                        .foregroundStyle(DesignTokens.ink.opacity(0.75)) +
+                    Text(" · may be out of date")
+                        .foregroundStyle(DesignTokens.muted)
+                } else {
+                    Text("Updated \(updatedTimeString(snapshot.computedAt))")
+                        .foregroundStyle(DesignTokens.muted)
+                }
+            }
+            .font(.caption)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
         }
     }
 
@@ -275,9 +359,13 @@ struct WidgetView: View {
     /// render properly: wordmark + two figure blocks + updated line
     /// came to ~153pt in a 155pt canvas, ~2pt of slack, so it
     /// clipped. Spacing 6 and figures 22/18 leave ~19pt of slack).
+    /// Build 35: the compact wordmark (22pt logo), a thin blue
+    /// progress bar under the budget figure, and the compact footer
+    /// (dot + time only) — the additions cost ~10pt of that slack,
+    /// so the layout still fits.
     private func small(snapshot: WidgetSnapshot, stale: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            wordmark
+            wordmark(logoSize: 22, font: .subheadline.weight(.semibold))
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel("Left this week")
                 figure(
@@ -285,51 +373,96 @@ struct WidgetView: View {
                     color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
                     size: 22
                 )
+                if snapshot.spentCents != nil {
+                    if isPlaceholder {
+                        skeletonBar(width: 90, height: 5)
+                    } else {
+                        progressBar(
+                            fraction: snapshot.spentFraction ?? 0,
+                            fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                            track: Color(hex: "#dbeafe"))
+                    }
+                }
             }
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel("Charity left")
                 figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 18)
             }
             Spacer(minLength: 0)
-            updatedLine(snapshot: snapshot, stale: stale)
+            footer(snapshot: snapshot, stale: stale, compact: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(background, for: .widget)
     }
 
+    /// Medium (build 35, mockup-approved): bigger header, the
+    /// compact week range in brand blue, a donut beside the two
+    /// figures, a progress bar under each figure, and a "Spent $X"
+    /// line computed from the snapshot (allowance − left — the
+    /// snapshot's spent figure, never invented). Height budget in
+    /// the ~138pt content area: header 24 + spacing 8 + body 72 +
+    /// spacing 8 + footer 14 ≈ 126, ~12pt of slack.
     private func medium(snapshot: WidgetSnapshot, stale: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                wordmark
+                wordmark()
                 Spacer()
-                if let week = shortWeekStart(snapshot.weekStart) {
-                    if isPlaceholder {
-                        skeletonBar(width: 110, height: 12)
-                    } else {
-                        Text("Week of \(week)")
-                            .font(.caption)
-                            .foregroundStyle(DesignTokens.muted)
-                    }
-                }
+                headerDates(snapshot.weekStart)
             }
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .top, spacing: 14) {
+                if snapshot.spentCents != nil {
+                    donut(snapshot: snapshot, size: 64, lineWidth: 10)
+                }
+                VStack(alignment: .leading, spacing: 1) {
                     figureLabel("Left this week")
                     figure(
                         cents: snapshot.availableCents,
                         color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
                         size: 28
                     )
+                    if let spent = snapshot.spentCents {
+                        if isPlaceholder {
+                            skeletonBar(width: 110, height: 12)
+                        } else {
+                            Text("of \(MoneyFormat.wholeDollars(cents: spent + snapshot.availableCents)) allowance")
+                                .font(.caption)
+                                .foregroundStyle(DesignTokens.muted)
+                        }
+                        if isPlaceholder {
+                            skeletonBar(width: 110, height: 6)
+                        } else {
+                            progressBar(
+                                fraction: snapshot.spentFraction ?? 0,
+                                fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                                track: Color(hex: "#dbeafe"))
+                        }
+                        if isPlaceholder {
+                            skeletonBar(width: 70, height: 11)
+                        } else {
+                            Text("Spent \(MoneyFormat.wholeDollars(cents: spent))")
+                                .font(.caption2)
+                                .foregroundStyle(DesignTokens.muted)
+                        }
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 Divider()
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     figureLabel("Charity left")
                     figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 28)
+                    if isPlaceholder {
+                        skeletonBar(width: 90, height: 6)
+                    } else {
+                        progressBar(
+                            fraction: snapshot.charityGivenFraction ?? 0.25,
+                            fill: DesignTokens.charity,
+                            track: DesignTokens.successBackground)
+                    }
                 }
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             Spacer(minLength: 0)
-            updatedLine(snapshot: snapshot, stale: stale)
+            footer(snapshot: snapshot, stale: stale)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(background, for: .widget)
@@ -338,17 +471,9 @@ struct WidgetView: View {
     private func large(snapshot: WidgetSnapshot, stale: Bool) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                wordmark
+                wordmark()
                 Spacer()
-                if let range = weekRange(snapshot.weekStart) {
-                    if isPlaceholder {
-                        skeletonBar(width: 110, height: 12)
-                    } else {
-                        Text(range)
-                            .font(.caption)
-                            .foregroundStyle(DesignTokens.muted)
-                    }
-                }
+                headerDates(snapshot.weekStart)
             }
             // Two spacers, not one (owner, Nov 15, 2026): the
             // single spacer above "Updated" left one dead gap —
@@ -373,6 +498,21 @@ struct WidgetView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(DesignTokens.muted)
                         }
+                        if isPlaceholder {
+                            skeletonBar(width: 170, height: 6)
+                        } else {
+                            progressBar(
+                                fraction: snapshot.spentFraction ?? 0,
+                                fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                                track: Color(hex: "#dbeafe"))
+                        }
+                        if isPlaceholder {
+                            skeletonBar(width: 90, height: 13)
+                        } else {
+                            Text("Spent \(MoneyFormat.wholeDollars(cents: spent))")
+                                .font(.caption)
+                                .foregroundStyle(DesignTokens.muted)
+                        }
                     }
                 }
             }
@@ -380,9 +520,17 @@ struct WidgetView: View {
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel("Charity left")
                 figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 36)
+                if isPlaceholder {
+                    skeletonBar(width: 170, height: 6)
+                } else {
+                    progressBar(
+                        fraction: snapshot.charityGivenFraction ?? 0.25,
+                        fill: DesignTokens.charity,
+                        track: DesignTokens.successBackground)
+                }
             }
             Spacer(minLength: 0)
-            updatedLine(snapshot: snapshot, stale: stale)
+            footer(snapshot: snapshot, stale: stale)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(background, for: .widget)
@@ -395,17 +543,9 @@ struct WidgetView: View {
     private func extraLarge(snapshot: WidgetSnapshot, stale: Bool) -> some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                wordmark
+                wordmark()
                 Spacer()
-                if let range = weekRange(snapshot.weekStart) {
-                    if isPlaceholder {
-                        skeletonBar(width: 110, height: 12)
-                    } else {
-                        Text(range)
-                            .font(.caption)
-                            .foregroundStyle(DesignTokens.muted)
-                    }
-                }
+                headerDates(snapshot.weekStart)
             }
             Spacer(minLength: 0)
             HStack(alignment: .center, spacing: 32) {
@@ -428,6 +568,21 @@ struct WidgetView: View {
                                     .font(.subheadline)
                                     .foregroundStyle(DesignTokens.muted)
                             }
+                            if isPlaceholder {
+                                skeletonBar(width: 170, height: 6)
+                            } else {
+                                progressBar(
+                                    fraction: snapshot.spentFraction ?? 0,
+                                    fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                                    track: Color(hex: "#dbeafe"))
+                            }
+                            if isPlaceholder {
+                                skeletonBar(width: 90, height: 13)
+                            } else {
+                                Text("Spent \(MoneyFormat.wholeDollars(cents: spent))")
+                                    .font(.caption)
+                                    .foregroundStyle(DesignTokens.muted)
+                            }
                         }
                     }
                 }
@@ -435,11 +590,19 @@ struct WidgetView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     figureLabel("Charity left")
                     figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 44)
+                    if isPlaceholder {
+                        skeletonBar(width: 170, height: 6)
+                    } else {
+                        progressBar(
+                            fraction: snapshot.charityGivenFraction ?? 0.25,
+                            fill: DesignTokens.charity,
+                            track: DesignTokens.successBackground)
+                    }
                 }
                 Spacer(minLength: 0)
             }
             Spacer(minLength: 0)
-            updatedLine(snapshot: snapshot, stale: stale)
+            footer(snapshot: snapshot, stale: stale)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(background, for: .widget)
@@ -447,7 +610,7 @@ struct WidgetView: View {
 
     private var empty: some View {
         VStack(alignment: .leading, spacing: 6) {
-            wordmark
+            wordmark()
             Text("Open the app to refresh")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(DesignTokens.ink)

@@ -342,6 +342,8 @@ public final class HomeViewModel: ObservableObject {
                 availableCents: result.availableCents,
                 charityRemainingCents: summary.remainingCents,
                 spentCents: result.chargesCents,
+                charityGivenCents: summary.givenCents,
+                charityCommittedCents: summary.committedCents,
                 computedAt: Date()))
             WidgetCenter.shared.reloadAllTimelines()
         }
