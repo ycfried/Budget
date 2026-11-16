@@ -145,7 +145,7 @@ public struct TransactionsView: View {
         .onChange(of: appState.pendingTransactionJump) { _, _ in consumeHandoffs() }
         .onChange(of: appState.pendingClearTransactionFilters) { _, _ in consumeHandoffs() }
         .sheet(isPresented: $showingFilters) {
-            TransactionsFilterSheet(viewModel: viewModel, onDismiss: { showingFilters = false })
+            TransactionsFilterSheet(viewModel: viewModel, fundNames: appState.fundNames, onDismiss: { showingFilters = false })
                 // iPad sheet height (owner, Nov 13, 2026): the
                 // Filters content is a ScrollView, and
                 // .presentationSizing(.fitted) sizes a sheet to
@@ -645,6 +645,10 @@ public struct TransactionsView: View {
 public struct TransactionsFilterSheet: View {
     @Bindable var viewModel: TransactionsViewModel
     let onDismiss: () -> Void
+    /// Custom fund names (build 37 — fund rename, owner Nov 16,
+    /// 2026): the household's `fund_names` map, so the Status
+    /// picker shows a renamed fund's name. [:] means the defaults.
+    let fundNames: [String: String]
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// Snapshot taken on open; Cancel restores it.
@@ -663,8 +667,9 @@ public struct TransactionsFilterSheet: View {
 
     private enum AmountField: Hashable { case min, max }
 
-    public init(viewModel: TransactionsViewModel, onDismiss: @escaping () -> Void) {
+    public init(viewModel: TransactionsViewModel, fundNames: [String: String] = [:], onDismiss: @escaping () -> Void) {
         self.viewModel = viewModel
+        self.fundNames = fundNames
         self.onDismiss = onDismiss
         _snapshot = State(initialValue: viewModel.filters)
         _draftStatus = State(initialValue: viewModel.filters.status)
@@ -690,7 +695,7 @@ public struct TransactionsFilterSheet: View {
                     // Status — the picker value says it.
                     Picker("Status", selection: $draftStatus) {
                         ForEach(TransactionStatusFilter.allCases, id: \.self) { status in
-                            Text(status.label(customNames: appState.fundNames)).tag(status)
+                            Text(status.label(customNames: fundNames)).tag(status)
                         }
                     }
                     .pickerStyle(.menu)
