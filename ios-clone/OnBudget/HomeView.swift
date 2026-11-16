@@ -442,12 +442,12 @@ public struct HomeView: View {
                 }
                 if appState.expandedCard == .charity {
                     statDetailCard(theme: .charity, onTap: {
-                        withAnimation(ExpandAnimation.animation) { appState.expandedCard = nil }
+                        appState.expandedCard = nil
                     }) { charityRows }
                 }
                 if appState.expandedCard == .fund {
                     statDetailCard(theme: .fund, onTap: {
-                        withAnimation(ExpandAnimation.animation) { appState.expandedCard = nil }
+                        appState.expandedCard = nil
                     }) { fundRows }
                 }
                 recentSection
@@ -815,9 +815,7 @@ public struct HomeView: View {
                 case .failed, .loaded:
                     // Failed cards expand too, so the error + Retry
                     // are reachable; loading still shows the alert.
-                    withAnimation(ExpandAnimation.animation) {
-                        appState.expandedCard = appState.expandedCard == .charity ? nil : .charity
-                    }
+                    appState.expandedCard = appState.expandedCard == .charity ? nil : .charity
                 }
             }
         )
@@ -856,9 +854,7 @@ public struct HomeView: View {
                     notLoadedAlertTitle = "Extra Fund"
                     showNotLoadedAlert = true
                 case .failed, .loaded:
-                    withAnimation(ExpandAnimation.animation) {
-                        appState.expandedCard = appState.expandedCard == .fund ? nil : .fund
-                    }
+                    appState.expandedCard = appState.expandedCard == .fund ? nil : .fund
                 }
             }
         )
@@ -891,8 +887,9 @@ public struct HomeView: View {
     /// A stat card face: icon chip + Title, then the amount in
     /// 28pt heavy in the card's deep tint colour, chevron
     /// bottom-right (SF Symbol chevron.down, down when collapsed,
-    /// rotating 180° to up when expanded, with the shared
-    /// ExpandAnimation). Bigger and outlined (owner, Nov 12, 2026,
+    /// up when expanded — it flips instantly, no rotation
+    /// animation: expand/collapse is instant since build 34,
+    /// owner decision Nov 15, 2026). Bigger and outlined (owner, Nov 12, 2026,
     /// corrected ~2:02 PM — StatCardTheme, shared with the Funds
     /// page): 20pt padding, 18pt title, 28pt amount, icon chip;
     /// white inside with a 2px coloured outline (green for Charity,
@@ -1009,7 +1006,6 @@ public struct HomeView: View {
                     // chevron is muted grey, not brand blue.
                     .foregroundStyle(DesignTokens.muted)
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                    .animation(ExpandAnimation.animation, value: isExpanded)
             }
         }
         .padding(pad)
@@ -1027,7 +1023,6 @@ public struct HomeView: View {
                 radius: 2, x: 0, y: 1)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
-        .animation(ExpandAnimation.animation, value: isExpanded)
         .accessibilityLabel(ariaLabel)
         .accessibilityAddTraits(.isButton)
     }
@@ -1057,7 +1052,6 @@ public struct HomeView: View {
                     radius: 2, x: 0, y: 1)
             .contentShape(Rectangle())
             .onTapGesture(perform: onTap)
-            .transition(ExpandAnimation.transition)
     }
 
     /// Row labels are Title Case, like headings and button labels

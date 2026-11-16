@@ -22,7 +22,9 @@ import OnBudgetKit
 /// and the price twice. No explainer sentences: the facts
 /// already say it.
 /// The whole row is the tap target — the chevron is only a visual
-/// hint. Expand/collapse uses the shared ExpandAnimation.
+/// hint. Expand/collapse is instant, no animation at all (owner
+/// decision, Nov 15, 2026 — build 34: the motion itself was ugly,
+/// not just the fade).
 public struct TransactionRowView: View {
     let transaction: Transaction
     /// Institution name for the card suffix, when known.
@@ -87,17 +89,11 @@ public struct TransactionRowView: View {
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(Color(hex: "#6b7280"))
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                                .animation(ExpandAnimation.animation, value: isExpanded)
                         }
                         .frame(height: iconSize / 2)
                         // Bottom half: badges + date meta, collapsed
                         // only — when open, the detail below says
-                        // all of it (owner, Nov 12, 2026). The row
-                        // carries the shared ExpandAnimation transition
-                        // (owner, Nov 14, 2026): without it the badges
-                        // vanished instantly while the detail faded and
-                        // slid in, so half the row popped and half
-                        // glided, and the rows below jumped.
+                        // all of it (owner, Nov 12, 2026).
                         if !isExpanded {
                             HStack(spacing: 8) {
                                 StatePill(transaction)
@@ -112,7 +108,6 @@ public struct TransactionRowView: View {
                                     .lineLimit(1)
                             }
                             .frame(height: iconSize / 2)
-                            .transition(ExpandAnimation.transition)
                         }
                     }
                 }
@@ -144,10 +139,8 @@ public struct TransactionRowView: View {
                 .padding(.top, 2)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 14)
-                .transition(ExpandAnimation.transition)
             }
         }
-        .animation(ExpandAnimation.animation, value: isExpanded)
         // No per-row card: the list is ONE continuous list — the
         // container in TransactionsView carries the single white card
         // and the dividers between rows (owner, Nov 11, 2026).

@@ -663,11 +663,13 @@ public struct FundsView: View {
     }
 
     /// Move a fund one step in the reorder list (build 34): the
-    /// order saves via the `fundOrder` onChange.
+    /// order saves via the `fundOrder` onChange. The move itself
+    /// keeps a short ease — it is a reorder, not an expand/collapse
+    /// (those are instant since build 34, owner decision Nov 15).
     private func moveFund(_ id: FundSectionID, by offset: Int) {
         guard let from = fundOrder.firstIndex(of: id),
               fundOrder.indices.contains(from + offset) else { return }
-        withAnimation(ExpandAnimation.animation) {
+        withAnimation(.easeInOut(duration: 0.25)) {
             fundOrder.swapAt(from, from + offset)
         }
     }
@@ -838,12 +840,10 @@ public struct FundsView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .animation(ExpandAnimation.animation, value: openMore == section)
                 if openMore == section {
                     content()
                         .padding(.horizontal, hPad)
                         .padding(.bottom, 12)
-                        .transition(ExpandAnimation.transition)
                 }
             }
         }

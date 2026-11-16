@@ -444,14 +444,11 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 if isExpanded {
                     Divider()
                         .padding(.horizontal, pad)
-                        .transition(ExpandAnimation.transition)
                     expanded
                         .padding(.horizontal, pad)
                         .padding(.bottom, pad)
-                        .transition(ExpandAnimation.transition)
                 }
             }
-            .animation(ExpandAnimation.animation, value: isExpanded)
         }
     }
 }
