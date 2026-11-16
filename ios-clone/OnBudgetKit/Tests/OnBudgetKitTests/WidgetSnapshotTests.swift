@@ -148,4 +148,47 @@ final class WidgetSnapshotTests: XCTestCase {
         )
         XCTAssertEqual(placeholder.spentFraction ?? -1, 40349.0 / 57656.0, accuracy: 0.001)
     }
+
+    // MARK: - Charity bar (build 35)
+
+    private func charitySnapshot(given: Int?, committed: Int?) -> WidgetSnapshot {
+        WidgetSnapshot(
+            weekStart: "2026-11-08",
+            availableCents: 37000,
+            charityRemainingCents: 66300,
+            spentCents: 3000,
+            charityGivenCents: given,
+            charityCommittedCents: committed,
+            computedAt: Date()
+        )
+    }
+
+    func testCharityGivenFractionIsGivenOverCommitted() {
+        XCTAssertEqual(charitySnapshot(given: 3000, committed: 10000).charityGivenFraction, 0.3)
+    }
+
+    func testCharityGivenFractionIsNilWithoutCharityFigures() {
+        XCTAssertNil(charitySnapshot(given: nil, committed: nil).charityGivenFraction)
+    }
+
+    func testCharityGivenFractionIsNilWhenNothingCommitted() {
+        XCTAssertNil(charitySnapshot(given: 0, committed: 0).charityGivenFraction)
+    }
+
+    func testCharityGivenFractionClampsAtFull() {
+        XCTAssertEqual(charitySnapshot(given: 12000, committed: 10000).charityGivenFraction, 1.0)
+    }
+
+    func testSnapshotWithoutCharityFieldsStillDecodes() throws {
+        // Pre-build-35 snapshots carry no charity fields: decoding
+        // must succeed with nil figures, never fail the whole read.
+        let json = """
+        {"weekStart":"2026-11-08","availableCents":37000,"charityRemainingCents":66300,"spentCents":3000,"computedAt":1763000000}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(WidgetSnapshot.self, from: json)
+        XCTAssertNil(decoded.charityGivenCents)
+        XCTAssertNil(decoded.charityCommittedCents)
+        XCTAssertNil(decoded.charityGivenFraction)
+        XCTAssertEqual(decoded.spentFraction, 3000.0 / 40000.0)
+    }
 }
