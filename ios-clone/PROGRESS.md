@@ -409,3 +409,5 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - Nov 16, 2026 (build-36 batch, simulator trigger 4): full head incl. Funds additions + widget sync button.
 
 - Nov 16, 2026 (build-36 batch, simulator run 43884326621): FAILED at TEST BUILD, 14:29: TransactionsView.swift:129 — cannot find horizontalSizeClass in scope: the env var I saw at old line 640 belongs to TransactionsFilterSheet, not TransactionsView. Added the env var to TransactionsView itself. Kit had already passed 265/265 before the build failed; smoke/UI never ran. Re-running below.
+
+- Nov 16, 2026 (build-36 batch, simulator trigger 5): re-run after TransactionsView env fix.
