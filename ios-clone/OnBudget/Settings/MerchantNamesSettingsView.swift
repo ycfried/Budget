@@ -111,7 +111,8 @@ struct MerchantNamesSettingsView: View {
     private let context: SettingsContext
 
     /// The rule being edited, or nil for the add form. The form
-    /// stays hidden until Add or a row tap.
+    /// opens as a sheet on Add or a row tap (build 33 — it used to
+    /// render inline below the list, which was hard to use).
     @State private var editingRule: MerchantRule?
     @State private var showingForm = false
     @State private var patternText = ""
@@ -189,37 +190,55 @@ struct MerchantNamesSettingsView: View {
                         }
                     }
                 }
-                if showingForm {
-                    ruleForm
-                } else {
-                    Button("Add a Name") {
-                        editingRule = nil
-                        patternText = ""
-                        displayNameText = ""
-                        matchType = "exact"
-                        fixedKind = nil
-                        showingForm = true
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
+                Button("Add a Name") {
+                    editingRule = nil
+                    patternText = ""
+                    displayNameText = ""
+                    matchType = "exact"
+                    fixedKind = nil
+                    showingForm = true
                 }
+                .buttonStyle(PrimaryButtonStyle())
             }
-            .alert(item: $viewModel.alert) { alert in
-                switch alert {
-                case .deleteRule(let rule):
-                    return Alert(
-                        title: Text("Remove This Name?"),
-                        message: Text("“\(TitleCase.apply(to: rule.displayName.lowercased()))” will stop renaming “\(rule.patternText)” — old rows keep their current names."),
-                        primaryButton: .destructive(Text("Remove")) {
-                            Task { await viewModel.deleteRule(rule) }
-                        },
-                        secondaryButton: .cancel()
-                    )
-                case .failed(let title, let message):
-                    return Alert(
-                        title: Text(title),
-                        message: Text(message),
-                        dismissButton: .cancel(Text("Close"))
-                    )
+            // The editor is a proper sheet, not inline below the
+            // list (owner, Nov 15, 2026 — build 33: the inline
+            // editor was hard to use and not properly clickable,
+            // though the idea and the fields were right). Same
+            // fields, same behaviour — just presented as a sheet
+            // with a header, like the other editors.
+            .sheet(isPresented: $showingForm) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        SheetHeader(title: editingRule == nil ? "Add a Name" : "Edit Name") {
+                            showingForm = false
+                            editingRule = nil
+                        }
+                        ruleForm
+                    }
+                    .padding()
+                }
+                .presentationDetents([.medium, .large])
+                .presentationBackground(.white)
+                // The alert lives on the sheet (delete confirm +
+                // save failures both come from this form).
+                .alert(item: $viewModel.alert) { alert in
+                    switch alert {
+                    case .deleteRule(let rule):
+                        return Alert(
+                            title: Text("Remove This Name?"),
+                            message: Text("“\(TitleCase.apply(to: rule.displayName.lowercased()))” will stop renaming “\(rule.patternText)” — old rows keep their current names."),
+                            primaryButton: .destructive(Text("Remove")) {
+                                Task { await viewModel.deleteRule(rule) }
+                            },
+                            secondaryButton: .cancel()
+                        )
+                    case .failed(let title, let message):
+                        return Alert(
+                            title: Text(title),
+                            message: Text(message),
+                            dismissButton: .cancel(Text("Close"))
+                        )
+                    }
                 }
             }
             .task {

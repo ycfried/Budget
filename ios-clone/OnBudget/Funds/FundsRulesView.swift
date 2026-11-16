@@ -6,8 +6,12 @@ import OnBudgetKit
 // The old shared "Funds & Charity Rules" card is split by fund —
 // the page reads as three fund sections now, and each fund's own
 // pieces sit under its card:
-// - Extra Fund: the shortfall line ("Nothing owed back right
-//   now." / "Owed back now: $X.") lives under the Extra Fund card.
+// - Extra Fund: a shortfall is shown as a labelled "Shortfall"
+//   row in the card's own detail, only when one exists (owner,
+//   Nov 15, 2026 — build 33: the old "Nothing owed back right
+//   now." sentence was confusing — "owed back" is internal
+//   machinery — and when nothing is owed the $0.00 face already
+//   says the fund is empty, so nothing shows at all).
 // - Charity: the Default Charity Rate editor lives under the
 //   Charity card; How It Works opens from the ⓘ next to the label
 //   (owner, Nov 15, 2026 — no longer an expandable row, and no
@@ -89,8 +93,11 @@ public struct CharityRateSection: View {
     public var body: some View {
         Group {
             if bare {
+                // No extra horizontal padding (build 33): the
+                // section lives inside the card's expanded detail,
+                // which is already padded 20pt — padding here would
+                // double it to 40.
                 rateContent
-                    .padding(.horizontal, 20)
             } else {
                 FundsCard {
                     rateContent
@@ -150,20 +157,25 @@ public struct CharityRateSection: View {
 
     // MARK: - Admin rate editor
 
-    /// ONE compact row (owner, Nov 15, 2026): label + ⓘ + field
-    /// with its % + Save + Reset, together. The field shows the
-    /// live default, so there is no separate far-right value. Only
-    /// the pending-rate preview shows below — the "already the
-    /// default rate" and "enter a rate" notes restated the obvious
-    /// and are gone; a bad Save still reports via the error box.
+    /// ONE editor, the same shape as the other fund editors
+    /// (owner, Nov 15, 2026 — build 33: the old one-row layout
+    /// truncated the label to "Default..." and wrapped Reset to
+    /// two lines). The label sits on its own line with the ⓘ beside
+    /// it — it can never truncate — and the field, %, Save and
+    /// Reset sit together on the row below. The field IS the value,
+    /// so nothing floats far right. Only the pending-rate preview
+    /// shows below — the "already the default rate" note restated
+    /// the obvious and is gone. No heading — the "Default Charity
+    /// Rate" row says what it is, and the Charity card above is the
+    /// section header. The ⓘ opens How It Works as a popup (owner,
+    /// Nov 15, 2026 — the expandable row is gone); the content
+    /// itself is unchanged.
     private var rateEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("Default Charity Rate")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
                 Button {
                     showHowItWorks = true
                 } label: {
@@ -175,6 +187,8 @@ public struct CharityRateSection: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("How it works")
+            }
+            HStack(spacing: 8) {
                 TextField(MoneyFormat.formatRateBp(defaultRateBp), text: $rateText)
                     .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
@@ -210,42 +224,6 @@ public struct CharityRateSection: View {
         }
         rateError = nil
         Task { await viewModel.setDefaultRate(basisPoints: bp) }
-    }
-}
-
-/// The Extra Fund shortfall line, directly under the Extra Fund
-/// card: "Nothing owed back right now." or "Owed back now: $X."
-/// A bare muted line, not a card — the horizontal padding lines
-/// it up with the card's interior text. It reads the fund summary
-/// on its own: unlike the old shared rules card, it no longer
-/// waits for the charity settings to load first (its own loading
-/// and error lines cover those states).
-public struct FundShortfallLine: View {
-    @ObservedObject public var viewModel: FundsViewModel
-
-    public init(viewModel: FundsViewModel) {
-        self.viewModel = viewModel
-    }
-
-    public var body: some View {
-        Group {
-            if let summary = viewModel.fundSummary {
-                FundsMuted(
-                    summary.shortfallCents > 0
-                        ? "Owed back now: \(MoneyFormat.formatCents(summary.shortfallCents))."
-                        : "Nothing owed back right now."
-                )
-            } else if viewModel.fundError != nil {
-                // The shortfall line stays visible even when the fund
-                // fails to load, with an error note in its place
-                // (F-P2-9).
-                FundsMuted("Owed back: could not load fund balances — try again.")
-            } else {
-                FundsMuted("Owed back: loading…")
-            }
-        }
-        .padding(.horizontal, 20)
-        .accessibilityIdentifier("funds.shortfall")
     }
 }
 
@@ -311,18 +289,17 @@ public struct HowItWorksContent: View {
 }
 
 /// Debt Repayment Rule, under the Carried Debt card (build 29): the
-/// rule row plus the admin editor (Percent / Fixed $ / Off + value
-/// + Save, Reset a small quiet link) and the preview line. Same
-/// compact pattern as the Charity rate editor (owner, Nov 15,
-/// 2026): the label, the mode picker, the field with its unit, Save
-/// and Reset sit together — the field IS the value, so nothing
-/// floats far right. No heading — the "Debt Repayment Rule" row
-/// says what it is, and the Carried Debt card above is the section
-/// header. A rule change is future-only: it applies to the current
-/// open week and future weeks; closed weeks keep their stored
-/// payment. The rule lives here and nowhere else — never in
-/// Settings (owner, Nov 15, 2026: ALL fund-related settings belong
-/// on the Funds page).
+/// rule row plus the admin editor (% / Fixed $ / Off + value +
+/// Save, Reset a small quiet link). Same compact pattern as the
+/// Charity rate editor (owner, Nov 15, 2026): the label, the mode
+/// picker, the field with its unit, Save and Reset sit together —
+/// the field IS the value, so nothing floats far right. No heading
+/// — the "Debt Repayment Rule" row says what it is, and the
+/// Carried Debt card above is the section header. A rule change is
+/// future-only: it applies to the current open week and future
+/// weeks; closed weeks keep their stored payment. The rule lives
+/// here and nowhere else — never in Settings (owner, Nov 15, 2026:
+/// ALL fund-related settings belong on the Funds page).
 ///
 /// Visibility decision: the rule section is visible to every role,
 /// read-only for regular members ("Only the admin can change the
@@ -360,13 +337,6 @@ public struct DebtRuleSection: View {
         }
     }
 
-    /// True when the editor holds a valid rule that differs from the
-    /// saved one — the only case the preview describes the new rule.
-    private var pendingDiffers: Bool {
-        guard let pending = pendingRule else { return false }
-        return pending != savedRule
-    }
-
     private var ruleText: String {
         switch savedRule.mode {
         case .percent: return "\(MoneyFormat.formatRateBp(savedRule.percentBp))% of Base"
@@ -378,8 +348,10 @@ public struct DebtRuleSection: View {
     public var body: some View {
         Group {
             if bare {
+                // No extra horizontal padding (build 33): see
+                // CharityRateSection — the card's detail already
+                // pads 20pt.
                 ruleContent
-                    .padding(.horizontal, 20)
             } else {
                 FundsCard {
                     ruleContent
@@ -418,26 +390,30 @@ public struct DebtRuleSection: View {
         fixedText = savedRule.fixedCents > 0 ? String(format: "%.2f", Double(savedRule.fixedCents) / 100.0) : ""
     }
 
-    /// The compact editor (owner, Nov 15, 2026 — same pattern as
-    /// the Charity rate editor): label + mode picker on one row,
-    /// then the field with its unit + Save + Reset on the next.
-    /// The field IS the value, so nothing floats far right. The
-    /// preview shows below only when it says something useful.
+    /// The editor, the same shape as the other fund editors
+    /// (owner, Nov 15, 2026 — build 33): the label on its own line
+    /// so it can never truncate, the mode picker full-width on the
+    /// next row, then the field with its unit + Save + Reset. The
+    /// picker uses "%" for Percent (owner rule: a word that does
+    /// not fit becomes a symbol, never a truncation — "Percent"
+    /// was rendering as "Perc..."). The field IS the value, so
+    /// nothing floats far right. There is NO preview paragraph
+    /// under the editor (owner, Nov 15, 2026 — build 33: the
+    /// "Each week $X goes to debt…" paragraph restated what the
+    /// card already shows — This Week's Payment, Remaining After
+    /// This Week, the Spending card's week start — so it is gone).
+    /// A bad Save still reports via the error box.
     private var ruleEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Debt Repayment Rule")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                Picker("Rule", selection: $selectedMode) {
-                    Text("Percent").tag(DebtRule.Mode.percent)
-                    Text("Fixed $").tag(DebtRule.Mode.fixed)
-                    Text("Off").tag(DebtRule.Mode.off)
-                }
-                .pickerStyle(.segmented)
+            Text("Debt Repayment Rule")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            Picker("Rule", selection: $selectedMode) {
+                Text("%").tag(DebtRule.Mode.percent)
+                Text("Fixed $").tag(DebtRule.Mode.fixed)
+                Text("Off").tag(DebtRule.Mode.off)
             }
+            .pickerStyle(.segmented)
             HStack(spacing: 8) {
                 if selectedMode == .percent {
                     TextField(MoneyFormat.formatRateBp(savedRule.percentBp), text: $percentText)
@@ -458,39 +434,9 @@ public struct DebtRuleSection: View {
                     ruleError = nil
                 }
             }
-            previewLine
             if let ruleError {
                 FundsErrorBox(ruleError)
             }
-        }
-    }
-
-    @ViewBuilder
-    private var previewLine: some View {
-        if pendingDiffers, let pending = pendingRule {
-            // The preview describes the PENDING rule, from the base
-            // only — the same caps the server applies.
-            if let base = viewModel.baseAllowanceCents, let debt = viewModel.debtBalanceCents {
-                let payment = DebtRule.paymentCents(baseCents: base, debtCents: debt, rule: pending)
-                FundsMuted("Each week \(MoneyFormat.formatCents(payment)) goes to debt — the week starts at \(MoneyFormat.formatCents(base - payment)). Future weeks only; closed weeks keep their stored payment.")
-            } else {
-                FundsMuted("Each week \(pendingRuleText(pending)) goes to debt. Future weeks only; closed weeks keep their stored payment.")
-            }
-        } else if savedRule.mode == .off {
-            FundsMuted("The rule is off — no part of the base goes to debt each week. Unspent allowance at week close still pays the debt first.")
-        } else if let preview = viewModel.debtPaymentPreview() {
-            FundsMuted("Each week \(MoneyFormat.formatCents(preview.payment)) goes to debt — the week starts at \(MoneyFormat.formatCents(preview.weekStartsAt)).")
-        }
-        // No "Enter a value" line (build 30): an empty field states
-        // itself; the note restated the obvious. A bad Save still
-        // reports via the error box.
-    }
-
-    private func pendingRuleText(_ rule: DebtRule) -> String {
-        switch rule.mode {
-        case .percent: return "\(MoneyFormat.formatRateBp(rule.percentBp))% of the base"
-        case .fixed: return MoneyFormat.formatCents(rule.fixedCents)
-        case .off: return "nothing"
         }
     }
 
@@ -575,8 +521,10 @@ public struct SpendingAllowanceSection: View {
     public var body: some View {
         Group {
             if bare {
+                // No extra horizontal padding (build 33): see
+                // CharityRateSection — the card's detail already
+                // pads 20pt.
                 allowanceContent
-                    .padding(.horizontal, 20)
             } else {
                 FundsCard {
                     allowanceContent
@@ -606,14 +554,20 @@ public struct SpendingAllowanceSection: View {
 
     /// The row + editor + Temporary Allowance block, without chrome:
     /// the caller (the Spending fund container) wraps it, or
-    /// FundsCard when standalone.
+    /// FundsCard when standalone. The editor is the same shape as
+    /// the other fund editors (owner, Nov 15, 2026 — build 33):
+    /// the label on its own line, the field + Save + Reset on the
+    /// row below. There is NO separate "Weekly Allowance $400.00"
+    /// value row for admins — the amount is already in the card
+    /// header and in the field itself, so the row was redundant.
+    /// Members (who cannot edit) keep the read-only value row.
     private var allowanceContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let base = savedBase {
-                FundsBreakdownRow("Weekly Allowance", value: MoneyFormat.formatCents(base))
                 if isAdmin {
                     allowanceEditor
                 } else {
+                    FundsBreakdownRow("Weekly Allowance", value: MoneyFormat.formatCents(base))
                     FundsMuted("Only the admin can change the weekly allowance.")
                 }
                 tempBlock
@@ -636,6 +590,9 @@ public struct SpendingAllowanceSection: View {
 
     private var allowanceEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Text("Weekly Allowance")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
             HStack(spacing: 10) {
                 DollarTextField(text: $allowanceText, placeholder: "0.00", maxWidth: 140)
                 FundsSmallPrimaryButton("Save", isBusy: viewModel.busyAction == "base-allowance") {

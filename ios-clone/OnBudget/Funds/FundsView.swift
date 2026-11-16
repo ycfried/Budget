@@ -8,12 +8,14 @@ import OnBudgetKit
 // Top: two balance panels side by side in the web app — stacked here,
 // same face as the Home stat cards (Title + Amount only, chevron `⌄`
 // bottom-right) with the same in-place expansion, except the Funds
-// expansions INCLUDE action buttons (Home does not). Grouped by fund
-// (owner, Nov 15, 2026): each fund is ONE container — its card heads
-// the block and its rules, info and transactions sit inside it.
-// Extra Fund (shortfall line, activity, Past Savings Records),
-// Charity (rate + ⓘ How It Works popup, activity), Carried Debt
-// (rule, activity, where it came from) — then standalone Review.
+// expansions INCLUDE action buttons (Home does not). One fund IS one
+// card (owner, Nov 15, 2026; redesigned build 33): the card's
+// coloured outline wraps its header AND its detail — breakdown,
+// actions, editor, Activity — so each fund reads as one group, not
+// a card with loose rows hanging below it. Spending (Weekly
+// Allowance editor + Temporary Allowance), Extra Fund (shortfall
+// row, Activity), Charity (rate editor + Activity), Carried Debt
+// (rule editor, Activity) — then standalone Review.
 //
 // Forms: one at a time; the sections below the cards hide while a
 // form is open. Back returns to the Funds list (swipe-right closes
@@ -326,8 +328,10 @@ public struct FundsView: View {
     // payment — the same figure as the Home hero's effective
     // allowance. The breakdown reconciles: Base ± Temporary
     // increase/decrease − Debt Payment = Total. The Weekly
-    // Allowance editor + Temporary Allowance live in the section
-    // below the card, like the rate/rule editors of the other funds.
+    // Allowance editor + Temporary Allowance live INSIDE the card
+    // (build 33): the card's outline wraps the header and the
+    // detail, so the whole thing reads as one group — the editor
+    // used to sit below the card, outside its outline.
 
     private var spendingCard: some View {
         FundsExpandableCard(
@@ -341,26 +345,29 @@ public struct FundsView: View {
             onToggle: { toggleCard(.spending) }
         ) {
             if let base = viewModel.baseAllowanceCents {
-                FundsBreakdownRow("Base", value: MoneyFormat.formatCents(base))
-                if let override = viewModel.debtWeek?.overrideCents, override != base {
-                    let delta = override - base
-                    FundsBreakdownRow(
-                        delta > 0 ? "Temporary Increase" : "Temporary Decrease",
-                        value: "\(delta > 0 ? "+" : "−")\(MoneyFormat.formatCents(abs(delta)))"
-                    )
-                }
-                if let payment = viewModel.debtWeek?.debtPaymentCents, payment > 0 {
-                    FundsBreakdownRow("Less Debt Payment", value: "−\(MoneyFormat.formatCents(payment))")
-                }
-                if let total = spendingFaceCents {
-                    FundsBreakdownRow("Total", value: MoneyFormat.formatCents(total))
-                }
-                HStack(spacing: 12) {
-                    if isAdmin {
-                        FundsPrimaryButton("Temporary Allowance") { openForm = .temp }
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        FundsBreakdownRow("Base", value: MoneyFormat.formatCents(base))
+                        if let override = viewModel.debtWeek?.overrideCents, override != base {
+                            let delta = override - base
+                            FundsBreakdownRow(
+                                delta > 0 ? "Temporary Increase" : "Temporary Decrease",
+                                value: "\(delta > 0 ? "+" : "−")\(MoneyFormat.formatCents(abs(delta)))"
+                            )
+                        }
+                        if let payment = viewModel.debtWeek?.debtPaymentCents, payment > 0 {
+                            FundsBreakdownRow("Less Debt Payment", value: "−\(MoneyFormat.formatCents(payment))")
+                        }
+                        if let total = spendingFaceCents {
+                            FundsBreakdownRow("Total", value: MoneyFormat.formatCents(total))
+                        }
+                    }
+                    HStack(spacing: 12) {
                         FundsTertiaryButton("Close") { appState.expandedCard = nil }
-                    } else {
-                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                    }
+                    Divider()
+                    SpendingAllowanceSection(viewModel: viewModel, bare: true) {
+                        openForm = .temp
                     }
                 }
             } else if let error = viewModel.allowanceError {
@@ -418,21 +425,41 @@ public struct FundsView: View {
             if let error = viewModel.fundError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.fundSummary {
-                FundsBreakdownRow(
-                    isAdmin ? "Spendable Available" : "Available to Request",
-                    value: MoneyFormat.formatCents(summary.availableCents),
-                    isNegative: summary.availableCents < 0
-                )
-                FundsBreakdownRow("Pending", value: MoneyFormat.formatCents(summary.pendingIncludingHeldCents))
-                FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.totalCents))
-                HStack(spacing: 12) {
-                    if isAdmin {
-                        FundsPrimaryButton("Add Money") { openForm = .add }
-                        FundsPaleButton("Spend from Fund") { openForm = .use }
-                        FundsTertiaryButton("Request Money") { openForm = .ask }
-                    } else {
-                        FundsTertiaryButton("Request Money") { openForm = .ask }
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        FundsBreakdownRow(
+                            isAdmin ? "Spendable Available" : "Available to Request",
+                            value: MoneyFormat.formatCents(summary.availableCents),
+                            isNegative: summary.availableCents < 0
+                        )
+                        FundsBreakdownRow("Pending", value: MoneyFormat.formatCents(summary.pendingIncludingHeldCents))
+                        FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.totalCents))
+                        // A shortfall is a labelled number, only
+                        // when one exists (owner, Nov 15, 2026 —
+                        // build 33: the old "Nothing owed back
+                        // right now." sentence was confusing, and
+                        // when nothing is owed the $0.00 face
+                        // already says the fund is empty).
+                        if summary.shortfallCents > 0 {
+                            FundsBreakdownRow("Shortfall", value: MoneyFormat.formatCents(summary.shortfallCents))
+                        }
                     }
+                    // Three actions cannot sit side by side on an
+                    // iPhone — their labels wrap (owner button
+                    // audit, build 33). A vertical stack, full
+                    // width, primary first, pale middle, tertiary
+                    // last (the two-button-row order, extended).
+                    VStack(alignment: .leading, spacing: 12) {
+                        if isAdmin {
+                            FundsPrimaryButton("Add Money") { openForm = .add }
+                            FundsPaleButton("Spend from Fund") { openForm = .use }
+                            FundsTertiaryButton("Request Money") { openForm = .ask }
+                        } else {
+                            FundsTertiaryButton("Request Money") { openForm = .ask }
+                        }
+                    }
+                    Divider()
+                    fundActivitySection
                 }
             } else {
                 // Loading inside the expanded card: skeleton rows
@@ -485,25 +512,33 @@ public struct FundsView: View {
             if let error = viewModel.charityError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.charitySummary {
-                FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents))
-                FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
-                // Pending gifts are computed but were never shown,
-                // so Available looked wrong until gifts post
-                // (F-P2-11).
-                if summary.pendingGiftCents > 0 {
-                    FundsBreakdownRow("Pending gifts", value: MoneyFormat.formatCents(summary.pendingGiftCents))
-                }
-                FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.committedCents))
-                HStack(spacing: 12) {
-                    if isAdmin {
-                        FundsPrimaryButton("Record Income") {
-                            correctingIncome = nil
-                            openForm = .income
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents))
+                        FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
+                        // Pending gifts are computed but were never shown,
+                        // so Available looked wrong until gifts post
+                        // (F-P2-11).
+                        if summary.pendingGiftCents > 0 {
+                            FundsBreakdownRow("Pending gifts", value: MoneyFormat.formatCents(summary.pendingGiftCents))
                         }
-                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
-                    } else {
-                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                        FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.committedCents))
                     }
+                    HStack(spacing: 12) {
+                        if isAdmin {
+                            FundsPrimaryButton("Record Income") {
+                                correctingIncome = nil
+                                openForm = .income
+                            }
+                            FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                        } else {
+                            FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                        }
+                    }
+                    Divider()
+                    CharityRateSection(viewModel: viewModel, bare: true)
+                    Divider()
+                    charityActivitySection
                 }
             } else {
                 VStack(alignment: .leading, spacing: 8) {
@@ -557,26 +592,39 @@ public struct FundsView: View {
             if let error = viewModel.debtError {
                 FundsErrorBox(error)
             } else if let week = viewModel.debtWeek {
-                FundsMuted("Money spent over past weekly allowances.")
-                if let payment = week.debtPaymentCents {
-                    FundsBreakdownRow("This Week's Payment", value: MoneyFormat.formatCents(payment))
-                    FundsBreakdownRow("Remaining After This Week", value: MoneyFormat.formatCents(max(0, week.carriedDebtCents - payment)))
-                } else {
-                    // Old server: the payment is unknown, so only
-                    // the balance shows — never a $0 that would be wrong.
-                    FundsBreakdownRow("Carried Debt", value: MoneyFormat.formatCents(week.carriedDebtCents))
-                }
-                HStack(spacing: 12) {
-                    if isAdmin && viewModel.debtRule != nil {
-                        FundsPrimaryButton("Pay from Extra Fund") { openForm = .payDebt }
-                        // No button that cannot work (owner, Nov 13):
-                        // with no debt left there is nothing to clear.
-                        if week.carriedDebtCents > 0 {
-                            FundsTertiaryButton("Clear Debt") { openForm = .clearDebt }
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        FundsMuted("Money spent over past weekly allowances.")
+                        if let payment = week.debtPaymentCents {
+                            FundsBreakdownRow("This Week's Payment", value: MoneyFormat.formatCents(payment))
+                            FundsBreakdownRow("Remaining After This Week", value: MoneyFormat.formatCents(max(0, week.carriedDebtCents - payment)))
+                        } else {
+                            // Old server: the payment is unknown, so only
+                            // the balance shows — never a $0 that would be wrong.
+                            FundsBreakdownRow("Carried Debt", value: MoneyFormat.formatCents(week.carriedDebtCents))
                         }
-                    } else {
-                        FundsTertiaryButton("Close") { appState.expandedCard = nil }
                     }
+                    HStack(spacing: 12) {
+                        if isAdmin && viewModel.debtRule != nil {
+                            // "Pay from Fund" — the full "Pay from
+                            // Extra Fund" wrapped to two lines on
+                            // iPhone (owner, Nov 15, 2026 — build
+                            // 33); the fund here is the Extra Fund,
+                            // so nothing is lost.
+                            FundsPrimaryButton("Pay from Fund") { openForm = .payDebt }
+                            // No button that cannot work (owner, Nov 13):
+                            // with no debt left there is nothing to clear.
+                            if week.carriedDebtCents > 0 {
+                                FundsTertiaryButton("Clear Debt") { openForm = .clearDebt }
+                            }
+                        } else {
+                            FundsTertiaryButton("Close") { appState.expandedCard = nil }
+                        }
+                    }
+                    Divider()
+                    DebtRuleSection(viewModel: viewModel, bare: true)
+                    Divider()
+                    debtActivitySection
                 }
             } else {
                 VStack(alignment: .leading, spacing: 8) {
@@ -609,65 +657,34 @@ public struct FundsView: View {
         return "Carried Debt, \(MoneyFormat.formatCents(week.carriedDebtCents)) owed, show breakdown"
     }
 
-    // MARK: - Per-fund sections (owner, Nov 15, 2026)
+    // MARK: - One container per fund (owner, Nov 15, 2026;
+    // redesigned build 33)
     //
-    // The old shared "Funds & Charity Rules" card is split by
-    // fund: the shortfall line lives under the Extra Fund card,
-    // the rate editor under the Charity card (How It Works opens
-    // from the ⓘ beside the rate row).
-
-    private var fundShortfallLine: some View {
-        FundShortfallLine(viewModel: viewModel)
-    }
-
-    private var charityRateSection: some View {
-        CharityRateSection(viewModel: viewModel, bare: true)
-    }
-
-    private var debtRuleSection: some View {
-        DebtRuleSection(viewModel: viewModel, bare: true)
-    }
-
-    /// One container per fund (owner, Nov 15, 2026): the fund's
-    /// card, rules, info and transactions read as one block. The
-    /// card keeps its coloured outline; the rows inside are bare
-    /// (no card of their own) so the block stays flat, and their
-    /// text lines up with the card's interior text.
-    private func fundContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        FundsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                content()
-            }
-        }
-    }
-
-    /// One fund's container, by id (build 30): the card heads the
-    /// block and its rules, info and transactions sit inside it.
-    /// In rearrange mode a drag handle sits above the card;
-    /// dragging it over another container reorders live
-    /// (FundDropDelegate).
+    // One fund IS one card: the fund's `FundsExpandableCard`
+    // carries its coloured outline, and the detail — breakdown,
+    // actions, editor, Activity — lives INSIDE that outline, so
+    // the whole thing reads as one group. There is no outer
+    // wrapper card any more (build 33): it was a plain white card
+    // whose faint shadow was invisible against the page, so the
+    // card and the sections below it read as loose rows instead
+    // of one block. In rearrange mode a drag handle sits above
+    // the card; dragging it over another container reorders live
+    // (FundDropDelegate).
     @ViewBuilder
     private func fundContainer(for id: FundSectionID) -> some View {
-        fundContainer {
+        VStack(alignment: .leading, spacing: 12) {
             if isRearranging {
                 rearrangeHandle(for: id)
             }
             switch id {
             case .spending:
                 spendingCard
-                spendingAllowanceSection
             case .fund:
                 fundCard
-                fundShortfallLine
-                fundActivitySection
             case .charity:
                 charityCard
-                charityRateSection
-                charityActivitySection
             case .debt:
                 debtCard
-                debtRuleSection
-                debtActivitySection
             }
         }
     }
@@ -688,16 +705,6 @@ public struct FundsView: View {
                     return NSItemProvider(object: id.rawValue as NSString)
                 }
                 .accessibilityLabel("Drag to reorder \(id.displayName)")
-        }
-    }
-
-    /// The Spending fund container's allowance editor (build 30):
-    /// Weekly Allowance + Temporary Allowance, moved from the
-    /// Settings Budget card. The button opens the Temporary
-    /// Allowance form.
-    private var spendingAllowanceSection: some View {
-        SpendingAllowanceSection(viewModel: viewModel, bare: true) {
-            openForm = .temp
         }
     }
 
@@ -734,7 +741,7 @@ public struct FundsView: View {
             title: "Activity",
             section: .fundActivity,
             isAdminOnly: false,
-            hPad: 20
+            hPad: 0
         ) {
             VStack(alignment: .leading, spacing: 8) {
                 if isAdmin {
@@ -754,7 +761,7 @@ public struct FundsView: View {
             title: "Activity",
             section: .charityActivity,
             isAdminOnly: true,
-            hPad: 20
+            hPad: 0
         ) {
             CharityIncomeHistory(
                 viewModel: viewModel,
@@ -775,7 +782,7 @@ public struct FundsView: View {
             title: "Activity",
             section: .debtActivity,
             isAdminOnly: false,
-            hPad: 20
+            hPad: 0
         ) {
             VStack(alignment: .leading, spacing: 8) {
                 DebtActivityView(viewModel: viewModel)
@@ -790,10 +797,10 @@ public struct FundsView: View {
 
     /// The expandable row itself (title + chevron + content), with
     /// no card chrome: the caller decides the chrome — bare inside
-    /// its fund's container, or its own FundsCard for standalone
+    /// its fund's card, or its own FundsCard for standalone
     /// Review. `hPad` lines the row's text up with its fund card's
-    /// interior text (container 16 + row 20 = 36 inside a fund;
-    /// 16 for the standalone Review card).
+    /// interior text (0 inside a fund — the card's expanded detail
+    /// is already padded 20pt; 16 for the standalone Review card).
     ///
     /// Whole-row tap target (owner rule, Nov 11 2026, and the Nov
     /// 15, 2026 app-wide pass): the entire row is the toggle; the

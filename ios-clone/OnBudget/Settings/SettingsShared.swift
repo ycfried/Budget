@@ -208,7 +208,10 @@ struct SmallDangerButtonStyle: ButtonStyle {
 
 // MARK: - Cards, fields, messages
 
-/// White card, radius 20, light shadow (styles.css:388).
+/// White card, radius 20, light shadow (styles.css:388) plus a
+/// hairline light-grey border (owner, Nov 15, 2026 — build 33:
+/// without it the sections ran together on the white page and it
+/// was not clear where one section ended and the next began).
 struct SettingsCard<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
@@ -224,6 +227,10 @@ struct SettingsCard<Content: View>: View {
         .padding(16)
         .background(.white)
         .cornerRadius(20)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
         .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
     }
 }

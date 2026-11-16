@@ -258,7 +258,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Connect New Account
+    // MARK: - Connect Account
 
     func connectTapped() async {
         guard isAdmin, !isConnecting else { return }
@@ -506,7 +506,7 @@ struct ConnectedAccountsView: View {
         SettingsCard(title: "Bank Connection") {
             if viewModel.isAdmin {
                 HStack(spacing: 12) {
-                    Button(viewModel.isConnecting ? "Connecting…" : "Connect New Account") {
+                    Button(viewModel.isConnecting ? "Connecting…" : "Connect Account") {
                         Task { await viewModel.connectTapped() }
                     }
                     .buttonStyle(PrimaryButtonStyle())
