@@ -374,3 +374,5 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - Nov 15, 2026 (build-34 batch, simulator run in flight): ci trigger.
 
 - Nov 15, 2026 (build-34 batch, addition): Expand/collapse is now INSTANT — no animation at all (owner decision Nov 15). The build-32 no-fade height-only animation was still ugly: the problem was the motion itself (the row growing, the list below jumping), not the fade. The shared ExpandAnimation (0.25s easeInOut, .move transition) is deleted; every expand/collapse lost its .animation/.transition/withAnimation — transaction rows, fund cards (FundsExpandableCard + Activity sections), Home stat cards + detail cards. Tapping opens/closes immediately, chevrons flip instantly. Sheets keep the system presentation animation; sync spinners, loader rings, and toasts keep theirs (not expand/collapse). The Funds reorder move keeps its short ease — it is a reorder, not an expand/collapse.
+
+- Nov 15, 2026 (build-34 batch, FULL run): ci trigger — reorder arrows + instant expand/collapse.
