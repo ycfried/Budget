@@ -502,7 +502,6 @@ public struct ToastBanner: View {
     public let onDismiss: () -> Void
     public let clearTabBar: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.safeAreaInsets) private var safeAreaInsets: EdgeInsets
     public init(toast: Toast, clearTabBar: Bool = true, onDismiss: @escaping () -> Void) {
         self.toast = toast
         self.clearTabBar = clearTabBar
@@ -542,10 +541,14 @@ public struct ToastBanner: View {
         .frame(maxWidth: horizontalSizeClass == .regular ? 900 : .infinity)
         .padding(.horizontal, 16)
         // Pinned to the bottom (owner, Nov 16, 2026): just above the
-        // tab bar — safe-area bottom + tab bar (49pt) + a small gap —
-        // not floating 120pt up with a gap underneath. 16pt where
-        // there is no tab bar.
-        .padding(.bottom, clearTabBar ? safeAreaInsets.bottom + 65 : 16)
+        // tab bar — tab bar (49pt) + safe-area bottom + a small gap —
+        // not floating 120pt up with a gap underneath. The clearance
+        // is by size class (the safe-area environment key does not
+        // resolve in this SDK — `\.safeAreaInsets` fails to compile,
+        // runs 43913465407 + 43917049013): iPad ~20pt safe area ->
+        // 80pt, iPhone ~34pt safe area -> 95pt. 16pt where there is
+        // no tab bar.
+        .padding(.bottom, clearTabBar ? (horizontalSizeClass == .regular ? 80 : 95) : 16)
     }
 }
 
