@@ -461,6 +461,10 @@ public struct HomeView: View {
             .padding(16)
         }
         .background(DesignTokens.background)
+        // Build 36 (owner, Nov 16, 2026 — iPad): the tab reads as a
+        // centered 900pt column on the regular size class (see
+        // mainContentWidth), never stretched edge-to-edge.
+        .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
         .task { await viewModel.refreshIfNeeded() }
         .refreshable { await viewModel.refresh() }
         // Settings dismiss (audit H-P1-5): the Settings cover sits

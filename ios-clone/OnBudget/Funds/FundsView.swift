@@ -89,6 +89,9 @@ public struct FundsView: View {
     /// household, saved on every change.
     @State private var fundOrder: [FundSectionID] = FundSectionID.defaultOrder
     @State private var isRearranging = false
+    /// iPad content width (build 36): the tabs read as a centered
+    /// 900pt column on the regular size class.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(context: FundsContext, appState: AppViewModel) {
         self.appState = appState
@@ -150,7 +153,27 @@ public struct FundsView: View {
             .padding()
         }
         .background(DesignTokens.background)
-        .fundsToast($viewModel.toast)
+        // Build 36 (owner, Nov 16, 2026 — iPad): the page reads as
+        // a centered 900pt column on the regular size class (see
+        // mainContentWidth), never stretched edge-to-edge.
+        .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
+        // Build 36 (owner, Nov 16, 2026 — iPad): fund-editor
+        // success messages ("Default charity rate saved…") rendered
+        // INLINE inside the card, mid-screen, through the Funds-
+        // local toast overlay — not at the bottom. They now go
+        // through the ONE root bottom toast (ContentView
+        // .toastOverlay, the standing rule: bottom only, auto-
+        // dismiss ~4s, green badge treatment): when the view model
+        // raises a success toast, forward it to appState and clear
+        // the local one. Errors still use the alert below. The
+        // local FundsToastOverlay stays for the Review page, which
+        // has no appState to forward to.
+        .onChange(of: viewModel.toast) { _, newValue in
+            if let toast = newValue {
+                appState.showToast(toast.message, kind: toast.kind)
+                viewModel.toast = nil
+            }
+        }
         .alert(
             viewModel.alertTitle ?? "Could Not Complete",
             isPresented: Binding(
@@ -318,8 +341,13 @@ public struct FundsView: View {
             onToggle: { toggleCard(.spending) }
         ) {
             if let base = viewModel.baseAllowanceCents {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
+                // Build 36 (owner, Nov 16, 2026): the expanded
+                // detail felt cramped — the breakdown rows sit 12pt
+                // apart (was 8) and the blocks 16pt apart (was 12),
+                // so the rows and the buttons breathe. Same
+                // treatment on all four fund cards.
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow("Base", value: MoneyFormat.formatCents(base))
                         if let override = viewModel.debtWeek?.overrideCents, override != base {
                             let delta = override - base
@@ -398,8 +426,8 @@ public struct FundsView: View {
             if let error = viewModel.fundError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.fundSummary {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow(
                             isAdmin ? "Spendable Available" : "Available to Request",
                             value: MoneyFormat.formatCents(summary.availableCents),
@@ -485,8 +513,8 @@ public struct FundsView: View {
             if let error = viewModel.charityError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.charitySummary {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents))
                         FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
                         // Pending gifts are computed but were never shown,
@@ -565,8 +593,8 @@ public struct FundsView: View {
             if let error = viewModel.debtError {
                 FundsErrorBox(error)
             } else if let week = viewModel.debtWeek {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         FundsMuted("Money spent over past weekly allowances.")
                         if let payment = week.debtPaymentCents {
                             FundsBreakdownRow("This Week's Payment", value: MoneyFormat.formatCents(payment))
@@ -723,16 +751,19 @@ public struct FundsView: View {
     // MARK: - Dissolved More sections (§9.2)
     //
     // The old "More" card is gone (owner, Nov 12, 2026 — it was
-    // unclear what it was for). Each fund has ONE "Activity"
-    // expandable (owner, Nov 15, 2026 — build 30, fewer headers):
-    // the Extra Fund's top-ups and past savings records share one,
-    // the Debt fund's payments and where the debt came from share
-    // one, Charity's income is its one. Sub-parts keep a quiet
-    // muted inline label, never a bold sub-header. Review is NOT
-    // here any more (build 30): it lives on its own page off
-    // Transactions. Same expand-in-place row as the old More card;
-    // the sections hide while a form is open (the else branch
-    // above).
+    // unclear what it was for). Each fund has ONE "Activity &
+    // Transactions" expandable (owner, Nov 15, 2026 — build 30,
+    // fewer headers; renamed build 36, owner Nov 16, 2026 — the
+    // section now includes the TRANSACTIONS that touched the fund,
+    // not only fund activity events, in one combined feed): the
+    // Extra Fund's top-ups + fund-charge transactions and the past
+    // savings records share one, the Debt fund's payments and where
+    // the debt came from share one, Charity's income + gift
+    // transactions share one. Sub-parts keep a quiet muted inline
+    // label, never a bold sub-header. Review is NOT here any more
+    // (build 30): it lives on its own page off Transactions. Same
+    // expand-in-place row as the old More card; the sections hide
+    // while a form is open (the else branch above).
 
     private var fundActivitySection: some View {
         // ONE activity header per fund (owner, Nov 15, 2026 —
@@ -742,7 +773,7 @@ public struct FundsView: View {
         // Top-ups stay admin-only; the savings records stay visible
         // to every role.
         fundsSectionRow(
-            title: "Activity",
+            title: "Activity & Transactions",
             section: .fundActivity,
             isAdminOnly: false,
             hPad: 0
@@ -762,7 +793,7 @@ public struct FundsView: View {
 
     private var charityActivitySection: some View {
         fundsSectionRow(
-            title: "Activity",
+            title: "Activity & Transactions",
             section: .charityActivity,
             isAdminOnly: true,
             hPad: 0
@@ -782,8 +813,13 @@ public struct FundsView: View {
         // ONE activity header (build 30): the payments and where
         // the debt came from share this expandable; the origin
         // keeps a quiet inline label, not its own bold header.
+        // Build 36: debt has no transaction rows to add — the
+        // overspend charges that created the debt are not
+        // attributable per week (nothing stored), so the feed stays
+        // payments + rule changes + week closes; nothing is
+        // fabricated to fill a transactions slot.
         fundsSectionRow(
-            title: "Activity",
+            title: "Activity & Transactions",
             section: .debtActivity,
             isAdminOnly: false,
             hPad: 0
@@ -891,17 +927,41 @@ public struct SavingsSection: View {
         }
     }
 
-    /// One savings-ledger line: transfer-in and interest are money
-    /// in — green with a "+" prefix under the shared kind rule;
-    /// withdrawals and adjustments stay muted and plain. The
-    /// recorded balance is a balance, never an inflow.
-    private func savingsRow(_ row: SavingsLedgerEntry) -> Text {
+    /// One savings-ledger line, MINIMAL in the overview (build 36,
+    /// owner Nov 16, 2026): kind + amount only — the recorded
+    /// balance, date and note expand on tap. Transfer-in and
+    /// interest are money in — green with a "+" prefix under the
+    /// shared kind rule; withdrawals and adjustments stay muted and
+    /// plain. The recorded balance is a balance, never an inflow.
+    private func savingsRecordRow(_ row: SavingsLedgerEntry) -> some View {
         let isInflow = row.kind == "transfer_in" || row.kind == "interest"
         let amount = TransactionFormatting.inflowDisplay(cents: row.amountCents)
-        return Text("\(kindLabel(row.kind)) ")
-            + Text(isInflow ? amount.text : MoneyFormat.formatCents(row.amountCents))
-                .foregroundStyle(isInflow ? amount.color : Color(hex: "#6b7280"))
-            + Text(" · Recorded balance \(row.actualBalanceCents.map { MoneyFormat.formatCents($0) } ?? "—") · \(row.createdAt.map { MoneyFormat.fmtDateTime($0) } ?? "")\(row.note.isEmpty ? "" : " · \(row.note)")")
+        return FundsActivityRow {
+            HStack(spacing: 4) {
+                Text(kindLabel(row.kind))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Text("·")
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                Text(isInflow ? amount.text : MoneyFormat.formatCents(row.amountCents))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(isInflow ? amount.color : Color(hex: "#6b7280"))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+        } detail: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Recorded balance \(row.actualBalanceCents.map { MoneyFormat.formatCents($0) } ?? "—")")
+                if let createdAt = row.createdAt {
+                    Text(MoneyFormat.fmtDateTime(createdAt))
+                }
+                if !row.note.isEmpty {
+                    Text(row.note)
+                }
+            }
+            .font(.system(size: 14))
+            .foregroundStyle(Color(hex: "#6b7280"))
+        }
     }
 
     public var body: some View {
@@ -939,9 +999,7 @@ public struct SavingsSection: View {
                 Divider()
                 let latest = Array(viewModel.savings.prefix(20))
                 ForEach(Array(latest.enumerated()), id: \.offset) { _, row in
-                    savingsRow(row)
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color(hex: "#6b7280"))
+                    savingsRecordRow(row)
                 }
                 if viewModel.savings.count > 20 {
                     FundsMuted("Showing the latest 20 records.")
@@ -1010,11 +1068,15 @@ public struct DebtActivityView: View {
             } else if entries.isEmpty {
                 FundsMuted("No debt payments yet.")
             } else {
+                // Build 36 (owner, Nov 16, 2026): overview rows are
+                // MINIMAL — the title only — and tapping a row
+                // expands the detail (date, week, note) inline.
                 ForEach(Array(entries.prefix(20).enumerated()), id: \.element.id) { index, entry in
-                    VStack(alignment: .leading, spacing: 2) {
+                    FundsActivityRow {
                         Text(entry.title)
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
+                    } detail: {
                         Text(entry.detail)
                             .font(.system(size: 14))
                             .foregroundStyle(Color(hex: "#6b7280"))

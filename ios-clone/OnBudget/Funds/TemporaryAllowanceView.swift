@@ -63,7 +63,7 @@ public struct TemporaryAllowanceView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("New Total")
                         .font(.system(size: 14, weight: .semibold))
-                    DollarTextField(text: $newTotalText, maxWidth: 200, minHeight: 46)
+                    DollarTextField(text: $newTotalText, maxWidth: 200, minHeight: 52)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Weeks")
@@ -74,7 +74,7 @@ public struct TemporaryAllowanceView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .frame(width: 64, height: 46)
+                    .frame(width: 64, height: 52)
                     .background(.white)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
@@ -89,7 +89,7 @@ public struct TemporaryAllowanceView: View {
             if viewModel.baseAllowanceCents == nil {
                 if let allowanceError = viewModel.allowanceError {
                     FundsErrorBox(allowanceError)
-                    FundsSmallTertiaryButton("Try Again") {
+                    FundsEditorTertiaryButton("Try Again") {
                         Task { await viewModel.reloadAllowance() }
                     }
                 } else {
@@ -121,7 +121,7 @@ public struct TemporaryAllowanceView: View {
             // onward, so the base allowance applies again. Until
             // supabase/remove-weekly-allowance-override.sql is
             // applied live this fails with a plain-language error.
-            FundsQuietButton("Remove Override", isBusy: viewModel.busyAction == "remove-temp") {
+            FundsEditorQuietButton("Remove Override", isBusy: viewModel.busyAction == "remove-temp") {
                 Task { await viewModel.removeTemporaryAllowance() }
             }
         }

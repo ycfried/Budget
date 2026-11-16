@@ -123,6 +123,10 @@ public struct TransactionsView: View {
                 }
             }
         }
+        // Build 36 (owner, Nov 16, 2026 — iPad): the tab reads as a
+        // centered 900pt column on the regular size class (see
+        // mainContentWidth), never stretched edge-to-edge.
+        .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
         .task {
             if case .idle = viewModel.loadState {
                 await viewModel.load()

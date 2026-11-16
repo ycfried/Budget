@@ -58,11 +58,36 @@
 
 import SwiftUI
 import WidgetKit
+import AppIntents
 import OnBudgetKit
 
 struct WidgetEntry: TimelineEntry {
     let date: Date
     let snapshot: WidgetSnapshot?
+}
+
+/// Refresh the widget in place (build 36, owner Nov 16, 2026): the
+/// owner asked for a sync button ON the widget. Tapping it runs this
+/// intent in the widget extension — it does NOT open the app
+/// (`openAppWhenRun` is false): `reloadAllTimelines()` makes
+/// WidgetKit call `getTimeline`, which re-reads the latest snapshot
+/// the app saved into the App Group and rebuilds the timeline, so
+/// the numbers refresh in place. It does NOT fetch fresh numbers
+/// from the server — the widget never signs in and never calls
+/// Supabase, so only the app can write a new snapshot (on launch,
+/// on every foreground, and on every Home refresh). If the app has
+/// not saved new numbers yet, the button re-shows the last saved
+/// ones; opening the app is still what gets new numbers.
+struct RefreshWidgetIntent: AppIntent {
+    static var title: LocalizedStringResource = "Refresh Widget"
+    static var description = IntentDescription("Refresh the widget from the latest saved balances.")
+    static var openAppWhenRun: Bool = false
+
+    func perform() async throws -> some IntentResult {
+        // getTimeline re-reads WidgetSnapshotStore on every reload.
+        WidgetCenter.shared.reloadAllTimelines()
+        return .result()
+    }
 }
 
 struct Provider: TimelineProvider {
@@ -223,6 +248,24 @@ struct WidgetView: View {
                     .foregroundStyle(DesignTokens.ink)
             }
         }
+    }
+
+    /// Sync button (build 36, owner Nov 16, 2026): a small refresh
+    /// icon, top-right in the header row of every size. Tapping it
+    /// runs RefreshWidgetIntent in place — re-reads the latest
+    /// snapshot the app saved and rebuilds the timeline. It does not
+    /// open the app and does not fetch from the server (the widget
+    /// never signs in); new numbers still come from opening the app.
+    private var refreshButton: some View {
+        Button(intent: RefreshWidgetIntent()) {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DesignTokens.muted)
+                .padding(6)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Refresh widget")
     }
 
     /// Week-range dates for the header (build 35): the compact
@@ -400,9 +443,18 @@ struct WidgetView: View {
     /// progress bar under the budget figure, and the compact footer
     /// (dot + time only) — the additions cost ~10pt of that slack,
     /// so the layout still fits.
+    /// Build 36 (owner, Nov 16, 2026): NO donut on small — the
+    /// donut circle belongs only on the wide widgets (medium and
+    /// large). Small stays clean: wordmark + refresh button, the
+    /// Left figure + thin blue progress bar, the Charity figure,
+    /// and the compact footer. Nothing else.
     private func small(snapshot: WidgetSnapshot, stale: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            wordmark(logoSize: 22, font: .subheadline.weight(.semibold))
+            HStack {
+                wordmark(logoSize: 22, font: .subheadline.weight(.semibold))
+                Spacer()
+                refreshButton
+            }
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel("Left this week")
                 figure(
@@ -445,6 +497,7 @@ struct WidgetView: View {
                 wordmark()
                 Spacer()
                 headerDates(snapshot.weekStart)
+                refreshButton
             }
             HStack(alignment: .top, spacing: 14) {
                 if snapshot.spentCents != nil {
@@ -515,6 +568,7 @@ struct WidgetView: View {
                 wordmark()
                 Spacer()
                 headerDates(snapshot.weekStart)
+                refreshButton
             }
             // Two spacers, not one (owner, Nov 15, 2026): the
             // single spacer above "Updated" left one dead gap —
@@ -591,6 +645,7 @@ struct WidgetView: View {
                 wordmark()
                 Spacer()
                 headerDates(snapshot.weekStart)
+                refreshButton
             }
             Spacer(minLength: 0)
             HStack(alignment: .center, spacing: 32) {
