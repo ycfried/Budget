@@ -263,7 +263,10 @@ final class WidgetSnapshotTests: XCTestCase {
         // entry dates must actually advance past the 1-hour rule —
         // a single far-future entry (or a .never policy) would never
         // go stale. A snapshot computed at `start` is fresh at the
-        // first entry and stale from the second entry on.
+        // first entry; the second entry is EXACTLY one hour later,
+        // and the rule is strictly-after-1-hour, so that entry is
+        // still fresh; staleness flips at the third entry (2 hours)
+        // and holds for the rest of the day.
         let start = Date(timeIntervalSince1970: 1_763_000_000)
         let snapshot = WidgetSnapshot(
             weekStart: "2026-11-08",
@@ -273,7 +276,8 @@ final class WidgetSnapshotTests: XCTestCase {
         )
         let entries = WidgetTimeline.entries(from: start, snapshot: snapshot)
         XCTAssertFalse(snapshot.isStale(at: entries[0].date))
-        XCTAssertTrue(snapshot.isStale(at: entries[1].date))
+        XCTAssertFalse(snapshot.isStale(at: entries[1].date))
+        XCTAssertTrue(snapshot.isStale(at: entries[2].date))
         XCTAssertTrue(snapshot.isStale(at: entries[23].date))
     }
 }
