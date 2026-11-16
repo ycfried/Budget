@@ -352,6 +352,24 @@ public struct PostgrestClient {
         return row?.name
     }
 
+    /// The household's custom fund names (build 37 — fund rename,
+    /// owner Nov 16, 2026): `households.fund_names`, a map from fund
+    /// key (spending / fund / charity / debt) to the custom name as
+    /// typed. Only keys that differ from the default are stored; a
+    /// missing key means the default name. Returns [:] when the
+    /// column is absent (migration not applied yet) or the row
+    /// cannot be read — the caller falls back to the defaults, so
+    /// the app never breaks on an unapplied migration.
+    public func householdFundNames(householdId: UUID) async throws -> [String: String] {
+        struct Row: Decodable { let fundNames: [String: String]?; enum CodingKeys: String, CodingKey { case fundNames = "fund_names" } }
+        let row: Row? = try await fetchOne(PostgrestQuery(
+            table: "households",
+            columns: "fund_names",
+            filters: [.householdRow(householdId)]
+        ))
+        return row?.fundNames ?? [:]
+    }
+
     /// Base allowance + whether it was ever explicitly set
     /// (live.js:566-583). `allowanceSetAt == nil` means the $375 is
     /// the schema default, not a choice.

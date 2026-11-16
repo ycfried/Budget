@@ -758,6 +758,21 @@ extension RPCClient {
         return try await callScalar(name: "clear_debt", params: params)
     }
 
+    // MARK: - Fund rename (build 37)
+    //
+    // `set_fund_name(p_household_id, p_fund_key, p_name)`
+    // (`supabase/fund-names.sql`). Admin only. `pFundKey` is one of
+    // spending / fund / charity / debt. `pName` is stored exactly as
+    // typed; an empty name resets that fund to its default. Returns
+    // the household's updated fund_names map.
+    public func setFundName(pHouseholdId: UUID, pFundKey: String, pName: String) async throws -> [String: String] {
+        try await call(name: "set_fund_name", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_fund_key": pFundKey,
+            "p_name": pName,
+        ])
+    }
+
     // MARK: - Merchant name rules (build 30, task E)
     //
     // Teachable rename + saved list. All four RPCs are admin-only

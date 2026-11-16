@@ -280,4 +280,56 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertTrue(snapshot.isStale(at: entries[2].date))
         XCTAssertTrue(snapshot.isStale(at: entries[23].date))
     }
+
+    // MARK: - Fund names (build 37 — fund rename)
+
+    func testSnapshotRoundTripsFundNamesThroughJSON() throws {
+        let snapshot = WidgetSnapshot(
+            weekStart: "2026-11-08",
+            availableCents: 37000,
+            charityRemainingCents: 4200,
+            fundNames: ["charity": "Tzedakah", "spending": "Weekly Spending"],
+            computedAt: Date(timeIntervalSince1970: 1_763_000_000)
+        )
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(WidgetSnapshot.self, from: data)
+        XCTAssertEqual(decoded, snapshot)
+        XCTAssertEqual(decoded.fundNames?["charity"], "Tzedakah")
+    }
+
+    func testSnapshotWithoutFundNamesDecodesWithNil() throws {
+        // Snapshots written before build 37 carry no fund_names key
+        // — they must still decode, with the default names.
+        let json = """
+        {"weekStart":"2026-11-08","availableCents":37000,"charityRemainingCents":4200,"computedAt":1763000000}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(WidgetSnapshot.self, from: json)
+        XCTAssertNil(decoded.fundNames)
+        XCTAssertEqual(decoded.charityDisplayName, "Charity")
+        XCTAssertEqual(decoded.charityLeftLabel, "Charity left")
+    }
+
+    func testCharityDisplayNameUsesCustomName() {
+        let snapshot = WidgetSnapshot(
+            weekStart: "2026-11-08",
+            availableCents: 37000,
+            charityRemainingCents: 4200,
+            fundNames: ["charity": "Tzedakah"],
+            computedAt: Date()
+        )
+        XCTAssertEqual(snapshot.charityDisplayName, "Tzedakah")
+        XCTAssertEqual(snapshot.charityLeftLabel, "Tzedakah left")
+    }
+
+    func testCharityDisplayNameFallsBackOnBlank() {
+        let snapshot = WidgetSnapshot(
+            weekStart: "2026-11-08",
+            availableCents: 37000,
+            charityRemainingCents: 4200,
+            fundNames: ["charity": "   "],
+            computedAt: Date()
+        )
+        XCTAssertEqual(snapshot.charityDisplayName, "Charity")
+        XCTAssertEqual(snapshot.charityLeftLabel, "Charity left")
+    }
 }

@@ -33,20 +33,25 @@ public struct FundsContext {
 public struct FundsPrimaryButton: View {
     public let label: String
     public let isBusy: Bool
+    /// iPad (build 37, owner Nov 16, 2026 — Clear Debt screen):
+    /// larger/taller on the tablet form factor. False everywhere
+    /// else; existing call sites are unchanged.
+    public let isLarge: Bool
     public let action: () -> Void
 
-    public init(_ label: String, isBusy: Bool = false, action: @escaping () -> Void) {
+    public init(_ label: String, isBusy: Bool = false, isLarge: Bool = false, action: @escaping () -> Void) {
         self.label = label
         self.isBusy = isBusy
+        self.isLarge = isLarge
         self.action = action
     }
 
     public var body: some View {
         Button(action: action) {
             Text(TitleCase.apply(to: label))
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: isLarge ? 17 : 15, weight: .semibold))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
+                .padding(.vertical, isLarge ? 16 : 13)
                 .padding(.horizontal, 18)
                 .background(DesignTokens.primary)
                 .foregroundStyle(.white)
@@ -60,20 +65,25 @@ public struct FundsPrimaryButton: View {
 public struct FundsTertiaryButton: View {
     public let label: String
     public let isBusy: Bool
+    /// iPad (build 37, owner Nov 16, 2026 — Clear Debt screen):
+    /// larger/taller on the tablet form factor. False everywhere
+    /// else; existing call sites are unchanged.
+    public let isLarge: Bool
     public let action: () -> Void
 
-    public init(_ label: String, isBusy: Bool = false, action: @escaping () -> Void) {
+    public init(_ label: String, isBusy: Bool = false, isLarge: Bool = false, action: @escaping () -> Void) {
         self.label = label
         self.isBusy = isBusy
+        self.isLarge = isLarge
         self.action = action
     }
 
     public var body: some View {
         Button(action: action) {
             Text(TitleCase.apply(to: label))
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: isLarge ? 17 : 15, weight: .semibold))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
+                .padding(.vertical, isLarge ? 16 : 13)
                 .padding(.horizontal, 18)
                 .background(Color(hex: "#e5e7eb"))
                 .foregroundStyle(DesignTokens.ink)
@@ -143,20 +153,25 @@ public struct FundsSmallPrimaryButton: View {
 public struct FundsSmallTertiaryButton: View {
     public let label: String
     public let isBusy: Bool
+    /// iPad (build 37, owner Nov 16, 2026 — Clear Debt screen):
+    /// larger/taller on the tablet form factor. False everywhere
+    /// else; existing call sites are unchanged.
+    public let isLarge: Bool
     public let action: () -> Void
 
-    public init(_ label: String, isBusy: Bool = false, action: @escaping () -> Void) {
+    public init(_ label: String, isBusy: Bool = false, isLarge: Bool = false, action: @escaping () -> Void) {
         self.label = label
         self.isBusy = isBusy
+        self.isLarge = isLarge
         self.action = action
     }
 
     public var body: some View {
         Button(action: action) {
             Text(TitleCase.apply(to: label))
-                .font(.system(size: 14, weight: .semibold))
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
+                .font(.system(size: isLarge ? 17 : 14, weight: .semibold))
+                .padding(.vertical, isLarge ? 12 : 8)
+                .padding(.horizontal, isLarge ? 16 : 12)
                 .background(Color(hex: "#e5e7eb"))
                 .foregroundStyle(DesignTokens.ink)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -251,6 +266,11 @@ public struct FundsEditorTertiaryButton: View {
         Button(action: action) {
             Text(TitleCase.apply(to: label))
                 .font(.system(size: 16, weight: .semibold))
+                // Build 37 (owner, Nov 16, 2026): full-width, like
+                // the other fund buttons — the Temporary Allowance
+                // button read as a small pill on the left with a
+                // large empty space on the right.
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .padding(.horizontal, 16)
                 .background(Color(hex: "#e5e7eb"))
@@ -389,10 +409,10 @@ public struct FundTransactionRow: View {
 // MARK: - Cards, rows, error boxes
 
 /// A white card, radius 20, hairline shadow (spec §1.2). `background`
-/// / `padding` are overridable for the outlined stat cards (owner,
-/// Nov 12, 2026, corrected ~2:02 PM — Charity green / Extra Fund
-/// amber 2px outline, white inside, never a wash); `outline`
-/// is nil for the plain white cards, which stay outline-free.
+/// / `padding` are overridable; `outline` is nil for the plain white
+/// cards, which stay outline-free. The fund sections no longer use
+/// this card's outline (owner, Nov 16, 2026 — Mockup C banners);
+/// the forms and sheets below still use the plain white card.
 /// Everything else stays the default white / 16pt.
 public struct FundsCard<Content: View>: View {
     public let content: Content
@@ -480,18 +500,19 @@ public struct FundsBreakdownRow: View {
     }
 }
 
-/// A Title + Amount face that expands in place (no sheet, no overlay —
-/// spec §6.2/§9.1). Chevron `⌄` bottom-right, muted grey, flips to `⌃`.
-/// Bigger and outlined when a `theme` is given (owner, Nov 12, 2026,
-/// corrected ~2:02 PM — the same StatCardTheme as Home: Charity green
-/// #16a34a outline, Extra Fund amber #d97706 outline, both 2px,
-/// white inside, never a wash; 20pt padding, 18pt title, 28pt amount,
-/// icon chip), so Home and Funds match. Loading shows the same bigger
-/// shape with a muted grey outline and muted grey shimmer, with NO
-/// colour and no "Loading…" text (`isLoading`); a failed face is a
-/// STATIC grey block, never a bare "—" in amount type — the expanded
-/// content carries the error box (F-P2-13 / owner loading language,
-/// Nov 12, 2026).
+/// A fund section: a COLOURED BANNER face that expands in place (no
+/// sheet, no overlay — spec §6.2/§9.1). Chevron `⌄` at the banner's
+/// right end, white, flips to `⌃` when expanded (instant, build 34).
+/// Owner, Nov 16, 2026 (Mockup C — sections with coloured banners):
+/// the banner holds the icon, title and amount in white on the fund's
+/// theme colour (Debt black, Spending primary blue, Extra Fund medium
+/// grey, Charity deep blue), so Home and Funds match; the detail below
+/// it sits on plain white, with no outline or border. The green/amber/
+/// red outlines are gone. Loading shows the same banner shape in
+/// muted grey with grey shimmer, with NO colour and no "Loading…"
+/// text (`isLoading`); a failed face is a STATIC grey block, never a
+/// bare "—" in amount type — the expanded content carries the error
+/// box (F-P2-13 / owner loading language, Nov 12, 2026).
 public struct FundsExpandableCard<Expanded: View>: View {
     public let title: String
     public let amountText: String
@@ -534,116 +555,109 @@ public struct FundsExpandableCard<Expanded: View>: View {
 
     public var body: some View {
         // The face padding (16 unthemed, 20 themed) lives INSIDE
-        // the toggle Button below, not on the card — see the note
-        // there.
+        // the toggle Button below, not on the section — see the
+        // note there.
         let pad: CGFloat = theme == nil ? 16 : 20
-        return FundsCard(
-            background: .white,
-            padding: 0,
-            outline: theme?.outline
-        ) {
-            VStack(alignment: .leading, spacing: 10) {
-                // Whole-area tap target (owner rule, Nov 11 2026,
-                // and the Nov 15, 2026 app-wide pass): the ENTIRE
-                // card face — title, amount AND the chevron row —
-                // is the toggle. The chevron is only a visual hint,
-                // never the only place that responds. Two things
-                // make that true, and both are load-bearing:
-                // (1) `.contentShape(Rectangle())` on the label —
-                // without it SwiftUI only hits the glyphs and the
-                // empty space between them is dead, which is how the
-                // card came to feel chevron-only; (2) the face
-                // padding lives INSIDE the Button — the card's own
-                // padding used to sit outside it, so the padding
-                // ring around the face never toggled either.
-                // The expanded content keeps its own buttons (Add
-                // Money / Spend / Request), so it is not part of the
-                // toggle — tapping an action must not collapse the
-                // card underneath it.
-                Button(action: onToggle) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 12) {
-                            if let theme {
-                                if isLoading {
-                                    SkeletonBlock(width: 36, height: 36, cornerRadius: 10)
-                                } else {
-                                    Image(systemName: theme.iconName)
-                                        .font(.system(size: 18, weight: .semibold))
-                                        // Owner, Nov 14, 2026 ("too
-                                        // much colors"): no colour
-                                        // inside the card — icon ink,
-                                        // chip ring plain light grey.
-                                        // ONLY the 2px outline keeps
-                                        // colour (same as Home).
-                                        .foregroundStyle(DesignTokens.ink)
-                                        .frame(width: 36, height: 36)
-                                        .background(.white)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 10)
-                                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                                        )
-                                }
-                            }
-                            Text(TitleCase.apply(to: title))
-                                .font(.system(size: theme == nil ? 17 : 18, weight: .bold))
-                                .foregroundStyle(DesignTokens.ink)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        if isLoading {
-                            // Sized to the loaded 28pt amount
-                            // (owner, Nov 14, 2026: the 150-wide
-                            // block was too small and the card looked
-                            // empty while loading). No second line:
-                            // the loaded face has none, so a phantom
-                            // line here would shrink the card — a
-                            // layout jump — the moment the amount
-                            // arrives.
-                            SkeletonBlock(width: 190, height: 36, cornerRadius: 8)
-                        } else if amountIsStatus {
-                            SkeletonBlock(width: 190, height: 36, cornerRadius: 8, animated: false)
-                        } else {
-                            Text(amountText)
-                                .font(.system(size: 28, weight: .bold))
-                                // Owner, Nov 14, 2026 ("too much
-                                // colors"): the amount is ink, never
-                                // the deep theme colour — even when
-                                // negative. ONLY the outline keeps
-                                // colour (same as Home).
-                                .foregroundStyle(DesignTokens.ink)
-                        }
-                        HStack {
-                            Spacer()
-                            Text("⌄")
-                                .font(.system(size: 17, weight: .bold))
-                                // Owner, Nov 14, 2026 ("too much
-                                // colors"): the chevron is muted
-                                // grey, not brand blue.
-                                .foregroundStyle(DesignTokens.muted)
-                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                        }
-                    }
-                    // Face padding inside the Button (see the note
-                    // above): top + sides always; bottom only while
-                    // collapsed — while expanded the Divider below
-                    // is the air, and the expanded content carries
-                    // its own bottom padding.
+        return VStack(alignment: .leading, spacing: 0) {
+            // Whole-area tap target (owner rule, Nov 11 2026,
+            // and the Nov 15, 2026 app-wide pass): the ENTIRE
+            // banner — icon, title, amount AND the chevron — is
+            // the toggle. The chevron is only a visual hint, never
+            // the only place that responds. Two things make that
+            // true, and both are load-bearing: (1)
+            // `.contentShape(Rectangle())` on the label — without
+            // it SwiftUI only hits the glyphs and the empty space
+            // between them is dead, which is how the card came to
+            // feel chevron-only; (2) the face padding lives INSIDE
+            // the Button — the section's own padding used to sit
+            // outside it, so the padding ring around the face never
+            // toggled either. The expanded content keeps its own
+            // buttons (Add Money / Spend / Request), so it is not
+            // part of the toggle — tapping an action must not
+            // collapse the section underneath it.
+            Button(action: onToggle) {
+                bannerFace(pad: pad)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(accessibilityLabel)
+            if isExpanded {
+                expanded
                     .padding(.horizontal, pad)
-                    .padding(.top, pad)
-                    .padding(.bottom, isExpanded ? 0 : pad)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(accessibilityLabel)
-                if isExpanded {
-                    Divider()
-                        .padding(.horizontal, pad)
-                    expanded
-                        .padding(.horizontal, pad)
-                        .padding(.bottom, pad)
-                }
+                    .padding(.top, 16)
+                    .padding(.bottom, pad)
             }
         }
+    }
+
+    /// The banner face (owner, Nov 16, 2026 — Mockup C): icon +
+    /// title + amount + chevron, white on the theme colour. The
+    /// banner is the fund's header and shows the amount; the detail
+    /// below it sits on plain white, with no outline or border.
+    /// Loading / failed show the same banner shape in muted grey
+    /// with grey skeleton faces — no colour until the numbers
+    /// arrive, and never a bare "—" in amount type.
+    private func bannerFace(pad: CGFloat) -> some View {
+        // Banner colour: the theme colour when loaded, a muted grey
+        // while loading or failed — #e5e7eb, a shade darker than the
+        // #ececf1 skeleton blocks, so the blocks still read on it.
+        let bannerColor: Color = {
+            if isLoading || amountIsStatus { return Color(hex: "#e5e7eb") }
+            return theme?.banner ?? .white
+        }()
+        // Title colour on the banner: white on a theme colour, ink
+        // on the plain unthemed face or on a grey loading banner
+        // (the title always shows, even while loading).
+        let titleColor: Color = {
+            if theme == nil || isLoading || amountIsStatus { return DesignTokens.ink }
+            return .white
+        }()
+        // Chevron colour: white on a loaded theme banner, muted
+        // grey everywhere else.
+        let chevronColor: Color = {
+            if theme != nil && !isLoading && !amountIsStatus { return .white }
+            return DesignTokens.muted
+        }()
+        return HStack(spacing: 12) {
+            if let theme {
+                if isLoading || amountIsStatus {
+                    SkeletonBlock(width: 36, height: 36, cornerRadius: 10, animated: isLoading)
+                } else {
+                    Image(systemName: theme.iconName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                }
+            }
+            Text(TitleCase.apply(to: title))
+                .font(.system(size: theme == nil ? 17 : 18, weight: .bold))
+                .foregroundStyle(titleColor)
+                .lineLimit(1)
+            Spacer()
+            if isLoading || amountIsStatus {
+                // Sized to the loaded 28pt amount (owner, Nov 14,
+                // 2026: the 150-wide block was too small and the
+                // card looked empty while loading). Static (not
+                // shimmering) when failed — a failed load is not a
+                // loading state.
+                SkeletonBlock(width: 190, height: 36, cornerRadius: 8, animated: isLoading)
+            } else {
+                Text(amountText)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(theme == nil ? DesignTokens.ink : .white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            Text("⌄")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(chevronColor)
+                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+        }
+        .padding(.horizontal, pad)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(bannerColor)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .contentShape(Rectangle())
     }
 }
 

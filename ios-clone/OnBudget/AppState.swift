@@ -116,6 +116,15 @@ public final class AppViewModel: ObservableObject {
     /// and nil when the household has no owner recorded.
     @Published public var ownerId: UUID?
     @Published public var householdName: String?
+    /// The household's custom fund names (build 37 — fund rename,
+    /// owner Nov 16, 2026): `households.fund_names`, a map from fund
+    /// key (spending / fund / charity / debt) to the custom name as
+    /// typed. The ONE source every view reads from — Funds, Home,
+    /// Transactions filters, buttons, widget — so a rename updates
+    /// everywhere at once. Loaded at boot alongside the household
+    /// name; [:] until then, and [:] when the migration is not
+    /// applied yet (defaults shown). Updated in place by a rename.
+    @Published public var fundNames: [String: String] = [:]
 
     /// The Home dashboard's view model, owned here (not by HomeView)
     /// so boot can preload it behind the loading screen (owner,
@@ -269,6 +278,7 @@ public final class AppViewModel: ObservableObject {
             householdId = membership.householdId
             role = membership.role
             householdName = try? await client.postgrest.householdName(householdId: membership.householdId)
+            fundNames = (try? await client.postgrest.householdFundNames(householdId: membership.householdId)) ?? [:]
             ownerId = try? await client.postgrest.householdOwnerId(householdId: membership.householdId)
             // Preload the dashboard behind the loading screen
             // (owner, Nov 15, 2026): start the Home load now and
@@ -313,6 +323,7 @@ public final class AppViewModel: ObservableObject {
         householdId = id
         self.role = role
         householdName = try? await client.postgrest.householdName(householdId: id)
+        fundNames = (try? await client.postgrest.householdFundNames(householdId: id)) ?? [:]
         // A freshly created household is owned by its creator; a
         // freshly joined one learns its owner on the next boot.
         if role == .admin {

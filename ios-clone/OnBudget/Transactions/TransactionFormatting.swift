@@ -370,6 +370,25 @@ public enum TransactionStatusFilter: String, Equatable, CaseIterable {
         case .refunds: return "Refunds"
         }
     }
+
+    /// The label to SHOW (build 37 — fund rename, owner Nov 16,
+    /// 2026): the fund cases use the household's custom fund name
+    /// when one is stored (Spending / Extra Fund / Charity gifts),
+    /// else the default above. The custom name is shown exactly as
+    /// typed. Reads the same `appState.fundNames` source as Funds
+    /// and Home.
+    public func label(customNames: [String: String]) -> String {
+        switch self {
+        case .charity:
+            return "\(FundSectionID.charity.displayName(customNames: customNames)) gifts"
+        case .spending:
+            return FundSectionID.spending.displayName(customNames: customNames)
+        case .extraFund:
+            return FundSectionID.fund.displayName(customNames: customNames)
+        default:
+            return label
+        }
+    }
 }
 
 /// Sort field + direction (live.js:823-833). Amount sort is by
@@ -494,8 +513,16 @@ public struct TransactionFilters: Equatable {
     /// chip ("Nov 8 – Nov 14"), never two — tapping it clears both
     /// dates.
     public var activeChips: [(key: String, label: String)] {
+        activeChips(customNames: [:])
+    }
+
+    /// Active-filter chips with custom fund names (build 37 — fund
+    /// rename, owner Nov 16, 2026): same as `activeChips` but the
+    /// status chip uses the household's custom fund name when one is
+    /// stored, so a renamed fund reads right in the chip too.
+    public func activeChips(customNames: [String: String]) -> [(key: String, label: String)] {
         var chips: [(String, String)] = []
-        if status != .all { chips.append(("status", status.label)) }
+        if status != .all { chips.append(("status", status.label(customNames: customNames))) }
         if card != "all" { chips.append(("card", "••\(card)")) }
         // ONE date chip at most, from the single "When" choice —
         // never a "From" chip and a "To" chip, never a week chip

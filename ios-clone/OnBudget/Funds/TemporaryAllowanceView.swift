@@ -125,10 +125,14 @@ public struct TemporaryAllowanceView: View {
                 Task { await viewModel.removeTemporaryAllowance() }
             }
         }
-        .confirmationDialog(
+        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
+        // confirmationDialog — on iPad a confirmationDialog is a
+        // popover anchored at the top of the screen (same fix as the
+        // Clear Debt confirm). An .alert is centred on iPhone and
+        // iPad alike.
+        .alert(
             "Set New Total",
-            isPresented: $showConfirm,
-            titleVisibility: .visible
+            isPresented: $showConfirm
         ) {
             Button(TitleCase.apply(to: "Set New Total")) {
                 Task {

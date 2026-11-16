@@ -728,6 +728,35 @@ public final class FundsViewModel: ObservableObject {
         }
     }
 
+    /// Rename a fund (build 37 — fund rename, owner Nov 16, 2026).
+    /// Admin only, server-side. The name is stored exactly as typed
+    /// (no Title Case forcing); an empty name resets that fund to
+    /// its default. Returns the household's updated fund_names map
+    /// on success, so the caller (FundsView) can update the shared
+    /// `appState.fundNames` — the ONE source every view reads from.
+    /// On failure the plain-language error is set on `alertTitle` /
+    /// `alertMessage` and nil is returned.
+    public func renameFund(section: FundSectionID, name: String) async -> [String: String]? {
+        guard busyAction == nil else { return nil }
+        busyAction = "fund-rename"
+        defer { busyAction = nil }
+        do {
+            let names = try await context.client.rpcs.setFundName(
+                pHouseholdId: context.householdId, pFundKey: section.rawValue, pName: name
+            )
+            let shown = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if shown.isEmpty {
+                succeed("\(section.displayName) reset to its default name.")
+            } else {
+                succeed("Fund renamed to \"\(shown)\".")
+            }
+            return names
+        } catch {
+            fail(title: "Could Not Rename Fund", error: error)
+            return nil
+        }
+    }
+
     // MARK: - Review: held refunds
 
     /// Release a held refund via `resolve_held_refund`

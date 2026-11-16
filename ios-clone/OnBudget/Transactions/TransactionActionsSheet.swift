@@ -77,6 +77,11 @@ public struct TransactionActionsSheet: View {
     let isAdmin: Bool
     @Bindable var viewModel: TransactionsViewModel
     let onDismiss: () -> Void
+    /// Custom fund names (build 37 — fund rename, owner Nov 16,
+    /// 2026): the household's `fund_names` map, so the "Mark as
+    /// Charity" / "Use Extra Fund" action labels use the renamed
+    /// fund's name. [:] means the defaults.
+    let fundNames: [String: String]
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var flow: Flow = .list
@@ -97,13 +102,20 @@ public struct TransactionActionsSheet: View {
         transaction: Transaction,
         isAdmin: Bool,
         viewModel: TransactionsViewModel,
+        fundNames: [String: String] = [:],
         onDismiss: @escaping () -> Void
     ) {
         self.transaction = transaction
         self.isAdmin = isAdmin
         self.viewModel = viewModel
+        self.fundNames = fundNames
         self.onDismiss = onDismiss
     }
+
+    /// The charity / Extra Fund display names (build 37 — fund
+    /// rename): the custom name when stored, else the default.
+    private var charityName: String { FundSectionID.charity.displayName(customNames: fundNames) }
+    private var extraFundName: String { FundSectionID.fund.displayName(customNames: fundNames) }
 
     // MARK: - Action table
 
@@ -119,8 +131,8 @@ public struct TransactionActionsSheet: View {
         case .charge:
             if isAdmin {
                 return [
-                    SheetAction(id: .charity, label: "Mark as Charity", subline: charitySubline),
-                    SheetAction(id: .extraFund, label: "Use Extra Fund", subline: "Ask for this charge to be covered from the fund"),
+                    SheetAction(id: .charity, label: "Mark as \(charityName)", subline: charitySubline),
+                    SheetAction(id: .extraFund, label: "Use \(extraFundName)", subline: "Ask for this charge to be covered from the fund"),
                     SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
                     SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
                     SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
@@ -129,7 +141,7 @@ public struct TransactionActionsSheet: View {
             // Owner rule (Nov 13, 2026): no disabled rows — a
             // member simply does not see "Mark as Charity".
             return [
-                SheetAction(id: .extraFund, label: "Use Extra Fund", subline: "Ask for this charge to be covered from the fund"),
+                SheetAction(id: .extraFund, label: "Use \(extraFundName)", subline: "Ask for this charge to be covered from the fund"),
             ]
         case .refund:
             guard isAdmin else { return [] }
@@ -233,8 +245,8 @@ public struct TransactionActionsSheet: View {
     private var flowTitle: String {
         switch flow {
         case .list: return "Actions"
-        case .charityConfirm: return "Mark as Charity Gift"
-        case .extraFund: return "Use Extra Fund"
+        case .charityConfirm: return "Mark as \(charityName) Gift"
+        case .extraFund: return "Use \(extraFundName)"
         case .linkCandidates: return "Link Refund to Purchase"
         case .unlinkConfirm: return "Unlink Refund"
         case .reclassifyKind: return "Reclassify Transaction"
@@ -333,7 +345,7 @@ public struct TransactionActionsSheet: View {
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
             TwoButtonRow {
-                Button("Mark as Charity") {
+                Button("Mark as \(charityName)") {
                     Task {
                         isWorking = true
                         let ok = await viewModel.markAsCharity(transaction)

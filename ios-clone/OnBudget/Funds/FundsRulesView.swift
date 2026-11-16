@@ -198,7 +198,11 @@ public struct CharityRateSection: View {
                     .keyboardType(.decimalPad)
                     .font(.system(size: 17))
                     .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 72, minHeight: 48)
+                    // Build 37 (owner, Nov 16, 2026): the field
+                    // expands to fill the row — the 72pt field left
+                    // a large empty space on the right. Save and
+                    // Reset sit at the row's right end.
+                    .frame(maxWidth: .infinity, minHeight: 48)
                 Text("%")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
@@ -396,16 +400,20 @@ public struct DebtRuleSection: View {
         fixedText = savedRule.fixedCents > 0 ? String(format: "%.2f", Double(savedRule.fixedCents) / 100.0) : ""
     }
 
-    /// The editor, the same shape as the other fund editors
-    /// (owner, Nov 15, 2026 — build 33): the label on its own line
-    /// so it can never truncate, the mode picker full-width on the
-    /// next row, then the field with its unit + Save + Reset. The
-    /// picker uses "%" for Percent (owner rule: a word that does
-    /// not fit becomes a symbol, never a truncation — "Percent"
-    /// was rendering as "Perc..."). The field IS the value, so
-    /// nothing floats far right. There is NO preview paragraph
-    /// under the editor (owner, Nov 15, 2026 — build 33: the
-    /// "Each week $X goes to debt…" paragraph restated what the
+    /// The editor (owner, Nov 15, 2026 — build 33): the label on its
+    /// own line so it can never truncate, the mode picker
+    /// full-width on the next row, then the field on its own row,
+    /// then Save + Reset on their own row, each 1/2 the width
+    /// (owner, Nov 16, 2026 — build 37: the small Save / quiet
+    /// Reset bunched on the left left a large empty space on the
+    /// right). The picker uses "%" for Percent (owner rule: a word
+    /// that does not fit becomes a symbol, never a truncation —
+    /// "Percent" was rendering as "Perc...") and "$" for Fixed
+    /// (owner, Nov 16, 2026 — build 37: the word "Fixed" is gone,
+    /// the dollar sign alone is clear enough). The field IS the
+    /// value, so nothing floats far right. There is NO preview
+    /// paragraph under the editor (owner, Nov 15, 2026 — build 33:
+    /// the "Each week $X goes to debt…" paragraph restated what the
     /// card already shows — This Week's Payment, Remaining After
     /// This Week, the Spending card's week start — so it is gone).
     /// A bad Save still reports via the error box.
@@ -416,33 +424,47 @@ public struct DebtRuleSection: View {
                 .foregroundStyle(DesignTokens.ink)
             Picker("Rule", selection: $selectedMode) {
                 Text("%").tag(DebtRule.Mode.percent)
-                Text("Fixed $").tag(DebtRule.Mode.fixed)
+                Text("$").tag(DebtRule.Mode.fixed)
                 Text("Off").tag(DebtRule.Mode.off)
             }
             .pickerStyle(.segmented)
             // Build 36 (owner, Nov 16, 2026): the picker segments
             // were small and cheap — taller segments with larger
-            // text, like the other fund editors. The rule value is
+            // text, like the other fund editors. Build 37 (owner,
+            // Nov 16, 2026): thicker still and more square — the
+            // thin rounded bar read as flimsy. The rule value is
             // untouched: the picker still shows the saved rule.
             .font(.system(size: 16, weight: .semibold))
-            .frame(minHeight: 44)
+            .frame(minHeight: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            // The field row: the % or $ editor spans the full width
+            // when its mode is selected (owner, Nov 16, 2026 —
+            // build 37), with no Save / Reset crowding it — those
+            // sit on their own row below, each 1/2 the width.
             HStack(spacing: 8) {
                 if selectedMode == .percent {
                     TextField(MoneyFormat.formatRateBp(savedRule.percentBp), text: $percentText)
                         .keyboardType(.decimalPad)
                         .font(.system(size: 17))
                         .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 72, minHeight: 48)
+                        .frame(maxWidth: .infinity, minHeight: 48)
                     Text("% of base")
                         .font(.system(size: 16))
                         .foregroundStyle(Color(hex: "#6b7280"))
                 } else if selectedMode == .fixed {
-                    DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: 160, minHeight: 52)
+                    DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
                 }
-                FundsEditorPrimaryButton("Save", isBusy: viewModel.busyAction == "debt-rule") {
+            }
+            // Save + Reset, each 1/2 the width, together filling
+            // the full width (owner, Nov 16, 2026 — build 37).
+            // The two-button rule: primary blue Save + grey
+            // tertiary Reset. In Off mode there is no field row, so
+            // the buttons sit directly under the picker.
+            HStack(spacing: 8) {
+                FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "debt-rule", isLarge: true) {
                     saveRule()
                 }
-                FundsEditorQuietButton("Reset") {
+                FundsTertiaryButton("Reset", isLarge: true) {
                     syncFromSaved()
                     ruleError = nil
                 }
@@ -611,7 +633,11 @@ public struct SpendingAllowanceSection: View {
                 // field and Save were the small sizes — the field is
                 // now 52pt tall and Save / Reset are the editor
                 // sizes. The value is untouched: still $400.00.
-                DollarTextField(text: $allowanceText, placeholder: "0.00", maxWidth: 180, minHeight: 52)
+                // Build 37 (owner, Nov 16, 2026): the allowance
+                // field expands to fill the row — the 180pt field
+                // left a large empty space on the right. Save and
+                // Reset sit at the row's right end.
+                DollarTextField(text: $allowanceText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
                 FundsEditorPrimaryButton("Save", isBusy: viewModel.busyAction == "base-allowance") {
                     saveTapped()
                 }
