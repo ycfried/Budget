@@ -496,9 +496,11 @@ public enum ExpandAnimation {
 // MARK: - Toast
 
 /// Bottom toast, floating clear of the tab bar. Info is brand blue,
-/// success is GREEN (owner rule, Nov 11 2026 — native only), errors
-/// are soft red. Auto-dismiss 4s (ToastStyle.autoDismissSeconds,
-/// CLONE_SPEC §2.3); tap dismisses sooner.
+/// success is the Posted badge treatment (owner, Nov 15, 2026 —
+/// build 33: the solid #22c55e bar with white text was the wrong
+/// green), errors are soft red. Auto-dismiss 4s
+/// (ToastStyle.autoDismissSeconds, CLONE_SPEC §2.3); tap dismisses
+/// sooner.
 ///
 /// `clearTabBar` (audit X-P2-1, Nov 12 2026): true where a tab bar
 /// is actually present (the three tabs) — the banner floats 120pt
@@ -514,20 +516,22 @@ public struct ToastBanner: View {
         self.clearTabBar = clearTabBar
         self.onDismiss = onDismiss
     }
-    /// Banner background by kind: green for success, brand blue for
-    /// info, soft red for errors.
+    /// Banner background + text by kind, straight from the
+    /// `ToastStyle` spec — the ONE source of truth, so the banner
+    /// can never drift from it again (build 33: the banner had its
+    /// own success colour, solid #22c55e with white text, while the
+    /// spec said the Posted badge treatment #dcfce7 / #166534).
     private var bannerBackground: Color {
-        switch toast.kind {
-        case .success: return DesignTokens.success
-        case .info: return DesignTokens.primary
-        case .error: return DesignTokens.errorBackground
-        }
+        Color(hex: ToastStyle.backgroundHex(for: toast.kind))
+    }
+    private var bannerText: Color {
+        Color(hex: ToastStyle.textHex(for: toast.kind))
     }
     public var body: some View {
         Button(action: onDismiss) {
             Text(toast.message)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(toast.kind == .error ? DesignTokens.errorText : .white)
+                .foregroundStyle(bannerText)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
