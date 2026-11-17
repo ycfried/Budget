@@ -122,13 +122,27 @@ public struct AppShellView: View {
         // because it intentionally lands on a sub-view. The
         // accordion/expand behavior WITHIN a page is unchanged —
         // this only resets when LEAVING a tab and coming back.
-        .onChange(of: appState.selectedTab) { _, _ in
+        .onChange(of: appState.selectedTab) { _, newTab in
             appState.toast = nil
             if appState.suppressNextTabReset {
                 appState.suppressNextTabReset = false
             } else {
                 transactionsPath = []
                 appState.expandedCard = nil
+            }
+            // Build 42 (owner, Nov 17, 2026 — Home stale after
+            // Funds changes): Home's figures load once at boot
+            // and `refreshIfNeeded()` is a no-op once loaded, so
+            // coming back from Funds showed stale fund numbers
+            // (e.g. Tzedaka $663.00 after Add to Charity / Record
+            // a Gift). Reload Home whenever the Home tab becomes
+            // active. `refresh()` coalesces with an in-flight
+            // load, so a fast tab switch never doubles the fetch,
+            // and it never blanks loaded cards (performRefresh
+            // keeps last-known values on screen until the new ones
+            // land).
+            if newTab == .home {
+                Task { await appState.homeViewModel?.refresh() }
             }
         }
         .task { ensureTransactionsViewModel(); ensureReviewViewModel() }
