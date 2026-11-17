@@ -457,7 +457,6 @@ public struct FundsView: View {
     private var spendingCard: some View {
         FundsExpandableCard(
             title: FundSectionID.spending.displayName(customNames: appState.fundNames),
-            fundDescription: FundSectionID.spending.fundDescription,
             amountText: spendingFaceText,
             isExpanded: appState.expandedCard == .spending,
             amountIsStatus: spendingFaceCents == nil,
@@ -480,7 +479,8 @@ public struct FundsView: View {
             // admin-only, opens the rename sheet. The full-width
             // Rename button in the detail is gone.
             isAdmin: isAdmin,
-            onRename: { renamingFund = .spending }
+            onRename: { renamingFund = .spending },
+            fundDescription: FundSectionID.spending.fundDescription,
         ) {
             if !viewModel.cardsReady {
                 // The page has not revealed yet: skeletons shaped
@@ -584,7 +584,6 @@ public struct FundsView: View {
     private var fundCard: some View {
         FundsExpandableCard(
             title: FundSectionID.fund.displayName(customNames: appState.fundNames),
-            fundDescription: FundSectionID.fund.fundDescription,
             amountText: fundFaceText,
             isExpanded: appState.expandedCard == .fund,
             amountIsStatus: viewModel.fundSummary == nil,
@@ -601,7 +600,8 @@ public struct FundsView: View {
             // admin-only, opens the rename sheet. The full-width
             // Rename button in the detail is gone.
             isAdmin: isAdmin,
-            onRename: { renamingFund = .fund }
+            onRename: { renamingFund = .fund },
+            fundDescription: FundSectionID.fund.fundDescription,
         ) {
             if !viewModel.cardsReady {
                 // The page has not revealed yet: skeletons shaped
@@ -715,7 +715,6 @@ public struct FundsView: View {
     private var charityCard: some View {
         FundsExpandableCard(
             title: FundSectionID.charity.displayName(customNames: appState.fundNames),
-            fundDescription: FundSectionID.charity.fundDescription,
             amountText: charityFaceText,
             isExpanded: appState.expandedCard == .charity,
             amountIsStatus: viewModel.charitySummary == nil,
@@ -731,7 +730,8 @@ public struct FundsView: View {
             // admin-only, opens the rename sheet. The full-width
             // Rename button in the detail is gone.
             isAdmin: isAdmin,
-            onRename: { renamingFund = .charity }
+            onRename: { renamingFund = .charity },
+            fundDescription: FundSectionID.charity.fundDescription,
         ) {
             if !viewModel.cardsReady {
                 // The page has not revealed yet: skeletons shaped
@@ -844,7 +844,6 @@ public struct FundsView: View {
     private var debtCard: some View {
         FundsExpandableCard(
             title: FundSectionID.debt.displayName(customNames: appState.fundNames),
-            fundDescription: FundSectionID.debt.fundDescription,
             amountText: debtFaceText,
             isExpanded: appState.expandedCard == .debt,
             amountIsStatus: viewModel.debtWeek == nil,
@@ -860,7 +859,8 @@ public struct FundsView: View {
             // admin-only, opens the rename sheet. The full-width
             // Rename button in the detail is gone.
             isAdmin: isAdmin,
-            onRename: { renamingFund = .debt }
+            onRename: { renamingFund = .debt },
+            fundDescription: FundSectionID.debt.fundDescription,
         ) {
             if !viewModel.cardsReady {
                 // The page has not revealed yet: skeletons shaped
