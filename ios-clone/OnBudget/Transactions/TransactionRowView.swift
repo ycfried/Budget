@@ -31,6 +31,11 @@ public struct TransactionRowView: View {
     let institutionName: String?
     let isExpanded: Bool
     let hasActions: Bool
+    /// The active search query (build 41, owner Nov 17, 2026):
+    /// the matched part of the merchant name and the amount is
+    /// highlighted, so the user can see why the row matched.
+    /// Empty when no search is active — the row renders unchanged.
+    let searchQuery: String
     let onToggle: () -> Void
     let onActions: () -> Void
 
@@ -39,6 +44,7 @@ public struct TransactionRowView: View {
         institutionName: String? = nil,
         isExpanded: Bool,
         hasActions: Bool,
+        searchQuery: String = "",
         onToggle: @escaping () -> Void,
         onActions: @escaping () -> Void
     ) {
@@ -46,6 +52,7 @@ public struct TransactionRowView: View {
         self.institutionName = institutionName
         self.isExpanded = isExpanded
         self.hasActions = hasActions
+        self.searchQuery = searchQuery
         self.onToggle = onToggle
         self.onActions = onActions
     }
@@ -77,12 +84,15 @@ public struct TransactionRowView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         // Top half: merchant + amount + chevron.
                         HStack(spacing: 10) {
-                            Text(TransactionFormatting.displayMerchant(transaction.merchant))
+                            TransactionFormatting.highlightedSearchText(
+                                TransactionFormatting.displayMerchant(transaction.merchant),
+                                query: searchQuery
+                            )
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundStyle(DesignTokens.ink)
                                 .lineLimit(1)
                             Spacer()
-                            Text(amount.text)
+                            TransactionFormatting.highlightedSearchText(amount.text, query: searchQuery)
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(amount.color)
                             Image(systemName: "chevron.down")

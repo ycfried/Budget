@@ -139,6 +139,17 @@ public final class AppViewModel: ObservableObject {
     /// applied yet (defaults shown). Updated in place by a rename.
     @Published public var fundNames: [String: String] = [:]
 
+    /// The household's custom fund icons (build 41 — customizable
+    /// fund icons, owner Nov 16, 2026): `households.fund_icons`, a
+    /// map from fund key (spending / fund / charity / debt) to the
+    /// SF Symbol name as picked. The ONE source every view reads
+    /// from — Funds, Home — so an icon change updates everywhere
+    /// at once. Loaded at boot alongside the fund names; [:] until
+    /// then, and [:] when the migration is not applied yet
+    /// (default icons shown). Updated in place by an icon change.
+    /// (The widget renders no fund icons, so it reads no icons.)
+    @Published public var fundIcons: [String: String] = [:]
+
     /// The Home dashboard's view model, owned here (not by HomeView)
     /// so boot can preload it behind the loading screen (owner,
     /// Nov 15, 2026). Created once the household is known
@@ -297,6 +308,7 @@ public final class AppViewModel: ObservableObject {
             role = membership.role
             householdName = try? await client.postgrest.householdName(householdId: membership.householdId)
             fundNames = (try? await client.postgrest.householdFundNames(householdId: membership.householdId)) ?? [:]
+            fundIcons = (try? await client.postgrest.householdFundIcons(householdId: membership.householdId)) ?? [:]
             ownerId = try? await client.postgrest.householdOwnerId(householdId: membership.householdId)
             // Preload the dashboard behind the loading screen
             // (owner, Nov 15, 2026): start the Home load now and
@@ -342,6 +354,7 @@ public final class AppViewModel: ObservableObject {
         self.role = role
         householdName = try? await client.postgrest.householdName(householdId: id)
         fundNames = (try? await client.postgrest.householdFundNames(householdId: id)) ?? [:]
+        fundIcons = (try? await client.postgrest.householdFundIcons(householdId: id)) ?? [:]
         // A freshly created household is owned by its creator; a
         // freshly joined one learns its owner on the next boot.
         if role == .admin {

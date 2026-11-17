@@ -23,6 +23,19 @@ public enum DesignTokens {
     /// (#eef4ff) — tokens since audit X-P2-8 (Nov 12 2026); screens
     /// must use these, never the raw hex.
     public static let mutedHex = "#6b7280"
+    /// Grey tertiary button fill (#e5e7eb), ink text — the second
+    /// button in two-button rows (owner button rule, Nov 3–4,
+    /// 2026). Build 41 (owner, Nov 16, 2026 — "The 3 card header
+    /// bars should be the same color as the 3 buttons schem we
+    /// have"): the Savings banner IS this grey now — the three
+    /// visible fund headers use the three button colours (primary
+    /// blue / pale / tertiary grey), so the dark #6b7280 banner is
+    /// gone. NOTE: the failed-load banner is the same #e5e7eb — a
+    /// loaded Savings card and a failed card share the header
+    /// colour; they still tell apart by the amount (real ink
+    /// numbers vs a static grey block) and the red "Could not
+    /// load" line in the white body.
+    public static let tertiaryHex = "#e5e7eb"
     /// Light grey banner for the Extra Fund (owner, Nov 16, 2026 —
     /// build 38: the medium grey #6b7280 banner was the wrong
     /// colour; the fund's banner is light grey #d1d5db, with dark
@@ -130,6 +143,7 @@ public enum DesignTokens {
     public static var background: Color { Color(hex: backgroundHex) }
     public static var ink: Color { Color(hex: inkHex) }
     public static var muted: Color { Color(hex: mutedHex) }
+    public static var tertiary: Color { Color(hex: tertiaryHex) }
     public static var bannerLightGrey: Color { Color(hex: bannerLightGreyHex) }
     public static var loadingBanner: Color { Color(hex: loadingBannerHex) }
     public static var infoBackground: Color { Color(hex: infoBackgroundHex) }

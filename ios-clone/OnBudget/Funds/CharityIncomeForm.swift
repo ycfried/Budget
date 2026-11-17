@@ -80,31 +80,27 @@ public struct CharityIncomeForm: View {
                     .font(.system(size: 14))
                     .foregroundStyle(Color(hex: "#6b7280"))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Source (for example, Paycheck)")
-                        .font(.system(size: 14, weight: .semibold))
+                    FieldLabel("Source (for example, Paycheck)", required: true)
                     TextField("", text: $sourceText)
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: sourceText) { _, newValue in
                             if newValue.count > 80 { sourceText = String(newValue.prefix(80)) }
                         }
                 }
-                FundsMoneyField("Amount ($)", text: $amountText)
+                FundsMoneyField("Amount", text: $amountText)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Date")
-                        .font(.system(size: 14, weight: .semibold))
+                    FieldLabel("Date")
                     DateField(date: $incomeDate)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Rate % (blank = default)")
-                        .font(.system(size: 14, weight: .semibold))
+                    FieldLabel("Rate % (blank = default)")
                     TextField("", text: $rateOverrideText)
                         .keyboardType(.decimalPad)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 120)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Note (optional)")
-                        .font(.system(size: 14, weight: .semibold))
+                    FieldLabel("Note")
                     TextField("", text: $note)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -315,7 +311,7 @@ public struct AddToCharitySheet: View {
     }
 }
 
-// MARK: - Record a Gift (cash given off-card, admin only)
+// MARK: - Record a Transaction (cash given off-card, admin only)
 //
 // Build 40 (owner, Nov 16, 2026): the owner gives charity in CASH
 // and wants to take it off what he owes — Available decreases,
@@ -325,14 +321,14 @@ public struct AddToCharitySheet: View {
 // on the charity fund and appears in the Charity Activity &
 // Transactions feed. The button opens a POPUP (sheet, like the Add
 // to Charity popup: iPad 600pt, 17pt) with an amount field + an
-// optional note + Record/Cancel. Validation lives INSIDE the popup:
+// a note + Record/Cancel. Validation lives INSIDE the popup:
 // the amount must be above $0.00 and must not exceed the Available
 // balance (the RPC refuses when it would take Available below $0) —
 // the error shows in the popup in plain language and the popup does
 // not close on a bad amount. On success the popup closes, the field
 // clears, and the balances update everywhere (record_charity_cash_gift).
 // The button and the popup title use the fund's CURRENT name (e.g.
-// "Record a Gift to Tzedaka").
+// "Record a Transaction to Tzedaka").
 
 public struct RecordCashGiftSection: View {
     @ObservedObject public var viewModel: FundsViewModel
@@ -347,13 +343,13 @@ public struct RecordCashGiftSection: View {
 
     public var body: some View {
         // The Charity card now stacks THREE full-width buttons
-        // (Add to Charity / Record a Gift / Record Income). The
+        // (Add to Charity / Record a Transaction / Record Income). The
         // standing no-adjacent-same-color rule (Nov 4, 2026) puts
         // pale #bfdbfe as the middle tier of a three-button row, so
         // this middle button is PALE — blue, pale, grey, no two
         // adjacent share a color — and isLarge so all three are the
         // same size (17pt, full width).
-        FundsPaleButton("Record a Gift", isLarge: true) {
+        FundsPaleButton("Record a Transaction", isLarge: true) {
             showPopup = true
         }
         .accessibilityIdentifier("funds.recordCashGift")
@@ -368,8 +364,8 @@ public struct RecordCashGiftSection: View {
     }
 }
 
-/// The Record a Gift popup (owner, Nov 16, 2026 — build 40): an
-/// amount field + an optional note + Record/Cancel, in the rename
+/// The Record a Transaction popup (owner, Nov 16, 2026 — build 40): an
+/// amount field + a note + Record/Cancel, in the rename
 /// sheet's style (iPad 600pt centred, 17pt). Validation lives here:
 /// the amount must be above $0.00 and must not exceed the Available
 /// balance — empty / zero / negative / over-Available shows a
@@ -397,12 +393,12 @@ public struct RecordCashGiftSheet: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SheetHeader(title: TitleCase.apply(to: "Record a Gift to \(fundName)"), onClose: onClose)
+            SheetHeader(title: TitleCase.apply(to: "Record a Transaction to \(fundName)"), onClose: onClose)
             if let availableCents {
                 FundsMuted("Available to give: \(MoneyFormat.formatCents(availableCents)). The gift comes off Available and goes into Given.")
             }
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
-            TextField("Note (optional)", text: $noteText)
+            TextField("Note", text: $noteText)
                 .font(.system(size: 17))
                 .textFieldStyle(.roundedBorder)
                 .frame(minHeight: 48)
@@ -534,7 +530,7 @@ public struct CharityIncomeHistory: View {
                     case .income(let row):
                         incomeRow(row)
                     case .gift(let tx):
-                        FundTransactionRow(tx)
+                        FundTransactionRow(tx, merchantRules: viewModel.merchantRules)
                     case .cashGift(let gift):
                         cashGiftRow(gift)
                     }
@@ -559,7 +555,9 @@ public struct CharityIncomeHistory: View {
         let display = TransactionFormatting.inflowDisplay(cents: row.amountCents)
         return FundsActivityRow {
             HStack(spacing: 4) {
-                Text(row.sourceLabel)
+                Text(TransactionFormatting.displayMerchant(
+                    MerchantDisplayName.displayName(for: row.sourceLabel, rules: viewModel.merchantRules)
+                ))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                     .lineLimit(1)
@@ -723,7 +721,7 @@ public struct FundTopupsHistory: View {
                     case .topup(let row):
                         topupRow(row)
                     case .transaction(let tx):
-                        FundTransactionRow(tx)
+                        FundTransactionRow(tx, merchantRules: viewModel.merchantRules)
                     case .allocation(let entry):
                         allocationRow(entry)
                     }
@@ -743,19 +741,42 @@ public struct FundTopupsHistory: View {
     /// note — expands on tap.
     private func topupRow(_ row: FundTopup) -> some View {
         // The top-up is money into the fund: green with a "+"
-        // prefix under the shared kind rule (inflowDisplay).
+        // prefix under the shared kind rule (inflowDisplay) — but
+        // only once it is CONFIRMED. A pending top-up is not in
+        // checking yet, so it reads in ink with a Pending tag, not
+        // green (build 41 — pending top-ups, owner Nov 17, 2026).
         let display = TransactionFormatting.inflowDisplay(cents: row.amountCents)
         return FundsActivityRow {
-            Text(display.text)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(display.color)
+            HStack(spacing: 4) {
+                Text(display.text)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(row.isPending ? DesignTokens.ink : display.color)
+                if row.isPending {
+                    Text("· Pending")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+            }
         } detail: {
             // The split detail stays muted and plain — its parts are
             // destinations of the top-up, not standalone inflows.
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(row.createdAt.map { MoneyFormat.displayDay($0) } ?? "") · \(MoneyFormat.formatCents(row.shortfallCoveredCents)) covered owed back · \(MoneyFormat.formatCents(row.fundAddedCents)) added to fund · Owed back after \(MoneyFormat.formatCents(row.shortfallAfterCents))")
-                if !row.note.isEmpty {
-                    Text(row.note)
+            // A pending row has no split yet (it runs at confirm
+            // time): the detail says so and offers the confirm.
+            VStack(alignment: .leading, spacing: 6) {
+                if row.isPending {
+                    Text("Pending — not in checking yet. It does not count toward Available until you confirm it.")
+                    Text("\(row.createdAt.map { MoneyFormat.displayDay($0) } ?? "")")
+                    if !row.note.isEmpty {
+                        Text(row.note)
+                    }
+                    FundsPrimaryButton("Confirm in Checking", isBusy: viewModel.busyAction == "confirm-topup") {
+                        Task { await viewModel.confirmTopup(row) }
+                    }
+                } else {
+                    Text("\(row.createdAt.map { MoneyFormat.displayDay($0) } ?? "") · \(MoneyFormat.formatCents(row.shortfallCoveredCents)) covered owed back · \(MoneyFormat.formatCents(row.fundAddedCents)) added to fund · Owed back after \(MoneyFormat.formatCents(row.shortfallAfterCents))")
+                    if !row.note.isEmpty {
+                        Text(row.note)
+                    }
                 }
             }
             .font(.system(size: 14))

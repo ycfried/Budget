@@ -91,6 +91,28 @@ public enum FundSectionID: String, CaseIterable, Identifiable {
         }
         return displayName
     }
+
+    /// The fund's card theme (banner colour, text colour, glyph).
+    public var theme: StatCardTheme {
+        switch self {
+        case .spending: return .spending
+        case .fund: return .fund
+        case .charity: return .charity
+        case .debt: return .debt
+        }
+    }
+
+    /// The icon to RENDER (build 41): the stored-or-default icon
+    /// when it resolves as an SF Symbol, else the theme default.
+    /// The rule lives in the kit (FundIconResolver) so the test
+    /// suite can pin it; the app supplies the UIImage check (the
+    /// Nov 16 handshake lesson: not every SF Symbol name resolves).
+    public func resolvedIconName(customIcons: [String: String]) -> String {
+        FundIconResolver.resolved(
+            custom: customIcons[rawValue],
+            default: theme.iconName
+        ) { UIImage(systemName: $0) != nil }
+    }
 }
 
 public struct FundsView: View {
@@ -111,6 +133,14 @@ public struct FundsView: View {
     /// household, saved on every change.
     @State private var fundOrder: [FundSectionID] = FundSectionID.defaultOrder
     @State private var isRearranging = false
+    /// The fund currently being dragged in reorder mode (build 41),
+    /// and the jiggle phase (build 41 — iOS Home Screen style).
+    @State private var draggingId: FundSectionID?
+    @State private var jigglePhase = false
+    /// The Edit Debt sheet (build 41 — Add/Set debt, owner Nov 17,
+    /// 2026): opened by the pale "Edit Debt" button on the
+    /// Overspent (Past) fund, admin only.
+    @State private var showEditDebt = false
     /// iPad content width (build 36): the tabs read as a centered
     /// 900pt column on the regular size class.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -146,7 +176,7 @@ public struct FundsView: View {
                     case .temp:
                         TemporaryAllowanceView(viewModel: viewModel)
                     case .payDebt:
-                        PayDebtForm(viewModel: viewModel, onClose: { openForm = nil })
+                        PayDebtForm(viewModel: viewModel, fundName: FundSectionID.fund.displayName(customNames: appState.fundNames), debtName: FundSectionID.debt.displayName(customNames: appState.fundNames), onClose: { openForm = nil })
                     case .clearDebt:
                         ClearDebtForm(viewModel: viewModel, onClose: { openForm = nil })
                     }
@@ -166,8 +196,8 @@ public struct FundsView: View {
                     // containers with up/down arrows and remembers
                     // it per household.
                     VStack(spacing: 24) {
-                        ForEach(fundOrder) { id in
-                            fundContainer(for: id)
+                        ForEach(Array(fundOrder.enumerated()), id: \.element) { index, id in
+                            fundContainer(for: id, index: index)
                         }
                     }
                 }
@@ -208,14 +238,17 @@ public struct FundsView: View {
             Text(viewModel.alertMessage ?? "")
         }
         // Rename sheet (build 37 — fund rename, owner Nov 16,
-        // 2026): a fund's Rename button sets `renamingFund`. On a
-        // successful save the shared `appState.fundNames` is
-        // refreshed from the RPC result, so the new name updates
-        // everywhere at once (Funds, Home, Transactions, widget).
+        // 2026; build 41 — it is now the combined edit sheet: the
+        // pencil opens it for the name AND the icon): a fund's
+        // Rename button sets `renamingFund`. On a successful save
+        // the shared `appState.fundNames` / `appState.fundIcons`
+        // are refreshed from the RPC results, so the new name and
+        // icon update everywhere at once (Funds, Home).
         .sheet(item: $renamingFund) { section in
             RenameFundSheet(
                 section: section,
                 currentName: section.displayName(customNames: appState.fundNames),
+                currentIcon: appState.fundIcons[section.rawValue] ?? "",
                 viewModel: viewModel,
                 onSaved: { names in
                     appState.fundNames = names
@@ -234,6 +267,9 @@ public struct FundsView: View {
                         WidgetCenter.shared.reloadAllTimelines()
                     }
                 },
+                onIconsSaved: { icons in
+                    appState.fundIcons = icons
+                },
                 onClose: { renamingFund = nil }
             )
             .presentationSizing(.fitted)
@@ -245,6 +281,19 @@ public struct FundsView: View {
         .onChange(of: fundOrder) { _, _ in
             saveFundOrder()
         }
+        // Jiggle driver (owner, Nov 16, 2026 — build 41): entering
+        // reorder mode starts a slow repeating wobble on the cards;
+        // leaving stops it and clears the drag state.
+        .onChange(of: isRearranging) { _, rearranging in
+            if rearranging {
+                withAnimation(.easeInOut(duration: 0.14).repeatForever(autoreverses: true)) {
+                    jigglePhase.toggle()
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.15)) { jigglePhase = false }
+                draggingId = nil
+            }
+        }
         .refreshable {
             await viewModel.refresh()
         }
@@ -254,14 +303,18 @@ public struct FundsView: View {
     /// shows up/down arrows above each fund's card; Done exits and
     /// the order is already saved. The Reorder control is a blue
     /// primary button (owner, Nov 15, 2026 — the grey "Rearrange"
-    /// pill looked ugly); same treatment as Save.
+    /// pill looked ugly); same treatment as Save. Build 41 (owner,
+    /// Nov 16, 2026): the Reorder button keeps the 3-LINES
+    /// (hamburger / drag-handle) glyph — it is the backup way to
+    /// enter reorder mode; the primary way is a long-press on a
+    /// fund card.
     private var rearrangeRow: some View {
         HStack {
             Spacer()
             if isRearranging {
                 FundsSmallPrimaryButton("Done") { isRearranging = false }
             } else {
-                FundsSmallPrimaryButton("Reorder") { isRearranging = true }
+                FundsSmallPrimaryButton("Reorder", systemImage: "line.3.horizontal") { isRearranging = true }
             }
         }
     }
@@ -390,6 +443,8 @@ public struct FundsView: View {
             amountIsStatus: spendingFaceCents == nil,
             isLoading: spendingFaceCents == nil && viewModel.allowanceError == nil && !viewModel.cardsReady,
             theme: .spending,
+            iconName: FundSectionID.spending.resolvedIconName(customIcons: appState.fundIcons),
+            isReorderMode: isRearranging,
             accessibilityLabel: spendingAccessibilityLabel,
             onToggle: { toggleCard(.spending) },
             // Pencil by the name (owner, Nov 16, 2026 — build 40):
@@ -404,7 +459,7 @@ public struct FundsView: View {
                 // apart (was 8) and the blocks 16pt apart (was 12),
                 // so the rows and the buttons breathe. Same
                 // treatment on all four fund cards.
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow("Base", value: MoneyFormat.formatCents(base))
                         if let override = viewModel.debtWeek?.overrideCents, override != base {
@@ -475,6 +530,8 @@ public struct FundsView: View {
             amountIsStatus: viewModel.fundSummary == nil,
             isLoading: viewModel.fundSummary == nil && viewModel.fundError == nil && !viewModel.cardsReady,
             theme: .fund,
+            iconName: FundSectionID.fund.resolvedIconName(customIcons: appState.fundIcons),
+            isReorderMode: isRearranging,
             accessibilityLabel: fundAccessibilityLabel,
             onToggle: { toggleCard(.fund) },
             // Pencil by the name (owner, Nov 16, 2026 — build 40):
@@ -486,15 +543,26 @@ public struct FundsView: View {
             if let error = viewModel.fundError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.fundSummary {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow(
-                            isAdmin ? "Spendable Available" : "Available to Request",
+                            isAdmin ? "Spendable Available" : "Available",
                             value: MoneyFormat.formatCents(summary.availableCents),
                             isNegative: summary.availableCents < 0
                         )
                         FundsBreakdownRow("Pending", value: MoneyFormat.formatCents(summary.pendingIncludingHeldCents))
                         FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.totalCents))
+                        // Pending top-ups (build 41, Nov 17, 2026):
+                        // saved but not yet confirmed in checking —
+                        // they count for nothing yet, so they sit
+                        // beside Available as their own row (shown
+                        // only when one exists, like Shortfall).
+                        // Home's Savings card never shows them: its
+                        // Available is the ledger sum, which a
+                        // pending top-up never touches.
+                        if viewModel.pendingTopupsCents > 0 {
+                            FundsBreakdownRow("Pending Top-Ups", value: MoneyFormat.formatCents(viewModel.pendingTopupsCents))
+                        }
                         // A shortfall is a labelled number, only
                         // when one exists (owner, Nov 15, 2026 —
                         // build 33: the old "Nothing owed back
@@ -510,10 +578,21 @@ public struct FundsView: View {
                     // audit, build 33). A vertical stack, full
                     // width, primary first, pale middle, tertiary
                     // last (the two-button-row order, extended).
-                    VStack(alignment: .leading, spacing: 12) {
-                        if isAdmin {
+                    // Owner, Nov 16, 2026 (build 41): NO "Request
+                    // Money" button here any more — fund requests
+                    // are Review items, not a button on the fund.
+                    // The Ask form, the request queue and the
+                    // create/approve RPCs stay (the mechanism is
+                    // intact); the form is now reachable only from
+                    // a transaction's Actions sheet ("Use Savings"
+                    // asks for that charge to be covered). See the
+                    // build-41 report: removing the button also
+                    // leaves the approval queue with no entry point
+                    // until requests become Review items.
+                    if isAdmin {
+                        VStack(alignment: .leading, spacing: 12) {
                             FundsPrimaryButton("Add Money") { openForm = .add }
-                            FundsPaleButton("Spend from Fund") { openForm = .use }
+                            FundsPaleButton("Spend from \(FundSectionID.fund.displayName(customNames: appState.fundNames))") { openForm = .use }
                             // Owner, Nov 16, 2026 (build 40): record
                             // cash taken/spent out of Savings — the
                             // same "record on the fund, not a
@@ -521,15 +600,12 @@ public struct FundsView: View {
                             // cash gift. Available decreases, NO
                             // transaction row, recorded in the Savings
                             // Activity feed. Primary blue (blue, pale,
-                            // blue, grey — no two adjacent share a
-                            // color), same size as the others.
+                            // blue — no two adjacent share a color),
+                            // same size as the others.
                             RecordCashSpentSection(
                                 viewModel: viewModel,
                                 fundName: FundSectionID.fund.displayName(customNames: appState.fundNames)
                             )
-                            FundsTertiaryButton("Request Money") { openForm = .ask }
-                        } else {
-                            FundsTertiaryButton("Request Money") { openForm = .ask }
                         }
                     }
                     Divider()
@@ -580,6 +656,8 @@ public struct FundsView: View {
             amountIsStatus: viewModel.charitySummary == nil,
             isLoading: viewModel.charitySummary == nil && viewModel.charityError == nil && !viewModel.cardsReady,
             theme: .charity,
+            iconName: FundSectionID.charity.resolvedIconName(customIcons: appState.fundIcons),
+            isReorderMode: isRearranging,
             accessibilityLabel: charityAccessibilityLabel,
             onToggle: { toggleCard(.charity) },
             // Pencil by the name (owner, Nov 16, 2026 — build 40):
@@ -591,7 +669,7 @@ public struct FundsView: View {
             if let error = viewModel.charityError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.charitySummary {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents))
                         FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
@@ -696,6 +774,8 @@ public struct FundsView: View {
             amountIsStatus: viewModel.debtWeek == nil,
             isLoading: viewModel.debtWeek == nil && viewModel.debtError == nil && !viewModel.cardsReady,
             theme: .debt,
+            iconName: FundSectionID.debt.resolvedIconName(customIcons: appState.fundIcons),
+            isReorderMode: isRearranging,
             accessibilityLabel: debtAccessibilityLabel,
             onToggle: { toggleCard(.debt) },
             // Pencil by the name (owner, Nov 16, 2026 — build 40):
@@ -707,7 +787,7 @@ public struct FundsView: View {
             if let error = viewModel.debtError {
                 FundsErrorBox(error)
             } else if let week = viewModel.debtWeek {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 12) {
                         FundsMuted("Money spent over past weekly allowances.")
                         if let payment = week.debtPaymentCents {
@@ -719,22 +799,47 @@ public struct FundsView: View {
                             FundsBreakdownRow(FundSectionID.debt.displayName(customNames: appState.fundNames), value: MoneyFormat.formatCents(week.carriedDebtCents))
                         }
                     }
-                    HStack(spacing: 12) {
-                        if isAdmin && viewModel.debtRule != nil {
-                            // "Pay from Fund" — the full "Pay from
-                            // Extra Fund" wrapped to two lines on
-                            // iPhone (owner, Nov 15, 2026 — build
-                            // 33); the fund here is the Extra Fund,
-                            // so nothing is lost.
-                            FundsPrimaryButton("Pay from Fund") { openForm = .payDebt }
+                    // Three actions cannot sit side by side on an
+                    // iPhone — their labels wrap (owner button
+                    // audit, build 33). A vertical stack, full
+                    // width, primary first, pale middle, tertiary
+                    // last (the two-button-row order, extended) —
+                    // the same stack as the Savings and Charity
+                    // cards. "Edit Debt" (build 41, owner Nov 17,
+                    // 2026) opens one sheet holding both manual
+                    // changes — Add Debt and Set Debt — so the card
+                    // keeps one entry point instead of a fourth
+                    // button. Pay still needs the repayment rule;
+                    // Edit Debt does not.
+                    if isAdmin {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if viewModel.debtRule != nil {
+                                // "Pay from <Fund>" — the full "Pay
+                                // from Savings" wrapped to two lines
+                                // on iPhone (owner, Nov 15, 2026 —
+                                // build 33), so the label uses the
+                                // fund's CURRENT display name
+                                // (build 41) and stays short.
+                                FundsPrimaryButton("Pay from \(FundSectionID.fund.displayName(customNames: appState.fundNames))") { openForm = .payDebt }
+                            }
+                            FundsPaleButton("Edit Debt") { showEditDebt = true }
                             // No button that cannot work (owner, Nov 13):
                             // with no debt left there is nothing to clear.
                             if week.carriedDebtCents > 0 {
-                                FundsTertiaryButton("Clear Debt") { openForm = .clearDebt }
+                                FundsTertiaryButton("Clear \(FundSectionID.debt.displayName(customNames: appState.fundNames))") { openForm = .clearDebt }
                             }
                             // Build 37 (owner, Nov 16, 2026): the
                             // grey "Close" button is gone — the card
                             // collapses by tapping its header/chevron.
+                        }
+                        .sheet(isPresented: $showEditDebt) {
+                            EditDebtSheet(
+                                viewModel: viewModel,
+                                currentCents: viewModel.debtBalanceCents ?? 0,
+                                debtName: FundSectionID.debt.displayName(customNames: appState.fundNames),
+                                onClose: { showEditDebt = false }
+                            )
+                            .presentationSizing(.fitted)
                         }
                     }
                     Divider()
@@ -787,7 +892,7 @@ public struct FundsView: View {
     // the card; tapping one moves the fund one step (build 34 —
     // the drag handle did not grab and drag easily).
     @ViewBuilder
-    private func fundContainer(for id: FundSectionID) -> some View {
+    private func fundContainer(for id: FundSectionID, index: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if isRearranging {
                 reorderArrows(for: id)
@@ -802,6 +907,39 @@ public struct FundsView: View {
             case .debt:
                 debtCard
             }
+        }
+        // Long-press enters reorder mode (owner, Nov 16, 2026 —
+        // build 41): the cards "shift" and the user drags a card to
+        // move it. A normal quick tap still expands the card — the
+        // header's tap is a no-op in reorder mode, so the tap that
+        // ends a long-press cannot also expand the card (tap =
+        // expand, long-press = reorder).
+        .onLongPressGesture(minimumDuration: 0.5) {
+            if !isRearranging { isRearranging = true }
+        }
+        // Jiggle while reordering (owner, Nov 16, 2026 — build 41,
+        // iOS Home Screen style): a slow ±1.3° wobble driven by
+        // jigglePhase, with a small per-card static tilt so adjacent
+        // cards do not all lean the same way.
+        .rotationEffect(.degrees(isRearranging ? (jigglePhase ? 1.3 : -1.3) + (index.isMultiple(of: 2) ? 0.6 : -0.6) : 0))
+        // The card being dragged fades a little so the user can see
+        // which one is in their hand.
+        .opacity(isRearranging && draggingId == id ? 0.55 : 1)
+        // Drag to move (owner, Nov 16, 2026 — build 41): only in
+        // reorder mode, so a normal scroll never starts a drag. The
+        // drop delegate moves the fund live as it is dragged over
+        // another card, like the iOS Home Screen.
+        .if(isRearranging) { view in
+            view
+                .onDrag {
+                    draggingId = id
+                    return NSItemProvider(object: id.rawValue as NSString)
+                }
+                .onDrop(of: [.text], delegate: FundReorderDropDelegate(
+                    draggingId: $draggingId,
+                    fundOrder: $fundOrder,
+                    targetId: id
+                ))
         }
     }
 
@@ -1173,6 +1311,24 @@ public struct DebtActivityView: View {
                 detail: "\(MoneyFormat.displayDay(row.createdAt)) · \(row.detail)"
             ), row.createdAt)
         }
+        // Manual changes (build 41 — Add/Set debt): an Add shows
+        // the amount added; a Set shows the total it was set to,
+        // with the before → after in the detail.
+        dated += viewModel.debtAdjustments.map { adj in
+            let title: String
+            if adj.kind == "set" {
+                title = "Debt Set to \(MoneyFormat.formatCents(adj.balanceAfterCents))"
+            } else {
+                title = "Debt Added \(MoneyFormat.formatCents(adj.amountCents))"
+            }
+            let before = adj.balanceAfterCents - adj.amountCents
+            let detail = "\(adj.createdAt.map { MoneyFormat.displayDay($0) } ?? "") · Week of \(MoneyFormat.fmtLong(adj.weekStart)) · \(MoneyFormat.formatCents(before)) → \(MoneyFormat.formatCents(adj.balanceAfterCents))\(adj.note.isEmpty ? "" : " · \(adj.note)")"
+            return (Entry(
+                id: "adjustment-\(adj.id.uuidString)",
+                title: title,
+                detail: detail
+            ), adj.createdAt ?? "")
+        }
         return dated.sorted { $0.1 > $1.1 }.map(\.0)
     }
 
@@ -1234,6 +1390,53 @@ public struct DebtHistoryView: View {
                     FundsMuted("Showing the latest 8 weeks.")
                 }
             }
+        }
+    }
+}
+
+/// Reorders the fund list as a card is dragged over it (owner, Nov
+/// 16, 2026 — build 41: long-press enters reorder mode, drag moves).
+/// A standard SwiftUI DropDelegate: hovering over another card moves
+/// the dragged fund live to that spot, so the list follows the
+/// finger like the iOS Home Screen. The order saves through the
+/// existing fundOrder onChange → saveFundOrder.
+private struct FundReorderDropDelegate: DropDelegate {
+    @Binding var draggingId: FundSectionID?
+    @Binding var fundOrder: [FundSectionID]
+    let targetId: FundSectionID
+
+    func dropEntered(info: DropInfo) {
+        guard let draggingId, draggingId != targetId,
+              let from = fundOrder.firstIndex(of: draggingId),
+              let to = fundOrder.firstIndex(of: targetId) else { return }
+        // The move arithmetic lives in the kit (FundOrderMove) so
+        // the test suite pins the offset rule — see there for why
+        // the target's index is the slot, with no +1 when moving
+        // down.
+        withAnimation(.easeInOut(duration: 0.2)) {
+            fundOrder = FundOrderMove.moved(fundOrder, from: from, to: to)
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingId = nil
+        return true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+}
+
+private extension View {
+    /// Applies `transform` only when `condition` holds — used to
+    /// attach the drag/drop modifiers in reorder mode only, so a
+    /// normal scroll never starts a drag (build 41).
+    @ViewBuilder func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
         }
     }
 }

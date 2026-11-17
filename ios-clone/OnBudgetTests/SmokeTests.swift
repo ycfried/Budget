@@ -28,6 +28,8 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(DesignTokens.paleHex, "#bfdbfe")
         XCTAssertEqual(DesignTokens.backgroundHex, "#ffffff")
         XCTAssertEqual(DesignTokens.inkHex, "#0f172a")
+        XCTAssertEqual(DesignTokens.mutedHex, "#6b7280")
+        XCTAssertEqual(DesignTokens.tertiaryHex, "#e5e7eb")
         XCTAssertEqual(DesignTokens.errorBackgroundHex, "#fef2f2")
         XCTAssertEqual(DesignTokens.errorTextHex, "#dc2626")
         XCTAssertEqual(DesignTokens.errorBorderHex, "#fecaca")
@@ -91,5 +93,17 @@ final class SmokeTests: XCTestCase {
         // for error text, toasts, and failed loads.
         XCTAssertEqual(DesignTokens.heroOverBudgetHex, "#991b1b")
         XCTAssertEqual(DesignTokens.errorTextHex, "#dc2626")
+    }
+
+    func testEveryFundIconOptionResolves() {
+        // Build 41 — the icon picker must only offer symbols that
+        // actually render (Nov 16 handshake lesson: not every SF
+        // Symbol name resolves on the device SDK).
+        for symbol in FundIconOptions.all {
+            XCTAssertNotNil(
+                UIImage(systemName: symbol),
+                "Fund icon option does not resolve: \(symbol)"
+            )
+        }
     }
 }
