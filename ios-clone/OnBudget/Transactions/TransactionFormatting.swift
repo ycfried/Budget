@@ -294,16 +294,21 @@ public enum TransactionFormatting {
     /// breaks a literal match, so the run's digits are compared).
     /// Only the FIRST match is highlighted. An empty query, or a
     /// query that matches neither way, returns the text unchanged.
-    /// The highlight is a background on the matched span only — the
-    /// row's own font and colour (bold ink merchant, kind-coloured
-    /// amount) still apply to the whole Text.
+    /// Built as one AttributedString (a `.background` on a Text
+    /// segment returns `some View`, which cannot join with `+` —
+    /// run 4's compile error) — the row's own font and colour
+    /// (bold ink merchant, kind-coloured amount) still apply to
+    /// the whole Text, since the attributed string sets no font or
+    /// foreground of its own.
     public static func highlightedSearchText(_ text: String, query: String) -> Text {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return Text(text) }
-        if let range = text.range(of: trimmed, options: .caseInsensitive) {
-            return Text(String(text[..<range.lowerBound]))
-                + Text(String(text[range])).background(Color(hex: "#fef08a"))
-                + Text(String(text[range.upperBound...]))
+        var attributed = AttributedString(text)
+        if let range = text.range(of: trimmed, options: .caseInsensitive),
+           let lower = AttributedString.Index(range.lowerBound, within: attributed),
+           let upper = AttributedString.Index(range.upperBound, within: attributed) {
+            attributed[lower..<upper].backgroundColor = Color(hex: "#fef08a")
+            return Text(attributed)
         }
         let queryDigits = trimmed.filter { $0.isNumber }
         guard !queryDigits.isEmpty else { return Text(text) }
@@ -316,10 +321,11 @@ public enum TransactionFormatting {
                     end = text.index(after: end)
                 }
                 let run = String(text[index..<end])
-                if run.filter({ $0.isNumber }).contains(queryDigits) {
-                    return Text(String(text[..<index]))
-                        + Text(run).background(Color(hex: "#fef08a"))
-                        + Text(String(text[end...]))
+                if run.filter({ $0.isNumber }).contains(queryDigits),
+                   let lower = AttributedString.Index(index, within: attributed),
+                   let upper = AttributedString.Index(end, within: attributed) {
+                    attributed[lower..<upper].backgroundColor = Color(hex: "#fef08a")
+                    return Text(attributed)
                 }
                 index = end
             } else {
