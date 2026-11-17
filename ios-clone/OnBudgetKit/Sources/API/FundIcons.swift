@@ -1,3 +1,5 @@
+import Foundation
+
 /// Customizable fund icons (build 41 — owner, Nov 16, 2026) and the
 /// fund-reorder move (build 41 — long-press enters reorder mode,
 /// drag moves). Both are pure logic, so they live in the kit where
