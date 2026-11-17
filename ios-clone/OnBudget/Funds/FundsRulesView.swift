@@ -796,9 +796,9 @@ public struct SpendingAllowanceSection: View {
                 }
             }
         }
-    }
-    .sheet(isPresented: $showAddToBudget) {
-        AddToBudgetSheet(viewModel: viewModel, onClose: { showAddToBudget = false })
+        .sheet(isPresented: $showAddToBudget) {
+            AddToBudgetSheet(viewModel: viewModel, onClose: { showAddToBudget = false })
+        }
     }
 }
 
