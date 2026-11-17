@@ -708,7 +708,7 @@ public struct HomeView: View {
             case .failed:
                 EmptyView()
             case .loaded(let result):
-                Text(MoneyFormat.amountText(cents: result.availableCents))
+                Text(MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false))
                     .font(.system(size: isIPad ? 30 : 24, weight: .heavy))
                     .foregroundStyle(heroBannerTextColor)
                     .minimumScaleFactor(0.6)
@@ -854,7 +854,7 @@ public struct HomeView: View {
         // when over budget (audit H-P2-6).
         let capacity = result.baseAvailableCents + result.tempCents
         let overBudget = result.chargesCents > capacity
-        let fraction = overBudget ? 1 : (capacity > 0 ? Double(result.chargesCents) / Double(capacity) : 0)
+        let fraction: CGFloat = overBudget ? 1 : (capacity > 0 ? CGFloat(result.chargesCents) / CGFloat(capacity) : 0)
         VStack(alignment: .leading, spacing: 8) {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
