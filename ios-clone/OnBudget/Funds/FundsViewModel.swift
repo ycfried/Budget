@@ -682,6 +682,38 @@ public final class FundsViewModel: ObservableObject {
         return succeeded
     }
 
+    /// Manual top-up to the charity Available balance (owner,
+    /// Nov 16, 2026 — build 39): the owner decides to give an
+    /// amount (e.g. $25) and adds it by hand. It reuses
+    /// `record_charity_income` with a 100% rate override — the
+    /// whole amount commits to charity, so Available rises by
+    /// exactly the amount. No new server surface and no migration:
+    /// the per-income override REPLACES the default (R13), 100% is
+    /// inside the legal 0–10000 bp range, and the RPC already
+    /// audits the entry (audit_log "Charity income recorded" plus
+    /// the income row in the Activity & Transactions feed, source
+    /// "Manual add"). It does NOT touch the 10% default rate, the
+    /// weekly allowance, or Given/Pending. Returns true only when
+    /// the save committed, so the caller clears the typed input on
+    /// success only (F-P1-4).
+    public func addToCharity(amountCents: Int) async -> Bool {
+        var succeeded = false
+        await guarded("add-charity", title: "Could Not Add to Charity") {
+            let result = try await context.client.rpcs.recordCharityIncome(
+                pHouseholdId: context.householdId,
+                pAmountCents: amountCents,
+                pIncomeDate: MoneyFormat.todayNY(),
+                pSourceLabel: "Manual add",
+                pRateBp: 10000,
+                pNote: ""
+            )
+            succeed("Added \(MoneyFormat.formatCents(result.committedCents)) to Charity.")
+            succeeded = true
+            await refresh()
+        }
+        return succeeded
+    }
+
     /// Remove the weekly allowance override(s) for the current week
     /// onward (up to 4 weeks — the Temporary Allowance range) via
     /// `remove_weekly_allowance_override`, so the base allowance

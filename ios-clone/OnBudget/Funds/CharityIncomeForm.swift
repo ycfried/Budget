@@ -207,6 +207,61 @@ public struct CharityIncomeForm: View {
     }
 }
 
+// MARK: - Add to Charity (manual top-up, admin only)
+//
+// Build 39 (owner, Nov 16, 2026): the owner decides to give an
+// amount (e.g. $25) and adds it by hand to the available charity
+// balance. Full-width amount field ($ prefix, shared
+// DollarTextField, 17pt / 48pt) + a full-width Add button, in the
+// build-37/38 full-width editor style. No separate heading — the
+// button says what the section does, and the muted line explains
+// it, so no word is repeated (standing rule). The amount must be
+// positive: zero / negative / empty shows a plain-language error
+// and keeps the typed input; there is no greyed-out button (owner
+// rule, Nov 13). On success the field clears and the view model
+// refreshes, so the new Available shows on Funds, Home and the
+// widget from the same server source. The 10% default rate, the
+// Record Income flow and Given/Pending are untouched.
+
+public struct AddToCharitySection: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    @State private var amountText = ""
+    @State private var addError: String?
+
+    public init(viewModel: FundsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            FundsMuted("Add money to the available charity balance by hand.")
+            DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
+            FundsPrimaryButton("Add to Charity", isBusy: viewModel.busyAction == "add-charity", isLarge: true) {
+                add()
+            }
+            if let addError {
+                FundsErrorBox(addError)
+            }
+        }
+        .accessibilityIdentifier("funds.addToCharity")
+    }
+
+    private func add() {
+        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else {
+            addError = "Enter an amount above $0.00."
+            return
+        }
+        addError = nil
+        Task {
+            // Clear only on success — on failure the typed input
+            // stays beside the error (F-P1-4).
+            if await viewModel.addToCharity(amountCents: cents) {
+                amountText = ""
+            }
+        }
+    }
+}
+
 // MARK: - Charity income history (Fund Activity, admin only — spec §9.2)
 //
 // Build 36 (owner, Nov 16, 2026): "Activity & Transactions" — ONE
