@@ -454,3 +454,5 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - Nov 17, 2026 (build-40, simulator trigger 1): full head — unified fund cards (short colored header strip + white majority body, Spending bar + spent line in white body), gap 16pt → 10pt, loading white revert, squash dedupe (Cocoaccinos) + standing rule, counts line centered, charity buttons (blue/pale/grey), rename pencil, Add to Charity popup, % left, charity cash gift (new RPC + table), Savings cash withdrawal (allocate_fund + ledger in feed), widget sync fetches fresh numbers, navigation tab reset + widget → Home, iPad widget sizes verified, back button bare chevron, fund renames pushed to widget snapshot.
 
 - Nov 17, 2026 (build-40, simulator run 2): run 1 (44008395169) FAILED — kit 270/270 ✓ but the app target did not compile (HomeView: amountText missing isMoneyIn; heroBodyProgress fraction type). Fixed both; run 2 triggers on this commit.
+
+- Nov 17, 2026 (build-40, simulator run 3): run 2 (44010754992) FAILED on ONE error — heroBodyProgress opaque return type (amountText fixed). Added an explicit return on the VStack; run 3 triggers on this commit.
