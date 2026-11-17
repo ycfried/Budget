@@ -520,3 +520,5 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - Nov 17, 2026 (build 42, simulator run 4: 44198345121, head fb1a81f): FAILED to compile the app target — item 20's fundDescription: was passed after title: at all four call sites, but Swift requires init parameter order (fundDescription is declared after onRename). Kit still 299/299; smoke/UI never ran. Fixed by moving fundDescription: to after onRename: (with comma) at all four call sites — re-running.
 
 - Nov 17, 2026 (build 42, simulator run 5: 44201495964, head c7c7c0c): FAILED to compile the app target at FundsShared.swift:833 — Button { action } { label } is two trailing closures, invalid Swift. Fixed to Button(action: { ... }) { label } (the pencil's form). Kit still 299/299; smoke/UI never ran. Re-running.
+
+- Nov 17, 2026 (build 42, item 21 — owner ~18:52): Home stale after Funds changes — the shell's tab-change handler now refreshes homeViewModel whenever the Home tab becomes active. No skeleton flash (performRefresh keeps last-known values). Run 6 (44203092943, item-20 head) was still in flight when this landed — run 7 covers the final head.
