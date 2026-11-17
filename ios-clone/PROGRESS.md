@@ -497,3 +497,15 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - Run 44042097544: compile FIXED (ce1340f + 79e3d35 proven), kit 299/299, smoke 10/10.
 - UI incomplete: testGmailCallbackDeepLink (AX scroll to 'Return' failed), testPastWeeksAndActivitySubpages (screenshot timeout), testPlaidSandboxConnect hung 43m with no output -> 60m job timeout cancelled the run.
 - These are UI-harness/infra failures, not app logic. Re-running to confirm flakiness.
+
+## 2026-11-17 — Build 42 (owner burst Nov 17 ~14:03–16:51, approved ~17:25)
+- Transfer labels: direction-aware "Transfer from/to ••XXXX" from the signed amount + bank text (other account's last 4 parsed from the description, last 4-digit run, skipping this row's own card suffix); bare "Transfer" when no digits. Never the bank's backwards wording.
+- Transactions: 4-colour code only — income deep blue #1d4ed8, spending ink #0f172a, charity primary blue #2f6bff, excluded (transfer/payment/trash) grey #6b7280. Money-in green and transfer muted red retired for rows; red stays only for over-budget/negative/error. Kit mapping `fixedAmountColorHex` updated to match (transfer → muted), test pinned.
+- Badges Version A: plain grey text, no pills/tint. Email/Bank source removed from collapsed rows (detail only); Pending/Posted stays collapsed. StatePill converted to plain grey text (Home recent rows follow); SourcePill deleted.
+- Funds: single page-ready gate (`isLoading: !cardsReady` on all four cards; top-ups load awaited before reveal) — no partial page. Spending header = Available (debtWeek.availableCents, no base fallback); Total kept in the breakdown.
+- Savings: one "Remove from Savings" button (grey tertiary) replacing "Spend from Savings" + "Record Cash Spent"; UseFundForm / RecordCashSpentSection+Sheet / recordCashSpent / topupPreview deleted as dead code. Add Money Amount field full width; "owed back" split removed from form + confirmation (plain language; fund name passed at the call site).
+- Pending bug fixed: Savings Pending now folds pending top-ups in (`savingsPendingCents`); the $650 pending top-up reads Pending $650 / Total $650.
+- Pay Debt from Savings button no longer hidden when the debt rule is unknown (shows whenever admin has debt > $0).
+- Designate-as-Savings: money-in via confirmed add_fund_money (client key `designate-savings-<uuid>`, idempotent); charge via the waterfall. Waterfall: Available → Pending top-ups (oldest-first confirm) → carried debt via add_debt; partial splits reported in the toast; refuses to run on failed loads.
+- Widget: sync feedback via App Group state (spinner while syncing, green check ~15s on success, red refresh icon on failure); halves symmetrical (same layout, same amount sizes), "available" label, "As of 6:15PM" bottom-right, allowance/spent lines removed. No fund icons.
+- Known limitations (report, not blockers): designated charges still count toward weekly spending (no RPC links fund moves to a transaction); charge-path designation has no idempotency key; waterfall Pending = pending top-ups only (surplus releases can't be pulled forward); payment kind renders grey (like transfers, never counts in week math).
