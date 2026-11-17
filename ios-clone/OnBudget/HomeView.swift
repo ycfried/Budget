@@ -633,7 +633,10 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 18) {
             switch viewModel.week {
             case .loading:
-                SkeletonBlock(height: 8, cornerRadius: 4)
+                // Build 42 (owner, Nov 17, 2026 — progress bar
+                // thicker): the bar skeleton matches the loaded
+                // bar — 12pt, not 10pt.
+                SkeletonBlock(height: 12, cornerRadius: 6)
                 SkeletonBlock(height: 14)
                 SkeletonBlock(height: 14)
             case .failed(let error):
@@ -869,7 +872,8 @@ public struct HomeView: View {
     /// dark red #991b1b did not read on dark blue in build 39, and
     /// it still reads on white). The chevron at the right end of
     /// the spent line is the hint that the card opens the Weekly
-    /// sheet.
+    /// sheet. Build 42 (owner, Nov 17, 2026 — progress bar
+    /// thicker): the bar is 12pt, not 10pt.
     private func heroBodyProgress(_ result: WeekResult) -> some View {
         // Charges / capacity, capped at 100%; over budget the fill
         // is full-width. A zero/negative capacity used to force
@@ -881,15 +885,15 @@ public struct HomeView: View {
         return VStack(alignment: .leading, spacing: 10) {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 5)
+                    RoundedRectangle(cornerRadius: 6)
                         .fill(Color(hex: "#e5e7eb"))
-                        .frame(height: 10)
-                    RoundedRectangle(cornerRadius: 5)
+                        .frame(height: 12)
+                    RoundedRectangle(cornerRadius: 6)
                         .fill(overBudget ? Color(hex: "#dc2626") : StatCardTheme.spending.banner)
-                        .frame(width: geometry.size.width * fraction, height: 10)
+                        .frame(width: geometry.size.width * fraction, height: 12)
                 }
             }
-            .frame(height: 10)
+            .frame(height: 12)
 
             // Spent line + % used + chevron. While no allowance is
             // set the line reads "Not set" — a genuinely unset

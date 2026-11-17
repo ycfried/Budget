@@ -866,6 +866,13 @@ public struct FundsView: View {
                             FundsBreakdownRow(FundSectionID.debt.displayName(customNames: appState.fundNames), value: MoneyFormat.formatCents(week.carriedDebtCents))
                         }
                     }
+                    // Build 42 (owner, Nov 17, 2026 — debt card
+                    // section order): the Debt Repayment Rule
+                    // comes BEFORE the action buttons — Balances
+                    // → Rule → Actions → Activity & Transactions.
+                    Divider()
+                    DebtRuleSection(viewModel: viewModel, bare: true)
+                    Divider()
                     // Three actions cannot sit side by side on an
                     // iPhone — their labels wrap (owner button
                     // audit, build 33). A vertical stack, full
@@ -918,8 +925,6 @@ public struct FundsView: View {
                             .presentationSizing(.fitted)
                         }
                     }
-                    Divider()
-                    DebtRuleSection(viewModel: viewModel, bare: true)
                     Divider()
                     debtActivitySection
                 }

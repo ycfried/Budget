@@ -681,11 +681,15 @@ public struct SpendingAllowanceSection: View {
                     thresholdError = nil
                 }
             }
+            // Build 42 (owner, Nov 17, 2026 — spending card
+            // clutter): the "This is already the large purchase
+            // threshold." helper line is gone — when the field
+            // matches the saved value, no helper line shows at
+            // all. The differs-explanation and the invalid-amount
+            // lines stay.
             if thresholdDiffers {
                 FundsMuted("A purchase at or above this amount sends a large purchase notification.")
-            } else if thresholdCents != nil {
-                FundsMuted("This is already the large purchase threshold.")
-            } else {
+            } else if thresholdCents == nil {
                 FundsMuted("Enter a valid amount (empty is not 0).")
             }
             if let thresholdError {
@@ -730,11 +734,15 @@ public struct SpendingAllowanceSection: View {
                     allowanceError = nil
                 }
             }
+            // Build 42 (owner, Nov 17, 2026 — spending card
+            // clutter): the "This is already the weekly
+            // allowance." helper line is gone — when the field
+            // matches the saved value, no helper line shows at
+            // all. The differs-explanation and the invalid-amount
+            // lines stay.
             if pendingDiffers {
                 FundsMuted("Applies from the current week onward. It does not rewrite closed weeks.")
-            } else if pendingCents != nil {
-                FundsMuted("This is already the weekly allowance.")
-            } else {
+            } else if pendingCents == nil {
                 FundsMuted("Enter a valid allowance (empty is not 0).")
             }
             if let allowanceError {
@@ -757,6 +765,13 @@ public struct SpendingAllowanceSection: View {
     }
 
     private var tempBlock: some View {
+        // Build 42 (owner, Nov 17, 2026 — temporary allowance
+        // padding): the "Temporary Allowance / Not set" section
+        // was cramped against the buttons above (threshold
+        // Save/Reset) and below (Add to Budget / Set Temporary
+        // Allowance), so it gets 8pt of air on each side — 20pt
+        // above the label (12pt section spacing + 8pt) and 16pt
+        // below it (8pt section spacing + 8pt) before the buttons.
         VStack(alignment: .leading, spacing: 8) {
             // Build 36 (owner, Nov 16, 2026): the old row was a
             // FundsBreakdownRow — label left, "Not set" stranded at
@@ -774,6 +789,7 @@ public struct SpendingAllowanceSection: View {
                     .font(.system(size: 15))
                     .foregroundStyle(tempOverrideCents == nil ? Color(hex: "#6b7280") : DesignTokens.ink)
             }
+            .padding(.bottom, 8)
             if let temp = tempOverrideCents, let base = savedBase, temp != base {
                 FundsMuted("This week's total is \(MoneyFormat.formatCents(temp)) instead of \(MoneyFormat.formatCents(base)).")
             }
@@ -796,6 +812,7 @@ public struct SpendingAllowanceSection: View {
                 }
             }
         }
+        .padding(.top, 8)
         .sheet(isPresented: $showAddToBudget) {
             AddToBudgetSheet(viewModel: viewModel, onClose: { showAddToBudget = false })
         }
