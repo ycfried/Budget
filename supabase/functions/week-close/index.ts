@@ -85,7 +85,7 @@ import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
   chargeContribution, linkedRefundNormalPortionCents,
   restorationDebtCutsAfterClose,
-  debtRulePayment, debtPaymentsAfterClose,
+  debtRulePayment, debtPaymentsAfterClose, debtAdjustmentsAfterClose,
 } from './engine.mjs';
 import {
   computeRestorationTotal, computeIncrementalRestoration,
@@ -306,6 +306,28 @@ Deno.serve(async (req) => {
         if (p.source === 'extra_fund' || p.source === 'clear') {
           debtPaymentsByWeek.set(p.week_start, (debtPaymentsByWeek.get(p.week_start) ?? 0) + p.amount_cents);
         }
+      }
+    }
+
+    // Manual debt adjustments (Add / Set Carried Debt, build 41),
+    // keyed by week like the payments: each adjustment enters the
+    // walk's debt chain exactly once, in its own week, then flows
+    // into the stored close like any other debt. The amount is a
+    // SIGNED delta (+ = added, − = a Set below the balance), so
+    // there is no source filter — every adjustment counts. A
+    // missing table means no adjustments. The raw rows are kept
+    // too: the restoration phase needs them for the same window
+    // helper.
+    const debtAdjustmentsByWeek = new Map<string, number>();
+    let debtAdjustmentRows: any[] = [];
+    const adjRes = await supabase
+      .from('debt_adjustments')
+      .select('week_start, amount_cents')
+      .eq('household_id', householdId);
+    if (!adjRes.error) {
+      debtAdjustmentRows = adjRes.data ?? [];
+      for (const a of debtAdjustmentRows) {
+        debtAdjustmentsByWeek.set(a.week_start, (debtAdjustmentsByWeek.get(a.week_start) ?? 0) + a.amount_cents);
       }
     }
 
@@ -619,7 +641,7 @@ Deno.serve(async (req) => {
         + (lockedNow ? 0 : linkedPostedToWeek(ws))
         + unlinkedPostedInWeek(ws)
         + lateWs;
-      const Dws = Math.max(0, Dchain - (cutsByWeek.get(ws) ?? 0) - (debtPaymentsByWeek.get(ws) ?? 0));
+      const Dws = Math.max(0, Dchain - (cutsByWeek.get(ws) ?? 0) - (debtPaymentsByWeek.get(ws) ?? 0) + (debtAdjustmentsByWeek.get(ws) ?? 0));
       // Debt payment for this week (Carried Debt fund, build 29):
       // the rule in effect now, from the base only. No rule (the
       // SQL not applied yet) means the old behaviour — P = Dws, the
@@ -991,8 +1013,16 @@ Deno.serve(async (req) => {
           const priorPayments = priorClose
             ? debtPaymentsAfterClose(debtPaymentRows, priorClose.week_start, purchaseWeek)
             : 0;
+          // Manual debt adjustments (Add / Set Carried Debt, build
+          // 41): adjustments posted after the prior close increase
+          // (or, for a Set below the balance, decrease) the
+          // incoming debt in the same window as the cuts and
+          // payments.
+          const priorAdjustments = priorClose
+            ? debtAdjustmentsAfterClose(debtAdjustmentRows, priorClose.week_start, purchaseWeek)
+            : 0;
           const initialDebt = priorClose
-            ? Math.max(0, (priorClose.outgoing_debt_cents ?? 0) - priorCuts - priorPayments)
+            ? Math.max(0, (priorClose.outgoing_debt_cents ?? 0) - priorCuts - priorPayments + priorAdjustments)
             : 0;
 
           const sortedRefunds = [...refundList].sort((a: any, b: any) =>

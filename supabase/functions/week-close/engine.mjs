@@ -121,6 +121,20 @@ export function debtPaymentsAfterClose(payments, latestCloseWeekStart, weekStart
     .reduce((s, p) => s + (p.amount_cents ?? 0), 0);
 }
 
+// Manual debt adjustments (Add / Set Carried Debt, build 41): the
+// same window as debtPaymentsAfterClose — adjustments dated after
+// the latest close's week and up to the requested week. Unlike
+// payments there is no source filter: every adjustment counts, and
+// the amount is a SIGNED delta (+ = added, − = a Set below the
+// current balance), so the sum can be negative. Mirrors the SQL in
+// supabase/add-set-debt.sql (debt_balance_cents) exactly.
+export function debtAdjustmentsAfterClose(rows, latestCloseWeekStart, weekStart) {
+  return (rows ?? [])
+    .filter((r) => (latestCloseWeekStart == null || r.week_start > latestCloseWeekStart)
+      && (weekStart == null || r.week_start <= weekStart))
+    .reduce((s, r) => s + (r.amount_cents ?? 0), 0);
+}
+
 // Partial debt clear (build 30, task K): how much of the current
 // balance a clear_debt call writes off. Mirrors the SQL in
 // supabase/partial-debt-clear.sql exactly — same refusals, same
