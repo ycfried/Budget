@@ -112,4 +112,24 @@ final class FundsReadDecodingTests: XCTestCase {
         XCTAssertEqual(rows[0].heldCents, 2500)
     }
 
+    func testDebtAdjustmentsDecodeFromFixedColumns() throws {
+        // Build 41 — Add/Set debt: the fetch selects exactly
+        // these columns (see `debtAdjustments(householdId:)`).
+        // The "add" row has a positive delta; the "set" row a
+        // negative one (target below the balance). `created_at`
+        // is optional — a row without it still decodes.
+        let rows = try decode([DebtAdjustment].self, """
+            [{"id":"11111111-1111-1111-1111-111111111111","household_id":"\(householdId)","amount_cents":5000,"balance_after_cents":5000,"kind":"add","week_start":"2026-11-15","note":"","created_at":"2026-11-16T12:00:00Z"},{"id":"22222222-2222-2222-2222-222222222222","household_id":"\(householdId)","amount_cents":-2000,"balance_after_cents":3000,"kind":"set","week_start":"2026-11-15","note":"Correction"}]
+            """)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].kind, "add")
+        XCTAssertEqual(rows[0].amountCents, 5000)
+        XCTAssertEqual(rows[0].balanceAfterCents, 5000)
+        XCTAssertNotNil(rows[0].createdAt)
+        XCTAssertEqual(rows[1].kind, "set")
+        XCTAssertEqual(rows[1].amountCents, -2000)
+        XCTAssertEqual(rows[1].balanceAfterCents, 3000)
+        XCTAssertNil(rows[1].createdAt)
+    }
+
 }

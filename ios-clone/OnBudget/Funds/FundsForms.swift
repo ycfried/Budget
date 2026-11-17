@@ -3,12 +3,15 @@ import OnBudgetKit
 
 // MARK: - Add Money (top-up, admin only — spec §9.3)
 //
-// "Log cash already in checking — owed back is covered first."
+// "Log cash for the fund — owed back is covered first."
 // Manual top-ups cover the fund shortfall FIRST; the remainder
 // increases spendable Available. The save preview MUST show the split
 // before saving; fund history shows the split. Top-ups never touch
 // weekly allowance / spending room / debt math. Admin-only;
-// confirmation checkbox + double-tap protection.
+// double-tap protection. Build 41 (owner, Nov 17, 2026): the
+// "I have already put this money in checking" toggle no longer
+// blocks saving — untoggled, the top-up saves as PENDING and counts
+// for nothing until it is confirmed on its Activity-feed entry.
 
 public struct AddMoneyForm: View {
     @ObservedObject public var viewModel: FundsViewModel
@@ -32,18 +35,28 @@ public struct AddMoneyForm: View {
         guard let split = viewModel.topupPreview(amountCents: cents) else {
             return "Fund balance has not loaded yet — the server still covers anything owed back first when you save."
         }
-        return "Split: \(MoneyFormat.formatCents(split.added)) added to fund · \(MoneyFormat.formatCents(split.covered)) covers owed back · Owed back after \(MoneyFormat.formatCents(split.after))."
+        // A pending save's split is a projection: the real split
+        // runs at confirm time, against the then-current shortfall
+        // (build 41 — pending top-ups, owner Nov 17, 2026).
+        if confirmed {
+            return "Split: \(MoneyFormat.formatCents(split.added)) added to fund · \(MoneyFormat.formatCents(split.covered)) covers owed back · Owed back after \(MoneyFormat.formatCents(split.after))."
+        }
+        return "Pending split when confirmed: \(MoneyFormat.formatCents(split.added)) added to fund · \(MoneyFormat.formatCents(split.covered)) covers owed back · Owed back after \(MoneyFormat.formatCents(split.after)). It will not count until you confirm it."
     }
 
     public var body: some View {
         FundsCard {
             VStack(alignment: .leading, spacing: 12) {
                 FundsHeading("Add Money")
-                FundsMuted("Log cash already in checking — owed back is covered first.")
-                FundsMoneyField("Amount ($)", text: $amountText)
+                // Build 41 (owner, Nov 17, 2026): a top-up may be
+                // saved BEFORE the money is in checking — it saves
+                // as PENDING until the toggle is confirmed on the
+                // entry. The old "log cash already in checking"
+                // wording no longer covers both cases.
+                FundsMuted("Log cash for the fund — owed back is covered first once it is confirmed.")
+                FundsMoneyField("Amount", text: $amountText)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Note (optional)")
-                        .font(.system(size: 14, weight: .semibold))
+                    FieldLabel("Note")
                     TextField("", text: $note)
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: note) { _, newValue in
@@ -92,7 +105,7 @@ public struct AddMoneyForm: View {
                     // decision #9); on failure the typed input stays
                     // put beside the error. The in-flight double-tap
                     // guard lives in addTopup itself.
-                    if await viewModel.addTopup(amountCents: amountCents ?? 0, note: note.trimmingCharacters(in: .whitespaces)) {
+                    if await viewModel.addTopup(amountCents: amountCents ?? 0, note: note.trimmingCharacters(in: .whitespaces), confirmed: confirmed) {
                         amountText = ""
                         note = ""
                         confirmed = false
@@ -112,10 +125,11 @@ public struct AddMoneyForm: View {
             fieldError = "Enter a valid amount."
             return
         }
-        guard confirmed else {
-            fieldError = "Confirm you have already put this money in checking."
-            return
-        }
+        // Build 41 (owner, Nov 17, 2026): the toggle no longer
+        // BLOCKS saving — without it the top-up saves as PENDING
+        // and counts for nothing until it is confirmed on the
+        // entry in the Activity feed. The old red "Confirm you
+        // have already put this money in checking." error is gone.
         fieldError = nil
         showConfirm = true
     }
@@ -150,10 +164,9 @@ public struct UseFundForm: View {
             VStack(alignment: .leading, spacing: 12) {
                 FundsHeading("Use Fund Money")
                 FundsMuted("Lowers the fund balance only.")
-                FundsMoneyField("Amount ($)", text: $amountText)
+                FundsMoneyField("Amount", text: $amountText)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Note (optional)")
-                        .font(.system(size: 14, weight: .semibold))
+                    FieldLabel("Note")
                     TextField("", text: $note)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -241,6 +254,11 @@ public struct UseFundForm: View {
 
 public struct PayDebtForm: View {
     @ObservedObject public var viewModel: FundsViewModel
+    /// The funds' CURRENT display names (e.g. "Savings" /
+    /// "Overspent (Past)" when renamed) — button labels and the
+    /// heading read them, never hardcoded defaults (build 41).
+    public let fundName: String
+    public let debtName: String
     /// Closes the form back to the Funds list (owned by FundsView).
     public var onClose: () -> Void = {}
     @State private var amountText = ""
@@ -251,8 +269,10 @@ public struct PayDebtForm: View {
     @State private var overrideReason = ""
     @State private var pendingCents: Int?
 
-    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
+    public init(viewModel: FundsViewModel, fundName: String, debtName: String, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.fundName = fundName
+        self.debtName = debtName
         self.onClose = onClose
     }
 
@@ -270,12 +290,11 @@ public struct PayDebtForm: View {
     public var body: some View {
         FundsCard {
             VStack(alignment: .leading, spacing: 12) {
-                FundsHeading("Pay Debt from Extra Fund")
+                FundsHeading("Pay \(debtName) from \(fundName)")
                 FundsMuted("Lowers the carried debt and the Extra Fund balance.")
-                FundsMoneyField("Amount ($)", text: $amountText)
+                FundsMoneyField("Amount", text: $amountText)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Note (optional)")
-                        .font(.system(size: 14, weight: .semibold))
+                    FieldLabel("Note")
                     TextField("", text: $note)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -286,7 +305,7 @@ public struct PayDebtForm: View {
                     FundsErrorBox(fieldError)
                 }
                 HStack(spacing: 12) {
-                    FundsPrimaryButton("Pay Debt") {
+                    FundsPrimaryButton("Pay \(debtName)") {
                         guard let cents = amountCents, cents > 0 else {
                             fieldError = "Enter a valid amount."
                             return
@@ -314,10 +333,10 @@ public struct PayDebtForm: View {
         // Clear Debt confirm). An .alert is centred on iPhone and
         // iPad alike.
         .alert(
-            "Pay Debt from Extra Fund",
+            "Pay \(debtName) from \(fundName)",
             isPresented: $showConfirm
         ) {
-            Button(TitleCase.apply(to: "Pay Debt")) {
+            Button(TitleCase.apply(to: "Pay \(debtName)")) {
                 Task { await record(overrideReason: nil) }
             }
             Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
@@ -440,7 +459,7 @@ public struct ClearDebtForm: View {
                 FundsHeading("Clear Debt")
                 FundsMuted("Write off part of the carried debt — or all of it. No money moves; the amount is recorded in the activity log.")
                 if let debt = debtCents {
-                    FundsMoneyField("Amount to Clear ($)", text: $amountText)
+                    FundsMoneyField("Amount to Clear", text: $amountText)
                         .onChange(of: amountText) { _, newValue in
                             // Typing moves the slider. A value that
                             // does not parse yet (mid-type) leaves
@@ -528,6 +547,130 @@ public struct ClearDebtForm: View {
     }
 }
 
+// MARK: - Edit Carried Debt: Add or Set (admin only, build 41)
+//
+// Owner, Nov 17, 2026: the debt fund only let you pay it down, set
+// a repayment rule, and clear it — there was no way to manually
+// increase it or correct it. This sheet holds BOTH manual changes
+// behind the single pale "Edit Debt" button on the Overspent (Past)
+// card (one entry point, not a fourth button on the card):
+//   - Add Debt: increases the carried debt by the entered amount.
+//   - Set Debt: replaces the carried debt with the entered total
+//     (a correction; the server stores the delta).
+// Both are admin-only, audited (add_debt / set_debt), and the new
+// balance shows in the debt fund's Activity feed. Setting the debt
+// to $0 is not offered here — that is the Clear Debt button.
+// The buttons only render for a valid amount (no greyed-out
+// buttons, owner Nov 13), and each change is confirmed with a
+// centered .alert first (the Clear Debt precedent, build 37).
+// Server: add-set-debt.sql (OWED — not applied live yet) plus the
+// compute-week / week-close TS companions; until those land, the
+// RPC returns the new balance but Home/Funds/the widget still show
+// the old one.
+struct EditDebtSheet: View {
+    @ObservedObject var viewModel: FundsViewModel
+    let currentCents: Int
+    let debtName: String
+    let onClose: () -> Void
+
+    @State private var addText = ""
+    @State private var addNote = ""
+    @State private var setText = ""
+    @State private var setNote = ""
+    @State private var pending: PendingDebtChange?
+    @State private var showConfirm = false
+
+    private struct PendingDebtChange {
+        enum Kind { case add, set }
+        let kind: Kind
+        let cents: Int
+        let note: String
+    }
+
+    private var addCents: Int { MoneyFormat.parseDollarsStrict(addText) ?? 0 }
+    private var setCents: Int { MoneyFormat.parseDollarsStrict(setText) ?? 0 }
+
+    var body: some View {
+        FundsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                FundsHeading("Edit \(debtName)")
+                FundsMuted("Current Debt \(MoneyFormat.formatCents(currentCents))")
+                // Add Debt — primary blue (the first action, and
+                // the one that grows the balance).
+                VStack(alignment: .leading, spacing: 12) {
+                    FundsMoneyField("Amount to Add", text: $addText)
+                    VStack(alignment: .leading, spacing: 4) {
+                        FieldLabel("Note")
+                        TextField("", text: $addNote)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: addNote) { _, newValue in
+                                if newValue.count > 120 { addNote = String(newValue.prefix(120)) }
+                            }
+                    }
+                    if addCents > 0 {
+                        FundsPrimaryButton("Add Debt", isBusy: viewModel.busyAction == "debt-add") {
+                            pending = PendingDebtChange(kind: .add, cents: addCents, note: addNote)
+                            showConfirm = true
+                        }
+                    }
+                }
+                // Set Debt — pale middle tier (the correction, a
+                // different treatment from Add, per the standing
+                // button rule). Only offered for a total that
+                // differs from the current balance — setting it to
+                // the same amount is a no-op the server refuses.
+                VStack(alignment: .leading, spacing: 12) {
+                    FundsMoneyField("New Total Debt", text: $setText)
+                    VStack(alignment: .leading, spacing: 4) {
+                        FieldLabel("Note")
+                        TextField("", text: $setNote)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: setNote) { _, newValue in
+                                if newValue.count > 120 { setNote = String(newValue.prefix(120)) }
+                            }
+                    }
+                    if setCents > 0 && setCents != currentCents {
+                        FundsPaleButton("Set Debt", isBusy: viewModel.busyAction == "debt-set") {
+                            pending = PendingDebtChange(kind: .set, cents: setCents, note: setNote)
+                            showConfirm = true
+                        }
+                    }
+                }
+                FundsTertiaryButton("Cancel") { onClose() }
+            }
+        }
+        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
+        // confirmationDialog — the Clear Debt precedent.
+        .alert(
+            pending?.kind == .set ? "Set Debt" : "Add Debt",
+            isPresented: $showConfirm
+        ) {
+            Button(TitleCase.apply(to: pending?.kind == .set ? "Set Debt" : "Add Debt")) {
+                guard let pending else { return }
+                self.pending = nil
+                Task {
+                    let ok: Bool
+                    if pending.kind == .add {
+                        ok = await viewModel.addDebt(amountCents: pending.cents, note: pending.note)
+                    } else {
+                        ok = await viewModel.setDebt(amountCents: pending.cents, note: pending.note)
+                    }
+                    if ok { onClose() }
+                }
+            }
+            Button(TitleCase.apply(to: "Cancel"), role: .cancel) { pending = nil }
+        } message: {
+            if let pending {
+                if pending.kind == .add {
+                    Text("Add \(MoneyFormat.formatCents(pending.cents)) to the carried debt? The new total will be \(MoneyFormat.formatCents(currentCents + pending.cents)).")
+                } else {
+                    Text("Set the carried debt to \(MoneyFormat.formatCents(pending.cents))? This replaces the current \(MoneyFormat.formatCents(currentCents)).")
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Ask for Fund Money (all roles — spec §9.3)
 //
 // "The admin approves or declines each request." Below the form:
@@ -555,10 +698,9 @@ public struct AskFundForm: View {
                 VStack(alignment: .leading, spacing: 12) {
                     FundsHeading("Ask for Fund Money")
                     FundsMuted("The admin approves or declines each request.")
-                    FundsMoneyField("Amount ($)", text: $amountText)
+                    FundsMoneyField("Amount", text: $amountText)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Note (optional)")
-                            .font(.system(size: 14, weight: .semibold))
+                        FieldLabel("Note")
                         TextField("", text: $note)
                             .textFieldStyle(.roundedBorder)
                     }
@@ -831,7 +973,7 @@ public struct ApproveRequestSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: "Approve from the Fund"), onClose: onCancel)
             FundsMuted("Approve how much of this \(MoneyFormat.formatCents(request.amountCents)) request? Enter less for a split approval.")
-            FundsMoneyField("Amount ($)", text: $amountText)
+            FundsMoneyField("Amount", text: $amountText)
             if let error {
                 FundsErrorBox(error)
             }
@@ -863,34 +1005,65 @@ public struct ApproveRequestSheet: View {
 // (Funds, Home, Transactions filters, buttons, widget). An empty
 // name resets that fund to its default. Admin-only: the Rename
 // button that opens this sheet is hidden for non-admins.
+//
+// Build 41 (owner, Nov 16, 2026 — customizable fund icons): the
+// same sheet also picks the fund's ICON. An Icon section shows the
+// picker grid (FundIconOptions.all); the pick saves with the name
+// via the `set_fund_icon` RPC (supabase/fund-icons.sql) and the
+// caller updates the shared `appState.fundIcons`, so the new icon
+// updates everywhere the fund's header shows (Funds, Home). An
+// empty pick resets that fund to its default icon.
+
+/// The icon picker options live in the kit (FundIconOptions) so
+/// the test suite can pin them; the sheet below renders the grid.
 
 public struct RenameFundSheet: View {
     public let section: FundSectionID
     /// The name to show, pre-filled (the current display name —
     /// custom when set, else the default).
     public let currentName: String
+    /// The stored custom icon ("" when none — the default icon
+    /// shows). Pre-fills the picker selection.
+    public let currentIcon: String
     @ObservedObject public var viewModel: FundsViewModel
     /// Called with the household's updated fund_names map on a
     /// successful save, so the caller refreshes the shared source.
     public var onSaved: ([String: String]) -> Void
+    /// Called with the household's updated fund_icons map on a
+    /// successful icon save, so the caller refreshes the shared
+    /// source.
+    public var onIconsSaved: ([String: String]) -> Void
     public var onClose: () -> Void
     @State private var nameText: String
+    /// The picked icon ("" = the default icon for this fund).
+    @State private var selectedIcon: String
     @State private var fieldError: String?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(
         section: FundSectionID,
         currentName: String,
+        currentIcon: String = "",
         viewModel: FundsViewModel,
         onSaved: @escaping ([String: String]) -> Void,
+        onIconsSaved: @escaping ([String: String]) -> Void = { _ in },
         onClose: @escaping () -> Void = {}
     ) {
         self.section = section
         self.currentName = currentName
+        self.currentIcon = currentIcon
         self.viewModel = viewModel
         self.onSaved = onSaved
+        self.onIconsSaved = onIconsSaved
         self.onClose = onClose
         self._nameText = State(initialValue: currentName)
+        self._selectedIcon = State(initialValue: currentIcon)
+    }
+
+    /// The icon the grid highlights: the pick, or the fund's
+    /// default when nothing custom is picked.
+    private var effectiveIcon: String {
+        selectedIcon.isEmpty ? section.theme.iconName : selectedIcon
     }
 
     public var body: some View {
@@ -900,18 +1073,50 @@ public struct RenameFundSheet: View {
         // rendered tall and mostly empty. Plain VStack + SheetHeader
         // lets fitted measure the real content.
         VStack(alignment: .leading, spacing: 16) {
-            SheetHeader(title: TitleCase.apply(to: "Rename \(section.displayName)"), onClose: onClose)
+            SheetHeader(title: TitleCase.apply(to: "Edit \(section.displayName)"), onClose: onClose)
             TextField("Fund name", text: $nameText)
                 .font(.system(size: 17))
                 .textFieldStyle(.roundedBorder)
                 .frame(minHeight: 48)
                 .autocorrectionDisabled()
             FundsMuted("Leave blank to use the default name (\(section.displayName)).")
+            // Icon picker (build 41 — customizable fund icons,
+            // owner Nov 16, 2026): the pencil opens this one sheet
+            // for name AND icon. A grid of picker symbols; the
+            // picked one saves with the name. Tapping a symbol
+            // only selects it — nothing saves until Save.
+            Text("Icon")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
+                ForEach(FundIconOptions.all, id: \.self) { symbol in
+                    Button { selectedIcon = symbol } label: {
+                        Image(systemName: symbol)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(symbol == effectiveIcon ? DesignTokens.primary : DesignTokens.ink)
+                            .frame(width: 52, height: 52)
+                            .background(symbol == effectiveIcon ? DesignTokens.pale : Color(hex: "#f3f4f6"))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(symbol == effectiveIcon ? "\(symbol), selected" : symbol)
+                }
+            }
+            // Reset shows only when a custom icon is picked — an
+            // action the user cannot perform must not appear (owner
+            // rule, Nov 13, 2026): with the default showing there
+            // is nothing to reset.
+            if !selectedIcon.isEmpty {
+                Button("Reset to Default Icon") { selectedIcon = "" }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.primary)
+            }
             if let fieldError {
                 FundsErrorBox(fieldError)
             }
             HStack(spacing: 12) {
-                FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename") {
+                FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename" || viewModel.busyAction == "fund-icon") {
                     saveTapped()
                 }
                 FundsTertiaryButton("Cancel") { onClose() }
@@ -930,19 +1135,35 @@ public struct RenameFundSheet: View {
             fieldError = "Keep the name to 40 characters or fewer."
             return
         }
-        guard trimmed != currentName.trimmingCharacters(in: .whitespacesAndNewlines) else {
-            fieldError = "That is already the name."
+        let nameChanged = trimmed != currentName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let iconChanged = selectedIcon != currentIcon
+        guard nameChanged || iconChanged else {
+            fieldError = "Nothing to change."
             return
         }
         fieldError = nil
         Task {
-            if let names = await viewModel.renameFund(section: section, name: nameText) {
-                onSaved(names)
-                onClose()
+            // Each save is idempotent, so a retry after a partial
+            // success only re-saves what still differs.
+            var ok = true
+            if nameChanged {
+                if let names = await viewModel.renameFund(section: section, name: nameText) {
+                    onSaved(names)
+                } else {
+                    ok = false
+                }
             }
+            if ok, iconChanged {
+                if let icons = await viewModel.setFundIcon(section: section, icon: selectedIcon) {
+                    onIconsSaved(icons)
+                } else {
+                    ok = false
+                }
+            }
+            if ok { onClose() }
             // On failure the view model raises its alert (FundsView
             // presents it) and this sheet stays open with the typed
-            // name intact.
+            // name and picked icon intact.
         }
     }
 }
@@ -958,7 +1179,7 @@ public struct RenameFundSheet: View {
 // It IS recorded in the Savings fund's Activity & Transactions feed
 // (a fund_ledger 'allocation' entry, which the feed now shows).
 // The button opens a POPUP (sheet, like the charity popups: iPad
-// 600pt, 17pt) with an amount field + an optional note +
+// 600pt, 17pt) with an amount field + a note +
 // Record/Cancel. Validation lives INSIDE the popup: the amount must
 // be above $0.00 and must not exceed the Available balance (no
 // override — allocate_fund refuses when the amount exceeds Available,
@@ -982,11 +1203,12 @@ public struct RecordCashSpentSection: View {
     }
 
     public var body: some View {
-        // The fund card stacks FOUR full-width buttons (Add Money /
-        // Spend from Fund / Record Cash Spent / Request Money). The
+        // The fund card stacks THREE full-width buttons (Add Money /
+        // Spend from Fund / Record Cash Spent — the "Request Money"
+        // button is gone, owner Nov 16, 2026, build 41). The
         // standing no-adjacent-same-color rule puts this one PRIMARY
-        // BLUE: blue, pale, blue, grey — no two adjacent share a
-        // color (the two blues are separated by the pale middle).
+        // BLUE: blue, pale, blue — no two adjacent share a color
+        // (the two blues are separated by the pale middle).
         // Full width, same size as the others.
         FundsPrimaryButton("Record Cash Spent") {
             showPopup = true
@@ -1004,7 +1226,7 @@ public struct RecordCashSpentSection: View {
 }
 
 /// The Record Cash Spent popup (owner, Nov 16, 2026 — build 40): an
-/// amount field + an optional note + Record/Cancel, in the rename
+/// amount field + a note + Record/Cancel, in the rename
 /// sheet's style (iPad 600pt centred, 17pt). Validation lives here:
 /// the amount must be above $0.00 and must not exceed the Available
 /// balance — empty / zero / negative / over-Available shows a
@@ -1038,7 +1260,7 @@ public struct RecordCashSpentSheet: View {
                 FundsMuted("Available: \(MoneyFormat.formatCents(availableCents)). The amount comes off Available. No transaction row is created.")
             }
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
-            TextField("Note (optional)", text: $noteText)
+            TextField("Note", text: $noteText)
                 .font(.system(size: 17))
                 .textFieldStyle(.roundedBorder)
                 .frame(minHeight: 48)

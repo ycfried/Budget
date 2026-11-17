@@ -256,8 +256,7 @@ public struct HouseholdNamePanel: View {
             Text("Name Your Household")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
-            Text("Household Name")
-                .font(.system(size: 14, weight: .bold))
+            FieldLabel("Household Name", required: true, weight: .bold)
             TextField("Household", text: $householdName)
                 .accessibilityIdentifier("household.nameField")
                 .onChange(of: householdName) { _, newValue in

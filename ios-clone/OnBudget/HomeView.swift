@@ -645,7 +645,7 @@ public struct HomeView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.top, 20)
         .padding(.bottom, 18)
     }
 
@@ -705,7 +705,7 @@ public struct HomeView: View {
                 // build 40 reference): the theme's glyph colour on
                 // a white disc (build 41 — the banner colour itself
                 // is unreadable on white for the light banners).
-                Image(systemName: StatCardTheme.spending.iconName)
+                Image(systemName: FundSectionID.spending.resolvedIconName(customIcons: appState.fundIcons))
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(StatCardTheme.spending.glyph)
                     .frame(width: 36, height: 36)
@@ -925,6 +925,7 @@ public struct HomeView: View {
             title: FundSectionID.charity.displayName(customNames: appState.fundNames),
             face: charityFaceText,
             theme: .charity,
+            section: .charity,
             isLoading: viewModel.charity.isLoading,
             statusText: charityStatusText,
             statusIsError: viewModel.charity.isFailed,
@@ -975,6 +976,7 @@ public struct HomeView: View {
             title: FundSectionID.fund.displayName(customNames: appState.fundNames),
             face: fundFaceText,
             theme: .fund,
+            section: .fund,
             isLoading: viewModel.fund.isLoading,
             statusText: fundStatusText,
             statusIsError: viewModel.fund.isFailed,
@@ -1065,6 +1067,7 @@ public struct HomeView: View {
         title: String,
         face: String,
         theme: StatCardTheme,
+        section: FundSectionID,
         isLoading: Bool,
         statusText: String? = nil,
         statusIsError: Bool = false,
@@ -1128,7 +1131,7 @@ public struct HomeView: View {
                     // on a white disc (build 41 — the banner colour
                     // itself is unreadable on white for the light
                     // banners).
-                    Image(systemName: theme.iconName)
+                    Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
                         .font(.system(size: iconSize, weight: .semibold))
                         .foregroundStyle(theme.glyph)
                         .frame(width: chip, height: chip)
@@ -1212,8 +1215,8 @@ public struct HomeView: View {
                 }
             }
             .padding(.horizontal, pad)
-            .padding(.top, 16)
-            .padding(.bottom, 16)
+            .padding(.top, 20)
+            .padding(.bottom, 20)
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 12))

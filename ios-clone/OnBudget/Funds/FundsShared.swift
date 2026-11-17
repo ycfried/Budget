@@ -128,24 +128,36 @@ public struct FundsPaleButton: View {
 /// Link, Same Purchase, Restore — spec §9.3/§9.4/§11).
 public struct FundsSmallPrimaryButton: View {
     public let label: String
+    public let systemImage: String?
     public let isBusy: Bool
     public let action: () -> Void
 
-    public init(_ label: String, isBusy: Bool = false, action: @escaping () -> Void) {
+    public init(_ label: String, systemImage: String? = nil, isBusy: Bool = false, action: @escaping () -> Void) {
         self.label = label
+        self.systemImage = systemImage
         self.isBusy = isBusy
         self.action = action
     }
 
     public var body: some View {
         Button(action: action) {
-            Text(TitleCase.apply(to: label))
-                .font(.system(size: 14, weight: .semibold))
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background(DesignTokens.primary)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+            if let systemImage {
+                Label(TitleCase.apply(to: label), systemImage: systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(DesignTokens.primary)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                Text(TitleCase.apply(to: label))
+                    .font(.system(size: 14, weight: .semibold))
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(DesignTokens.primary)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
         }
         .disabled(isBusy)
         .opacity(isBusy ? 0.6 : 1.0)
@@ -366,18 +378,32 @@ public struct FundsActivityRow<Summary: View, Detail: View>: View {
 /// (date, source, card, state). The amount uses the one shared kind
 /// rule (`TransactionFormatting.amountDisplay`): charity blue,
 /// money-in green with "+", everything else ink.
+/// One transaction row in a fund's Activity & Transactions feed
+/// (Funds, Charity, Debt). The merchant resolves through the
+/// household's rename rules (build 41 — owner, Nov 16, 2026: the
+/// feeds showed RAW names like "TOIREMORG" while the Transactions
+/// list shows the renamed display name) and Title-Cases through the
+/// same displayMerchant the Transactions list uses; a row with no
+/// matching rule shows its raw name, Title-Cased, as before.
 public struct FundTransactionRow: View {
     public let transaction: Transaction
+    /// Merchant rename rules (FundsViewModel.merchantRules).
+    /// Empty by default — then the row shows the raw name,
+    /// Title-Cased, exactly as before this change.
+    public let merchantRules: [MerchantRule]
 
-    public init(_ transaction: Transaction) {
+    public init(_ transaction: Transaction, merchantRules: [MerchantRule] = []) {
         self.transaction = transaction
+        self.merchantRules = merchantRules
     }
 
     public var body: some View {
         let display = TransactionFormatting.amountDisplay(for: transaction)
         FundsActivityRow {
             HStack(spacing: 4) {
-                Text(transaction.merchant)
+                Text(TransactionFormatting.displayMerchant(
+                    MerchantDisplayName.displayName(for: transaction.merchant, rules: merchantRules)
+                ))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                     .lineLimit(1)
@@ -538,6 +564,21 @@ public struct FundsExpandableCard<Expanded: View>: View {
     public let isLoading: Bool
     /// The card's outline identity; nil keeps the plain white card.
     public let theme: StatCardTheme?
+    /// The header icon to show (build 41 — customizable fund
+    /// icons): the fund's resolved icon. Nil keeps the theme's
+    /// default icon.
+    public let iconName: String?
+    /// Reorder mode (build 41 — owner, Nov 16, 2026): when true
+    /// the card collapses to JUST the color bar — the header strip
+    /// only (icon + name + amount), no white body, no detail, no
+    /// progress bar, no buttons, no expanded content — so the
+    /// cards are compact and easy to move. The chevron and pencil
+    /// hide too (the card does not expand or rename while
+    /// reordering); the arrows above the card still move it.
+    /// False everywhere else; exiting reorder mode returns the
+    /// card to its full size (the expanded state is untouched, so
+    /// an expanded card re-opens as it was).
+    public let isReorderMode: Bool
     public let accessibilityLabel: String
     public let onToggle: () -> Void
     /// Admin-only rename affordance: when non-nil and `isAdmin` is
@@ -555,6 +596,8 @@ public struct FundsExpandableCard<Expanded: View>: View {
         amountIsStatus: Bool = false,
         isLoading: Bool = false,
         theme: StatCardTheme? = nil,
+        iconName: String? = nil,
+        isReorderMode: Bool = false,
         accessibilityLabel: String,
         onToggle: @escaping () -> Void,
         isAdmin: Bool = false,
@@ -567,6 +610,8 @@ public struct FundsExpandableCard<Expanded: View>: View {
         self.amountIsStatus = amountIsStatus
         self.isLoading = isLoading
         self.theme = theme
+        self.iconName = iconName
+        self.isReorderMode = isReorderMode
         self.accessibilityLabel = accessibilityLabel
         self.onToggle = onToggle
         self.isAdmin = isAdmin
@@ -602,10 +647,15 @@ public struct FundsExpandableCard<Expanded: View>: View {
             // glyphs hit and the header feels chevron-only.
             headerStrip(pad: pad)
                 .contentShape(Rectangle())
-                .onTapGesture(perform: onToggle)
+                .onTapGesture {
+                    // Reorder mode: the bar does not expand — the
+                    // arrows above the card move it. Everywhere
+                    // else the whole header toggles the card.
+                    if !isReorderMode { onToggle() }
+                }
                 .accessibilityLabel(accessibilityLabel)
                 .accessibilityAddTraits(.isButton)
-            if isExpanded {
+            if isExpanded, !isReorderMode {
                 // White body (majority): the detail rows, editors
                 // and actions. Directly below the header, no gap —
                 // part of the same card, not a separate block. The
@@ -615,7 +665,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 // section underneath it.
                 expanded
                     .padding(.horizontal, pad)
-                    .padding(.top, 16)
+                    .padding(.top, 20)
                     .padding(.bottom, pad)
             }
         }
@@ -689,7 +739,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
                     // on a white disc (build 41 — the banner colour
                     // itself is unreadable on white for the light
                     // banners).
-                    Image(systemName: theme.iconName)
+                    Image(systemName: iconName ?? theme.iconName)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(theme.glyph)
                         .frame(width: 36, height: 36)
@@ -717,8 +767,9 @@ public struct FundsExpandableCard<Expanded: View>: View {
             // rename sheet the old full-width Rename button opened.
             // A child Button wins over the header's tap gesture, so
             // the pencil renames while the rest of the header still
-            // toggles.
-            if isAdmin, let onRename, !isLoading {
+            // toggles. Hidden in reorder mode (build 41): the bar
+            // does not rename while reordering.
+            if isAdmin, let onRename, !isLoading, !isReorderMode {
                 Button(action: onRename) {
                     Image(systemName: "pencil")
                         .font(.system(size: 14, weight: .semibold))
@@ -744,10 +795,15 @@ public struct FundsExpandableCard<Expanded: View>: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            Text("⌄")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(chevronColor)
-                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            // Chevron (build 41): hidden in reorder mode — the bar
+            // does not expand while reordering, so there is nothing
+            // to hint at.
+            if !isReorderMode {
+                Text("⌄")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(chevronColor)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
         }
         .padding(.horizontal, pad)
         .padding(.vertical, 14)
@@ -861,25 +917,59 @@ public struct FundsMuted: View {
     }
 }
 
+/// A form-field label (build 41 — owner, Nov 16, 2026: no "($)"
+/// in a label when the field already shows the $ prefix, and no
+/// "(optional)" anywhere). The label renders exactly as passed —
+/// callers pass Title Case — with a small RED asterisk when the
+/// field is required. Optional fields show no marker: the ABSENCE
+/// of the star is the indicator. The star is the error red
+/// (#dc2626); the label stays ink, 14pt.
+public struct FieldLabel: View {
+    public let text: String
+    public let required: Bool
+    public let weight: Font.Weight
+
+    public init(_ text: String, required: Bool = false, weight: Font.Weight = .semibold) {
+        self.text = text
+        self.required = required
+        self.weight = weight
+    }
+
+    public var body: some View {
+        HStack(spacing: 2) {
+            Text(text)
+            if required {
+                Text("*")
+                    .foregroundStyle(Color(hex: "#dc2626"))
+            }
+        }
+        .font(.system(size: 14, weight: weight))
+        .foregroundStyle(DesignTokens.ink)
+    }
+}
+
 /// Compact money field, capped at 220px (spec §1.2 card-sizing rule).
 /// The "$" is a fixed prefix inside the field (owner, Nov 15, 2026)
 /// — display only, never part of the typed text, so parsing is
 /// unchanged. Shared `DollarTextField`, same as every $ entry field
-/// cross-app.
+/// cross-app. Build 41 (owner, Nov 16, 2026): the label never
+/// carries "($)" — the field already shows the $ — and the label
+/// carries the red required star (every amount field using this
+/// component is required: the submit rejects an empty amount).
 public struct FundsMoneyField: View {
     public let label: String
+    public let required: Bool
     @Binding public var text: String
 
-    public init(_ label: String, text: Binding<String>) {
+    public init(_ label: String, required: Bool = true, text: Binding<String>) {
         self.label = label
+        self.required = required
         self._text = text
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(TitleCase.apply(to: label))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
+            FieldLabel(label, required: required)
             DollarTextField(text: $text)
         }
     }

@@ -204,8 +204,7 @@ public struct AuthView: View {
 
     private var signInPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Email")
-                .font(.system(size: 14, weight: .bold))
+            FieldLabel("Email", required: true, weight: .bold)
             TextField("Email", text: $email)
                 // Password AutoFill (owner, Nov 11, 2026): the email
                 // field is the username field, so iOS offers to save
@@ -221,8 +220,7 @@ public struct AuthView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
-            Text("Password")
-                .font(.system(size: 14, weight: .bold))
+            FieldLabel("Password", required: true, weight: .bold)
             HStack(spacing: 12) {
                 Group {
                     if showPassword {
@@ -556,8 +554,7 @@ public struct NameStepView: View {
                 Text("Choose Your Name")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
-                Text("Name")
-                    .font(.system(size: 14, weight: .bold))
+                FieldLabel("Name", required: true, weight: .bold)
                 TextField("Name", text: $name)
                     .textContentType(.name)
                     .accessibilityIdentifier("auth.name")
@@ -688,8 +685,7 @@ public struct ForgotPasswordSheet: View {
                 Text("If the link has expired, send a fresh one from here.")
                     .font(.system(size: 13))
                     .foregroundStyle(DesignTokens.muted)
-                Text("Email")
-                    .font(.system(size: 14, weight: .bold))
+                FieldLabel("Email", required: true, weight: .bold)
                 TextField("Email", text: $email)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)

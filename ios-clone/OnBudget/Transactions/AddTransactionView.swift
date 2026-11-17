@@ -125,18 +125,18 @@ public struct AddTransactionView: View {
 
 private struct FormField<Content: View>: View {
     let label: String
+    let required: Bool
     let content: Content
 
-    init(_ label: String, @ViewBuilder content: () -> Content) {
+    init(_ label: String, required: Bool = false, @ViewBuilder content: () -> Content) {
         self.label = label
+        self.required = required
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
+            FieldLabel(label, required: required)
             content
         }
     }
@@ -242,7 +242,7 @@ private struct CardAccountField: View {
 
 /// Heading "Add a Transaction by Hand". Note: "Counts as pending
 /// until the bank confirms it."
-/// Fields: Merchant (max 80, required), Amount ($) (required),
+/// Fields: Merchant (max 80, required), Amount (required),
 /// Date (required), Card / Account (connected account, Cash, or an
 /// added last 4; required — defaults to the first connected
 /// account).
@@ -288,7 +288,7 @@ public struct AddPurchaseForm: View {
                     .font(.system(size: 14))
                     .foregroundStyle(Color(hex: "#6b7280"))
 
-                FormField("Merchant") {
+                FormField("Merchant", required: true) {
                     TextField("Merchant", text: $merchant)
                         .padding(.horizontal, 12)
                         .frame(minHeight: 44, alignment: .leading)
@@ -304,7 +304,7 @@ public struct AddPurchaseForm: View {
                     if new.count > 80 { merchant = String(new.prefix(80)) }
                 }
 
-                FormField("Amount ($)") {
+                FormField("Amount", required: true) {
                     DollarTextField(text: $amountText)
                 }
 
@@ -424,9 +424,9 @@ public struct AddPurchaseForm: View {
 
 /// Heading "Give to Charity". Note: "Counts as given at once, never
 /// as weekly spending. Admin only." Admin-only (server-enforced).
-/// Fields: Organization (max 80, required), Amount ($), Date,
+/// Fields: Organization (max 80, required), Amount, Date,
 /// Card / Account (connected account, Cash, or an added last 4 —
-/// defaults to Cash), Note (Optional) (max 120). Submit: Record Gift.
+/// defaults to Cash), Note (max 120). Submit: Record Gift.
 /// Validation: positive amount; organization required; date required;
 /// date ≥ 2026-11-01 ("Date: gifts before November 2026 are outside
 /// the charity period."); date must not be in the future (native-only
@@ -465,7 +465,7 @@ public struct AddDonationForm: View {
                     .font(.system(size: 14))
                     .foregroundStyle(Color(hex: "#6b7280"))
 
-                FormField("Organization") {
+                FormField("Organization", required: true) {
                     TextField("Organization", text: $organization)
                         .padding(.horizontal, 12)
                         .frame(minHeight: 44, alignment: .leading)
@@ -481,7 +481,7 @@ public struct AddDonationForm: View {
                     if new.count > 80 { organization = String(new.prefix(80)) }
                 }
 
-                FormField("Amount ($)") {
+                FormField("Amount", required: true) {
                     DollarTextField(text: $amountText)
                 }
 
@@ -497,7 +497,7 @@ public struct AddDonationForm: View {
                     )
                 }
 
-                FormField("Note (Optional)") {
+                FormField("Note") {
                     TextField("Note", text: $note, axis: .vertical)
                         .padding(.horizontal, 12)
                         .frame(minHeight: 44, alignment: .leading)
