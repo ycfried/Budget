@@ -10,7 +10,7 @@ name: OnBudget iOS clone simulator proof (testflight branch)
 # remains the simulator line.
 on:
   push:
-    branches: [native-fix-build38]
+    branches: [ios-clone-testflight]
     paths:
       - 'ios-clone/**'
       - '.github/workflows/ios-clone-simulator.yml'
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   simulator:
     if: >-
-      startsWith(github.ref, 'refs/heads/native-fix-build38') &&
+      startsWith(github.ref, 'refs/heads/ios-clone-testflight') &&
       github.event.repository.private == false &&
       startsWith(github.event.head_commit.message, 'ci(ios-clone): approved cloud build')
     runs-on: macos-15-intel
