@@ -130,22 +130,27 @@ public struct NotificationPreferences: Codable, Equatable, Sendable {
     /// Title Case label (matching the notification title it controls)
     /// and a key path for reading/writing the flag. The master
     /// on/off is NOT in this list — it is a separate control at the
-    /// top of the card.
-    public static let toggles: [(label: String, keyPath: WritableKeyPath<NotificationPreferences, Bool>)] = [
-        ("Week Closed", \.weekClosed),
-        ("New Week", \.newWeek),
-        ("Over Budget", \.overBudget),
-        ("New Purchase", \.newPurchase),
-        ("New Income", \.newIncome),
-        ("Charity Gift", \.newCharity),
-        ("Monthly Statement", \.monthlyStatement),
-        ("Member Joined", \.memberJoined),
-        ("Member Left", \.memberLeft),
-        ("Gmail Connection Expiring", \.gmailExpiring),
-        ("Fund Request Waiting", \.fundRequest),
-        ("Needs Review", \.needsReview),
-        ("Large Purchase", \.largePurchase),
-        ("Bank Connection Broken", \.bankBroken),
-        ("Budget Increased", \.budgetIncreased),
-    ]
+    /// top of the card. Computed (not a stored `let`): a stored array
+    /// of key paths is not `Sendable` in Swift 6, and a computed
+    /// property creates a fresh array on each access, so there is no
+    /// shared mutable state.
+    public static var toggles: [(label: String, keyPath: WritableKeyPath<NotificationPreferences, Bool>)] {
+        [
+            ("Week Closed", \.weekClosed),
+            ("New Week", \.newWeek),
+            ("Over Budget", \.overBudget),
+            ("New Purchase", \.newPurchase),
+            ("New Income", \.newIncome),
+            ("Charity Gift", \.newCharity),
+            ("Monthly Statement", \.monthlyStatement),
+            ("Member Joined", \.memberJoined),
+            ("Member Left", \.memberLeft),
+            ("Gmail Connection Expiring", \.gmailExpiring),
+            ("Fund Request Waiting", \.fundRequest),
+            ("Needs Review", \.needsReview),
+            ("Large Purchase", \.largePurchase),
+            ("Bank Connection Broken", \.bankBroken),
+            ("Budget Increased", \.budgetIncreased),
+        ]
+    }
 }
