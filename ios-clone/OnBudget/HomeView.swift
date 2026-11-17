@@ -855,7 +855,7 @@ public struct HomeView: View {
         let capacity = result.baseAvailableCents + result.tempCents
         let overBudget = result.chargesCents > capacity
         let fraction: CGFloat = overBudget ? 1 : (capacity > 0 ? CGFloat(result.chargesCents) / CGFloat(capacity) : 0)
-        VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 8) {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 4)
