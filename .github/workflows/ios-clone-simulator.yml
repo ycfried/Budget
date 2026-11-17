@@ -10,7 +10,7 @@ name: OnBudget iOS clone simulator proof (testflight branch)
 # remains the simulator line.
 on:
   push:
-    branches: [ios-clone-testflight]
+    branches: [native-fix-notifications]
     paths:
       - 'ios-clone/**'
       - '.github/workflows/ios-clone-simulator.yml'
