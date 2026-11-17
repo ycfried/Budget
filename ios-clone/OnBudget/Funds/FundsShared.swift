@@ -505,10 +505,12 @@ public struct FundsBreakdownRow: View {
 /// right end, white, flips to `⌃` when expanded (instant, build 34).
 /// Owner, Nov 16, 2026 (Mockup C — sections with coloured banners):
 /// the banner holds the icon, title and amount in white on the fund's
-/// theme colour (Debt black, Spending primary blue, Extra Fund medium
-/// grey, Charity deep blue), so Home and Funds match; the detail below
-/// it sits on plain white, with no outline or border. The green/amber/
-/// red outlines are gone. Loading shows the same banner shape in
+/// theme colour (Debt black #0f172a, Spending dark blue #1d4ed8,
+/// Extra Fund muted grey #6b7280, Charity mid blue #3b82f6 — build 39
+/// refinement: the build-38 light blue / light grey read as
+/// washed-out next to the dark blue hero), so Home and Funds match;
+/// the detail below it sits on plain white, with no outline or
+/// border. The green/amber/red outlines are gone. Loading shows the same banner shape in
 /// muted grey with grey shimmer, with NO colour and no "Loading…"
 /// text (`isLoading`); a failed face is a STATIC grey block, never a
 /// bare "—" in amount type — the expanded content carries the error
@@ -591,9 +593,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
 
     /// The banner face (owner, Nov 16, 2026 — Mockup C): icon +
     /// title + amount + chevron, on the theme colour. The text
-    /// colour is the theme's onBanner colour — white on the dark
-    /// banners (Spending, Debt), ink on the light ones (Charity,
-    /// Extra Fund). The banner is the fund's header and shows the
+    /// colour is the theme's onBanner colour — white on all four
+    /// banners since build 39 (the refined mid blue / muted grey
+    /// have enough depth for white; the build-38 light banners
+    /// needed ink). The banner is the fund's header and shows the
     /// amount; the detail below it sits on plain white, with no
     /// outline or border. Loading / failed show the same banner
     /// shape in muted grey with grey skeleton faces — no colour

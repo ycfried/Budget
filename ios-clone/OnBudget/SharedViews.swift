@@ -637,33 +637,34 @@ public enum StatCardTheme {
     case spending
 
     /// Banner colour of the fund section (owner, Nov 16, 2026 —
-    /// build 38 correction of the Mockup C assignment): Carried
-    /// Debt black ink, Spending dark blue, Extra Fund light grey,
-    /// Charity light blue. The bright primary blue #2f6bff and the
-    /// medium grey #6b7280 leave the banners. The green (#16a34a)
-    /// / amber (#d97706) / muted-red (#991b1b) outlines are gone
-    /// from the fund cards. (The tokens stay in DesignTokens —
-    /// the widget uses them, and tests pin them — but no fund card
-    /// reads them any more.)
+    /// build 38 correction of the Mockup C assignment, refined in
+    /// build 39 — "Coloring still doesn't look great"): Carried
+    /// Debt black ink, Spending dark blue #1d4ed8, Charity MID blue
+    /// #3b82f6, Extra Fund MUTED grey #6b7280. The build-38 light
+    /// blue #60a5fa and light grey #d1d5db read as washed-out and
+    /// flat next to the strong dark blue hero, and the light grey
+    /// $0.00 read as an empty/dead card — every banner now has
+    /// consistent visual weight, keeping the owner's hue assignment
+    /// (Spending dark blue, Charity blue, Extra Fund grey, Debt
+    /// black). The bright primary blue #2f6bff stays the button
+    /// colour, never a banner colour. The green (#16a34a) / amber
+    /// (#d97706) / muted-red (#991b1b) outlines are gone from the
+    /// fund cards.
     public var banner: Color {
         switch self {
-        case .charity: return DesignTokens.light
-        case .fund: return DesignTokens.bannerLightGrey
+        case .charity: return DesignTokens.mid
+        case .fund: return DesignTokens.muted
         case .debt: return DesignTokens.ink
         case .spending: return DesignTokens.deep
         }
     }
 
-    /// Text/icon colour on the banner: white on the dark banners
-    /// (Spending deep blue, Debt black), dark ink on the light
-    /// banners (Charity light blue #60a5fa, Extra Fund light grey
-    /// #d1d5db) — white does not read on the light backgrounds
-    /// (owner, Nov 16, 2026 — build 38).
+    /// Text/icon colour on the banner: WHITE on all four now
+    /// (owner, Nov 16, 2026 — build 39: the build-38 light banners
+    /// needed ink text, but the refined mid blue / muted grey have
+    /// enough depth for white, so every banner reads the same).
     public var onBanner: Color {
-        switch self {
-        case .charity, .fund: return DesignTokens.ink
-        case .debt, .spending: return .white
-        }
+        .white
     }
 
     // NOTE (owner, Nov 14, 2026 — "too much colors", and Nov 16,

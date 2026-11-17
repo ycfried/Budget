@@ -492,21 +492,31 @@ public struct HomeView: View {
                 // Charity + Extra Fund share one row, half-width
                 // each (owner, Nov 14, 2026 — supersedes the Nov 12
                 // bigger full-width stacked cards). The expanded
-                // detail drops below the row, full width; one card
-                // open at a time (accordion rule unchanged).
+                // detail sits INSIDE its own card's column, under
+                // that card only (owner, Nov 16, 2026 — build 39:
+                // the full-width detail below the row put the values
+                // under the NEIGHBOURING card, so they read as if
+                // they belonged to the whole row). One card open at
+                // a time (accordion rule unchanged).
                 HStack(alignment: .top, spacing: 12) {
-                    charityCard
-                    fundCard
-                }
-                if appState.expandedCard == .charity {
-                    statDetailCard(onTap: {
-                        appState.expandedCard = nil
-                    }) { charityRows }
-                }
-                if appState.expandedCard == .fund {
-                    statDetailCard(onTap: {
-                        appState.expandedCard = nil
-                    }) { fundRows }
+                    VStack(alignment: .leading, spacing: 8) {
+                        charityCard
+                        if appState.expandedCard == .charity {
+                            statDetailCard(onTap: {
+                                appState.expandedCard = nil
+                            }) { charityRows }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 8) {
+                        fundCard
+                        if appState.expandedCard == .fund {
+                            statDetailCard(onTap: {
+                                appState.expandedCard = nil
+                            }) { fundRows }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 recentSection
                     // Breathing room (owner, Nov 12 2026): the section
@@ -559,8 +569,11 @@ public struct HomeView: View {
     // number on the page). Owner, Nov 16, 2026 (Mockup C): the hero
     // is a SECTION with a COLOURED BANNER — deep blue, holding the
     // icon, the "Spending" title and the big figure in white; the
-    // progress bar, spent line and the rest sit below it on plain
-    // white. The 3px blue outline is gone. The loading state renders
+    // progress bar and spent line sit INSIDE the banner too (owner,
+    // Nov 16, 2026 — build 39: below the banner on white they read
+    // as a separate floating element, disconnected from the card).
+    // The debt math line and the rest sit below it on plain white.
+    // The 3px blue outline is gone. The loading state renders
     // at the same full hero size (shimmer skeleton blocks, no
     // spinner), so the layout never jumps when the number arrives.
     // Owner, Nov 16, 2026 (build 38, "a bit too heavy"): the banner
@@ -576,6 +589,12 @@ public struct HomeView: View {
                 switch viewModel.week {
                 case .loading:
                     SkeletonBlock(height: isIPad ? 60 : 48, cornerRadius: 8)
+                    // The bar + spent line live in the banner now
+                    // (build 39), so their skeletons do too — same
+                    // sizes as the loaded bar + line, so the banner
+                    // holds its size while loading.
+                    SkeletonBlock(height: 8, cornerRadius: 4)
+                    SkeletonBlock(height: 14)
                 case .failed:
                     EmptyView()
                 case .loaded(let result):
@@ -589,6 +608,9 @@ public struct HomeView: View {
                             ? "Spending, over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
                             : "Spending, \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
                     )
+                    // Progress bar + spent line INSIDE the banner
+                    // (owner, Nov 16, 2026 — build 39).
+                    heroBannerProgress(result)
                 }
             }
             .padding(16)
@@ -729,22 +751,19 @@ public struct HomeView: View {
         .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")
     }
 
-    /// Content skeleton (below the banner): the progress bar, spent
-    /// line and debt math line, same sizes as heroLoadedContent, so
-    /// the page never jumps when the numbers arrive (audit H-P2-5).
-    /// The header row itself is real even while loading (icon +
-    /// title, with a skeleton block in the sync spot for admins),
-    /// and the figure skeleton sits in the banner — so this starts
-    /// at the progress bar. Full-width bars (owner, Nov 15, 2026:
-    /// the shorter lines stopped well short of the right edge —
-    /// every bar now runs edge-to-edge within the card padding).
+    /// Content skeleton (below the banner): the debt math line,
+    /// same size as heroLoadedContent, so the page never jumps when
+    /// the numbers arrive (audit H-P2-5). The header row itself is
+    /// real even while loading (icon + title, with a skeleton block
+    /// in the sync spot for admins), the figure skeleton sits in
+    /// the banner, and the progress bar + spent line skeletons sit
+    /// in the banner too (build 39 — the bar + line moved into the
+    /// banner) — so this starts at the debt math line.
     /// (The stats row — Weekly Allowance + Purchases — moved into
     /// the Weekly sheet, owner Nov 14, 2026, so it has no skeleton
     /// block here.)
     private var heroContentSkeleton: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SkeletonBlock(height: 8, cornerRadius: 4)
-            SkeletonBlock(height: 14)
             // Carried Debt fund (build 29): the debt math line sits
             // under the spent line in heroLoadedContent, so its
             // skeleton block goes here — same order, so the page
@@ -765,55 +784,17 @@ public struct HomeView: View {
         }
     }
 
-    /// The hero content below the banner (progress bar, spent line,
-    /// debt math, allowance states): the figure lives in the banner
-    /// now (owner, Nov 16, 2026 — Mockup C), so this starts at the
-    /// progress bar. The date is gone from the card entirely, and
-    /// the Weekly Allowance + Purchases stats moved into the Weekly
-    /// sheet (owner, Nov 14, 2026).
+    /// The hero content below the banner (debt math, allowance
+    /// states): the figure lives in the banner now (owner, Nov 16,
+    /// 2026 — Mockup C), and the progress bar + spent line moved
+    /// INTO the banner in build 39 (owner, Nov 16, 2026 — below
+    /// the banner on white they read as disconnected from the
+    /// card), so this starts at the debt math line. The date is
+    /// gone from the card entirely, and the Weekly Allowance +
+    /// Purchases stats moved into the Weekly sheet (owner, Nov 14,
+    /// 2026).
     @ViewBuilder
     private func heroLoadedContent(_ result: WeekResult) -> some View {
-        // Progress bar: charges / capacity, capped at 100%; red
-        // when charges exceed capacity. Over budget the fill is
-        // full-width red — a zero/negative capacity used to force
-        // the fraction to 0, so the bar was an empty grey track
-        // exactly when over budget (audit H-P2-6).
-        let capacity = result.baseAvailableCents + result.tempCents
-        let overBudget = result.chargesCents > capacity
-        let fraction = overBudget ? 1 : (capacity > 0 ? Double(result.chargesCents) / Double(capacity) : 0)
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "#ececf1"))
-                    .frame(height: 8)
-                RoundedRectangle(cornerRadius: 4)
-                    // Owner, Nov 14, 2026 ("too much colors"): the
-                    // over-budget bar is the muted hero red, not
-                    // the bright error red.
-                    .fill(overBudget ? DesignTokens.heroOverBudget : DesignTokens.primary)
-                    .frame(width: geometry.size.width * fraction, height: 8)
-            }
-        }
-        .frame(height: 8)
-
-        // Spent line + % used. While no allowance is set the line
-        // reads "Not set" in muted regular type — a genuinely unset
-        // value, never a bare dash (owner loading/empty language,
-        // Nov 12, 2026). A failed allowance read (nil) still shows
-        // compute-week's numbers — only an explicit never-set hides
-        // them (audit H-P1-4).
-        HStack(spacing: 8) {
-            if viewModel.allowanceSet != false {
-                Text("\(MoneyFormat.string(cents: result.chargesCents)) spent")
-                Text("·")
-                Text(usedPercentText(result: result, capacity: capacity))
-            } else {
-                Text("Not set")
-            }
-        }
-        .font(.system(size: 14))
-        .foregroundStyle(Color(hex: "#6b7280"))
-
         // Carried Debt fund (build 29): the week explains itself —
         // "Base $400.00 − Debt $100.00 = $300.00" — so the user
         // always sees WHY the week starts where it does (closes the
@@ -857,6 +838,61 @@ public struct HomeView: View {
                 .font(.system(size: 14))
                 .foregroundStyle(Color(hex: "#6b7280"))
         }
+    }
+
+    /// Progress bar + spent line, INSIDE the blue Spending banner
+    /// (owner, Nov 16, 2026 — build 39: below the banner on white
+    /// they read as a separate floating element, disconnected from
+    /// the card — the whole Spending section must read as ONE
+    /// connected card). Track is white at 25% opacity, fill is
+    /// white; over budget the fill is the brighter error red
+    /// #dc2626 — the muted hero red #991b1b is unreadable on the
+    /// dark blue (the heroFigure note already says so), and the
+    /// over-budget signal on the banner IS this bar, so it must
+    /// read. The spent line is white 14pt. The debt math line
+    /// stays below the banner on white — it explains the figure,
+    /// it is not part of the progress.
+    @ViewBuilder
+    private func heroBannerProgress(_ result: WeekResult) -> some View {
+        // Charges / capacity, capped at 100%; over budget the fill
+        // is full-width. A zero/negative capacity used to force
+        // the fraction to 0, so the bar was an empty track exactly
+        // when over budget (audit H-P2-6).
+        let capacity = result.baseAvailableCents + result.tempCents
+        let overBudget = result.chargesCents > capacity
+        let fraction = overBudget ? 1 : (capacity > 0 ? Double(result.chargesCents) / Double(capacity) : 0)
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.25))
+                        .frame(height: 8)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(overBudget ? DesignTokens.errorText : .white)
+                        .frame(width: geometry.size.width * fraction, height: 8)
+                }
+            }
+            .frame(height: 8)
+
+            // Spent line + % used. While no allowance is set the
+            // line reads "Not set" — a genuinely unset value, never
+            // a bare dash (owner loading/empty language, Nov 12,
+            // 2026). A failed allowance read (nil) still shows
+            // compute-week's numbers — only an explicit never-set
+            // hides them (audit H-P1-4).
+            HStack(spacing: 8) {
+                if viewModel.allowanceSet != false {
+                    Text("\(MoneyFormat.string(cents: result.chargesCents)) spent")
+                    Text("·")
+                    Text(usedPercentText(result: result, capacity: capacity))
+                } else {
+                    Text("Not set")
+                }
+            }
+            .font(.system(size: 14))
+            .foregroundStyle(.white)
+        }
+        .padding(.top, 6)
     }
 
     private func usedPercentText(result: WeekResult, capacity: Int) -> String {
@@ -917,8 +953,8 @@ public struct HomeView: View {
         )
     }
 
-    /// Charity detail rows, rendered full-width below the
-    /// half-size row when the Charity card is expanded.
+    /// Charity detail rows, rendered below the Charity card,
+    /// inside its own half-width column, when it is expanded.
     private var charityRows: some View {
         Group {
             if case .failed = viewModel.charity {
@@ -956,8 +992,9 @@ public struct HomeView: View {
         )
     }
 
-    /// Extra Fund detail rows, rendered full-width below the
-    /// half-size row when the Extra Fund card is expanded.
+    /// Extra Fund detail rows, rendered below the Extra Fund
+    /// card, inside its own half-width column, when it is
+    /// expanded.
     private var fundRows: some View {
         Group {
             if case .failed = viewModel.fund {
@@ -986,9 +1023,11 @@ public struct HomeView: View {
     /// no rotation animation: expand/collapse is instant since
     /// build 34, owner decision Nov 15, 2026). Owner, Nov 16, 2026
     /// (Mockup C): the face is a COLOURED BANNER — icon, title and
-    /// amount in white on the fund's theme colour (Charity deep
-    /// blue, Extra Fund medium grey) — not a white card with a
-    /// coloured outline. The green/amber outlines are gone.
+    /// amount in white on the fund's theme colour (Charity mid
+    /// blue #3b82f6, Extra Fund muted grey #6b7280 — build 39
+    /// refinement; the build-38 light blue / light grey read as
+    /// washed-out) — not a white card with a coloured outline.
+    /// The green/amber outlines are gone.
     /// Loading shows the same banner shape in muted grey with grey
     /// shimmer, with NO colour (title + grey chip + shimmer amount
     /// block, no spinner, no "Loading…" text). A failed card shows
@@ -1005,11 +1044,13 @@ public struct HomeView: View {
     /// Extra Fund cards are half-width in one row, so the face is
     /// smaller (14pt padding, 16pt title, 24pt amount) and the
     /// detail rows do NOT render inside the banner — they drop into
-    /// a full-width detail area below the row. iPad (owner, Nov 15,
-    /// 2026): the compact face scales back up — 18pt padding, 18pt
-    /// title, 32pt amount — because the half-width cards are ~340pt
-    /// wide there and the iPhone sizes read too small. Skeletons
-    /// grow to match.
+    /// a detail area inside the card's own half-width column below
+    /// it (owner, Nov 16, 2026 — build 39: the old full-width
+    /// detail below the row put the values under the neighbouring
+    /// card). iPad (owner, Nov 15, 2026): the compact face scales
+    /// back up — 18pt padding, 18pt title, 32pt amount — because
+    /// the half-width cards are ~340pt wide there and the iPhone
+    /// sizes read too small. Skeletons grow to match.
     private func statCard(
         title: String,
         face: String,
@@ -1049,8 +1090,8 @@ public struct HomeView: View {
             return theme.banner
         }()
         // Text/icon colour on the banner: the theme's onBanner
-        // colour (white on the dark banners, ink on the light
-        // ones), ink on the grey loading/failed banner.
+        // colour (white on all four banners since build 39), ink
+        // on the grey loading/failed banner.
         let onBanner: Color = {
             if isLoading || statusIsError { return DesignTokens.ink }
             return theme.onBanner
@@ -1126,36 +1167,49 @@ public struct HomeView: View {
         }
     }
 
-    /// Full-width detail area for an expanded half-size stat card
-    /// (owner, Nov 14, 2026): when a half-size Charity / Extra
-    /// Fund card is tapped, its rows drop here, below the row —
-    /// the compact card has no room for them. Owner, Nov 16, 2026
-    /// (Mockup C): the detail sits on plain white, with no outline
-    /// or border — the theme outline is gone. Tapping the detail
-    /// collapses it; a "Try Again" button inside still wins over
-    /// the tap gesture (audit H-P1-3 pattern).
+    /// Detail area for an expanded half-size stat card (owner,
+    /// Nov 14, 2026): when a half-size Charity / Extra Fund card
+    /// is tapped, its rows drop here, inside that card's own
+    /// half-width column — never under the neighbouring card
+    /// (owner, Nov 16, 2026 — build 39: the full-width detail
+    /// below the row put the values under the wrong card). Tighter
+    /// than the old full-width detail (12pt padding, 4pt between
+    /// rows) because the column is narrow — the label-to-value gap
+    /// is the column itself now, not a long empty run. Owner,
+    /// Nov 16, 2026 (Mockup C): the detail sits on plain white,
+    /// with no outline or border — the theme outline is gone.
+    /// Tapping the detail collapses it; a "Try Again" button
+    /// inside still wins over the tap gesture (audit H-P1-3
+    /// pattern).
     private func statDetailCard<Rows: View>(
         onTap: @escaping () -> Void,
         @ViewBuilder rows: () -> Rows
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) { rows() }
-            .padding(20)
+        VStack(alignment: .leading, spacing: 4) { rows() }
+            .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture(perform: onTap)
     }
 
     /// Row labels are Title Case, like headings and button labels
-    /// (owner rule, Nov 4, 2026 — audit H-P2-1).
+    /// (owner rule, Nov 4, 2026 — audit H-P2-1). The rows live in
+    /// a half-width column now (build 39), so label and value
+    /// shrink a little instead of truncating or wrapping — the
+    /// long "Spendable Available" label needs it.
     private func statRow(label: String, value: String) -> some View {
         HStack {
             Text(label)
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Spacer()
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
     }
 
