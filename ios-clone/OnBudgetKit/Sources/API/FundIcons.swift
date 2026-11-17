@@ -51,19 +51,19 @@ public enum FundIconResolver {
 }
 
 /// The fund-reorder move (build 41 — drag a card over another to
-/// move it). `Array.move(fromOffsets:toOffset:)` takes the offset in
-/// the array AFTER the dragged fund is removed, and the target's
-/// index in the current array is exactly that slot — the dragged
-/// fund takes the target's place (the target shifts one step toward
-/// where the dragged fund came from). No +1 when moving down: that
-/// would overshoot by one (dragging the top fund over the third
-/// would land it last, not third). Out-of-range or same-spot moves
-/// return the order unchanged.
+/// move it). The dragged fund takes the TARGET's slot: dragging
+/// the top fund over the third lands it third, not last, and not
+/// one slot early. `Array.move(fromOffsets:toOffset:)` counts the
+/// destination in the array WITH the dragged element still in it,
+/// so moving down needs `to + 1` (without it, from 0 to 2 lands
+/// at 1 — the classic off-by-one, caught by run 3's two failing
+/// tests); moving up takes `to` as-is. Out-of-range or same-spot
+/// moves return the order unchanged.
 public enum FundOrderMove {
     public static func moved<T>(_ order: [T], from: Int, to: Int) -> [T] {
         guard order.indices.contains(from), order.indices.contains(to), from != to else { return order }
         var copy = order
-        copy.move(fromOffsets: IndexSet(integer: from), toOffset: to)
+        copy.move(fromOffsets: IndexSet(integer: from), toOffset: from < to ? to + 1 : to)
         return copy
     }
 }
