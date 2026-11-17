@@ -93,6 +93,24 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
         "\(charityDisplayName) left"
     }
 
+    /// A copy of this snapshot with new fund names (build 40, Nov 16,
+    /// 2026): when a fund is renamed, the app updates just the names
+    /// in the stored snapshot — the numbers are unchanged by a rename
+    /// — so the widget shows the new name on its next timeline
+    /// reload without waiting for a Home refresh.
+    public func withFundNames(_ names: [String: String]) -> WidgetSnapshot {
+        WidgetSnapshot(
+            weekStart: weekStart,
+            availableCents: availableCents,
+            charityRemainingCents: charityRemainingCents,
+            spentCents: spentCents,
+            charityGivenCents: charityGivenCents,
+            charityCommittedCents: charityCommittedCents,
+            fundNames: names,
+            computedAt: computedAt
+        )
+    }
+
     /// Stale 1 hour after computation, or when computedAt is in the
     /// future. The widget labels stale snapshots; it never hides the
     /// staleness.
@@ -132,11 +150,30 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
 public enum WidgetSnapshotStore {
     public static let groupID = "group.com.onbudget.ios"
     public static let key = "widgetSnapshot"
+    /// The household the widget syncs for (build 40, Nov 16, 2026 —
+    /// widget sync): the widget extension needs the household id to
+    /// call compute-week + the charity summary. Written by the app
+    /// alongside the snapshot (the id is stable — it only changes
+    /// on household switch / sign-out, both of which rewrite it).
+    /// The snapshot itself carries no household identifier; this is
+    /// a separate App Group key the widget extension reads.
+    public static let householdIdKey = "widgetHouseholdId"
 
     public static func write(_ snapshot: WidgetSnapshot, to defaults: UserDefaults? = nil) {
         let store = defaults ?? UserDefaults(suiteName: groupID)
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         store?.set(data, forKey: key)
+    }
+
+    public static func writeHouseholdId(_ id: UUID, to defaults: UserDefaults? = nil) {
+        let store = defaults ?? UserDefaults(suiteName: groupID)
+        store?.set(id.uuidString, forKey: householdIdKey)
+    }
+
+    public static func readHouseholdId(from defaults: UserDefaults? = nil) -> UUID? {
+        let store = defaults ?? UserDefaults(suiteName: groupID)
+        guard let string = store?.string(forKey: householdIdKey) else { return nil }
+        return UUID(uuidString: string)
     }
 
     public static func read(from defaults: UserDefaults? = nil) -> WidgetSnapshot? {

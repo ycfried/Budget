@@ -30,9 +30,9 @@ import OnBudgetKit
 ///   250ms debounce). Filters apply client-side to the rows already
 ///   loaded, so a search or filter change needs no refetch.
 /// - Active-filter chips: one removable chip per applied filter.
-/// - Count line: "`N` transactions · Total `$X`" (+ the
-///   older-rows suffix when the probe row came back) — one quiet
-///   muted line.
+/// - Count line: "`N` transactions · Total `$X`" — one quiet
+///   muted line, CENTERED (owner, Nov 16, 2026 — build 40: the
+///   older-rows tail is gone and the line is centered).
 /// - List: pages of 25 (owner, Nov 15, 2026 — the list loaded
 ///   everything at once and felt slow). Fetch asks for `pageSize +
 ///   1`; the probe row decides whether Load More shows — a page of
@@ -468,10 +468,15 @@ public struct TransactionsView: View {
         // Owner, Nov 12, 2026: one quiet muted line, tighter wording
         // ("Total", not "Total shown"), smaller than before; the
         // VStack's 14pt spacing gives it air from the field above
-        // and the list below.
+        // and the list below. Owner, Nov 16, 2026 (build 40): the
+        // older-rows tail is gone from the text, and the line is
+        // CENTERED (it was left-aligned) — same quiet muted style
+        // and size, just centered on the page.
         Text(viewModel.countLine)
             .font(.system(size: 13))
             .foregroundStyle(Color(hex: "#6b7280"))
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, alignment: .center)
             .accessibilityIdentifier("transactions.countLine")
     }
 

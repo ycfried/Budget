@@ -111,8 +111,25 @@ public struct AppShellView: View {
         // ToastState owned here and deliberately survives the
         // Past-Weeks → Transactions pop (see transactionsTab) —
         // this clears only the root `appState.toast`.
+        // Tab reset (owner, Nov 16, 2026 — build 40): a USER tab tap
+        // always lands on that tab's TOP-LEVEL MAIN page — the
+        // Transactions NavigationStack path pops back to the main
+        // list, and any expanded fund card collapses — so a tab
+        // never resumes a leftover sub-view. A PROGRAMMATIC tab
+        // change (Home "See All", a recent-row jump, the Weekly
+        // sheet's "Show Transactions", "Set Your Weekly Allowance")
+        // sets `suppressNextTabReset` first and skips this reset,
+        // because it intentionally lands on a sub-view. The
+        // accordion/expand behavior WITHIN a page is unchanged —
+        // this only resets when LEAVING a tab and coming back.
         .onChange(of: appState.selectedTab) { _, _ in
             appState.toast = nil
+            if appState.suppressNextTabReset {
+                appState.suppressNextTabReset = false
+            } else {
+                transactionsPath = []
+                appState.expandedCard = nil
+            }
         }
         .task { ensureTransactionsViewModel(); ensureReviewViewModel() }
         .onChange(of: appState.householdId) { _, _ in ensureTransactionsViewModel(); ensureReviewViewModel() }

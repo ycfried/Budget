@@ -64,8 +64,13 @@ struct OnBudgetApp: App {
                     //   → recorded on AppViewModel. The live Gmail
                     //   connect needs no forwarding: the active
                     //   ASWebAuthenticationSession completes by itself.
+                    // - onbudget://home → the widget (build 40, owner
+                    //   Nov 16, 2026): tapping the widget always
+                    //   opens the HOME main page.
                     if url.host == "gmail-callback" {
                         Task { @MainActor in _ = appState.handleGmailDeepLink(url) }
+                    } else if url.host == "home" {
+                        appState.goHome()
                     } else if url.host == "reset-password" {
                         Task { await appState.handleResetDeepLink(url) }
                     } else if url.host == "email-confirmed" {

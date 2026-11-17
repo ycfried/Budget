@@ -1150,6 +1150,49 @@ public struct CharityIncome: Equatable, Codable, Identifiable {
     }
 }
 
+/// One row of `charity_cash_gifts` (`supabase/charity-cash-gifts.sql`,
+/// build 40, Nov 16, 2026): a cash gift given off-card, recorded on
+/// the charity fund — NOT a transaction row. Available decreases by
+/// the amount, Given increases by it, Total (committed) is unchanged.
+/// Append-only (status 'active' / 'reversed', mirroring
+/// charity_income).
+public struct CharityCashGift: Equatable, Codable, Identifiable {
+    public let id: UUID
+    public let householdId: UUID
+    public let amountCents: Int
+    /// `YYYY-MM-DD`.
+    public let giftDate: String
+    public let note: String
+    public let status: String
+    public let createdBy: UUID?
+    public let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case householdId = "household_id"
+        case amountCents = "amount_cents"
+        case giftDate = "gift_date"
+        case note
+        case status
+        case createdBy = "created_by"
+        case createdAt = "created_at"
+    }
+}
+
+/// The `record_charity_cash_gift` jsonb return
+/// (`supabase/charity-cash-gifts.sql`).
+public struct CharityCashGiftResult: Equatable, Codable {
+    public let giftId: UUID
+    public let givenCents: Int
+    public let remainingCents: Int
+
+    enum CodingKeys: String, CodingKey {
+        case giftId = "gift_id"
+        case givenCents = "given_cents"
+        case remainingCents = "remaining_cents"
+    }
+}
+
 /// The `record_charity_income` / `correct_charity_income` jsonb return
 /// (`r13-charity.sql:190,239`).
 public struct CharityIncomeResult: Equatable, Codable {

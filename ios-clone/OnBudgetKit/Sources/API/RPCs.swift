@@ -567,6 +567,29 @@ extension RPCClient {
         return try await call(name: "record_charity_income", params: params)
     }
 
+    /// `record_charity_cash_gift(p_household_id, p_amount_cents,
+    /// p_gift_date, p_note)` (`supabase/charity-cash-gifts.sql`,
+    /// build 40, Nov 16, 2026). Admin only; amount positive; date
+    /// ≥ 2026-11-01; amount must not exceed the Available charity
+    /// balance (the RPC computes it server-side and refuses when
+    /// the gift would take Available below $0). Records a cash gift
+    /// given off-card: Available decreases, Given increases, Total
+    /// unchanged — and NO transaction row is created. Returns the
+    /// gift id and the new Given / Available.
+    public func recordCharityCashGift(
+        pHouseholdId: UUID,
+        pAmountCents: Int,
+        pGiftDate: String,
+        pNote: String
+    ) async throws -> CharityCashGiftResult {
+        try await call(name: "record_charity_cash_gift", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_amount_cents": pAmountCents,
+            "p_gift_date": pGiftDate,
+            "p_note": pNote,
+        ])
+    }
+
     /// `correct_charity_income(p_income_id, p_amount_cents,
     /// p_income_date, p_source_label, p_rate_bp, p_note)`
     /// (`r13-charity.sql:194-239`). Admin only; the old income must

@@ -376,13 +376,13 @@ export function autoMergeEligible(
   if (isToiremorgMerchant(bankRow.merchant) || isToiremorgMerchant(emailRow.merchant)) {
     return { eligible: false, reason: 'toiremorg pair never auto-merges' };
   }
-  const nb = normalizeMerchant(bankRow.merchant);
-  const ne = normalizeMerchant(emailRow.merchant);
+  const nb = merchantRuleSquash(bankRow.merchant);
+  const ne = merchantRuleSquash(emailRow.merchant);
   let related = nb === ne || merchantsRelated(bankRow.merchant, emailRow.merchant);
   if (!related) {
     for (const a of opts.aliases ?? []) {
-      const x = normalizeMerchant(a.name_a);
-      const y = normalizeMerchant(a.name_b);
+      const x = merchantRuleSquash(a.name_a);
+      const y = merchantRuleSquash(a.name_b);
       if ((x === nb && y === ne) || (x === ne && y === nb)) { related = true; break; }
     }
   }
@@ -447,9 +447,20 @@ export async function findCoveringBankRow(
 // deno-lint-ignore no-explicit-any
 type SupaAdmin = { from: (table: string) => any };
 
+// STANDING RULE (owner, Nov 16, 2026 — build 40): same date +
+// same amount + similar merchant + one Email + one Bank = the SAME
+// transaction and must auto-merge (bank row kept). Slight spelling
+// differences — punctuation (apostrophe), case, whitespace, minor
+// variation — must NOT prevent the merge. So the comparison uses
+// the SQUASH (UPPER + strip every non-alphanumeric), not the
+// normalizeMerchant key (which keeps internal punctuation:
+// "Cocoaccino's" never matched "Cocoaccinos" by key, so the $3.13
+// Bank+Email pair never merged). No fuzzy matching: squash
+// equality / substring only. TOIREMORG never merges and ambiguity
+// refuses — those safeguards are separate and unchanged.
 export function merchantsRelated(a: string, b: string): boolean {
-  const na = normalizeMerchant(a);
-  const nb = normalizeMerchant(b);
+  const na = merchantRuleSquash(a);
+  const nb = merchantRuleSquash(b);
   if (!na || !nb || na === nb) return false;
   if (na.length < 4 || nb.length < 4) return false;
   return na.includes(nb) || nb.includes(na);
@@ -511,14 +522,14 @@ export async function flagLookalikes(
     }
     const aliasSet = new Set<string>();
     for (const a of aliases) {
-      const x = normalizeMerchant(a.name_a);
-      const y = normalizeMerchant(a.name_b);
+      const x = merchantRuleSquash(a.name_a);
+      const y = merchantRuleSquash(a.name_b);
       aliasSet.add(`${x}|${y}`);
       aliasSet.add(`${y}|${x}`);
     }
     const related = (m1: string, m2: string): boolean => {
       if (merchantsRelated(m1, m2)) return true;
-      if (aliasSet.has(`${normalizeMerchant(m1)}|${normalizeMerchant(m2)}`)) return true;
+      if (aliasSet.has(`${merchantRuleSquash(m1)}|${merchantRuleSquash(m2)}`)) return true;
       const r1 = matchMerchantRule(rules, m1);
       const r2 = matchMerchantRule(rules, m2);
       return !!r1 && !!r2 && normalizeMerchant(r1.display_name) === normalizeMerchant(r2.display_name);

@@ -78,15 +78,95 @@ struct WidgetEntry: TimelineEntry {
 /// on every foreground, and on every Home refresh). If the app has
 /// not saved new numbers yet, the button re-shows the last saved
 /// ones; opening the app is still what gets new numbers.
+/// Sync button (build 36, owner Nov 16, 2026 — made REAL in build
+/// 40): a small refresh icon, top-right in the header row of every
+/// size. Tapping it fetches FRESH dashboard numbers from Supabase —
+/// the same week-left / charity figures the app shows — writes a NEW
+/// snapshot, and reloads the timeline, so the new numbers appear
+/// without opening the app. (Build 36 only reloaded the timeline
+/// from the LAST SAVED snapshot, which is only written when the app
+/// is opened — so if the app had not been opened, tapping sync
+/// re-displayed the same stale numbers and looked dead. Owner, Nov
+/// 16, 2026: "Sync button on widget doesn't look like it does
+/// anything..")
+///
+/// HOW IT FETCHES (build 40): the app mirrors its session into the
+/// shared App Group container on every save (MirroredSessionStore),
+/// and writes the household id alongside the snapshot. The intent
+/// builds a SupabaseClient on an App-Group-backed session store,
+/// calls compute-week + the charity summary (active income, verified
+/// gifts, cash gifts), and writes a new snapshot. The fund names
+/// ride along from the existing snapshot (a rename does not change
+/// the numbers, and the names are already pushed there on rename).
+/// When there is no session / no household id / the fetch fails
+/// (signed out, token expired, offline), the intent falls back to
+/// reloading the last saved snapshot — the widget keeps showing its
+/// last-known numbers with the stale dot, never a blank. The
+/// visible result is the NEW numbers appearing; the button itself
+/// is a plain refresh icon (a spinner on the button is not
+/// available to a widget intent — the numbers changing IS the
+/// feedback).
 struct RefreshWidgetIntent: AppIntent {
     static var title: LocalizedStringResource = "Refresh Widget"
-    static var description = IntentDescription("Refresh the widget from the latest saved balances.")
+    static var description = IntentDescription("Refresh the widget with fresh balances from the server.")
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
-        // getTimeline re-reads WidgetSnapshotStore on every reload.
+        await Self.refreshSnapshot()
         WidgetCenter.shared.reloadAllTimelines()
         return .result()
+    }
+
+    /// Fetch fresh dashboard numbers and write a new snapshot.
+    /// Returns false when there was nothing fresh to write (no
+    /// session / no household / fetch failed) — the caller still
+    /// reloads the timeline from the last saved snapshot.
+    @discardableResult
+    static func refreshSnapshot() async -> Bool {
+        guard let householdId = WidgetSnapshotStore.readHouseholdId() else { return false }
+        // The session mirrored into the App Group by the app
+        // (MirroredSessionStore). No session → signed out (or the
+        // app has never saved one) → nothing fresh to fetch.
+        guard let groupDefaults = UserDefaults(suiteName: WidgetSnapshotStore.groupID) else { return false }
+        let store = UserDefaultsSessionStore(defaults: groupDefaults)
+        guard store.load() != nil else { return false }
+        let client = SupabaseClient(store: store)
+        do {
+            let week = try await client.functions.computeWeek(householdId: householdId)
+            async let income = client.postgrest.activeCharityIncome(householdId: householdId)
+            async let given = client.postgrest.verifiedCharityGiftAmounts(householdId: householdId)
+            let incomeRows = try await income
+            let givenAmounts = try await given
+            // Cash gifts (build 40): fault-tolerant — if the
+            // charity_cash_gifts table does not exist yet (the SQL
+            // not applied), the fetch throws and the gifts read as
+            // empty rather than failing the whole sync.
+            let cashGiftRows: [CharityCashGift]
+            do {
+                cashGiftRows = try await client.postgrest.charityCashGifts(householdId: householdId)
+            } catch {
+                cashGiftRows = []
+            }
+            let committed = incomeRows.filter { $0.status == "active" }.reduce(0) { $0 + $1.committedCents }
+            let givenTotal = givenAmounts.reduce(0, +) + cashGiftRows.reduce(0) { $0 + $1.amountCents }
+            // The fund names ride along from the existing snapshot
+            // (a rename pushes them there immediately, and a Home
+            // refresh rewrites them) — a sync must not drop them.
+            let fundNames = WidgetSnapshotStore.read()?.fundNames
+            WidgetSnapshotStore.write(WidgetSnapshot(
+                weekStart: week.weekStart,
+                availableCents: week.availableCents,
+                charityRemainingCents: committed - givenTotal,
+                spentCents: week.chargesCents,
+                charityGivenCents: givenTotal,
+                charityCommittedCents: committed,
+                fundNames: fundNames,
+                computedAt: Date()
+            ))
+            return true
+        } catch {
+            return false
+        }
     }
 }
 
@@ -733,6 +813,12 @@ struct OnBudgetWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "OnBudgetWidget", provider: Provider()) { entry in
             WidgetView(entry: entry)
+                // Build 40 (owner, Nov 16, 2026): tapping the widget
+                // always opens the HOME main page — never a fund, a
+                // sub-view, or wherever the app was last left.
+                // onbudget://home is handled in OnBudgetApp's
+                // onOpenURL (AppState.goHome()).
+                .widgetURL(URL(string: "onbudget://home"))
         }
         .configurationDisplayName("OnBudget")
         .description("Weekly spending balance and charity balance.")

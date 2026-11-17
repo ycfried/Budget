@@ -211,39 +211,91 @@ public struct CharityIncomeForm: View {
 //
 // Build 39 (owner, Nov 16, 2026): the owner decides to give an
 // amount (e.g. $25) and adds it by hand to the available charity
-// balance. Full-width amount field ($ prefix, shared
-// DollarTextField, 17pt / 48pt) + a full-width Add button, in the
-// build-37/38 full-width editor style. No separate heading — the
-// button says what the section does, and the muted line explains
-// it, so no word is repeated (standing rule). The amount must be
-// positive: zero / negative / empty shows a plain-language error
-// and keeps the typed input; there is no greyed-out button (owner
-// rule, Nov 13). On success the field clears and the view model
-// refreshes, so the new Available shows on Funds, Home and the
-// widget from the same server source. The 10% default rate, the
-// Record Income flow and Given/Pending are untouched.
+// balance. Build 40 (owner, Nov 16, 2026): the button opens a
+// POPUP (sheet) to fill out the amount — the inline $ field +
+// button in the detail is gone ("This button should bring up a
+// popup to fill out."). The button keeps its label (with the
+// fund's CURRENT name, e.g. "Add to Tzedaka"), full-width,
+// primary blue, and stays primary blue vs the grey "Record
+// Income" below it. The popup has the amount field + Add/Cancel;
+// validation lives INSIDE the popup (amount must be above $0.00 —
+// the error shows in the popup in plain language and the popup
+// does not close on a bad amount). On success the popup closes,
+// the field clears and the view model refreshes, so the new
+// Available shows on Funds, Home and the widget from the same
+// server source (record_charity_income, 100% rate override,
+// source "Manual add"). The 10% default rate, the Record Income
+// flow and Given/Pending are untouched.
 
 public struct AddToCharitySection: View {
     @ObservedObject public var viewModel: FundsViewModel
-    @State private var amountText = ""
-    @State private var addError: String?
+    /// The fund's CURRENT display name (e.g. "Tzedaka" when
+    /// renamed) — the button and the popup title use it, so the
+    /// action reads with the name the owner chose.
+    public let fundName: String
+    @State private var showPopup = false
 
-    public init(viewModel: FundsViewModel) {
+    public init(viewModel: FundsViewModel, fundName: String) {
         self.viewModel = viewModel
+        self.fundName = fundName
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            FundsMuted("Add money to the available charity balance by hand.")
+        FundsPrimaryButton("Add to \(fundName)", isBusy: viewModel.busyAction == "add-charity", isLarge: true) {
+            showPopup = true
+        }
+        .accessibilityIdentifier("funds.addToCharity")
+        .sheet(isPresented: $showPopup) {
+            AddToCharitySheet(
+                viewModel: viewModel,
+                fundName: fundName,
+                onClose: { showPopup = false }
+            )
+            .presentationSizing(.fitted)
+        }
+    }
+}
+
+/// The Add to Charity popup (owner, Nov 16, 2026 — build 40):
+/// an amount field + Add/Cancel, in the rename sheet's style
+/// (iPad 600pt centred, 17pt). Validation lives here: the amount
+/// must be above $0.00 — empty / zero / negative shows a
+/// plain-language error INSIDE the popup and the popup stays open
+/// (the field keeps the typed input). On success the popup closes,
+/// the field clears, and the Available balance updates everywhere.
+public struct AddToCharitySheet: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    public let fundName: String
+    public var onClose: () -> Void
+    @State private var amountText = ""
+    @State private var addError: String?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    public init(viewModel: FundsViewModel, fundName: String, onClose: @escaping () -> Void = {}) {
+        self.viewModel = viewModel
+        self.fundName = fundName
+        self.onClose = onClose
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: TitleCase.apply(to: "Add to \(fundName)"), onClose: onClose)
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
-            FundsPrimaryButton("Add to Charity", isBusy: viewModel.busyAction == "add-charity", isLarge: true) {
-                add()
-            }
             if let addError {
                 FundsErrorBox(addError)
             }
+            HStack(spacing: 12) {
+                FundsPrimaryButton("Add", isBusy: viewModel.busyAction == "add-charity") {
+                    add()
+                }
+                FundsTertiaryButton("Cancel") { onClose() }
+            }
         }
-        .accessibilityIdentifier("funds.addToCharity")
+        .padding()
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // rename sheet.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 
     private func add() {
@@ -257,6 +309,138 @@ public struct AddToCharitySection: View {
             // stays beside the error (F-P1-4).
             if await viewModel.addToCharity(amountCents: cents) {
                 amountText = ""
+                onClose()
+            }
+        }
+    }
+}
+
+// MARK: - Record a Gift (cash given off-card, admin only)
+//
+// Build 40 (owner, Nov 16, 2026): the owner gives charity in CASH
+// and wants to take it off what he owes — Available decreases,
+// Given increases, Total (committed) unchanged — WITHOUT creating a
+// transaction row (cash is not traceable as a bank/email transaction
+// and would confuse the transaction history). The gift IS recorded
+// on the charity fund and appears in the Charity Activity &
+// Transactions feed. The button opens a POPUP (sheet, like the Add
+// to Charity popup: iPad 600pt, 17pt) with an amount field + an
+// optional note + Record/Cancel. Validation lives INSIDE the popup:
+// the amount must be above $0.00 and must not exceed the Available
+// balance (the RPC refuses when it would take Available below $0) —
+// the error shows in the popup in plain language and the popup does
+// not close on a bad amount. On success the popup closes, the field
+// clears, and the balances update everywhere (record_charity_cash_gift).
+// The button and the popup title use the fund's CURRENT name (e.g.
+// "Record a Gift to Tzedaka").
+
+public struct RecordCashGiftSection: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    /// The fund's CURRENT display name (e.g. "Tzedaka" when renamed).
+    public let fundName: String
+    @State private var showPopup = false
+
+    public init(viewModel: FundsViewModel, fundName: String) {
+        self.viewModel = viewModel
+        self.fundName = fundName
+    }
+
+    public var body: some View {
+        // The Charity card now stacks THREE full-width buttons
+        // (Add to Charity / Record a Gift / Record Income). The
+        // standing no-adjacent-same-color rule (Nov 4, 2026) puts
+        // pale #bfdbfe as the middle tier of a three-button row, so
+        // this middle button is PALE — blue, pale, grey, no two
+        // adjacent share a color — and isLarge so all three are the
+        // same size (17pt, full width).
+        FundsPaleButton("Record a Gift", isLarge: true) {
+            showPopup = true
+        }
+        .accessibilityIdentifier("funds.recordCashGift")
+        .sheet(isPresented: $showPopup) {
+            RecordCashGiftSheet(
+                viewModel: viewModel,
+                fundName: fundName,
+                onClose: { showPopup = false }
+            )
+            .presentationSizing(.fitted)
+        }
+    }
+}
+
+/// The Record a Gift popup (owner, Nov 16, 2026 — build 40): an
+/// amount field + an optional note + Record/Cancel, in the rename
+/// sheet's style (iPad 600pt centred, 17pt). Validation lives here:
+/// the amount must be above $0.00 and must not exceed the Available
+/// balance — empty / zero / negative / over-Available shows a
+/// plain-language error INSIDE the popup and the popup stays open
+/// (the field keeps the typed input). On success the popup closes,
+/// the field clears, and the balances update everywhere.
+public struct RecordCashGiftSheet: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    public let fundName: String
+    public var onClose: () -> Void
+    @State private var amountText = ""
+    @State private var noteText = ""
+    @State private var giftError: String?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    public init(viewModel: FundsViewModel, fundName: String, onClose: @escaping () -> Void = {}) {
+        self.viewModel = viewModel
+        self.fundName = fundName
+        self.onClose = onClose
+    }
+
+    /// The Available charity balance, for the over-Available check
+    /// (client-side; the RPC re-checks server-side and refuses too).
+    private var availableCents: Int? { viewModel.charitySummary?.remainingCents }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: TitleCase.apply(to: "Record a Gift to \(fundName)"), onClose: onClose)
+            if let availableCents {
+                FundsMuted("Available to give: \(MoneyFormat.formatCents(availableCents)). The gift comes off Available and goes into Given.")
+            }
+            DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
+            TextField("Note (optional)", text: $noteText)
+                .font(.system(size: 17))
+                .textFieldStyle(.roundedBorder)
+                .frame(minHeight: 48)
+                .autocorrectionDisabled()
+            if let giftError {
+                FundsErrorBox(giftError)
+            }
+            HStack(spacing: 12) {
+                FundsPrimaryButton("Record", isBusy: viewModel.busyAction == "record-cash-gift") {
+                    record()
+                }
+                FundsTertiaryButton("Cancel") { onClose() }
+            }
+        }
+        .padding()
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // rename sheet.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+    }
+
+    private func record() {
+        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else {
+            giftError = "Enter an amount above $0.00."
+            return
+        }
+        if let availableCents, cents > availableCents {
+            giftError = "That is more than the \(MoneyFormat.formatCents(availableCents)) available to give."
+            return
+        }
+        giftError = nil
+        Task {
+            // Clear only on success — on failure the typed input
+            // stays beside the error (F-P1-4).
+            if await viewModel.recordCharityCashGift(amountCents: cents, note: noteText) {
+                amountText = ""
+                noteText = ""
+                onClose()
             }
         }
     }
@@ -289,11 +473,15 @@ public struct CharityIncomeHistory: View {
     private enum FeedItem: Identifiable {
         case income(CharityIncome)
         case gift(Transaction)
+        /// A cash gift given off-card (build 40, Nov 16, 2026):
+        /// recorded on the charity fund, NOT a transaction row.
+        case cashGift(CharityCashGift)
 
         var id: String {
             switch self {
             case .income(let row): return "income-\(row.id.uuidString)"
             case .gift(let tx): return "gift-\(tx.id.uuidString)"
+            case .cashGift(let gift): return "cashgift-\(gift.id.uuidString)"
             }
         }
 
@@ -301,6 +489,7 @@ public struct CharityIncomeHistory: View {
             switch self {
             case .income(let row): return row.incomeDate
             case .gift(let tx): return tx.date
+            case .cashGift(let gift): return gift.giftDate
             }
         }
     }
@@ -317,11 +506,16 @@ public struct CharityIncomeHistory: View {
     private var feed: [FeedItem] {
         var items: [FeedItem] = viewModel.charityIncome.map { .income($0) }
         items += giftTransactions.map { .gift($0) }
+        // Cash gifts given off-card (build 40): recorded on the
+        // charity fund, not transaction rows — this feed is their
+        // audit trail, so they appear here with the "Cash gift"
+        // label.
+        items += viewModel.charityCashGifts.map { .cashGift($0) }
         return Array(items.sorted { $0.sortDate > $1.sortDate }.prefix(20))
     }
 
     private var totalCount: Int {
-        viewModel.charityIncome.count + giftTransactions.count
+        viewModel.charityIncome.count + giftTransactions.count + viewModel.charityCashGifts.count
     }
 
     public var body: some View {
@@ -341,6 +535,8 @@ public struct CharityIncomeHistory: View {
                         incomeRow(row)
                     case .gift(let tx):
                         FundTransactionRow(tx)
+                    case .cashGift(let gift):
+                        cashGiftRow(gift)
                     }
                     if index < feed.count - 1 {
                         Divider()
@@ -401,7 +597,40 @@ public struct CharityIncomeHistory: View {
             }
         }
     }
+
+    /// A cash gift given off-card (build 40, Nov 16, 2026): money
+    /// given, so it shows in charity BLUE by kind — the same
+    /// treatment as a gift transaction. Minimal overview (label +
+    /// amount); the full detail — date, note, "cash, no transaction
+    /// row" — expands on tap.
+    private func cashGiftRow(_ gift: CharityCashGift) -> some View {
+        FundsActivityRow {
+            HStack(spacing: 4) {
+                Text("Cash gift")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
+                Text("·")
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                Text(MoneyFormat.formatCents(gift.amountCents))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.charity)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+        } detail: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Given in cash on \(MoneyFormat.fmtLong(gift.giftDate)). No transaction row — cash is not traceable as a bank/email transaction.")
+                if !gift.note.isEmpty {
+                    Text(gift.note)
+                }
+            }
+            .font(.system(size: 14))
+            .foregroundStyle(Color(hex: "#6b7280"))
+        }
+    }
 }
+
 
 // MARK: - Money Added history (Fund Activity, admin only — spec §9.2)
 //
@@ -429,17 +658,32 @@ public struct FundTopupsHistory: View {
         }
     }
 
+    /// The fund-ledger 'allocation' entries (build 40, Nov 16,
+    /// 2026): direct fund spending — "Spend from Fund" and cash
+    /// spent out of Savings — recorded as negative fund_ledger
+    /// rows, NOT transaction rows, so they appear nowhere until now.
+    /// Only negative allocations (money out); positive ledger rows
+    /// (top-ups, releases) are shown by their own feed items.
+    private var fundAllocations: [FundLedgerEntry] {
+        viewModel.fundLedger.filter { $0.kind == "allocation" && $0.amountCents < 0 }
+    }
+
     /// One combined feed item. Top-ups sort by their created date;
     /// transactions by their date — both `YYYY-MM-DD` prefixes, so
     /// a plain string sort is newest-first.
     private enum FeedItem: Identifiable {
         case topup(FundTopup)
         case transaction(Transaction)
+        /// A fund-ledger 'allocation' (build 40): money spent out of
+        /// the fund directly — "Spend from Fund" / cash spent — not
+        /// a transaction row.
+        case allocation(FundLedgerEntry)
 
         var id: String {
             switch self {
             case .topup(let row): return "topup-\(row.clientKey)"
             case .transaction(let tx): return "tx-\(tx.id.uuidString)"
+            case .allocation(let entry): return "allocation-\(entry.id?.uuidString ?? "\(entry.createdAt ?? "")-\(entry.amountCents)-\(entry.note)")"
             }
         }
 
@@ -447,6 +691,7 @@ public struct FundTopupsHistory: View {
             switch self {
             case .topup(let row): return String(row.createdAt?.prefix(10) ?? "")
             case .transaction(let tx): return tx.date
+            case .allocation(let entry): return String(entry.createdAt?.prefix(10) ?? "")
             }
         }
     }
@@ -454,11 +699,16 @@ public struct FundTopupsHistory: View {
     private var feed: [FeedItem] {
         var items: [FeedItem] = viewModel.topups.map { .topup($0) }
         items += fundTransactions.map { .transaction($0) }
+        // Fund-ledger allocations (build 40): direct fund spending
+        // — "Spend from Fund" and cash spent out of Savings — which
+        // are NOT transaction rows, so this feed is their audit
+        // trail.
+        items += fundAllocations.map { .allocation($0) }
         return Array(items.sorted { $0.sortDate > $1.sortDate }.prefix(20))
     }
 
     private var totalCount: Int {
-        viewModel.topups.count + fundTransactions.count
+        viewModel.topups.count + fundTransactions.count + fundAllocations.count
     }
 
     public var body: some View {
@@ -474,6 +724,8 @@ public struct FundTopupsHistory: View {
                         topupRow(row)
                     case .transaction(let tx):
                         FundTransactionRow(tx)
+                    case .allocation(let entry):
+                        allocationRow(entry)
                     }
                     if index < feed.count - 1 {
                         Divider()
@@ -505,6 +757,41 @@ public struct FundTopupsHistory: View {
                 if !row.note.isEmpty {
                     Text(row.note)
                 }
+            }
+            .font(.system(size: 14))
+            .foregroundStyle(Color(hex: "#6b7280"))
+        }
+    }
+
+    /// A fund-ledger 'allocation' (build 40, Nov 16, 2026): money
+    /// spent out of the fund directly — "Spend from Fund" or cash
+    /// spent out of Savings. The amount is a negative ledger entry;
+    /// it shows as a plain (ink) outflow with a "−" prefix — NOT
+    /// green (it is money out, not in) and NOT red (it is a planned
+    /// fund use, not an over-budget error). Minimal overview (label
+    /// + amount); the full detail — date, note — expands on tap.
+    private func allocationRow(_ entry: FundLedgerEntry) -> some View {
+        FundsActivityRow {
+            HStack(spacing: 4) {
+                Text(entry.note.hasPrefix("Cash spent") ? "Cash spent" : "Spent from fund")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
+                Text("·")
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                Text("−\(MoneyFormat.formatCents(-entry.amountCents))")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+        } detail: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(entry.createdAt.map { MoneyFormat.displayDay($0) } ?? "") · \(MoneyFormat.formatCents(-entry.amountCents)) taken out of the fund.")
+                if !entry.note.isEmpty {
+                    Text(entry.note)
+                }
+                Text("No transaction row — recorded on the fund only.")
             }
             .font(.system(size: 14))
             .foregroundStyle(Color(hex: "#6b7280"))

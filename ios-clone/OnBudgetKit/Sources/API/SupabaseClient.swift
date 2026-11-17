@@ -233,6 +233,46 @@ public final class UserDefaultsSessionStore: SessionStore {
     }
 }
 
+/// A session store that mirrors every save to the shared App Group
+/// container (build 40, Nov 16, 2026 — widget sync). The widget
+/// extension cannot read the app's standard UserDefaults, so the
+/// session must ALSO live in the App Group for the widget to fetch
+/// fresh numbers on a sync tap. This wraps the app's real store
+/// (UserDefaults or the biometric Keychain) and mirrors each save —
+/// sign-in, token refresh, sign-out — to the App Group under the
+/// same key. Reads always come from the real store, so the app's
+/// auth behavior is unchanged; the mirror is write-only from the
+/// app's side and read-only from the widget extension's side.
+/// The mirror holds the same AuthSession JSON (access + refresh
+/// tokens) the app already stores in UserDefaults — it does not
+/// weaken storage, it only widens the container to the app's own
+/// extension. Sign-out clears both copies.
+public final class MirroredSessionStore: SessionStore {
+    private let inner: SessionStore
+    private let mirrorDefaults: UserDefaults?
+    private let key: String
+
+    public init(inner: SessionStore, groupID: String = WidgetSnapshotStore.groupID, key: String = "onbudget.supabase.session.v1") {
+        self.inner = inner
+        self.mirrorDefaults = UserDefaults(suiteName: groupID)
+        self.key = key
+    }
+
+    public func load() -> AuthSession? {
+        inner.load()
+    }
+
+    public func save(_ session: AuthSession?) {
+        inner.save(session)
+        if let session {
+            let data = try? JSONEncoder().encode(session)
+            mirrorDefaults?.set(data, forKey: key)
+        } else {
+            mirrorDefaults?.removeObject(forKey: key)
+        }
+    }
+}
+
 /// In-memory store, for tests and for callers that manage persistence
 /// themselves.
 public final class InMemorySessionStore: SessionStore {

@@ -194,18 +194,30 @@ public struct CharityRateSection: View {
                 // 48pt tall and the Save / Reset are the editor
                 // sizes, not the small list-row sizes. The value is
                 // untouched: the field still shows the live default.
-                TextField(MoneyFormat.formatRateBp(defaultRateBp), text: $rateText)
-                    .keyboardType(.decimalPad)
-                    .font(.system(size: 17))
-                    .textFieldStyle(.roundedBorder)
-                    // Build 37 (owner, Nov 16, 2026): the field
-                    // expands to fill the row — the 72pt field left
-                    // a large empty space on the right. Save and
-                    // Reset sit at the row's right end.
-                    .frame(maxWidth: .infinity, minHeight: 48)
-                Text("%")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
+                // Owner, Nov 16, 2026 (build 40): the "%" is a LEFT
+                // prefix INSIDE the field ("Percent sign on the
+                // left."), mirroring the "$" prefix in
+                // DollarTextField — nothing sits on the right.
+                HStack(spacing: 2) {
+                    Text("%")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    TextField(MoneyFormat.formatRateBp(defaultRateBp), text: $rateText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 17))
+                }
+                .padding(.horizontal, 12)
+                // Build 37 (owner, Nov 16, 2026): the field
+                // expands to fill the row — the 72pt field left
+                // a large empty space on the right. Save and
+                // Reset sit at the row's right end.
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .background(.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
                 FundsEditorPrimaryButton("Save", isBusy: viewModel.busyAction == "rate") {
                     saveRate()
                 }
