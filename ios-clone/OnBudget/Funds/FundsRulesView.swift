@@ -530,6 +530,12 @@ public struct SpendingAllowanceSection: View {
     @State private var allowanceText = ""
     @State private var allowanceError: String?
     @State private var confirmChange: AllowanceConfirm?
+    /// Large-purchase threshold field (Nov 16, 2026): same editor
+    /// shape as the allowance field.
+    @State private var thresholdText = ""
+    @State private var thresholdError: String?
+    /// Add to Budget popup (Nov 16, 2026).
+    @State private var showAddToBudget = false
     /// True inside the Spending fund container: no card of its own.
     public let bare: Bool
     /// Opens the Temporary Allowance form (owned by FundsView).
@@ -549,6 +555,20 @@ public struct SpendingAllowanceSection: View {
 
     private var isAdmin: Bool { viewModel.context.isAdmin }
     private var savedBase: Int? { viewModel.baseAllowanceCents }
+
+    /// The saved large-purchase threshold, in cents. Nil until
+    /// loaded (or when the column is not yet migrated) — the $100
+    /// default applies then.
+    private var savedThreshold: Int? { viewModel.largePurchaseThresholdCents ?? 10000 }
+
+    private var thresholdCents: Int? {
+        MoneyFormat.parseDollarsStrict(thresholdText)
+    }
+
+    private var thresholdDiffers: Bool {
+        guard let pending = thresholdCents else { return false }
+        return pending != savedThreshold
+    }
 
     private var pendingCents: Int? {
         MoneyFormat.parseDollarsStrict(allowanceText)
@@ -579,8 +599,9 @@ public struct SpendingAllowanceSection: View {
             }
         }
         .accessibilityIdentifier("funds.spendingAllowance")
-        .onAppear { syncField() }
+        .onAppear { syncField(); syncThresholdField() }
         .onChange(of: savedBase) { _, _ in syncField() }
+        .onChange(of: savedThreshold) { _, _ in syncThresholdField() }
         .alert(item: $confirmChange) { change in
             let message: String
             if let old = change.oldCents {
@@ -613,9 +634,11 @@ public struct SpendingAllowanceSection: View {
             if let base = savedBase {
                 if isAdmin {
                     allowanceEditor
+                    thresholdEditor
                 } else {
                     FundsBreakdownRow("Weekly Allowance", value: MoneyFormat.formatCents(base))
-                    FundsMuted("Only the admin can change the weekly allowance.")
+                    FundsBreakdownRow("Large Purchase Threshold", value: MoneyFormat.formatCents(savedThreshold))
+                    FundsMuted("Only the admin can change the weekly allowance and the large purchase threshold.")
                 }
                 tempBlock
             } else if let error = viewModel.allowanceError {
@@ -633,6 +656,55 @@ public struct SpendingAllowanceSection: View {
         if let base = savedBase {
             allowanceText = String(format: "%.2f", Double(base) / 100)
         }
+    }
+
+    private func syncThresholdField() {
+        thresholdText = String(format: "%.2f", Double(savedThreshold) / 100)
+    }
+
+    /// The large-purchase threshold editor (Nov 16, 2026): the same
+    /// shape as the allowance editor (label on its own line, $ field
+    /// + Save + Reset on the row below). A purchase at or above this
+    /// amount sends a large purchase notification.
+    private var thresholdEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Large Purchase Threshold")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            HStack(spacing: 10) {
+                DollarTextField(text: $thresholdText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
+                FundsEditorPrimaryButton("Save", isBusy: viewModel.busyAction == "large-purchase-threshold") {
+                    thresholdSaveTapped()
+                }
+                FundsEditorQuietButton("Reset") {
+                    syncThresholdField()
+                    thresholdError = nil
+                }
+            }
+            if thresholdDiffers {
+                FundsMuted("A purchase at or above this amount sends a large purchase notification.")
+            } else if thresholdCents != nil {
+                FundsMuted("This is already the large purchase threshold.")
+            } else {
+                FundsMuted("Enter a valid amount (empty is not 0).")
+            }
+            if let thresholdError {
+                FundsErrorBox(thresholdError)
+            }
+        }
+    }
+
+    private func thresholdSaveTapped() {
+        guard let cents = thresholdCents, cents >= 0 else {
+            thresholdError = "Enter a valid amount (empty is not 0)."
+            return
+        }
+        guard thresholdDiffers else {
+            thresholdError = "That is already the large purchase threshold."
+            return
+        }
+        thresholdError = nil
+        Task { await viewModel.setLargePurchaseThreshold(cents: cents) }
     }
 
     private var allowanceEditor: some View {
@@ -706,9 +778,87 @@ public struct SpendingAllowanceSection: View {
                 FundsMuted("This week's total is \(MoneyFormat.formatCents(temp)) instead of \(MoneyFormat.formatCents(base)).")
             }
             if isAdmin {
-                FundsEditorTertiaryButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance") {
+                // Add to Budget (Nov 16, 2026): a one-time top-up to
+                // this week's budget. PRIMARY BLUE, full-width large
+                // (17pt, 16pt vertical padding) — the SAME SIZE as
+                // the Temporary Allowance button below it, a
+                // DIFFERENT color (standing no-adjacent-same-color
+                // rule; the owner reinforced it Nov 16, 2026). The
+                // Temporary Allowance button moves from the editor
+                // size (16pt, 12pt padding) to the same large size so
+                // the two match — the Charity fund's stacked-button
+                // pattern.
+                FundsPrimaryButton("Add to Budget", isBusy: viewModel.busyAction == "add-budget", isLarge: true) {
+                    showAddToBudget = true
+                }
+                FundsTertiaryButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance", isLarge: true) {
                     onOpenTemp()
                 }
+            }
+        }
+    }
+    .sheet(isPresented: $showAddToBudget) {
+        AddToBudgetSheet(viewModel: viewModel, onClose: { showAddToBudget = false })
+    }
+}
+
+// MARK: - Add to Budget (Nov 16, 2026)
+
+/// The Add to Budget popup (owner, Nov 16, 2026): a one-time top-up
+/// to the CURRENT week's budget only. An amount field + Add/Cancel,
+/// in the Add to Charity popup's style (iPad 600pt centred, 17pt).
+/// Validation lives here: the amount must be above $0.00 — empty /
+/// zero / negative shows a plain-language error INSIDE the popup and
+/// the popup stays open (the field keeps the typed input). The user
+/// never does the math — they enter only the amount to add; the
+/// server adds it to the week's current total. On success the popup
+/// closes, the field clears, and the week's budget updates
+/// everywhere (add_to_weekly_budget).
+public struct AddToBudgetSheet: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    public var onClose: () -> Void
+    @State private var amountText = ""
+    @State private var addError: String?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
+        self.viewModel = viewModel
+        self.onClose = onClose
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: "Add to Budget", onClose: onClose)
+            DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
+            if let addError {
+                FundsErrorBox(addError)
+            }
+            HStack(spacing: 12) {
+                FundsPrimaryButton("Add", isBusy: viewModel.busyAction == "add-budget") {
+                    add()
+                }
+                FundsTertiaryButton("Cancel") { onClose() }
+            }
+        }
+        .padding()
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // rename sheet and the Add to Charity popup.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+    }
+
+    private func add() {
+        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else {
+            addError = "Enter an amount above $0.00."
+            return
+        }
+        addError = nil
+        Task {
+            // Clear only on success — on failure the typed input
+            // stays beside the error (F-P1-4).
+            if await viewModel.addToBudget(amountCents: cents) {
+                amountText = ""
+                onClose()
             }
         }
     }

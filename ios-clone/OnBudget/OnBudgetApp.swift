@@ -8,6 +8,7 @@ import WidgetKit
 /// WKWebView wrapper.
 @main
 struct OnBudgetApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppViewModel()
     @Environment(\.scenePhase) private var scenePhase
 

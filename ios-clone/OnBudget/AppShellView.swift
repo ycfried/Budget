@@ -174,7 +174,8 @@ public struct AppShellView: View {
                 Task { await appState.signOut() }
                 appState.showToast(message, kind: .info)
             },
-            onShowWeekTransactions: { appState.showTransactionsForWeek($0) }
+            onShowWeekTransactions: { appState.showTransactionsForWeek($0) },
+            unregisterPushToken: { await appState.unregisterPushToken() }
         )
     }
 
