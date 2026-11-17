@@ -83,7 +83,7 @@ import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
   chargeContribution,
   linkedRefundNormalPortionCents, restorationDebtCutsAfterClose,
-  debtRulePayment, debtPaymentsAfterClose,
+  debtRulePayment, debtPaymentsAfterClose, debtAdjustmentsAfterClose,
 } from './engine.mjs';
 
 const corsHeaders = {
@@ -290,6 +290,30 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Manual debt adjustments (Add / Set Carried Debt, build 41):
+    // adjustments dated after the latest close increase (or, for a
+    // Set below the balance, decrease) the incoming debt, in the
+    // same window as the payments. With no close yet, every
+    // adjustment up to this week counts — a household with no
+    // closed week can still carry manually added debt. A missing
+    // table (the SQL not applied yet) means no adjustments. Unlike
+    // the payments block above, this fetch is NOT gated on a close
+    // existing — the no-close case needs the rows too.
+    let debtAdjustmentsAfter = 0;
+    {
+      const adjRes = await supabase
+        .from('debt_adjustments')
+        .select('week_start, amount_cents')
+        .eq('household_id', householdId);
+      if (!adjRes.error) {
+        debtAdjustmentsAfter = debtAdjustmentsAfterClose(
+          adjRes.data ?? [],
+          latestCloseBefore ? latestCloseBefore.week_start : null,
+          weekStart,
+        );
+      }
+    }
+
     // Transactions for the household, paged whole-history
     // (fetchHouseholdTxns, B6). FALLBACK: without the migration's
     // linkage column, refunds net by date in their own week.
@@ -438,8 +462,8 @@ Deno.serve(async (req) => {
       ? 0
       : tempSum;
     const D = latestCloseBefore
-      ? Math.max(0, (latestCloseBefore.outgoing_debt_cents ?? 0) - restorationCuts - debtPaymentsAfter)
-      : 0;
+      ? Math.max(0, (latestCloseBefore.outgoing_debt_cents ?? 0) - restorationCuts - debtPaymentsAfter + debtAdjustmentsAfter)
+      : Math.max(0, debtAdjustmentsAfter);
     const C = Math.max(0, chargesNet);
 
     // Debt payment for this week (Carried Debt fund, build 29). A
