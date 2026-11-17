@@ -6,7 +6,5 @@
 	<array>
 		<string>group.com.onbudget.ios</string>
 	</array>
-	<key>aps-environment</key>
-	<string>production</string>
 </dict>
 </plist>
