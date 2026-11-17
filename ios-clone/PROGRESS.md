@@ -468,3 +468,5 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - Nov 17, 2026 (build-41, simulator trigger 2): full head (cb8accf — everything in the entry above). Run 1 (44018729782) was on the pre-feature head and is superseded by this run (concurrency cancels it).
 
 - Nov 17, 2026 (build-41, simulator run 2: 44022733197, head 1ff5ad8): FAILURE — kit did not compile: FundIcons.swift:64 "cannot find 'IndexSet' in scope" (FundOrderMove.moved uses IndexSet(integer:), a Foundation type, and the new file had no import). Fix: `import Foundation` in FundIcons.swift. Run 3 triggers on this commit.
+
+- Nov 17, 2026 (build-41, simulator run 3: 44024514213, head ec04826): FAILURE — kit compiled, but 2 kit tests failed (FundIconsAndReorderTests: testReorderMoveDownTakesTargetSlot + testReorderMoveAdjacentBothDirections). Root cause: my reading of Array.move(fromOffsets:toOffset:) was wrong — it inserts at toOffset minus the removed elements before it, so moving down landed one slot early. Fix: toOffset = to + 1 when from < to, to as-is when moving up. Run 4 triggers on this commit.
