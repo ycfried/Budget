@@ -580,7 +580,12 @@ public struct FundsExpandableCard<Expanded: View>: View {
         // + one rounded-rect clip. The header strip carries the
         // fund color; the white body sits directly below it, no
         // gap, no separate outline.
-        let pad: CGFloat = theme == nil ? 16 : 20
+        // Build 41 (owner, Nov 16, 2026 — "much bigger and look
+        // like cards.. a small shadow below each card"): the card
+        // is bigger (24pt side padding, taller header, 28pt
+        // amount) and carries the shared fundCardShadow, so the
+        // Funds cards lift exactly like the Home cards.
+        let pad: CGFloat = theme == nil ? 20 : 24
         return VStack(alignment: .leading, spacing: 0) {
             // Whole-area tap target (owner rule, Nov 11 2026,
             // and the Nov 15, 2026 app-wide pass): the ENTIRE
@@ -610,27 +615,34 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 // section underneath it.
                 expanded
                     .padding(.horizontal, pad)
-                    .padding(.top, 12)
+                    .padding(.top, 16)
                     .padding(.bottom, pad)
             }
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        // Build 41 (owner, Nov 16, 2026): a small shadow below
+        // the card — the shared fundCardShadow, so the Funds cards
+        // lift exactly like the Home cards.
+        .fundCardShadow()
     }
 
     /// The header strip (owner, Nov 16, 2026 — build 40): ONE ROW
     /// — icon in a white circle + title + (admin-only) pencil +
     /// amount + chevron, on the theme colour. The text colour is
-    /// the theme's onBanner colour — white on all four banners
-    /// since build 39 (the refined mid blue / muted grey have
-    /// enough depth for white; the build-38 light banners needed
-    /// ink). The icon sits on a WHITE circle in the fund color
-    /// (the reference's "$ in a white circle"). Loading / failed
+    /// the theme's onBanner colour — white on the dark Spending /
+    /// Debt banners, ink on the light Charity pale / Extra Fund
+    /// tertiary banners (build 41, 3-button scheme). The icon sits
+    /// on a WHITE circle in the theme's glyph colour (the
+    /// reference's "$ in a white circle"). Loading / failed
     /// show the same strip shape in WHITE / muted grey with grey
     /// skeleton faces — no colour until the numbers arrive, and
     /// never a bare "—" in amount type. (Owner, Nov 16, 2026 —
     /// build 38, "a bit too heavy": the amount is a touch smaller
-    /// and the strip a touch shorter than build 37.)
+    /// and the strip a touch shorter than build 37. Build 41,
+    /// owner Nov 16, 2026 — "much bigger": the amount is 28pt,
+    /// the title 20pt, the icon disc 36pt, 14pt vertical
+    /// padding.)
     private func headerStrip(pad: CGFloat) -> some View {
         // Header colour: WHITE while LOADING (owner, Nov 16, 2026
         // — build 40: the pale #dbeafe tint was horrendous, the
@@ -658,9 +670,11 @@ public struct FundsExpandableCard<Expanded: View>: View {
             if theme != nil && !isLoading && !amountIsStatus { return theme?.onBanner ?? .white }
             return DesignTokens.muted
         }()
-        // Pencil colour: white on the loaded theme banner (it sits
-        // on the colored header, next to the white title), muted
-        // grey on the loading/failed header.
+        // Pencil colour: the theme's onBanner colour on a loaded
+        // theme banner (it sits on the colored header, next to the
+        // title — white on dark banners, ink on the light Charity
+        // pale / Extra Fund tertiary banners since build 41),
+        // muted grey on the loading/failed header.
         let pencilColor: Color = {
             if theme != nil && !isLoading && !amountIsStatus { return theme?.onBanner ?? .white }
             return DesignTokens.muted
@@ -668,15 +682,17 @@ public struct FundsExpandableCard<Expanded: View>: View {
         return HStack(spacing: 10) {
             if let theme {
                 if isLoading || amountIsStatus {
-                    SkeletonBlock(width: 32, height: 32, cornerRadius: 16, animated: isLoading)
+                    SkeletonBlock(width: 36, height: 36, cornerRadius: 18, animated: isLoading)
                 } else {
                     // Icon in a white circle (owner, Nov 16, 2026 —
-                    // build 40 reference): the theme icon in the
-                    // fund color on a white disc.
+                    // build 40 reference): the theme's glyph colour
+                    // on a white disc (build 41 — the banner colour
+                    // itself is unreadable on white for the light
+                    // banners).
                     Image(systemName: theme.iconName)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.banner)
-                        .frame(width: 32, height: 32)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(theme.glyph)
+                        .frame(width: 36, height: 36)
                         .background(.white)
                         .clipShape(Circle())
                 }
@@ -686,10 +702,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 // 2026 — build 38): real dark-ink text on the
                 // placeholder read as a finished card. The failed
                 // state keeps the real title in ink.
-                SkeletonBlock(width: 140, height: 20, cornerRadius: 6, animated: true)
+                SkeletonBlock(width: 140, height: 22, cornerRadius: 6, animated: true)
             } else {
                 Text(TitleCase.apply(to: title))
-                    .font(.system(size: theme == nil ? 17 : 18, weight: .bold))
+                    .font(.system(size: theme == nil ? 17 : 20, weight: .bold))
                     .foregroundStyle(titleColor)
                     .lineLimit(1)
             }
@@ -715,15 +731,15 @@ public struct FundsExpandableCard<Expanded: View>: View {
             }
             Spacer()
             if isLoading || amountIsStatus {
-                // Sized to the loaded 24pt amount (owner, Nov 14,
+                // Sized to the loaded 28pt amount (owner, Nov 14,
                 // 2026: the 150-wide block was too small and the
                 // card looked empty while loading). Static (not
                 // shimmering) when failed — a failed load is not a
                 // loading state.
-                SkeletonBlock(width: 150, height: 30, cornerRadius: 8, animated: isLoading)
+                SkeletonBlock(width: 150, height: 34, cornerRadius: 8, animated: isLoading)
             } else {
                 Text(amountText)
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(theme == nil ? DesignTokens.ink : (theme?.onBanner ?? .white))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -734,7 +750,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
         }
         .padding(.horizontal, pad)
-        .padding(.vertical, 10)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(bannerColor)
     }

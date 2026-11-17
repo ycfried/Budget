@@ -500,7 +500,13 @@ public struct HomeView: View {
             // when it is empty (debt is $0), so the three cards read
             // as one unit, not three blocks floating on white. The
             // sections still breathe — 10pt, not zero.
-            VStack(alignment: .leading, spacing: 10) {
+            // Build 41 (owner, Nov 16, 2026 — "much bigger and
+            // look like cards.. a small shadow below each card"):
+            // the cards are bigger and each carries its own shadow,
+            // so the gap grows to 12pt — just enough air for the
+            // shadow to read without the cards touching. They are
+            // distinct cards now, not one fused unit.
+            VStack(alignment: .leading, spacing: 12) {
                 heroCard
                 // Charity + Extra Fund share one row, half-width
                 // each (owner, Nov 14, 2026 — supersedes the Nov 12
@@ -511,7 +517,7 @@ public struct HomeView: View {
                 // separate block below the row (build 39 put the
                 // values under the NEIGHBOURING card). One card open
                 // at a time (accordion rule unchanged).
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: 14) {
                     charityCard
                         .frame(maxWidth: .infinity, alignment: .leading)
                     fundCard
@@ -569,7 +575,7 @@ public struct HomeView: View {
     // number on the page). Owner, Nov 16, 2026 (build 40): ONE
     // UNIFIED CARD — a SHORT colored header strip on top (a "$"
     // icon in a white circle + "Spending" + the amount in one row,
-    // all white on deep blue) and a WHITE body below (the MAJORITY
+    // all white on primary blue) and a WHITE body below (the MAJORITY
     // of the card) holding the progress bar + spent line + chevron,
     // then the debt math line / allowance states. The color is a
     // header accent, not half the card — "the majority should be
@@ -591,6 +597,10 @@ public struct HomeView: View {
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        // Build 41 (owner, Nov 16, 2026): a small shadow below
+        // the card — the shared fundCardShadow, so the hero lifts
+        // exactly like the stat cards and the Funds page cards.
+        .fundCardShadow()
         .contentShape(Rectangle())
         // Whole-card tap target (owner, Nov 15, 2026 app-wide
         // pass): the card opens the Weekly sheet, not just the
@@ -612,9 +622,11 @@ public struct HomeView: View {
     /// allowance states when present. While loading the bar + spent
     /// line + debt math skeletons sit here (same sizes as the loaded
     /// content, so the body holds its size); while failed the error
-    /// box + Try Again sit here.
+    /// box + Try Again sit here. Build 41 (owner, Nov 16, 2026 —
+    /// "much bigger"): the body breathes more — 20pt sides, 16pt
+    /// top, 18pt bottom, 16pt between rows.
     private var heroWhiteBody: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             switch viewModel.week {
             case .loading:
                 SkeletonBlock(height: 8, cornerRadius: 4)
@@ -632,19 +644,20 @@ public struct HomeView: View {
                 heroLoadedContent(result)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 14)
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .padding(.bottom, 18)
     }
 
-    /// Banner colour: the Spending theme's banner (deep blue
-    /// #1d4ed8, build 38 — the bright primary blue was the wrong
-    /// colour) when loaded; WHITE while LOADING (owner, Nov 16,
-    /// 2026 — build 40: the pale #dbeafe tint was horrendous, the
-    /// original white background with grey skeleton shapes was
-    /// nicest); muted grey #e5e7eb when FAILED (a failed load
-    /// stays distinct from loading). The theme is the single
-    /// source — the hero reads it, never a hard-coded hex.
+    /// Banner colour: the Spending theme's banner (primary blue
+    /// #2f6bff since build 41 — the 3-button scheme; the deep blue
+    /// #1d4ed8 was the build-38/39 banner) when loaded; WHITE while
+    /// LOADING (owner, Nov 16, 2026 — build 40: the pale #dbeafe
+    /// tint was horrendous, the original white background with grey
+    /// skeleton shapes was nicest); muted grey #e5e7eb when FAILED
+    /// (a failed load stays distinct from loading). The theme is
+    /// the single source — the hero reads it, never a hard-coded
+    /// hex.
     private var heroBannerColor: Color {
         switch viewModel.week {
         case .loaded: return StatCardTheme.spending.banner
@@ -674,26 +687,32 @@ public struct HomeView: View {
     // tint); the sync spot holds a skeleton block so the header
     // never jumps when the numbers arrive. While failed the strip
     // is muted grey.
+    // Build 41 (owner, Nov 16, 2026 — "much bigger"): the amount
+    // is 30pt heavy on iPhone (36pt iPad), the title 20pt, the
+    // icon disc 36pt, the sync circle 40pt, and the strip carries
+    // 14pt vertical padding — the header reads as a big card
+    // header now, not a slim bar. Skeleton blocks match.
     private var heroHeaderStrip: some View {
         HStack(spacing: 8) {
             if case .loading = viewModel.week {
                 // Skeleton icon + title while loading (owner, Nov 16,
                 // 2026 — build 38): real dark-ink text on the
                 // placeholder read as a finished card.
-                SkeletonBlock(width: 30, height: 30, cornerRadius: 15)
-                SkeletonBlock(width: 110, height: 18, cornerRadius: 6)
+                SkeletonBlock(width: 36, height: 36, cornerRadius: 18)
+                SkeletonBlock(width: 110, height: 20, cornerRadius: 6)
             } else {
                 // "$" icon in a white circle (owner, Nov 16, 2026 —
-                // build 40 reference): the theme icon in the fund
-                // color on a white disc.
+                // build 40 reference): the theme's glyph colour on
+                // a white disc (build 41 — the banner colour itself
+                // is unreadable on white for the light banners).
                 Image(systemName: StatCardTheme.spending.iconName)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(StatCardTheme.spending.banner)
-                    .frame(width: 30, height: 30)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(StatCardTheme.spending.glyph)
+                    .frame(width: 36, height: 36)
                     .background(.white)
                     .clipShape(Circle())
                 Text(FundSectionID.spending.displayName(customNames: appState.fundNames))
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(heroBannerTextColor)
                     .lineLimit(1)
             }
@@ -704,12 +723,12 @@ public struct HomeView: View {
             // in build 39 — red text on blue does not read).
             switch viewModel.week {
             case .loading:
-                SkeletonBlock(width: 84, height: 22, cornerRadius: 6)
+                SkeletonBlock(width: 84, height: 30, cornerRadius: 6)
             case .failed:
                 EmptyView()
             case .loaded(let result):
                 Text(MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false))
-                    .font(.system(size: isIPad ? 30 : 24, weight: .heavy))
+                    .font(.system(size: isIPad ? 36 : 30, weight: .heavy))
                     .foregroundStyle(heroBannerTextColor)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
@@ -722,7 +741,7 @@ public struct HomeView: View {
             if viewModel.isAdmin {
                 switch viewModel.week {
                 case .loading:
-                    SkeletonBlock(width: 36, height: 36, cornerRadius: 18)
+                    SkeletonBlock(width: 40, height: 40, cornerRadius: 20)
                 case .loaded:
                     syncButton
                 case .failed:
@@ -731,7 +750,7 @@ public struct HomeView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 14)
         .background(heroBannerColor)
     }
 
@@ -747,14 +766,14 @@ public struct HomeView: View {
     private var syncButton: some View {
         Button { Task { await viewModel.syncBank() } } label: {
             Image(systemName: "arrow.clockwise")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 17, weight: .semibold))
                 // Blue arrow on the white circle when an allowance
                 // is set; dark ink when not set — both read on
                 // white, and the states still tell apart (audit
                 // H-P1-1: white-on-grey was ~1.1:1 and effectively
                 // invisible).
                 .foregroundStyle(viewModel.allowanceSet == true ? DesignTokens.primary : DesignTokens.ink)
-                .frame(width: 36, height: 36)
+                .frame(width: 40, height: 40)
                 .background(.white)
                 .clipShape(Circle())
                 // Repeating linear spin while syncing: a plain
@@ -855,18 +874,18 @@ public struct HomeView: View {
         let capacity = result.baseAvailableCents + result.tempCents
         let overBudget = result.chargesCents > capacity
         let fraction: CGFloat = overBudget ? 1 : (capacity > 0 ? CGFloat(result.chargesCents) / CGFloat(capacity) : 0)
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 10) {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: 5)
                         .fill(Color(hex: "#e5e7eb"))
-                        .frame(height: 8)
-                    RoundedRectangle(cornerRadius: 4)
+                        .frame(height: 10)
+                    RoundedRectangle(cornerRadius: 5)
                         .fill(overBudget ? Color(hex: "#dc2626") : StatCardTheme.spending.banner)
-                        .frame(width: geometry.size.width * fraction, height: 8)
+                        .frame(width: geometry.size.width * fraction, height: 10)
                 }
             }
-            .frame(height: 8)
+            .frame(height: 10)
 
             // Spent line + % used + chevron. While no allowance is
             // set the line reads "Not set" — a genuinely unset
@@ -887,7 +906,7 @@ public struct HomeView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color(hex: "#6b7280"))
             }
-            .font(.system(size: 14))
+            .font(.system(size: 15))
             .foregroundStyle(DesignTokens.ink)
         }
     }
@@ -1035,11 +1054,13 @@ public struct HomeView: View {
     ///
     /// Compact (owner, Nov 14, 2026): on Home the Charity and
     /// Extra Fund cards are half-width in one row, so the face is
-    /// smaller (12pt padding, 16pt title, 20pt amount). iPad
+    /// smaller (16pt padding, 18pt title, 24pt amount). iPad
     /// (owner, Nov 15, 2026): the compact face scales back up —
-    /// 16pt padding, 18pt title, 24pt amount — because the
+    /// 20pt padding, 20pt title, 28pt amount — because the
     /// half-width cards are ~340pt wide there and the iPhone sizes
-    /// read too small. Skeletons grow to match.
+    /// read too small. Skeletons grow to match. (Build 41, owner
+    /// Nov 16, 2026 — "much bigger": all of these stepped up from
+    /// the build-40 12/16/20pt compact sizes.)
     private func statCard<Rows: View>(
         title: String,
         face: String,
@@ -1060,14 +1081,20 @@ public struct HomeView: View {
         // so loading and loaded share one shape. (Owner, Nov 16,
         // 2026 — build 38, "a bit too heavy": the compact amounts
         // and padding are a touch smaller than build 37.)
-        let chip: CGFloat = compact ? (isIPad ? 36 : 30) : 36
-        let iconSize: CGFloat = compact ? (isIPad ? 16 : 14) : 18
-        let titleSize: CGFloat = compact ? (isIPad ? 18 : 16) : 18
-        let amountSize: CGFloat = compact ? (isIPad ? 24 : 20) : 28
-        let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 30 : 26) : 36
-        let statusSize: CGFloat = compact ? (isIPad ? 13 : 12) : 13
+        // Build 41 (owner, Nov 16, 2026 — "much bigger"): every
+        // number steps up — the half-width cards read as real
+        // cards now, not slim strips. The header row stays ONE
+        // line: the amount keeps its 0.7 shrink and the title
+        // gains a 0.85 shrink, so a long fund name still fits
+        // beside a big amount in a half-width card.
+        let chip: CGFloat = compact ? (isIPad ? 40 : 34) : 40
+        let iconSize: CGFloat = compact ? (isIPad ? 18 : 16) : 20
+        let titleSize: CGFloat = compact ? (isIPad ? 20 : 18) : 20
+        let amountSize: CGFloat = compact ? (isIPad ? 28 : 24) : 30
+        let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 34 : 30) : 38
+        let statusSize: CGFloat = compact ? (isIPad ? 14 : 13) : 14
         let chevronSize: CGFloat = compact ? (isIPad ? 15 : 14) : 15
-        let pad: CGFloat = compact ? (isIPad ? 16 : 12) : 20
+        let pad: CGFloat = compact ? (isIPad ? 20 : 16) : 24
         // Header colour: WHITE while LOADING (owner, Nov 16, 2026
         // — build 40: the pale #dbeafe tint was horrendous, the
         // original white background with grey skeleton shapes was
@@ -1080,10 +1107,11 @@ public struct HomeView: View {
             return theme.banner
         }()
         // Text colour on the header: the theme's onBanner colour
-        // (white on all four banners since build 39), ink on the
-        // grey loading/failed header. The icon is always the theme
-        // colour — it sits on a WHITE circle, so it reads on white
-        // in every state.
+        // (build 41 — per theme: white on the dark Spending/Debt
+        // banners, ink on the light Charity pale / Extra Fund
+        // tertiary banners), ink on the grey loading/failed header.
+        // The icon is always the theme's glyph colour — it sits on
+        // a WHITE circle, so it reads on white in every state.
         let onBanner: Color = {
             if isLoading || statusIsError { return DesignTokens.ink }
             return theme.onBanner
@@ -1096,11 +1124,13 @@ public struct HomeView: View {
                     SkeletonBlock(width: chip, height: chip, cornerRadius: chip / 2)
                 } else {
                     // Icon in a white circle (owner, Nov 16, 2026 —
-                    // build 40 reference): the theme icon in the
-                    // fund color on a white disc.
+                    // build 40 reference): the theme's glyph colour
+                    // on a white disc (build 41 — the banner colour
+                    // itself is unreadable on white for the light
+                    // banners).
                     Image(systemName: theme.iconName)
                         .font(.system(size: iconSize, weight: .semibold))
-                        .foregroundStyle(theme.banner)
+                        .foregroundStyle(theme.glyph)
                         .frame(width: chip, height: chip)
                         .background(.white)
                         .clipShape(Circle())
@@ -1110,12 +1140,13 @@ public struct HomeView: View {
                     // 2026 — build 38): real dark-ink text on the
                     // placeholder read as a finished card. The
                     // failed state keeps the real title.
-                    SkeletonBlock(width: 90, height: 18, cornerRadius: 6)
+                    SkeletonBlock(width: 90, height: 20, cornerRadius: 6)
                 } else {
                     Text(title)
                         .font(.system(size: titleSize, weight: .bold))
                         .foregroundStyle(onBanner)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
                 Spacer()
                 if isLoading {
@@ -1136,7 +1167,7 @@ public struct HomeView: View {
                 }
             }
             .padding(.horizontal, pad)
-            .padding(.vertical, 10)
+            .padding(.vertical, 14)
             .background(bannerColor)
             // White body (majority): the summary line when
             // collapsed, the detail rows when expanded. While
@@ -1181,11 +1212,15 @@ public struct HomeView: View {
                 }
             }
             .padding(.horizontal, pad)
-            .padding(.top, 12)
-            .padding(.bottom, 12)
+            .padding(.top, 16)
+            .padding(.bottom, 16)
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        // Build 41 (owner, Nov 16, 2026): a small shadow below
+        // the card — the shared fundCardShadow, so the stat cards
+        // lift exactly like the hero and the Funds page cards.
+        .fundCardShadow()
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
         .accessibilityLabel(ariaLabel)
@@ -1200,13 +1235,13 @@ public struct HomeView: View {
     private func statRow(label: String, value: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 15))
+                .font(.system(size: 16))
                 .foregroundStyle(DesignTokens.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Spacer()
             Text(value)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)

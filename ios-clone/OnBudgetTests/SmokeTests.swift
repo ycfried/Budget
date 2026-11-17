@@ -28,6 +28,8 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(DesignTokens.paleHex, "#bfdbfe")
         XCTAssertEqual(DesignTokens.backgroundHex, "#ffffff")
         XCTAssertEqual(DesignTokens.inkHex, "#0f172a")
+        XCTAssertEqual(DesignTokens.mutedHex, "#6b7280")
+        XCTAssertEqual(DesignTokens.tertiaryHex, "#e5e7eb")
         XCTAssertEqual(DesignTokens.errorBackgroundHex, "#fef2f2")
         XCTAssertEqual(DesignTokens.errorTextHex, "#dc2626")
         XCTAssertEqual(DesignTokens.errorBorderHex, "#fecaca")
