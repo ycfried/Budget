@@ -42,7 +42,7 @@ public struct TertiaryButtonStyle: ButtonStyle {
             .padding(.vertical, 13)
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity)
-            .background(Color(hex: "#e5e7eb"))
+            .background(DesignTokens.tertiary)
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
@@ -97,7 +97,7 @@ public struct SmallTertiaryButtonStyle: ButtonStyle {
             .foregroundStyle(DesignTokens.ink)
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
-            .background(Color(hex: "#e5e7eb"))
+            .background(DesignTokens.tertiary)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
@@ -600,6 +600,25 @@ public struct Card<Content: View>: View {
     }
 }
 
+// MARK: - Fund cards (build 41)
+//
+// Fund-card lift (owner, Nov 16, 2026 — build 41: "These need to
+// be much bigger and look like cards.. a small shadow below each
+// card.."). ONE shared value so the Home hero + stat cards and the
+// Funds page's FundsExpandableCard all lift identically — the
+// shadow is the card look, not a per-screen tweak. Small and soft
+// (10% black, 8pt blur, 4pt down): clearly visible against the
+// page, never heavy. The older hairline shadow above (5%, radius
+// 2, y 1) is invisible against the page — that is why the build-33
+// outer wrapper was dropped — so fund cards do NOT reuse it.
+// Applied to the clipped card container, AFTER the clip, so the
+// shadow follows the card's rounded corners.
+public extension View {
+    func fundCardShadow() -> some View {
+        shadow(color: Color.black.opacity(0.10), radius: 8, x: 0, y: 4)
+    }
+}
+
 
 // MARK: - Loading skeletons + empty placeholders
 //
@@ -641,35 +660,62 @@ public enum StatCardTheme {
     /// was the wrong colour).
     case spending
 
-    /// Banner colour of the fund section (owner, Nov 16, 2026 —
-    /// build 38 correction of the Mockup C assignment, refined in
-    /// build 39 — "Coloring still doesn't look great"): Carried
-    /// Debt black ink, Spending dark blue #1d4ed8, Charity MID blue
-    /// #3b82f6, Extra Fund MUTED grey #6b7280. The build-38 light
-    /// blue #60a5fa and light grey #d1d5db read as washed-out and
-    /// flat next to the strong dark blue hero, and the light grey
-    /// $0.00 read as an empty/dead card — every banner now has
-    /// consistent visual weight, keeping the owner's hue assignment
-    /// (Spending dark blue, Charity blue, Extra Fund grey, Debt
-    /// black). The bright primary blue #2f6bff stays the button
-    /// colour, never a banner colour. The green (#16a34a) / amber
+    /// Banner colour of the fund section — the 3-BUTTON SCHEME
+    /// (owner, Nov 16, 2026 — build 41: "The 3 card header bars
+    /// should be the same color as the 3 buttons schem we have").
+    /// The three visible fund headers use the three button
+    /// colours, one system: Spending PRIMARY blue #2f6bff, Charity
+    /// PALE #bfdbfe, Extra Fund TERTIARY grey #e5e7eb. Carried
+    /// Debt keeps black ink #0f172a (the owner said three bars —
+    /// the debt card is not one of them). History: build 38
+    /// corrected the Mockup C assignment, build 39 refined it
+    /// ("Coloring still doesn't look great") to Spending deep blue
+    /// #1d4ed8, Charity MID blue #3b82f6, Extra Fund MUTED grey
+    /// #6b7280 with white text on all four — the owner then said
+    /// the Savings grey was "way too dark.. not our brand" and
+    /// asked for the button scheme instead, so build 41 replaces
+    /// those three banner colours. The green (#16a34a) / amber
     /// (#d97706) / muted-red (#991b1b) outlines are gone from the
     /// fund cards.
     public var banner: Color {
         switch self {
-        case .charity: return DesignTokens.mid
-        case .fund: return DesignTokens.muted
+        case .charity: return DesignTokens.pale
+        case .fund: return DesignTokens.tertiary
         case .debt: return DesignTokens.ink
-        case .spending: return DesignTokens.deep
+        case .spending: return DesignTokens.primary
         }
     }
 
-    /// Text/icon colour on the banner: WHITE on all four now
-    /// (owner, Nov 16, 2026 — build 39: the build-38 light banners
-    /// needed ink text, but the refined mid blue / muted grey have
-    /// enough depth for white, so every banner reads the same).
+    /// Text colour on the banner — per theme now (owner, Nov 16,
+    /// 2026 — build 41): WHITE on the dark banners (Spending
+    /// primary #2f6bff, 4.5:1; Debt ink), INK on the light banners
+    /// (Charity pale #bfdbfe and Extra Fund tertiary #e5e7eb —
+    /// white text is unreadable on both, ~1.6:1 and ~1.2:1; ink
+    /// reads ~12:1 and ~13:1). The title and amount are large
+    /// bold text. (Build 39 had white on all four — the build-39
+    /// banners were all dark enough for it; the build-41 light
+    /// banners are not.)
     public var onBanner: Color {
-        .white
+        switch self {
+        case .charity, .fund: return DesignTokens.ink
+        case .debt, .spending: return .white
+        }
+    }
+
+    /// Icon colour on the WHITE disc in the header. The icon
+    /// cannot be the banner colour on the light banners — pale
+    /// #bfdbfe and tertiary #e5e7eb on white are invisible — so
+    /// each fund keeps a readable glyph: Spending primary (same
+    /// as its banner), Charity MID blue #3b82f6 (its build-39
+    /// banner — the charity blue identity, 3.7:1 on white), Extra
+    /// Fund MUTED grey #6b7280 (4.8:1 on white), Debt ink.
+    public var glyph: Color {
+        switch self {
+        case .charity: return DesignTokens.mid
+        case .fund: return DesignTokens.muted
+        case .debt: return DesignTokens.ink
+        case .spending: return DesignTokens.primary
+        }
     }
 
     // NOTE (owner, Nov 14, 2026 — "too much colors", and Nov 16,

@@ -284,6 +284,57 @@ public enum TransactionFormatting {
         TitleCase.apply(to: merchant)
     }
 
+    /// Search-match highlight (build 41, owner Nov 17, 2026): the
+    /// matched part of a row's text gets a soft yellow background
+    /// so the user can see WHY the row matched. Two ways to match,
+    /// mirroring `TransactionFilters.apply`: (1) the query as a
+    /// case-insensitive substring ("tenyad" in "Tenyad Kallah
+    /// Gemach"); (2) the query's digits inside a number in the text
+    /// ("7000" inside the "7,000" run of "$7,000.00" — the comma
+    /// breaks a literal match, so the run's digits are compared).
+    /// Only the FIRST match is highlighted. An empty query, or a
+    /// query that matches neither way, returns the text unchanged.
+    /// Built as one AttributedString (a `.background` on a Text
+    /// segment returns `some View`, which cannot join with `+` —
+    /// run 4's compile error) — the row's own font and colour
+    /// (bold ink merchant, kind-coloured amount) still apply to
+    /// the whole Text, since the attributed string sets no font or
+    /// foreground of its own.
+    public static func highlightedSearchText(_ text: String, query: String) -> Text {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return Text(text) }
+        var attributed = AttributedString(text)
+        if let range = text.range(of: trimmed, options: .caseInsensitive),
+           let lower = AttributedString.Index(range.lowerBound, within: attributed),
+           let upper = AttributedString.Index(range.upperBound, within: attributed) {
+            attributed[lower..<upper].backgroundColor = Color(hex: "#fef08a")
+            return Text(attributed)
+        }
+        let queryDigits = trimmed.filter { $0.isNumber }
+        guard !queryDigits.isEmpty else { return Text(text) }
+        var index = text.startIndex
+        while index < text.endIndex {
+            let ch = text[index]
+            if ch.isNumber || ch == "," || ch == "." {
+                var end = index
+                while end < text.endIndex && (text[end].isNumber || text[end] == "," || text[end] == ".") {
+                    end = text.index(after: end)
+                }
+                let run = String(text[index..<end])
+                if run.filter({ $0.isNumber }).contains(queryDigits),
+                   let lower = AttributedString.Index(index, within: attributed),
+                   let upper = AttributedString.Index(end, within: attributed) {
+                    attributed[lower..<upper].backgroundColor = Color(hex: "#fef08a")
+                    return Text(attributed)
+                }
+                index = end
+            } else {
+                index = text.index(after: index)
+            }
+        }
+        return Text(text)
+    }
+
     /// `stateWord` (live.js:205): Posted / Pending / Reversed / Excluded.
     /// "Reversed" renders as Reversed, never Posted.
     public static func stateWord(for transaction: Transaction) -> String {
@@ -649,7 +700,18 @@ public struct TransactionFilters: Equatable {
                 let merchantMatch = tx.merchant.lowercased().contains(query)
                 let dateMatch = tx.date.contains(query)
                 let amountMatch = TransactionFormatting.formatCents(tx.amountCents).lowercased().contains(query)
-                guard merchantMatch || dateMatch || amountMatch else { return false }
+                // Build 41 (owner, Nov 17, 2026): a bare number
+                // must match amounts — "7000" finds the $7,000.00
+                // check deposit. The formatted match above compares
+                // against "$7,000.00", whose comma breaks the
+                // substring, so "7000" matched nothing. Digits
+                // only, both sides: the amount in cents ("700000")
+                // contains "7000", and a number inside a merchant
+                // name ("CHECK 7000") matches the same way.
+                let queryDigits = query.filter { $0.isNumber }
+                let amountDigitsMatch = !queryDigits.isEmpty && String(abs(tx.amountCents)).contains(queryDigits)
+                let merchantDigitsMatch = !queryDigits.isEmpty && tx.merchant.filter { $0.isNumber }.contains(queryDigits)
+                guard merchantMatch || dateMatch || amountMatch || amountDigitsMatch || merchantDigitsMatch else { return false }
             }
             return true
         }

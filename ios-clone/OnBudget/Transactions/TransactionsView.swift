@@ -76,6 +76,9 @@ public struct TransactionsView: View {
     var onShowMerchantNames: (() -> Void)?
 
     @State private var searchText: String = ""
+    /// The search field's keyboard focus (build 41, owner Nov 17,
+    /// 2026): the Search button dismisses it after applying.
+    @FocusState private var searchFocused: Bool
     @State private var showingFilters: Bool = false
     @State private var showingAdd: Bool = false
     @State private var showingTrash: Bool = false
@@ -396,32 +399,59 @@ public struct TransactionsView: View {
         // clearing the box flows through the existing `onChange`
         // → `applySearch("")` path, and T-P1-1 (searchResetNonce)
         // still clears the box when filters clear.
+        // Build 41 (owner, Nov 17, 2026): a visible "Search"
+        // button beside the field, so the search feels official
+        // instead of only live-as-you-type. Live filtering is
+        // unchanged — typing still filters as you go — the button
+        // re-applies the current text and dismisses the keyboard.
+        // Primary blue, full label, no truncation; the keyboard's
+        // Return key says "Search" too and does the same.
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color(hex: "#6b7280"))
-            TextField("Search transactions", text: $searchText)
-                .font(.system(size: 17))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            if !searchText.isEmpty {
-                Button { searchText = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color(hex: "#9ca3af"))
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                TextField("Search transactions", text: $searchText)
+                    .font(.system(size: 17))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($searchFocused)
+                    .submitLabel(.search)
+                    .onSubmit { runSearch() }
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color(hex: "#9ca3af"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            // Search fill is systemGray6 (#f2f2f7, owner Nov 12 2026):
+            // lighter than systemGray5 so the field sits quietly on
+            // the white page, still reading as a field — no border.
+            .background(Color(.systemGray6))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            Button("Search") { runSearch() }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .background(DesignTokens.primary)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .accessibilityLabel("Search")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        // Search fill is systemGray6 (#f2f2f7, owner Nov 12 2026):
-        // lighter than systemGray5 so the field sits quietly on
-        // the white page, still reading as a field — no border.
-        .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Applies the current search text and dismisses the keyboard
+    /// (build 41 — the Search button and the keyboard's Search key).
+    private func runSearch() {
+        viewModel.applySearch(searchText)
+        searchFocused = false
     }
 
     @ViewBuilder
@@ -547,6 +577,7 @@ public struct TransactionsView: View {
                                 ? nil : viewModel.institutionBySuffix[transaction.cardSuffix],
                             isExpanded: viewModel.expandedTransactionId == transaction.id,
                             hasActions: viewModel.hasActions(for: transaction),
+                            searchQuery: viewModel.filters.search,
                             onToggle: {
                                 if viewModel.expandedTransactionId == transaction.id {
                                     viewModel.expandedTransactionId = nil

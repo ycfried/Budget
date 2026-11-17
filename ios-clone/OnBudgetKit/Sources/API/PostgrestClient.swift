@@ -370,6 +370,20 @@ public struct PostgrestClient {
         return row?.fundNames ?? [:]
     }
 
+    /// Custom fund icons (build 41 — mirrors householdFundNames):
+    /// the household's `fund_icons` map (fund key → SF Symbol
+    /// name). Missing/empty means the default icon. Degrades to
+    /// [:] when the column/RPC is not applied yet.
+    public func householdFundIcons(householdId: UUID) async throws -> [String: String] {
+        struct Row: Decodable { let fundIcons: [String: String]?; enum CodingKeys: String, CodingKey { case fundIcons = "fund_icons" } }
+        let row: Row? = try await fetchOne(PostgrestQuery(
+            table: "households",
+            columns: "fund_icons",
+            filters: [.householdRow(householdId)]
+        ))
+        return row?.fundIcons ?? [:]
+    }
+
     /// Base allowance + whether it was ever explicitly set
     /// (live.js:566-583). `allowanceSetAt == nil` means the $375 is
     /// the schema default, not a choice.
@@ -1052,6 +1066,20 @@ public struct PostgrestClient {
         try await fetch(PostgrestQuery(
             table: "debt_payments",
             columns: "id,household_id,amount_cents,source,week_start,note,created_at",
+            filters: [.householdId(householdId)],
+            orders: [PostgrestOrder("created_at", ascending: false)],
+            limit: 100
+        ))
+    }
+
+    /// Manual debt adjustments, newest first (build 41 — Add/Set
+    /// debt). The Activity feed reads these directly, like the
+    /// payments above. Fault-tolerant at the call site: the table
+    /// does not exist until add-set-debt.sql is applied.
+    public func debtAdjustments(householdId: UUID) async throws -> [DebtAdjustment] {
+        try await fetch(PostgrestQuery(
+            table: "debt_adjustments",
+            columns: "id,household_id,amount_cents,balance_after_cents,kind,week_start,note,created_at",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("created_at", ascending: false)],
             limit: 100

@@ -61,13 +61,11 @@ public struct TemporaryAllowanceView: View {
             // 4px gap under the label, aligned baselines (spec §10.4).
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("New Total")
-                        .font(.system(size: 14, weight: .semibold))
+                    FieldLabel("New Total", required: true)
                     DollarTextField(text: $newTotalText, maxWidth: 200, minHeight: 52)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Weeks")
-                        .font(.system(size: 14, weight: .semibold))
+                    FieldLabel("Weeks")
                     Picker("Weeks", selection: $weeks) {
                         ForEach(1...4, id: \.self) { week in
                             Text("\(week)").tag(week)
