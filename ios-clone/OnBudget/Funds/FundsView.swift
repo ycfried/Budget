@@ -101,6 +101,21 @@ public enum FundSectionID: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The one-line fund description (build 42 — owner, Nov 17,
+    /// 2026: descriptions live behind an info icon in the card
+    /// header, not as a text line in the expanded card). The debt
+    /// line is the existing text, reused verbatim; the other three
+    /// are new one-liners in the same plain voice — the owner did
+    /// not supply their wording, so they are easy to reword here.
+    public var fundDescription: String {
+        switch self {
+        case .spending: return "Money for this week's spending, from the weekly allowance."
+        case .fund: return "Money set aside in savings — add to it, or take from it when you spend."
+        case .charity: return "Money set aside for charity, given away as you choose."
+        case .debt: return "Money spent over past weekly allowances."
+        }
+    }
+
     /// The icon to RENDER (build 41): the stored-or-default icon
     /// when it resolves as an SF Symbol, else the theme default.
     /// The rule lives in the kit (FundIconResolver) so the test
@@ -442,6 +457,7 @@ public struct FundsView: View {
     private var spendingCard: some View {
         FundsExpandableCard(
             title: FundSectionID.spending.displayName(customNames: appState.fundNames),
+            fundDescription: FundSectionID.spending.fundDescription,
             amountText: spendingFaceText,
             isExpanded: appState.expandedCard == .spending,
             amountIsStatus: spendingFaceCents == nil,
@@ -568,6 +584,7 @@ public struct FundsView: View {
     private var fundCard: some View {
         FundsExpandableCard(
             title: FundSectionID.fund.displayName(customNames: appState.fundNames),
+            fundDescription: FundSectionID.fund.fundDescription,
             amountText: fundFaceText,
             isExpanded: appState.expandedCard == .fund,
             amountIsStatus: viewModel.fundSummary == nil,
@@ -698,6 +715,7 @@ public struct FundsView: View {
     private var charityCard: some View {
         FundsExpandableCard(
             title: FundSectionID.charity.displayName(customNames: appState.fundNames),
+            fundDescription: FundSectionID.charity.fundDescription,
             amountText: charityFaceText,
             isExpanded: appState.expandedCard == .charity,
             amountIsStatus: viewModel.charitySummary == nil,
@@ -826,6 +844,7 @@ public struct FundsView: View {
     private var debtCard: some View {
         FundsExpandableCard(
             title: FundSectionID.debt.displayName(customNames: appState.fundNames),
+            fundDescription: FundSectionID.debt.fundDescription,
             amountText: debtFaceText,
             isExpanded: appState.expandedCard == .debt,
             amountIsStatus: viewModel.debtWeek == nil,
@@ -856,7 +875,11 @@ public struct FundsView: View {
             } else if let week = viewModel.debtWeek {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 12) {
-                        FundsMuted("Money spent over past weekly allowances.")
+                        // Build 42 (owner, Nov 17, 2026): the
+                        // "Money spent over past weekly
+                        // allowances." description line is gone
+                        // from here — it lives behind the ⓘ in
+                        // the card header now.
                         if let payment = week.debtPaymentCents {
                             FundsBreakdownRow("This Week's Payment", value: MoneyFormat.formatCents(payment))
                             FundsBreakdownRow("Remaining After This Week", value: MoneyFormat.formatCents(max(0, week.carriedDebtCents - payment)))

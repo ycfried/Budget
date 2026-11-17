@@ -587,7 +587,12 @@ public struct FundsExpandableCard<Expanded: View>: View {
     /// 2026 — build 40). Nil hides the pencil entirely.
     public let isAdmin: Bool
     public let onRename: (() -> Void)?
+    /// The one-line fund description (build 42 — owner, Nov 17,
+    /// 2026): shown by tapping the ⓘ in the header. Nil hides
+    /// the icon entirely.
+    public let fundDescription: String?
     public let expanded: Expanded
+    @State private var showingDescription = false
 
     public init(
         title: String,
@@ -602,6 +607,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
         onToggle: @escaping () -> Void,
         isAdmin: Bool = false,
         onRename: (() -> Void)? = nil,
+        fundDescription: String? = nil,
         @ViewBuilder expanded: () -> Expanded
     ) {
         self.title = title
@@ -616,6 +622,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
         self.onToggle = onToggle
         self.isAdmin = isAdmin
         self.onRename = onRename
+        self.fundDescription = fundDescription
         self.expanded = expanded()
     }
 
@@ -679,6 +686,19 @@ public struct FundsExpandableCard<Expanded: View>: View {
         // the card — the shared fundCardShadow, so the Funds cards
         // lift exactly like the Home cards.
         .fundCardShadow()
+        // Build 42 (owner, Nov 17, 2026 — fund descriptions
+        // behind an info icon): tapping the ⓘ shows the fund's
+        // one-line description as an alert, titled with the fund
+        // name. The alert lives here (not per call site) so all
+        // four cards get it from the one `fundDescription`
+        // parameter.
+        .alert(TitleCase.apply(to: title), isPresented: $showingDescription) {
+            Button("OK") {}
+        } message: {
+            if let fundDescription {
+                Text(fundDescription)
+            }
+        }
     }
 
     /// The header strip (owner, Nov 16, 2026 — build 40): ONE ROW
@@ -798,6 +818,27 @@ public struct FundsExpandableCard<Expanded: View>: View {
                     .foregroundStyle(theme == nil ? DesignTokens.ink : (theme?.onBanner ?? .white))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+            }
+            // Info icon (build 42 — owner, Nov 17, 2026: fund
+            // descriptions live behind an info icon, not as a
+            // text line in the expanded card). Sits on the right
+            // side of the header, between the amount and the
+            // chevron, in the header's text colour. A child Button
+            // wins over the header's tap gesture (like the pencil),
+            // so tapping it shows the description instead of
+            // toggling the card. Hidden in reorder mode and while
+            // loading; hidden entirely when the card has no
+            // description.
+            if let fundDescription, !isLoading, !isReorderMode {
+                Button { showingDescription = true } {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(chevronColor)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About \(TitleCase.apply(to: title))")
             }
             // Chevron (build 41): hidden in reorder mode — the bar
             // does not expand while reordering, so there is nothing
