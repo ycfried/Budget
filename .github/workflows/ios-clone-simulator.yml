@@ -22,7 +22,7 @@ concurrency:
 jobs:
   simulator:
     if: >-
-      startsWith(github.ref, 'refs/heads/ios-clone-testflight') &&
+      startsWith(github.ref, 'refs/heads/native-fix-notifications') &&
       github.event.repository.private == false &&
       startsWith(github.event.head_commit.message, 'ci(ios-clone): approved cloud build')
     runs-on: macos-15-intel
