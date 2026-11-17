@@ -456,3 +456,5 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - Nov 17, 2026 (build-40, simulator run 2): run 1 (44008395169) FAILED — kit 270/270 ✓ but the app target did not compile (HomeView: amountText missing isMoneyIn; heroBodyProgress fraction type). Fixed both; run 2 triggers on this commit.
 
 - Nov 17, 2026 (build-40, simulator run 3): run 2 (44010754992) FAILED on ONE error — heroBodyProgress opaque return type (amountText fixed). Added an explicit return on the VStack; run 3 triggers on this commit.
+
+- Nov 17, 2026 (build-40, simulator run 44012197443, head f49b606): kit 270/270 ✓, smoke 9/9 ✓, UI 1/6 — all 5 UI failures the known 429 sign-up gate at OnBudgetUITests.swift:570 (email-gate branch still unmerged), not caused by these changes. Run 3's explicit-return fix resolved the heroBodyProgress compile error; run 1 failed on amountText isMoneyIn + fraction type, run 2 on the heroBodyProgress opaque return type alone. TEMP workflow retarget reverted; workflow file identical to base. PR #86 ready for parent review/merge.
