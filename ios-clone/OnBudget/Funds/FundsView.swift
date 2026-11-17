@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import WidgetKit
 import OnBudgetKit
 
 // MARK: - Funds tab (spec §9)
@@ -124,20 +125,6 @@ public struct FundsView: View {
 
     private var isAdmin: Bool { viewModel.context.isAdmin }
 
-    /// Rename button for a fund's expanded detail (build 37 —
-    /// fund rename, owner Nov 16, 2026): admin-only, opens the
-    /// rename sheet. It sits at the TOP of the detail, first thing
-    /// seen when the card expands — the owner could not find a
-    /// rename control before, because there was not one, so it
-    /// must be obvious. Full-width grey tertiary, like the other
-    /// fund action buttons.
-    @ViewBuilder
-    private func renameButton(for section: FundSectionID) -> some View {
-        if isAdmin {
-            FundsTertiaryButton("Rename") { renamingFund = section }
-        }
-    }
-
     public var body: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -230,7 +217,23 @@ public struct FundsView: View {
                 section: section,
                 currentName: section.displayName(customNames: appState.fundNames),
                 viewModel: viewModel,
-                onSaved: { names in appState.fundNames = names },
+                onSaved: { names in
+                    appState.fundNames = names
+                    // Build 40 (owner, Nov 16, 2026): the new name
+                    // must show on the WIDGET too when updated — e.g.
+                    // "Charity left" reads "Tzedaka left" after the
+                    // rename. The snapshot is normally rewritten on
+                    // a Home refresh, but a rename happens on Funds
+                    // and the widget may update first — so push the
+                    // new names into the STORED snapshot now (the
+                    // numbers are unchanged by a rename) and reload
+                    // the widget timeline, so the next widget update
+                    // shows the new name without waiting for Home.
+                    if let snapshot = WidgetSnapshotStore.read() {
+                        WidgetSnapshotStore.write(snapshot.withFundNames(names))
+                        WidgetCenter.shared.reloadAllTimelines()
+                    }
+                },
                 onClose: { renamingFund = nil }
             )
             .presentationSizing(.fitted)
@@ -388,7 +391,12 @@ public struct FundsView: View {
             isLoading: spendingFaceCents == nil && viewModel.allowanceError == nil && !viewModel.cardsReady,
             theme: .spending,
             accessibilityLabel: spendingAccessibilityLabel,
-            onToggle: { toggleCard(.spending) }
+            onToggle: { toggleCard(.spending) },
+            // Pencil by the name (owner, Nov 16, 2026 — build 40):
+            // admin-only, opens the rename sheet. The full-width
+            // Rename button in the detail is gone.
+            isAdmin: isAdmin,
+            onRename: { renamingFund = .spending }
         ) {
             if let base = viewModel.baseAllowanceCents {
                 // Build 36 (owner, Nov 16, 2026): the expanded
@@ -397,7 +405,6 @@ public struct FundsView: View {
                 // so the rows and the buttons breathe. Same
                 // treatment on all four fund cards.
                 VStack(alignment: .leading, spacing: 16) {
-                    renameButton(for: .spending)
                     VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow("Base", value: MoneyFormat.formatCents(base))
                         if let override = viewModel.debtWeek?.overrideCents, override != base {
@@ -469,13 +476,17 @@ public struct FundsView: View {
             isLoading: viewModel.fundSummary == nil && viewModel.fundError == nil && !viewModel.cardsReady,
             theme: .fund,
             accessibilityLabel: fundAccessibilityLabel,
-            onToggle: { toggleCard(.fund) }
+            onToggle: { toggleCard(.fund) },
+            // Pencil by the name (owner, Nov 16, 2026 — build 40):
+            // admin-only, opens the rename sheet. The full-width
+            // Rename button in the detail is gone.
+            isAdmin: isAdmin,
+            onRename: { renamingFund = .fund }
         ) {
             if let error = viewModel.fundError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.fundSummary {
                 VStack(alignment: .leading, spacing: 16) {
-                    renameButton(for: .fund)
                     VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow(
                             isAdmin ? "Spendable Available" : "Available to Request",
@@ -503,6 +514,19 @@ public struct FundsView: View {
                         if isAdmin {
                             FundsPrimaryButton("Add Money") { openForm = .add }
                             FundsPaleButton("Spend from Fund") { openForm = .use }
+                            // Owner, Nov 16, 2026 (build 40): record
+                            // cash taken/spent out of Savings — the
+                            // same "record on the fund, not a
+                            // transaction" function as the charity
+                            // cash gift. Available decreases, NO
+                            // transaction row, recorded in the Savings
+                            // Activity feed. Primary blue (blue, pale,
+                            // blue, grey — no two adjacent share a
+                            // color), same size as the others.
+                            RecordCashSpentSection(
+                                viewModel: viewModel,
+                                fundName: FundSectionID.fund.displayName(customNames: appState.fundNames)
+                            )
                             FundsTertiaryButton("Request Money") { openForm = .ask }
                         } else {
                             FundsTertiaryButton("Request Money") { openForm = .ask }
@@ -557,13 +581,17 @@ public struct FundsView: View {
             isLoading: viewModel.charitySummary == nil && viewModel.charityError == nil && !viewModel.cardsReady,
             theme: .charity,
             accessibilityLabel: charityAccessibilityLabel,
-            onToggle: { toggleCard(.charity) }
+            onToggle: { toggleCard(.charity) },
+            // Pencil by the name (owner, Nov 16, 2026 — build 40):
+            // admin-only, opens the rename sheet. The full-width
+            // Rename button in the detail is gone.
+            isAdmin: isAdmin,
+            onRename: { renamingFund = .charity }
         ) {
             if let error = viewModel.charityError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.charitySummary {
                 VStack(alignment: .leading, spacing: 16) {
-                    renameButton(for: .charity)
                     VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow("Available", value: MoneyFormat.formatCents(summary.remainingCents))
                         FundsBreakdownRow("Given", value: MoneyFormat.formatCents(summary.givenCents))
@@ -580,11 +608,38 @@ public struct FundsView: View {
                     // collapses by tapping its header/chevron, so
                     // the button was redundant clutter.
                     if isAdmin {
-                        AddToCharitySection(viewModel: viewModel)
+                        AddToCharitySection(
+                            viewModel: viewModel,
+                            fundName: FundSectionID.charity.displayName(customNames: appState.fundNames)
+                        )
                     }
                     if isAdmin {
+                        // Owner, Nov 16, 2026 (build 40): record a
+                        // cash gift given off-card — Available
+                        // decreases, Given increases, Total unchanged,
+                        // NO transaction row. The middle of the three
+                        // stacked buttons, so it is the PALE
+                        // treatment (Nov 4, 2026: pale is the middle
+                        // tier of a three-button row) — blue, pale,
+                        // grey, no two adjacent share a color — and
+                        // isLarge so all three are the same size.
+                        RecordCashGiftSection(
+                            viewModel: viewModel,
+                            fundName: FundSectionID.charity.displayName(customNames: appState.fundNames)
+                        )
+                    }
+                    if isAdmin {
+                        // Owner, Nov 16, 2026 (build 40): "Record
+                        // Income" is the GREY tertiary treatment,
+                        // not primary blue — the stacked full-width
+                        // Charity buttons must not share a color
+                        // (standing no-adjacent-same-color rule).
+                        // They stay the SAME SIZE: isLarge: true,
+                        // matching "Add to Charity" and "Record a
+                        // Gift" (17pt, 16pt vertical padding, full
+                        // width).
                         HStack(spacing: 12) {
-                            FundsPrimaryButton("Record Income") {
+                            FundsTertiaryButton("Record Income", isLarge: true) {
                                 correctingIncome = nil
                                 openForm = .income
                             }
@@ -642,13 +697,17 @@ public struct FundsView: View {
             isLoading: viewModel.debtWeek == nil && viewModel.debtError == nil && !viewModel.cardsReady,
             theme: .debt,
             accessibilityLabel: debtAccessibilityLabel,
-            onToggle: { toggleCard(.debt) }
+            onToggle: { toggleCard(.debt) },
+            // Pencil by the name (owner, Nov 16, 2026 — build 40):
+            // admin-only, opens the rename sheet. The full-width
+            // Rename button in the detail is gone.
+            isAdmin: isAdmin,
+            onRename: { renamingFund = .debt }
         ) {
             if let error = viewModel.debtError {
                 FundsErrorBox(error)
             } else if let week = viewModel.debtWeek {
                 VStack(alignment: .leading, spacing: 16) {
-                    renameButton(for: .debt)
                     VStack(alignment: .leading, spacing: 12) {
                         FundsMuted("Money spent over past weekly allowances.")
                         if let payment = week.debtPaymentCents {

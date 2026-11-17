@@ -46,6 +46,12 @@ public final class FundsViewModel: ObservableObject {
     // MARK: - Fund balances
 
     @Published public var fundSummary: FundSummary?
+    /// The fund ledger rows (build 40, Nov 16, 2026): the fund's
+    /// signed ledger. Stored (not just used for the summary) so the
+    /// Activity & Transactions feed can show 'allocation' entries
+    /// — cash spent / fund spending — which are NOT transaction rows
+    /// and otherwise appear nowhere.
+    @Published public var fundLedger: [FundLedgerEntry] = []
     @Published public var fundError: String?
 
     // MARK: - Top-ups (admin, read-only history)
@@ -60,6 +66,11 @@ public final class FundsViewModel: ObservableObject {
     @Published public var charityError: String?
     @Published public var charityIncome: [CharityIncome] = []
     @Published public var charityIncomeError: String?
+    /// Cash gifts given off-card (build 40, Nov 16, 2026): recorded
+    /// on the charity fund, NOT transaction rows. Their sum is added
+    /// to Given in loadCharity(); they also appear in the Charity
+    /// Activity & Transactions feed.
+    @Published public var charityCashGifts: [CharityCashGift] = []
 
     // MARK: - Carried Debt fund (build 29)
 
@@ -260,10 +271,13 @@ public final class FundsViewModel: ObservableObject {
             async let ledger = context.client.postgrest.fundLedger(householdId: context.householdId)
             async let releases = context.client.postgrest.surplusReleases(householdId: context.householdId)
             async let shortfall = context.client.postgrest.fundShortfallCents(householdId: context.householdId)
-            fundSummary = FundSummary.compute(ledger: try await ledger, releases: try await releases, shortfallCents: try await shortfall)
+            let ledgerRows = try await ledger
+            fundLedger = ledgerRows
+            fundSummary = FundSummary.compute(ledger: ledgerRows, releases: try await releases, shortfallCents: try await shortfall)
             fundError = nil
         } catch {
             fundSummary = nil
+            fundLedger = []
             fundError = "Could not load fund balances. Try again."
         }
     }
@@ -281,7 +295,7 @@ public final class FundsViewModel: ObservableObject {
 
     private func loadCharity() async {
         do {
-            // The three reads are independent — fetch them together
+            // The four reads are independent — fetch them together
             // (owner, Nov 16, 2026 — build 38). The summary derives
             // from the already-loaded transactions (refresh() loads
             // those first).
@@ -291,22 +305,40 @@ public final class FundsViewModel: ObservableObject {
             let incomeRows = try await income
             let settingsValue = try await settings
             let givenAmounts = try await given
+            // Cash gifts (build 40): fetched separately and
+            // fault-tolerant — if the charity_cash_gifts table does
+            // not exist yet (the SQL not applied), the fetch throws
+            // and the gifts read as empty rather than failing the
+            // whole charity summary (the old-server pattern: the
+            // card still loads, cash gifts just show as $0 until the
+            // migration lands).
+            let cashGiftRows: [CharityCashGift]
+            do {
+                cashGiftRows = try await context.client.postgrest.charityCashGifts(householdId: context.householdId)
+            } catch {
+                cashGiftRows = []
+            }
             let defaultRate = settingsValue?.defaultRateBp ?? 1000
             let charityRows = allTransactions.filter { $0.kind == .charity && !$0.excluded && $0.date >= MoneyFormat.dataFloor }
             // Given counts only verified gifts; pending gifts count once
             // they post (live.js:3814-3820). Committed sums each ACTIVE
-            // income row at that row's own rate.
+            // income row at that row's own rate. Cash gifts given
+            // off-card (build 40) are NOT transaction rows, so their
+            // sum is added to Given here — Available stays
+            // committed − given, Total unchanged.
             charitySummary = CharitySummary(
                 committedCents: incomeRows.filter { $0.status == "active" }.reduce(0) { $0 + $1.committedCents },
-                givenCents: givenAmounts.reduce(0, +),
+                givenCents: givenAmounts.reduce(0, +) + cashGiftRows.reduce(0) { $0 + $1.amountCents },
                 pendingGiftCents: charityRows.filter { $0.state == .provisional }.reduce(0) { $0 + $1.amountCents },
                 defaultRateBp: defaultRate
             )
+            charityCashGifts = cashGiftRows
             charitySettings = settingsValue
             charityError = nil
         } catch {
             charitySummary = nil
             charitySettings = nil
+            charityCashGifts = []
             charityError = "Could not load charity. Try again."
         }
         guard context.isAdmin else { charityIncome = []; charityIncomeError = nil; return }
@@ -572,6 +604,34 @@ public final class FundsViewModel: ObservableObject {
         await refresh()
     }
 
+    /// Record cash taken/spent out of Savings (build 40, owner Nov 16,
+    /// 2026): the owner took cash out of the fund and wants to take
+    /// it off the Available balance — WITHOUT creating a transaction
+    /// row (cash is not traceable as a bank/email transaction). This
+    /// reuses `allocate_fund` (no new server surface): a negative
+    /// 'allocation' entry in fund_ledger decreases Available, and the
+    /// entry appears in the Savings Activity & Transactions feed.
+    /// NO override reason is passed, so the RPC refuses when the
+    /// amount exceeds the Available balance — a cash withdrawal can
+    /// never take Savings below $0. Returns true only when the save
+    /// committed, so the caller clears the typed input on success
+    /// only (F-P1-4).
+    public func recordCashSpent(amountCents: Int, note: String) async -> Bool {
+        var succeeded = false
+        await guarded("record-cash-spent", title: "Could Not Record Cash Spent") {
+            try await context.client.rpcs.allocateFund(
+                pHouseholdId: context.householdId,
+                pAmountCents: amountCents,
+                pNote: note.isEmpty ? "Cash spent" : "Cash spent — \(note)",
+                pOverrideReason: nil
+            )
+            succeed("Recorded \(MoneyFormat.formatCents(amountCents)) cash spent from Savings.")
+            succeeded = true
+            await refresh()
+        }
+        return succeeded
+    }
+
     // MARK: - Ask for Fund Money (all roles)
 
     /// Inserts a pending `fund_requests` row; audits
@@ -708,6 +768,33 @@ public final class FundsViewModel: ObservableObject {
                 pNote: ""
             )
             succeed("Added \(MoneyFormat.formatCents(result.committedCents)) to Charity.")
+            succeeded = true
+            await refresh()
+        }
+        return succeeded
+    }
+
+    /// Record a cash gift given off-card (build 40, owner Nov 16,
+    /// 2026): the owner gave charity in cash and wants to take it
+    /// off what he owes. Available decreases by the amount, Given
+    /// increases by it, Total (committed) is unchanged — and NO
+    /// transaction row is created (that is the whole point: cash is
+    /// not traceable as a bank/email transaction). The gift IS
+    /// recorded on the charity fund and appears in the Charity
+    /// Activity & Transactions feed. The RPC refuses when the amount
+    /// exceeds the Available balance, so the gift can never take
+    /// Available below $0. Returns true only when the save committed,
+    /// so the caller clears the typed input on success only (F-P1-4).
+    public func recordCharityCashGift(amountCents: Int, note: String) async -> Bool {
+        var succeeded = false
+        await guarded("record-cash-gift", title: "Could Not Record Gift") {
+            let result = try await context.client.rpcs.recordCharityCashGift(
+                pHouseholdId: context.householdId,
+                pAmountCents: amountCents,
+                pGiftDate: MoneyFormat.todayNY(),
+                pNote: note
+            )
+            succeed("Recorded a \(MoneyFormat.formatCents(amountCents)) gift. \(MoneyFormat.formatCents(result.remainingCents)) left to give.")
             succeeded = true
             await refresh()
         }

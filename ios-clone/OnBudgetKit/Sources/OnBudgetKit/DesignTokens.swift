@@ -33,15 +33,16 @@ public enum DesignTokens {
     /// again. The token stays (tokens are never deleted), but no
     /// fund card reads it any more.
     public static let bannerLightGreyHex = "#d1d5db"
-    /// Loading-banner tint (owner, Nov 16, 2026 — build 38): the
-    /// solid muted grey #e5e7eb banner read as a FINISHED grey card,
-    /// not a placeholder. While loading the banner is this pale
-    /// brand-blue tint #dbeafe with shimmer skeleton blocks for
-    /// the name and amount — it reads as a placeholder, in the
-    /// brand, consistent with the app's skeleton loading style.
-    /// The failed/error banner stays the muted grey #e5e7eb, so a
-    /// failed load still reads as distinct from loading.
-    public static let loadingBannerHex = "#dbeafe"
+    /// Loading-banner background (owner, Nov 16, 2026 — build 40):
+    /// REVERTED to WHITE. The pale brand-blue tint #dbeafe (build
+    /// 38) was "horrendous" — the original way, a WHITE background
+    /// with the light grey skeleton shapes on it, was nicest. So
+    /// while loading the banner is plain white and the shimmer
+    /// skeleton blocks (#ececf1) are the only loading sign — no
+    /// tinted background at all. The failed/error banner stays the
+    /// muted grey #e5e7eb, so a failed load still reads as distinct
+    /// from loading.
+    public static let loadingBannerHex = "#ffffff"
     public static let infoBackgroundHex = "#eef4ff"
 
     // MARK: - Soft-red errors (owner rule, Nov 5 2026: light background,

@@ -208,8 +208,9 @@ public final class TransactionsViewModel {
 
     /// The count line (live.js:863-886, wording per owner Nov 12,
     /// 2026 — "Total", not "Total shown"): "`N` transactions ·
-    /// Total `$X`" (+ the older-rows suffix when the probe row came
-    /// back). On failure the line is empty — the error box below
+    /// Total `$X`" (owner, Nov 16, 2026 — build 40: the older-rows
+    /// tail is gone; the line is just the count and the total).
+    /// On failure the line is empty — the error box below
     /// already says it (T-P2-11: one failure message, not two
     /// stacked). The min>max text outranks a zero total.
     public var countLine: String {
@@ -224,11 +225,14 @@ public final class TransactionsViewModel {
             return "No matching transactions — try a different search, or clear the search and filters."
         }
         let total = TransactionFilters.shownTotal(for: shown, status: filters.status)
-        let suffix = hasMore ? " · of loaded transactions — tap Load more for older ones" : ""
         // A negative net total is money in overall, so it reads
         // "+$X" (MoneyFormat.netTotalText); the line stays muted —
-        // the total is a summary, not a row.
-        return "\(shown.count) transactions · Total \(MoneyFormat.netTotalText(cents: total))\(suffix)"
+        // the total is a summary, not a row. Owner, Nov 16, 2026
+        // (build 40): the older-rows tail ("of loaded transactions
+        // — tap Load more for older ones") is gone — the line is
+        // just the count and the total, centered (see
+        // TransactionsView.countLine).
+        return "\(shown.count) transactions · Total \(MoneyFormat.netTotalText(cents: total))"
     }
 
     /// Whether the viewer has any action on a row (live.js:982):

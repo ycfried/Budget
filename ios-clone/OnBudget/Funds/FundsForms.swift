@@ -946,3 +946,138 @@ public struct RenameFundSheet: View {
         }
     }
 }
+
+// MARK: - Record Cash Spent (cash taken out of Savings, admin only)
+//
+// Build 40 (owner, Nov 16, 2026): "Same goes for extra fund/savings.."
+// — the Savings fund gets the same "record on the fund, not a
+// transaction" function as the charity cash gift. The owner took cash
+// out of Savings and wants to take it off the Available balance —
+// WITHOUT creating a transaction row (cash is not traceable as a
+// bank/email transaction and would confuse the transaction history).
+// It IS recorded in the Savings fund's Activity & Transactions feed
+// (a fund_ledger 'allocation' entry, which the feed now shows).
+// The button opens a POPUP (sheet, like the charity popups: iPad
+// 600pt, 17pt) with an amount field + an optional note +
+// Record/Cancel. Validation lives INSIDE the popup: the amount must
+// be above $0.00 and must not exceed the Available balance (no
+// override — allocate_fund refuses when the amount exceeds Available,
+// so a withdrawal can never take Savings below $0) — the error shows
+// in the popup in plain language and the popup does not close on a
+// bad amount. On success the popup closes, the field clears, and
+// the balance updates everywhere. Reuses `allocate_fund` (no new
+// server surface): a negative 'allocation' entry in fund_ledger.
+// The button and the popup title use the fund's CURRENT name (e.g.
+// "Record Cash Spent from Savings").
+
+public struct RecordCashSpentSection: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    /// The fund's CURRENT display name (e.g. "Savings" when renamed).
+    public let fundName: String
+    @State private var showPopup = false
+
+    public init(viewModel: FundsViewModel, fundName: String) {
+        self.viewModel = viewModel
+        self.fundName = fundName
+    }
+
+    public var body: some View {
+        // The fund card stacks FOUR full-width buttons (Add Money /
+        // Spend from Fund / Record Cash Spent / Request Money). The
+        // standing no-adjacent-same-color rule puts this one PRIMARY
+        // BLUE: blue, pale, blue, grey — no two adjacent share a
+        // color (the two blues are separated by the pale middle).
+        // Full width, same size as the others.
+        FundsPrimaryButton("Record Cash Spent") {
+            showPopup = true
+        }
+        .accessibilityIdentifier("funds.recordCashSpent")
+        .sheet(isPresented: $showPopup) {
+            RecordCashSpentSheet(
+                viewModel: viewModel,
+                fundName: fundName,
+                onClose: { showPopup = false }
+            )
+            .presentationSizing(.fitted)
+        }
+    }
+}
+
+/// The Record Cash Spent popup (owner, Nov 16, 2026 — build 40): an
+/// amount field + an optional note + Record/Cancel, in the rename
+/// sheet's style (iPad 600pt centred, 17pt). Validation lives here:
+/// the amount must be above $0.00 and must not exceed the Available
+/// balance — empty / zero / negative / over-Available shows a
+/// plain-language error INSIDE the popup and the popup stays open
+/// (the field keeps the typed input). On success the popup closes,
+/// the field clears, and the balance updates everywhere.
+public struct RecordCashSpentSheet: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    public let fundName: String
+    public var onClose: () -> Void
+    @State private var amountText = ""
+    @State private var noteText = ""
+    @State private var spentError: String?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    public init(viewModel: FundsViewModel, fundName: String, onClose: @escaping () -> Void = {}) {
+        self.viewModel = viewModel
+        self.fundName = fundName
+        self.onClose = onClose
+    }
+
+    /// The Available Savings balance, for the over-Available check
+    /// (client-side; allocate_fund re-checks server-side and refuses
+    /// too, with no override on this path).
+    private var availableCents: Int? { viewModel.fundSummary?.availableCents }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: TitleCase.apply(to: "Record Cash Spent from \(fundName)"), onClose: onClose)
+            if let availableCents {
+                FundsMuted("Available: \(MoneyFormat.formatCents(availableCents)). The amount comes off Available. No transaction row is created.")
+            }
+            DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
+            TextField("Note (optional)", text: $noteText)
+                .font(.system(size: 17))
+                .textFieldStyle(.roundedBorder)
+                .frame(minHeight: 48)
+                .autocorrectionDisabled()
+            if let spentError {
+                FundsErrorBox(spentError)
+            }
+            HStack(spacing: 12) {
+                FundsPrimaryButton("Record", isBusy: viewModel.busyAction == "record-cash-spent") {
+                    record()
+                }
+                FundsTertiaryButton("Cancel") { onClose() }
+            }
+        }
+        .padding()
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // rename sheet.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+    }
+
+    private func record() {
+        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else {
+            spentError = "Enter an amount above $0.00."
+            return
+        }
+        if let availableCents, cents > availableCents {
+            spentError = "That is more than the \(MoneyFormat.formatCents(availableCents)) available in \(fundName)."
+            return
+        }
+        spentError = nil
+        Task {
+            // Clear only on success — on failure the typed input
+            // stays beside the error (F-P1-4).
+            if await viewModel.recordCashSpent(amountCents: cents, note: noteText) {
+                amountText = ""
+                noteText = ""
+                onClose()
+            }
+        }
+    }
+}

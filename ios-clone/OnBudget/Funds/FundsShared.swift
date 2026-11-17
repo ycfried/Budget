@@ -98,20 +98,22 @@ public struct FundsTertiaryButton: View {
 public struct FundsPaleButton: View {
     public let label: String
     public let isBusy: Bool
+    public let isLarge: Bool
     public let action: () -> Void
 
-    public init(_ label: String, isBusy: Bool = false, action: @escaping () -> Void) {
+    public init(_ label: String, isBusy: Bool = false, isLarge: Bool = false, action: @escaping () -> Void) {
         self.label = label
         self.isBusy = isBusy
+        self.isLarge = isLarge
         self.action = action
     }
 
     public var body: some View {
         Button(action: action) {
             Text(TitleCase.apply(to: label))
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: isLarge ? 17 : 15, weight: .semibold))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
+                .padding(.vertical, isLarge ? 16 : 13)
                 .padding(.horizontal, 18)
                 .background(DesignTokens.pale)
                 .foregroundStyle(DesignTokens.ink)
@@ -500,21 +502,28 @@ public struct FundsBreakdownRow: View {
     }
 }
 
-/// A fund section: a COLOURED BANNER face that expands in place (no
-/// sheet, no overlay — spec §6.2/§9.1). Chevron `⌄` at the banner's
+/// A fund section: ONE UNIFIED CARD that expands in place (no
+/// sheet, no overlay — spec §6.2/§9.1). Owner, Nov 16, 2026
+/// (build 40): a SHORT colored header strip on top (an icon in a
+/// white circle + the fund name + the amount in ONE row, all white
+/// on the fund's theme colour — Debt black #0f172a, Spending dark
+/// blue #1d4ed8, Extra Fund muted grey #6b7280, Charity mid blue
+/// #3b82f6) and a WHITE body below (the MAJORITY of the card)
+/// holding the detail rows, editors and actions when expanded.
+/// The color is a header accent, not half the card — "the majority
+/// should be white, not half half." The detail below the header is
+/// part of the SAME card (one container, one boundary) — it was a
+/// separate block floating on white with a gap in build 39. The
+/// green/amber/red outlines are gone. Chevron `⌄` at the header's
 /// right end, white, flips to `⌃` when expanded (instant, build 34).
-/// Owner, Nov 16, 2026 (Mockup C — sections with coloured banners):
-/// the banner holds the icon, title and amount in white on the fund's
-/// theme colour (Debt black #0f172a, Spending dark blue #1d4ed8,
-/// Extra Fund muted grey #6b7280, Charity mid blue #3b82f6 — build 39
-/// refinement: the build-38 light blue / light grey read as
-/// washed-out next to the dark blue hero), so Home and Funds match;
-/// the detail below it sits on plain white, with no outline or
-/// border. The green/amber/red outlines are gone. Loading shows the same banner shape in
-/// muted grey with grey shimmer, with NO colour and no "Loading…"
-/// text (`isLoading`); a failed face is a STATIC grey block, never a
-/// bare "—" in amount type — the expanded content carries the error
-/// box (F-P2-13 / owner loading language, Nov 12, 2026).
+/// A small pencil icon sits next to the fund name (admin-only) —
+/// it opens the rename sheet (owner, Nov 16, 2026 — build 40: the
+/// full-width "Rename" button is gone; rename is a pencil by the
+/// name). Loading shows the same card shape in WHITE with grey
+/// shimmer, with NO colour and no "Loading…" text (`isLoading`);
+/// a failed face is a STATIC grey block, never a bare "—" in amount
+/// type — the expanded content carries the error box (F-P2-13 /
+/// owner loading language, Nov 12, 2026).
 public struct FundsExpandableCard<Expanded: View>: View {
     public let title: String
     public let amountText: String
@@ -531,6 +540,12 @@ public struct FundsExpandableCard<Expanded: View>: View {
     public let theme: StatCardTheme?
     public let accessibilityLabel: String
     public let onToggle: () -> Void
+    /// Admin-only rename affordance: when non-nil and `isAdmin` is
+    /// true, a small pencil sits next to the fund name in the
+    /// header; tapping it opens the rename sheet (owner, Nov 16,
+    /// 2026 — build 40). Nil hides the pencil entirely.
+    public let isAdmin: Bool
+    public let onRename: (() -> Void)?
     public let expanded: Expanded
 
     public init(
@@ -542,6 +557,8 @@ public struct FundsExpandableCard<Expanded: View>: View {
         theme: StatCardTheme? = nil,
         accessibilityLabel: String,
         onToggle: @escaping () -> Void,
+        isAdmin: Bool = false,
+        onRename: (() -> Void)? = nil,
         @ViewBuilder expanded: () -> Expanded
     ) {
         self.title = title
@@ -552,71 +569,82 @@ public struct FundsExpandableCard<Expanded: View>: View {
         self.theme = theme
         self.accessibilityLabel = accessibilityLabel
         self.onToggle = onToggle
+        self.isAdmin = isAdmin
+        self.onRename = onRename
         self.expanded = expanded()
     }
 
     public var body: some View {
-        // The face padding (16 unthemed, 20 themed) lives INSIDE
-        // the toggle Button below, not on the section — see the
-        // note there.
+        // One unified card (owner, Nov 16, 2026 — build 40): the
+        // outer container is the single boundary — white background
+        // + one rounded-rect clip. The header strip carries the
+        // fund color; the white body sits directly below it, no
+        // gap, no separate outline.
         let pad: CGFloat = theme == nil ? 16 : 20
         return VStack(alignment: .leading, spacing: 0) {
             // Whole-area tap target (owner rule, Nov 11 2026,
             // and the Nov 15, 2026 app-wide pass): the ENTIRE
-            // banner — icon, title, amount AND the chevron — is
-            // the toggle. The chevron is only a visual hint, never
-            // the only place that responds. Two things make that
-            // true, and both are load-bearing: (1)
-            // `.contentShape(Rectangle())` on the label — without
-            // it SwiftUI only hits the glyphs and the empty space
-            // between them is dead, which is how the card came to
-            // feel chevron-only; (2) the face padding lives INSIDE
-            // the Button — the section's own padding used to sit
-            // outside it, so the padding ring around the face never
-            // toggled either. The expanded content keeps its own
-            // buttons (Add Money / Spend / Request), so it is not
-            // part of the toggle — tapping an action must not
-            // collapse the section underneath it.
-            Button(action: onToggle) {
-                bannerFace(pad: pad)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(accessibilityLabel)
+            // header strip — icon, title, amount AND the chevron —
+            // is the toggle. The chevron is only a visual hint,
+            // never the only place that responds. The header is a
+            // tap gesture, NOT a Button: the pencil is a real Button
+            // inside it, and a Button nested inside a Button never
+            // fires (audit H-P1-3). A child Button wins over an
+            // ancestor tap gesture, so the pencil opens the rename
+            // sheet while the rest of the header still toggles.
+            // `.contentShape(Rectangle())` makes the empty space
+            // between the glyphs respond too — without it only the
+            // glyphs hit and the header feels chevron-only.
+            headerStrip(pad: pad)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onToggle)
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityAddTraits(.isButton)
             if isExpanded {
+                // White body (majority): the detail rows, editors
+                // and actions. Directly below the header, no gap —
+                // part of the same card, not a separate block. The
+                // expanded content keeps its own buttons (Add Money
+                // / Spend / Request), so it is not part of the
+                // toggle — tapping an action must not collapse the
+                // section underneath it.
                 expanded
                     .padding(.horizontal, pad)
-                    .padding(.top, 16)
+                    .padding(.top, 12)
                     .padding(.bottom, pad)
             }
         }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    /// The banner face (owner, Nov 16, 2026 — Mockup C): icon +
-    /// title + amount + chevron, on the theme colour. The text
-    /// colour is the theme's onBanner colour — white on all four
-    /// banners since build 39 (the refined mid blue / muted grey
-    /// have enough depth for white; the build-38 light banners
-    /// needed ink). The banner is the fund's header and shows the
-    /// amount; the detail below it sits on plain white, with no
-    /// outline or border. Loading / failed show the same banner
-    /// shape in muted grey with grey skeleton faces — no colour
-    /// until the numbers arrive, and never a bare "—" in amount
-    /// type. (Owner, Nov 16, 2026 — build 38, "a bit too heavy":
-    /// the amount is a touch smaller and the banner a touch
-    /// shorter than build 37.)
-    private func bannerFace(pad: CGFloat) -> some View {
-        // Banner colour: pale brand tint while LOADING (#dbeafe —
-        // owner, Nov 16, 2026, build 38: the solid muted grey
-        // #e5e7eb read as a finished grey card, not a placeholder),
-        // muted grey #e5e7eb when FAILED (a failed load stays
-        // distinct from loading), the theme colour when loaded.
+    /// The header strip (owner, Nov 16, 2026 — build 40): ONE ROW
+    /// — icon in a white circle + title + (admin-only) pencil +
+    /// amount + chevron, on the theme colour. The text colour is
+    /// the theme's onBanner colour — white on all four banners
+    /// since build 39 (the refined mid blue / muted grey have
+    /// enough depth for white; the build-38 light banners needed
+    /// ink). The icon sits on a WHITE circle in the fund color
+    /// (the reference's "$ in a white circle"). Loading / failed
+    /// show the same strip shape in WHITE / muted grey with grey
+    /// skeleton faces — no colour until the numbers arrive, and
+    /// never a bare "—" in amount type. (Owner, Nov 16, 2026 —
+    /// build 38, "a bit too heavy": the amount is a touch smaller
+    /// and the strip a touch shorter than build 37.)
+    private func headerStrip(pad: CGFloat) -> some View {
+        // Header colour: WHITE while LOADING (owner, Nov 16, 2026
+        // — build 40: the pale #dbeafe tint was horrendous, the
+        // original white background with grey skeleton shapes was
+        // nicest), muted grey #e5e7eb when FAILED (a failed load
+        // stays distinct from loading), the theme colour when
+        // loaded.
         let bannerColor: Color = {
             if isLoading { return DesignTokens.loadingBanner }
             if amountIsStatus { return Color(hex: "#e5e7eb") }
             return theme?.banner ?? .white
         }()
-        // Title colour on the banner: the theme's onBanner colour,
-        // ink on the plain unthemed face or on a grey failed banner
+        // Title colour on the header: the theme's onBanner colour,
+        // ink on the plain unthemed face or on a grey failed header
         // (the title always shows, even on failure). While LOADING
         // the title is a skeleton block, not real ink text — real
         // text on the placeholder read as a finished card.
@@ -630,28 +658,60 @@ public struct FundsExpandableCard<Expanded: View>: View {
             if theme != nil && !isLoading && !amountIsStatus { return theme?.onBanner ?? .white }
             return DesignTokens.muted
         }()
-        return HStack(spacing: 12) {
+        // Pencil colour: white on the loaded theme banner (it sits
+        // on the colored header, next to the white title), muted
+        // grey on the loading/failed header.
+        let pencilColor: Color = {
+            if theme != nil && !isLoading && !amountIsStatus { return theme?.onBanner ?? .white }
+            return DesignTokens.muted
+        }()
+        return HStack(spacing: 10) {
             if let theme {
                 if isLoading || amountIsStatus {
-                    SkeletonBlock(width: 36, height: 36, cornerRadius: 10, animated: isLoading)
+                    SkeletonBlock(width: 32, height: 32, cornerRadius: 16, animated: isLoading)
                 } else {
+                    // Icon in a white circle (owner, Nov 16, 2026 —
+                    // build 40 reference): the theme icon in the
+                    // fund color on a white disc.
                     Image(systemName: theme.iconName)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(theme.onBanner)
-                        .frame(width: 36, height: 36)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.banner)
+                        .frame(width: 32, height: 32)
+                        .background(.white)
+                        .clipShape(Circle())
                 }
             }
             if isLoading {
-                // Skeleton title while loading (owner, Nov 16, 2026
-                // — build 38): real dark-ink text on the placeholder
-                // read as a finished card. The failed state keeps
-                // the real title in ink.
+                // Skeleton title while loading (owner, Nov 16,
+                // 2026 — build 38): real dark-ink text on the
+                // placeholder read as a finished card. The failed
+                // state keeps the real title in ink.
                 SkeletonBlock(width: 140, height: 20, cornerRadius: 6, animated: true)
             } else {
                 Text(TitleCase.apply(to: title))
                     .font(.system(size: theme == nil ? 17 : 18, weight: .bold))
                     .foregroundStyle(titleColor)
                     .lineLimit(1)
+            }
+            // Pencil (admin-only): a small edit glyph right by the
+            // fund name, in the header's text color — NOT a button
+            // (owner, Nov 16, 2026 — build 40: "This shouldn't be
+            // a button.. it should be like an edit sign or pencil
+            // symbol by the name"). Tapping it opens the same
+            // rename sheet the old full-width Rename button opened.
+            // A child Button wins over the header's tap gesture, so
+            // the pencil renames while the rest of the header still
+            // toggles.
+            if isAdmin, let onRename, !isLoading {
+                Button(action: onRename) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(pencilColor)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Rename \(TitleCase.apply(to: title))")
             }
             Spacer()
             if isLoading || amountIsStatus {
@@ -660,7 +720,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 // card looked empty while loading). Static (not
                 // shimmering) when failed — a failed load is not a
                 // loading state.
-                SkeletonBlock(width: 190, height: 32, cornerRadius: 8, animated: isLoading)
+                SkeletonBlock(width: 150, height: 30, cornerRadius: 8, animated: isLoading)
             } else {
                 Text(amountText)
                     .font(.system(size: 24, weight: .bold))
@@ -674,11 +734,9 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
         }
         .padding(.horizontal, pad)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(bannerColor)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .contentShape(Rectangle())
     }
 }
 

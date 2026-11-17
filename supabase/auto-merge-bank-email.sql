@@ -40,9 +40,14 @@
 --     email Counted). The un-exclude is guarded: it never fires
 --     when another merged candidate already lists that bank row as
 --     its duplicate.
---   * merchant names related: identical, one contains the other, a
---     confirmed merchant_aliases pair, or both map to the same
---     merchant_rules display name.
+--   * merchant names related (squash-based, build 40 — STANDING
+--     RULE, owner Nov 16, 2026): identical squashes, one squash
+--     contains the other, a confirmed merchant_aliases pair, or
+--     both map to the same merchant_rules display name. The squash
+--     (UPPER + strip every non-alphanumeric) means slight spelling
+--     differences — punctuation, case, whitespace — never block a
+--     merge when date + amount + Email/Bank already match. No
+--     fuzzy matching.
 --
 -- CRITICAL SAFEGUARDS:
 --   (1) A pair with ANY duplicate_candidates row (any status) is
@@ -77,6 +82,18 @@
 
 -- 1. Merchant relatedness for merge purposes (SQL mirror of
 -- canonical.ts merchantsRelated + alias + rule-display checks).
+-- STANDING RULE (owner, Nov 16, 2026 — build 40): same date +
+-- same amount + similar merchant + one Email + one Bank = the SAME
+-- transaction and must auto-merge (bank row kept). Slight spelling
+-- differences — punctuation (apostrophe), case, whitespace, minor
+-- variation — must NOT prevent the merge. So the comparison uses
+-- the SQUASH (UPPER + strip every non-alphanumeric), not the key
+-- (which keeps internal punctuation): "Cocoaccino's" squashes to
+-- "COCOACCINOS", same as "Cocoaccinos", but their keys
+-- ("COCOACCINO'S" vs "COCOACCINOS") never matched, so the pair
+-- never merged. No fuzzy matching: squash equality / substring
+-- only. TOIREMORG never merges and ambiguity refuses — those
+-- safeguards are separate and unchanged.
 create or replace function public.merchants_related_for_merge(
   p_household_id uuid, p_merchant_a text, p_merchant_b text)
 returns boolean
@@ -85,20 +102,20 @@ stable
 set search_path = public
 as $$
   select
-    -- identical (normalized) names
-    public.merchant_rule_key(p_merchant_a) = public.merchant_rule_key(p_merchant_b)
-    -- one contains the other (min length 4, as in canonical.ts)
-    or (length(public.merchant_rule_key(p_merchant_a)) >= 4
-        and length(public.merchant_rule_key(p_merchant_b)) >= 4
-        and (position(public.merchant_rule_key(p_merchant_b) in public.merchant_rule_key(p_merchant_a)) > 0
-             or position(public.merchant_rule_key(p_merchant_a) in public.merchant_rule_key(p_merchant_b)) > 0))
-    -- confirmed alias pair, either order
+    -- identical (squashed) names
+    public.merchant_rule_squash(p_merchant_a) = public.merchant_rule_squash(p_merchant_b)
+    -- one contains the other (squashed, min length 4, as in canonical.ts)
+    or (length(public.merchant_rule_squash(p_merchant_a)) >= 4
+        and length(public.merchant_rule_squash(p_merchant_b)) >= 4
+        and (position(public.merchant_rule_squash(p_merchant_b) in public.merchant_rule_squash(p_merchant_a)) > 0
+             or position(public.merchant_rule_squash(p_merchant_a) in public.merchant_rule_squash(p_merchant_b)) > 0))
+    -- confirmed alias pair, either order (squashed)
     or exists (select 1 from public.merchant_aliases a
                 where a.household_id = p_household_id
-                  and ((public.merchant_rule_key(a.name_a) = public.merchant_rule_key(p_merchant_a)
-                        and public.merchant_rule_key(a.name_b) = public.merchant_rule_key(p_merchant_b))
-                       or (public.merchant_rule_key(a.name_a) = public.merchant_rule_key(p_merchant_b)
-                           and public.merchant_rule_key(a.name_b) = public.merchant_rule_key(p_merchant_a))))
+                  and ((public.merchant_rule_squash(a.name_a) = public.merchant_rule_squash(p_merchant_a)
+                        and public.merchant_rule_squash(a.name_b) = public.merchant_rule_squash(p_merchant_b))
+                       or (public.merchant_rule_squash(a.name_a) = public.merchant_rule_squash(p_merchant_b)
+                           and public.merchant_rule_squash(a.name_b) = public.merchant_rule_squash(p_merchant_a))))
     -- both map to the same rule display name
     or exists (select 1
                  from public.merchant_rule_match(p_household_id, p_merchant_a) ma

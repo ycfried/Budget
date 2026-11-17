@@ -116,23 +116,28 @@ public struct DimOnPressButtonStyle: ButtonStyle {
 }
 
 /// Back buttons: light blue #3b82f6, bold 700, 15px, no background,
-/// no border. Text is always "← Back". This is the ONE back
-/// implementation (audit X-P2-7, Nov 12 2026): the Funds inline
-/// duplicate and the `BackButtonStyle()` toolbar call sites all
-/// route through here now; the rendering itself lives in
-/// `BackButtonStyle`, used by this view and nothing else.
-/// Exception (owner, Nov 15, 2026): the Choose Dates calendar
-/// toolbar uses a bare chevron instead — its "← Back" text
-/// truncated to "←…" under the centred title + Clear, and a
-/// truncated button must never ship.
+/// no border. This is the ONE back implementation (audit X-P2-7,
+/// Nov 12 2026): the Funds inline duplicate and the
+/// `BackButtonStyle()` toolbar call sites all route through here
+/// now; the rendering itself lives in `BackButtonStyle`, used by
+/// this view and nothing else.
+/// Bare chevron, no text (owner, Nov 16, 2026 — build 40): the
+/// "← Back" TEXT truncated to "← ..." on the Trash page — the
+/// centred inline title squeezes the leading toolbar item — and
+/// the owner confirmed "That needs to be fixed here and anywhere
+/// else it exists.." The same truncation had already forced the
+/// Choose Dates calendar toolbar to a bare chevron (owner, Nov 15,
+/// 2026). A symbol cannot truncate, so every back button in the
+/// app is now a clean chevron and the "..." cannot appear on any
+/// screen. The style (light blue #3b82f6, bold 700, 15px,
+/// top-left) is unchanged; only the label went from text to a
+/// symbol.
 public struct BackButton: View {
     public let action: () -> Void
     public init(action: @escaping () -> Void) { self.action = action }
     public var body: some View {
         Button(action: action) {
-            Text("← Back")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(DesignTokens.mid)
+            Image(systemName: "chevron.left")
         }
         .buttonStyle(BackButtonStyle())
         .accessibilityLabel("Back")

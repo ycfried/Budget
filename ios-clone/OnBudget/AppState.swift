@@ -103,6 +103,19 @@ public final class AppViewModel: ObservableObject {
 
     @Published public var phase: AppPhase = .loading
     @Published public var selectedTab: AppTab = .home
+    /// Tab-reset suppression (owner, Nov 16, 2026 — build 40): a
+    /// USER tab tap resets that tab to its top-level main page
+    /// (Transactions pops its NavigationStack path, Funds collapses
+    /// any expanded card), but a PROGRAMMATIC tab change — Home
+    /// "See All", a recent-row jump, the Weekly sheet's "Show
+    /// Transactions", Home's "Set Your Weekly Allowance" — must NOT
+    /// reset, because it intentionally lands on a sub-view (the
+    /// jump, the week filter, the expanded Spending card). Each
+    /// programmatic setter sets this flag before changing
+    /// `selectedTab`; the shell's onChange consumes it (clears it
+    /// and skips the reset). It is set only by those setters and
+    /// read only by the shell — never set by a user tap.
+    public var suppressNextTabReset = false
     /// Settings is not a tab (CLONE_SPEC §2.2): the profile menu
     /// opens it as a full-screen cover over the current tab.
     @Published public var showSettings = false
@@ -195,8 +208,13 @@ public final class AppViewModel: ObservableObject {
         // exists (its load() returns nil without prompting, so boot
         // lands on the auth screen and offers Face ID), else the
         // plain UserDefaults store. An explicit client (tests,
-        // previews) is used as-is.
-        self.client = client ?? SupabaseClient(store: BiometricUnlock.sessionStoreForLaunch())
+        // previews) is used as-is. The store is MIRRORED to the App
+        // Group (build 40, Nov 16, 2026 — widget sync): every
+        // session save also writes to the shared container, so the
+        // widget extension can read the session and fetch fresh
+        // numbers on a sync tap. Reads still come from the real
+        // store, so the app's auth behavior is unchanged.
+        self.client = client ?? SupabaseClient(store: MirroredSessionStore(inner: BiometricUnlock.sessionStoreForLaunch()))
         self.biometricUnlock = biometricUnlock
         // A Gmail callback recorded by an earlier launch (e.g. the
         // CI script's simctl openurl, delivered to the previous app
@@ -442,6 +460,7 @@ public final class AppViewModel: ObservableObject {
     /// on a Settings Budget card (owner decision #27, re-pointed).
     public func openSpendingFund() {
         expandedCard = .spending
+        suppressNextTabReset = true
         selectedTab = .funds
     }
 
@@ -455,12 +474,26 @@ public final class AppViewModel: ObservableObject {
         showSettings = false
     }
 
+    /// Widget entry (owner, Nov 16, 2026 — build 40): tapping the
+    /// widget always opens the HOME main page — never a fund, a
+    /// sub-view, or wherever the app was last left. This matches the
+    /// Home-on-load rule (fresh launch opens Home). It clears any
+    /// expanded fund card and selects Home; the shell's tab-change
+    /// reset pops the Transactions path when the tab actually
+    /// changes. NOT suppressed — a widget tap is a user navigation
+    /// to the main page, not a programmatic landing on a sub-view.
+    public func goHome() {
+        expandedCard = nil
+        selectedTab = .home
+    }
+
     /// Recent-row tap (live.js:1040-1110): clear Transactions
     /// filters/search first (the Transactions screen does this when
     /// it consumes the jump), open Transactions, expand the row.
     public func jumpToTransaction(_ id: UUID) {
         pendingTransactionJump = id
         pendingWeekFilter = nil
+        suppressNextTabReset = true
         selectedTab = .transactions
     }
 
@@ -472,6 +505,7 @@ public final class AppViewModel: ObservableObject {
         pendingClearTransactionFilters = true
         pendingWeekFilter = nil
         pendingTransactionJump = nil
+        suppressNextTabReset = true
         selectedTab = .transactions
     }
 
@@ -480,6 +514,7 @@ public final class AppViewModel: ObservableObject {
     public func showTransactionsForWeek(_ weekStart: String) {
         pendingWeekFilter = weekStart
         pendingTransactionJump = nil
+        suppressNextTabReset = true
         selectedTab = .transactions
     }
 

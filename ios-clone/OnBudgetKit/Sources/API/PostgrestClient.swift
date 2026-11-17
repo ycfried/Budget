@@ -876,6 +876,20 @@ public struct PostgrestClient {
         ))
     }
 
+    /// Active cash gifts for the charity summary + history feed
+    /// (build 40, Nov 16, 2026): cash given off-card, recorded on
+    /// the charity fund — NOT transaction rows. The caller adds
+    /// their sum to Given. Newest first, max 50.
+    public func charityCashGifts(householdId: UUID) async throws -> [CharityCashGift] {
+        try await fetch(PostgrestQuery(
+            table: "charity_cash_gifts",
+            columns: "id,household_id,amount_cents,gift_date,note,status,created_by,created_at",
+            filters: [.householdId(householdId), .equal("status", "active")],
+            orders: [PostgrestOrder("gift_date", ascending: false)],
+            limit: 50
+        ))
+    }
+
     /// The household's charity default rate (live.js:1703-1704).
     /// Selects household_id too: `CharitySettings.householdId` is
     /// non-optional, so the previous select failed decoding (found
