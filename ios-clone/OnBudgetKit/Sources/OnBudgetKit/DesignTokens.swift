@@ -26,7 +26,12 @@ public enum DesignTokens {
     /// Light grey banner for the Extra Fund (owner, Nov 16, 2026 —
     /// build 38: the medium grey #6b7280 banner was the wrong
     /// colour; the fund's banner is light grey #d1d5db, with dark
-    /// ink text on it).
+    /// ink text on it). RETIRED from banners in build 39 (owner,
+    /// Nov 16, 2026 — "Coloring still doesn't look great"): the
+    /// light grey read as washed-out and as an empty/dead card at
+    /// $0.00 — Extra Fund is muted grey #6b7280 with white text
+    /// again. The token stays (tokens are never deleted), but no
+    /// fund card reads it any more.
     public static let bannerLightGreyHex = "#d1d5db"
     /// Loading-banner tint (owner, Nov 16, 2026 — build 38): the
     /// solid muted grey #e5e7eb banner read as a FINISHED grey card,

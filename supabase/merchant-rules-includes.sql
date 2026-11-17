@@ -28,6 +28,10 @@
 --     record source_merchant and accept 'includes'.
 -- Matching stays strict (never fuzzy): exact > includes > squash,
 -- longest pattern wins within a tier.
+-- BUILD 39 (Nov 16, 2026): Includes is case- and
+-- whitespace-insensitive — the predicate squashes both sides
+-- before the substring check; see
+-- supabase/merchant-rules-includes-squash.sql for the live apply.
 
 -- 0. pgcrypto (already there from build 30; harmless if present).
 create extension if not exists pgcrypto;
@@ -79,14 +83,14 @@ as $$
    where r.household_id = p_household_id
      and (public.merchant_rule_key(r.pattern_text) = public.merchant_rule_key(p_merchant)
        or (r.match_type = 'includes'
-           and strpos(public.merchant_rule_key(p_merchant),
-                      public.merchant_rule_key(r.pattern_text)) > 0)
+           and strpos(public.merchant_rule_squash(p_merchant),
+                      public.merchant_rule_squash(r.pattern_text)) > 0)
        or public.merchant_rule_squash(r.pattern_text) = public.merchant_rule_squash(p_merchant))
    order by
      case when public.merchant_rule_key(r.pattern_text) = public.merchant_rule_key(p_merchant) then 0
           when r.match_type = 'includes'
-           and strpos(public.merchant_rule_key(p_merchant),
-                      public.merchant_rule_key(r.pattern_text)) > 0 then 1
+           and strpos(public.merchant_rule_squash(p_merchant),
+                      public.merchant_rule_squash(r.pattern_text)) > 0 then 1
           else 2 end,
      length(public.merchant_rule_key(r.pattern_text)) desc,
      r.created_at asc
@@ -121,7 +125,7 @@ begin
      where t.household_id = p_household_id
        and (public.merchant_rule_key(t.merchant) = v_rule.pattern_key
          or (v_rule.match_type = 'includes'
-             and strpos(public.merchant_rule_key(t.merchant), v_rule.pattern_key) > 0)
+             and strpos(public.merchant_rule_squash(t.merchant), v_rule.pattern_squash) > 0)
          or public.merchant_rule_squash(t.merchant) = v_rule.pattern_squash)
   )
   update public.transactions t

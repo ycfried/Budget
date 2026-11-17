@@ -580,6 +580,9 @@ public struct FundsView: View {
                     // collapses by tapping its header/chevron, so
                     // the button was redundant clutter.
                     if isAdmin {
+                        AddToCharitySection(viewModel: viewModel)
+                    }
+                    if isAdmin {
                         HStack(spacing: 12) {
                             FundsPrimaryButton("Record Income") {
                                 correctingIncome = nil

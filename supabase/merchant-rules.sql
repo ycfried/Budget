@@ -24,8 +24,11 @@
 --   squash = key with ALL non-alphanumerics removed, so
 --            'TENYADKALLAHGEMACH' matches 'TENYAD KALLAH GEMACH'.
 --   A rule matches when: exact-key equal (any match_type), or
---   match_type='includes' and the key CONTAINS the pattern anywhere,
---   or squash equal. Priority: exact > includes > squash; within a
+--   match_type='includes' and the SQUASH contains the pattern
+--   squash anywhere (build 39: case- and whitespace-insensitive
+--   — the key-substring check could not match across different
+--   spacing), or squash equal. Priority: exact > includes >
+--   squash; within a
 --   tier the longest pattern wins, then the earliest rule.
 -- Fixed kind: auto-applies to matching NEW transactions (and to
 -- rows a rename applies to) with one sign guard — a money-out kind
@@ -54,6 +57,13 @@
 -- reference). Existing 'prefix' rows are migrated by
 -- merchant-rules-includes.sql; this file is the record for fresh
 -- installs.
+-- BUILD 39 (Nov 16, 2026): Includes is case- and
+-- whitespace-insensitive — the predicate squashes both sides
+-- (merchant_rule_squash) before the substring check, so
+-- "baltimore gas" matches "BaltimoreGas" and "B G E" matches
+-- "BGE". See supabase/merchant-rules-includes-squash.sql, which
+-- carries the same two function definitions for the live apply.
+--
 -- The frozen web app (v69) reads transactions.merchant as before
 -- and simply shows the cleaner names once rules have renamed rows.
 
@@ -140,14 +150,14 @@ as $$
    where r.household_id = p_household_id
      and (public.merchant_rule_key(r.pattern_text) = public.merchant_rule_key(p_merchant)
        or (r.match_type = 'includes'
-           and strpos(public.merchant_rule_key(p_merchant),
-                      public.merchant_rule_key(r.pattern_text)) > 0)
+           and strpos(public.merchant_rule_squash(p_merchant),
+                      public.merchant_rule_squash(r.pattern_text)) > 0)
        or public.merchant_rule_squash(r.pattern_text) = public.merchant_rule_squash(p_merchant))
    order by
      case when public.merchant_rule_key(r.pattern_text) = public.merchant_rule_key(p_merchant) then 0
           when r.match_type = 'includes'
-           and strpos(public.merchant_rule_key(p_merchant),
-                      public.merchant_rule_key(r.pattern_text)) > 0 then 1
+           and strpos(public.merchant_rule_squash(p_merchant),
+                      public.merchant_rule_squash(r.pattern_text)) > 0 then 1
           else 2 end,
      length(public.merchant_rule_key(r.pattern_text)) desc,
      r.created_at asc
@@ -182,7 +192,7 @@ begin
      where t.household_id = p_household_id
        and (public.merchant_rule_key(t.merchant) = v_rule.pattern_key
          or (v_rule.match_type = 'includes'
-             and strpos(public.merchant_rule_key(t.merchant), v_rule.pattern_key) > 0)
+             and strpos(public.merchant_rule_squash(t.merchant), v_rule.pattern_squash) > 0)
          or public.merchant_rule_squash(t.merchant) = v_rule.pattern_squash)
   )
   update public.transactions t

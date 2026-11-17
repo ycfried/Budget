@@ -275,6 +275,28 @@ final class RPCRequestTests: XCTestCase {
         XCTAssertTrue(jsonBody(of: request)["p_rate_bp"] is NSNull)
     }
 
+    /// Manual "Add to Charity" (owner, Nov 16, 2026 — build 39):
+    /// the add reuses `record_charity_income` with a 100% rate
+    /// override, so the whole amount commits to charity and
+    /// Available rises by exactly the amount — no new RPC, no
+    /// migration. Source label "Manual add", today's date.
+    func testManualAddToCharityParams() throws {
+        let householdId = UUID()
+        let request = try rpcs.makeRequest(name: "record_charity_income", params: [
+            "p_household_id": householdId.uuidString,
+            "p_amount_cents": 2500,
+            "p_income_date": "2026-11-16",
+            "p_source_label": "Manual add",
+            "p_rate_bp": 10000,
+            "p_note": "",
+        ])
+        XCTAssertEqual(request.url?.path, "/rest/v1/rpc/record_charity_income")
+        let body = jsonBody(of: request)
+        XCTAssertEqual(body["p_amount_cents"] as? Int, 2500)
+        XCTAssertEqual(body["p_rate_bp"] as? Int, 10000)
+        XCTAssertEqual(body["p_source_label"] as? String, "Manual add")
+    }
+
     /// `correct_charity_income` (`r13-charity.sql:194-239`): the
     /// correction flow — old income id (not household id) plus the
     /// corrected fields; a null rate keeps the entry's own rate.

@@ -174,6 +174,8 @@ export async function hmacSha256Hex(secret: string, message: string): Promise<st
 // normalized exact / includes / squashed-exact only, never fuzzy:
 // (Build 34: 'prefix' became 'includes' — the name must CONTAIN
 // the pattern anywhere, not only start with it.)
+// (Build 39: Includes squashes BOTH sides before the substring
+// check — case- and whitespace-insensitive, letters in order.)
 // a rule must never rename a merchant it was not taught.
 //   key    = UPPER, trimmed, whitespace collapsed, leading
 //            non-alphanumeric bank artifacts stripped ('=TENYAD...'
@@ -240,7 +242,7 @@ export function matchMerchantRule(
     if (!pk) continue;
     let tier = -1;
     if (pk === key) tier = 0;
-    else if ((r.match_type === 'includes' || r.match_type === 'prefix') && key.includes(pk)) tier = 1;
+    else if ((r.match_type === 'includes' || r.match_type === 'prefix') && squash.includes(merchantRuleSquash(pk))) tier = 1;
     else if (r.pattern_squash && merchantRuleSquash(r.pattern_key) === squash) tier = 2;
     else if (merchantRuleSquash(r.pattern_key) === squash) tier = 2;
     if (tier < 0) continue;

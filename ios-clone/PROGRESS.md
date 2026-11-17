@@ -446,3 +446,7 @@ slices) — all native-only; web frozen at v69. Full per-item report:
 - Nov 16, 2026 (build-38 batch, simulator trigger 2): full head (banner colour correction + lighten + stuck-spinner fix + load-together + loading-banner tint + centered toast popup).
 
 - Nov 16, 2026 (build-38, simulator trigger 2b): run 1 (43976044984, colour/lighten head e05d192) was cancelled at ~32 min — the single test step had been running 32 min with no finish (prior runs: 17–28 min); the final head 61d5dbf supersedes it. Run 2 triggers on this commit.
+
+- Nov 16, 2026 (build-39, simulator trigger 1): full head — manual Add to Charity (record_charity_income, 100% override) + merchant Includes squash (SQL + 4 canonical.ts) + Home fund-card fixes (Spending bar + spent line inside the blue banner; expanded detail inside its own half-width column; banner depth refined — Charity #3b82f6, Extra Fund #6b7280, all banners white text).
+
+- Nov 17, 2026 (build-39, simulator run 43990771392, head f958b9e): kit 270/270 ✓ (269 in build 38 + new testManualAddToCharityParams), smoke 9/9 ✓, UI 1/6 — all 5 UI failures the known 429 sign-up gate at OnBudgetUITests.swift:570 (email-gate branch still unmerged), not caused by these changes. Full head: Add to Charity + Includes squash + Home fund-card fixes.
