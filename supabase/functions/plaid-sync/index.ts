@@ -502,11 +502,12 @@ Deno.serve(async (req) => {
       // --- /transactions/sync with a LOADED cursor ---
       let cursor: string | null = item.sync_cursor ?? null;
       let plaidFailed = false;
+      let plaidErrorCode: string | null = null;
       for (let page = 0; page < MAX_PAGES; page++) {
         const { ok, data } = await plaidPost(base, '/transactions/sync', clientId, secret, {
           access_token: accessToken, cursor,
         });
-        if (!ok) { plaidFailed = true; break; }
+        if (!ok) { plaidFailed = true; plaidErrorCode = String(data?.error_code ?? ''); break; }
         cursor = data.next_cursor ?? null;
 
         for (const tx of [...(data.added ?? []), ...(data.modified ?? [])]) {
@@ -568,6 +569,23 @@ Deno.serve(async (req) => {
       } else if (plaidFailed) {
         failedItems.push(item.plaid_item_id);
         failedInstitutions.push(item.institution_name ?? item.plaid_item_id);
+        // Notifications (push-notify, Nov 16, 2026): an auth error
+        // code means the bank connection is broken (the bank needs
+        // re-login) — tell the admins. Best-effort; push-notify
+        // dedupes to once per day per item, so the hourly sync does
+        // not spam. Transient failures (rate limit, server errors)
+        // do NOT notify.
+        if (['ITEM_LOGIN_REQUIRED', 'INVALID_ACCESS_TOKEN', 'ITEM_NOT_FOUND'].includes(plaidErrorCode ?? '')) {
+          try {
+            await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+              body: JSON.stringify({ type: 'bank_broken', household_id: householdId, item_id: item.plaid_item_id }),
+            });
+          } catch {
+            console.error('plaid-sync: push-notify call failed');
+          }
+        }
         continue;
       }
 
@@ -593,6 +611,29 @@ Deno.serve(async (req) => {
 
     if (failedItems.length) {
       return json({ error: 'plaid sync failed', failed_items: failedItems, failed_institutions: failedInstitutions, added, updated, reversed, skipped, skipped_by_reason: skipReasons, minutes_since_previous_sync: minutesSincePreviousSync, stale }, 502);
+    }
+    // Notifications (push-notify, Nov 16, 2026): best-effort, never
+    // fail the sync. push-notify re-reads the new charges / incomes /
+    // charity gifts itself and dedupes by dedupe_hash, so a purchase
+    // already notified via email is not re-notified here. The 502
+    // partial path above does NOT notify — a later successful sync
+    // catches the purchases.
+    if (added > 0) {
+      try {
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'new_transaction', household_id: householdId, source: 'plaid' }),
+        });
+        // Review queue: a sync can create possible duplicates.
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'needs_review', household_id: householdId }),
+        });
+      } catch {
+        console.error('plaid-sync: push-notify call failed');
+      }
     }
     return json({
       added, updated, reversed, skipped, skipped_by_reason: skipReasons,

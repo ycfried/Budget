@@ -252,6 +252,19 @@ final class MembersSettingsViewModel: ObservableObject {
         let label = displayName(for: member)
         do {
             try await context.client.rpcs.removeHouseholdMember(pUserId: member.userId)
+            // Member-left notification (Nov 16, 2026): the server
+            // notifies the remaining members. Best-effort — the
+            // removal already succeeded, so a failure here is silent.
+            do {
+                _ = try await context.client.functions.pushNotify(payload: [
+                    "type": "member_left",
+                    "household_id": context.householdId.uuidString,
+                    "user_id": member.userId.uuidString,
+                    "name": label,
+                ])
+            } catch {
+                // Silent: the removal already succeeded.
+            }
             toast.show("\(label) was removed from the household.", kind: .success)
             await load()
         } catch {

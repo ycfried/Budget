@@ -415,6 +415,55 @@ extension RPCClient {
 // MARK: - Allowances
 
 extension RPCClient {
+    /// `set_notification_preferences(...)` — upserts the caller's own
+    /// notification-preference row (Nov 16, 2026). Any member may set
+    /// their own toggles (not admin-only — these are per-user).
+    /// Returns the saved row.
+    public func setNotificationPreferences(pHouseholdId: UUID, preferences: NotificationPreferences) async throws -> NotificationPreferences {
+        try await call(name: "set_notification_preferences", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_notifications_enabled": preferences.notificationsEnabled,
+            "p_week_closed": preferences.weekClosed,
+            "p_new_week": preferences.newWeek,
+            "p_over_budget": preferences.overBudget,
+            "p_new_purchase": preferences.newPurchase,
+            "p_new_income": preferences.newIncome,
+            "p_new_charity": preferences.newCharity,
+            "p_monthly_statement": preferences.monthlyStatement,
+            "p_member_joined": preferences.memberJoined,
+            "p_member_left": preferences.memberLeft,
+            "p_gmail_expiring": preferences.gmailExpiring,
+            "p_fund_request": preferences.fundRequest,
+            "p_needs_review": preferences.needsReview,
+            "p_large_purchase": preferences.largePurchase,
+            "p_bank_broken": preferences.bankBroken,
+            "p_budget_increased": preferences.budgetIncreased,
+        ])
+    }
+
+    /// `set_large_purchase_threshold(p_household_id, p_threshold_cents)`
+    /// (Nov 16, 2026). The Spending fund's large-purchase threshold.
+    /// Admin only.
+    public func setLargePurchaseThreshold(pHouseholdId: UUID, pThresholdCents: Int) async throws {
+        try await callVoid(name: "set_large_purchase_threshold", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_threshold_cents": pThresholdCents,
+        ])
+    }
+
+    /// `add_to_weekly_budget(p_household_id, p_week_start, p_amount_cents)`
+    /// (Nov 16, 2026). One-time top-up to the week's budget ("Add to
+    /// Budget"). Admin only. Returns the new total allowance for the
+    /// week, in cents. The server reads the week's current total,
+    /// adds the amount, and upserts the override for that week only.
+    public func addToWeeklyBudget(pHouseholdId: UUID, pWeekStart: String, pAmountCents: Int) async throws -> Int {
+        try await callScalar(name: "add_to_weekly_budget", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_week_start": pWeekStart,
+            "p_amount_cents": pAmountCents,
+        ])
+    }
+
     /// `set_base_allowance(p_household_id, p_cents)`
     /// (`live-admin-rpcs.sql:71-82`). Admin only; non-negative.
     /// Applies from the current week onward; it does not rewrite

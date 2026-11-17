@@ -598,6 +598,7 @@ Deno.serve(async (req) => {
     const pendingLateAfterRun = absorbingWeek ? 0 : unpostedLate;
 
     let weeksClosed = 0, releasesDone = 0, heldLegacy = 0;
+    const closedWeekStarts: string[] = [];
     const unlinkedExcessByWeek: { week_start: string; unlinked_excess_cents: number }[] = [];
     const handledReleaseWeeks = new Set<string>();
     for (let ws = earliest; ws < currentWeekStart; ws = addDays(ws, 7)) {
@@ -703,6 +704,7 @@ Deno.serve(async (req) => {
         }
       }
       weeksClosed += 1;
+      closedWeekStarts.push(ws);
       // Defence in depth (Nov 5, 2026): record any unlinked-refund
       // excess for this week so it is visible in the response instead
       // of silently floored away.
@@ -1134,6 +1136,33 @@ Deno.serve(async (req) => {
       // are unique per refund). Never report this as success.
       console.error('week-close restoration failed partway:', restorationError);
       return json({ ...payload, error: 'restoration failed partway' }, 500);
+    }
+    // Notifications (push-notify, Nov 16, 2026): best-effort, never
+    // fail the close. Week-closed + new-week fire from the same run
+    // that closed the week(s). NOT on the 500 restoration-error path
+    // above. When the APNs key is not configured, push-notify is a
+    // safe no-op and these calls return immediately.
+    if (weeksClosed > 0) {
+      try {
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'week_closed', household_id: householdId, week_starts: closedWeekStarts }),
+        });
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'new_week', household_id: householdId }),
+        });
+        // Review queue: a close can hold a refund for review.
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'needs_review', household_id: householdId }),
+        });
+      } catch {
+        console.error('week-close: push-notify call failed');
+      }
     }
     return json(payload);
   } catch (e) {

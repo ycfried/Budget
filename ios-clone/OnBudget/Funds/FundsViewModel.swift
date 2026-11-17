@@ -130,6 +130,35 @@ public final class FundsViewModel: ObservableObject {
     /// showing a bare amount field with no preview (F-P2-14).
     @Published public var allowanceError: String?
 
+    /// The household's large-purchase threshold, in cents (Nov 16,
+    /// 2026 — the Spending fund setting). Nil until loaded, and nil
+    /// when the column is not yet migrated; the server defaults it
+    /// to $100. The Funds page shows $100.00 when this is nil.
+    @Published public var largePurchaseThresholdCents: Int?
+
+    /// This week's effective total allowance (base less this week's
+    /// debt payment, plus any temporary amount) — the figure the
+    /// Spending face shows. Falls back to the stored base while the
+    /// week's figures are still loading.
+    public var currentWeekTotalCents: Int? {
+        if let week = debtWeek {
+            return week.baseAvailableCents + week.tempCents
+        }
+        return baseAllowanceCents
+    }
+
+    /// Best-effort push-notify call (Nov 16, 2026). A notification
+    /// must never fail the action that triggered it — failures are
+    /// silent. The server re-reads the data and derives copy +
+    /// recipients itself; the caller only names the type and event.
+    private func notifyPush(_ payload: [String: Any]) async {
+        do {
+            _ = try await context.client.functions.pushNotify(payload: payload)
+        } catch {
+            // Silent: the action already succeeded; the push is extra.
+        }
+    }
+
     /// Client key for the in-flight top-up, reused across retries of
     /// the same attempt (idempotency — live.js:4638-4640).
     private var topupClientKey: String?
@@ -475,6 +504,10 @@ public final class FundsViewModel: ObservableObject {
             allowanceExplicitlySet = false
             allowanceError = "Could not load your current allowance. Try again."
         }
+        // Large-purchase threshold (Nov 16, 2026): a separate read,
+        // so a missing column (migration not yet applied) fails only
+        // this read — nil means the $100 default.
+        largePurchaseThresholdCents = try? await context.client.postgrest.householdLargePurchaseThreshold(householdId: context.householdId)
     }
 
     /// Retry just the allowance load (Temporary Allowance error state).
@@ -642,7 +675,7 @@ public final class FundsViewModel: ObservableObject {
     public func createFundRequest(amountCents: Int, note: String, transactionId: UUID?) async -> Bool {
         var succeeded = false
         await guarded("request", title: "Could Not Send Request") {
-            _ = try await context.client.postgrest.createFundRequest(
+            let requestId = try await context.client.postgrest.createFundRequest(
                 householdId: context.householdId,
                 requestedBy: context.userId,
                 amountCents: amountCents,
@@ -661,6 +694,14 @@ public final class FundsViewModel: ObservableObject {
             } catch {
                 // Audit is best-effort only.
             }
+            // Fund-request notification (Nov 16, 2026): the server
+            // re-reads the request, verifies it is still pending,
+            // and notifies the admins (excluding the requester).
+            await notifyPush([
+                "type": "fund_request",
+                "household_id": context.householdId.uuidString,
+                "request_id": requestId.uuidString,
+            ])
             succeeded = true
             succeed("Request sent.")
             await refresh()
@@ -827,11 +868,66 @@ public final class FundsViewModel: ObservableObject {
     /// Spending fund container). Applies from the current week
     /// onward; closed weeks are never rewritten.
     public func setBaseAllowance(cents: Int) async {
+        let oldBaseCents = baseAllowanceCents
         await guarded("base-allowance", title: "Could Not Save Allowance") {
             try await context.client.rpcs.setBaseAllowance(pHouseholdId: context.householdId, pCents: cents)
+            // Budget-increased notification (Nov 16, 2026): only
+            // when the allowance went UP, never on a decrease. The
+            // server verifies the stored base matches the new value.
+            if let old = oldBaseCents, cents > old {
+                await notifyPush([
+                    "type": "budget_increased",
+                    "household_id": context.householdId.uuidString,
+                    "kind": "base",
+                    "old_cents": old,
+                    "new_cents": cents,
+                    "week_start": MoneyFormat.currentSundayNY(),
+                ])
+            }
             succeed("Allowance saved.")
             await refresh()
         }
+    }
+
+    /// Set the large-purchase threshold via
+    /// `set_large_purchase_threshold` (Nov 16, 2026 — the Spending
+    /// fund setting). Admin only.
+    public func setLargePurchaseThreshold(cents: Int) async {
+        await guarded("large-purchase-threshold", title: "Could Not Save Threshold") {
+            try await context.client.rpcs.setLargePurchaseThreshold(pHouseholdId: context.householdId, pThresholdCents: cents)
+            largePurchaseThresholdCents = cents
+            succeed("Large purchase threshold saved.")
+            await refresh()
+        }
+    }
+
+    /// Add to Budget (Nov 16, 2026): a one-time top-up to the CURRENT
+    /// week's budget only. The caller passes only the amount; the
+    /// server adds it to the week's current total and returns the new
+    /// total. Fires the budget-increased notification. Returns true
+    /// only on success, so the caller clears the typed input on
+    /// success only (like addToCharity).
+    public func addToBudget(amountCents: Int) async -> Bool {
+        var succeeded = false
+        await guarded("add-budget", title: "Could Not Add to Budget") {
+            let newTotalCents = try await context.client.rpcs.addToWeeklyBudget(
+                pHouseholdId: context.householdId,
+                pWeekStart: MoneyFormat.currentSundayNY(),
+                pAmountCents: amountCents
+            )
+            await notifyPush([
+                "type": "budget_increased",
+                "household_id": context.householdId.uuidString,
+                "kind": "add",
+                "old_cents": newTotalCents - amountCents,
+                "new_cents": newTotalCents,
+                "week_start": MoneyFormat.currentSundayNY(),
+            ])
+            succeeded = true
+            succeed("Added \(MoneyFormat.formatCents(amountCents)). This week's budget is now \(MoneyFormat.formatCents(newTotalCents)).")
+            await refresh()
+        }
+        return succeeded
     }
 
     /// Set the repayment rule via `set_debt_repayment_rule`.
@@ -1023,6 +1119,7 @@ public final class FundsViewModel: ObservableObject {
     /// clears the typed input on success only (F-P1-4).
     public func setTemporaryAllowance(newTotalCents: Int, weeks: Int) async -> Bool {
         var succeeded = false
+        let oldTotalCents = currentWeekTotalCents
         await guarded("temp", title: "Could Not Set Allowance") {
             try await context.client.rpcs.setWeeklyAllowanceOverride(
                 pHouseholdId: context.householdId,
@@ -1030,6 +1127,20 @@ public final class FundsViewModel: ObservableObject {
                 pAllowanceCents: newTotalCents,
                 weeks: weeks
             )
+            // Budget-increased notification (Nov 16, 2026): only
+            // when the new total is HIGHER than this week's current
+            // total, never on a decrease. The server verifies the
+            // stored override matches the new total.
+            if let old = oldTotalCents, newTotalCents > old {
+                await notifyPush([
+                    "type": "budget_increased",
+                    "household_id": context.householdId.uuidString,
+                    "kind": "temporary",
+                    "old_cents": old,
+                    "new_cents": newTotalCents,
+                    "week_start": MoneyFormat.currentSundayNY(),
+                ])
+            }
             succeeded = true
             succeed("Weekly allowance set to \(MoneyFormat.formatCents(newTotalCents)) for \(weeks) week(s).")
             await refresh()

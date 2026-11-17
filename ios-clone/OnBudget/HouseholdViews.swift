@@ -207,6 +207,21 @@ public struct HouseholdView: View {
             message = "Joined. Loading shared budget…"
             messageIsError = false
             await appState.enterHousehold(id: householdId, role: .member)
+            // Member-joined notification (Nov 16, 2026): the server
+            // notifies the other members. Best-effort — joining
+            // already succeeded, so a failure here is silent and
+            // must not surface as a join failure.
+            if let userId = appState.client.currentSession?.user.id {
+                do {
+                    _ = try await appState.client.functions.pushNotify(payload: [
+                        "type": "member_joined",
+                        "household_id": householdId.uuidString,
+                        "user_id": userId.uuidString,
+                    ])
+                } catch {
+                    // Silent: joining already succeeded.
+                }
+            }
         } catch let error as OnBudgetError {
             // Rate-limit gets a plain sentence (audit F-P2-5 — the
             // server's lowercase unpunctuated text is not shown);
