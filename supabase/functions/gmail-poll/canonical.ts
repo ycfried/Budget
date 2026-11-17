@@ -171,14 +171,17 @@ export async function hmacSha256Hex(secret: string, message: string): Promise<st
 // bank row and its email alert hash identically) and via the
 // rename/apply RPCs in supabase/merchant-rules.sql (which recompute
 // dedupe_hash for renamed rows). Matching is deliberately strict —
-// normalized exact / prefix / squashed-exact only, never fuzzy:
+// normalized exact / includes / squashed-exact only, never fuzzy:
+// (Build 34: 'prefix' became 'includes'; build 39: Includes
+// squashes BOTH sides before the substring check — case- and
+// whitespace-insensitive, letters in order.)
 // a rule must never rename a merchant it was not taught.
 //   key    = UPPER, trimmed, whitespace collapsed, leading
 //            non-alphanumeric bank artifacts stripped ('=TENYAD...'
 //            -> 'TENYAD...').
 //   squash = key with ALL non-alphanumerics removed, so
 //            'TENYADKALLAHGEMACH' matches 'TENYAD KALLAH GEMACH'.
-// Priority: exact-key match beats prefix, which beats squash-exact;
+// Priority: exact-key match beats includes, which beats squash-exact;
 // within a tier the longest pattern wins, then the earliest rule.
 // Display names are stored UPPER, like every transactions.merchant
 // value; clients title-case on render (as they already do).
@@ -205,7 +208,7 @@ export function merchantRuleSquash(name: string): string {
 export type MerchantRule = {
   pattern_key: string;
   pattern_squash: string;
-  match_type: 'exact' | 'prefix';
+  match_type: 'exact' | 'includes' | 'prefix';
   display_name: string;
   fixed_kind?: string | null;
   created_at?: string;
@@ -236,7 +239,7 @@ export function matchMerchantRule(
     if (!pk) continue;
     let tier = -1;
     if (pk === key) tier = 0;
-    else if (r.match_type === 'prefix' && key.startsWith(pk)) tier = 1;
+    else if ((r.match_type === 'includes' || r.match_type === 'prefix') && squash.includes(merchantRuleSquash(pk))) tier = 1;
     else if (r.pattern_squash && merchantRuleSquash(r.pattern_key) === squash) tier = 2;
     else if (merchantRuleSquash(r.pattern_key) === squash) tier = 2;
     if (tier < 0) continue;
