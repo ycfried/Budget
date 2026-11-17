@@ -388,6 +388,35 @@ public struct EdgeFunctionsClient {
         try await invoke(name: "week-close", body: ["household_id": householdId.uuidString])
     }
 
+    // MARK: - Push notifications
+
+    /// `register-push-token` — upserts (or deletes) the caller's
+    /// device token in push_tokens (Nov 16, 2026). User JWT; the
+    /// caller must be a member of the household. Called when APNs
+    /// issues a token, when the app launches and permission is
+    /// already granted, and best-effort on sign-out / account
+    /// deletion. `unregister` deletes the row instead of upserting.
+    public func registerPushToken(householdId: UUID, deviceToken: String, environment: String, unregister: Bool = false) async throws {
+        _ = try await invokeRaw(name: "register-push-token", body: [
+            "household_id": householdId.uuidString,
+            "device_token": deviceToken,
+            "environment": environment,
+            "unregister": unregister,
+        ])
+    }
+
+    /// `push-notify` — asks the server to send a push for an event
+    /// (Nov 16, 2026). The server re-reads the data and derives copy
+    /// + recipients itself; the caller only names the type and the
+    /// event. Returns the raw response (`ok`, `sent`, `skipped`, ...).
+    /// Best-effort callers ignore failures — a notification must never
+    /// fail the action that triggered it. When the APNs key is not
+    /// configured, the server answers
+    /// `{ok: true, skipped: "apns_not_configured"}`.
+    public func pushNotify(payload: [String: Any]) async throws -> [String: Any] {
+        try await invokeRaw(name: "push-notify", body: payload)
+    }
+
     // MARK: - Plaid (bank)
 
     /// `plaid-link` — create a Plaid Link token (`plaid-link/index.ts`).

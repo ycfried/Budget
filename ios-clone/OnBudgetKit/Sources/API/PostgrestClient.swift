@@ -390,6 +390,38 @@ public struct PostgrestClient {
         return (row?.baseAllowanceCents, row?.allowanceSetAt != nil)
     }
 
+    /// The household's large-purchase threshold, in cents (Nov 16,
+    /// 2026 — the Spending fund setting). A separate read from the
+    /// allowance, so a missing column (migration not yet applied)
+    /// fails only this read: the caller treats nil as the $100
+    /// default and the Funds page keeps working.
+    public func householdLargePurchaseThreshold(householdId: UUID) async throws -> Int? {
+        struct ThresholdRow: Decodable {
+            let largePurchaseThresholdCents: Int?
+            enum CodingKeys: String, CodingKey {
+                case largePurchaseThresholdCents = "large_purchase_threshold_cents"
+            }
+        }
+        let row: ThresholdRow? = try await fetchOne(PostgrestQuery(
+            table: "households",
+            columns: "large_purchase_threshold_cents",
+            filters: [.householdRow(householdId)]
+        ))
+        return row?.largePurchaseThresholdCents
+    }
+
+    /// The signed-in user's notification preferences for a household
+    /// (Nov 16, 2026). Nil when the user has never saved a row — the
+    /// caller treats that as all on.
+    public func notificationPreferences(householdId: UUID, userId: UUID) async throws -> NotificationPreferences? {
+        try await fetchOne(PostgrestQuery(
+            table: "notification_preferences",
+            columns: "notifications_enabled,week_closed,new_week,over_budget,new_purchase,new_income,new_charity,monthly_statement,member_joined,member_left,gmail_expiring,fund_request,needs_review,large_purchase,bank_broken,budget_increased",
+            filters: [.equal("household_id", householdId.uuidString), .equal("user_id", userId.uuidString)],
+            limit: 1
+        ))
+    }
+
     /// Whether automatic sync is on, the server truth
     /// (`households.auto_sync_enabled`, live.js:1354).
     public func autoSyncEnabled(householdId: UUID) async throws -> Bool {
