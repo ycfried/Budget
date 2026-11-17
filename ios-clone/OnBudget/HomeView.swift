@@ -624,9 +624,13 @@ public struct HomeView: View {
     /// content, so the body holds its size); while failed the error
     /// box + Try Again sit here. Build 41 (owner, Nov 16, 2026 —
     /// "much bigger"): the body breathes more — 20pt sides, 16pt
-    /// top, 18pt bottom, 16pt between rows.
+    /// top, 18pt bottom, 16pt between rows. Build 42 (owner,
+    /// Nov 17, 2026 — "the white body should be double the header"):
+    /// the body dominates — roughly 1/3 header, 2/3 white body —
+    /// so the top/bottom padding steps up to 36pt and the rows sit
+    /// 18pt apart. The header is untouched; the card gets taller.
     private var heroWhiteBody: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             switch viewModel.week {
             case .loading:
                 SkeletonBlock(height: 8, cornerRadius: 4)
@@ -645,8 +649,8 @@ public struct HomeView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 20)
-        .padding(.bottom, 18)
+        .padding(.top, 36)
+        .padding(.bottom, 36)
     }
 
     /// Banner colour: the Spending theme's banner (primary blue
@@ -1176,7 +1180,12 @@ public struct HomeView: View {
             // collapsed, the detail rows when expanded. While
             // loading a single skeleton line; while failed the red
             // status line when collapsed, or the rows (ErrorBox +
-            // Retry) when expanded.
+            // Retry) when expanded. Build 42 (owner, Nov 17, 2026
+            // — "the white body should be double the header"):
+            // roughly 1/3 header, 2/3 white body, so the body
+            // padding steps up to 52pt top and bottom — the card
+            // gets taller with the white body dominating. The
+            // header is untouched.
             VStack(alignment: .leading, spacing: 8) {
                 if isLoading {
                     SkeletonBlock(height: 14)
@@ -1215,8 +1224,8 @@ public struct HomeView: View {
                 }
             }
             .padding(.horizontal, pad)
-            .padding(.top, 20)
-            .padding(.bottom, 20)
+            .padding(.top, 52)
+            .padding(.bottom, 52)
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 12))

@@ -662,11 +662,15 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 // expanded content keeps its own buttons (Add Money
                 // / Spend / Request), so it is not part of the
                 // toggle — tapping an action must not collapse the
-                // section underneath it.
+                // section underneath it. Build 42 (owner, Nov 17,
+                // 2026 — "the white body should be double the
+                // header"): same 1/3 header, 2/3 white body rule
+                // as Home, so the expanded body padding steps up
+                // to 28pt top and bottom.
                 expanded
                     .padding(.horizontal, pad)
-                    .padding(.top, 20)
-                    .padding(.bottom, pad)
+                    .padding(.top, 28)
+                    .padding(.bottom, 28)
             }
         }
         .background(Color.white)
