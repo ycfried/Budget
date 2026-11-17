@@ -830,7 +830,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
             // loading; hidden entirely when the card has no
             // description.
             if let fundDescription, !isLoading, !isReorderMode {
-                Button { showingDescription = true } {
+                Button(action: { showingDescription = true }) {
                     Image(systemName: "info.circle")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(chevronColor)
