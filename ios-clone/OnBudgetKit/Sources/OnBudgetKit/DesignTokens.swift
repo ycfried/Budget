@@ -23,6 +23,20 @@ public enum DesignTokens {
     /// (#eef4ff) — tokens since audit X-P2-8 (Nov 12 2026); screens
     /// must use these, never the raw hex.
     public static let mutedHex = "#6b7280"
+    /// Light grey banner for the Extra Fund (owner, Nov 16, 2026 —
+    /// build 38: the medium grey #6b7280 banner was the wrong
+    /// colour; the fund's banner is light grey #d1d5db, with dark
+    /// ink text on it).
+    public static let bannerLightGreyHex = "#d1d5db"
+    /// Loading-banner tint (owner, Nov 16, 2026 — build 38): the
+    /// solid muted grey #e5e7eb banner read as a FINISHED grey card,
+    /// not a placeholder. While loading the banner is this pale
+    /// brand-blue tint #dbeafe with shimmer skeleton blocks for
+    /// the name and amount — it reads as a placeholder, in the
+    /// brand, consistent with the app's skeleton loading style.
+    /// The failed/error banner stays the muted grey #e5e7eb, so a
+    /// failed load still reads as distinct from loading.
+    public static let loadingBannerHex = "#dbeafe"
     public static let infoBackgroundHex = "#eef4ff"
 
     // MARK: - Soft-red errors (owner rule, Nov 5 2026: light background,
@@ -110,6 +124,8 @@ public enum DesignTokens {
     public static var background: Color { Color(hex: backgroundHex) }
     public static var ink: Color { Color(hex: inkHex) }
     public static var muted: Color { Color(hex: mutedHex) }
+    public static var bannerLightGrey: Color { Color(hex: bannerLightGreyHex) }
+    public static var loadingBanner: Color { Color(hex: loadingBannerHex) }
     public static var infoBackground: Color { Color(hex: infoBackgroundHex) }
     public static var errorBackground: Color { Color(hex: errorBackgroundHex) }
     public static var errorText: Color { Color(hex: errorTextHex) }

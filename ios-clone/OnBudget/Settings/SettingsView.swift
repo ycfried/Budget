@@ -55,6 +55,6 @@ struct SettingsView: View {
             }
             .padding()
         }
-        .toastOverlay(toast, clearTabBar: false) // Settings is a full-screen cover: no tab bar under it (audit X-P2-1).
+        .toastOverlay(toast) // Centered mid-screen popup (owner, Nov 16, 2026 — build 38).
     }
 }

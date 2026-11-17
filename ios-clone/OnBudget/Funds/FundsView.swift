@@ -385,7 +385,7 @@ public struct FundsView: View {
             amountText: spendingFaceText,
             isExpanded: appState.expandedCard == .spending,
             amountIsStatus: spendingFaceCents == nil,
-            isLoading: spendingFaceCents == nil && viewModel.allowanceError == nil,
+            isLoading: spendingFaceCents == nil && viewModel.allowanceError == nil && !viewModel.cardsReady,
             theme: .spending,
             accessibilityLabel: spendingAccessibilityLabel,
             onToggle: { toggleCard(.spending) }
@@ -466,7 +466,7 @@ public struct FundsView: View {
             amountText: fundFaceText,
             isExpanded: appState.expandedCard == .fund,
             amountIsStatus: viewModel.fundSummary == nil,
-            isLoading: viewModel.fundSummary == nil && viewModel.fundError == nil,
+            isLoading: viewModel.fundSummary == nil && viewModel.fundError == nil && !viewModel.cardsReady,
             theme: .fund,
             accessibilityLabel: fundAccessibilityLabel,
             onToggle: { toggleCard(.fund) }
@@ -554,7 +554,7 @@ public struct FundsView: View {
             amountText: charityFaceText,
             isExpanded: appState.expandedCard == .charity,
             amountIsStatus: viewModel.charitySummary == nil,
-            isLoading: viewModel.charitySummary == nil && viewModel.charityError == nil,
+            isLoading: viewModel.charitySummary == nil && viewModel.charityError == nil && !viewModel.cardsReady,
             theme: .charity,
             accessibilityLabel: charityAccessibilityLabel,
             onToggle: { toggleCard(.charity) }
@@ -636,7 +636,7 @@ public struct FundsView: View {
             amountText: debtFaceText,
             isExpanded: appState.expandedCard == .debt,
             amountIsStatus: viewModel.debtWeek == nil,
-            isLoading: viewModel.debtWeek == nil && viewModel.debtError == nil,
+            isLoading: viewModel.debtWeek == nil && viewModel.debtError == nil && !viewModel.cardsReady,
             theme: .debt,
             accessibilityLabel: debtAccessibilityLabel,
             onToggle: { toggleCard(.debt) }

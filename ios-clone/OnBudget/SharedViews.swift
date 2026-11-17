@@ -480,31 +480,26 @@ public struct BrandedLoader: View {
 
 // MARK: - Toast
 
-/// Bottom toast, floating clear of the tab bar. Info is brand blue,
-/// success is the Posted badge treatment (owner, Nov 15, 2026 —
-/// build 33: the solid #22c55e bar with white text was the wrong
-/// green), errors are soft red. Auto-dismiss 4s
-/// (ToastStyle.autoDismissSeconds, CLONE_SPEC §2.3); tap dismisses
-/// sooner.
-///
-/// `clearTabBar` (audit X-P2-1, Nov 12 2026): true where a tab bar
-/// is actually present (the three tabs) — the banner sits just
-/// above it, as low as it can go (owner, Nov 16, 2026: the 120pt
-/// float left a gap under the toast on iPad). False on Auth/
-/// Household and inside the Settings cover, where there is no tab
-/// bar — the banner sits 16pt above the bottom edge instead.
-/// On iPad (regular size class) the banner spans the app's 900pt
-/// centered content column, like the tabs — it read as a thin
-/// narrow pill before (owner, Nov 16, 2026). iPhone stays
-/// full-width.
+/// Centered mid-screen popup (owner, Nov 16, 2026 — build 38):
+/// the bottom toast kept missing the bottom and reading as a thin
+/// strip, so the toast is now a CENTERED popup instead — the
+/// owner's own suggestion, accepted. Info is brand blue, success
+/// is the Posted badge treatment (owner, Nov 15, 2026 — build 33:
+/// the solid #22c55e bar with white text was the wrong green),
+/// errors are soft red. Auto-dismiss 4s (ToastStyle
+/// .autoDismissSeconds, CLONE_SPEC §2.3); tap dismisses sooner.
+/// It spans a good portion of the screen width (up to the 900pt
+/// iPad column), never a thin strip, and only the popup itself
+/// intercepts taps — taps outside it reach the page below. The
+/// build-37 bottom positioning (80pt iPad / 95pt iPhone clearance
+/// above the tab bar) is GONE — there is no bottom anchoring any
+/// more, and no `clearTabBar` (there is no tab bar to clear).
 public struct ToastBanner: View {
     public let toast: Toast
     public let onDismiss: () -> Void
-    public let clearTabBar: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    public init(toast: Toast, clearTabBar: Bool = true, onDismiss: @escaping () -> Void) {
+    public init(toast: Toast, onDismiss: @escaping () -> Void) {
         self.toast = toast
-        self.clearTabBar = clearTabBar
         self.onDismiss = onDismiss
     }
     /// Banner background + text by kind, straight from the
@@ -525,8 +520,8 @@ public struct ToastBanner: View {
                 .foregroundStyle(bannerText)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+                .padding(.horizontal, 20)
                 .background(bannerBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
@@ -538,34 +533,27 @@ public struct ToastBanner: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .shadow(radius: 4)
         }
+        // Centered popup width: a good portion of the screen, up
+        // to the 900pt iPad column — never a thin strip.
         .frame(maxWidth: horizontalSizeClass == .regular ? 900 : .infinity)
         .padding(.horizontal, 16)
-        // Pinned to the bottom (owner, Nov 16, 2026): just above the
-        // tab bar — tab bar (49pt) + safe-area bottom + a small gap —
-        // not floating 120pt up with a gap underneath. The clearance
-        // is by size class (the safe-area environment key does not
-        // resolve in this SDK — `\.safeAreaInsets` fails to compile,
-        // runs 43913465407 + 43917049013): iPad ~20pt safe area ->
-        // 80pt, iPhone ~34pt safe area -> 95pt. 16pt where there is
-        // no tab bar.
-        .padding(.bottom, clearTabBar ? (horizontalSizeClass == .regular ? 80 : 95) : 16)
     }
 }
 
-/// Overlays the current toast at the bottom of any screen, with the
+/// Overlays the current toast CENTERED on any screen, with the
 /// 4-second auto-dismiss (ToastStyle.autoDismissSeconds — the one
-/// shared value, CLONE_SPEC §2.3).
+/// shared value, CLONE_SPEC §2.3). (Owner, Nov 16, 2026 — build 38:
+/// the toast was a bottom banner and kept missing the bottom; it
+/// is a centered popup now.)
 public struct ToastOverlayModifier: ViewModifier {
     @Binding public var toast: Toast?
-    public let clearTabBar: Bool
-    public init(toast: Binding<Toast?>, clearTabBar: Bool = true) {
+    public init(toast: Binding<Toast?>) {
         self._toast = toast
-        self.clearTabBar = clearTabBar
     }
     public func body(content: Content) -> some View {
-        content.overlay(alignment: .bottom) {
+        content.overlay(alignment: .center) {
             if let toast {
-                ToastBanner(toast: toast, clearTabBar: clearTabBar) { self.toast = nil }
+                ToastBanner(toast: toast) { self.toast = nil }
                     .task(id: toast.id) {
                         try? await Task.sleep(for: .seconds(ToastStyle.autoDismissSeconds))
                         if self.toast?.id == toast.id { self.toast = nil }
@@ -576,8 +564,8 @@ public struct ToastOverlayModifier: ViewModifier {
 }
 
 public extension View {
-    func toastOverlay(_ toast: Binding<Toast?>, clearTabBar: Bool = true) -> some View {
-        modifier(ToastOverlayModifier(toast: toast, clearTabBar: clearTabBar))
+    func toastOverlay(_ toast: Binding<Toast?>) -> some View {
+        modifier(ToastOverlayModifier(toast: toast))
     }
 
     /// Main tab content width (build 36, owner Nov 16, 2026 — iPad):
@@ -643,22 +631,38 @@ public enum StatCardTheme {
     /// Carried Debt (build 29): black ink banner.
     case debt
     /// Spending (build 30): the weekly budget fund — the base
-    /// allowance lives here. Primary blue banner #2f6bff.
+    /// allowance lives here. Deep blue banner #1d4ed8 (owner,
+    /// Nov 16, 2026 — build 38: the bright primary blue #2f6bff
+    /// was the wrong colour).
     case spending
 
     /// Banner colour of the fund section (owner, Nov 16, 2026 —
-    /// Mockup C): Carried Debt black ink, Spending primary blue,
-    /// Extra Fund medium grey, Charity deep blue. The green
-    /// (#16a34a) / amber (#d97706) / muted-red (#991b1b) outlines
-    /// are gone from the fund cards. (The tokens stay in
-    /// DesignTokens — the widget uses them, and tests pin them —
-    /// but no fund card reads them any more.)
+    /// build 38 correction of the Mockup C assignment): Carried
+    /// Debt black ink, Spending dark blue, Extra Fund light grey,
+    /// Charity light blue. The bright primary blue #2f6bff and the
+    /// medium grey #6b7280 leave the banners. The green (#16a34a)
+    /// / amber (#d97706) / muted-red (#991b1b) outlines are gone
+    /// from the fund cards. (The tokens stay in DesignTokens —
+    /// the widget uses them, and tests pin them — but no fund card
+    /// reads them any more.)
     public var banner: Color {
         switch self {
-        case .charity: return DesignTokens.deep
-        case .fund: return DesignTokens.muted
+        case .charity: return DesignTokens.light
+        case .fund: return DesignTokens.bannerLightGrey
         case .debt: return DesignTokens.ink
-        case .spending: return DesignTokens.primary
+        case .spending: return DesignTokens.deep
+        }
+    }
+
+    /// Text/icon colour on the banner: white on the dark banners
+    /// (Spending deep blue, Debt black), dark ink on the light
+    /// banners (Charity light blue #60a5fa, Extra Fund light grey
+    /// #d1d5db) — white does not read on the light backgrounds
+    /// (owner, Nov 16, 2026 — build 38).
+    public var onBanner: Color {
+        switch self {
+        case .charity, .fund: return DesignTokens.ink
+        case .debt, .spending: return .white
         }
     }
 

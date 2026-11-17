@@ -29,6 +29,14 @@ public final class FundsViewModel: ObservableObject {
     // MARK: - Load state
 
     @Published public var isLoading = false
+    /// True once the four fund cards have all resolved (success or
+    /// failure) in the current session — the cards reveal TOGETHER
+    /// (owner, Nov 16, 2026 — build 38). Before that, on the very
+    /// first load, all four show skeletons; after it flips, a card
+    /// shows its value or its error, never a skeleton. Refreshes
+    /// keep last-known values on screen (nothing is cleared at the
+    /// start), so a refresh never blanks the page to skeletons.
+    @Published public var cardsReady = false
     /// Which action is in flight (per-row busy state + double-tap guard).
     @Published public var busyAction: String?
     @Published public var toast: Toast?
@@ -169,21 +177,48 @@ public final class FundsViewModel: ObservableObject {
 
     // MARK: - Refresh
 
-    /// Loads every section. Each section fails independently (a failed
-    /// read is an error state, never a silent empty list or stale
-    /// numbers — spec §0.3): failed fund/charity data is cleared.
+    /// Loads every section. The four fund cards load IN PARALLEL
+    /// and reveal TOGETHER (owner, Nov 16, 2026 — build 38): the
+    /// old refresh awaited nine loads one after another, so the
+    /// cards flipped from skeleton to loaded one by one — and
+    /// Spending (#8) and Debt (#9) always came last. Now the card
+    /// loads run concurrently, `cardsReady` flips once all four
+    /// have resolved, and the cards flip together. Last-known values
+    /// stay on screen during a refresh (nothing is cleared at the
+    /// start — each load only replaces its summary on success, or
+    /// sets its error on failure), so a refresh never blanks the
+    /// page to skeletons. The supporting loads ride along
+    /// concurrently. A failed read is an error state, never a silent
+    /// empty list or stale numbers — spec §0.3.
     public func refresh() async {
         isLoading = true
         defer { isLoading = false }
+        // The charity summary derives from the transactions, so
+        // that one load goes first — a single call, and everything
+        // else starts together after it.
         await loadTransactions()
-        await loadFund()
-        await loadTopups()
-        await loadCharity()
-        await loadRequests()
-        await loadSavings()
-        await loadReview()
-        await loadAllowance()
-        await loadDebt()
+        // The four card loads + the supporting loads, all at once.
+        async let fundLoad: Void = loadFund()
+        async let topupsLoad: Void = loadTopups()
+        async let charityLoad: Void = loadCharity()
+        async let requestsLoad: Void = loadRequests()
+        async let savingsLoad: Void = loadSavings()
+        async let reviewLoad: Void = loadReview()
+        async let allowanceLoad: Void = loadAllowance()
+        async let debtLoad: Void = loadDebt()
+        // The four cards reveal together once their four loads have
+        // resolved (success or failure — a failed card shows its
+        // error state, never a lingering skeleton).
+        await fundLoad
+        await charityLoad
+        await allowanceLoad
+        await debtLoad
+        cardsReady = true
+        // The supporting loads finish in their own time.
+        await topupsLoad
+        await requestsLoad
+        await savingsLoad
+        await reviewLoad
     }
 
     /// Review-only refresh (build 30): the Review page lives on
@@ -219,10 +254,13 @@ public final class FundsViewModel: ObservableObject {
 
     private func loadFund() async {
         do {
-            let ledger = try await context.client.postgrest.fundLedger(householdId: context.householdId)
-            let releases = try await context.client.postgrest.surplusReleases(householdId: context.householdId)
-            let shortfall = try await context.client.postgrest.fundShortfallCents(householdId: context.householdId)
-            fundSummary = FundSummary.compute(ledger: ledger, releases: releases, shortfallCents: shortfall)
+            // The three reads are independent — fetch them together
+            // (owner, Nov 16, 2026 — build 38: the old sequential
+            // awaits made this card slower than it needs to be).
+            async let ledger = context.client.postgrest.fundLedger(householdId: context.householdId)
+            async let releases = context.client.postgrest.surplusReleases(householdId: context.householdId)
+            async let shortfall = context.client.postgrest.fundShortfallCents(householdId: context.householdId)
+            fundSummary = FundSummary.compute(ledger: try await ledger, releases: try await releases, shortfallCents: try await shortfall)
             fundError = nil
         } catch {
             fundSummary = nil
@@ -243,21 +281,28 @@ public final class FundsViewModel: ObservableObject {
 
     private func loadCharity() async {
         do {
-            let income = try await context.client.postgrest.activeCharityIncome(householdId: context.householdId)
-            let settings = try await context.client.postgrest.charitySettings(householdId: context.householdId)
-            let given = try await context.client.postgrest.verifiedCharityGiftAmounts(householdId: context.householdId)
-            let defaultRate = settings?.defaultRateBp ?? 1000
+            // The three reads are independent — fetch them together
+            // (owner, Nov 16, 2026 — build 38). The summary derives
+            // from the already-loaded transactions (refresh() loads
+            // those first).
+            async let income = context.client.postgrest.activeCharityIncome(householdId: context.householdId)
+            async let settings = context.client.postgrest.charitySettings(householdId: context.householdId)
+            async let given = context.client.postgrest.verifiedCharityGiftAmounts(householdId: context.householdId)
+            let incomeRows = try await income
+            let settingsValue = try await settings
+            let givenAmounts = try await given
+            let defaultRate = settingsValue?.defaultRateBp ?? 1000
             let charityRows = allTransactions.filter { $0.kind == .charity && !$0.excluded && $0.date >= MoneyFormat.dataFloor }
             // Given counts only verified gifts; pending gifts count once
             // they post (live.js:3814-3820). Committed sums each ACTIVE
             // income row at that row's own rate.
             charitySummary = CharitySummary(
-                committedCents: income.filter { $0.status == "active" }.reduce(0) { $0 + $1.committedCents },
-                givenCents: given.reduce(0, +),
+                committedCents: incomeRows.filter { $0.status == "active" }.reduce(0) { $0 + $1.committedCents },
+                givenCents: givenAmounts.reduce(0, +),
                 pendingGiftCents: charityRows.filter { $0.state == .provisional }.reduce(0) { $0 + $1.amountCents },
                 defaultRateBp: defaultRate
             )
-            charitySettings = settings
+            charitySettings = settingsValue
             charityError = nil
         } catch {
             charitySummary = nil
@@ -414,8 +459,32 @@ public final class FundsViewModel: ObservableObject {
     /// fails independently — a failed rule/payments read hides the
     /// editor and the actions, while the balance still shows.
     private func loadDebt() async {
+        // WHY DEBT WAS THE BOTTLENECK (owner, Nov 16, 2026 — build
+        // 38): this ran FIVE round-trips one after another
+        // (computeWeek → debtSettings → debtPayments → weekCloses →
+        // audit log), AND refresh() called it last (#9 of 9) — so
+        // Debt was always the last card to leave its skeleton. Now
+        // all five start together and the load takes the slowest
+        // single call, and refresh() runs it in parallel with the
+        // other three cards. The failure semantics are unchanged:
+        // a computeWeek failure fails the whole load (balance
+        // unknown); each detail read still fails independently.
         do {
-            debtWeek = try await context.client.functions.computeWeek(householdId: context.householdId)
+            async let week = context.client.functions.computeWeek(householdId: context.householdId)
+            async let rule = context.client.postgrest.debtSettings(householdId: context.householdId)
+            async let payments = context.client.postgrest.debtPayments(householdId: context.householdId)
+            async let history = context.client.postgrest.weekCloses(householdId: context.householdId)
+            async let audit = context.client.postgrest.auditLogPage(householdId: context.householdId, limit: 100)
+            debtWeek = try await week
+            debtError = nil
+            do { debtRule = try await rule ?? .default } catch { debtRule = nil }
+            do { debtPayments = try await payments } catch { debtPayments = [] }
+            do {
+                debtHistory = try await history.sorted { $0.weekStart > $1.weekStart }
+            } catch { debtHistory = [] }
+            do {
+                debtRuleAudit = try await audit.rows.filter { $0.action == "Debt repayment rule changed" }
+            } catch { debtRuleAudit = [] }
         } catch {
             debtWeek = nil
             debtRule = nil
@@ -424,29 +493,6 @@ public final class FundsViewModel: ObservableObject {
             debtRuleAudit = []
             debtError = "Could not load debt. Try again."
             return
-        }
-        debtError = nil
-        do {
-            debtRule = try await context.client.postgrest.debtSettings(householdId: context.householdId) ?? .default
-        } catch {
-            debtRule = nil
-        }
-        do {
-            debtPayments = try await context.client.postgrest.debtPayments(householdId: context.householdId)
-        } catch {
-            debtPayments = []
-        }
-        do {
-            debtHistory = try await context.client.postgrest.weekCloses(householdId: context.householdId)
-                .sorted { $0.weekStart > $1.weekStart }
-        } catch {
-            debtHistory = []
-        }
-        do {
-            let page = try await context.client.postgrest.auditLogPage(householdId: context.householdId, limit: 100)
-            debtRuleAudit = page.rows.filter { $0.action == "Debt repayment rule changed" }
-        } catch {
-            debtRuleAudit = []
         }
     }
 

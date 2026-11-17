@@ -103,7 +103,10 @@ public struct TransactionsView: View {
     }
 
     public var body: some View {
-        ZStack(alignment: .bottom) {
+        // Centered toast popup (owner, Nov 16, 2026 — build 38):
+        // the ZStack alignment centers the popup; the ScrollView
+        // fills the stack regardless of alignment.
+        ZStack(alignment: .center) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     header

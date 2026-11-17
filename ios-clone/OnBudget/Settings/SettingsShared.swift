@@ -139,29 +139,30 @@ final class ToastState: ObservableObject {
 }
 
 extension View {
-    /// Bottom toast overlay, floating clear of the tab bar. Uses the
-    /// shared `ToastBanner` (SharedViews) so there is one banner.
-    /// Overloads the shared `toastOverlay(Binding<Toast?>)` — this
-    /// one takes the shared Settings `ToastState` instead.
+    /// Centered mid-screen toast popup (owner, Nov 16, 2026 —
+    /// build 38: the bottom banner kept missing the bottom). Uses
+    /// the shared `ToastBanner` (SharedViews) so there is one
+    /// banner. Overloads the shared `toastOverlay(Binding<Toast?>)`
+    /// — this one takes the shared Settings `ToastState` instead.
     ///
-    /// Plain `.overlay(alignment: .bottom)` on the screen itself —
+    /// Plain `.overlay(alignment: .center)` on the screen itself —
     /// NOT a wrapping ZStack. A ZStack sizes to its content, and a
     /// ScrollView inside one can size the stack to the scroll content
     /// rather than the screen, which floated the banner mid-screen
     /// (owner report, Nov 11 2026). An overlay is positioned inside
-    /// the screen's own bounds, so the banner is always at the
-    /// screen's bottom, never mid-screen.
-    func toastOverlay(_ toastState: ToastState, clearTabBar: Bool = true) -> some View {
-        overlay(alignment: .bottom) {
+    /// the screen's own bounds, so the popup is always centered on
+    /// the screen.
+    func toastOverlay(_ toastState: ToastState) -> some View {
+        overlay(alignment: .center) {
             if let toast = toastState.current {
-                // Move-only entrance (audit X-P2-9, Nov 12 2026):
-                // the toast used to fade in too (`.combined(with:
+                // Scale entrance (audit X-P2-9, Nov 12 2026): the
+                // toast used to fade in too (`.combined(with:
                 // .opacity)`), the app's only opacity fade. Toasts
                 // are not expand/collapse cards, so this is a
                 // consistency change, not a rule-violation fix — the
                 // 0.2s animation below is unchanged.
-                ToastBanner(toast: toast, clearTabBar: clearTabBar) { toastState.dismiss() }
-                    .transition(.move(edge: .bottom))
+                ToastBanner(toast: toast) { toastState.dismiss() }
+                    .transition(.scale)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: toastState.current?.id)
