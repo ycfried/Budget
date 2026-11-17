@@ -137,6 +137,9 @@ export interface CopyInput {
   fundName?: string;
   addedCents?: number;
   newAllowanceCents?: number;
+  /// needs_review: the kinds of the newly claimed Review items
+  /// ('duplicate' | 'held_refund'), in claim order.
+  kinds?: string[];
 }
 
 export function buildCopy(type: string, input: CopyInput): { title: string; body: string } {
@@ -204,6 +207,25 @@ export function buildCopy(type: string, input: CopyInput): { title: string; body
       const note = input.note;
       const quoted = `"${note}${/[.!?]$/.test(note) ? '' : '.'}"`;
       return { title: 'Fund Request Waiting', body: `${ask} ${quoted}` };
+    }
+    case 'needs_review': {
+      // Review queue (Nov 16, ~11:56 PM): possible duplicates and
+      // held refunds. One item names its kind; several summarise.
+      const count = input.count ?? 1;
+      const kinds = input.kinds ?? [];
+      if (count === 1 && kinds[0] === 'duplicate') {
+        return { title: 'Possible Duplicate', body: 'Two purchases look the same. Tap to review.' };
+      }
+      if (count === 1 && kinds[0] === 'held_refund') {
+        const amount = input.amountCents;
+        return {
+          title: 'Refund Held for Review',
+          body: amount != null
+            ? `A ${formatMoney(amount)} refund is held for review. Tap to review.`
+            : 'A refund is held for review. Tap to review.',
+        };
+      }
+      return { title: 'Needs Review', body: `${count} items need review. Tap to review.` };
     }
     case 'large_purchase': {
       const count = input.count ?? 1;
@@ -279,6 +301,7 @@ export function screenForType(type: string): string {
     case 'bank_broken':
       return 'settings';
     case 'fund_request':
+    case 'needs_review':
       return 'money';
     default:
       return 'week';

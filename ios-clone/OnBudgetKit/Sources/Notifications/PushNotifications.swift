@@ -5,13 +5,13 @@ import Foundation
 /// in the app target).
 
 /// The screen a notification tap opens, from the APNs payload's
-/// `data.screen` field.
-public enum NotificationScreen: String {
+/// `data.screen` field. `Sendable` — the kit compiles in Swift 6 mode.
+public enum NotificationScreen: String, Sendable {
     /// Home (week closed, new week, over budget, budget increased).
     case week
     /// Transactions (new purchase / income / charity, large purchase).
     case purchases
-    /// Funds (fund request waiting).
+    /// Funds (fund request waiting, needs review).
     case money
     /// Settings (member joined/left, Gmail expiring, bank broken).
     case settings
@@ -22,7 +22,7 @@ public enum NotificationScreen: String {
 /// A parsed APNs payload: the screen to open and the household it
 /// belongs to. The tap is dropped when the household does not match
 /// the signed-in user's household.
-public struct NotificationPayload {
+public struct NotificationPayload: Sendable {
     public let screen: NotificationScreen
     public let householdId: UUID?
 

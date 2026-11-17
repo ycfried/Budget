@@ -66,6 +66,7 @@ create table if not exists public.notification_preferences (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
+  notifications_enabled boolean not null default true,
   week_closed boolean not null default true,
   new_week boolean not null default true,
   over_budget boolean not null default true,
@@ -77,6 +78,7 @@ create table if not exists public.notification_preferences (
   member_left boolean not null default true,
   gmail_expiring boolean not null default true,
   fund_request boolean not null default true,
+  needs_review boolean not null default true,
   large_purchase boolean not null default true,
   bank_broken boolean not null default true,
   budget_increased boolean not null default true,
@@ -84,6 +86,14 @@ create table if not exists public.notification_preferences (
   updated_at timestamptz not null default now(),
   unique (household_id, user_id)
 );
+
+--- Added after the first apply (Nov 17, 2026): the master on/off
+--- (notifications_enabled) and the needs_review toggle. The ALTERs
+--- are idempotent so the file stays safe to re-run.
+alter table public.notification_preferences
+  add column if not exists notifications_enabled boolean not null default true;
+alter table public.notification_preferences
+  add column if not exists needs_review boolean not null default true;
 
 alter table public.notification_preferences enable row level security;
 
@@ -100,11 +110,12 @@ grant select, insert, update on public.notification_preferences to authenticated
 -- set_notification_preferences RPC
 -- Upserts the caller's own preference row for a household. Any member
 -- may set their own toggles (not admin-only — these are per-user).
--- All fourteen flags are required (the client always sends the full set).
+-- All sixteen flags are required (the client always sends the full set).
 -- Returns the saved row.
 -- ---------------------------------------------------------------------------
 create or replace function public.set_notification_preferences(
   p_household_id uuid,
+  p_notifications_enabled boolean,
   p_week_closed boolean,
   p_new_week boolean,
   p_over_budget boolean,
@@ -116,6 +127,7 @@ create or replace function public.set_notification_preferences(
   p_member_left boolean,
   p_gmail_expiring boolean,
   p_fund_request boolean,
+  p_needs_review boolean,
   p_large_purchase boolean,
   p_bank_broken boolean,
   p_budget_increased boolean)
@@ -136,17 +148,20 @@ begin
 
   insert into public.notification_preferences (
     household_id, user_id,
+    notifications_enabled,
     week_closed, new_week, over_budget,
     new_purchase, new_income, new_charity,
     monthly_statement, member_joined, member_left, gmail_expiring,
-    fund_request, large_purchase, bank_broken, budget_increased)
+    fund_request, needs_review, large_purchase, bank_broken, budget_increased)
   values (
     p_household_id, auth.uid(),
+    p_notifications_enabled,
     p_week_closed, p_new_week, p_over_budget,
     p_new_purchase, p_new_income, p_new_charity,
     p_monthly_statement, p_member_joined, p_member_left, p_gmail_expiring,
-    p_fund_request, p_large_purchase, p_bank_broken, p_budget_increased)
+    p_fund_request, p_needs_review, p_large_purchase, p_bank_broken, p_budget_increased)
   on conflict (household_id, user_id) do update set
+    notifications_enabled = excluded.notifications_enabled,
     week_closed = excluded.week_closed,
     new_week = excluded.new_week,
     over_budget = excluded.over_budget,
@@ -158,6 +173,7 @@ begin
     member_left = excluded.member_left,
     gmail_expiring = excluded.gmail_expiring,
     fund_request = excluded.fund_request,
+    needs_review = excluded.needs_review,
     large_purchase = excluded.large_purchase,
     bank_broken = excluded.bank_broken,
     budget_increased = excluded.budget_increased,

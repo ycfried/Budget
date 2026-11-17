@@ -2,13 +2,13 @@
 
 Date: Nov 16, 2026. Branch: `native-fix-notifications` (from `2801f8f`, build 40).
 Status: plan + code in this PR. Do NOT merge, do NOT upload. Push delivery
-cannot be proven until Mats's .p8 key arrives (see §8).
+cannot be proven until Mats's .p8 key arrives (see §9).
 
-## 1. Triggers (12, confirmed by the owner)
+## 1. Triggers (13, confirmed by the owner)
 
 One notification per event, never per row. A sync run that adds several
 transactions sends one push per type (see trigger 6). Every type has a
-per-user toggle (§3); a missing preferences row means all on.
+per-user toggle (§5); a missing preferences row means all on.
 
 | # | Type | Fires when | Recipients | Toggle | Dedupe key |
 |---|------|-----------|------------|--------|-----------|
@@ -25,6 +25,7 @@ per-user toggle (§3); a missing preferences row means all on.
 | 10 | `large_purchase` | A purchase (kind `charge`) is >= the household's large-purchase threshold (see §2) | All members | `large_purchase` | Derived from the purchase's `purchase:<dedupe_hash>` claim (same row, no second key) |
 | 11 | `bank_broken` | `plaid-sync` finds a bank item whose `/transactions/sync` fails with an auth error (`ITEM_LOGIN_REQUIRED`, `INVALID_ACCESS_TOKEN`, `ITEM_NOT_FOUND`) — the bank needs re-login | Admins only | `bank_broken` | `bank_broken:<household>:<item_id>:<YYYY-MM-DD>` (once per day per item) |
 | 12 | `budget_increased` | The weekly budget is made LARGER — a temporary-allowance increase, a base-allowance increase, or an "Add to Budget" top-up (client call after the increase is saved; only when new > old, never on a decrease) | All members except the admin who made the change | `budget_increased` | `budget_increased:<household>:<week_start>:<YYYY-MM-DD>` |
+| 13 | `needs_review` | Something in the Review queue needs admin attention — a new possible duplicate (created during a sync) or a held refund (created during a week close). See §1.3 for the split from #9 | Admins only | `needs_review` | `needs_review:duplicate:<candidate_id>` / `needs_review:held_refund:<held_id>` (one per item, claimed atomically) |
 
 ### 1.1 Dedupe — the transaction-identity rule (owner, Nov 16)
 
@@ -57,12 +58,13 @@ Title Case titles, plain bodies.
 - Large purchase: "Large Purchase" / "$150.00 at Best Buy — a large purchase." (2+: "2 large purchases, $320.00 in total.")
 - Bank broken: "Bank Connection Broken" / "Your bank connection needs attention. Reconnect it in Settings to keep purchases syncing."
 - Budget increased: "Budget Increased" / "Budget increased by $50.00. Weekly budget is now $450.00."
+- Needs review: "Possible Duplicate" / "Two purchases look the same. Tap to review." (single held refund: "Refund Held for Review" / "A $25.00 refund is held for review. Tap to review."; 2+: "Needs Review" / "3 items need review. Tap to review.")
 
 Deep links (`data.screen`): `week` → Home (week_closed, new_week,
 over_budget, budget_increased), `purchases` → Transactions (new_purchase,
 new_income, new_charity, large_purchase), `settings` → Settings
 (member_joined, member_left, gmail_expiring, bank_broken), `money` →
-Funds (fund_request), `statement` → Home for now (monthly_statement; the
+Funds (fund_request, needs_review — the Review queue lives under Funds), `statement` → Home for now (monthly_statement; the
 statement viewer will define its own screen later).
 
 ### 1.3 Notes on the trigger list
@@ -97,6 +99,20 @@ statement viewer will define its own screen later).
 - **Fund request waiting (#9) was a candidate and is now confirmed.**
   It is built in this PR (it was in the original 3-trigger plan, dropped
   to candidate when the owner did not list it, and re-confirmed Nov 16).
+- **#13 vs #9 — kept separate, no double-notify (call made Nov 17).**
+  "Needs review" is the Review-queue trigger, and a fund request IS a
+  Review item — so the owner said to fold #9 into #13 OR keep both. The
+  call: KEEP BOTH, with a clean split. A fund request keeps its own
+  trigger because its copy is specific and actionable ("Shuki asked for
+  $50.00 from Savings") — folding it into a generic "needs review"
+  would make that push less useful. `needs_review` covers the OTHER
+  Review items: possible duplicates and held refunds. Each Review item
+  maps to exactly one trigger type by its kind, so the same item can
+  never fire twice. Refund suggestions are NOT covered: they are
+  computed client-side from transactions (no server creation event),
+  so there is nothing server-side to fire on — they appear in Review
+  when the admin opens it. A server-side suggestion detector would be
+  a separate piece if the owner wants pushes for those too.
 
 ## 2. Large-purchase threshold — a Funds-page setting
 
@@ -159,22 +175,30 @@ statement viewer will define its own screen later).
   On sign-out / account deletion, unregister best-effort (fire-and-forget).
   All failures are silent to the user.
 
-## 5. Per-type toggles
+## 5. Master on/off + per-type toggles (owner, Nov 16, ~11:56 PM)
 
 - Table `notification_preferences`: one row per (user_id, household_id).
-  Columns — one per trigger type, booleans, all default true:
-  `week_closed`, `new_week`, `over_budget`, `new_purchase`, `new_income`,
-  `new_charity`, `monthly_statement`, `member_joined`, `member_left`,
-  `gmail_expiring`, `fund_request`, `large_purchase`, `bank_broken`,
-  `budget_increased` (14 toggles).
+  - **Master on/off** `notifications_enabled` (boolean, default true):
+    off means the server sends this user NOTHING, whatever the per-type
+    flags say. The client shows it as "All Notifications" at the top of
+    the Notifications card. When it is off, the per-type toggles do not
+    appear at all — never greyed out (standing rule: an action the user
+    cannot perform must NOT appear).
+  - **Per-type toggles** — one per trigger type, booleans, all default
+    true: `week_closed`, `new_week`, `over_budget`, `new_purchase`,
+    `new_income`, `new_charity`, `monthly_statement`, `member_joined`,
+    `member_left`, `gmail_expiring`, `fund_request`, `needs_review`,
+    `large_purchase`, `bank_broken`, `budget_increased` (15 toggles).
 - RLS: a user reads/writes only their own rows. Writes go through the
   RPC `set_notification_preferences(...)` (SECURITY DEFINER,
-  membership-checked, upsert; all fourteen flags required).
+  membership-checked, upsert; all sixteen flags required).
 - Client: a Notifications card in Settings (after Profile) showing the
-  system state row + one toggle per trigger. A failed save reverts the
-  toggle and shows a plain-language error (never raw server text).
+  system state row + the master toggle + one toggle per trigger (only
+  while the master is on). A failed save reverts the toggle and shows a
+  plain-language error (never raw server text).
 - Server: `push-notify` (service role) reads the recipients' rows at send
-  time and skips any type a user turned off. No row = all on.
+  time and skips any user whose master is off, and any type a user turned
+  off. No row = all on. A missing column (migration lag) reads as on.
 
 ## 6. Device-token registration
 
@@ -224,13 +248,16 @@ statement viewer will define its own screen later).
 - Trigger wiring (all best-effort, must never fail the main work):
   - `week-close`: after a successful close with weeks_closed > 0, calls
     push-notify `week_closed` (with the closed week starts) and
-    `new_week`. Not on the 500 restoration-error path.
+    `new_week`, and `needs_review` (a close can hold a refund for
+    review). Not on the 500 restoration-error path.
   - `plaid-sync`: after a successful return with added > 0, calls
-    push-notify `new_transaction` (source plaid); when an item's
+    push-notify `new_transaction` (source plaid) and `needs_review` (a
+    sync can create possible duplicates); when an item's
     `/transactions/sync` fails with an auth error code, calls push-notify
     `bank_broken` (once per day per item, via the dedupe key).
   - `gmail-poll`: after a successful return with stored > 0, calls
-    push-notify `new_transaction` (source gmail); when a connection is
+    push-notify `new_transaction` (source gmail) and `needs_review` (a
+    sync can create possible duplicates); when a connection is
     in `error` status, calls push-notify `gmail_expiring` (once per day
     per connection, via the dedupe key).
   - Client (native app): after a successful `join_household_by_code`,
@@ -276,9 +303,15 @@ Waits on Mats (Apple Developer account holder — only he can do these):
 1. The **.p8 key file + key ID** (APNs key, created in his developer
    account; downloads once). Until it arrives, sending is a safe no-op.
 2. **Enable the Push Notifications capability on the App ID**
-   (com.onbudget.ios) — the app's entitlements now include
-   `aps-environment`, and the next TestFlight upload's manual signing
-   will fail if the App ID does not have push enabled.
+   (com.onbudget.ios) and regenerate the "OnBudget App Store"
+   provisioning profile. The `aps-environment` entitlement is NOT in
+   this repo on purpose: `ios-clone/scripts/validate_project.py`
+   requires `OnBudget.entitlements` to contain ONLY the App Groups key
+   (it names push as a forbidden stray key), and the simulator run
+   fails if it is added. The entitlement comes from the provisioning
+   profile at archive time, once the App ID has push enabled — so the
+   next TestFlight upload's manual signing picks it up. If the upload
+   fails on entitlements, this is the step to check.
 
 Supabase secrets to set when the key arrives (names only, never values):
 - `APNS_KEY_P8` — the .p8 file contents
@@ -301,7 +334,7 @@ fund requests).
   `ios-clone/docs/NOTIFICATIONS_PLAN.md`).
 - SQL (owed — apply via dashboard, do NOT apply from this task):
   `supabase/push-notifications.sql` — `push_tokens`, `push_deliveries`,
-  `notification_preferences` (14 toggles) + RLS +
+  `notification_preferences` (master on/off + 15 toggles) + RLS +
   `set_notification_preferences` RPC; `households.large_purchase_threshold_cents`
   (default $100) + `set_large_purchase_threshold` RPC;
   `add_to_weekly_budget` RPC (one-time top-up, audited).
@@ -317,8 +350,10 @@ fund requests).
   `FundsViewModel` (fund-request call, budget-increased calls,
   add-to-budget, large-purchase threshold),
   `FundsRulesView` (threshold editor), `FundsView` (Add to Budget
-  button + popup), `OnBudget.entitlements` (`aps-environment` =
-  production).
+  button + popup), `OnBudget.xcodeproj/project.pbxproj` (the 3 new app
+  files added — the simulator validator fails without pbxproj entries).
+  `OnBudget.entitlements` is deliberately UNCHANGED (App Groups only —
+  see §9: `aps-environment` comes from the provisioning profile).
 - Tests: kit tests (token hex, screen parsing, preference defaults),
   `supabase/tests/push-notify.test.mjs` (copy builders, dedupe keys,
   APNs JWT helper).

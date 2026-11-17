@@ -5,12 +5,14 @@ import OnBudgetKit
 // MARK: - Notifications (Nov 16, 2026)
 //
 // A Notifications card in Settings (after Profile): the system state
-// row (On/Off + an "Open Settings" button when off) and one toggle
-// per notification type, persisted per user in
-// `notification_preferences` via `set_notification_preferences`.
-// A decline is respected forever — the card never re-prompts; the
-// only way back is the "Open Settings" button. A failed save reverts
-// the toggle and shows a plain-language error (never raw server text).
+// row (On/Off + an "Open Settings" button when off), a master
+// "All Notifications" on/off, and one toggle per notification type,
+// persisted per user in `notification_preferences` via
+// `set_notification_preferences`. When the master is off the
+// per-type toggles do not appear at all (never greyed out). A decline
+// is respected forever — the card never re-prompts; the only way back
+// is the "Open Settings" button. A failed save reverts the toggle and
+// shows a plain-language error (never raw server text).
 
 final class NotificationsSettingsViewModel: ObservableObject {
     @Published var preferences = NotificationPreferences.allOn
@@ -129,24 +131,47 @@ struct NotificationsSettingsView: View {
                         Task { await viewModel.load() }
                     }
                 } else {
-                    // One toggle per trigger type, in Settings order.
-                    // Each toggle saves on change and reverts on failure.
-                    ForEach(NotificationPreferences.toggles.indices, id: \.self) { index in
-                        let toggle = NotificationPreferences.toggles[index]
-                        Toggle(isOn: Binding(
-                            get: { viewModel.preferences[keyPath: toggle.keyPath] },
-                            set: { newValue in
-                                let previous = viewModel.preferences
-                                var updated = viewModel.preferences
-                                updated[keyPath: toggle.keyPath] = newValue
-                                Task { await viewModel.save(updated, previous: previous) }
-                            }
-                        )) {
-                            Text(toggle.label)
-                                .font(.system(size: 15))
-                                .foregroundStyle(DesignTokens.ink)
+                    // Master on/off (Nov 16, ~11:56 PM): off means the
+                    // server sends this user nothing, whatever the
+                    // per-type toggles say.
+                    Toggle(isOn: Binding(
+                        get: { viewModel.preferences.notificationsEnabled },
+                        set: { newValue in
+                            let previous = viewModel.preferences
+                            var updated = viewModel.preferences
+                            updated.notificationsEnabled = newValue
+                            Task { await viewModel.save(updated, previous: previous) }
                         }
-                        .tint(DesignTokens.primary)
+                    )) {
+                        Text("All Notifications")
+                            .font(.system(size: 15))
+                            .foregroundStyle(DesignTokens.ink)
+                    }
+                    .tint(DesignTokens.primary)
+                    // Per-type toggles appear only while the master is
+                    // on — when it is off they are meaningless, and the
+                    // standing rule is that an action the user cannot
+                    // perform must NOT appear (never a greyed-out row).
+                    if viewModel.preferences.notificationsEnabled {
+                        // One toggle per trigger type, in Settings order.
+                        // Each toggle saves on change and reverts on failure.
+                        ForEach(NotificationPreferences.toggles.indices, id: \.self) { index in
+                            let toggle = NotificationPreferences.toggles[index]
+                            Toggle(isOn: Binding(
+                                get: { viewModel.preferences[keyPath: toggle.keyPath] },
+                                set: { newValue in
+                                    let previous = viewModel.preferences
+                                    var updated = viewModel.preferences
+                                    updated[keyPath: toggle.keyPath] = newValue
+                                    Task { await viewModel.save(updated, previous: previous) }
+                                }
+                            )) {
+                                Text(toggle.label)
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(DesignTokens.ink)
+                            }
+                            .tint(DesignTokens.primary)
+                        }
                     }
                 }
             }

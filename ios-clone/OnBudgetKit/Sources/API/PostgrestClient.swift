@@ -416,7 +416,7 @@ public struct PostgrestClient {
     public func notificationPreferences(householdId: UUID, userId: UUID) async throws -> NotificationPreferences? {
         try await fetchOne(PostgrestQuery(
             table: "notification_preferences",
-            columns: "week_closed,new_week,over_budget,new_purchase,new_income,new_charity,monthly_statement,member_joined,member_left,gmail_expiring,fund_request,large_purchase,bank_broken,budget_increased",
+            columns: "notifications_enabled,week_closed,new_week,over_budget,new_purchase,new_income,new_charity,monthly_statement,member_joined,member_left,gmail_expiring,fund_request,needs_review,large_purchase,bank_broken,budget_increased",
             filters: [.equal("household_id", householdId.uuidString), .equal("user_id", userId.uuidString)],
             limit: 1
         ))

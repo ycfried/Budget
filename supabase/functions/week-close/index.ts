@@ -1154,6 +1154,12 @@ Deno.serve(async (req) => {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
           body: JSON.stringify({ type: 'new_week', household_id: householdId }),
         });
+        // Review queue: a close can hold a refund for review.
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'needs_review', household_id: householdId }),
+        });
       } catch {
         console.error('week-close: push-notify call failed');
       }

@@ -625,6 +625,12 @@ Deno.serve(async (req) => {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
           body: JSON.stringify({ type: 'new_transaction', household_id: householdId, source: 'plaid' }),
         });
+        // Review queue: a sync can create possible duplicates.
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'needs_review', household_id: householdId }),
+        });
       } catch {
         console.error('plaid-sync: push-notify call failed');
       }

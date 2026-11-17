@@ -422,6 +422,7 @@ extension RPCClient {
     public func setNotificationPreferences(pHouseholdId: UUID, preferences: NotificationPreferences) async throws -> NotificationPreferences {
         try await call(name: "set_notification_preferences", params: [
             "p_household_id": pHouseholdId.uuidString,
+            "p_notifications_enabled": preferences.notificationsEnabled,
             "p_week_closed": preferences.weekClosed,
             "p_new_week": preferences.newWeek,
             "p_over_budget": preferences.overBudget,
@@ -433,6 +434,7 @@ extension RPCClient {
             "p_member_left": preferences.memberLeft,
             "p_gmail_expiring": preferences.gmailExpiring,
             "p_fund_request": preferences.fundRequest,
+            "p_needs_review": preferences.needsReview,
             "p_large_purchase": preferences.largePurchase,
             "p_bank_broken": preferences.bankBroken,
             "p_budget_increased": preferences.budgetIncreased,

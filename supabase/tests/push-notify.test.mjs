@@ -118,6 +118,20 @@ test('large_purchase copy: single and multi', () => {
   assert.equal(buildCopy('large_purchase', { count: 2, totalCents: 32000 }).body, '2 large purchases, $320.00 in total.');
 });
 
+test('needs_review copy: single duplicate, single held refund, multi', () => {
+  const dupe = buildCopy('needs_review', { count: 1, kinds: ['duplicate'] });
+  assert.equal(dupe.title, 'Possible Duplicate');
+  assert.equal(dupe.body, 'Two purchases look the same. Tap to review.');
+  const held = buildCopy('needs_review', { count: 1, kinds: ['held_refund'], amountCents: 2500 });
+  assert.equal(held.title, 'Refund Held for Review');
+  assert.equal(held.body, 'A $25.00 refund is held for review. Tap to review.');
+  const heldNoAmount = buildCopy('needs_review', { count: 1, kinds: ['held_refund'] });
+  assert.equal(heldNoAmount.body, 'A refund is held for review. Tap to review.');
+  const multi = buildCopy('needs_review', { count: 3, kinds: ['duplicate', 'held_refund', 'duplicate'] });
+  assert.equal(multi.title, 'Needs Review');
+  assert.equal(multi.body, '3 items need review. Tap to review.');
+});
+
 test('bank_broken copy', () => {
   const copy = buildCopy('bank_broken', {});
   assert.equal(copy.title, 'Bank Connection Broken');
@@ -170,6 +184,7 @@ test('screen mapping', () => {
   assert.equal(screenForType('new_income'), 'purchases');
   assert.equal(screenForType('large_purchase'), 'purchases');
   assert.equal(screenForType('fund_request'), 'money');
+  assert.equal(screenForType('needs_review'), 'money');
   assert.equal(screenForType('member_joined'), 'settings');
   assert.equal(screenForType('gmail_expiring'), 'settings');
   assert.equal(screenForType('bank_broken'), 'settings');

@@ -55,6 +55,7 @@ final class PushNotificationsTests: XCTestCase {
 
     func testNotificationPreferencesAllOnByDefault() {
         let prefs = NotificationPreferences.allOn
+        XCTAssertTrue(prefs.notificationsEnabled)
         XCTAssertTrue(prefs.weekClosed)
         XCTAssertTrue(prefs.newWeek)
         XCTAssertTrue(prefs.overBudget)
@@ -66,14 +67,16 @@ final class PushNotificationsTests: XCTestCase {
         XCTAssertTrue(prefs.memberLeft)
         XCTAssertTrue(prefs.gmailExpiring)
         XCTAssertTrue(prefs.fundRequest)
+        XCTAssertTrue(prefs.needsReview)
         XCTAssertTrue(prefs.largePurchase)
         XCTAssertTrue(prefs.bankBroken)
         XCTAssertTrue(prefs.budgetIncreased)
     }
 
     func testNotificationPreferencesToggleCount() {
-        // Fourteen toggles — one per trigger type.
-        XCTAssertEqual(NotificationPreferences.toggles.count, 14)
+        // Fifteen per-type toggles — the master on/off is a separate
+        // control and is NOT in this list.
+        XCTAssertEqual(NotificationPreferences.toggles.count, 15)
     }
 
     func testNotificationPreferencesRoundTrip() throws {
@@ -95,7 +98,9 @@ final class PushNotificationsTests: XCTestCase {
         let json = #"{"week_closed": false}"#.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(NotificationPreferences.self, from: json)
         XCTAssertFalse(decoded.weekClosed)
+        XCTAssertTrue(decoded.notificationsEnabled)
         XCTAssertTrue(decoded.newPurchase)
+        XCTAssertTrue(decoded.needsReview)
         XCTAssertTrue(decoded.budgetIncreased)
         XCTAssertTrue(decoded.fundRequest)
     }
@@ -104,8 +109,10 @@ final class PushNotificationsTests: XCTestCase {
         let prefs = NotificationPreferences(weekClosed: false, fundRequest: false, largePurchase: false)
         let data = try JSONEncoder().encode(prefs)
         let json = String(data: data, encoding: .utf8) ?? ""
+        XCTAssertTrue(json.contains("\"notifications_enabled\""))
         XCTAssertTrue(json.contains("\"week_closed\""))
         XCTAssertTrue(json.contains("\"fund_request\""))
+        XCTAssertTrue(json.contains("\"needs_review\""))
         XCTAssertTrue(json.contains("\"large_purchase\""))
         XCTAssertTrue(json.contains("\"bank_broken\""))
         XCTAssertTrue(json.contains("\"budget_increased\""))

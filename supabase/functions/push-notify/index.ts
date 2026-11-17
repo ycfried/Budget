@@ -183,14 +183,20 @@ interface SendOptions {
 /// Returns how many pushes Apple accepted and how many tokens were tried.
 async function sendPush(admin: SupabaseAdmin, opts: SendOptions): Promise<{ sent: number; tokens: number }> {
   if (opts.recipientUserIds.length === 0) return { sent: 0, tokens: 0 };
-  // Preferences: a missing row means all on.
+  // Preferences: a missing row means all on. The master on/off
+  // (notifications_enabled) gates everything: a user with it off
+  // gets nothing, whatever the per-type flag says. A missing column
+  // (migration lag) reads as on — fail-open, same as the toggles.
   const { data: prefs } = await admin
     .from('notification_preferences')
-    .select(`user_id,${opts.toggleColumn}`)
+    .select(`user_id,notifications_enabled,${opts.toggleColumn}`)
     .eq('household_id', opts.householdId)
     .in('user_id', opts.recipientUserIds);
   const allowedByUser = new Map<string, boolean>(
-    (prefs ?? []).map((p: Record<string, unknown>) => [String(p.user_id), p[opts.toggleColumn] !== false]),
+    (prefs ?? []).map((p: Record<string, unknown>) => [
+      String(p.user_id),
+      p.notifications_enabled !== false && p[opts.toggleColumn] !== false,
+    ]),
   );
   const allowed = opts.recipientUserIds.filter((id) => allowedByUser.get(id) !== false);
   if (allowed.length === 0) return { sent: 0, tokens: 0 };
@@ -596,6 +602,75 @@ Deno.serve(async (req) => {
           body: copy.body,
           data: { type, household_id: householdId, request_id: requestId, screen: screenForType(type) },
           collapseId: `${householdId}:fund_request`,
+          jwt,
+        });
+        return json({ ok: true, sent: result.sent });
+      }
+
+      case 'needs_review': {
+        // Review queue (Nov 16, ~11:56 PM): whenever something needs
+        // admin/owner attention — a new possible duplicate or a held
+        // refund. Fund requests are NOT re-notified here: they have
+        // their own `fund_request` trigger with specific copy, and
+        // each Review item maps to exactly one trigger type, so the
+        // same item can never fire twice. Refund suggestions are
+        // computed client-side (no server creation event), so they
+        // are not covered — they appear in Review when the admin
+        // opens it.
+        const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data: dupes } = await admin
+          .from('duplicate_candidates')
+          .select('id')
+          .eq('household_id', householdId)
+          .eq('status', 'pending')
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        const { data: held } = await admin
+          .from('held_refunds')
+          .select('id, held_cents')
+          .eq('household_id', householdId)
+          .in('status', ['held', 'pending'])
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        const keys: string[] = [];
+        const kinds: string[] = [];
+        for (const d of (dupes ?? []) as { id: string }[]) {
+          keys.push(dedupeKey('needs_review:duplicate', [d.id]));
+          kinds.push('duplicate');
+        }
+        for (const h of (held ?? []) as { id: string }[]) {
+          keys.push(dedupeKey('needs_review:held_refund', [h.id]));
+          kinds.push('held_refund');
+        }
+        if (keys.length === 0) {
+          return json({ ok: true, sent: 0, reason: 'nothing_new' });
+        }
+        const claimed = await claimKeys(admin, householdId, keys);
+        if (claimed.length === 0) {
+          return json({ ok: true, sent: 0, reason: 'already_sent' });
+        }
+        // claimed is in key order, so kinds line up 1:1.
+        const claimedKinds = claimed.map((key) => kinds[keys.indexOf(key)]);
+        const heldRows = (held ?? []) as { id: string; held_cents: number }[];
+        const singleHeld = claimedKinds.length === 1 && claimedKinds[0] === 'held_refund'
+          ? heldRows.find((h) => claimed[0] === dedupeKey('needs_review:held_refund', [h.id]))
+          : undefined;
+        const admins = await loadMembers(admin, householdId, 'admin');
+        const copy = buildCopy('needs_review', {
+          count: claimed.length,
+          kinds: claimedKinds,
+          amountCents: singleHeld?.held_cents,
+        });
+        const result = await sendPush(admin, {
+          householdId,
+          recipientUserIds: admins,
+          toggleColumn: 'needs_review',
+          title: copy.title,
+          body: copy.body,
+          data: { type, household_id: householdId, count: claimed.length, screen: screenForType(type) },
+          collapseId: `${householdId}:needs_review`,
           jwt,
         });
         return json({ ok: true, sent: result.sent });
