@@ -731,6 +731,34 @@ public struct DebtPayment: Equatable, Codable, Identifiable, Sendable {
     }
 }
 
+/// One row of `debt_adjustments` (build 41 — Add/Set debt, owner
+/// Nov 17, 2026): a manual change to the carried debt. `amountCents`
+/// is the SIGNED delta (+ = added, − = reduced by a Set below the
+/// current balance); `balanceAfterCents` is the balance the change
+/// left; `kind` is 'add' or 'set'. The Activity feed reads this
+/// table, so every manual change is listed there.
+public struct DebtAdjustment: Equatable, Codable, Identifiable {
+    public let id: UUID
+    public let householdId: UUID
+    public let amountCents: Int
+    public let balanceAfterCents: Int
+    public let kind: String
+    public let weekStart: String
+    public let note: String
+    public let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case householdId = "household_id"
+        case amountCents = "amount_cents"
+        case balanceAfterCents = "balance_after_cents"
+        case kind
+        case weekStart = "week_start"
+        case note
+        case createdAt = "created_at"
+    }
+}
+
 /// A fund on the Funds page. The Debt fund is built on this model so
 /// the custom-funds work (owner direction, Nov 15, 2026: 1 spending
 /// fund, 1 debt fund tied to it, plus user-added charity/savings-style
@@ -978,6 +1006,16 @@ public struct FundTopup: Equatable, Codable {
     public let note: String
     public let createdBy: UUID?
     public let createdAt: String?
+    /// 'pending' / 'confirmed' (build 41 — pending top-ups, Nov 17,
+    /// 2026). Optional so rows returned by the old server (before
+    /// pending-topups.sql) still decode — a missing status reads as
+    /// confirmed, which is what every pre-migration row is.
+    public let status: String?
+
+    /// A pending top-up counts for nothing until an admin confirms
+    /// it in checking: no ledger row, no shortfall cover, and it is
+    /// excluded from Available everywhere.
+    public var isPending: Bool { status == "pending" }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -990,6 +1028,7 @@ public struct FundTopup: Equatable, Codable {
         case note
         case createdBy = "created_by"
         case createdAt = "created_at"
+        case status
     }
 }
 
@@ -1047,13 +1086,18 @@ public struct FundSummary: Equatable {
 
 /// The `add_fund_money` jsonb return (`r12-add-money.sql:92,132`):
 /// the shortfall-first split. The server split is authoritative;
-/// the client preview (same rule) is informational only.
+/// the client preview (same rule) is informational only. Build 41
+/// (pending top-ups): `status` is 'pending' until the top-up is
+/// confirmed in checking — a pending save covers nothing yet, so
+/// its split figures are 0. Optional so rows returned by the old
+/// server (before pending-topups.sql) still decode.
 public struct AddFundMoneyResult: Equatable, Codable {
     public let amountCents: Int
     public let shortfallCoveredCents: Int
     public let fundAddedCents: Int
     public let shortfallAfterCents: Int
     public let replayed: Bool
+    public let status: String?
 
     enum CodingKeys: String, CodingKey {
         case amountCents = "amount_cents"
@@ -1061,6 +1105,7 @@ public struct AddFundMoneyResult: Equatable, Codable {
         case fundAddedCents = "fund_added_cents"
         case shortfallAfterCents = "shortfall_after_cents"
         case replayed
+        case status
     }
 }
 

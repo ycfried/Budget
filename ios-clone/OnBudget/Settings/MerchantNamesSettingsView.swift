@@ -4,7 +4,7 @@ import OnBudgetKit
 // OnBudget — Settings: Merchant Names card (build 30, task E).
 //
 // The saved merchant-name rules: one pattern maps to a clean
-// display name plus an optional fixed kind. Rules apply to every
+// display name plus a fixed kind (or none). Rules apply to every
 // transaction kind, to old rows on rename and to new rows at
 // ingestion. Admin-only — members never see the card at all (owner
 // rule, Nov 13, 2026: no greyed-out controls, only actions that
@@ -325,17 +325,13 @@ struct MerchantNamesSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             if editingRule == nil {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Name as It Appears")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(DesignTokens.ink)
+                    FieldLabel("Name as It Appears", required: true)
                     TextField("", text: $patternText)
                         .textFieldStyle(.roundedBorder)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Name as It Appears")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(DesignTokens.ink)
+                    FieldLabel("Name as It Appears", required: true)
                     // The original merchant name, for reference —
                     // the Pattern below is what the rule matches.
                     // (source_merchant, build 34; falls back to the
@@ -354,24 +350,18 @@ struct MerchantNamesSettingsView: View {
             // save and re-applies the rule to matching rows.
             if editingRule != nil, matchType == "includes" {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Pattern")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(DesignTokens.ink)
+                    FieldLabel("Pattern", required: true)
                     TextField("", text: $editablePatternText)
                         .textFieldStyle(.roundedBorder)
                 }
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Show As")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
+                FieldLabel("Show As", required: true)
                 TextField("", text: $displayNameText)
                     .textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Match")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
+                FieldLabel("Match")
                 Picker("Match", selection: $matchType) {
                     Text("Exact").tag("exact")
                     Text("Includes").tag("includes")

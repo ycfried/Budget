@@ -40,7 +40,7 @@ public struct TransactionActionsSheet: View {
         case reclassifyKind
         case reclassifyReason(TransactionKind)
         case deleteConfirm
-        /// Build 30: teachable merchant rename (name + optional
+        /// Build 30: teachable merchant rename (name + fixed kind, when set,
         /// fixed kind, remembered for all matching rows).
         case rename
     }
@@ -377,9 +377,7 @@ public struct TransactionActionsSheet: View {
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Amount ($)")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
+                FieldLabel("Amount", required: true)
                 DollarTextField(text: $extraFundAmount)
             }
             if let extraFundError {

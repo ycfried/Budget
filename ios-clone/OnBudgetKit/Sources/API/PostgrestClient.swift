@@ -370,6 +370,20 @@ public struct PostgrestClient {
         return row?.fundNames ?? [:]
     }
 
+    /// Custom fund icons (build 41 — mirrors householdFundNames):
+    /// the household's `fund_icons` map (fund key → SF Symbol
+    /// name). Missing/empty means the default icon. Degrades to
+    /// [:] when the column/RPC is not applied yet.
+    public func householdFundIcons(householdId: UUID) async throws -> [String: String] {
+        struct Row: Decodable { let fundIcons: [String: String]?; enum CodingKeys: String, CodingKey { case fundIcons = "fund_icons" } }
+        let row: Row? = try await fetchOne(PostgrestQuery(
+            table: "households",
+            columns: "fund_icons",
+            filters: [.householdRow(householdId)]
+        ))
+        return row?.fundIcons ?? [:]
+    }
+
     /// Base allowance + whether it was ever explicitly set
     /// (live.js:566-583). `allowanceSetAt == nil` means the $375 is
     /// the schema default, not a choice.
@@ -388,6 +402,38 @@ public struct PostgrestClient {
             filters: [.householdRow(householdId)]
         ))
         return (row?.baseAllowanceCents, row?.allowanceSetAt != nil)
+    }
+
+    /// The household's large-purchase threshold, in cents (Nov 16,
+    /// 2026 — the Spending fund setting). A separate read from the
+    /// allowance, so a missing column (migration not yet applied)
+    /// fails only this read: the caller treats nil as the $100
+    /// default and the Funds page keeps working.
+    public func householdLargePurchaseThreshold(householdId: UUID) async throws -> Int? {
+        struct ThresholdRow: Decodable {
+            let largePurchaseThresholdCents: Int?
+            enum CodingKeys: String, CodingKey {
+                case largePurchaseThresholdCents = "large_purchase_threshold_cents"
+            }
+        }
+        let row: ThresholdRow? = try await fetchOne(PostgrestQuery(
+            table: "households",
+            columns: "large_purchase_threshold_cents",
+            filters: [.householdRow(householdId)]
+        ))
+        return row?.largePurchaseThresholdCents
+    }
+
+    /// The signed-in user's notification preferences for a household
+    /// (Nov 16, 2026). Nil when the user has never saved a row — the
+    /// caller treats that as all on.
+    public func notificationPreferences(householdId: UUID, userId: UUID) async throws -> NotificationPreferences? {
+        try await fetchOne(PostgrestQuery(
+            table: "notification_preferences",
+            columns: "notifications_enabled,week_closed,new_week,over_budget,new_purchase,new_income,new_charity,monthly_statement,member_joined,member_left,gmail_expiring,fund_request,needs_review,large_purchase,bank_broken,budget_increased",
+            filters: [.equal("household_id", householdId.uuidString), .equal("user_id", userId.uuidString)],
+            limit: 1
+        ))
     }
 
     /// Whether automatic sync is on, the server truth
@@ -1020,6 +1066,20 @@ public struct PostgrestClient {
         try await fetch(PostgrestQuery(
             table: "debt_payments",
             columns: "id,household_id,amount_cents,source,week_start,note,created_at",
+            filters: [.householdId(householdId)],
+            orders: [PostgrestOrder("created_at", ascending: false)],
+            limit: 100
+        ))
+    }
+
+    /// Manual debt adjustments, newest first (build 41 — Add/Set
+    /// debt). The Activity feed reads these directly, like the
+    /// payments above. Fault-tolerant at the call site: the table
+    /// does not exist until add-set-debt.sql is applied.
+    public func debtAdjustments(householdId: UUID) async throws -> [DebtAdjustment] {
+        try await fetch(PostgrestQuery(
+            table: "debt_adjustments",
+            columns: "id,household_id,amount_cents,balance_after_cents,kind,week_start,note,created_at",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("created_at", ascending: false)],
             limit: 100

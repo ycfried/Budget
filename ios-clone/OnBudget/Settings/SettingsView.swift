@@ -45,6 +45,7 @@ struct SettingsView: View {
                     .foregroundStyle(DesignTokens.ink)
 
                 ProfileSettingsView(context: context, toast: toast)
+                NotificationsSettingsView(context: context, toast: toast)
                 ConnectedAccountsView(context: context, toast: toast, plaidLauncher: plaidLauncher)
                 EmailAlertsView(context: context, toast: toast)
                 MembersSettingsView(context: context, toast: toast)

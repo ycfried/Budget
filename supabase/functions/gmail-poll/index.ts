@@ -230,6 +230,19 @@ Deno.serve(async (req) => {
               last_error: 'reauthorization required',
             }).eq('id', conn.id);
             errors.push({ connection_id: conn.id, error: 'reauthorization required' });
+            // Notifications (push-notify, Nov 16, 2026): the Gmail
+            // connection needs reauthorization — tell the admins.
+            // Best-effort; push-notify dedupes to once per day per
+            // connection, so repeated polls do not spam.
+            try {
+              await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+                body: JSON.stringify({ type: 'gmail_expiring', household_id: householdId, connection_id: conn.id }),
+              });
+            } catch {
+              console.error('gmail-poll: push-notify call failed');
+            }
             continue;
           }
           throw new Error('token refresh failed');
@@ -417,6 +430,27 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Notifications (push-notify, Nov 16, 2026): best-effort, never
+    // fail the poll. push-notify re-reads the new charges / incomes /
+    // charity gifts itself and dedupes by dedupe_hash, so a purchase
+    // already notified via Plaid is not re-notified here.
+    if (totals.stored > 0) {
+      try {
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'new_transaction', household_id: householdId, source: 'gmail' }),
+        });
+        // Review queue: a sync can create possible duplicates.
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'needs_review', household_id: householdId }),
+        });
+      } catch {
+        console.error('gmail-poll: push-notify call failed');
+      }
+    }
     return json({ ...totals, errors, minutes_since_previous_poll: minutesSincePreviousPoll, stale });
   } catch (e) {
     console.error('gmail-poll failed:', (e as Error)?.message ?? e);

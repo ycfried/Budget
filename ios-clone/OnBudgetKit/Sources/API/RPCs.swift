@@ -362,17 +362,34 @@ extension RPCClient {
     /// means this `p_client_key` was already used and the stored
     /// split was returned with no money moved. A retry of the same
     /// user action MUST reuse the same client key (live.js:4638-4640).
+    /// `add_fund_money` (`r12-add-money.sql`, pending top-ups in
+    /// `pending-topups.sql`, build 41). `pConfirmed` is the "I have
+    /// already put this money in checking" toggle: false saves the
+    /// top-up as PENDING — it counts for nothing until
+    /// confirmFundTopup runs. The server split is authoritative.
     public func addFundMoney(
         pHouseholdId: UUID,
         pAmountCents: Int,
         pNote: String,
-        pClientKey: String
+        pClientKey: String,
+        pConfirmed: Bool
     ) async throws -> AddFundMoneyResult {
         try await call(name: "add_fund_money", params: [
             "p_household_id": pHouseholdId.uuidString,
             "p_amount_cents": pAmountCents,
             "p_note": pNote,
             "p_client_key": pClientKey,
+            "p_confirmed": pConfirmed,
+        ])
+    }
+
+    /// `confirm_fund_topup` (`pending-topups.sql`, build 41):
+    /// confirms a pending top-up in checking. Admin-only; the
+    /// shortfall-first split runs against the CURRENT shortfall.
+    /// Re-confirming returns the stored split (idempotent).
+    public func confirmFundTopup(pTopupId: UUID) async throws -> AddFundMoneyResult {
+        try await call(name: "confirm_fund_topup", params: [
+            "p_topup_id": pTopupId.uuidString,
         ])
     }
 
@@ -415,6 +432,55 @@ extension RPCClient {
 // MARK: - Allowances
 
 extension RPCClient {
+    /// `set_notification_preferences(...)` — upserts the caller's own
+    /// notification-preference row (Nov 16, 2026). Any member may set
+    /// their own toggles (not admin-only — these are per-user).
+    /// Returns the saved row.
+    public func setNotificationPreferences(pHouseholdId: UUID, preferences: NotificationPreferences) async throws -> NotificationPreferences {
+        try await call(name: "set_notification_preferences", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_notifications_enabled": preferences.notificationsEnabled,
+            "p_week_closed": preferences.weekClosed,
+            "p_new_week": preferences.newWeek,
+            "p_over_budget": preferences.overBudget,
+            "p_new_purchase": preferences.newPurchase,
+            "p_new_income": preferences.newIncome,
+            "p_new_charity": preferences.newCharity,
+            "p_monthly_statement": preferences.monthlyStatement,
+            "p_member_joined": preferences.memberJoined,
+            "p_member_left": preferences.memberLeft,
+            "p_gmail_expiring": preferences.gmailExpiring,
+            "p_fund_request": preferences.fundRequest,
+            "p_needs_review": preferences.needsReview,
+            "p_large_purchase": preferences.largePurchase,
+            "p_bank_broken": preferences.bankBroken,
+            "p_budget_increased": preferences.budgetIncreased,
+        ])
+    }
+
+    /// `set_large_purchase_threshold(p_household_id, p_threshold_cents)`
+    /// (Nov 16, 2026). The Spending fund's large-purchase threshold.
+    /// Admin only.
+    public func setLargePurchaseThreshold(pHouseholdId: UUID, pThresholdCents: Int) async throws {
+        try await callVoid(name: "set_large_purchase_threshold", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_threshold_cents": pThresholdCents,
+        ])
+    }
+
+    /// `add_to_weekly_budget(p_household_id, p_week_start, p_amount_cents)`
+    /// (Nov 16, 2026). One-time top-up to the week's budget ("Add to
+    /// Budget"). Admin only. Returns the new total allowance for the
+    /// week, in cents. The server reads the week's current total,
+    /// adds the amount, and upserts the override for that week only.
+    public func addToWeeklyBudget(pHouseholdId: UUID, pWeekStart: String, pAmountCents: Int) async throws -> Int {
+        try await callScalar(name: "add_to_weekly_budget", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_week_start": pWeekStart,
+            "p_amount_cents": pAmountCents,
+        ])
+    }
+
     /// `set_base_allowance(p_household_id, p_cents)`
     /// (`live-admin-rpcs.sql:71-82`). Admin only; non-negative.
     /// Applies from the current week onward; it does not rewrite
@@ -781,6 +847,34 @@ extension RPCClient {
         return try await callScalar(name: "clear_debt", params: params)
     }
 
+    /// `add_debt(p_household_id, p_amount_cents, p_note)`
+    /// (`add-set-debt.sql`, build 41). Admin only. Adds to the
+    /// carried debt — records a `debt_adjustments` row and audits
+    /// it. Returns the new balance in cents. The balance the app
+    /// shows comes from compute-week, so the TS companions in the
+    /// SQL file must be deployed before the new balance appears
+    /// on Home/Funds/the widget.
+    public func addDebt(pHouseholdId: UUID, pAmountCents: Int, pNote: String) async throws -> Int {
+        try await callScalar(name: "add_debt", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_amount_cents": pAmountCents,
+            "p_note": pNote,
+        ])
+    }
+
+    /// `set_debt(p_household_id, p_amount_cents, p_note)`
+    /// (`add-set-debt.sql`, build 41). Admin only. Sets the carried
+    /// debt to the given total — the adjustment is the delta against
+    /// the current balance. Raises when the debt is already that
+    /// amount (the client pre-validates). Returns the new balance.
+    public func setDebt(pHouseholdId: UUID, pAmountCents: Int, pNote: String) async throws -> Int {
+        try await callScalar(name: "set_debt", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_amount_cents": pAmountCents,
+            "p_note": pNote,
+        ])
+    }
+
     // MARK: - Fund rename (build 37)
     //
     // `set_fund_name(p_household_id, p_fund_key, p_name)`
@@ -793,6 +887,21 @@ extension RPCClient {
             "p_household_id": pHouseholdId.uuidString,
             "p_fund_key": pFundKey,
             "p_name": pName,
+        ])
+    }
+
+    // `set_fund_icon(p_household_id, p_fund_key, p_icon)`
+    // (`supabase/fund-icons.sql`, build 41 — mirrors set_fund_name).
+    // Admin only. `pFundKey` is one of spending / fund / charity /
+    // debt. `pIcon` is the SF Symbol name as picked in the app,
+    // stored exactly as picked; an empty icon resets that fund to
+    // its default icon. Returns the household's updated fund_icons
+    // map.
+    public func setFundIcon(pHouseholdId: UUID, pFundKey: String, pIcon: String) async throws -> [String: String] {
+        try await call(name: "set_fund_icon", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_fund_key": pFundKey,
+            "p_icon": pIcon,
         ])
     }
 

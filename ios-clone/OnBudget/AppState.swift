@@ -139,6 +139,17 @@ public final class AppViewModel: ObservableObject {
     /// applied yet (defaults shown). Updated in place by a rename.
     @Published public var fundNames: [String: String] = [:]
 
+    /// The household's custom fund icons (build 41 — customizable
+    /// fund icons, owner Nov 16, 2026): `households.fund_icons`, a
+    /// map from fund key (spending / fund / charity / debt) to the
+    /// SF Symbol name as picked. The ONE source every view reads
+    /// from — Funds, Home — so an icon change updates everywhere
+    /// at once. Loaded at boot alongside the fund names; [:] until
+    /// then, and [:] when the migration is not applied yet
+    /// (default icons shown). Updated in place by an icon change.
+    /// (The widget renders no fund icons, so it reads no icons.)
+    @Published public var fundIcons: [String: String] = [:]
+
     /// The Home dashboard's view model, owned here (not by HomeView)
     /// so boot can preload it behind the loading screen (owner,
     /// Nov 15, 2026). Created once the household is known
@@ -216,6 +227,18 @@ public final class AppViewModel: ObservableObject {
         // store, so the app's auth behavior is unchanged.
         self.client = client ?? SupabaseClient(store: MirroredSessionStore(inner: BiometricUnlock.sessionStoreForLaunch()))
         self.biometricUnlock = biometricUnlock
+        // Push notifications (Nov 16, 2026): the coordinator owns the
+        // permission prompt, the token, and tap routing. The closures
+        // capture self weakly; the coordinator is a singleton, so the
+        // AppViewModel is never retained by it.
+        PushNotificationCoordinator.shared.routeToScreen = { [weak self] screen, householdId in
+            guard let self else { return }
+            self.routeToNotificationScreen(screen, householdId: householdId)
+        }
+        PushNotificationCoordinator.shared.registerToken = { [weak self] hex, unregister in
+            guard let self else { return }
+            await self.registerPushToken(hex: hex, unregister: unregister)
+        }
         // A Gmail callback recorded by an earlier launch (e.g. the
         // CI script's simctl openurl, delivered to the previous app
         // instance) is still the last one received: restore it so
@@ -297,6 +320,7 @@ public final class AppViewModel: ObservableObject {
             role = membership.role
             householdName = try? await client.postgrest.householdName(householdId: membership.householdId)
             fundNames = (try? await client.postgrest.householdFundNames(householdId: membership.householdId)) ?? [:]
+            fundIcons = (try? await client.postgrest.householdFundIcons(householdId: membership.householdId)) ?? [:]
             ownerId = try? await client.postgrest.householdOwnerId(householdId: membership.householdId)
             // Preload the dashboard behind the loading screen
             // (owner, Nov 15, 2026): start the Home load now and
@@ -320,6 +344,7 @@ public final class AppViewModel: ObservableObject {
             }
             phase = .app
             selectedTab = .home
+            Task { await setupPushNotifications() }
         } catch let error as OnBudgetError where error == .sessionExpired {
             phase = .sessionExpired
         } catch {
@@ -342,6 +367,7 @@ public final class AppViewModel: ObservableObject {
         self.role = role
         householdName = try? await client.postgrest.householdName(householdId: id)
         fundNames = (try? await client.postgrest.householdFundNames(householdId: id)) ?? [:]
+        fundIcons = (try? await client.postgrest.householdFundIcons(householdId: id)) ?? [:]
         // A freshly created household is owned by its creator; a
         // freshly joined one learns its owner on the next boot.
         if role == .admin {
@@ -355,6 +381,7 @@ public final class AppViewModel: ObservableObject {
         Task { await home.refresh() }
         phase = .app
         selectedTab = .home
+        Task { await setupPushNotifications() }
     }
 
     /// Week-close: admin only, once per session (live.js:724). A
@@ -507,6 +534,67 @@ public final class AppViewModel: ObservableObject {
         pendingTransactionJump = nil
         suppressNextTabReset = true
         selectedTab = .transactions
+    }
+
+    // MARK: - Push notifications (Nov 16, 2026)
+
+    /// Register (or unregister) the APNs device token with the
+    /// server. Best-effort and silent: push is an addition to the
+    /// app, never a blocker.
+    private func registerPushToken(hex: String, unregister: Bool) async {
+        guard let householdId else { return }
+        do {
+            try await client.functions.registerPushToken(
+                householdId: householdId,
+                deviceToken: hex,
+                environment: PushNotificationCoordinator.shared.currentEnvironment,
+                unregister: unregister
+            )
+        } catch {
+            // Silent: push registration is best-effort.
+        }
+    }
+
+    /// Unregister the device token (sign-out / account deletion).
+    /// Called through SettingsContext.unregisterPushToken.
+    public func unregisterPushToken() async {
+        guard let hex = PushNotificationCoordinator.shared.lastDeviceTokenHex else { return }
+        await registerPushToken(hex: hex, unregister: true)
+    }
+
+    /// Push setup, once the household is known and Home is showing:
+    /// ask permission (once), re-register the token when already
+    /// authorized, and consume a cold-start notification tap. Runs
+    /// as a detached Task so boot returns immediately.
+    private func setupPushNotifications() async {
+        let coordinator = PushNotificationCoordinator.shared
+        coordinator.isAppReady = true
+        await coordinator.requestPermissionIfNeeded()
+        await coordinator.reregisterIfAuthorized()
+        if let pending = coordinator.pendingPayload {
+            coordinator.pendingPayload = nil
+            routeToNotificationScreen(pending.screen, householdId: pending.householdId)
+        }
+    }
+
+    /// Route a notification tap. Drops the tap when not in the app,
+    /// when no household is loaded, or when the payload's household
+    /// is not the signed-in user's household. Tab taps land on main
+    /// pages (the standing navigation rule); the Settings screen is
+    /// the full-screen cover.
+    public func routeToNotificationScreen(_ screen: NotificationScreen, householdId: UUID?) {
+        guard phase == .app, let currentHouseholdId = householdId else { return }
+        if let payloadHouseholdId = householdId, payloadHouseholdId != currentHouseholdId { return }
+        switch screen {
+        case .week, .statement:
+            goHome()
+        case .purchases:
+            showAllTransactions()
+        case .money:
+            selectedTab = .funds
+        case .settings:
+            showSettings = true
+        }
     }
 
     /// Weekly sheet "Show Transactions": Transactions filtered to the
