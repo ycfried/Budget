@@ -13,7 +13,7 @@
 // spacing, a subtle tinted background, and a hairline divider
 // between the two numbers. The data is unchanged: the same two
 // numbers (weekly balance, charity remaining) from the same
-// WidgetSnapshot, the same freshness rule and "Updated …" line,
+// WidgetSnapshot, the same freshness rule and "As of …" footer,
 // the same privacySensitive figures. Large and extra-large add the
 // week range and a donut — spent vs left of the weekly allowance
 // (owner, Nov 15, 2026; the spent line the donut replaces is gone).
@@ -23,9 +23,12 @@
 // bigger logo and wordmark, the week range shortened to "Nov 14–20"
 // in brand blue (never truncated), a donut on medium too, a thin
 // progress bar under each figure (budget: spent/allowance in brand
-// blue; charity: given/committed in charity green), a "Spent $X"
-// line computed from the snapshot (allowance − left, never
-// invented), and a bigger freshness footer with a green/amber dot.
+// blue; charity: given/committed in charity green), and a bigger
+// freshness footer with a green/amber dot. Build 42 (owner, Nov 17,
+// 2026): the "Spent $X" and "of $X allowance" lines are gone — the
+// two halves mirror each other (label above, big amount, progress
+// bar below), the left label is just "available", and the footer
+// moved to the bottom-right as "As of 6:15PM".
 // The mockup's extra solid blue circle beside the logo is a drawing
 // artifact — the real header is just the one S mark — and its donut
 // arc is drawn far too big for 8%: the real arc is the small sliver
@@ -36,9 +39,10 @@
 // ever READS that snapshot. It never signs in, never calls Supabase,
 // never holds a session. When there is no snapshot (never opened the
 // app, or signed out) it says so plainly. When the snapshot is stale
-// (over 1 hour old) it still shows the numbers but labels them with
-// the update time and "may be out of date" — a stale number is never
-// presented as if it were live.
+// (over 1 hour old) it still shows the numbers with the update time
+// in the bottom-right footer ("As of 6:15PM", build 42) and an amber
+// freshness dot — a stale number is never presented as if it were
+// live, and the old stale wording is gone.
 //
 // Colours mirror Home: the weekly figure is brand blue, red when
 // over budget (negative); the charity figure is ink (owner, Nov 15,
@@ -52,9 +56,10 @@
 //
 // Label note (owner, Nov 14, 2026): his screenshot reads "Left left
 // this week", but the label in every version of this file in the
-// repo — including the build-17 original — is exactly "Left this
-// week" (single). The doubling does not come from shipped code; the
-// redesign keeps the single clean label in all three sizes.
+// repo — including the build-17 original — was exactly "Left this
+// week" (single). The doubling does not come from shipped code.
+// Build 42 (owner, Nov 17, 2026): the label is now just
+// "available" in all sizes.
 
 import SwiftUI
 import WidgetKit
@@ -102,17 +107,31 @@ struct WidgetEntry: TimelineEntry {
 /// (signed out, token expired, offline), the intent falls back to
 /// reloading the last saved snapshot — the widget keeps showing its
 /// last-known numbers with the stale dot, never a blank. The
-/// visible result is the NEW numbers appearing; the button itself
-/// is a plain refresh icon (a spinner on the button is not
-/// available to a widget intent — the numbers changing IS the
-/// feedback).
+/// visible result is the NEW numbers appearing — plus the button's
+/// own state (build 42): a spinner while the fetch runs, a green
+/// checkmark for ~15 seconds when fresh numbers land, a red refresh
+/// icon for ~15 seconds when the fetch fails. WidgetKit renders
+/// widget views statically, so there is no press animation to add:
+/// the intent writes the state into the App Group and reloads the
+/// timeline, and the button re-renders in its new state. A very fast
+/// sync may skip the spinner frame (WidgetKit coalesces reloads) —
+/// then the checkmark is the feedback.
 struct RefreshWidgetIntent: AppIntent {
     static var title: LocalizedStringResource = "Refresh Widget"
     static var description = IntentDescription("Refresh the widget with fresh balances from the server.")
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
-        await Self.refreshSnapshot()
+        // Build 42: write the in-flight state FIRST and reload, so
+        // the button flips to its spinner while the fetch runs;
+        // then write the landed state (success / failure) and
+        // reload again, so it flips to a checkmark (or a red
+        // refresh icon). The fetch itself is unchanged (build 40):
+        // fresh numbers on success, last snapshot on failure.
+        WidgetSyncStateStore.write(.syncing)
+        WidgetCenter.shared.reloadAllTimelines()
+        let ok = await Self.refreshSnapshot()
+        WidgetSyncStateStore.write(ok ? .succeeded : .failed)
         WidgetCenter.shared.reloadAllTimelines()
         return .result()
     }
@@ -200,8 +219,8 @@ struct Provider: TimelineProvider {
         // LAST entry's date — so there is always a valid entry and
         // WidgetKit never falls back to the placeholder once a
         // snapshot exists. A stale snapshot keeps showing its
-        // last-known numbers with the amber dot + "may be out of
-        // date"; the grey skeleton bars appear ONLY when the widget
+        // last-known numbers with the amber dot + "As of …" footer;
+        // the grey skeleton bars appear ONLY when the widget
         // has never loaded a snapshot.
         //
         // The build-35 single entry with a 15-minute backstop was
@@ -224,8 +243,29 @@ struct Provider: TimelineProvider {
         // The entry-date math lives in OnBudgetKit.WidgetTimeline
         // (pure, unit-tested); this Provider just maps it.
         let now = Date()
-        let entries = WidgetTimeline.entries(from: now, snapshot: WidgetSnapshotStore.read())
+        var entries = WidgetTimeline.entries(from: now, snapshot: WidgetSnapshotStore.read())
             .map { WidgetEntry(date: $0.date, snapshot: $0.snapshot) }
+        // Build 42: while a transient sync state is live (syncing,
+        // or a recent success / failure mark), add one short entry
+        // 20 seconds out, so WidgetKit re-renders then and the
+        // success / failure mark clears promptly instead of
+        // lingering on the rendered entry until the next hourly
+        // one. The view itself also expires the mark by time, so
+        // this entry is only the prompt re-render.
+        let (syncState, syncDate) = WidgetSyncStateStore.read()
+        let syncTransient: Bool = {
+            switch syncState {
+            case .syncing: return true
+            case .succeeded, .failed:
+                guard let at = syncDate else { return false }
+                return now.timeIntervalSince(at) < WidgetSyncStateStore.clearAfter
+            case .idle: return false
+            }
+        }()
+        if syncTransient {
+            entries.append(WidgetEntry(date: now.addingTimeInterval(WidgetSyncStateStore.clearAfter), snapshot: WidgetSnapshotStore.read()))
+            entries.sort { $0.date < $1.date }
+        }
         completion(Timeline(
             entries: entries,
             policy: .after(WidgetTimeline.reloadAfterDate(from: now))
@@ -250,11 +290,13 @@ private func shortWeekRange(_ weekStart: String) -> String? {
     return "\(formatter.string(from: start))–\(formatter.string(from: end))"
 }
 
-/// "4:38 PM" from a computed-at date.
-private func updatedTimeString(_ computedAt: Date) -> String {
+/// "As of 6:15PM" from a computed-at date (build 42, owner Nov 17,
+/// 2026): the footer moved to the bottom-right, dropped the
+/// stale wording, and formats with no space before AM/PM.
+private func asOfString(_ computedAt: Date) -> String {
     let formatter = DateFormatter()
-    formatter.dateFormat = "h:mm a"
-    return formatter.string(from: computedAt)
+    formatter.dateFormat = "h:mma"
+    return "As of \(formatter.string(from: computedAt))"
 }
 
 struct WidgetView: View {
@@ -330,22 +372,71 @@ struct WidgetView: View {
         }
     }
 
-    /// Sync button (build 36, owner Nov 16, 2026): a small refresh
-    /// icon, top-right in the header row of every size. Tapping it
-    /// runs RefreshWidgetIntent in place — re-reads the latest
-    /// snapshot the app saved and rebuilds the timeline. It does not
-    /// open the app and does not fetch from the server (the widget
-    /// never signs in); new numbers still come from opening the app.
+    /// Sync button (build 36, owner Nov 16, 2026; feedback build
+    /// 42, owner Nov 17, 2026): a small refresh icon, top-right in
+    /// the header row of every size. Tapping it runs
+    /// RefreshWidgetIntent in place — it fetches FRESH numbers from
+    /// the server (build 40) and reloads the timeline; it does not
+    /// open the app. The button shows its state (build 42): a
+    /// circular spinner while the fetch runs, a green checkmark for
+    /// ~15 seconds when fresh numbers land, a red refresh icon for
+    /// ~15 seconds when the fetch fails (last snapshot stays). It is
+    /// one Button in every state, so it stays tappable throughout
+    /// (tapping the checkmark just syncs again). WidgetKit renders
+    /// widget views statically — there is no custom press animation
+    /// to add, and no @State that survives a tap; the system's tap
+    /// highlight plus the state flip (spinner / checkmark) is the
+    /// press response. The state is read live from the App Group
+    /// (WidgetSyncStateStore, written by the intent), not from the
+    /// timeline entry, so a reload re-renders it immediately.
+    ///
+    /// The success / failure mark expires by time (15 seconds
+    /// from when the intent wrote it) and the Provider adds a short
+    /// timeline entry so the mark clears promptly. The spinner has
+    /// no expiry — it shows until the intent writes its landed
+    /// state and reloads; if the extension is killed mid-fetch the
+    /// next reload (app refresh, hourly entry) re-reads the state
+    /// as written and the button returns to the refresh icon.
+    private var syncState: (state: WidgetSyncState, date: Date?) {
+        WidgetSyncStateStore.read()
+    }
+
+    /// True while the success / failure mark is still within its
+    /// ~15-second window (measured at render time against when the
+    /// intent wrote the state).
+    private func isRecentTransient(_ state: WidgetSyncState) -> Bool {
+        guard state == .succeeded || state == .failed else { return false }
+        guard let at = syncState.date else { return false }
+        return Date().timeIntervalSince(at) < WidgetSyncStateStore.transientWindow
+    }
+
     private var refreshButton: some View {
         Button(intent: RefreshWidgetIntent()) {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(DesignTokens.muted)
-                .padding(6)
-                .contentShape(Rectangle())
+            Group {
+                if syncState.state == .syncing {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(DesignTokens.muted)
+                } else if isRecentTransient(.succeeded) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(DesignTokens.success)
+                } else if isRecentTransient(.failed) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.errorText)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.muted)
+                }
+            }
+            .frame(width: 14, height: 14)
+            .padding(6)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Refresh widget")
+        .accessibilityLabel(syncState.state == .syncing ? "Syncing" : isRecentTransient(.succeeded) ? "Synced" : isRecentTransient(.failed) ? "Sync failed, tap to retry" : "Refresh widget")
     }
 
     /// Week-range dates for the header (build 35): the compact
@@ -468,24 +559,28 @@ struct WidgetView: View {
         .frame(height: 6)
     }
 
-    /// Freshness footer (build 35): bigger than the old caption2
-    /// "Updated …" line — a freshness dot (green when the snapshot
-    /// is fresh, amber when stale) followed by "Updated <time>" in
-    /// caption, with "· may be out of date" in lighter grey when
-    /// stale. The dot is the at-a-glance signal; the words stay for
-    /// the exact time. The small widget takes the compact form (dot
-    /// + time only): the full stale suffix cannot fit its 155pt
-    /// canvas on one line, and the amber dot already says stale.
+    /// Freshness footer (build 35; build 42, owner Nov 17, 2026):
+    /// bottom-RIGHT in every size — a freshness dot (green when the
+    /// snapshot is fresh, amber when stale) followed by "As of
+    /// 6:15PM" in caption. The stale wording is gone; the amber
+    /// dot is now the only stale signal, and the
+    /// exact time stays in the words. The small widget takes the
+    /// compact form (caption2). The leading Spacer is what pins it
+    /// to the right edge.
     @ViewBuilder
     private func footer(snapshot: WidgetSnapshot, stale: Bool, compact: Bool = false) -> some View {
         if isPlaceholder {
-            skeletonBar(width: 150, height: 12)
+            HStack {
+                Spacer(minLength: 0)
+                skeletonBar(width: 150, height: 12)
+            }
         } else if compact {
             HStack(spacing: 5) {
+                Spacer(minLength: 0)
                 Circle()
                     .fill(stale ? DesignTokens.fund : DesignTokens.success)
                     .frame(width: 7, height: 7)
-                Text("Updated \(updatedTimeString(snapshot.computedAt))")
+                Text(asOfString(snapshot.computedAt))
                     .font(.caption2)
                     .foregroundStyle(DesignTokens.muted)
                     .lineLimit(1)
@@ -493,18 +588,12 @@ struct WidgetView: View {
             }
         } else {
             HStack(spacing: 5) {
+                Spacer(minLength: 0)
                 Circle()
                     .fill(stale ? DesignTokens.fund : DesignTokens.success)
                     .frame(width: 7, height: 7)
-                if stale {
-                    Text("Updated \(updatedTimeString(snapshot.computedAt))")
-                        .foregroundStyle(DesignTokens.ink.opacity(0.75)) +
-                    Text(" · may be out of date")
-                        .foregroundStyle(DesignTokens.muted)
-                } else {
-                    Text("Updated \(updatedTimeString(snapshot.computedAt))")
-                        .foregroundStyle(DesignTokens.muted)
-                }
+                Text(asOfString(snapshot.computedAt))
+                    .foregroundStyle(DesignTokens.muted)
             }
             .font(.caption)
             .lineLimit(1)
@@ -518,16 +607,18 @@ struct WidgetView: View {
     /// canvas (owner, Nov 15, 2026 — the small size did not load /
     /// render properly: wordmark + two figure blocks + updated line
     /// came to ~153pt in a 155pt canvas, ~2pt of slack, so it
-    /// clipped. Spacing 6 and figures 22/18 leave ~19pt of slack).
-    /// Build 35: the compact wordmark (22pt logo), a thin blue
-    /// progress bar under the budget figure, and the compact footer
-    /// (dot + time only) — the additions cost ~10pt of that slack,
-    /// so the layout still fits.
+    /// clipped. Spacing 6 and figures 22/22 leave ~9pt of slack).
+    /// Build 35: the compact wordmark (22pt logo), a thin
+    /// progress bar under each figure, and the compact footer
+    /// (dot + "As of …" time, bottom-right) — the additions cost
+    /// ~10pt of that slack, so the layout still fits.
     /// Build 36 (owner, Nov 16, 2026): NO donut on small — the
     /// donut circle belongs only on the wide widgets (medium and
     /// large). Small stays clean: wordmark + refresh button, the
-    /// Left figure + thin blue progress bar, the Charity figure,
-    /// and the compact footer. Nothing else.
+    /// available figure + thin blue progress bar, the Charity figure
+    /// + its progress bar, and the compact footer. Nothing else.
+    /// Build 42: both figures are 22pt, so the two halves mirror
+    /// (label above, big amount, bar below).
     private func small(snapshot: WidgetSnapshot, stale: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -535,27 +626,39 @@ struct WidgetView: View {
                 Spacer()
                 refreshButton
             }
+            // Build 42: the two halves mirror — label above, big
+            // amount, progress bar below — in both blocks, with
+            // both figures at 22pt. The label is just "available";
+            // the allowance and Spent lines are gone (they live in
+            // the app). The bar is always drawn: with no spent
+            // figure it is an empty track, never a faked fill.
             VStack(alignment: .leading, spacing: 2) {
-                figureLabel("Left this week")
+                figureLabel("available")
                 figure(
                     cents: snapshot.availableCents,
                     color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
                     size: 22
                 )
-                if snapshot.spentCents != nil {
-                    if isPlaceholder {
-                        skeletonBar(width: 90, height: 5)
-                    } else {
-                        progressBar(
-                            fraction: snapshot.spentFraction ?? 0,
-                            fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
-                            track: Color(hex: "#dbeafe"))
-                    }
+                if isPlaceholder {
+                    skeletonBar(width: 90, height: 6)
+                } else {
+                    progressBar(
+                        fraction: snapshot.spentFraction ?? 0,
+                        fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                        track: Color(hex: "#dbeafe"))
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel(snapshot.charityLeftLabel)
-                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 18)
+                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 22)
+                if isPlaceholder {
+                    skeletonBar(width: 90, height: 6)
+                } else {
+                    progressBar(
+                        fraction: snapshot.charityGivenFraction ?? 0.25,
+                        fill: DesignTokens.charity,
+                        track: DesignTokens.successBackground)
+                }
             }
             Spacer(minLength: 0)
             footer(snapshot: snapshot, stale: stale, compact: true)
@@ -566,11 +669,13 @@ struct WidgetView: View {
 
     /// Medium (build 35, mockup-approved): bigger header, the
     /// compact week range in brand blue, a donut beside the two
-    /// figures, a progress bar under each figure, and a "Spent $X"
-    /// line computed from the snapshot (allowance − left — the
-    /// snapshot's spent figure, never invented). Height budget in
-    /// the ~138pt content area: header 24 + spacing 8 + body 72 +
-    /// spacing 8 + footer 14 ≈ 126, ~12pt of slack.
+    /// figures, and a progress bar under each figure. Build 42: the
+    /// two halves mirror (label above, big amount, bar below, both
+    /// figures 28pt) — the "of $X allowance" and "Spent $X" lines
+    /// are gone (they live in the app), and the left label is just
+    /// "available". Height budget in the ~138pt content area:
+    /// header 24 + spacing 8 + body ~52 + spacing 8 + footer 14 ≈
+    /// 106, ~30pt of slack.
     private func medium(snapshot: WidgetSnapshot, stale: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -584,39 +689,19 @@ struct WidgetView: View {
                     donut(snapshot: snapshot, size: 64, lineWidth: 10)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    figureLabel("Left this week")
+                    figureLabel("available")
                     figure(
                         cents: snapshot.availableCents,
                         color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
                         size: 28
                     )
-                    if let spent = snapshot.spentCents {
-                        if isPlaceholder {
-                            skeletonBar(width: 110, height: 12)
-                        } else {
-                            Text("of \(MoneyFormat.wholeDollars(cents: spent + snapshot.availableCents)) allowance")
-                                .font(.caption)
-                                .foregroundStyle(DesignTokens.muted)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        if isPlaceholder {
-                            skeletonBar(width: 110, height: 6)
-                        } else {
-                            progressBar(
-                                fraction: snapshot.spentFraction ?? 0,
-                                fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
-                                track: Color(hex: "#dbeafe"))
-                        }
-                        if isPlaceholder {
-                            skeletonBar(width: 70, height: 11)
-                        } else {
-                            Text("Spent \(MoneyFormat.wholeDollars(cents: spent))")
-                                .font(.caption2)
-                                .foregroundStyle(DesignTokens.muted)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
+                    if isPlaceholder {
+                        skeletonBar(width: 110, height: 6)
+                    } else {
+                        progressBar(
+                            fraction: snapshot.spentFraction ?? 0,
+                            fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                            track: Color(hex: "#dbeafe"))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -642,6 +727,11 @@ struct WidgetView: View {
         .containerBackground(background, for: .widget)
     }
 
+    /// Large (build 42): the weekly and charity blocks stay stacked
+    /// (tall canvas), but both now share the identical structure —
+    /// label above, big amount, progress bar below, both figures
+    /// 36pt — with the "of $X allowance" and "Spent $X" lines gone
+    /// (they live in the app) and the left label just "available".
     private func large(snapshot: WidgetSnapshot, stale: Bool) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -659,39 +749,19 @@ struct WidgetView: View {
                     donut(snapshot: snapshot, size: 110)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    figureLabel("Left this week")
+                    figureLabel("available")
                     figure(
                         cents: snapshot.availableCents,
                         color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
                         size: 36
                     )
-                    if let spent = snapshot.spentCents {
-                        if isPlaceholder {
-                            skeletonBar(width: 170, height: 15)
-                        } else {
-                            Text("of \(MoneyFormat.wholeDollars(cents: spent + snapshot.availableCents)) allowance")
-                                .font(.subheadline)
-                                .foregroundStyle(DesignTokens.muted)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        if isPlaceholder {
-                            skeletonBar(width: 170, height: 6)
-                        } else {
-                            progressBar(
-                                fraction: snapshot.spentFraction ?? 0,
-                                fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
-                                track: Color(hex: "#dbeafe"))
-                        }
-                        if isPlaceholder {
-                            skeletonBar(width: 90, height: 13)
-                        } else {
-                            Text("Spent \(MoneyFormat.wholeDollars(cents: spent))")
-                                .font(.caption)
-                                .foregroundStyle(DesignTokens.muted)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
+                    if isPlaceholder {
+                        skeletonBar(width: 170, height: 6)
+                    } else {
+                        progressBar(
+                            fraction: snapshot.spentFraction ?? 0,
+                            fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                            track: Color(hex: "#dbeafe"))
                     }
                 }
             }
@@ -719,6 +789,10 @@ struct WidgetView: View {
     /// on the wide canvas — weekly block (donut + figure) and
     /// charity block side by side with a vertical divider between
     /// them, same two numbers, same freshness line.
+    /// Build 42: both blocks share the identical structure —
+    /// label above, big amount, progress bar below, both figures
+    /// 44pt — with the allowance and Spent lines gone and the left
+    /// label just "available".
     private func extraLarge(snapshot: WidgetSnapshot, stale: Bool) -> some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
@@ -734,39 +808,19 @@ struct WidgetView: View {
                         donut(snapshot: snapshot, size: 120)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        figureLabel("Left this week")
+                        figureLabel("available")
                         figure(
                             cents: snapshot.availableCents,
                             color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
                             size: 44
                         )
-                        if let spent = snapshot.spentCents {
-                            if isPlaceholder {
-                                skeletonBar(width: 170, height: 15)
-                            } else {
-                                Text("of \(MoneyFormat.wholeDollars(cents: spent + snapshot.availableCents)) allowance")
-                                    .font(.subheadline)
-                                    .foregroundStyle(DesignTokens.muted)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                            }
-                            if isPlaceholder {
-                                skeletonBar(width: 170, height: 6)
-                            } else {
-                                progressBar(
-                                    fraction: snapshot.spentFraction ?? 0,
-                                    fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
-                                    track: Color(hex: "#dbeafe"))
-                            }
-                            if isPlaceholder {
-                                skeletonBar(width: 90, height: 13)
-                            } else {
-                                Text("Spent \(MoneyFormat.wholeDollars(cents: spent))")
-                                    .font(.caption)
-                                    .foregroundStyle(DesignTokens.muted)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                            }
+                        if isPlaceholder {
+                            skeletonBar(width: 170, height: 6)
+                        } else {
+                            progressBar(
+                                fraction: snapshot.spentFraction ?? 0,
+                                fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                                track: Color(hex: "#dbeafe"))
                         }
                     }
                 }

@@ -25,8 +25,9 @@
 //
 // Freshness: a snapshot is stale 1 hour after it was computed, or when
 // its computedAt is in the future (clock skew). The widget shows the
-// update time and labels stale numbers as possibly out of date — it
-// NEVER presents a stale number as if it were live.
+// update time ("As of 6:15PM", bottom-right, build 42) with an amber
+// freshness dot when stale — it NEVER presents a stale number as if
+// it were live.
 //
 // Pure Foundation — no SwiftUI, no WidgetKit, no network — so the
 // widget extension (APPLICATION_EXTENSION_API_ONLY) can link this
@@ -77,7 +78,7 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
 
     /// The charity fund's display name (build 37 — fund rename):
     /// the custom name when stored, else "Charity". The custom name
-    /// is shown exactly as typed. (The "Left this week" label needs
+    /// is shown exactly as typed. (The "available" label needs
     /// no fund name — it never says "Spending" — so only the
     /// charity label reads from the map.)
     public var charityDisplayName: String {
@@ -188,6 +189,68 @@ public enum WidgetSnapshotStore {
     }
 }
 
+/// Widget sync feedback state (build 42, owner Nov 17, 2026).
+///
+/// WidgetKit renders widget views statically: a Button(intent:) has
+/// no pressed-state binding and no @State that survives a tap, so
+/// the button itself cannot animate mid-flight. The feedback is
+/// therefore driven through the App Group: RefreshWidgetIntent
+/// writes .syncing before it fetches (and reloads the timeline so
+/// the button flips to a spinner), then writes .succeeded or
+/// .failed when the fetch lands (and reloads again, so the button
+/// flips to a checkmark — or a red refresh icon on failure). The
+/// view reads this state live at render time and only shows the
+/// success / failure mark while it is recent (15 seconds); after
+/// that it is back to the plain refresh icon. The Provider adds a
+/// short timeline entry 20 seconds out while a transient state is
+/// live, so WidgetKit re-renders and the mark clears promptly
+/// instead of lingering until the next hourly entry. The snapshot
+/// itself is untouched — this is a separate App Group key, and a
+/// failed sync leaves the last snapshot (and its numbers) in place.
+public enum WidgetSyncState: String, Equatable, Sendable {
+    case idle
+    case syncing
+    case succeeded
+    case failed
+}
+
+public enum WidgetSyncStateStore {
+    public static let key = "widgetSyncState"
+    public static let dateKey = "widgetSyncStateAt"
+    /// How long the success / failure mark stays on the button.
+    public static let transientWindow: TimeInterval = 15
+    /// The short timeline entry the Provider adds while a transient
+    /// state is live, so the mark clears promptly.
+    public static let clearAfter: TimeInterval = 20
+
+    public static func write(_ state: WidgetSyncState, at date: Date = Date(), to defaults: UserDefaults? = nil) {
+        let store = defaults ?? UserDefaults(suiteName: WidgetSnapshotStore.groupID)
+        store?.set(state.rawValue, forKey: key)
+        store?.set(date.timeIntervalSinceReferenceDate, forKey: dateKey)
+    }
+
+    public static func read(from defaults: UserDefaults? = nil) -> (state: WidgetSyncState, date: Date?) {
+        let store = defaults ?? UserDefaults(suiteName: WidgetSnapshotStore.groupID)
+        guard let raw = store?.string(forKey: key),
+              let state = WidgetSyncState(rawValue: raw) else {
+            return (.idle, nil)
+        }
+        let date: Date?
+        if let number = store?.object(forKey: dateKey) as? NSNumber {
+            date = Date(timeIntervalSinceReferenceDate: number.doubleValue)
+        } else {
+            date = nil
+        }
+        return (state, date)
+    }
+
+    public static func clear(from defaults: UserDefaults? = nil) {
+        let store = defaults ?? UserDefaults(suiteName: WidgetSnapshotStore.groupID)
+        store?.removeObject(forKey: key)
+        store?.removeObject(forKey: dateKey)
+    }
+}
+
 /// Widget timeline shape (build 36 — the build-35 15-minute backstop
 /// was the bug, not the fix).
 ///
@@ -206,7 +269,7 @@ public enum WidgetSnapshotStore {
 /// entry date)`. There is always a valid entry, so WidgetKit never
 /// falls back to the placeholder once a snapshot exists — a stale
 /// snapshot keeps showing its last-known numbers with the amber dot
-/// + "may be out of date" instead of grey bars. The entry dates
+/// + "As of …" footer instead of grey bars. The entry dates
 /// MUST advance hourly (a single far-future entry, or a `.never`
 /// policy, would break staleness: the view computes `isStale(at:
 /// entry.date)`, so a frozen entry date would never go stale).

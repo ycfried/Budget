@@ -31,11 +31,18 @@ public final class FundsViewModel: ObservableObject {
     @Published public var isLoading = false
     /// True once the four fund cards have all resolved (success or
     /// failure) in the current session — the cards reveal TOGETHER
-    /// (owner, Nov 16, 2026 — build 38). Before that, on the very
-    /// first load, all four show skeletons; after it flips, a card
-    /// shows its value or its error, never a skeleton. Refreshes
-    /// keep last-known values on screen (nothing is cleared at the
-    /// start), so a refresh never blanks the page to skeletons.
+    /// (owner, Nov 16, 2026 — build 38; hardened Nov 17, 2026 —
+    /// build 42). Before that, on the very first load, all four show
+    /// skeletons; after it flips, a card shows its value or its
+    /// error, never a skeleton. Refreshes keep last-known values on
+    /// screen (nothing is cleared at the start), so a refresh never
+    /// blanks the page to skeletons. This is the ONE page-ready
+    /// gate: every card's `isLoading` is just `!cardsReady` — a
+    /// card never reveals on its own data alone, so a fast card
+    /// cannot appear while a slow one still shows a skeleton (the
+    /// build-41 fault: each card gated on its own data being nil
+    /// AND !cardsReady, so the first card to load revealed
+    /// immediately). The expanded detail is gated the same way.
     @Published public var cardsReady = false
     /// Which action is in flight (per-row busy state + double-tap guard).
     @Published public var busyAction: String?
@@ -201,15 +208,6 @@ public final class FundsViewModel: ObservableObject {
         allTransactions.filter { $0.isInTrash }
     }
 
-    /// Shortfall-first split preview for a top-up amount (informational
-    /// only — the server split from `add_fund_money` is authoritative).
-    /// Returns (covered owed back, added to fund, owed back after).
-    public func topupPreview(amountCents: Int) -> (covered: Int, added: Int, after: Int)? {
-        guard let shortfall = fundSummary?.shortfallCents else { return nil }
-        let covered = min(amountCents, shortfall)
-        return (covered: covered, added: amountCents - covered, after: shortfall - covered)
-    }
-
     // MARK: - Carried Debt fund (build 29)
 
     /// The current carried-debt balance D, from this week's compute-week.
@@ -243,6 +241,15 @@ public final class FundsViewModel: ObservableObject {
     /// page to skeletons. The supporting loads ride along
     /// concurrently. A failed read is an error state, never a silent
     /// empty list or stale numbers — spec §0.3.
+    ///
+    /// Build 42 (owner, Nov 17, 2026): the top-ups load is part of
+    /// the gate too, not a supporting load — the Savings card's
+    /// Pending figure folds pending top-ups in (see
+    /// `savingsPendingCents`), so the card cannot reveal before
+    /// they are known. Every load in the gate catches its own
+    /// failure (each sets its summary or its error, never throws),
+    /// so `cardsReady` still flips when a card errors — a failed
+    /// card shows its error box, never a skeleton forever.
     public func refresh() async {
         isLoading = true
         defer { isLoading = false }
@@ -262,14 +269,16 @@ public final class FundsViewModel: ObservableObject {
         async let merchantRulesLoad: Void = loadMerchantRules()
         // The four cards reveal together once their four loads have
         // resolved (success or failure — a failed card shows its
-        // error state, never a lingering skeleton).
+        // error state, never a lingering skeleton). The top-ups
+        // load resolves here too: the Savings Pending figure needs
+        // it (build 42).
         await fundLoad
+        await topupsLoad
         await charityLoad
         await allowanceLoad
         await debtLoad
         cardsReady = true
         // The supporting loads finish in their own time.
-        await topupsLoad
         await requestsLoad
         await savingsLoad
         await reviewLoad
@@ -636,6 +645,28 @@ public final class FundsViewModel: ObservableObject {
         topups.filter { $0.isPending }.reduce(0) { $0 + $1.amountCents }
     }
 
+    /// The Savings card's Pending figure (build 42, owner Nov 17,
+    /// 2026 — the $650 live bug): pending surplus releases + held
+    /// weeks (`pendingIncludingHeldCents`) PLUS pending top-ups.
+    /// The bug was that the card's Pending row read
+    /// `summary.pendingIncludingHeldCents` alone, and pending
+    /// top-ups lived only on a separate "Pending Top-Ups" row —
+    /// so a $650 pending top-up left Pending at $0.00 and Total at
+    /// $0.00. Pending top-ups are real money on its way into the
+    /// fund, so they belong in Pending (and therefore in Total),
+    /// exactly as the owner reads the card. The separate row is
+    /// gone — it would double-present the same $650.
+    public var savingsPendingCents: Int {
+        (fundSummary?.pendingIncludingHeldCents ?? 0) + pendingTopupsCents
+    }
+
+    /// The Savings card's Total figure (build 42): Available +
+    /// Pending as defined above — so a $650 pending top-up with
+    /// $0 Available reads Total $650.00.
+    public var savingsTotalCents: Int {
+        (fundSummary?.availableCents ?? 0) + savingsPendingCents
+    }
+
     public func addTopup(amountCents: Int, note: String, confirmed: Bool) async -> Bool {
         guard busyAction == nil else { return false }
         busyAction = "topup"
@@ -700,32 +731,300 @@ public final class FundsViewModel: ObservableObject {
         await refresh()
     }
 
-    /// Record cash taken/spent out of Savings (build 40, owner Nov 16,
-    /// 2026): the owner took cash out of the fund and wants to take
-    /// it off the Available balance — WITHOUT creating a transaction
-    /// row (cash is not traceable as a bank/email transaction). This
-    /// reuses `allocate_fund` (no new server surface): a negative
-    /// 'allocation' entry in fund_ledger decreases Available, and the
-    /// entry appears in the Savings Activity & Transactions feed.
-    /// NO override reason is passed, so the RPC refuses when the
-    /// amount exceeds the Available balance — a cash withdrawal can
-    /// never take Savings below $0. Returns true only when the save
-    /// committed, so the caller clears the typed input on success
-    /// only (F-P1-4).
-    public func recordCashSpent(amountCents: Int, note: String) async -> Bool {
-        var succeeded = false
-        await guarded("record-cash-spent", title: "Could Not Record Cash Spent") {
-            try await context.client.rpcs.allocateFund(
-                pHouseholdId: context.householdId,
-                pAmountCents: amountCents,
-                pNote: note.isEmpty ? "Cash spent" : "Cash spent — \(note)",
-                pOverrideReason: nil
+    // MARK: - Remove from Savings + Designate as Savings (build 42, owner Nov 17, 2026)
+    //
+    // The Savings spending waterfall — Available → Pending →
+    // Carried Debt — behind "Remove from Savings" and behind
+    // designating a charge as Savings. All three steps use existing
+    // RPCs only (no new server surface):
+    //   1. Available: `allocate_fund` (positive amount → a negative
+    //      'allocation' ledger entry; no override, so it can never
+    //      take Available below $0).
+    //   2. Pending: `confirm_fund_topup` on pending top-ups, oldest
+    //      first, then `allocate_fund` for what actually landed in
+    //      Available. "Pending" here is the REALIZABLE pending
+    //      money — pending top-ups. Pending surplus releases cannot
+    //      be pulled forward with any existing RPC (week-close
+    //      releases them on schedule), so they are NOT spendable
+    //      here; a spend larger than Available + pending top-ups
+    //      falls through to debt. Confirming a top-up runs the
+    //      standing shortfall-first split against the CURRENT
+    //      shortfall, so if money is owed back, part (or all) of a
+    //      confirmed top-up covers the shortfall first and only the
+    //      remainder becomes spendable — the still-unfunded rest
+    //      keeps falling through to the next top-up, then to debt.
+    //      A top-up is confirmed whole (there is no partial-confirm
+    //      RPC); any confirmed money left over after the spend stays
+    //      in Available.
+    //   3. Carried debt: `add_debt` for whatever is still unfunded
+    //      — the remainder is recorded as carried debt, audited,
+    //      and shows on the Debt card; the fund itself is never
+    //      taken below $0.
+    // Partial coverage splits across the steps in order (Available
+    // $50 of a $100 spend: $50 from Available, $50 from Pending;
+    // if both are exhausted, the remainder goes to carried debt).
+    // There is no rollback: if a later step fails, the earlier
+    // steps have already moved money, so the outcome carries the
+    // partial split and the caller reports it alongside the error.
+    // The waterfall refuses to run when the fund balance or the
+    // pending top-ups failed to load — with unknown balances it
+    // must not silently route a spend to debt.
+
+    /// One Savings spend, split by source.
+    public struct SavingsSpendOutcome {
+        public let fromAvailableCents: Int
+        public let fromPendingCents: Int
+        public let toDebtCents: Int
+        /// The failure that stopped the waterfall, if any. Earlier
+        /// steps already moved money — there is no rollback — so
+        /// the caller reports the partial split with this error.
+        public let error: Error?
+        public var completed: Bool { error == nil }
+        public var totalCents: Int { fromAvailableCents + fromPendingCents + toDebtCents }
+    }
+
+    /// The waterfall itself: spends `amountCents` from Savings in
+    /// Available → Pending → Carried Debt order. `note` is the
+    /// ledger / debt-adjustment note. Returns the split (and the
+    /// stopping error, if any) — never toasts or alerts; the
+    /// callers do that, so the same core serves both the button
+    /// and the transaction designation.
+    private func spendFromSavings(amountCents: Int, note: String) async -> SavingsSpendOutcome {
+        var fromAvailable = 0
+        var fromPending = 0
+        var toDebt = 0
+        var remainder = amountCents
+        func outcome(_ error: Error?) -> SavingsSpendOutcome {
+            SavingsSpendOutcome(
+                fromAvailableCents: fromAvailable,
+                fromPendingCents: fromPending,
+                toDebtCents: toDebt,
+                error: error
             )
-            succeed("Recorded \(MoneyFormat.formatCents(amountCents)) cash spent from Savings.")
-            succeeded = true
-            await refresh()
         }
-        return succeeded
+        // Unknown balances must not route a spend to debt by
+        // default: a failed fund load reads as $0 Available, and a
+        // failed top-ups load reads as $0 Pending.
+        guard fundSummary != nil else {
+            return outcome(OnBudgetError.validationFailed("Could not load the Savings balance. Try again."))
+        }
+        // 1. Available.
+        let takeAvailable = min(remainder, max(0, fundSummary?.availableCents ?? 0))
+        if takeAvailable > 0 {
+            do {
+                try await context.client.rpcs.allocateFund(
+                    pHouseholdId: context.householdId,
+                    pAmountCents: takeAvailable,
+                    pNote: note,
+                    pOverrideReason: nil
+                )
+                fromAvailable = takeAvailable
+                remainder -= takeAvailable
+            } catch {
+                return outcome(error)
+            }
+        }
+        // 2. Pending top-ups, oldest first.
+        if remainder > 0 {
+            guard topupsError == nil else {
+                return outcome(OnBudgetError.validationFailed("Could not load pending top-ups. Try again."))
+            }
+            let pending = topups.filter { $0.isPending }.sorted { ($0.createdAt ?? "") < ($1.createdAt ?? "") }
+            for topup in pending {
+                guard remainder > 0 else { break }
+                guard let id = topup.id else { continue }
+                do {
+                    let result = try await context.client.rpcs.confirmFundTopup(pTopupId: id)
+                    // Only what actually landed in Available (after
+                    // the shortfall-first split) is spendable here.
+                    let take = min(remainder, result.fundAddedCents)
+                    if take > 0 {
+                        try await context.client.rpcs.allocateFund(
+                            pHouseholdId: context.householdId,
+                            pAmountCents: take,
+                            pNote: note,
+                            pOverrideReason: nil
+                        )
+                        fromPending += take
+                        remainder -= take
+                    }
+                } catch {
+                    return outcome(error)
+                }
+            }
+        }
+        // 3. Carried debt for whatever is still unfunded.
+        if remainder > 0 {
+            do {
+                _ = try await context.client.rpcs.addDebt(
+                    pHouseholdId: context.householdId, pAmountCents: remainder, pNote: note
+                )
+                toDebt = remainder
+                remainder = 0
+            } catch {
+                return outcome(error)
+            }
+        }
+        return outcome(nil)
+    }
+
+    /// The split as a plain suffix for toasts (" ($50.00 from
+    /// Available, $50.00 from Pending)" — empty when the whole
+    /// spend came from Available, the unremarkable case).
+    private func savingsSplitSuffix(_ outcome: SavingsSpendOutcome) -> String {
+        var parts: [String] = []
+        if outcome.fromAvailableCents > 0 {
+            parts.append("\(MoneyFormat.formatCents(outcome.fromAvailableCents)) from Available")
+        }
+        if outcome.fromPendingCents > 0 {
+            parts.append("\(MoneyFormat.formatCents(outcome.fromPendingCents)) from Pending")
+        }
+        if outcome.toDebtCents > 0 {
+            parts.append("\(MoneyFormat.formatCents(outcome.toDebtCents)) added to carried debt")
+        }
+        guard parts.count > 1 || outcome.toDebtCents > 0 || outcome.fromPendingCents > 0 else { return "" }
+        return " (\(parts.joined(separator: ", ")))"
+    }
+
+    /// What already moved before a waterfall failure, in plain
+    /// language for the alert ("Removed $50.00 of $100.00 before
+    /// it stopped. …") — empty when nothing moved.
+    private func partialSavingsMessage(_ outcome: SavingsSpendOutcome, amountCents: Int) -> String {
+        guard outcome.totalCents > 0 else { return "" }
+        return "Removed \(MoneyFormat.formatCents(outcome.totalCents)) of \(MoneyFormat.formatCents(amountCents)) before it stopped\(savingsSplitSuffix(outcome)). The completed part is recorded — check the Savings Activity feed. "
+    }
+
+    /// "Remove from Savings" (build 42): the Savings card's single
+    /// remove button. Admin only; the waterfall splits the amount
+    /// across Available → Pending → Carried Debt. Returns true
+    /// only when the whole amount is accounted for, so the caller
+    /// clears the typed input on success only (F-P1-4).
+    public func removeFromSavings(amountCents: Int, note: String) async -> Bool {
+        guard context.isAdmin else {
+            alertTitle = "Admin Only"
+            alertMessage = "Only the admin can remove money from Savings."
+            return false
+        }
+        guard amountCents > 0 else {
+            alertTitle = "Could Not Remove From Savings"
+            alertMessage = "Enter an amount above $0.00."
+            return false
+        }
+        guard busyAction == nil else { return false }
+        busyAction = "remove-from-savings"
+        defer { busyAction = nil }
+        let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ledgerNote = cleanNote.isEmpty ? "Removed from Savings" : "Removed from Savings — \(cleanNote)"
+        let outcome = await spendFromSavings(amountCents: amountCents, note: ledgerNote)
+        if let error = outcome.error {
+            alertTitle = "Could Not Remove From Savings"
+            alertMessage = partialSavingsMessage(outcome, amountCents: amountCents) + userMessage(for: error)
+            await refresh()
+            return false
+        }
+        succeed("Removed \(MoneyFormat.formatCents(amountCents)) from Savings\(savingsSplitSuffix(outcome)).")
+        await refresh()
+        return true
+    }
+
+    /// Designate a transaction as a Savings transaction (build 42,
+    /// owner Nov 17, 2026). Admin only. Two directions, both
+    /// immediate (no pending state) and both written to the fund
+    /// ledger / history so they appear in the Savings Activity &
+    /// Transactions feed:
+    ///   (1) Money-in (income / refund / cashback): `add_fund_money`
+    ///       with the toggle ON (confirmed) — the money is already
+    ///       in checking, so it counts at once. The client key is
+    ///       derived from the transaction id, so retrying the same
+    ///       designation replays the stored split instead of
+    ///       double-crediting; a replayed result reports the row as
+    ///       already designated. The standing shortfall-first split
+    ///       applies: if money is owed back, that part covers the
+    ///       shortfall first and only the rest raises Available.
+    ///       `allocate_fund` cannot express this direction — it
+    ///       only ever writes a NEGATIVE ledger entry.
+    ///   (2) Charge: the waterfall (`spendFromSavings`) — Available
+    ///       first, then Pending top-ups, then carried debt.
+    /// The transaction row itself is NOT changed: no existing RPC
+    /// both moves fund money and links it to a transaction
+    /// (`allocate_fund` takes no transaction id), so the row keeps
+    /// its kind — a designated charge still counts toward weekly
+    /// spending (compute-week subtracts only
+    /// `fund_allocation_cents`, which this does not set). Taking
+    /// it out of weekly spending is a separate decision: reclassify
+    /// to fund_charge, or cover it through the fund-request approval
+    /// path (`approve_and_allocate`, which sets
+    /// `fund_allocation_cents`).
+    /// Returns a success message for the caller's toast, or nil on
+    /// failure (with `alertTitle` / `alertMessage` set, for the
+    /// caller to surface — the Actions sheet owns the visible
+    /// alert). The fund move has no idempotency key on the charge
+    /// path, so a second designation of the same charge would move
+    /// the money again; the sheet closes on success, so the action
+    /// cannot be tapped twice for one row in practice.
+    public func designateTransactionAsSavings(_ transaction: Transaction) async -> String? {
+        guard context.isAdmin else {
+            alertTitle = "Admin Only"
+            alertMessage = "Only the admin can designate transactions as Savings."
+            return nil
+        }
+        let cents = abs(transaction.amountCents)
+        guard cents > 0 else {
+            alertTitle = "Could Not Designate as Savings"
+            alertMessage = "This transaction has no amount to designate."
+            return nil
+        }
+        guard transaction.state != .reversed && !transaction.isInTrash else {
+            alertTitle = "Could Not Designate as Savings"
+            alertMessage = "A reversed or trashed transaction cannot be designated as Savings."
+            return nil
+        }
+        guard busyAction == nil else { return nil }
+        busyAction = "designate-savings"
+        defer { busyAction = nil }
+        // Fresh fund figures: the waterfall splits on live balances
+        // and the pending top-ups list.
+        await refresh()
+        let merchant = TransactionFormatting.displayMerchant(transaction.merchant)
+        let ledgerNote = "Savings: \(merchant) — \(transaction.date)"
+        if transaction.kind.isMoneyIn {
+            do {
+                let result = try await context.client.rpcs.addFundMoney(
+                    pHouseholdId: context.householdId,
+                    pAmountCents: cents,
+                    pNote: ledgerNote,
+                    pClientKey: "designate-savings-\(transaction.id.uuidString)",
+                    pConfirmed: true
+                )
+                if result.replayed {
+                    alertTitle = "Already Designated"
+                    alertMessage = "This transaction was already designated as Savings."
+                    return nil
+                }
+                await refresh()
+                if result.shortfallCoveredCents > 0 {
+                    return "Designated as Savings: \(MoneyFormat.formatCents(cents)) in — \(MoneyFormat.formatCents(result.shortfallCoveredCents)) covered owed back, \(MoneyFormat.formatCents(result.fundAddedCents)) added to Savings Available."
+                }
+                return "Designated as Savings: \(MoneyFormat.formatCents(cents)) added to Savings Available."
+            } catch {
+                fail(title: "Could Not Designate as Savings", error: error)
+                return nil
+            }
+        }
+        guard transaction.kind == .charge else {
+            alertTitle = "Does Not Qualify"
+            alertMessage = "Only a charge or money-in can be designated as Savings."
+            return nil
+        }
+        let outcome = await spendFromSavings(amountCents: cents, note: ledgerNote)
+        if let error = outcome.error {
+            alertTitle = "Could Not Designate as Savings"
+            alertMessage = partialSavingsMessage(outcome, amountCents: cents) + userMessage(for: error)
+            await refresh()
+            return nil
+        }
+        await refresh()
+        return "Designated as Savings: \(MoneyFormat.formatCents(cents)) out of Savings\(savingsSplitSuffix(outcome))."
     }
 
     // MARK: - Ask for Fund Money (all roles)

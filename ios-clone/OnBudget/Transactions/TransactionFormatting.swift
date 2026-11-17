@@ -40,33 +40,43 @@ public enum TransactionFormatting {
 
     // MARK: - Amount display: the one shared kind→colour rule
     //
-    // Owner, Nov 12, 2026 (voice note + refinement the same day):
-    // the KIND, not the direction, decides how a transaction
-    // amount renders — every screen routes its row amounts through
-    // `amountDisplay(for:)`, never through its own colour logic.
-    // - Money in (kind income / refund / cashback): GREEN
-    //   (`DesignTokens.success`, #22c55e) with a "+" prefix
+    // Owner, Nov 17, 2026 (build 42): the KIND, not the direction,
+    // decides how a transaction amount renders — every screen routes
+    // its row amounts through `amountDisplay(for:)`, never through
+    // its own colour logic. FOUR colours only, brand palette:
+    // - Money in (kind income / refund / cashback): DEEP BLUE
+    //   (`DesignTokens.deep`, #1d4ed8) with a "+" prefix
     //   ("+$75.00"). The stored Plaid negative is flipped to "+"
     //   here, at the display layer only.
-    // - Charity gifts (kind charity): BLUE (`DesignTokens.primary`,
-    //   #2f6bff). Charity rows are outflows, but the kind decides.
-    // - Transfers (kind transfer): MUTED RED
-    //   (`DesignTokens.heroOverBudget`, #991b1b) — by kind, not
-    //   direction. The SIGN marks the direction of money flow:
-    //   money in shows "+", money out shows "-" (owner, Nov 15,
-    //   2026 — build 34: the signs were backwards). Plaid stores
-    //   money-out as a POSITIVE amount and money-in as a NEGATIVE
-    //   one, so the stored sign is flipped here, at the display
-    //   layer only — the same flip income already does. An
-    //   outgoing wire (stored +$10,000) reads "-$10,000.00", an
-    //   incoming transfer credit (stored -$9,000) reads
-    //   "+$9,000.00". This SUPERSEDES the Nov 12 "red is never a
-    //   transaction amount" rule FOR TRANSFERS ONLY — red stays
-    //   reserved elsewhere (over-budget hero figure, negative
-    //   balances, errors).
-    // - Regular kinds (charge / payment / fund charge / other):
-    //   BLACK ink, stored sign kept ("$X" / "-$X").
+    // - Charity gifts (kind charity): PRIMARY BLUE
+    //   (`DesignTokens.primary`, #2f6bff). Charity rows are
+    //   outflows, but the kind decides.
+    // - Excluded — transfers (kind transfer), payments (kind
+    //   payment), and any row in Trash (`isInTrash`): GREY
+    //   (`DesignTokens.muted`, #6b7280). None of these affects the
+    //   week math. A transfer's SIGN still marks the money flow
+    //   (owner, Nov 15, 2026 — build 34: the signs were
+    //   backwards). Plaid stores money-out as a POSITIVE amount
+    //   and money-in as a NEGATIVE one, so the stored sign is
+    //   flipped here, at the display layer only. An outgoing wire
+    //   (stored +$10,000) reads "-$10,000.00", an incoming
+    //   transfer credit (stored -$9,000) reads "+$9,000.00".
+    // - Spending (kind charge / fund charge) and anything else:
+    //   INK (`DesignTokens.ink`, #0f172a), stored sign kept
+    //   ("$X" / "-$X").
     // - Zero is "$0.00" in ink for every kind.
+    // This RETIRES the Nov 12 money-in green (`DesignTokens.success`)
+    // and the Nov 15 transfer muted red (`DesignTokens.heroOverBudget`,
+    // #991b1b) for transaction amounts: green and red never colour a
+    // transaction amount now. Red stays ONLY for the over-budget hero
+    // figure, negative balances, and errors — never a row amount.
+    // NOTE: `TransactionKind.fixedAmountColorHex` (OnBudgetKit
+    // Models.swift) maps the same rule at the kit level (charity
+    // → primary, transfer → muted grey) and its test pins it.
+    // `inflowDisplay`
+    // below still returns green: it is a separate path for known
+    // inflows that are not transaction rows (charity income rows,
+    // fund top-ups, surplus releases), not a row amount.
     // Display only: the model cents, the week math, and the totals
     // are untouched — only the text and colour of a rendered row
     // change.
@@ -77,29 +87,35 @@ public enum TransactionFormatting {
     /// Trash, Review, action sheets, toasts that quote a row).
     public static func amountDisplay(for transaction: Transaction) -> (text: String, color: Color) {
         if transaction.amountCents == 0 { return (formatCents(0), DesignTokens.ink) }
-        if transaction.isInflow {
-            return (
-                MoneyFormat.amountText(cents: transaction.amountCents, isMoneyIn: true),
-                DesignTokens.success
-            )
-        }
-        if let fixedHex = transaction.kind.fixedAmountColorHex {
-            // Charity (blue) and transfer (muted red) render in
-            // their kind colour, by kind not direction — the colour
-            // comes from the kit mapping, so a kit test pins it.
-            // A transfer's SIGN marks the money flow (owner, Nov 15,
-            // 2026 — build 34): Plaid stores money-out positive and
-            // money-in negative, so the sign is flipped — money in
-            // (stored negative) reads "+$X", money out (stored
-            // positive) reads "-$X". Charity keeps the stored sign.
+        // Excluded (owner, Nov 17, 2026 — build 42): transfers,
+        // payments, and trashed rows never affect the week math, so
+        // they all render grey. A transfer's SIGN still marks the
+        // money flow (owner, Nov 15, 2026 — build 34): Plaid stores
+        // money-out positive and money-in negative, so the sign is
+        // flipped — money in (stored negative) reads "+$X", money
+        // out (stored positive) reads "-$X". Payments and trashed
+        // rows keep their stored sign.
+        if transaction.isInTrash || transaction.kind == .transfer || transaction.kind == .payment {
             let text: String
             if transaction.kind == .transfer {
                 text = (transaction.amountCents < 0 ? "+" : "-") + formatCents(abs(transaction.amountCents))
             } else {
                 text = formatCents(transaction.amountCents)
             }
-            return (text, Color(hex: fixedHex))
+            return (text, DesignTokens.muted)
         }
+        // Money in (income / refund / cashback): deep blue with "+".
+        if transaction.isInflow {
+            return (
+                MoneyFormat.amountText(cents: transaction.amountCents, isMoneyIn: true),
+                DesignTokens.deep
+            )
+        }
+        // Charity gifts: primary blue. Charity keeps the stored sign.
+        if transaction.kind == .charity {
+            return (formatCents(transaction.amountCents), DesignTokens.primary)
+        }
+        // Spending (charge / fund charge) and anything else: ink.
         return (formatCents(transaction.amountCents), DesignTokens.ink)
     }
 
@@ -282,6 +298,83 @@ public enum TransactionFormatting {
     /// Merchant names display Title-Cased; stored values stay upper-case.
     public static func displayMerchant(_ merchant: String) -> String {
         TitleCase.apply(to: merchant)
+    }
+
+    // MARK: - Transfer row titles (build 42, owner Nov 17, 2026)
+    //
+    // For transfers between the user's own accounts the row title is
+    // derived from the DIRECTION and the OTHER account, never the
+    // bank's wording: the bank labelled a +$2,000 transfer "Transfer
+    // to Savings" when the money actually came FROM savings into
+    // checking — backwards. Direction comes from the signed amount
+    // (Plaid stores money-out positive, money-in negative): money IN
+    // to this account came "from" the other account, money OUT went
+    // "to" it. The other account's last 4 digits come from the bank
+    // description when it carries them (see `otherAccountLast4(for:)`);
+    // when no digits are determinable the title is direction-only
+    // ("Transfer from" / "Transfer to"), never a guess. Applies ONLY
+    // to kind == .transfer rows — every other kind keeps its
+    // Title-Cased merchant name.
+
+    /// The row's title: the transfer title for transfers, the
+    /// Title-Cased merchant name for every other kind. The row and
+    /// its search highlight both render this string, so they agree.
+    public static func rowTitle(for transaction: Transaction) -> String {
+        guard transaction.kind == .transfer else { return displayMerchant(transaction.merchant) }
+        return transferTitle(for: transaction)
+    }
+
+    /// "Transfer from ••5939" / "Transfer to ••5939", or
+    /// direction-only when the other account's digits cannot be
+    /// derived, or bare "Transfer" for a zero amount (no direction
+    /// to read). Title Case per the app rule — "from" / "to" stay
+    /// lowercase as minor words, as in "Spend from Fund".
+    public static func transferTitle(for transaction: Transaction) -> String {
+        let direction: String?
+        if transaction.amountCents < 0 {
+            direction = "from"
+        } else if transaction.amountCents > 0 {
+            direction = "to"
+        } else {
+            direction = nil
+        }
+        guard let direction else { return "Transfer" }
+        if let last4 = otherAccountLast4(for: transaction) {
+            return TitleCase.apply(to: "Transfer \(direction) ••\(last4)")
+        }
+        return TitleCase.apply(to: "Transfer \(direction)")
+    }
+
+    /// The OTHER account's last 4 digits, parsed from the bank's
+    /// merchant string — the model carries no other-account field:
+    /// `cardSuffix` is THIS row's account, and `merchant` is the
+    /// only text the bank supplies. A run of exactly 4 digits is a
+    /// last-4 candidate ("Internal Transfer Credit: Savings -5939"
+    /// → "5939"; "Transfer to Savings" carries none → nil). The
+    /// LAST such run wins (the suffix trails the description), and
+    /// a run equal to this row's own `cardSuffix` is skipped — it
+    /// names this account, not the other one — so a description
+    /// that only ever names this account falls back to
+    /// direction-only rather than mislabelling it as the other
+    /// account. Longer digit runs are not last-4s and are ignored.
+    public static func otherAccountLast4(for transaction: Transaction) -> String? {
+        var found: String? = nil
+        var run = ""
+        func flushRun() {
+            if run.count == 4, run != transaction.cardSuffix {
+                found = run
+            }
+            run = ""
+        }
+        for character in transaction.merchant {
+            if character.isNumber {
+                run.append(character)
+            } else {
+                flushRun()
+            }
+        }
+        flushRun()
+        return found
     }
 
     /// Search-match highlight (build 41, owner Nov 17, 2026): the

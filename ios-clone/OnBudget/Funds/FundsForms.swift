@@ -3,45 +3,54 @@ import OnBudgetKit
 
 // MARK: - Add Money (top-up, admin only — spec §9.3)
 //
-// "Log cash for the fund — owed back is covered first."
-// Manual top-ups cover the fund shortfall FIRST; the remainder
-// increases spendable Available. The save preview MUST show the split
-// before saving; fund history shows the split. Top-ups never touch
+// "Log cash for the fund."
+// Manual top-ups simply add to the fund balance. Top-ups never touch
 // weekly allowance / spending room / debt math. Admin-only;
 // double-tap protection. Build 41 (owner, Nov 17, 2026): the
 // "I have already put this money in checking" toggle no longer
 // blocks saving — untoggled, the top-up saves as PENDING and counts
 // for nothing until it is confirmed on its Activity-feed entry.
+// Build 42 (owner, Nov 17, 2026): the old "owed back" split is
+// gone — a top-up adds to the fund, full stop; money owed lives on
+// the Debt card (Overspent (Past)), not here.
 
 public struct AddMoneyForm: View {
     @ObservedObject public var viewModel: FundsViewModel
     /// Closes the form back to the Funds list (owned by FundsView).
     public var onClose: () -> Void = {}
+    /// The fund's display name for the preview/confirm text (e.g.
+    /// "Savings") — rename-aware when the caller passes it, as
+    /// PayDebtForm does. Nil falls back to "the fund": the
+    /// rename-aware name lives in `appState.fundNames`, which this
+    /// form cannot reach (build 42, owner Nov 17, 2026).
+    public var fundName: String?
     @State private var amountText = ""
     @State private var note = ""
     @State private var confirmed = false
     @State private var fieldError: String?
     @State private var showConfirm = false
 
-    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
+    public init(viewModel: FundsViewModel, fundName: String? = nil, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.fundName = fundName
         self.onClose = onClose
     }
 
     private var amountCents: Int? { MoneyFormat.parseDollarsStrict(amountText) }
 
+    private var fundNameText: String { fundName ?? "the fund" }
+
     private var previewText: String {
-        guard let cents = amountCents, cents > 0 else { return "Enter an amount to see the split." }
-        guard let split = viewModel.topupPreview(amountCents: cents) else {
-            return "Fund balance has not loaded yet — the server still covers anything owed back first when you save."
-        }
-        // A pending save's split is a projection: the real split
-        // runs at confirm time, against the then-current shortfall
-        // (build 41 — pending top-ups, owner Nov 17, 2026).
+        guard let cents = amountCents, cents > 0 else { return "Enter an amount." }
+        // Build 42 (owner, Nov 17, 2026): no "owed back" split — a
+        // top-up simply adds to the fund. The old topupPreview call
+        // is gone: it fed only the removed split text, and the
+        // preview now needs nothing but the typed amount. The save
+        // logic, RPCs and pending/confirmed behaviour are untouched.
         if confirmed {
-            return "Split: \(MoneyFormat.formatCents(split.added)) added to fund · \(MoneyFormat.formatCents(split.covered)) covers owed back · Owed back after \(MoneyFormat.formatCents(split.after))."
+            return "Add \(MoneyFormat.formatCents(cents)) to \(fundNameText)."
         }
-        return "Pending split when confirmed: \(MoneyFormat.formatCents(split.added)) added to fund · \(MoneyFormat.formatCents(split.covered)) covers owed back · Owed back after \(MoneyFormat.formatCents(split.after)). It will not count until you confirm it."
+        return "Add \(MoneyFormat.formatCents(cents)) to \(fundNameText). It will stay pending until you confirm the money is in checking."
     }
 
     public var body: some View {
@@ -53,8 +62,15 @@ public struct AddMoneyForm: View {
                 // as PENDING until the toggle is confirmed on the
                 // entry. The old "log cash already in checking"
                 // wording no longer covers both cases.
-                FundsMuted("Log cash for the fund — owed back is covered first once it is confirmed.")
-                FundsMoneyField("Amount", text: $amountText)
+                FundsMuted("Log cash for the fund.")
+                // Build 42 (owner, Nov 17, 2026): full-width Amount,
+                // like the Note field below — FundsMoneyField caps
+                // at 220px (spec §1.2), which left this field ~1/3
+                // wide. Same "$" prefix, same parsing/validation.
+                VStack(alignment: .leading, spacing: 4) {
+                    FieldLabel("Amount", required: true)
+                    DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     FieldLabel("Note")
                     TextField("", text: $note)
@@ -135,118 +151,9 @@ public struct AddMoneyForm: View {
     }
 }
 
-// MARK: - Use Fund Money (admin only — spec §9.3)
-//
-// "Lowers the fund balance only." On "insufficient fund" the server
-// error offers a typed-reason override retry ("Fund Is Short" sheet).
-
-public struct UseFundForm: View {
-    @ObservedObject public var viewModel: FundsViewModel
-    /// Closes the form back to the Funds list (owned by FundsView).
-    public var onClose: () -> Void = {}
-    @State private var amountText = ""
-    @State private var note = ""
-    @State private var fieldError: String?
-    @State private var showConfirm = false
-    @State private var showOverride = false
-    @State private var overrideReason = ""
-    @State private var pendingCents: Int?
-
-    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
-        self.viewModel = viewModel
-        self.onClose = onClose
-    }
-
-    private var amountCents: Int? { MoneyFormat.parseDollarsStrict(amountText) }
-
-    public var body: some View {
-        FundsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                FundsHeading("Use Fund Money")
-                FundsMuted("Lowers the fund balance only.")
-                FundsMoneyField("Amount", text: $amountText)
-                VStack(alignment: .leading, spacing: 4) {
-                    FieldLabel("Note")
-                    TextField("", text: $note)
-                        .textFieldStyle(.roundedBorder)
-                }
-                if let fieldError {
-                    FundsErrorBox(fieldError)
-                }
-                HStack(spacing: 12) {
-                    FundsPrimaryButton("Record It") {
-                        guard let cents = amountCents, cents > 0 else {
-                            fieldError = "Enter a valid amount."
-                            return
-                        }
-                        fieldError = nil
-                        pendingCents = cents
-                        showConfirm = true
-                    }
-                    FundsTertiaryButton("Cancel") {
-                        amountText = ""
-                        note = ""
-                        fieldError = nil
-                        onClose()
-                    }
-                }
-            }
-        }
-        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
-        // confirmationDialog — on iPad a confirmationDialog is a
-        // popover anchored at the top of the screen (same fix as the
-        // Clear Debt confirm). An .alert is centred on iPhone and
-        // iPad alike.
-        .alert(
-            "Record Fund Spending",
-            isPresented: $showConfirm
-        ) {
-            Button(TitleCase.apply(to: "Record It")) {
-                Task { await record(overrideReason: nil) }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            if let pendingCents {
-                Text("Record \(MoneyFormat.formatCents(pendingCents)) of fund spending?")
-            }
-        }
-        .alert("Fund Is Short", isPresented: $showOverride) {
-            TextField("Reason for overriding", text: $overrideReason)
-            Button(TitleCase.apply(to: "Record Anyway")) {
-                Task { await record(overrideReason: overrideReason.trimmingCharacters(in: .whitespaces)) }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            if let pendingCents {
-                Text("The fund does not cover \(MoneyFormat.formatCents(pendingCents)). Record it anyway with a typed reason — it will be logged.")
-            }
-        }
-    }
-
-    private func record(overrideReason: String?) async {
-        guard let cents = pendingCents else { return }
-        do {
-            try await viewModel.allocateFund(amountCents: cents, note: note.trimmingCharacters(in: .whitespaces), overrideReason: overrideReason)
-            amountText = ""
-            note = ""
-            pendingCents = nil
-        } catch let error as OnBudgetError {
-            if case .insufficientFund = error, overrideReason == nil {
-                showOverride = true
-            } else {
-                viewModel.alertTitle = "Could Not Record"
-                viewModel.alertMessage = error.displayMessage
-            }
-        } catch {
-            viewModel.alertTitle = "Could Not Record"
-            viewModel.alertMessage = OnBudgetError.displayMessage(for: error)
-        }
-    }
-}
-
 // MARK: - Pay Carried Debt from Extra Fund (admin only, build 29)
 //
-// Mirrors UseFundForm: amount + note + confirmation dialog, and the
+// Mirrors the fund-spending form: amount + note + confirmation dialog, and the
 // same "Fund Is Short" typed-reason override sheet when the Extra
 // Fund does not cover the amount. The server refuses an amount over
 // the remaining debt (never silently partial) and returns the debt
@@ -1168,138 +1075,3 @@ public struct RenameFundSheet: View {
     }
 }
 
-// MARK: - Record Cash Spent (cash taken out of Savings, admin only)
-//
-// Build 40 (owner, Nov 16, 2026): "Same goes for extra fund/savings.."
-// — the Savings fund gets the same "record on the fund, not a
-// transaction" function as the charity cash gift. The owner took cash
-// out of Savings and wants to take it off the Available balance —
-// WITHOUT creating a transaction row (cash is not traceable as a
-// bank/email transaction and would confuse the transaction history).
-// It IS recorded in the Savings fund's Activity & Transactions feed
-// (a fund_ledger 'allocation' entry, which the feed now shows).
-// The button opens a POPUP (sheet, like the charity popups: iPad
-// 600pt, 17pt) with an amount field + a note +
-// Record/Cancel. Validation lives INSIDE the popup: the amount must
-// be above $0.00 and must not exceed the Available balance (no
-// override — allocate_fund refuses when the amount exceeds Available,
-// so a withdrawal can never take Savings below $0) — the error shows
-// in the popup in plain language and the popup does not close on a
-// bad amount. On success the popup closes, the field clears, and
-// the balance updates everywhere. Reuses `allocate_fund` (no new
-// server surface): a negative 'allocation' entry in fund_ledger.
-// The button and the popup title use the fund's CURRENT name (e.g.
-// "Record Cash Spent from Savings").
-
-public struct RecordCashSpentSection: View {
-    @ObservedObject public var viewModel: FundsViewModel
-    /// The fund's CURRENT display name (e.g. "Savings" when renamed).
-    public let fundName: String
-    @State private var showPopup = false
-
-    public init(viewModel: FundsViewModel, fundName: String) {
-        self.viewModel = viewModel
-        self.fundName = fundName
-    }
-
-    public var body: some View {
-        // The fund card stacks THREE full-width buttons (Add Money /
-        // Spend from Fund / Record Cash Spent — the "Request Money"
-        // button is gone, owner Nov 16, 2026, build 41). The
-        // standing no-adjacent-same-color rule puts this one PRIMARY
-        // BLUE: blue, pale, blue — no two adjacent share a color
-        // (the two blues are separated by the pale middle).
-        // Full width, same size as the others.
-        FundsPrimaryButton("Record Cash Spent") {
-            showPopup = true
-        }
-        .accessibilityIdentifier("funds.recordCashSpent")
-        .sheet(isPresented: $showPopup) {
-            RecordCashSpentSheet(
-                viewModel: viewModel,
-                fundName: fundName,
-                onClose: { showPopup = false }
-            )
-            .presentationSizing(.fitted)
-        }
-    }
-}
-
-/// The Record Cash Spent popup (owner, Nov 16, 2026 — build 40): an
-/// amount field + a note + Record/Cancel, in the rename
-/// sheet's style (iPad 600pt centred, 17pt). Validation lives here:
-/// the amount must be above $0.00 and must not exceed the Available
-/// balance — empty / zero / negative / over-Available shows a
-/// plain-language error INSIDE the popup and the popup stays open
-/// (the field keeps the typed input). On success the popup closes,
-/// the field clears, and the balance updates everywhere.
-public struct RecordCashSpentSheet: View {
-    @ObservedObject public var viewModel: FundsViewModel
-    public let fundName: String
-    public var onClose: () -> Void
-    @State private var amountText = ""
-    @State private var noteText = ""
-    @State private var spentError: String?
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
-    public init(viewModel: FundsViewModel, fundName: String, onClose: @escaping () -> Void = {}) {
-        self.viewModel = viewModel
-        self.fundName = fundName
-        self.onClose = onClose
-    }
-
-    /// The Available Savings balance, for the over-Available check
-    /// (client-side; allocate_fund re-checks server-side and refuses
-    /// too, with no override on this path).
-    private var availableCents: Int? { viewModel.fundSummary?.availableCents }
-
-    public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SheetHeader(title: TitleCase.apply(to: "Record Cash Spent from \(fundName)"), onClose: onClose)
-            if let availableCents {
-                FundsMuted("Available: \(MoneyFormat.formatCents(availableCents)). The amount comes off Available. No transaction row is created.")
-            }
-            DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
-            TextField("Note", text: $noteText)
-                .font(.system(size: 17))
-                .textFieldStyle(.roundedBorder)
-                .frame(minHeight: 48)
-                .autocorrectionDisabled()
-            if let spentError {
-                FundsErrorBox(spentError)
-            }
-            HStack(spacing: 12) {
-                FundsPrimaryButton("Record", isBusy: viewModel.busyAction == "record-cash-spent") {
-                    record()
-                }
-                FundsTertiaryButton("Cancel") { onClose() }
-            }
-        }
-        .padding()
-        // iPad width (owner, Nov 12, 2026): 600pt in the regular
-        // size class, full-width on iPhone — same treatment as the
-        // rename sheet.
-        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-    }
-
-    private func record() {
-        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else {
-            spentError = "Enter an amount above $0.00."
-            return
-        }
-        if let availableCents, cents > availableCents {
-            spentError = "That is more than the \(MoneyFormat.formatCents(availableCents)) available in \(fundName)."
-            return
-        }
-        spentError = nil
-        Task {
-            // Clear only on success — on failure the typed input
-            // stays beside the error (F-P1-4).
-            if await viewModel.recordCashSpent(amountCents: cents, note: noteText) {
-                amountText = ""
-                noteText = ""
-                onClose()
-            }
-        }
-    }
-}

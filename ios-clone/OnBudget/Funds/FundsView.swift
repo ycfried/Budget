@@ -34,7 +34,6 @@ import OnBudgetKit
 
 public enum FundsForm: Equatable {
     case add
-    case use
     case ask
     case income
     /// Temporary Allowance — opened from the Spending section,
@@ -141,6 +140,10 @@ public struct FundsView: View {
     /// 2026): opened by the pale "Edit Debt" button on the
     /// Overspent (Past) fund, admin only.
     @State private var showEditDebt = false
+    /// The Remove from Savings sheet (build 42, owner Nov 17,
+    /// 2026): opened by the grey-tertiary "Remove from Savings"
+    /// button on the Savings card, admin only.
+    @State private var showRemoveFromSavings = false
     /// iPad content width (build 36): the tabs read as a centered
     /// 900pt column on the regular size class.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -166,9 +169,7 @@ public struct FundsView: View {
                     formBalanceStrip(for: form)
                     switch form {
                     case .add:
-                        AddMoneyForm(viewModel: viewModel, onClose: { openForm = nil })
-                    case .use:
-                        UseFundForm(viewModel: viewModel, onClose: { openForm = nil })
+                        AddMoneyForm(viewModel: viewModel, fundName: FundSectionID.fund.displayName(customNames: appState.fundNames), onClose: { openForm = nil })
                     case .ask:
                         AskFundForm(viewModel: viewModel, onClose: { openForm = nil })
                     case .income:
@@ -352,7 +353,7 @@ public struct FundsView: View {
     @ViewBuilder
     private func formBalanceStrip(for form: FundsForm) -> some View {
         switch form {
-        case .add, .use, .ask:
+        case .add, .ask:
             FundsCard {
                 VStack(alignment: .leading, spacing: 8) {
                     if let summary = viewModel.fundSummary {
@@ -425,15 +426,18 @@ public struct FundsView: View {
     // MARK: - Spending card (§9.1, build 30)
     //
     // The weekly budget fund (moved from the Settings Budget card):
-    // the face is this week's total allowance — base, plus a
-    // temporary total when one is in effect, less this week's debt
-    // payment — the same figure as the Home hero's effective
-    // allowance. The breakdown reconciles: Base ± Temporary
-    // increase/decrease − Debt Payment = Total. The Weekly
-    // Allowance editor + Temporary Allowance live INSIDE the section
-    // (build 33): the banner heads the section and the detail sits
-    // below it on plain white, so the whole thing reads as one group
-    // — the editor used to sit below the card, outside it.
+    // the face is what's LEFT to spend this week — the same
+    // Available figure as the Home hero (`WeekResult.availableCents`:
+    // this week's total allowance less what was spent) — NOT the
+    // total allowance (build 42, owner Nov 17, 2026: the face
+    // showed $400.00, the Total, while $74.78 was already spent).
+    // The breakdown still reconciles with the Total row: Base ±
+    // Temporary increase/decrease − Debt Payment = Total. The
+    // Weekly Allowance editor + Temporary Allowance live INSIDE
+    // the section (build 33): the banner heads the section and the
+    // detail sits below it on plain white, so the whole thing reads
+    // as one group — the editor used to sit below the card, outside
+    // it.
 
     private var spendingCard: some View {
         FundsExpandableCard(
@@ -441,7 +445,16 @@ public struct FundsView: View {
             amountText: spendingFaceText,
             isExpanded: appState.expandedCard == .spending,
             amountIsStatus: spendingFaceCents == nil,
-            isLoading: spendingFaceCents == nil && viewModel.allowanceError == nil && !viewModel.cardsReady,
+            // Build 42 (owner, Nov 17, 2026): the ONE page-ready
+            // gate — `!cardsReady` — not this card's own data.
+            // Gating on the card's own figures let the first card
+            // to load reveal while the others still showed
+            // skeletons (a partial page). Every card uses this
+            // same condition, so all four reveal together; a failed
+            // load still flips `cardsReady` (the view model awaits
+            // success-or-failure), so the card shows its error box,
+            // never a skeleton forever.
+            isLoading: !viewModel.cardsReady,
             theme: .spending,
             iconName: FundSectionID.spending.resolvedIconName(customIcons: appState.fundIcons),
             isReorderMode: isRearranging,
@@ -453,7 +466,24 @@ public struct FundsView: View {
             isAdmin: isAdmin,
             onRename: { renamingFund = .spending }
         ) {
-            if let base = viewModel.baseAllowanceCents {
+            if !viewModel.cardsReady {
+                // The page has not revealed yet: skeletons shaped
+                // like the breakdown rows, no "Loading…" text
+                // (owner loading language, Nov 12, 2026) — even if
+                // this card's own figures already arrived, the
+                // detail stays hidden until every card is ready.
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 200, height: 16)
+                    SkeletonBlock(width: 170, height: 16)
+                    SkeletonBlock(width: 190, height: 16)
+                }
+            } else if let error = viewModel.allowanceError ?? viewModel.debtError {
+                // The face needs the week's figures (compute-week),
+                // so a debt-load failure fails this card too — the
+                // face shows the static grey block and the detail
+                // carries the error box.
+                FundsErrorBox(error)
+            } else if let base = viewModel.baseAllowanceCents {
                 // Build 36 (owner, Nov 16, 2026): the expanded
                 // detail felt cramped — the breakdown rows sit 12pt
                 // apart (was 8) and the blocks 16pt apart (was 12),
@@ -472,7 +502,7 @@ public struct FundsView: View {
                         if let payment = viewModel.debtWeek?.debtPaymentCents, payment > 0 {
                             FundsBreakdownRow("Less Debt Payment", value: "−\(MoneyFormat.formatCents(payment))")
                         }
-                        if let total = spendingFaceCents {
+                        if let total = spendingTotalCents {
                             FundsBreakdownRow("Total", value: MoneyFormat.formatCents(total))
                         }
                     }
@@ -481,9 +511,10 @@ public struct FundsView: View {
                         openForm = .temp
                     }
                 }
-            } else if let error = viewModel.allowanceError {
-                FundsErrorBox(error)
             } else {
+                // Unreachable once the page is ready — every load
+                // sets its figures or its error — kept as a safe
+                // fallback rather than a blank detail.
                 VStack(alignment: .leading, spacing: 8) {
                     SkeletonBlock(width: 200, height: 16)
                     SkeletonBlock(width: 170, height: 16)
@@ -494,12 +525,24 @@ public struct FundsView: View {
         .accessibilityIdentifier("funds.spending")
     }
 
-    /// This week's total allowance: the week's base available
-    /// (base less this week's debt payment) plus any temporary
-    /// amount — the same figure as the Home hero's effective
-    /// allowance. Falls back to the stored base while the week's
-    /// figures are still loading.
+    /// What's left to spend this week (build 42, owner Nov 17,
+    /// 2026): the Home hero's Available figure —
+    /// `WeekResult.availableCents`, this week's total allowance
+    /// less what was spent. Nil while the week's figures are
+    /// unknown — there is no fallback to the stored base, because
+    /// the base IS the Total, and showing it here was the bug
+    /// ($400.00 face with $74.78 already spent).
     private var spendingFaceCents: Int? {
+        viewModel.debtWeek?.availableCents
+    }
+
+    /// This week's TOTAL allowance for the breakdown row only:
+    /// the week's base available (base less this week's debt
+    /// payment) plus any temporary amount — the same figure the
+    /// face used to show, and the same figure as the Home hero's
+    /// effective allowance. Falls back to the stored base while
+    /// the week's figures are still loading.
+    private var spendingTotalCents: Int? {
         if let week = viewModel.debtWeek {
             return week.baseAvailableCents + week.tempCents
         }
@@ -517,7 +560,7 @@ public struct FundsView: View {
         guard let cents = spendingFaceCents else {
             return "Spending, could not load allowance, show breakdown"
         }
-        return "Spending, \(MoneyFormat.formatCents(cents)) this week, show breakdown"
+        return "Spending, \(MoneyFormat.formatCents(cents)) left this week, show breakdown"
     }
 
     // MARK: - Extra Fund card (§9.1)
@@ -528,7 +571,10 @@ public struct FundsView: View {
             amountText: fundFaceText,
             isExpanded: appState.expandedCard == .fund,
             amountIsStatus: viewModel.fundSummary == nil,
-            isLoading: viewModel.fundSummary == nil && viewModel.fundError == nil && !viewModel.cardsReady,
+            // Build 42 (owner, Nov 17, 2026): the ONE page-ready
+            // gate — `!cardsReady` (see spendingCard). A fast card
+            // must not reveal while the others still show skeletons.
+            isLoading: !viewModel.cardsReady,
             theme: .fund,
             iconName: FundSectionID.fund.resolvedIconName(customIcons: appState.fundIcons),
             isReorderMode: isRearranging,
@@ -540,7 +586,15 @@ public struct FundsView: View {
             isAdmin: isAdmin,
             onRename: { renamingFund = .fund }
         ) {
-            if let error = viewModel.fundError {
+            if !viewModel.cardsReady {
+                // The page has not revealed yet: skeletons shaped
+                // like the breakdown rows (see spendingCard).
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 200, height: 16)
+                    SkeletonBlock(width: 170, height: 16)
+                    SkeletonBlock(width: 190, height: 16)
+                }
+            } else if let error = viewModel.fundError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.fundSummary {
                 VStack(alignment: .leading, spacing: 20) {
@@ -550,19 +604,17 @@ public struct FundsView: View {
                             value: MoneyFormat.formatCents(summary.availableCents),
                             isNegative: summary.availableCents < 0
                         )
-                        FundsBreakdownRow("Pending", value: MoneyFormat.formatCents(summary.pendingIncludingHeldCents))
-                        FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.totalCents))
-                        // Pending top-ups (build 41, Nov 17, 2026):
-                        // saved but not yet confirmed in checking —
-                        // they count for nothing yet, so they sit
-                        // beside Available as their own row (shown
-                        // only when one exists, like Shortfall).
-                        // Home's Savings card never shows them: its
-                        // Available is the ledger sum, which a
-                        // pending top-up never touches.
-                        if viewModel.pendingTopupsCents > 0 {
-                            FundsBreakdownRow("Pending Top-Ups", value: MoneyFormat.formatCents(viewModel.pendingTopupsCents))
-                        }
+                        // Pending (build 42, owner Nov 17, 2026 —
+                        // the $650 live bug): pending releases +
+                        // held weeks PLUS pending top-ups
+                        // (`savingsPendingCents`). Pending top-ups
+                        // used to sit only on a separate
+                        // "Pending Top-Ups" row, so Pending read
+                        // $0.00 (and Total $0.00) while $650 was
+                        // on its way in. The separate row is gone
+                        // — it would double-present the same money.
+                        FundsBreakdownRow("Pending", value: MoneyFormat.formatCents(viewModel.savingsPendingCents))
+                        FundsBreakdownRow("Total", value: MoneyFormat.formatCents(viewModel.savingsTotalCents))
                         // A shortfall is a labelled number, only
                         // when one exists (owner, Nov 15, 2026 —
                         // build 33: the old "Nothing owed back
@@ -573,39 +625,34 @@ public struct FundsView: View {
                             FundsBreakdownRow("Shortfall", value: MoneyFormat.formatCents(summary.shortfallCents))
                         }
                     }
-                    // Three actions cannot sit side by side on an
-                    // iPhone — their labels wrap (owner button
-                    // audit, build 33). A vertical stack, full
-                    // width, primary first, pale middle, tertiary
-                    // last (the two-button-row order, extended).
-                    // Owner, Nov 16, 2026 (build 41): NO "Request
-                    // Money" button here any more — fund requests
-                    // are Review items, not a button on the fund.
-                    // The Ask form, the request queue and the
-                    // create/approve RPCs stay (the mechanism is
-                    // intact); the form is now reachable only from
-                    // a transaction's Actions sheet ("Use Savings"
-                    // asks for that charge to be covered). See the
-                    // build-41 report: removing the button also
-                    // leaves the approval queue with no entry point
-                    // until requests become Review items.
+                    // Two buttons, full width, primary first,
+                    // grey tertiary second (the two-button-row
+                    // order, Nov 4, 2026 — no two adjacent share
+                    // a colour). Owner, Nov 17, 2026 (build 42):
+                    // the old Spend button + the old cash-spent
+                    // section are ONE button now — "Remove from
+                    // Savings".
+                    // Both did the same thing (money out of the
+                    // fund, no transaction row) and the pale middle
+                    // button of a three-button row is gone with
+                    // them. The button opens the remove sheet,
+                    // which spends Available first, then Pending
+                    // top-ups, then carried debt (the build-42
+                    // waterfall) — it does NOT cap the amount at
+                    // Available the way the old cash-spent sheet did.
                     if isAdmin {
                         VStack(alignment: .leading, spacing: 12) {
                             FundsPrimaryButton("Add Money") { openForm = .add }
-                            FundsPaleButton("Spend from \(FundSectionID.fund.displayName(customNames: appState.fundNames))") { openForm = .use }
-                            // Owner, Nov 16, 2026 (build 40): record
-                            // cash taken/spent out of Savings — the
-                            // same "record on the fund, not a
-                            // transaction" function as the charity
-                            // cash gift. Available decreases, NO
-                            // transaction row, recorded in the Savings
-                            // Activity feed. Primary blue (blue, pale,
-                            // blue — no two adjacent share a color),
-                            // same size as the others.
-                            RecordCashSpentSection(
-                                viewModel: viewModel,
-                                fundName: FundSectionID.fund.displayName(customNames: appState.fundNames)
-                            )
+                            FundsTertiaryButton("Remove from \(FundSectionID.fund.displayName(customNames: appState.fundNames))") { showRemoveFromSavings = true }
+                                .accessibilityIdentifier("funds.removeFromSavings")
+                                .sheet(isPresented: $showRemoveFromSavings) {
+                                    RemoveFromSavingsSheet(
+                                        viewModel: viewModel,
+                                        fundName: FundSectionID.fund.displayName(customNames: appState.fundNames),
+                                        onClose: { showRemoveFromSavings = false }
+                                    )
+                                    .presentationSizing(.fitted)
+                                }
                         }
                     }
                     Divider()
@@ -640,8 +687,8 @@ public struct FundsView: View {
             return "Extra Fund, could not load balances, show breakdown"
         }
         let word = isAdmin ? "available to use" : "available to request"
-        if summary.pendingIncludingHeldCents > 0 {
-            return "Extra Fund, \(MoneyFormat.formatCents(summary.availableCents)) \(word), \(MoneyFormat.formatCents(summary.pendingIncludingHeldCents)) pending, show breakdown"
+        if viewModel.savingsPendingCents > 0 {
+            return "Extra Fund, \(MoneyFormat.formatCents(summary.availableCents)) \(word), \(MoneyFormat.formatCents(viewModel.savingsPendingCents)) pending, show breakdown"
         }
         return "Extra Fund, \(MoneyFormat.formatCents(summary.availableCents)) \(word), show breakdown"
     }
@@ -654,7 +701,9 @@ public struct FundsView: View {
             amountText: charityFaceText,
             isExpanded: appState.expandedCard == .charity,
             amountIsStatus: viewModel.charitySummary == nil,
-            isLoading: viewModel.charitySummary == nil && viewModel.charityError == nil && !viewModel.cardsReady,
+            // Build 42 (owner, Nov 17, 2026): the ONE page-ready
+            // gate — `!cardsReady` (see spendingCard).
+            isLoading: !viewModel.cardsReady,
             theme: .charity,
             iconName: FundSectionID.charity.resolvedIconName(customIcons: appState.fundIcons),
             isReorderMode: isRearranging,
@@ -666,7 +715,15 @@ public struct FundsView: View {
             isAdmin: isAdmin,
             onRename: { renamingFund = .charity }
         ) {
-            if let error = viewModel.charityError {
+            if !viewModel.cardsReady {
+                // The page has not revealed yet: skeletons shaped
+                // like the breakdown rows (see spendingCard).
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 200, height: 16)
+                    SkeletonBlock(width: 170, height: 16)
+                    SkeletonBlock(width: 190, height: 16)
+                }
+            } else if let error = viewModel.charityError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.charitySummary {
                 VStack(alignment: .leading, spacing: 20) {
@@ -772,7 +829,9 @@ public struct FundsView: View {
             amountText: debtFaceText,
             isExpanded: appState.expandedCard == .debt,
             amountIsStatus: viewModel.debtWeek == nil,
-            isLoading: viewModel.debtWeek == nil && viewModel.debtError == nil && !viewModel.cardsReady,
+            // Build 42 (owner, Nov 17, 2026): the ONE page-ready
+            // gate — `!cardsReady` (see spendingCard).
+            isLoading: !viewModel.cardsReady,
             theme: .debt,
             iconName: FundSectionID.debt.resolvedIconName(customIcons: appState.fundIcons),
             isReorderMode: isRearranging,
@@ -784,7 +843,15 @@ public struct FundsView: View {
             isAdmin: isAdmin,
             onRename: { renamingFund = .debt }
         ) {
-            if let error = viewModel.debtError {
+            if !viewModel.cardsReady {
+                // The page has not revealed yet: skeletons shaped
+                // like the breakdown rows (see spendingCard).
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 200, height: 16)
+                    SkeletonBlock(width: 170, height: 16)
+                    SkeletonBlock(width: 190, height: 16)
+                }
+            } else if let error = viewModel.debtError {
                 FundsErrorBox(error)
             } else if let week = viewModel.debtWeek {
                 VStack(alignment: .leading, spacing: 20) {
@@ -809,17 +876,26 @@ public struct FundsView: View {
                     // 2026) opens one sheet holding both manual
                     // changes — Add Debt and Set Debt — so the card
                     // keeps one entry point instead of a fourth
-                    // button. Pay still needs the repayment rule;
-                    // Edit Debt does not.
+                    // button.
                     if isAdmin {
                         VStack(alignment: .leading, spacing: 12) {
-                            if viewModel.debtRule != nil {
-                                // "Pay from <Fund>" — the full "Pay
-                                // from Savings" wrapped to two lines
-                                // on iPhone (owner, Nov 15, 2026 —
-                                // build 33), so the label uses the
-                                // fund's CURRENT display name
-                                // (build 41) and stays short.
+                            // "Pay from <Fund>" — the full "Pay
+                            // from Savings" wrapped to two lines
+                            // on iPhone (owner, Nov 15, 2026 —
+                            // build 33), so the label uses the
+                            // fund's CURRENT display name
+                            // (build 41) and stays short. Build 42
+                            // (owner, Nov 17, 2026 — verified):
+                            // the button no longer hides when the
+                            // repayment rule failed to load — the
+                            // `pay_debt_from_fund` RPC never reads
+                            // the rule (it checks admin, a debt
+                            // balance, and fund cover server-side),
+                            // so a failed rule read must not block
+                            // paying. It hides only when there is
+                            // no debt: no button that cannot work
+                            // (owner, Nov 13, 2026).
+                            if week.carriedDebtCents > 0 {
                                 FundsPrimaryButton("Pay from \(FundSectionID.fund.displayName(customNames: appState.fundNames))") { openForm = .payDebt }
                             }
                             FundsPaleButton("Edit Debt") { showEditDebt = true }
@@ -1134,6 +1210,102 @@ public struct FundsView: View {
                         .padding(.horizontal, hPad)
                         .padding(.bottom, 12)
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Remove from Savings sheet (build 42, owner Nov 17, 2026)
+//
+// The Savings card's single remove button opens this sheet: an
+// amount field + a note + Record/Cancel, in the rename sheet's
+// style (iPad 600pt centred, 17pt). It replaces the old Record
+// Cash Spent sheet (deleted in build 42): that sheet's validation
+// rejected any amount over Available, which would make the
+// build-42 waterfall unreachable. This sheet validates only that
+// the amount is above $0.00 — the waterfall spends Available
+// first, then Pending top-ups, then carried debt — and the
+// explainer line says so up front, with the live figures beside
+// it. Validation lives here: empty / zero / negative shows a
+// plain-language error INSIDE the sheet and the sheet stays open
+// (the field keeps the typed input). On success the sheet closes,
+// the field clears, and the balance updates everywhere. No
+// transaction row is created: the spend is a fund_ledger
+// 'allocation' (and, when it reaches debt, a debt adjustment),
+// and both appear in the Savings / Debt Activity feeds.
+
+public struct RemoveFromSavingsSheet: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    public let fundName: String
+    public var onClose: () -> Void
+    @State private var amountText = ""
+    @State private var noteText = ""
+    @State private var removeError: String?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    public init(viewModel: FundsViewModel, fundName: String, onClose: @escaping () -> Void = {}) {
+        self.viewModel = viewModel
+        self.fundName = fundName
+        self.onClose = onClose
+    }
+
+    /// The live balances the waterfall splits on (client-side
+    /// display only — the view model re-reads them server-side
+    /// when it runs).
+    private var availableCents: Int? { viewModel.fundSummary?.availableCents }
+    private var pendingCents: Int { viewModel.savingsPendingCents }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: TitleCase.apply(to: "Remove from \(fundName)"), onClose: onClose)
+            if let availableCents {
+                FundsMuted("Available: \(MoneyFormat.formatCents(availableCents)) · Pending: \(MoneyFormat.formatCents(pendingCents)). The amount comes off Available first, then Pending, then the rest adds to carried debt. No transaction row is created.")
+            }
+            DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
+            TextField("Note", text: $noteText)
+                .font(.system(size: 17))
+                .textFieldStyle(.roundedBorder)
+                .frame(minHeight: 48)
+                .autocorrectionDisabled()
+            if let removeError {
+                FundsErrorBox(removeError)
+            }
+            HStack(spacing: 12) {
+                FundsPrimaryButton("Remove", isBusy: viewModel.busyAction == "remove-from-savings") {
+                    remove()
+                }
+                FundsTertiaryButton("Cancel") { onClose() }
+            }
+        }
+        .padding()
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // rename sheet.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+    }
+
+    private func remove() {
+        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else {
+            removeError = "Enter an amount above $0.00."
+            return
+        }
+        removeError = nil
+        Task {
+            // Clear only on success — on failure the typed input
+            // stays beside the error (F-P1-4).
+            if await viewModel.removeFromSavings(amountCents: cents, note: noteText) {
+                amountText = ""
+                noteText = ""
+                onClose()
+            } else {
+                // The view model's alert lives on the Funds page
+                // BEHIND this sheet, so it would never surface —
+                // show the failure inside the sheet instead (the
+                // T-P2-1 lesson from the Actions sheet) and clear
+                // it there so it cannot pop up later.
+                removeError = viewModel.alertMessage ?? "Could not remove from Savings. Try again."
+                viewModel.alertMessage = nil
+                viewModel.alertTitle = nil
             }
         }
     }

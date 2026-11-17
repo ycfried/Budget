@@ -94,18 +94,17 @@ public enum TransactionKind: Equatable, Codable, Sendable {
 
     /// Fixed amount colour for kinds that always render in their
     /// kind colour, regardless of direction — the colour marks the
-    /// kind (owner, Nov 12, 2026: charity blue; Nov 15, 2026:
-    /// transfer muted red). Nil for kinds whose colour depends on
-    /// something else: money-in kinds render green, regular kinds
-    /// render ink, and a zero amount renders ink for every kind.
-    /// Single source of truth for the fixed kind colours — the
-    /// app's `amountDisplay(for:)` reads it, so a kit test pins
-    /// the rule (the app test target has no host app and cannot
-    /// unit-test the app-level helper directly).
+    /// kind (owner, Nov 12, 2026: charity blue; Nov 17, 2026:
+    /// transfer grey, excluded from the math). Nil for kinds whose
+    /// colour depends on something else: money-in kinds render
+    /// deep blue, regular kinds render ink, and a zero amount
+    /// renders ink for every kind. Kit-pinned single source of
+    /// truth for the fixed kind colours (the app's
+    /// `amountDisplay(for:)` implements the same rule directly).
     public var fixedAmountColorHex: String? {
         switch self {
         case .charity: return DesignTokens.primaryHex
-        case .transfer: return DesignTokens.heroOverBudgetHex
+        case .transfer: return DesignTokens.mutedHex
         default: return nil
         }
     }

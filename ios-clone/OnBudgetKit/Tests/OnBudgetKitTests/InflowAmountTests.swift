@@ -69,17 +69,17 @@ final class InflowAmountTests: XCTestCase {
     }
 
     func testFixedKindAmountColours() {
-        // Owner, Nov 15, 2026: a transfer amount renders in the
-        // muted deep red (the hero over-budget red), by kind not
-        // direction — so a transfer never reads as a regular
-        // purchase. The app's amountDisplay(for:) reads this
-        // mapping, so this pins the rule.
-        XCTAssertEqual(TransactionKind.transfer.fixedAmountColorHex, DesignTokens.heroOverBudgetHex)
-        XCTAssertEqual(DesignTokens.heroOverBudgetHex, "#991b1b")
+        // Owner, Nov 17, 2026: a transfer amount renders in grey
+        // (excluded from the math), by kind not direction — so a
+        // transfer never reads as a regular purchase. The app's
+        // amountDisplay(for:) implements the same rule, and this
+        // mapping pins it.
+        XCTAssertEqual(TransactionKind.transfer.fixedAmountColorHex, DesignTokens.mutedHex)
+        XCTAssertEqual(DesignTokens.mutedHex, "#6b7280")
         // Charity keeps its blue.
         XCTAssertEqual(TransactionKind.charity.fixedAmountColorHex, DesignTokens.primaryHex)
         // Every other kind has no fixed colour: money-in kinds go
-        // green, regular kinds go ink.
+        // deep blue, regular kinds go ink.
         for kind in [TransactionKind.income, .refund, .cashback, .charge, .payment, .fundCharge] {
             XCTAssertNil(kind.fixedAmountColorHex, "\(kind.rawValue) has no fixed amount colour")
         }

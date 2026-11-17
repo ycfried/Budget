@@ -194,8 +194,10 @@ public struct TransactionIconView: View {
     }
 }
 
-/// State pill: Posted (green-ish) / Pending (warn) / Reversed (rev) /
-/// Excluded (warn) — live.js:199-220.
+/// State label: Posted / Pending / Reversed / Excluded as plain grey
+/// text (owner, Nov 17, 2026 — build 42, badge Version A: no pills,
+/// no tint). Was a coloured pill (Posted green, Pending amber,
+/// Reversed red) — retired with the transaction colour code.
 public struct StatePill: View {
     let transaction: Transaction
 
@@ -206,69 +208,7 @@ public struct StatePill: View {
     public var body: some View {
         Text(TransactionFormatting.stateWord(for: transaction))
             .font(.system(size: 12, weight: .semibold))
-            .padding(.vertical, 3)
-            .padding(.horizontal, 8)
-            .background(pillBackground)
-            .foregroundStyle(pillForeground)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-
-    private var pillBackground: Color {
-        switch TransactionFormatting.stateWord(for: transaction) {
-        case "Posted": return Color(hex: "#dcfce7")
-        case "Pending", "Excluded": return Color(hex: "#fef3c7")
-        case "Reversed": return Color(hex: "#fee2e2")
-        default: return Color(hex: "#e5e7eb")
-        }
-    }
-
-    private var pillForeground: Color {
-        switch TransactionFormatting.stateWord(for: transaction) {
-        case "Posted": return Color(hex: "#166534")
-        case "Pending", "Excluded": return Color(hex: "#92400e")
-        case "Reversed": return Color(hex: "#991b1b")
-        default: return Color(hex: "#374151")
-        }
+            .foregroundStyle(DesignTokens.muted)
     }
 }
 
-/// Source pill: Bank / By hand / File / Email. Each source has its
-/// own colour (owner, Nov 14, 2026 — "should the bank and email
-/// badges be different colors": yes): Bank keeps the blue, Email is
-/// purple, By hand and File are neutral grey, so blue keeps meaning
-/// Bank and purple keeps meaning Email. Colour is a redundant cue
-/// only — the word is always there. The colours stay clear of the
-/// state pills (Posted green, Pending amber, Reversed red).
-public struct SourcePill: View {
-    let transaction: Transaction
-
-    public init(_ transaction: Transaction) {
-        self.transaction = transaction
-    }
-
-    public var body: some View {
-        Text(TransactionFormatting.sourceLabel(for: transaction.source))
-            .font(.system(size: 12, weight: .semibold))
-            .padding(.vertical, 3)
-            .padding(.horizontal, 8)
-            .background(pillBackground)
-            .foregroundStyle(pillForeground)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-
-    private var pillBackground: Color {
-        switch transaction.source {
-        case .plaid: return Color(hex: "#eef4ff")
-        case .amexAlert: return Color(hex: "#f3e8ff")
-        case .manual, .csv: return Color(hex: "#f3f4f6")
-        }
-    }
-
-    private var pillForeground: Color {
-        switch transaction.source {
-        case .plaid: return Color(hex: "#1e3a8a")
-        case .amexAlert: return Color(hex: "#6b21a8")
-        case .manual, .csv: return Color(hex: "#374151")
-        }
-    }
-}

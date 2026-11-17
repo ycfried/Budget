@@ -818,12 +818,14 @@ public struct TransactionRowSkeleton: View {
 }
 
 
-// MARK: - Transaction icons / state pills
+// MARK: - Transaction icons / state label
 //
 // `TransactionIconView` + `StatePill` live in
 // Transactions/TransactionIconView.swift (integration, Nov 9, 2026):
-// that copy has the state-based pill colours (live.js:199-220) and
-// the size parameter + `TransactionIconLookup` icon maps, so the
-// simpler SharedViews copies were deleted. `SourcePill` lives there
-// too. Call sites use `TransactionIconView(merchant:institutionName:)`
+// that copy has the size parameter + `TransactionIconLookup` icon
+// maps, so the simpler SharedViews copies were deleted. `StatePill`
+// is plain grey text (owner, Nov 17, 2026 — build 42, badge
+// Version A: no pills, no tint); `SourcePill` was deleted in
+// build 42 (the source shows only in the expanded row detail).
+// Call sites use `TransactionIconView(merchant:institutionName:)`
 // or `StatePill(_ transaction:)`.

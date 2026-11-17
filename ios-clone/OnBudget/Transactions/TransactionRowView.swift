@@ -6,21 +6,25 @@ import OnBudgetKit
 /// The text column is exactly as tall as the 40pt icon, split
 /// into two halves (owner, Nov 14, 2026): the merchant name sits
 /// centred on the icon's top half, the badges line centred on its
-/// bottom half. Row line 1: icon, Title-Cased merchant (bold),
-/// signed amount, chevron (rotates when open). Line 2 (collapsed
-/// only): state pill + source pill + "`Today` · ••1005" meta — the
-/// badges hide while the card is open, because the detail already
-/// says all of it (owner, Nov 12, 2026). Row accessible name:
-/// merchant + amount + day + status + "— show detail".
+/// bottom half. Row line 1: icon, Title-Cased merchant (bold) —
+/// transfers show the derived transfer title instead (build 42,
+/// owner Nov 17, 2026) — signed amount, chevron (rotates when
+/// open). Line 2 (collapsed only): plain grey state text +
+/// "`Today` · ••1005" meta — the source is NOT shown here (build
+/// 42, owner Nov 17, 2026: source shows only in the expanded
+/// detail); the badges hide while the card is open, because the
+/// detail already says all of it (owner, Nov 12, 2026). Row
+/// accessible name: merchant + amount + day + status + "— show
+/// detail".
 ///
 /// Detail panel: labelled rows Date (long) / Account / Status
-/// (pill) / Source (pill) (+ Refund Link row for refunds); then
-/// the Actions button — one small tertiary button, only when the
-/// viewer has any action on that row. The bold merchant — amount
-/// header is gone (owner, Nov 13, 2026): the collapsed row
-/// already says both, so repeating them here said the merchant
-/// and the price twice. No explainer sentences: the facts
-/// already say it.
+/// (plain grey text) / Source (plain grey text) (+ Refund Link row
+/// for refunds); then the Actions button — one small tertiary
+/// button, only when the viewer has any action on that row. The
+/// bold merchant — amount header is gone (owner, Nov 13, 2026):
+/// the collapsed row already says both, so repeating them here
+/// said the merchant and the price twice. No explainer sentences:
+/// the facts already say it.
 /// The whole row is the tap target — the chevron is only a visual
 /// hint. Expand/collapse is instant, no animation at all (owner
 /// decision, Nov 15, 2026 — build 34: the motion itself was ugly,
@@ -58,8 +62,10 @@ public struct TransactionRowView: View {
     }
 
     /// The row's amount under the one shared kind rule
-    /// (TransactionFormatting.amountDisplay): money in green with
-    /// "+", charity blue, regular kinds ink — never red.
+    /// (TransactionFormatting.amountDisplay): money in deep blue
+    /// with "+", charity primary blue, transfers / payments /
+    /// trashed rows grey, spending ink — never green or red
+    /// (owner, Nov 17, 2026 — build 42).
     private var amount: (text: String, color: Color) {
         TransactionFormatting.amountDisplay(for: transaction)
     }
@@ -83,9 +89,13 @@ public struct TransactionRowView: View {
                     )
                     VStack(alignment: .leading, spacing: 0) {
                         // Top half: merchant + amount + chevron.
+                        // Transfers show the derived transfer title
+                        // (build 42, owner Nov 17, 2026), never the
+                        // bank's wording — the search highlight
+                        // renders this same string.
                         HStack(spacing: 10) {
                             TransactionFormatting.highlightedSearchText(
-                                TransactionFormatting.displayMerchant(transaction.merchant),
+                                TransactionFormatting.rowTitle(for: transaction),
                                 query: searchQuery
                             )
                                 .font(.system(size: 16, weight: .bold))
@@ -101,13 +111,18 @@ public struct TransactionRowView: View {
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         }
                         .frame(height: iconSize / 2)
-                        // Bottom half: badges + date meta, collapsed
+                        // Bottom half: state + date meta, collapsed
                         // only — when open, the detail below says
-                        // all of it (owner, Nov 12, 2026).
+                        // all of it (owner, Nov 12, 2026). Badges
+                        // are plain grey text, no pills, no tint
+                        // (build 42, owner Nov 17, 2026 — Version A);
+                        // the source is NOT shown here — it shows
+                        // only in the expanded detail view.
                         if !isExpanded {
                             HStack(spacing: 8) {
-                                StatePill(transaction)
-                                SourcePill(transaction)
+                                Text(TransactionFormatting.stateWord(for: transaction))
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.muted)
                                 Spacer()
                                 // Date + card sit at the row's trailing edge —
                                 // a fixed column that never moves with the
@@ -136,7 +151,7 @@ public struct TransactionRowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                "\(TransactionFormatting.displayMerchant(transaction.merchant)) \(amount.text) \(TransactionFormatting.displayDay(transaction.date)) \(TransactionFormatting.stateWord(for: transaction)) — show detail"
+                "\(TransactionFormatting.rowTitle(for: transaction)) \(amount.text) \(TransactionFormatting.displayDay(transaction.date)) \(TransactionFormatting.stateWord(for: transaction)) — show detail"
             )
             .accessibilityIdentifier("transaction.row")
 
@@ -172,12 +187,23 @@ public struct TransactionDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(spacing: 6) {
                 // No Week row: the Date already says it (owner,
-                // Nov 12, 2026). Status and Source render as the
-                // same pills the collapsed header shows.
+                // Nov 12, 2026). Status and Source render as plain
+                // grey text (build 42, owner Nov 17, 2026 —
+                // Version A): no pills, no tint, no background.
+                // The source lives ONLY here — never on the
+                // collapsed row.
                 detailRow(label: "Date", value: TransactionFormatting.fmtLong(transaction.date))
                 detailRow(label: "Account", value: TransactionFormatting.cardLabel(for: transaction))
-                detailRow(label: "Status") { StatePill(transaction) }
-                detailRow(label: "Source") { SourcePill(transaction) }
+                detailRow(label: "Status") {
+                    Text(TransactionFormatting.stateWord(for: transaction))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(DesignTokens.muted)
+                }
+                detailRow(label: "Source") {
+                    Text(TransactionFormatting.sourceLabel(for: transaction.source))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(DesignTokens.muted)
+                }
                 if transaction.kind == .refund {
                     detailRow(
                         label: "Refund Link",
@@ -213,7 +239,8 @@ public struct TransactionDetailView: View {
         }
     }
 
-    /// Label + pill value (Status / Source reuse the header pills).
+    /// Label + custom value view (Status / Source render their
+    /// plain grey text here — build 42, owner Nov 17, 2026).
     private func detailRow<Content: View>(label: String, @ViewBuilder value: () -> Content) -> some View {
         HStack {
             Text(label)

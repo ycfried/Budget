@@ -16,10 +16,12 @@ import OnBudgetKit
 /// work):
 ///
 /// | kind | Admin | Member |
-/// | charge | Charity, Extra Fund, Other, Delete | Extra Fund |
-/// | refund | Link to Purchase, Other, Delete | — (no actions) |
-/// | transfer, payment, cashback, fund_charge | Other, Delete | — |
+/// | charge | Charity, Extra Fund, Designate as Savings, Other, Delete | Extra Fund |
+/// | refund | Link to Purchase, Designate as Savings, Other, Delete | — (no actions) |
+/// | cashback | Designate as Savings, Other, Delete | — |
+/// | transfer, payment, fund_charge | Other, Delete | — |
 /// | charity | Delete | — |
+/// | income | Designate as Savings, Other, Delete | — |
 /// | other kinds | Other, Delete | — |
 ///
 /// Owner rule (Nov 13, 2026): the sheet never renders a disabled
@@ -43,6 +45,11 @@ public struct TransactionActionsSheet: View {
         /// Build 30: teachable merchant rename (name + fixed kind, when set,
         /// fixed kind, remembered for all matching rows).
         case rename
+        /// Build 42 (owner, Nov 17, 2026): designate this row as a
+        /// Savings transaction — money-in adds to Savings Available,
+        /// a charge subtracts from it (Available → Pending →
+        /// carried debt).
+        case savingsConfirm
     }
 
     enum ActionKind: Hashable {
@@ -52,6 +59,7 @@ public struct TransactionActionsSheet: View {
         case reclassify
         case delete
         case rename
+        case savings
     }
 
     /// Fixed-kind options for the rename flow: the server's kind
@@ -119,6 +127,32 @@ public struct TransactionActionsSheet: View {
 
     // MARK: - Action table
 
+    /// Whether "Designate as <Extra Fund>" is offered for this row
+    /// (build 42, owner Nov 17, 2026): admin only, a charge or a
+    /// money-in kind (income / refund / cashback), a non-zero
+    /// amount, and a live row — never a reversed or trashed one.
+    /// Members never see it (owner rule, Nov 13, 2026: the sheet
+    /// never renders a row that cannot work).
+    private var canDesignateAsSavings: Bool {
+        guard isAdmin else { return false }
+        guard transaction.amountCents != 0 else { return false }
+        guard transaction.state != .reversed && !transaction.isInTrash else { return false }
+        switch transaction.kind {
+        case .charge, .income, .refund, .cashback: return true
+        default: return false
+        }
+    }
+
+    /// The "Designate as <Extra Fund>" row: money-in adds to the
+    /// fund, a charge pays out of it (Available → Pending →
+    /// carried debt).
+    private var savingsAction: SheetAction {
+        if transaction.kind.isMoneyIn {
+            return SheetAction(id: .savings, label: "Designate as \(extraFundName)", subline: "Adds this money to the Extra Fund's Available balance")
+        }
+        return SheetAction(id: .savings, label: "Designate as \(extraFundName)", subline: "Pays this charge from the Extra Fund — Available first, then Pending, then carried debt")
+    }
+
     var actions: [SheetAction] {
         let isVerified = transaction.state == .verified
         let charitySubline = isVerified
@@ -130,13 +164,17 @@ public struct TransactionActionsSheet: View {
         switch transaction.kind {
         case .charge:
             if isAdmin {
-                return [
+                var list = [
                     SheetAction(id: .charity, label: "Mark as \(charityName)", subline: charitySubline),
                     SheetAction(id: .extraFund, label: "Use \(extraFundName)", subline: "Ask for this charge to be covered from the fund"),
+                ]
+                if canDesignateAsSavings { list.append(savingsAction) }
+                list += [
                     SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
                     SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
                     SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
                 ]
+                return list
             }
             // Owner rule (Nov 13, 2026): no disabled rows — a
             // member simply does not see "Mark as Charity".
@@ -148,19 +186,28 @@ public struct TransactionActionsSheet: View {
             let linkSubline = transaction.originalPurchaseId != nil
                 ? "Change or remove the purchase this refund is linked to"
                 : "Link this refund to the purchase it came from"
-            return [
+            var list = [
                 SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline),
+            ]
+            if canDesignateAsSavings { list.append(savingsAction) }
+            list += [
                 SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
                 SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
                 SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
             ]
+            return list
         case .transfer, .payment, .cashback, .fundCharge:
             guard isAdmin else { return [] }
-            return [
+            var list: [SheetAction] = []
+            // Only cashback is money-in here: a transfer, a card
+            // payment and a fund charge cannot be designated.
+            if canDesignateAsSavings { list.append(savingsAction) }
+            list += [
                 SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
                 SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
                 SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
             ]
+            return list
         case .charity:
             guard isAdmin else { return [] }
             return [
@@ -169,11 +216,16 @@ public struct TransactionActionsSheet: View {
             ]
         case .income, .other:
             guard isAdmin else { return [] }
-            return [
+            var list: [SheetAction] = []
+            // Only income is money-in here: "other" has no
+            // direction to designate.
+            if canDesignateAsSavings { list.append(savingsAction) }
+            list += [
                 SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
                 SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
                 SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
             ]
+            return list
         }
     }
 
@@ -214,6 +266,7 @@ public struct TransactionActionsSheet: View {
             case .reclassifyReason(let kind): reclassifyReasonContent(kind: kind)
             case .deleteConfirm: deleteConfirmContent
             case .rename: renameContent
+            case .savingsConfirm: savingsConfirmContent
             }
         }
         .padding()
@@ -225,7 +278,8 @@ public struct TransactionActionsSheet: View {
         // T-P2-1: the failure alert lives on this sheet, not on the
         // Transactions parent — an alert attached behind a presented
         // sheet never surfaces, so failures from markAsCharity,
-        // reclassify, delete and link/unlinkRefund were invisible.
+        // reclassify, delete, designate-as-Savings and
+        // link/unlinkRefund were invisible.
         .alert(
             viewModel.alertTitle ?? "Something Went Wrong",
             isPresented: $viewModel.showAlert,
@@ -252,6 +306,7 @@ public struct TransactionActionsSheet: View {
         case .reclassifyKind: return "Reclassify Transaction"
         case .reclassifyReason: return "Reclassify Transaction"
         case .rename: return "Rename Merchant"
+        case .savingsConfirm: return "Designate as \(extraFundName)"
         case .deleteConfirm:
             return transaction.source == .manual ? "Delete Transaction" : "Move to Trash"
         }
@@ -313,6 +368,8 @@ public struct TransactionActionsSheet: View {
         switch action {
         case .charity:
             flow = .charityConfirm
+        case .savings:
+            flow = .savingsConfirm
         case .extraFund:
             extraFundAmount = String(format: "%.2f", Double(transaction.amountCents) / 100.0)
             flow = .extraFund
@@ -367,6 +424,73 @@ public struct TransactionActionsSheet: View {
             return "This moves the whole transaction out of weekly spending. It counts as charity given once it posts. If only part of it was a gift, do not mark it here: part-gifts are not supported yet."
         }
         return "This moves the whole transaction out of weekly spending and counts it as charity given. If only part of it was a gift, do not mark it here: part-gifts are not supported yet."
+    }
+
+    // MARK: - Designate as Savings (build 42, owner Nov 17, 2026)
+
+    /// A FundsViewModel for the designate call: the sheet only owns
+    /// a TransactionsViewModel, so one is built here from the same
+    /// client / household / role. It loads fresh fund figures inside
+    /// `designateTransactionAsSavings` before it splits anything.
+    /// Nil when there is no signed-in user id to build the context
+    /// from — the action is then refused, never attempted half-built.
+    /// (The shell also owns a FundsViewModel for Review; it is not
+    /// reachable from this sheet, and this throwaway instance is
+    /// enough — the call refreshes its own figures and the Funds
+    /// tab re-reads on its next refresh.)
+    private func makeFundsViewModel() -> FundsViewModel? {
+        guard let userId = viewModel.currentUserId else { return nil }
+        return FundsViewModel(context: FundsContext(
+            client: viewModel.client,
+            householdId: viewModel.householdId,
+            role: isAdmin ? .admin : .member,
+            userId: userId
+        ))
+    }
+
+    private var savingsConfirmContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(savingsMessage)
+                .font(.system(size: 15))
+                .foregroundStyle(DesignTokens.ink)
+            TwoButtonRow {
+                Button("Designate as \(extraFundName)") {
+                    Task {
+                        isWorking = true
+                        guard let fundsViewModel = makeFundsViewModel() else {
+                            isWorking = false
+                            viewModel.showAlert(title: "Could Not Designate", message: "Could not load your household. Try again.")
+                            return
+                        }
+                        let message = await fundsViewModel.designateTransactionAsSavings(transaction)
+                        isWorking = false
+                        if let message {
+                            viewModel.toastManager.show(message, kind: .success)
+                            onDismiss()
+                        } else {
+                            viewModel.showAlert(
+                                title: fundsViewModel.alertTitle ?? "Could Not Designate",
+                                message: fundsViewModel.alertMessage ?? "Could not designate this transaction. Try again."
+                            )
+                        }
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(isWorking)
+            } secondary: {
+                Button("Cancel") { flow = .list }
+                    .buttonStyle(TertiaryButtonStyle())
+            }
+        }
+    }
+
+    private var savingsMessage: String {
+        let amount = TransactionFormatting.amountDisplay(for: transaction).text
+        let merchant = TransactionFormatting.displayMerchant(transaction.merchant)
+        if transaction.kind.isMoneyIn {
+            return "This adds \(amount) to the Extra Fund's Available balance — “\(merchant)” is already in checking, so it counts immediately, with no pending state. If money is owed back, the fund's shortfall is covered first and the rest is added to Available."
+        }
+        return "This takes \(amount) out of the Extra Fund's Available balance for “\(merchant)”. If Available runs out, the rest comes from Pending top-ups, then adds to carried debt. The transaction row itself stays a charge — it still counts toward weekly spending; only the fund balance moves."
     }
 
     // MARK: - Extra Fund
