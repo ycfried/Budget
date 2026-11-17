@@ -556,10 +556,10 @@ public struct SpendingAllowanceSection: View {
     private var isAdmin: Bool { viewModel.context.isAdmin }
     private var savedBase: Int? { viewModel.baseAllowanceCents }
 
-    /// The saved large-purchase threshold, in cents. Nil until
-    /// loaded (or when the column is not yet migrated) — the $100
-    /// default applies then.
-    private var savedThreshold: Int? { viewModel.largePurchaseThresholdCents ?? 10000 }
+    /// The saved large-purchase threshold, in cents. Always a
+    /// value: $100 (10000) until loaded (or when the column is
+    /// not yet migrated).
+    private var savedThreshold: Int { viewModel.largePurchaseThresholdCents ?? 10000 }
 
     private var thresholdCents: Int? {
         MoneyFormat.parseDollarsStrict(thresholdText)
