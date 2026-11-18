@@ -147,10 +147,10 @@ public struct FundsView: View {
     /// household, saved on every change.
     @State private var fundOrder: [FundSectionID] = FundSectionID.defaultOrder
     @State private var isRearranging = false
-    /// The fund currently being dragged in reorder mode (build 41),
-    /// and the jiggle phase (build 41 — iOS Home Screen style).
+    /// The fund currently being dragged in reorder mode (build 41).
+    /// Build 44 (owner, Nov 18, 2026): the jiggle wobble is removed
+    /// — no jiggle phase state any more.
     @State private var draggingId: FundSectionID?
-    @State private var jigglePhase = false
     /// The Edit Debt sheet (build 41 — Add/Set debt, owner Nov 17,
     /// 2026): opened by the pale "Edit Debt" button on the
     /// Overspent (Past) fund, admin only.
@@ -212,8 +212,8 @@ public struct FundsView: View {
                     // containers with up/down arrows and remembers
                     // it per household.
                     VStack(spacing: 24) {
-                        ForEach(Array(fundOrder.enumerated()), id: \.element) { index, id in
-                            fundContainer(for: id, index: index)
+                        ForEach(fundOrder, id: \.rawValue) { id in
+                            fundContainer(for: id)
                         }
                     }
                     // Build 43 (owner, Nov 17, 2026): the Weekly
@@ -312,18 +312,12 @@ public struct FundsView: View {
         .onChange(of: fundOrder) { _, _ in
             saveFundOrder()
         }
-        // Jiggle driver (owner, Nov 16, 2026 — build 41): entering
-        // reorder mode starts a slow repeating wobble on the cards;
-        // leaving stops it and clears the drag state.
+        // Leaving reorder mode clears the drag state. Build 44
+        // (owner, Nov 18, 2026): the jiggle wobble is removed, so
+        // there is no jiggle driver here any more — the cards sit
+        // still in reorder mode.
         .onChange(of: isRearranging) { _, rearranging in
-            if rearranging {
-                withAnimation(.easeInOut(duration: 0.14).repeatForever(autoreverses: true)) {
-                    jigglePhase.toggle()
-                }
-            } else {
-                withAnimation(.easeOut(duration: 0.15)) { jigglePhase = false }
-                draggingId = nil
-            }
+            if !rearranging { draggingId = nil }
         }
         .refreshable {
             await viewModel.refresh()
@@ -336,9 +330,10 @@ public struct FundsView: View {
     /// primary button (owner, Nov 15, 2026 — the grey "Rearrange"
     /// pill looked ugly); same treatment as Save. Build 41 (owner,
     /// Nov 16, 2026): the Reorder button keeps the 3-LINES
-    /// (hamburger / drag-handle) glyph — it is the backup way to
-    /// enter reorder mode; the primary way is a long-press on a
-    /// fund card.
+    /// (hamburger / drag-handle) glyph. Build 44 (owner, Nov 18,
+    /// 2026): the Reorder button is the ONLY way to enter reorder
+    /// mode — the long-press-on-a-card entry is removed, so the
+    /// cards never jiggle.
     private var rearrangeRow: some View {
         HStack {
             Spacer()
@@ -1029,7 +1024,7 @@ public struct FundsView: View {
     // the card; tapping one moves the fund one step (build 34 —
     // the drag handle did not grab and drag easily).
     @ViewBuilder
-    private func fundContainer(for id: FundSectionID, index: Int) -> some View {
+    private func fundContainer(for id: FundSectionID) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if isRearranging {
                 reorderArrows(for: id)
@@ -1045,20 +1040,13 @@ public struct FundsView: View {
                 debtCard
             }
         }
-        // Long-press enters reorder mode (owner, Nov 16, 2026 —
-        // build 41): the cards "shift" and the user drags a card to
-        // move it. A normal quick tap still expands the card — the
-        // header's tap is a no-op in reorder mode, so the tap that
-        // ends a long-press cannot also expand the card (tap =
-        // expand, long-press = reorder).
-        .onLongPressGesture(minimumDuration: 0.5) {
-            if !isRearranging { isRearranging = true }
-        }
-        // Jiggle while reordering (owner, Nov 16, 2026 — build 41,
-        // iOS Home Screen style): a slow ±1.3° wobble driven by
-        // jigglePhase, with a small per-card static tilt so adjacent
-        // cards do not all lean the same way.
-        .rotationEffect(.degrees(isRearranging ? (jigglePhase ? 1.3 : -1.3) + (index.isMultiple(of: 2) ? 0.6 : -0.6) : 0))
+        // Build 44 (owner, Nov 18, 2026): the long-press entry into
+        // reorder mode and the jiggle wobble are removed — the cards
+        // never shift or tilt. The ONLY way into reorder mode is the
+        // Reorder button above the cards. A tap still expands the
+        // card outside reorder mode; while reordering, the header
+        // tap is a no-op (FundsExpandableCard), so nothing here
+        // needs to guard the tap.
         // The card being dragged fades a little so the user can see
         // which one is in their hand.
         .opacity(isRearranging && draggingId == id ? 0.55 : 1)
