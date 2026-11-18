@@ -23,7 +23,8 @@ it, and how you can remove it.
   anything at your bank.
 - **Email alerts (optional):** if you connect Gmail, we use
   Google's sign-in and ask for read-only access. The app reads
-  only American Express Large Purchase alert emails, so a purchase
+  only transaction alert emails from your connected bank (for
+  example, American Express Large Purchase alerts), so a purchase
   can show up before the bank reports it. It never reads your
   whole mailbox, never sends email, and never changes email.
 - **Nothing else:** no location, no contacts, no photos, no
