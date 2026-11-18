@@ -159,6 +159,10 @@ public struct FundsView: View {
     /// 2026): opened by the grey-tertiary "Remove from Savings"
     /// button on the Savings card, admin only.
     @State private var showRemoveFromSavings = false
+    /// The Weekly Budget Calculator popup (build 44, owner Nov
+    /// 18, 2026): opened by the "Calculate" button in the
+    /// expanded Spending card.
+    @State private var showCalculator = false
     /// iPad content width (build 36): the tabs read as a centered
     /// 900pt column on the regular size class.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -216,12 +220,6 @@ public struct FundsView: View {
                             fundContainer(for: id)
                         }
                     }
-                    // Build 43 (owner, Nov 17, 2026): the Weekly
-                    // Budget Calculator sits below the fund cards —
-                    // its own card, a suggestion only, never
-                    // setting the allowance (there is no apply
-                    // button anywhere in it).
-                    WeeklyBudgetCalculatorCard(householdId: viewModel.context.householdId, charityName: FundSectionID.charity.displayName(customNames: appState.fundNames))
                 }
             }
             .padding()
@@ -541,6 +539,30 @@ public struct FundsView: View {
                             FundsBreakdownRow("Total", value: MoneyFormat.formatCents(total))
                         }
                     }
+                    Divider()
+                    // Build 44 (owner, Nov 18, 2026): the Weekly
+                    // Budget Calculator lives behind this button
+                    // now — the open section below the fund cards
+                    // is gone. A lone button, so primary blue;
+                    // full-width large like the card's other
+                    // action buttons. It sits directly below the
+                    // budget breakdown above (action buttons go
+                    // below the thing they act on) and clear of
+                    // the Temporary Allowance buttons below, so
+                    // no two adjacent buttons share a colour.
+                    // Visible to every role: the calculator is
+                    // local-only and suggestion-only.
+                    FundsPrimaryButton("Calculate", isLarge: true) { showCalculator = true }
+                        .accessibilityIdentifier("funds.openWeeklyBudgetCalculator")
+                        // Build 43 (owner, Nov 17, 2026 — item 17):
+                        // full-screen cover, not a detent sheet.
+                        .fullScreenCover(isPresented: $showCalculator) {
+                            WeeklyBudgetCalculatorSheet(
+                                householdId: viewModel.context.householdId,
+                                charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
+                                onClose: { showCalculator = false }
+                            )
+                        }
                     Divider()
                     SpendingAllowanceSection(viewModel: viewModel, bare: true) {
                         openForm = .temp
@@ -1802,7 +1824,46 @@ public enum LifestyleHoldback: String, Codable, CaseIterable {
     }
 }
 
-public struct WeeklyBudgetCalculatorCard: View {
+/// The Weekly Budget Calculator as a full-screen popup (build
+/// 44, owner Nov 18, 2026): opened by the "Calculate" button in
+/// the expanded Spending card; the open section below the fund
+/// cards is gone. Same content, same suggestion-only behaviour —
+/// never setting the allowance (there is no apply button anywhere
+/// in it). The content is a ScrollView, so it starts at the top
+/// (the AddTransactionView forms' pattern); the X in the sheet
+/// header dismisses it.
+public struct WeeklyBudgetCalculatorSheet: View {
+    public let householdId: UUID
+    /// The charity fund's CURRENT display name (build 43, owner
+    /// Nov 17, 2026 — item 16): the "Expected <fund>" section
+    /// reads it, never a hardcoded "Charity".
+    public let charityName: String
+    public var onClose: () -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    public init(householdId: UUID, charityName: String, onClose: @escaping () -> Void = {}) {
+        self.householdId = householdId
+        self.charityName = charityName
+        self.onClose = onClose
+    }
+
+    public var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                SheetHeader(title: TitleCase.apply(to: "Weekly Budget Calculator"), onClose: onClose)
+                WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName)
+            }
+            .padding()
+        }
+        .background(DesignTokens.background)
+        // iPad width (owner, Nov 12, 2026): 600pt in the regular
+        // size class, full-width on iPhone — same treatment as the
+        // rename sheet and the Add to Charity popup.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+    }
+}
+
+public struct WeeklyBudgetCalculatorContent: View {
     public let householdId: UUID
     /// The charity fund's CURRENT display name (build 43, owner
     /// Nov 17, 2026 — item 16): the "Expected <fund>" section
@@ -1936,24 +1997,26 @@ public struct WeeklyBudgetCalculatorCard: View {
     }
 
     // MARK: - Body
+    //
+    // Build 44 (owner, Nov 18, 2026): no FundsCard wrapper and no
+    // header row any more — the sheet's SheetHeader supplies the
+    // title and the X, and the ⓘ that explained the formula moved
+    // to the suggestion block below. State, persistence, formula,
+    // sections, and add/remove logic are unchanged from build 43.
 
     public var body: some View {
-        FundsCard {
-            VStack(alignment: .leading, spacing: 16) {
-                headerRow
-                Divider()
-                suggestionBlock
-                Divider()
-                incomeSection
-                Divider()
-                chargesSection
-                Divider()
-                charitySection
-                Divider()
-                lifestyleSection
-                Divider()
-                householdSizeSection
-            }
+        VStack(alignment: .leading, spacing: 16) {
+            suggestionBlock
+            Divider()
+            incomeSection
+            Divider()
+            chargesSection
+            Divider()
+            charitySection
+            Divider()
+            lifestyleSection
+            Divider()
+            householdSizeSection
         }
         .accessibilityIdentifier("funds.weeklyBudgetCalculator")
         .onAppear { load() }
@@ -1970,26 +2033,6 @@ public struct WeeklyBudgetCalculatorCard: View {
         }
     }
 
-    private var headerRow: some View {
-        HStack(spacing: 8) {
-            Text(TitleCase.apply(to: "Weekly Budget Calculator"))
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(DesignTokens.ink)
-            Spacer()
-            Button {
-                showFormulaInfo = true
-            } label: {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
-                    .padding(6)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("How the suggestion is worked out")
-        }
-    }
-
     /// The suggestion itself: the weekly figure, the per-person
     /// figure, the one-line basis, and the plain statement that
     /// the allowance does not change. A non-positive suggestion is
@@ -1998,9 +2041,28 @@ public struct WeeklyBudgetCalculatorCard: View {
     /// why there is nothing left for the week.
     private var suggestionBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Suggested Weekly Budget")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
+            HStack(spacing: 8) {
+                Text("Suggested Weekly Budget")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Spacer()
+                // Build 44 (owner, Nov 18, 2026): the ⓘ that
+                // explained the formula lived in the old card
+                // header — the sheet header holds the title now,
+                // so it sits here, beside the suggestion it
+                // explains. Same alert as before.
+                Button {
+                    showFormulaInfo = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("How the suggestion is worked out")
+            }
             if hasItems {
                 Text(MoneyFormat.formatCents(suggestedWeeklyCents))
                     .font(.system(size: 28, weight: .bold))
