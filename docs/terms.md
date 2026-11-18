@@ -28,7 +28,8 @@ in the app is financial advice.
   pending until the bank confirms it, and the bank's record is
   authoritative when the two disagree.
 - Email alerts are read-only through Gmail. The app reads only
-  American Express Large Purchase alerts. Email purchases stay
+  transaction alert emails from your connected bank (for example,
+  American Express Large Purchase alerts). Email purchases stay
   provisional until the bank confirms them.
 - You can disconnect a bank or an email account at any time from
   inside the app. Disconnecting a bank stops future syncing; past
