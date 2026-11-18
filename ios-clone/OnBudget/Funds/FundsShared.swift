@@ -704,9 +704,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
     /// The header strip (owner, Nov 16, 2026 — build 40): ONE ROW
     /// — icon in a white circle + title + (admin-only) pencil +
     /// amount + chevron, on the theme colour. The text colour is
-    /// the theme's onBanner colour — white on the dark Spending /
-    /// Debt banners, ink on the light Charity pale / Extra Fund
-    /// tertiary banners (build 41, 3-button scheme). The icon sits
+    /// the theme's onBanner colour — white on the dark Debt banner,
+    /// ink on the light Spending / Charity pale / Extra Fund
+    /// tertiary banners (build 41, 3-button scheme; build 43 —
+    /// Spending's banner lightened to #60a5fa with ink text). The icon sits
     /// on a WHITE circle in the theme's glyph colour (the
     /// reference's "$ in a white circle"). Loading / failed
     /// show the same strip shape in WHITE / muted grey with grey

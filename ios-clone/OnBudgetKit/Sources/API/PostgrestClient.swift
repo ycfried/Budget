@@ -751,11 +751,20 @@ public struct PostgrestClient {
     /// Fund top-ups for the history view (live.js:1668-1670). The
     /// select must include every non-optional `FundTopup` field
     /// (household_id, client_key) — a narrower select fails decoding
-    /// (same class as the five reads fixed Nov 9, 2026).
+    /// (same class as the five reads fixed Nov 9, 2026) — AND
+    /// `status`: it is optional in the model, so a missing key
+    /// decodes as nil and `isPending` (status == "pending") is
+    /// always false. Build 43 (owner, Nov 17, 2026 — the $650 live
+    /// bug): `status` was missing here, so `pendingTopupsCents`
+    /// was always 0 and a pending top-up read Pending $0.00 even
+    /// though the Funds-view wiring was correct. No client-side
+    /// patch on top — this select is the root-cause fix, and it
+    /// cannot double-count: it only lets the existing pending sum
+    /// see rows the server already returns.
     public func fundTopups(householdId: UUID) async throws -> [FundTopup] {
         try await fetch(PostgrestQuery(
             table: "fund_topups",
-            columns: "id,household_id,client_key,amount_cents,shortfall_covered_cents,fund_added_cents,shortfall_after_cents,note,created_by,created_at",
+            columns: "id,household_id,client_key,amount_cents,shortfall_covered_cents,fund_added_cents,shortfall_after_cents,note,created_by,created_at,status",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("created_at", ascending: false)]
         ))

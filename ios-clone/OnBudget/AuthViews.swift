@@ -22,8 +22,11 @@
 // username field (.username) so iOS offers to save the login and to
 // fill it in on return.
 // Create-account: validates Email + Password ONLY, then moves to
-// the separate "Choose Your Name" panel (values survive). Household
-// name is REQUIRED at sign-up (owner, Nov 4): no default fallback,
+// the separate "Choose Your Name" panel (values survive), which
+// collects First Name + Last Name as separate fields (build 43,
+// owner, Nov 17, 2026) and stores the derived "First L." display
+// name as auth metadata `full_name`. Household name is REQUIRED at
+// sign-up (owner, Nov 4): no default fallback,
 // no "optional" copy. Back sits top-left on every screen, never
 // next to the primary button.
 // Forgot password: uses the filled Email, else a sheet with the
@@ -504,7 +507,15 @@ public struct AuthView: View {
 
 /// "Choose Your Name" (live.js:2440-2530). The name is stored as
 /// auth metadata `full_name` at sign-up time, never as a separate
-/// call. Email confirmation is ON in the live project (owner, Nov 12,
+/// call. Build 43 (owner, Nov 17, 2026 — item 11): first + last name
+/// are collected as SEPARATE fields, and the stored display name is
+/// the derived short form — first name + last initial + "."
+/// (e.g. "Shuki" + "Friedman" -> "Shuki F."), via the shared
+/// `shortMemberName` helper, so the Members list can show the
+/// "First L." form (item 10) without ever storing a full last name
+/// as the display name. Same `signUp` call as before — only the
+/// derived string changes. Email confirmation is ON in the live
+/// project (owner, Nov 12,
 /// 2026), so sign-up returns `.needsConfirmation` and this step shows
 /// the persistent "check your email" state instead of a toast.
 public struct NameStepView: View {
@@ -514,7 +525,8 @@ public struct NameStepView: View {
     let onCreated: () -> Void
 
     @EnvironmentObject private var appState: AppViewModel
-    @State private var name = ""
+    @State private var firstName = ""
+    @State private var lastName = ""
     @State private var message: String?
     @State private var busy = false
     /// Set when sign-up returns `.needsConfirmation` (owner, Nov 12,
@@ -556,15 +568,26 @@ public struct NameStepView: View {
                 Text("Choose Your Name")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
-                FieldLabel("Name", required: true, weight: .bold)
-                TextField("Name", text: $name)
-                    .textContentType(.name)
-                    .accessibilityIdentifier("auth.name")
+                FieldLabel("First Name", required: true, weight: .bold)
+                TextField("First Name", text: $firstName)
+                    .textContentType(.givenName)
+                    .textInputAutocapitalization(.words)
+                    .accessibilityIdentifier("auth.firstName")
                     .padding(12)
                     .background(.white)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .onChange(of: name) { message = nil }
+                    .onChange(of: firstName) { message = nil }
+                FieldLabel("Last Name", required: true, weight: .bold)
+                TextField("Last Name", text: $lastName)
+                    .textContentType(.familyName)
+                    .textInputAutocapitalization(.words)
+                    .accessibilityIdentifier("auth.lastName")
+                    .padding(12)
+                    .background(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .onChange(of: lastName) { message = nil }
                 if let message { DismissableErrorBox(message) { self.message = nil } }
                 Button(busy ? "Creating Account…" : "Create Account") { Task { await createAccount() } }
                     .buttonStyle(PrimaryButtonStyle())
@@ -574,8 +597,28 @@ public struct NameStepView: View {
         }
     }
 
+    /// Build 43 (owner, Nov 17, 2026 — item 11): both name fields
+    /// are required, 40 characters max each — the derived "First L."
+    /// display name then stays far under the server's 80-char cap.
+    /// Kept here, not in AuthValidation: Formatting.swift is outside
+    /// this build's files.
+    private func nameFieldsError(first: String, last: String) -> String? {
+        if first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Enter your first name."
+        }
+        if last.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Enter your last name."
+        }
+        if first.count > 40 || last.count > 40 {
+            return "First and last names must be 40 characters or fewer."
+        }
+        return nil
+    }
+
     private func createAccount() async {
-        if let error = AuthValidation.accountNameError(name) {
+        let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let error = nameFieldsError(first: first, last: last) {
             message = error
             return
         }
@@ -585,7 +628,12 @@ public struct NameStepView: View {
             let outcome = try await appState.client.signUp(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password,
-                fullName: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                // Build 43 (owner, Nov 17, 2026 — items 10–11): the
+                // stored display name is the derived "First L."
+                // form ("Shuki" + "Friedman" -> "Shuki F."). Same
+                // signUp call and same `full_name` metadata key as
+                // before — only the derived string changes.
+                fullName: shortMemberName("\(first) \(last)"),
                 redirectTo: AppDeepLinks.emailConfirmed)
             busy = false
             switch outcome {

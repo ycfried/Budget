@@ -107,7 +107,37 @@ final class APISelectShapeTests: XCTestCase {
     }
 
     func testFundTopupDecodesFromSelectedColumns() throws {
+        // Build 43 (owner, Nov 17, 2026 — the $650 live bug): this
+        // row mirrors the `fundTopups` select in PostgrestClient,
+        // INCLUDING `status` — the select used to omit it, so every
+        // row decoded with status nil and `isPending` always false,
+        // and `pendingTopupsCents` was always 0. A pending row must
+        // decode as pending.
         let row = try decode("""
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "household_id": "22222222-2222-2222-2222-222222222222",
+          "client_key": "topup-1",
+          "amount_cents": 10000,
+          "shortfall_covered_cents": 4000,
+          "fund_added_cents": 6000,
+          "shortfall_after_cents": 0,
+          "note": "Top-up",
+          "created_by": null,
+          "created_at": "2026-11-09T00:00:00Z",
+          "status": "pending"
+        }
+        """, as: FundTopup.self)
+        XCTAssertEqual(row.amountCents, 10000)
+        XCTAssertEqual(row.clientKey, "topup-1")
+        XCTAssertEqual(row.shortfallCoveredCents, 4000)
+        XCTAssertEqual(row.fundAddedCents, 6000)
+        XCTAssertEqual(row.status, "pending")
+        XCTAssertTrue(row.isPending)
+        // A row without `status` (pre-migration server) still
+        // decodes — and reads as confirmed, never pending — so the
+        // optional stays a fallback, not a second pending path.
+        let legacyRow = try decode("""
         {
           "id": "11111111-1111-1111-1111-111111111111",
           "household_id": "22222222-2222-2222-2222-222222222222",
@@ -121,10 +151,8 @@ final class APISelectShapeTests: XCTestCase {
           "created_at": "2026-11-09T00:00:00Z"
         }
         """, as: FundTopup.self)
-        XCTAssertEqual(row.amountCents, 10000)
-        XCTAssertEqual(row.clientKey, "topup-1")
-        XCTAssertEqual(row.shortfallCoveredCents, 4000)
-        XCTAssertEqual(row.fundAddedCents, 6000)
+        XCTAssertNil(legacyRow.status)
+        XCTAssertFalse(legacyRow.isPending)
     }
 
     func testActivePlaidItemDecodesFromSelectedColumns() throws {

@@ -216,6 +216,12 @@ public struct FundsView: View {
                             fundContainer(for: id, index: index)
                         }
                     }
+                    // Build 43 (owner, Nov 17, 2026): the Weekly
+                    // Budget Calculator sits below the fund cards —
+                    // its own card, a suggestion only, never
+                    // setting the allowance (there is no apply
+                    // button anywhere in it).
+                    WeeklyBudgetCalculatorCard(householdId: viewModel.context.householdId)
                 }
             }
             .padding()
@@ -616,8 +622,11 @@ public struct FundsView: View {
             } else if let summary = viewModel.fundSummary {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 12) {
+                        // Build 43 (owner, Nov 17, 2026): just
+                        // "Available" — the "Spendable" qualifier
+                        // added nothing the card does not already say.
                         FundsBreakdownRow(
-                            isAdmin ? "Spendable Available" : "Available",
+                            "Available",
                             value: MoneyFormat.formatCents(summary.availableCents),
                             isNegative: summary.availableCents < 0
                         )
@@ -1269,6 +1278,10 @@ public struct RemoveFromSavingsSheet: View {
     @State private var amountText = ""
     @State private var noteText = ""
     @State private var removeError: String?
+    /// The ⓘ beside the live figures opens the waterfall
+    /// explanation (build 43, owner Nov 17, 2026 — long
+    /// explanations live behind ⓘ, not inline).
+    @State private var showWaterfallInfo = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(viewModel: FundsViewModel, fundName: String, onClose: @escaping () -> Void = {}) {
@@ -1287,7 +1300,23 @@ public struct RemoveFromSavingsSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: "Remove from \(fundName)"), onClose: onClose)
             if let availableCents {
-                FundsMuted("Available: \(MoneyFormat.formatCents(availableCents)) · Pending: \(MoneyFormat.formatCents(pendingCents)). The amount comes off Available first, then Pending, then the rest adds to carried debt. No transaction row is created.")
+                // Build 43 (owner, Nov 17, 2026 — long explanations
+                // behind ⓘ): the live figures stay visible; the
+                // waterfall explanation lives behind the info icon.
+                HStack(spacing: 8) {
+                    FundsMuted("Available: \(MoneyFormat.formatCents(availableCents)) · Pending: \(MoneyFormat.formatCents(pendingCents)).")
+                    Button {
+                        showWaterfallInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                            .padding(6)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("How the amount is taken")
+                }
             }
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
             TextField("Note", text: $noteText)
@@ -1310,6 +1339,13 @@ public struct RemoveFromSavingsSheet: View {
         // size class, full-width on iPhone — same treatment as the
         // rename sheet.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // Build 43 (owner, Nov 17, 2026): the waterfall explanation
+        // behind the ⓘ above — how the amount is taken, in full.
+        .alert(TitleCase.apply(to: "Remove from \(fundName)"), isPresented: $showWaterfallInfo) {
+            Button("OK") {}
+        } message: {
+            Text("The amount comes off Available first, then Pending, then the rest adds to carried debt. No transaction row is created.")
+        }
     }
 
     private func remove() {
@@ -1638,5 +1674,542 @@ private extension View {
         } else {
             self
         }
+    }
+}
+
+// MARK: - Weekly Budget Calculator (build 43, owner Nov 17, 2026)
+//
+// From the V2 plan (Nov 15, 2026 — household-budget/
+// V2_PLAN_DRAFT.md, "Weekly-budget formula"): expected monthly
+// income, expected charity, and recurring charges feed a SUGGESTED
+// weekly budget on the Funds page. The suggestion NEVER changes
+// the weekly allowance — there is no button that applies or sets
+// it; the user changes the allowance in the Spending card if they
+// want to. Expected income and recurring charges are entered BY
+// HAND here (name + amount + frequency), even before any
+// transaction exists — the plan's manual-entry path. Everything
+// is stored locally per household (UserDefaults, keyed by
+// household id) — NO server migration, no Supabase changes — and
+// entries save automatically as they change; there is no Save
+// button. The formula explanation lives behind the ⓘ in the card
+// header (build 43 — long explanations behind ⓘ).
+
+/// How often a hand-entered calculator item repeats.
+public enum CalculatorFrequency: String, Codable, CaseIterable {
+    case weekly
+    case monthly
+    case quarterly
+    case yearly
+
+    public var displayName: String {
+        switch self {
+        case .weekly: return "Weekly"
+        case .monthly: return "Monthly"
+        case .quarterly: return "Quarterly"
+        case .yearly: return "Yearly"
+        }
+    }
+
+    /// How many of this frequency fit in one month. Weekly uses
+    /// 4.33 — the plan's weeks-per-month, the same divisor as the
+    /// formula below — so a weekly item and the weekly suggestion
+    /// use one consistent month length.
+    public var monthlyFactor: Double {
+        switch self {
+        case .weekly: return 4.33
+        case .monthly: return 1
+        case .quarterly: return 1.0 / 3.0
+        case .yearly: return 1.0 / 12.0
+        }
+    }
+}
+
+/// One hand-entered expected item for the Weekly Budget
+/// Calculator: a name, a dollar amount per occurrence, and how
+/// often it repeats. Stored locally per household (UserDefaults,
+/// JSON) — never on the server.
+public struct CalculatorItem: Codable, Equatable, Identifiable {
+    public let id: UUID
+    public var name: String
+    /// The amount per occurrence, in cents.
+    public var amountCents: Int
+    public var frequency: CalculatorFrequency
+
+    public init(id: UUID = UUID(), name: String, amountCents: Int, frequency: CalculatorFrequency) {
+        self.id = id
+        self.name = name
+        self.amountCents = amountCents
+        self.frequency = frequency
+    }
+
+    /// The item's monthly cost, in cents.
+    public var monthlyCents: Int {
+        Int((Double(amountCents) * frequency.monthlyFactor).rounded())
+    }
+}
+
+/// The lifestyle holdback presets (V2 plan, owner Nov 15, 2026):
+/// minimalist 10%, regular 5%, loose 0% are STANDARDS/defaults
+/// and are CHANGEABLE by the user — the custom % field in the
+/// card overrides whichever preset is picked.
+public enum LifestyleHoldback: String, Codable, CaseIterable {
+    case minimalist
+    case regular
+    case loose
+
+    public var percent: Double {
+        switch self {
+        case .minimalist: return 10
+        case .regular: return 5
+        case .loose: return 0
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case .minimalist: return "Minimalist"
+        case .regular: return "Regular"
+        case .loose: return "Loose"
+        }
+    }
+}
+
+public struct WeeklyBudgetCalculatorCard: View {
+    public let householdId: UUID
+    @State private var incomeItems: [CalculatorItem] = []
+    @State private var chargeItems: [CalculatorItem] = []
+    @State private var charityText = ""
+    @State private var lifestyle: LifestyleHoldback = .regular
+    @State private var customHoldbackText = ""
+    @State private var householdSize = 1
+    @State private var incomeDraftName = ""
+    @State private var incomeDraftAmount = ""
+    @State private var incomeDraftFrequency: CalculatorFrequency = .monthly
+    @State private var chargeDraftName = ""
+    @State private var chargeDraftAmount = ""
+    @State private var chargeDraftFrequency: CalculatorFrequency = .monthly
+    @State private var incomeError: String?
+    @State private var chargeError: String?
+    /// The ⓘ in the card header opens the formula explanation.
+    @State private var showFormulaInfo = false
+    /// True once the stored inputs have loaded — saves are
+    /// suppressed until then, so loading never overwrites the
+    /// stored values with the empty defaults.
+    @State private var didLoad = false
+
+    public init(householdId: UUID) {
+        self.householdId = householdId
+    }
+
+    // MARK: - Local persistence (per household, no server)
+
+    private func key(_ field: String) -> String {
+        "hb-budget-calc-\(householdId.uuidString)-\(field)"
+    }
+
+    private func load() {
+        guard !didLoad else { return }
+        let defaults = UserDefaults.standard
+        if let data = defaults.data(forKey: key("income")),
+           let items = try? JSONDecoder().decode([CalculatorItem].self, from: data) {
+            incomeItems = items
+        }
+        if let data = defaults.data(forKey: key("charges")),
+           let items = try? JSONDecoder().decode([CalculatorItem].self, from: data) {
+            chargeItems = items
+        }
+        charityText = defaults.string(forKey: key("charity")) ?? ""
+        if let raw = defaults.string(forKey: key("lifestyle")),
+           let saved = LifestyleHoldback(rawValue: raw) {
+            lifestyle = saved
+        }
+        customHoldbackText = defaults.string(forKey: key("custom-holdback")) ?? ""
+        let size = defaults.integer(forKey: key("household-size"))
+        if size >= 1 { householdSize = size }
+        didLoad = true
+    }
+
+    private func save() {
+        guard didLoad else { return }
+        let defaults = UserDefaults.standard
+        defaults.set(try? JSONEncoder().encode(incomeItems), forKey: key("income"))
+        defaults.set(try? JSONEncoder().encode(chargeItems), forKey: key("charges"))
+        defaults.set(charityText, forKey: key("charity"))
+        defaults.set(lifestyle.rawValue, forKey: key("lifestyle"))
+        defaults.set(customHoldbackText, forKey: key("custom-holdback"))
+        defaults.set(householdSize, forKey: key("household-size"))
+    }
+
+    // MARK: - Formula
+    //
+    // (monthly income − expected charity − recurring charges)
+    // ÷ 4.33 weeks = weekly amount before lifestyle; the lifestyle
+    // holdback is then kept back. Household-size scaling
+    // (assumption, build 43 — the V2 plan says size scales "only
+    // the variable week-to-week part" without giving the factor):
+    // income and recurring charges are entered as HOUSEHOLD totals,
+    // so the household weekly total does not multiply by size; size
+    // scales the variable part in the per-person sense — the
+    // per-person weekly figure is the suggested weekly amount
+    // divided by the household size. If the owner wants size to
+    // multiply a single-person baseline instead, that is a one-line
+    // change to `suggestedWeeklyCents`.
+
+    private var monthlyIncomeCents: Int {
+        incomeItems.reduce(0) { $0 + $1.monthlyCents }
+    }
+
+    private var monthlyChargesCents: Int {
+        chargeItems.reduce(0) { $0 + $1.monthlyCents }
+    }
+
+    private var charityCents: Int {
+        MoneyFormat.parseDollarsStrict(charityText) ?? 0
+    }
+
+    /// The holdback in effect: a typed custom % wins over the
+    /// preset; an empty or invalid custom field falls back to the
+    /// preset (and the card says so under the field).
+    private var holdbackPercent: Double {
+        if let bp = MoneyFormat.parseRatePercent(customHoldbackText) {
+            return Double(bp) / 100.0
+        }
+        return lifestyle.percent
+    }
+
+    private var monthlyRemainderCents: Int {
+        monthlyIncomeCents - charityCents - monthlyChargesCents
+    }
+
+    private var weeklyBeforeHoldbackCents: Int {
+        Int((Double(monthlyRemainderCents) / 4.33).rounded())
+    }
+
+    private var suggestedWeeklyCents: Int {
+        Int((Double(weeklyBeforeHoldbackCents) * (1.0 - holdbackPercent / 100.0)).rounded())
+    }
+
+    private var perPersonCents: Int {
+        householdSize > 0 ? suggestedWeeklyCents / householdSize : suggestedWeeklyCents
+    }
+
+    private var hasItems: Bool {
+        !incomeItems.isEmpty || !chargeItems.isEmpty
+    }
+
+    private var customHoldbackInvalid: Bool {
+        !customHoldbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && MoneyFormat.parseRatePercent(customHoldbackText) == nil
+    }
+
+    // MARK: - Body
+
+    public var body: some View {
+        FundsCard {
+            VStack(alignment: .leading, spacing: 16) {
+                headerRow
+                Divider()
+                suggestionBlock
+                Divider()
+                incomeSection
+                Divider()
+                chargesSection
+                Divider()
+                charitySection
+                Divider()
+                lifestyleSection
+                Divider()
+                householdSizeSection
+            }
+        }
+        .accessibilityIdentifier("funds.weeklyBudgetCalculator")
+        .onAppear { load() }
+        .onChange(of: incomeItems) { _, _ in save() }
+        .onChange(of: chargeItems) { _, _ in save() }
+        .onChange(of: charityText) { _, _ in save() }
+        .onChange(of: lifestyle) { _, _ in save() }
+        .onChange(of: customHoldbackText) { _, _ in save() }
+        .onChange(of: householdSize) { _, _ in save() }
+        .alert(TitleCase.apply(to: "Weekly Budget Calculator"), isPresented: $showFormulaInfo) {
+            Button("OK") {}
+        } message: {
+            Text("Monthly income, minus expected charity, minus recurring charges, divided by 4.33 weeks — then the lifestyle holdback is kept back. Household size shows the suggestion per person. This only suggests a weekly budget — your weekly allowance does not change. Your entries save on this device automatically.")
+        }
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: 8) {
+            Text(TitleCase.apply(to: "Weekly Budget Calculator"))
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(DesignTokens.ink)
+            Spacer()
+            Button {
+                showFormulaInfo = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(DesignTokens.primary)
+                    .padding(6)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("How the suggestion is worked out")
+        }
+    }
+
+    /// The suggestion itself: the weekly figure, the per-person
+    /// figure, the one-line basis, and the plain statement that
+    /// the allowance does not change. A non-positive suggestion is
+    /// shown as computed — never silently clamped to a confident
+    /// $0 (V2 plan, item 8) — with a plain-language red box saying
+    /// why there is nothing left for the week.
+    private var suggestionBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Suggested Weekly Budget")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            if hasItems {
+                Text(MoneyFormat.formatCents(suggestedWeeklyCents))
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+                FundsMuted("About \(MoneyFormat.formatCents(perPersonCents)) per person each week, for a household of \(householdSize).")
+                FundsMuted("This is a suggestion only — your weekly allowance does not change.")
+                FundsMuted("\(MoneyFormat.formatCents(monthlyIncomeCents)) income − \(MoneyFormat.formatCents(charityCents)) charity − \(MoneyFormat.formatCents(monthlyChargesCents)) charges = \(MoneyFormat.formatCents(monthlyRemainderCents)) a month. That is \(MoneyFormat.formatCents(weeklyBeforeHoldbackCents)) a week, \(MoneyFormat.formatCents(suggestedWeeklyCents)) after a \(MoneyFormat.formatRateBp(Int((holdbackPercent * 100).rounded())))% holdback.")
+                if suggestedWeeklyCents <= 0 {
+                    FundsErrorBox("That leaves nothing for the week — expected charity and recurring charges are more than the monthly income.")
+                }
+            } else {
+                FundsMuted("Add your expected income and recurring charges below — the suggestion appears here.")
+            }
+        }
+    }
+
+    private var incomeSection: some View {
+        itemSection(
+            title: "Expected Income",
+            items: incomeItems,
+            draftName: $incomeDraftName,
+            draftAmount: $incomeDraftAmount,
+            draftFrequency: $incomeDraftFrequency,
+            error: incomeError,
+            monthlyTotalCents: monthlyIncomeCents,
+            onAdd: addIncomeItem,
+            onRemove: removeIncomeItem
+        )
+    }
+
+    private var chargesSection: some View {
+        itemSection(
+            title: "Recurring Charges",
+            items: chargeItems,
+            draftName: $chargeDraftName,
+            draftAmount: $chargeDraftAmount,
+            draftFrequency: $chargeDraftFrequency,
+            error: chargeError,
+            monthlyTotalCents: monthlyChargesCents,
+            onAdd: addChargeItem,
+            onRemove: removeChargeItem
+        )
+    }
+
+    /// One hand-entered list (income or charges): the saved rows
+    /// with their monthly figure, the add row (name + amount +
+    /// frequency + Add), and the monthly total. Rows are minimal —
+    /// name + frequency + monthly amount — like the activity rows.
+    private func itemSection(
+        title: String,
+        items: [CalculatorItem],
+        draftName: Binding<String>,
+        draftAmount: Binding<String>,
+        draftFrequency: Binding<CalculatorFrequency>,
+        error: String?,
+        monthlyTotalCents: Int,
+        onAdd: @escaping () -> Void,
+        onRemove: @escaping (CalculatorItem) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(TitleCase.apply(to: title))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            if items.isEmpty {
+                FundsMuted("Nothing added yet.")
+            } else {
+                ForEach(items) { item in
+                    HStack(spacing: 4) {
+                        Text(item.name)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                            .lineLimit(1)
+                        Text("·")
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                        Text(item.frequency.displayName)
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                        Spacer()
+                        Text(MoneyFormat.formatCents(item.monthlyCents))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Text("a month")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                        Button {
+                            onRemove(item)
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                                .padding(6)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(item.name)")
+                    }
+                }
+            }
+            TextField("Name", text: draftName)
+                .font(.system(size: 17))
+                .textFieldStyle(.roundedBorder)
+                .frame(minHeight: 48)
+                .autocorrectionDisabled()
+            HStack(spacing: 8) {
+                DollarTextField(text: draftAmount, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
+                Picker("How Often", selection: draftFrequency) {
+                    ForEach(CalculatorFrequency.allCases, id: \.self) { frequency in
+                        Text(frequency.displayName).tag(frequency)
+                    }
+                }
+                .pickerStyle(.menu)
+                FundsSmallPrimaryButton("Add") { onAdd() }
+            }
+            FundsBreakdownRow("Monthly Total", value: MoneyFormat.formatCents(monthlyTotalCents))
+            if let error {
+                FundsErrorBox(error)
+            }
+        }
+    }
+
+    private var charitySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Expected Charity")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            HStack(spacing: 8) {
+                DollarTextField(text: $charityText, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
+                FundsSmallTertiaryButton("Use 10% of Income") {
+                    charityText = String(format: "%.2f", Double(monthlyIncomeCents) / 10.0 / 100.0)
+                }
+            }
+            FundsMuted("Expected charity each month. The 10% button fills in 10% of the expected income above.")
+        }
+    }
+
+    private var lifestyleSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Lifestyle")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            Picker("Lifestyle", selection: $lifestyle) {
+                ForEach(LifestyleHoldback.allCases, id: \.self) { option in
+                    Text(option.displayName).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            HStack(spacing: 8) {
+                Text("Custom Holdback")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                Spacer()
+                // The "%" is a LEFT prefix inside the field (the
+                // rate editor's pattern): the placeholder shows the
+                // preset's percent, so the field reads as an
+                // override, not a second setting.
+                HStack(spacing: 2) {
+                    Text("%")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    TextField(String(format: "%.0f", lifestyle.percent), text: $customHoldbackText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 17))
+                        .frame(width: 64)
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 48, alignment: .leading)
+                .background(.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            FundsMuted("Holdback in effect: \(MoneyFormat.formatRateBp(Int((holdbackPercent * 100).rounded())))%. Leave the custom field blank to use the preset above.")
+            if customHoldbackInvalid {
+                FundsMuted("That holdback did not parse — using the preset instead. Enter a percent between 0 and 100.")
+            }
+        }
+    }
+
+    private var householdSizeSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Stepper("Household Size: \(householdSize)", value: $householdSize, in: 1...20)
+                .font(.system(size: 15, weight: .semibold))
+            FundsMuted("Shown per person in the suggestion above.")
+        }
+    }
+
+    // MARK: - Add / remove
+
+    /// Validates one add-row (name + amount). Returns the item, or
+    /// sets `error` to a plain-language reason and returns nil —
+    /// the typed input stays so the user can fix it (the Add
+    /// button is never greyed out; a bad tap explains itself).
+    private func validatedDraftItem(
+        name: String,
+        amountText: String,
+        frequency: CalculatorFrequency,
+        error: inout String?
+    ) -> CalculatorItem? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            error = "Enter a name for this item."
+            return nil
+        }
+        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else {
+            error = "Enter an amount above $0.00."
+            return nil
+        }
+        error = nil
+        return CalculatorItem(name: trimmed, amountCents: cents, frequency: frequency)
+    }
+
+    private func addIncomeItem() {
+        guard let item = validatedDraftItem(
+            name: incomeDraftName,
+            amountText: incomeDraftAmount,
+            frequency: incomeDraftFrequency,
+            error: &incomeError
+        ) else { return }
+        incomeItems.append(item)
+        incomeDraftName = ""
+        incomeDraftAmount = ""
+    }
+
+    private func addChargeItem() {
+        guard let item = validatedDraftItem(
+            name: chargeDraftName,
+            amountText: chargeDraftAmount,
+            frequency: chargeDraftFrequency,
+            error: &chargeError
+        ) else { return }
+        chargeItems.append(item)
+        chargeDraftName = ""
+        chargeDraftAmount = ""
+    }
+
+    private func removeIncomeItem(_ item: CalculatorItem) {
+        incomeItems.removeAll { $0.id == item.id }
+    }
+
+    private func removeChargeItem(_ item: CalculatorItem) {
+        chargeItems.removeAll { $0.id == item.id }
     }
 }

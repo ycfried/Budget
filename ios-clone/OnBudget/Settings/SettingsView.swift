@@ -6,6 +6,9 @@
 // Connection, Email Alerts, Account & Household, Merchant Names.
 // (The Budget card moved to the Funds page's Spending fund, build
 // 30 — ALL fund settings live there now.)
+// Build 43 (owner, Nov 17, 2026): Privacy · Terms is its OWN card
+// below the last card, not a bare link at the bottom of the Account
+// & Household card.
 //
 // Each card is its own view (ProfileSettingsView,
 // ConnectedAccountsView, EmailAlertsView, MembersSettingsView) so
@@ -49,6 +52,7 @@ struct SettingsView: View {
                 ConnectedAccountsView(context: context, toast: toast, plaidLauncher: plaidLauncher)
                 EmailAlertsView(context: context, toast: toast)
                 MembersSettingsView(context: context, toast: toast)
+                PrivacyTermsSettingsCard()
                 // Merchant Names is NOT here anymore (owner, Nov 15,
                 // 2026 — build 34): it moved to the Transactions
                 // page ("Merchants" chip), where it felt less
@@ -57,5 +61,24 @@ struct SettingsView: View {
             .padding()
         }
         .toastOverlay(toast) // Centered mid-screen popup (owner, Nov 16, 2026 — build 38).
+    }
+}
+
+/// Build 43 (owner, Nov 17, 2026 — item 13): Privacy · Terms on
+/// their OWN card, below the last Settings card — not a bare link at
+/// the bottom of the Account & Household card. Same destinations as
+/// the auth footer and the old location.
+private struct PrivacyTermsSettingsCard: View {
+    var body: some View {
+        SettingsCard(title: "Privacy · Terms") {
+            HStack(spacing: 4) {
+                Link("Privacy", destination: URL(string: "https://ycfried.github.io/Budget/privacy.html")!)
+                Text("·")
+                Link("Terms", destination: URL(string: "https://ycfried.github.io/Budget/terms.html")!)
+            }
+            .font(.subheadline)
+            .foregroundStyle(DesignTokens.mid)
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
     }
 }

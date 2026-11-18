@@ -639,8 +639,10 @@ public final class FundsViewModel: ObservableObject {
     /// Total pending top-ups (build 41, Nov 17, 2026): saved but
     /// not yet confirmed in checking. They count for nothing — no
     /// ledger row, no shortfall cover — so the Funds detail shows
-    /// this beside Available; Home's Savings card (the ledger sum)
-    /// never includes them.
+    /// this beside Available. Build 43 (owner, Nov 17, 2026 —
+    /// "Doesn't show the pending amounts"): Home's expanded
+    /// Savings rows now include them too, via
+    /// HomeViewModel.pendingTopupsCents.
     public var pendingTopupsCents: Int {
         topups.filter { $0.isPending }.reduce(0) { $0 + $1.amountCents }
     }

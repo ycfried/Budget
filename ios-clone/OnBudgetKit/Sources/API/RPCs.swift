@@ -905,6 +905,23 @@ extension RPCClient {
         ])
     }
 
+    // MARK: - Display-name sync (build 43, item 9)
+    //
+    // `sync_my_display_name(p_display_name)`
+    // (`supabase/display-name-sync.sql`). `household_members.display_name`
+    // is a snapshot copied from auth metadata only at member creation,
+    // so a rename in Profile never reached the Members list on other
+    // members' devices. The client calls this best-effort right after
+    // Save Name writes the metadata; it updates the caller's member
+    // rows in every household. Void on success; throws (e.g. function
+    // not yet applied live) — callers must swallow the error, never
+    // fail the save.
+    public func syncMyDisplayName(_ name: String) async throws {
+        try await callVoid(name: "sync_my_display_name", params: [
+            "p_display_name": name,
+        ])
+    }
+
     // MARK: - Merchant name rules (build 30, task E)
     //
     // Teachable rename + saved list. All four RPCs are admin-only

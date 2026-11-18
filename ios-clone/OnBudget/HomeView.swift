@@ -92,6 +92,15 @@ public final class HomeViewModel: ObservableObject {
     /// successful read.
     @Published public var allowanceError: OnBudgetError?
     @Published public var fund: HomeSectionState<FundSummary> = .loading
+    /// Pending top-ups (build 43, owner Nov 17, 2026 — "Doesn't
+    /// show the pending amounts"): saved but not yet confirmed in
+    /// checking. The Funds detail already folds them into Pending
+    /// (FundsViewModel.savingsPendingCents); Home's expanded
+    /// Savings rows do the same now, so a $650 pending top-up reads
+    /// Pending $650.00 here too. Best-effort — a failed fetch leaves
+    /// 0 and never fails the fund card. Relies on the build-43
+    /// fetch fix (PostgrestClient.fundTopups selects `status`).
+    @Published public var pendingTopupsCents: Int = 0
     @Published public var charity: HomeSectionState<CharitySummary> = .loading
     @Published public var recent: HomeSectionState<[Transaction]> = .loading
     /// Purchases this week; nil when transactions failed to load,
@@ -211,6 +220,15 @@ public final class HomeViewModel: ObservableObject {
         }
         let fundShortfallTask = Task<Int, Error> {
             try await client.postgrest.fundShortfallCents(householdId: householdId)
+        }
+        // Pending top-ups (build 43, owner Nov 17, 2026): saved but
+        // not yet confirmed in checking — folded into the expanded
+        // Savings Pending/Total rows below (see fundRows), matching
+        // FundsViewModel.savingsPendingCents. Separate task so its
+        // failure never cancels the ledger fetches.
+        let fundTopupsTask = Task<Int, Error> {
+            let topups = try await client.postgrest.fundTopups(householdId: householdId)
+            return topups.filter { $0.isPending }.reduce(0) { $0 + $1.amountCents }
         }
         let plaidTask = Task<[String: String], Error> {
             // Suffix → institution map for bank icons (best-effort).
@@ -375,6 +393,14 @@ public final class HomeViewModel: ObservableObject {
             fund = .loaded(fundSummary)
         } else if let fundError {
             fund = .failed(fundError)
+        }
+        // Pending top-ups (build 43): best-effort — a failed fetch
+        // leaves 0 and never fails the fund card (the ledger-based
+        // figures above are unaffected).
+        do {
+            pendingTopupsCents = try await fundTopupsTask.value
+        } catch {
+            pendingTopupsCents = 0
         }
         if let institutionMap {
             institutionBySuffix = institutionMap
@@ -657,9 +683,8 @@ public struct HomeView: View {
         .padding(.bottom, 36)
     }
 
-    /// Banner colour: the Spending theme's banner (primary blue
-    /// #2f6bff since build 41 — the 3-button scheme; the deep blue
-    /// #1d4ed8 was the build-38/39 banner) when loaded; WHITE while
+    /// Banner colour: the Spending theme's banner (light blue
+    /// #60a5fa since build 43 — see below) when loaded; WHITE while
     /// LOADING (owner, Nov 16, 2026 — build 40: the pale #dbeafe
     /// tint was horrendous, the original white background with grey
     /// skeleton shapes was nicest); muted grey #e5e7eb when FAILED
@@ -674,10 +699,14 @@ public struct HomeView: View {
         }
     }
 
-    /// Text/icon colour on the hero banner: white on the loaded
-    /// blue banner, ink on the grey loading/failed banner.
+    /// Text/icon colour on the hero banner: INK on the loaded light
+    /// blue banner (build 43, owner Nov 17, 2026 — the header text
+    /// is black for consistency with the other cards, so the banner
+    /// lightened from primary #2f6bff to light #60a5fa and the text
+    /// follows the theme's onBanner colour), ink on the grey
+    /// loading/failed banner.
     private var heroBannerTextColor: Color {
-        if case .loaded = viewModel.week { return .white }
+        if case .loaded = viewModel.week { return StatCardTheme.spending.onBanner }
         return DesignTokens.ink
     }
 
@@ -687,7 +716,8 @@ public struct HomeView: View {
     // card (owner, Nov 14, 2026 — this supersedes the inline-date
     // Header strip (owner, Nov 16, 2026 — build 40): ONE ROW —
     // a "$" icon in a white circle + "Spending" + the amount, all
-    // white on deep blue, with the sync button at the trailing end.
+    // ink on the light blue banner (build 43), with the sync button
+    // at the trailing end.
     // The amount is INLINE in the header (24pt heavy iPhone / 30pt
     // iPad), not a big standalone figure — the strip is short, the
     // white body below is the majority. While loading the strip is
@@ -725,10 +755,10 @@ public struct HomeView: View {
                     .lineLimit(1)
             }
             Spacer()
-            // Amount, inline in the header. White on the blue strip
-            // even when over budget (the over-budget state shows in
-            // the red progress fill + "Over budget" spent line, as
-            // in build 39 — red text on blue does not read).
+            // Amount, inline in the header. Ink on the light blue
+            // strip even when over budget (the over-budget state
+            // shows in the red progress fill + "Over budget" spent
+            // line, as in build 39 — red text on blue does not read).
             switch viewModel.week {
             case .loading:
                 SkeletonBlock(width: 84, height: 30, cornerRadius: 6)
@@ -764,13 +794,13 @@ public struct HomeView: View {
 
     /// Sync button: admin-only; grey tertiary while no allowance
     /// is set, so "Set Your Weekly Allowance" is the hero's only
-    /// primary control. On the blue banner it is a WHITE circle so
-    /// it reads against the banner (the old mid-blue fill vanished
-    // on blue): the arrow is primary blue when an allowance is set,
-    // ink when not set — the two states still tell apart, and both
-    // read on white. Moved here from the figure row (owner, Nov 14,
-    // 2026: the top-right corner of the card, not mid-right over
-    // the progress bar).
+    /// primary control. On the light blue banner (build 43) it is a
+    /// WHITE circle so it reads against the banner (the old mid-blue
+    /// fill vanished on blue): the arrow is primary blue when an
+    /// allowance is set, ink when not set — the two states still
+    /// tell apart, and both read on white. Moved here from the
+    /// figure row (owner, Nov 14, 2026: the top-right corner of the
+    /// card, not mid-right over the progress bar).
     private var syncButton: some View {
         Button { Task { await viewModel.syncBank() } } label: {
             Image(systemName: "arrow.clockwise")
@@ -868,10 +898,12 @@ public struct HomeView: View {
     /// 39; the white body is the majority now, so the bar + line
     /// moved DOWN into it). Same math as the build-39 banner
     /// version; only the COLOURS changed — the track is light grey
-    /// and the fill is the Spending blue on white (not white-on-
-    /// blue), over budget the fill is the brighter red #dc2626 (the
-    /// dark red #991b1b did not read on dark blue in build 39, and
-    /// it still reads on white). The chevron at the right end of
+    /// and the fill is the strong primary blue #2f6bff on white —
+    /// NOT the theme banner, which is light since build 43 and
+    /// would vanish against the light grey track — over budget
+    /// the fill is the brighter red #dc2626 (the dark red #991b1b
+    /// did not read on dark blue in build 39, and it still reads
+    /// on white). The chevron at the right end of
     /// the spent line is the hint that the card opens the Weekly
     /// sheet. Build 42 (owner, Nov 17, 2026 — progress bar
     /// thicker): the bar is 12pt, not 10pt.
@@ -890,7 +922,11 @@ public struct HomeView: View {
                         .fill(Color(hex: "#e5e7eb"))
                         .frame(height: 12)
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(overBudget ? Color(hex: "#dc2626") : StatCardTheme.spending.banner)
+                        // Build 43 (owner, Nov 17, 2026): the fill
+                        // stays the strong primary blue — the theme
+                        // banner is light now and would vanish
+                        // against the light grey track.
+                        .fill(overBudget ? Color(hex: "#dc2626") : DesignTokens.primary)
                         .frame(width: geometry.size.width * fraction, height: 12)
                 }
             }
@@ -929,6 +965,31 @@ public struct HomeView: View {
 
     // MARK: Stat cards — Charity + Extra Fund, half-size side by side
 
+    /// Build 43 (owner, Nov 17, 2026): the two Home stat cards
+    /// expand and collapse as ONE unit — tapping either card opens
+    /// both, tapping again closes both — so the row never shows an
+    /// uneven pair with a gap under a collapsed card. The shared
+    /// `expandedCard` still holds only one value (one-open-at-a-
+    /// time across Home + Funds), so "expanded" here means it holds
+    /// either .charity or .fund; the stored value is whichever card
+    /// was tapped to open the pair, so the Funds page still opens
+    /// that one card. The Spending hero is separate and untouched.
+    /// Both cards read this one boolean, so their chevrons always
+    /// agree. Instant — no animation (owner rule, build 34).
+    private var isStatCardsExpanded: Bool {
+        appState.expandedCard == .charity || appState.expandedCard == .fund
+    }
+
+    /// Toggle the linked Home stat-card pair: open (storing the
+    /// tapped card) or close both together.
+    private func toggleStatCards(_ card: ExpandedCard) {
+        if isStatCardsExpanded {
+            appState.expandedCard = nil
+        } else {
+            appState.expandedCard = card
+        }
+    }
+
     private var charityCard: some View {
         statCard(
             title: FundSectionID.charity.displayName(customNames: appState.fundNames),
@@ -938,7 +999,7 @@ public struct HomeView: View {
             isLoading: viewModel.charity.isLoading,
             statusText: charityStatusText,
             statusIsError: viewModel.charity.isFailed,
-            isExpanded: appState.expandedCard == .charity,
+            isExpanded: isStatCardsExpanded,
             ariaLabel: charityAriaLabel,
             compact: true,
             onTap: {
@@ -949,15 +1010,10 @@ public struct HomeView: View {
                 case .failed, .loaded:
                     // Failed cards expand too, so the error + Retry
                     // are reachable; loading still shows the alert.
-                    appState.expandedCard = appState.expandedCard == .charity ? nil : .charity
+                    // Build 43: the pair opens/closes together.
+                    toggleStatCards(.charity)
                 }
-            },
-            // Collapsed summary (owner, Nov 16, 2026 — build 40):
-            // the white body shows "Given · Total" when collapsed,
-            // so the card is majority white even unexpanded. The
-            // detail rows (Available/Given/Total) live in the same
-            // white body when expanded.
-            summaryText: charitySummaryText
+            }
         ) { charityRows }
     }
 
@@ -989,7 +1045,7 @@ public struct HomeView: View {
             isLoading: viewModel.fund.isLoading,
             statusText: fundStatusText,
             statusIsError: viewModel.fund.isFailed,
-            isExpanded: appState.expandedCard == .fund,
+            isExpanded: isStatCardsExpanded,
             ariaLabel: fundAriaLabel,
             compact: true,
             onTap: {
@@ -998,14 +1054,10 @@ public struct HomeView: View {
                     notLoadedAlertTitle = FundSectionID.fund.displayName(customNames: appState.fundNames)
                     showNotLoadedAlert = true
                 case .failed, .loaded:
-                    appState.expandedCard = appState.expandedCard == .fund ? nil : .fund
+                    // Build 43: the pair opens/closes together.
+                    toggleStatCards(.fund)
                 }
-            },
-            // Collapsed summary (owner, Nov 16, 2026 — build 40):
-            // the white body shows "Pending · Total" when collapsed,
-            // so the card is majority white even unexpanded. The
-            // detail rows live in the same white body when expanded.
-            summaryText: fundSummaryText
+            }
         ) { fundRows }
     }
 
@@ -1022,16 +1074,22 @@ public struct HomeView: View {
                     .buttonStyle(TertiaryButtonStyle())
             } else if case .loaded(let summary) = viewModel.fund {
                 // Home expansions show rows only, no action buttons.
-                // Row labels are Title Case (owner rule, Nov 4, 2026):
-                // "Spendable Available" (admin) / "Available to
-                // Request" (member). The in-code web-parity exemption
-                // for these rows was wrong and is removed (audit
-                // H-P2-1).
+                // Row labels are Title Case (owner rule, Nov 4, 2026).
+                // Build 43 (owner, Nov 17, 2026): the first row is
+                // just "Available" — "Spendable Available" was too
+                // long and truncated in the half-width card. The
+                // in-code web-parity exemption for these rows was
+                // wrong and is removed (audit H-P2-1).
                 statRow(
-                    label: viewModel.isAdmin ? "Spendable Available" : "Available to Request",
+                    label: "Available",
                     value: MoneyFormat.signedString(cents: summary.availableCents))
-                statRow(label: "Pending", value: MoneyFormat.string(cents: summary.pendingIncludingHeldCents))
-                statRow(label: "Total", value: MoneyFormat.string(cents: summary.totalCents))
+                // Build 43 (owner, Nov 17, 2026 — "Doesn't show the
+                // pending amounts"): Pending/Total fold in pending
+                // top-ups, matching FundsViewModel.savingsPendingCents
+                // — a $650 pending top-up reads Pending $650.00 and
+                // Total $650.00 here, not $0.00.
+                statRow(label: "Pending", value: MoneyFormat.string(cents: summary.pendingIncludingHeldCents + viewModel.pendingTopupsCents))
+                statRow(label: "Total", value: MoneyFormat.string(cents: summary.totalCents + viewModel.pendingTopupsCents))
             }
         }
     }
@@ -1048,6 +1106,14 @@ public struct HomeView: View {
     /// card's own white body now (they were a separate block below
     /// the banner in build 39, floating on white with a gap). The
     /// green/amber outlines are gone.
+    /// Build 43 (owner, Nov 17, 2026): the collapsed card shows
+    /// the fund NAME in the header bar (icon + name) and the AMOUNT
+    /// CENTRED in the white body below — the "Given · Total" /
+    /// "Pending · Total" summary line is gone (it truncated and
+    /// looked ugly). This reverses build 42 item 22, which hid the
+    /// name in the header and put the amount there: with the amount
+    /// out of the header, icon + name fit on a compact iPhone. The
+    /// expanded view still shows the full detail rows.
     /// The chevron is SF Symbol chevron.down, down when collapsed,
     /// up when expanded — it flips instantly, no rotation animation:
     /// expand/collapse is instant since build 34 (owner decision
@@ -1084,7 +1150,6 @@ public struct HomeView: View {
         ariaLabel: String,
         compact: Bool = false,
         onTap: @escaping () -> Void,
-        summaryText: String? = nil,
         @ViewBuilder rows: () -> Rows
     ) -> some View {
         // One sizing table: compact (Home, iPhone) / compact on
@@ -1099,20 +1164,15 @@ public struct HomeView: View {
         // line: the amount keeps its 0.7 shrink and the title
         // gains a 0.85 shrink, so a long fund name still fits
         // beside a big amount in a half-width card.
-        // Build 42 (owner, Nov 17, 2026 — item 22): on a compact
-        // iPhone the title does NOT fit beside the amount in a
-        // half-width card — "Tze..." / "$6..." truncated. So the
-        // collapsed header shows icon + amount only; the fund
-        // name moves into the expanded body as a heading. iPad
-        // keeps the name in the header (room for it). This also
-        // fixes item 23 (Home horizontal overflow): the title +
-        // its 90pt skeleton were the ~60-70pt that forced the
-        // half-width row wider than the screen, clipping the
-        // "Recent Transactions" heading and the skeleton bars.
-        // Loaded header after this: icon 34 + amount (~85, shrinks
-        // to 0.7) + padding 32 ≈ the ~173pt card width; loading:
-        // 34 + 72 + 32 ≈ 146pt. Both fit.
-        let hideTitle = compact && !isIPad
+        // Build 43 (owner, Nov 17, 2026): the name is ALWAYS in
+        // the header now — build 42 item 22 hid it on a compact
+        // iPhone because title + amount did not fit in a half-
+        // width card, but the amount has moved OUT of the header
+        // into the white body (centred), so icon + name fit:
+        // icon 34 + title (~90 skeleton) + padding 32 ≈ 156pt
+        // against the ~173pt card width. The build-42 overflow
+        // fix (item 23) still holds — nothing in the header is
+        // wider than before.
         let chip: CGFloat = compact ? (isIPad ? 40 : 34) : 40
         let iconSize: CGFloat = compact ? (isIPad ? 18 : 16) : 20
         let titleSize: CGFloat = compact ? (isIPad ? 20 : 18) : 20
@@ -1133,9 +1193,10 @@ public struct HomeView: View {
             return theme.banner
         }()
         // Text colour on the header: the theme's onBanner colour
-        // (build 41 — per theme: white on the dark Spending/Debt
-        // banners, ink on the light Charity pale / Extra Fund
-        // tertiary banners), ink on the grey loading/failed header.
+        // (build 41, updated build 43 — per theme: white on the
+        // dark Debt banner only, ink on the light Spending /
+        // Charity pale / Extra Fund tertiary banners), ink on the
+        // grey loading/failed header.
         // The icon is always the theme's glyph colour — it sits on
         // a WHITE circle, so it reads on white in every state.
         let onBanner: Color = {
@@ -1144,10 +1205,11 @@ public struct HomeView: View {
         }()
         return VStack(alignment: .leading, spacing: 0) {
             // Header strip (colored, short): ONE ROW — icon in a
-            // white circle + title + amount, all on the fund color.
-            // Build 42 item 22: on a compact iPhone the title is
-            // hidden here (icon + amount only); it lives in the
-            // expanded body instead.
+            // white circle + title, all on the fund color.
+            // Build 43 (owner, Nov 17, 2026): the amount is NOT
+            // here any more — it is centred in the white body
+            // below (build 42 item 22 had it here with the title
+            // hidden; that is reversed).
             HStack(spacing: 8) {
                 if isLoading {
                     SkeletonBlock(width: chip, height: chip, cornerRadius: chip / 2)
@@ -1164,66 +1226,48 @@ public struct HomeView: View {
                         .background(.white)
                         .clipShape(Circle())
                 }
-                if !hideTitle {
-                    if isLoading {
-                        // Skeleton title while loading (owner, Nov 16,
-                        // 2026 — build 38): real dark-ink text on the
-                        // placeholder read as a finished card. The
-                        // failed state keeps the real title.
-                        SkeletonBlock(width: 90, height: 20, cornerRadius: 6)
-                    } else {
-                        Text(title)
-                            .font(.system(size: titleSize, weight: .bold))
-                            .foregroundStyle(onBanner)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                    }
-                }
-                Spacer()
+                // Build 43 (owner, Nov 17, 2026): the name is
+                // always in the header; the amount lives in the
+                // white body below, so the header is icon + name
+                // only — nothing here can truncate against an
+                // amount any more.
                 if isLoading {
-                    // Amount-sized skeleton, inline in the header
-                    // row (it was a full-width bar when the amount
-                    // sat on its own line below the title). Same
-                    // height as the loaded amount, so the header
-                    // holds its size while loading.
-                    SkeletonBlock(width: 72, height: amountSkeletonHeight, cornerRadius: 6)
-                } else if statusIsError {
-                    SkeletonBlock(width: 72, height: amountSkeletonHeight, cornerRadius: 6, animated: false)
+                    // Skeleton title while loading (owner, Nov 16,
+                    // 2026 — build 38): real dark-ink text on the
+                    // placeholder read as a finished card. The
+                    // failed state keeps the real title.
+                    SkeletonBlock(width: 90, height: 20, cornerRadius: 6)
                 } else {
-                    Text(face)
-                        .font(.system(size: amountSize, weight: .heavy))
+                    Text(title)
+                        .font(.system(size: titleSize, weight: .bold))
                         .foregroundStyle(onBanner)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.85)
                 }
+                Spacer()
             }
             .padding(.horizontal, pad)
             .padding(.vertical, 14)
             .background(bannerColor)
-            // White body (majority): the summary line when
-            // collapsed, the detail rows when expanded. While
-            // loading a single skeleton line; while failed the red
-            // status line when collapsed, or the rows (ErrorBox +
-            // Retry) when expanded. Build 42 (owner, Nov 17, 2026
-            // — "the white body should be double the header"):
-            // roughly 1/3 header, 2/3 white body, so the body
-            // padding steps up to 52pt top and bottom — the card
-            // gets taller with the white body dominating. The
-            // header is untouched.
+            // White body (majority): the amount CENTRED when
+            // collapsed (build 43), the detail rows when expanded.
+            // While loading a centred amount-sized skeleton; while
+            // failed the red status line when collapsed, or the
+            // rows (ErrorBox + Retry) when expanded. Build 42
+            // (owner, Nov 17, 2026 — "the white body should be
+            // double the header"): roughly 1/3 header, 2/3 white
+            // body, so the body padding steps up to 52pt top and
+            // bottom — the card gets taller with the white body
+            // dominating. The header is untouched.
             VStack(alignment: .leading, spacing: 8) {
                 if isLoading {
-                    SkeletonBlock(height: 14)
+                    // Amount-sized skeleton, CENTRED like the
+                    // loaded amount below (build 43) — same height
+                    // as the amount, so the body holds its size
+                    // while loading.
+                    SkeletonBlock(width: 96, height: amountSkeletonHeight, cornerRadius: 6)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 } else if isExpanded {
-                    // Build 42 item 22: on a compact iPhone the
-                    // fund name is not in the header, so it heads
-                    // the expanded body — the only place the name
-                    // appears on the collapsed-width card.
-                    if hideTitle {
-                        Text(title)
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(DesignTokens.ink)
-                            .lineLimit(1)
-                    }
                     rows()
                     HStack {
                         Spacer()
@@ -1243,13 +1287,21 @@ public struct HomeView: View {
                             .font(.system(size: chevronSize, weight: .bold))
                             .foregroundStyle(DesignTokens.muted)
                     }
-                } else if let summaryText {
-                    HStack(spacing: 8) {
-                        Text(summaryText)
-                            .font(.system(size: statusSize))
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                } else {
+                    // Build 43 (owner, Nov 17, 2026): the collapsed
+                    // body is the AMOUNT, CENTRED — the "Given ·
+                    // Total" / "Pending · Total" summary line is
+                    // gone (it truncated and looked ugly). The
+                    // chevron sits at the bottom-right below it, so
+                    // the amount stays truly centred. The expanded
+                    // view still shows the full detail rows above.
+                    Text(face)
+                        .font(.system(size: amountSize, weight: .heavy))
+                        .foregroundStyle(DesignTokens.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    HStack {
                         Spacer()
                         Image(systemName: "chevron.down")
                             .font(.system(size: chevronSize, weight: .bold))
@@ -1277,7 +1329,8 @@ public struct HomeView: View {
     /// (owner rule, Nov 4, 2026 — audit H-P2-1). The rows live in
     /// a half-width column now (build 39), so label and value
     /// shrink a little instead of truncating or wrapping — the
-    /// long "Spendable Available" label needs it.
+    /// first row is just "Available" since build 43 (the old
+    /// "Spendable Available" label was too long and truncated).
     private func statRow(label: String, value: String) -> some View {
         HStack {
             Text(label)
@@ -1301,18 +1354,6 @@ public struct HomeView: View {
         switch viewModel.charity {
         case .loaded(let summary): return MoneyFormat.signedString(cents: summary.remainingCents)
         case .failed, .loading: return ""
-        }
-    }
-
-    /// Collapsed summary for the Charity card's white body (owner,
-    /// Nov 16, 2026 — build 40): "Given · Total" — the two figures
-    /// that are NOT the Available amount already in the header, so
-    /// the card is majority white even unexpanded. Nil unless loaded.
-    private var charitySummaryText: String? {
-        switch viewModel.charity {
-        case .loaded(let summary):
-            return "Given \(MoneyFormat.string(cents: summary.givenCents)) · Total \(MoneyFormat.string(cents: summary.committedCents))"
-        case .failed, .loading: return nil
         }
     }
 
@@ -1344,19 +1385,6 @@ public struct HomeView: View {
         }
     }
 
-    /// Collapsed summary for the Extra Fund card's white body
-    /// (owner, Nov 16, 2026 — build 40): "Pending · Total" — the
-    /// two figures that are NOT the Available amount already in
-    /// the header, so the card is majority white even unexpanded.
-    /// Nil unless loaded.
-    private var fundSummaryText: String? {
-        switch viewModel.fund {
-        case .loaded(let summary):
-            return "Pending \(MoneyFormat.string(cents: summary.pendingIncludingHeldCents)) · Total \(MoneyFormat.string(cents: summary.totalCents))"
-        case .failed, .loading: return nil
-        }
-    }
-
     private var charityAriaLabel: String {
         switch viewModel.charity {
         case .loaded(let summary):
@@ -1377,8 +1405,9 @@ public struct HomeView: View {
     private var fundAriaLabel: String {
         switch viewModel.fund {
         case .loaded(let summary):
-            if summary.pendingIncludingHeldCents > 0 {
-                return "Extra Fund, \(MoneyFormat.string(cents: summary.availableCents)) available, \(MoneyFormat.string(cents: summary.pendingIncludingHeldCents)) pending, show breakdown"
+            let pending = summary.pendingIncludingHeldCents + viewModel.pendingTopupsCents
+            if pending > 0 {
+                return "Extra Fund, \(MoneyFormat.string(cents: summary.availableCents)) available, \(MoneyFormat.string(cents: pending)) pending, show breakdown"
             }
             return "Extra Fund, \(MoneyFormat.string(cents: summary.availableCents)) available, show breakdown"
         case .failed:

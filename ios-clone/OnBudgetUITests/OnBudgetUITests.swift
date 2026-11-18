@@ -555,13 +555,23 @@ final class OnBudgetUITests: XCTestCase {
         app.buttons["auth.createAccount"].tap()
 
         // -- 3. Name step ------------------------------------------------
-        let nameField = app.textFields["auth.name"]
+        // Build 43 (owner, Nov 17, 2026): sign-up collects First Name
+        // and Last Name as separate fields (ids auth.firstName /
+        // auth.lastName); the stored display name is derived as
+        // "First L.".
+        let firstNameField = app.textFields["auth.firstName"]
         XCTAssertTrue(
-            nameField.waitForExistence(timeout: 60),
+            firstNameField.waitForExistence(timeout: 60),
             "Name step did not appear after Create Account (sign-up may have failed)"
         )
-        tapAndTypeText(nameField, "UI Test", fieldName: "auth.name")
-        dismissKeyboardIfPresent(focusedField: nameField)
+        tapAndTypeText(firstNameField, "UI", fieldName: "auth.firstName")
+        let lastNameField = app.textFields["auth.lastName"]
+        XCTAssertTrue(
+            lastNameField.waitForExistence(timeout: 10),
+            "Last Name field missing on the sign-up name step"
+        )
+        tapAndTypeText(lastNameField, "Test", fieldName: "auth.lastName")
+        dismissKeyboardIfPresent(focusedField: lastNameField)
         app.buttons["auth.createAccountConfirm"].tap()
 
         // -- 4. Confirm via the Admin API, then sign in -----------------

@@ -5,8 +5,24 @@
 // Wiring (exact API calls):
 // - Members: RPC `list_household_members()` — no full email, only
 //   `email_prefix` as the name fallback. Display-name resolution:
-//   stored display_name -> own auth-metadata name -> email_prefix ->
-//   "Household member" (never the bare word "Member").
+//   stored display_name -> own auth-metadata name (re-read from the
+//   server on every load, build 43) -> email_prefix ->
+//   "Household member" (never the bare word "Member"). Real display
+//   names render in the short "First L." form (build 43, Nov 17,
+//   2026); the email-prefix and "Household member" fallbacks are
+//   shown as-is, never shortened.
+//   BUILD 43 ROOT CAUSE (item 9): the stored `display_name` is a
+//   snapshot copied from auth metadata ONLY when the member row is
+//   created (create/join RPCs, signup-display-name.sql) — nothing
+//   ever updates it, and Save Name writes auth metadata
+//   (`full_name`) only. The RPC returns that stale snapshot, and
+//   the client can only fall back to auth metadata for its OWN row
+//   (RLS hides other members' metadata), so another member's rename
+//   falls through to the email prefix on this device — that is why
+//   the wife still showed as "chayasf1" here. The client fix covers
+//   the own row + refresh-on-rename; another member's rename needs
+//   a SERVER change (sync `household_members.display_name` when the
+//   metadata name changes, or have the RPC read auth metadata live).
 // - Remove: RPC `remove_household_member(p_user_id:)` after one
 //   confirm. Server re-checks: OWNER-ONLY (roles decision, Nov 11,
 //   2026 — the PR #57 "never the last admin" guard is gone: only the
@@ -18,10 +34,14 @@
 //   Admin (co-admin), Member. Owner or admin can promote a member to
 //   admin; only the owner can change an admin back to member; the
 //   owner's role never changes. RPC `set_household_member_role`.
-//   Each role shows its label + a short plain note of what it can do.
+//   Each role shows its label as plain muted-grey text, no pill
+//   (build 43, Nov 17, 2026); what each role can do lives behind
+//   the ⓘ next to the "Members" heading.
 // - Invite code: `PostgrestClient.inviteCode(householdId:)` (the
 //   `households.invite_code` column — NEVER the household UUID).
 //   OWNER-ONLY: only the owner fetches or sees it (Nov 11, 2026).
+//   Build 43 (Nov 17, 2026): the invite-code section sits ABOVE
+//   the Household / Members section now, not below it.
 //   A failed read shows an error line, never "No invite code is set
 //   up" (owner report, Nov 11: the app said that while PJM2HG
 //   existed).
@@ -46,6 +66,30 @@
 import SwiftUI
 import UIKit
 import OnBudgetKit
+
+/// Build 43 (owner, Nov 17, 2026 — item 10): member names show as
+/// first name + last initial + "." (e.g. "Shuki Friedman" ->
+/// "Shuki F."). Display formatting ONLY — the stored display name is
+/// never changed. A single name part shows as-is (never fabricate
+/// an initial); an already-short "Shuki F." stays "Shuki F.".
+/// Shared with the sign-up name step (AuthViews.swift), which
+/// derives the stored display name the same way.
+func shortMemberName(_ fullName: String) -> String {
+    let trimmed = fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+    let parts = trimmed.split(separator: " ").map(String.init)
+    guard parts.count >= 2, let first = parts.first, let last = parts.last, let initial = last.first else {
+        return trimmed
+    }
+    return "\(first) \(initial.uppercased())."
+}
+
+/// Build 43 (owner, Nov 17, 2026 — item 9): posted when the
+/// signed-in user saves a new display name in Profile
+/// (ProfileSettingsViewModel), so the Members list re-reads the name
+/// instead of showing a stale row until the next cold load.
+extension Notification.Name {
+    static let displayNameDidChange = Notification.Name("OnBudget.displayNameDidChange")
+}
 
 @MainActor
 final class MembersSettingsViewModel: ObservableObject {
@@ -77,6 +121,11 @@ final class MembersSettingsViewModel: ObservableObject {
     @Published var alert: MembersAlert?
     @Published var copiedCode = false
     @Published var showShareSheet = false
+    /// Build 43 (owner, Nov 17, 2026 — item 9): the signed-in
+    /// user's auth-metadata name, re-read from the server on every
+    /// load (see load()) — fresher than the `context.displayName`
+    /// snapshot taken when Settings was built.
+    @Published var ownMetadataName: String?
 
     /// The single alert state for the Members screen (build 30).
     /// One `.alert(item:)` in the view switches over the case.
@@ -154,12 +203,30 @@ final class MembersSettingsViewModel: ObservableObject {
         return nil
     }
 
+    /// Build 43 (owner, Nov 17, 2026 — items 9–10): the name shown
+    /// for a member. Resolution, in order: the stored `display_name`
+    /// the `list_household_members()` RPC returns; the signed-in
+    /// user's own auth-metadata name (re-read on load, so a Profile
+    /// rename shows without a cold restart) — own row only; then
+    /// the email prefix; then "Household member". A real display
+    /// name renders in the short "First L." form; the email prefix
+    /// and the "Household member" fallback are NOT shortened
+    /// ("Household member" must never render as "Household m.").
+    /// The stored name itself is never changed here — formatting
+    /// only. See the file header for why another member's rename
+    /// can still fall through to the email prefix (server gap).
     func displayName(for member: MemberListRow) -> String {
-        let isOwnRow = member.userId == context.currentUserId
-        return member.displayName(
-            fallbackOwnMetadataName: context.displayName,
-            isOwnRow: isOwnRow
-        )
+        if let stored = member.displayName?.trimmingCharacters(in: .whitespacesAndNewlines), !stored.isEmpty {
+            return shortMemberName(stored)
+        }
+        if isOwnRow(member) {
+            let meta = (ownMetadataName ?? context.displayName)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let meta, !meta.isEmpty { return shortMemberName(meta) }
+        }
+        if let prefix = member.emailPrefix?.trimmingCharacters(in: .whitespacesAndNewlines), !prefix.isEmpty {
+            return prefix
+        }
+        return "Household member"
     }
 
     func isOwnRow(_ member: MemberListRow) -> Bool {
@@ -186,6 +253,14 @@ final class MembersSettingsViewModel: ObservableObject {
         } catch {
             loadError = settingsErrorMessage(error)
             loadFailed = true
+        }
+        // Build 43 (owner, Nov 17, 2026 — item 9): re-read the
+        // signed-in user's auth-metadata name on every load, so a
+        // Profile rename shows in the Members list without a cold
+        // restart. Best-effort — a failure keeps the `context`
+        // snapshot and never fails the members load.
+        if let user = try? await context.client.getUser() {
+            ownMetadataName = user.displayName
         }
         // The invite code is owner-only (owner decision, Nov 11,
         // 2026): only the owner fetches it. A failed read is
@@ -350,6 +425,12 @@ private struct MemberActionButtonStyle: ButtonStyle {
 struct MembersSettingsView: View {
     @StateObject private var viewModel: MembersSettingsViewModel
     private let context: SettingsContext
+    /// Build 43 (owner, Nov 17, 2026 — item 14): the two ⓘ alerts
+    /// on this card. They live on inner stacks, not the card root —
+    /// the card root already carries the single `.alert(item:)`
+    /// for remove / role / delete.
+    @State private var showingRolesInfo = false
+    @State private var showingDeleteInfo = false
 
     init(context: SettingsContext, toast: ToastState) {
         self.context = context
@@ -358,18 +439,42 @@ struct MembersSettingsView: View {
 
     var body: some View {
         SettingsCard(title: "Account & Household") {
-            Text("Only the owner can share the invite code.")
-                .font(.subheadline)
-                .foregroundStyle(Color(hex: "#6b7280"))
+            // Build 43 (owner, Nov 17, 2026 — item 15): the invite
+            // code sits ABOVE the Household / Members section now,
+            // not below it.
+            if viewModel.isOwner {
+                inviteCodeSection
+            }
+
             if let name = viewModel.householdName, !name.isEmpty {
                 Text("Household: \(name)")
                     .font(.subheadline)
                     .fontWeight(.semibold)
             }
 
-            Text("Members")
-                .font(.headline)
-                .padding(.top, 4)
+            // Build 43 (owner, Nov 17, 2026 — item 14): the role
+            // explanations live behind the ⓘ now, not as inline
+            // paragraphs under the list. Same ⓘ + alert pattern as
+            // the fund descriptions in FundsShared.swift.
+            HStack(spacing: 6) {
+                Text("Members")
+                    .font(.headline)
+                Button { showingRolesInfo = true } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About Member Roles")
+            }
+            .padding(.top, 4)
+            .alert("Roles", isPresented: $showingRolesInfo) {
+                Button("OK") {}
+            } message: {
+                Text("Owner — Started the household — the only one who can remove members or see the invite code.\nAdmin — Full access except removing members.\nMember — Regular member.")
+            }
             // A reload failure shows above the list even when stale
             // rows are already on screen — never a silent stale list.
             // The error + Retry stay until a load succeeds; the
@@ -393,18 +498,21 @@ struct MembersSettingsView: View {
                 ForEach(viewModel.members) { member in
                     memberRow(member)
                 }
-                rolesLegend
             } else if !viewModel.loadFailed {
                 MutedLine(text: "No members yet.")
-            }
-
-            if viewModel.isOwner {
-                inviteCodeSection
             }
 
             deleteAccountSection
         }
         .task { await viewModel.load() }
+        // Build 43 (owner, Nov 17, 2026 — item 9): re-read the list
+        // whenever Settings appears, and whenever the signed-in user
+        // saves a new name in Profile on this same screen — otherwise
+        // the rename only shows after a cold restart.
+        .onAppear { Task { await viewModel.load() } }
+        .onReceive(NotificationCenter.default.publisher(for: .displayNameDidChange)) { _ in
+            Task { await viewModel.load() }
+        }
         // ONE alert for the whole screen (build 30): SwiftUI only
         // honours a single `.alert` modifier on a view, so the six
         // this screen used to stack meant only one ever fired — the
@@ -486,7 +594,14 @@ struct MembersSettingsView: View {
             Text(viewModel.displayName(for: member) + (viewModel.isOwnRow(member) ? " (you)" : ""))
                 .font(.subheadline)
                 .fontWeight(.semibold)
-            RolePill(role: viewModel.displayRole(for: member))
+            // Build 43 (owner, Nov 17, 2026 — item 12): the role
+            // shows as plain muted-grey text, no pill — the pills
+            // made the rows look unequal. Plain grey #6b7280, no
+            // background, no tint.
+            Text(viewModel.displayRole(for: member).label)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(Color(hex: "#6b7280"))
             Spacer()
             if let action = viewModel.roleAction(for: member) {
                 Button(action.label) {
@@ -507,22 +622,15 @@ struct MembersSettingsView: View {
         }
     }
 
-    /// The role legend: each role with its short plain note of what it
-    /// can do (owner decision, Nov 11, 2026).
-    private var rolesLegend: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach([HouseholdRole.owner, .admin, .member], id: \.rawValue) { role in
-                Text("\(role.label) — \(role.capabilityNote)")
-                    .font(.caption)
-                    .foregroundStyle(Color(hex: "#6b7280"))
-            }
-        }
-        .padding(.top, 4)
-    }
-
     @ViewBuilder
     private var inviteCodeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Build 43 (owner, Nov 17, 2026 — items 14–15): the
+            // owner-only note stays with the code as a short
+            // one-liner; the long role paragraphs moved behind ⓘ.
+            Text("Only the owner can share the invite code.")
+                .font(.subheadline)
+                .foregroundStyle(Color(hex: "#6b7280"))
             Text("Members join with this invite code.")
                 .font(.subheadline)
                 .foregroundStyle(Color(hex: "#6b7280"))
@@ -569,12 +677,29 @@ struct MembersSettingsView: View {
 
     private var deleteAccountSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Delete Account")
-                .font(.headline)
-                .padding(.top, 8)
-            Text("Deleting removes you from this household. If you are the last member, the household is deleted too. This cannot be undone.")
-                .font(.subheadline)
-                .foregroundStyle(Color(hex: "#6b7280"))
+            // Build 43 (owner, Nov 17, 2026 — item 14): the Delete
+            // Account explanation lives behind the ⓘ, not as an
+            // inline paragraph. Same ⓘ + alert pattern as the fund
+            // descriptions in FundsShared.swift.
+            HStack(spacing: 6) {
+                Text("Delete Account")
+                    .font(.headline)
+                Button { showingDeleteInfo = true } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About Delete Account")
+            }
+            .padding(.top, 8)
+            .alert("Delete Account", isPresented: $showingDeleteInfo) {
+                Button("OK") {}
+            } message: {
+                Text("Deleting removes you from this household. If you are the last member, the household is deleted too. This cannot be undone.")
+            }
             // Centred with room around it (owner, Nov 15, 2026) —
             // it sat left-aligned and tight against the text above.
             Button("Delete Account") {
@@ -583,18 +708,9 @@ struct MembersSettingsView: View {
             .buttonStyle(DangerButtonStyle())
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 10)
-            HStack(spacing: 4) {
-                Link("Privacy", destination: URL(string: "https://ycfried.github.io/Budget/privacy.html")!)
-                Text("·")
-                Link("Terms", destination: URL(string: "https://ycfried.github.io/Budget/terms.html")!)
-            }
-            .font(.subheadline)
-            .foregroundStyle(DesignTokens.mid)
-            // Centred at the bottom of the page (owner, Nov 14,
-            // 2026) — the links sat left-aligned under Delete
-            // Account.
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 4)
+            // Build 43 (owner, Nov 17, 2026 — item 13): Privacy ·
+            // Terms moved out of this card into their own card at
+            // the bottom of Settings (SettingsView).
         }
     }
 }

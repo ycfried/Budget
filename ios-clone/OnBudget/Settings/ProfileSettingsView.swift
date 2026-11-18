@@ -147,7 +147,28 @@ final class ProfileSettingsViewModel: ObservableObject {
         defer { isSavingName = false }
         do {
             _ = try await context.client.updateDisplayName(trimmed)
+            // Build 43 (owner, Nov 17, 2026 — item 9): the Members
+            // list reads `household_members.display_name`, a snapshot
+            // that nothing updates after member creation — so push
+            // the new name into the caller's member rows too
+            // (`sync_my_display_name`, display-name-sync.sql).
+            // Best-effort: until that SQL is applied live the RPC
+            // does not exist and this throws — swallowed, never fails
+            // the save.
+            do {
+                try await context.client.rpcs.syncMyDisplayName(trimmed)
+            } catch {
+                // No-op: the stale snapshot is fixed by the SQL
+                // backfill / the next save after it lands.
+            }
             name = trimmed
+            // Build 43 (owner, Nov 17, 2026 — item 9): the Members
+            // list lives on this same screen, so a saved name must
+            // reach it now — not on the next cold load. The auth
+            // metadata write above is the only name store the
+            // client can touch; the Members list re-reads it on
+            // this notification (see MembersSettingsView).
+            NotificationCenter.default.post(name: .displayNameDidChange, object: nil)
             toast.show("Name saved — it now shows in your profile.", kind: .success)
         } catch {
             saveError = "Could not save your name. Try again."
@@ -221,6 +242,11 @@ struct ProfileSettingsView: View {
     /// toolbar's Done button is the way out (owner, Nov 13, 2026).
     @FocusState private var nameFocused: Bool
     @FocusState private var emailFocused: Bool
+    /// Build 43 (owner, Nov 17, 2026 — item 14): the Face ID
+    /// explainer lives behind the ⓘ, not as an inline line under
+    /// the toggle. Same ⓘ + alert pattern as the fund descriptions
+    /// in FundsShared.swift.
+    @State private var showingFaceIDInfo = false
 
     init(context: SettingsContext, toast: ToastState) {
         _viewModel = StateObject(wrappedValue: ProfileSettingsViewModel(context: context, toast: toast))
@@ -271,14 +297,27 @@ struct ProfileSettingsView: View {
             // tests. Toggling on evaluates Face ID once, then stores
             // the session behind biometrics; toggling off deletes it.
             if viewModel.faceIDAvailable {
-                Toggle(viewModel.faceIDLabel, isOn: $viewModel.faceIDEnabled)
-                    .accessibilityIdentifier("settings.faceIDToggle")
-                    .onChange(of: viewModel.faceIDEnabled) { _, newValue in
-                        Task { await viewModel.setFaceID(newValue) }
+                HStack(spacing: 6) {
+                    Toggle(viewModel.faceIDLabel, isOn: $viewModel.faceIDEnabled)
+                        .accessibilityIdentifier("settings.faceIDToggle")
+                        .onChange(of: viewModel.faceIDEnabled) { _, newValue in
+                            Task { await viewModel.setFaceID(newValue) }
+                        }
+                    Button { showingFaceIDInfo = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
-                Text("Unlock OnBudget with \(viewModel.faceIDBiometryName) instead of typing your password.")
-                    .font(.subheadline)
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("About \(viewModel.faceIDLabel)")
+                }
+                .alert(viewModel.faceIDLabel, isPresented: $showingFaceIDInfo) {
+                    Button("OK") {}
+                } message: {
+                    Text("Unlock OnBudget with \(viewModel.faceIDBiometryName) instead of typing your password.")
+                }
             }
 
             Button(viewModel.isSigningOut ? "Signing Out…" : "Sign Out") {
