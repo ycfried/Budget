@@ -67,7 +67,7 @@ import {
   headerValue,
   parseAmexAlertText,
 } from './gmail-parse.ts';
-import { applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, findCoveringBankRow, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
+import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, findCoveringBankRow, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -230,6 +230,19 @@ Deno.serve(async (req) => {
               last_error: 'reauthorization required',
             }).eq('id', conn.id);
             errors.push({ connection_id: conn.id, error: 'reauthorization required' });
+            // Notifications (push-notify, Nov 16, 2026): the Gmail
+            // connection needs reauthorization — tell the admins.
+            // Best-effort; push-notify dedupes to once per day per
+            // connection, so repeated polls do not spam.
+            try {
+              await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+                body: JSON.stringify({ type: 'gmail_expiring', household_id: householdId, connection_id: conn.id }),
+              });
+            } catch {
+              console.error('gmail-poll: push-notify call failed');
+            }
             continue;
           }
           throw new Error('token refresh failed');
@@ -390,6 +403,13 @@ Deno.serve(async (req) => {
               } catch (e) {
                 logLinkError(e);
               }
+              // Build 44 (item 5): an income alert accrues charity
+              // once it posts. Email rows insert as provisional, so
+              // this call is dormant today (the helper returns
+              // immediately for non-verified rows) — it is wired now
+              // so the path is not forgotten when a multi-bank parser
+              // can emit income alerts. Best-effort, never fails poll.
+              await accrueCharityForIncomeTx(supabaseAdmin, householdId, inserted.id, kind, 'provisional');
             }
             await supabaseAdmin.from('processed_email_ids').insert({
               connection_id: conn.id, message_id: messageId, disposition: 'stored',
@@ -417,6 +437,27 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Notifications (push-notify, Nov 16, 2026): best-effort, never
+    // fail the poll. push-notify re-reads the new charges / incomes /
+    // charity gifts itself and dedupes by dedupe_hash, so a purchase
+    // already notified via Plaid is not re-notified here.
+    if (totals.stored > 0) {
+      try {
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'new_transaction', household_id: householdId, source: 'gmail' }),
+        });
+        // Review queue: a sync can create possible duplicates.
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'needs_review', household_id: householdId }),
+        });
+      } catch {
+        console.error('gmail-poll: push-notify call failed');
+      }
+    }
     return json({ ...totals, errors, minutes_since_previous_poll: minutesSincePreviousPoll, stale });
   } catch (e) {
     console.error('gmail-poll failed:', (e as Error)?.message ?? e);

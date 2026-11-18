@@ -46,8 +46,27 @@
 // State mapping (compute-week interface, S2 consumes these verbatim):
 //   pending Plaid row  -> state='provisional'
 //   posted Plaid row   -> state='verified'
-//   removed Plaid row  -> state='reversed' AND excluded=true (never
-//                         deleted; append-only, audit P1-3)
+//   removed Plaid row  -> state='reversed' AND excluded=true ONLY for a
+//                         VERIFIED row with no replacement in this sync
+//                         or in a recent window of household rows
+//                         (never deleted; append-only, audit P1-3).
+//                         Build 44 change 1 (Nov 18, 2026): a
+//                         PROVISIONAL row in removed[] is left untouched
+//                         — a pending tx disappearing is normal, it
+//                         posted under a new id — and a verified row
+//                         with a same-merchant+amount+date+card_suffix
+//                         replacement is LINKED to the new id (kind
+//                         kept, duplicate arrival row excluded), not
+//                         trashed; a same-triple arrival on another
+//                         card is still a re-issue, left untouched.
+//                         The removed[] matcher uses ONLY the row's
+//                         live ids — never plaid_pending_transaction_id,
+//                         which still holds the old pending id after a
+//                         pending→posted link.
+//                         Removed rows are decided AFTER the whole
+//                         item's pages are read, so a replacement on a
+//                         later page still counts. See decideRemovedRow
+//                         in canonical.ts.
 //   NOTE on provisional refunds: spec FINAL A4 says a pending refund
 //   restores nothing until it posts. This function labels the row
 //   provisional; S2 MUST exclude provisional refunds from week math
@@ -60,13 +79,22 @@
 //      plaid_pending_transaction_id = tx.pending_transaction_id, else
 //   3. canonical-hash MATCH (same household + dedupe_hash) — used only
 //      to update an existing cross-source row (e.g. an earlier Gmail
-//      alert row, source='amex_alert'), never as a uniqueness constraint,
+//      alert row, source in EMAIL_SOURCES), never as a uniqueness constraint,
 //      never to overwrite an unrelated identical purchase, else
+//   3b. suffix-0000 fallback: same merchant + date + amount, source in
+//      EMAIL_SOURCES, card_suffix '0000' (the alert never knew the
+//      card ending), earliest first, else
+//   3c. Plaid hash fallback (build 44 change 1 expansion): a POSTED
+//      tx with no pending_transaction_id claims the EARLIEST matching
+//      provisional PLAID row by dedupe_hash — never a verified row,
+//      so two identical real purchases still coexist, else
 //   4. insert a new row.
 // Merged-audit A14/A15/B6: a re-delivery never overwrites a trashed
 // row's state/excluded, never overwrites an admin-set kind (kind is
 // set at insert only; posting changes state, not kind), a hash match
-// only ever claims a Gmail-alert row, and a full pull (cursor NULL)
+// only ever claims a Gmail-alert row — except step 3c, which claims
+// the earliest provisional Plaid row for a posted tx with no pending
+// link (never a verified Plaid row) — and a full pull (cursor NULL)
 // drops pre-2026-11-01 rows for the household afterwards, so a
 // cursor reset cannot re-import September/October history.
 //   A posted version therefore UPDATES its pending row (amount/state
@@ -93,10 +121,18 @@
 // mid-sequence the cursor is NOT persisted, so the next run re-pulls
 // the same pages idempotently via the upsert order above.
 //
-// Overlap safety (server-sync build): overlapping sync runs need no
-// lock — upserts are idempotent (external_id / pending / hash
+// Overlap safety (build 44, item 3): overlapping sync runs ARE
+// serialised — plaid-sync claims a per-household lock
+// (try_claim_sync_lock, supabase/plaid-sync-lock.sql, TTL ~10 min)
+// right after auth, before loading items; a run that finds the lock
+// held returns 200 { sync_skipped: 'already_running' } and does
+// nothing. Upserts stay idempotent (external_id / pending / hash
 // matching updates instead of duplicating) and the cursor only moves
-// forward, so a stale cursor just re-pulls idempotently.
+// forward, so a stale cursor just re-pulls idempotently — the lock
+// covers the interleaving the upserts cannot: two runs sharing one
+// cursor and interleaving page sequences. An insert that still loses
+// a race under the same external_id (unique-violation 23505) is
+// re-selected and updated instead of reported insert-failed.
 //
 // Institution backfill: when plaid_items.institution_name is null,
 // call Plaid /item/get (for institution_id) then
@@ -105,7 +141,7 @@
 // file; no new auth flow is invented.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { applyMerchantRuleToMerchant, canonicalHash, classifyKind, flagLookalikes, loadMerchantRules, normalizeMerchant, type MerchantRule } from './canonical.ts';
+import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyKind, decideRemovedRow, EMAIL_SOURCES, flagLookalikes, loadMerchantRules, normalizeMerchant, pickPlaidHashClaim, type MerchantRule, type RemovedReplacement, type SyncArrivalLike } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -206,6 +242,10 @@ function logLinkError(error: unknown): void {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  // Build 44 (item 3): the lock releaser lives outside the try so
+  // the catch below can release on the error path too. It is null
+  // until the lock is claimed (after auth, below).
+  let releaseLock: (() => Promise<void>) | null = null;
   try {
     // Auth (server-sync build, Nov 2, 2026): verify_jwt=false in
     // config.toml, so the platform check is OFF and this in-code check
@@ -250,11 +290,41 @@ Deno.serve(async (req) => {
     if (!serviceKey) return json({ error: 'service key not configured' }, 503);
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
 
+    // Build 44 (item 3): overlap lock — claim right after auth /
+    // household validation, before loading items. A held lock is a
+    // 200 skip, not an error; the other run does the work. Fail OPEN
+    // when the lock SQL has not been applied yet (the RPC errors):
+    // log it and sync normally, so a function deploy ahead of the
+    // dashboard apply never blocks sync.
+    const lockOwner = `plaid-sync:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    let lockHeld = false;
+    try {
+      const { data: claimed, error: lockErr } = await supabaseAdmin.rpc('try_claim_sync_lock', {
+        p_household_id: householdId, p_owner: lockOwner, p_ttl_seconds: 600,
+      });
+      if (lockErr) {
+        console.error('plaid-sync: lock claim failed (syncing without lock):', lockErr.message ?? lockErr);
+      } else if (claimed === true) {
+        lockHeld = true;
+      } else {
+        return json({ sync_skipped: 'already_running' });
+      }
+    } catch (e) {
+      console.error('plaid-sync: lock claim threw (syncing without lock):', (e as Error)?.message ?? e);
+    }
+    releaseLock = async (): Promise<void> => {
+      if (!lockHeld) return;
+      lockHeld = false;
+      try {
+        await supabaseAdmin.rpc('release_sync_lock', { p_household_id: householdId, p_owner: lockOwner });
+      } catch { /* the lock expires on its own; never fail the sync */ }
+    };
+
     const clientId = Deno.env.get('PLAID_CLIENT_ID');
     const secret = Deno.env.get('PLAID_SECRET');
     const tokenKey = Deno.env.get('PLAID_TOKEN_KEY');
     const env = Deno.env.get('PLAID_ENV') ?? 'sandbox';
-    if (!clientId || !secret || !tokenKey) return json({ error: 'plaid not configured' }, 503);
+    if (!clientId || !secret || !tokenKey) { await releaseLock?.(); return json({ error: 'plaid not configured' }, 503); }
     const base = plaidBase(env);
 
     const { data: items } = await supabaseAdmin.from('plaid_items')
@@ -301,6 +371,13 @@ Deno.serve(async (req) => {
     const skippedDisconnected = allItems.length - activeItems.length;
 
     let added = 0, updated = 0, reversed = 0, skipped = 0;
+    // Build 44 change 1: removed[] rows deliberately left untouched,
+    // by reason — counted in the response, not as skips (they are
+    // not sync failures). Provisional rows disappearing is normal;
+    // re-issues are the new row being the live one; other covers
+    // already-excluded / non-verified rows.
+    let removedLeftProvisional = 0, removedLeftReissue = 0, removedLeftOther = 0;
+    let removedLinked = 0;
     let truncated = false;
     // P2-B7 (Nov 8, 2026): skipped rows are now visible — every skip
     // is logged server-side with its reason, and the response carries
@@ -500,13 +577,26 @@ Deno.serve(async (req) => {
       }
 
       // --- /transactions/sync with a LOADED cursor ---
+      // Build 44 change 1: removed[] is decided AFTER the whole
+      // item's pages are read (deferred block below the cursor
+      // persist). syncArrivals collects every added/modified tx of
+      // this sync in stored-row form (ruled display merchant +
+      // signed cents + date + card suffix from the account mask),
+      // so a replacement arriving on any page — including a later
+      // page than the removed[] entry — still counts.
+      // removedIdsThisItem collects the removed[] ids in
+      // arrival order, deduplicated.
+      const syncArrivals: SyncArrivalLike[] = [];
+      const removedIdsThisItem: string[] = [];
+      const seenRemovedIds = new Set<string>();
       let cursor: string | null = item.sync_cursor ?? null;
       let plaidFailed = false;
+      let plaidErrorCode: string | null = null;
       for (let page = 0; page < MAX_PAGES; page++) {
         const { ok, data } = await plaidPost(base, '/transactions/sync', clientId, secret, {
           access_token: accessToken, cursor,
         });
-        if (!ok) { plaidFailed = true; break; }
+        if (!ok) { plaidFailed = true; plaidErrorCode = String(data?.error_code ?? ''); break; }
         cursor = data.next_cursor ?? null;
 
         for (const tx of [...(data.added ?? []), ...(data.modified ?? [])]) {
@@ -519,24 +609,42 @@ Deno.serve(async (req) => {
           if (upsert.result === 'added') added++;
           else if (upsert.result === 'updated') updated++;
           else logSkip(item.plaid_item_id, upsert.reason ?? 'upsert-skipped');
+          // Build 44 change 1: record this sync's arrival for the
+          // deferred removed[] decision below — same derivation as
+          // upsertPlaidTx (ruled display merchant, signed cents,
+          // date, card suffix from the account mask, pending link).
+          // Invalid amount/date rows never become arrivals (upsert
+          // skips them too), so they can never shield a removed row.
+          // The upserted row id rides along so a replacement link
+          // can exclude the duplicate arrival row instead of
+          // leaving two live rows for the same money.
+          const arrivalSigned = Math.round(Number(tx.amount) * 100);
+          const arrivalDate = String(tx.date ?? '').slice(0, 10);
+          if (Number.isFinite(arrivalSigned) && /^\d{4}-\d{2}-\d{2}$/.test(arrivalDate)) {
+            const arrivalMerchant = normalizeMerchant(String(tx.merchant_name ?? tx.name ?? 'UNKNOWN')).slice(0, 80);
+            syncArrivals.push({
+              merchant: applyMerchantRuleToMerchant(merchantRules, arrivalMerchant, arrivalSigned).merchant,
+              date: arrivalDate,
+              amount_cents: arrivalSigned,
+              card_suffix: maskByAccount.get(tx.account_id) ?? '0000',
+              external_id: tx.transaction_id ? String(tx.transaction_id) : null,
+              state: tx.pending ? 'provisional' : 'verified',
+              rowId: upsert.id ?? null,
+              pending_transaction_id: tx.pending_transaction_id ? String(tx.pending_transaction_id) : null,
+            });
+          }
         }
 
-        // removed[] (P1-3): mark reversed + excluded, never delete.
+        // removed[] (P1-3, build 44 change 1): collect only — the
+        // decision runs after the page loop, against the full sync's
+        // arrivals (a re-issue may arrive on a later page).
         for (const removed of data.removed ?? []) {
           const removedId = typeof removed === 'string'
             ? removed
             : String(removed.transaction_id ?? removed.id ?? '');
-          if (!removedId) continue;
-          const { data: row } = await supabaseAdmin.from('transactions')
-            .select('id')
-            .eq('household_id', householdId)
-            .or(`external_id.eq.${removedId},plaid_transaction_id.eq.${removedId},plaid_pending_transaction_id.eq.${removedId}`)
-            .maybeSingle();
-          if (!row) { logSkip(item.plaid_item_id, 'removed-not-found'); continue; }
-          const { error } = await supabaseAdmin.from('transactions')
-            .update({ state: 'reversed', excluded: true })
-            .eq('id', row.id).eq('household_id', householdId);
-          if (error) logSkip(item.plaid_item_id, 'removed-update-failed'); else reversed++;
+          if (!removedId || seenRemovedIds.has(removedId)) continue;
+          seenRemovedIds.add(removedId);
+          removedIdsThisItem.push(removedId);
         }
 
         if (!data.has_more) break;
@@ -568,7 +676,147 @@ Deno.serve(async (req) => {
       } else if (plaidFailed) {
         failedItems.push(item.plaid_item_id);
         failedInstitutions.push(item.institution_name ?? item.plaid_item_id);
+        // Notifications (push-notify, Nov 16, 2026): an auth error
+        // code means the bank connection is broken (the bank needs
+        // re-login) — tell the admins. Best-effort; push-notify
+        // dedupes to once per day per item, so the hourly sync does
+        // not spam. Transient failures (rate limit, server errors)
+        // do NOT notify.
+        if (['ITEM_LOGIN_REQUIRED', 'INVALID_ACCESS_TOKEN', 'ITEM_NOT_FOUND'].includes(plaidErrorCode ?? '')) {
+          try {
+            await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+              body: JSON.stringify({ type: 'bank_broken', household_id: householdId, item_id: item.plaid_item_id }),
+            });
+          } catch {
+            console.error('plaid-sync: push-notify call failed');
+          }
+        }
         continue;
+      }
+
+      // --- Deferred removed[] decision (build 44, change 1) ---
+      // Runs only after a page sequence that completed without a
+      // Plaid error: the plaidFailed / cursor-persist-failure paths
+      // above `continue`, so a partial sync never decides removals
+      // on incomplete arrivals — the next run re-pulls and decides
+      // with the full payload. Per row (decideRemovedRow):
+      //   * provisional -> left untouched (posted under a new id);
+      //   * verified + a same-merchant+amount+date+card_suffix
+      //     replacement in this sync -> LINKED to the new id
+      //     (kind kept; the duplicate arrival row is excluded, so
+      //     the same money is never live twice);
+      //   * verified + a same-triple arrival on another card (or a
+      //     pending_transaction_id link to a live id) -> left
+      //     untouched (a re-issue, not a reversal);
+      //   * verified + no replacement in this sync -> a recent
+      //     window of household rows is searched for the same
+      //     quadruple; found -> linked the same way; not found ->
+      //     state='reversed' + excluded=true. Never deletes
+      //     (append-only). The matcher uses ONLY the row's live ids
+      //     (external_id / plaid_transaction_id) — never
+      //     plaid_pending_transaction_id, which still holds the old
+      //     pending id after a pending→posted link.
+      //
+      // Link a removed row to its replacement: the row takes the
+      // replacement's live ids + verified state (kind is NEVER
+      // touched — an admin reclassification survives), and the
+      // duplicate row is excluded so the same money is never live
+      // twice. Refund links pointing at the duplicate are re-pointed
+      // at the surviving row. Best-effort on the duplicate cleanup:
+      // a failure there still leaves exactly one live row (the
+      // linked one) plus the duplicate, which the next sync's
+      // decision can revisit — it never fails the sync.
+      const linkRemovedRow = async (row: { id: string }, replacement: RemovedReplacement): Promise<boolean> => {
+        const { error } = await supabaseAdmin.from('transactions')
+          .update({
+            external_id: replacement.external_id,
+            plaid_transaction_id: replacement.plaid_transaction_id,
+            plaid_pending_transaction_id: replacement.pending_transaction_id,
+            state: replacement.state,
+          })
+          .eq('id', row.id).eq('household_id', householdId);
+        if (error) return false;
+        const dupId = replacement.rowId;
+        if (dupId && dupId !== row.id) {
+          const { error: dupErr } = await supabaseAdmin.from('transactions')
+            .update({ state: 'excluded', excluded: true })
+            .eq('id', dupId).eq('household_id', householdId);
+          if (!dupErr) {
+            await supabaseAdmin.from('transactions')
+              .update({ original_purchase_id: row.id })
+              .eq('household_id', householdId).eq('original_purchase_id', dupId);
+          }
+        }
+        return true;
+      };
+      // Recent-window replacement search (fix 2): the replacement
+      // may have landed in an EARLIER sync than the removed[] entry
+      // (Plaid reports the removal a run later). Same merchant +
+      // amount + date + card_suffix, posted Plaid row, live,
+      // created in the last 90 days, not the removed row itself.
+      // The money outcome matches excluding (one live row either
+      // way); linking keeps the removed row's kind/history alive.
+      const findRecentReplacement = async (row: { id: string; merchant: string; date: string; amount_cents: number; card_suffix?: string | null }): Promise<RemovedReplacement | null> => {
+        const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+        const { data } = await supabaseAdmin.from('transactions')
+          .select('id, external_id, plaid_transaction_id, plaid_pending_transaction_id')
+          .eq('household_id', householdId)
+          .eq('merchant', row.merchant).eq('date', row.date)
+          .eq('amount_cents', row.amount_cents).eq('card_suffix', row.card_suffix ?? '0000')
+          .eq('source', 'plaid').eq('state', 'verified').eq('excluded', false)
+          .neq('id', row.id)
+          .gte('created_at', since)
+          .order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (!data || !data.external_id) return null;
+        return {
+          external_id: data.external_id,
+          plaid_transaction_id: data.plaid_transaction_id ?? data.external_id,
+          pending_transaction_id: data.plaid_pending_transaction_id ?? null,
+          state: 'verified',
+          rowId: data.id,
+        };
+      };
+      for (const removedId of removedIdsThisItem) {
+        const { data: row } = await supabaseAdmin.from('transactions')
+          .select('id, state, excluded, merchant, date, amount_cents, card_suffix, external_id, plaid_transaction_id')
+          .eq('household_id', householdId)
+          .or(`external_id.eq.${removedId},plaid_transaction_id.eq.${removedId}`)
+          .maybeSingle();
+        if (!row) { logSkip(item.plaid_item_id, 'removed-not-found'); continue; }
+        const decision = decideRemovedRow(row, syncArrivals);
+        if (decision.action === 'leave') {
+          if (decision.reason === 'provisional-removed-is-normal') removedLeftProvisional++;
+          else if (decision.reason.startsWith('reissue-')) removedLeftReissue++;
+          else removedLeftOther++;
+          console.log(`plaid-sync: removed ${removedId} left untouched (${decision.reason})`);
+          continue;
+        }
+        if (decision.action === 'link' && decision.replacement) {
+          const ok = await linkRemovedRow(row, decision.replacement);
+          if (ok) {
+            removedLinked++;
+            console.log(`plaid-sync: removed ${removedId} linked to replacement ${decision.replacement.external_id} (${decision.reason})`);
+          } else logSkip(item.plaid_item_id, 'removed-link-failed');
+          continue;
+        }
+        // 'exclude' — last chance: a replacement from an earlier
+        // sync (recent window) links the same way; only with no
+        // replacement anywhere is the row a genuine reversal.
+        const recent = await findRecentReplacement(row);
+        if (recent) {
+          const ok = await linkRemovedRow(row, recent);
+          if (ok) {
+            removedLinked++;
+            console.log(`plaid-sync: removed ${removedId} linked to recent replacement ${recent.external_id} (replacement-in-recent-window)`);
+          } else logSkip(item.plaid_item_id, 'removed-link-failed');
+          continue;
+        }
+        const { error } = await supabaseAdmin.from('transactions')
+          .update({ state: 'reversed', excluded: true })
+          .eq('id', row.id).eq('household_id', householdId);
+        if (error) logSkip(item.plaid_item_id, 'removed-update-failed'); else reversed++;
       }
 
       // A successful sync consumes pending webhook events for this item.
@@ -592,10 +840,39 @@ Deno.serve(async (req) => {
     }
 
     if (failedItems.length) {
-      return json({ error: 'plaid sync failed', failed_items: failedItems, failed_institutions: failedInstitutions, added, updated, reversed, skipped, skipped_by_reason: skipReasons, minutes_since_previous_sync: minutesSincePreviousSync, stale }, 502);
+      await releaseLock?.();
+      return json({ error: 'plaid sync failed', failed_items: failedItems, failed_institutions: failedInstitutions, added, updated, reversed, skipped, skipped_by_reason: skipReasons, removed_left_provisional: removedLeftProvisional, removed_left_reissue: removedLeftReissue, removed_left_other: removedLeftOther, removed_linked: removedLinked, minutes_since_previous_sync: minutesSincePreviousSync, stale }, 502);
     }
+    // Notifications (push-notify, Nov 16, 2026): best-effort, never
+    // fail the sync. push-notify re-reads the new charges / incomes /
+    // charity gifts itself and dedupes by dedupe_hash, so a purchase
+    // already notified via email is not re-notified here. The 502
+    // partial path above does NOT notify — a later successful sync
+    // catches the purchases.
+    if (added > 0) {
+      try {
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'new_transaction', household_id: householdId, source: 'plaid' }),
+        });
+        // Review queue: a sync can create possible duplicates.
+        await fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/push-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ type: 'needs_review', household_id: householdId }),
+        });
+      } catch {
+        console.error('plaid-sync: push-notify call failed');
+      }
+    }
+    await releaseLock?.();
     return json({
       added, updated, reversed, skipped, skipped_by_reason: skipReasons,
+      removed_left_provisional: removedLeftProvisional,
+      removed_left_reissue: removedLeftReissue,
+      removed_left_other: removedLeftOther,
+      removed_linked: removedLinked,
       minutes_since_previous_sync: minutesSincePreviousSync, stale,
       duplicate_removed: duplicateRemoved,
       items: allItems.length,
@@ -606,13 +883,15 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error('plaid-sync failed:', (e as Error)?.message ?? e);
+    try { await releaseLock?.(); } catch { /* never fail the error path */ }
     return json({ error: 'bank sync failed' }, 500);
   }
 });
 
 // Upsert order: external_id -> pending_transaction_id -> canonical-hash
-// match -> insert. Returns { result, reason? } — the reason is the
-// P2-B7 skip visibility (the caller logs each skip with its reason).
+// match (email rows) -> suffix-0000 email fallback -> Plaid hash
+// fallback (earliest provisional Plaid row, posted tx only) -> insert.
+// Returns the upserted row id so the caller can record arrivals.
 async function upsertPlaidTx(
   // deno-lint-ignore no-explicit-any
   supabaseAdmin: any,
@@ -621,7 +900,7 @@ async function upsertPlaidTx(
   maskByAccount: Map<string, string>,
   typeByAccount?: Map<string, string>,
   rules: MerchantRule[] = [],
-): Promise<{ result: 'added' | 'updated' | 'skipped'; reason?: string }> {
+): Promise<{ result: 'added' | 'updated' | 'skipped'; reason?: string; id?: string }> {
   const signed = Math.round(Number(tx.amount) * 100);
   if (!Number.isFinite(signed)) return { result: 'skipped', reason: 'invalid-amount' };
   const merchantRaw = String(tx.merchant_name ?? tx.name ?? 'UNKNOWN');
@@ -658,15 +937,15 @@ async function upsertPlaidTx(
   };
 
   // 1. external_id (this transaction's own id).
-  let existing: { id: string; state?: string | null; excluded?: boolean | null; source?: string | null } | null = null;
+  let existing: { id: string; state?: string | null; excluded?: boolean | null; source?: string | null; kind?: string | null } | null = null;
   if (txId) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
       .eq('household_id', householdId).eq('external_id', txId).maybeSingle();
     existing = data;
   }
   // 2. pending_transaction_id linkage (pending -> posted transition).
   if (!existing && pendingTxId) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
       .eq('household_id', householdId)
       .or(`external_id.eq.${pendingTxId},plaid_pending_transaction_id.eq.${pendingTxId}`)
       .maybeSingle();
@@ -675,13 +954,13 @@ async function upsertPlaidTx(
   // 3. canonical-hash MATCH ONLY (cross-source, e.g. Gmail alert row).
   //    Merged-audit A15: never a uniqueness constraint, and never a
   //    claim on an unrelated identical purchase — only a row whose
-  //    source is 'amex_alert' (the Gmail alert the hash was built to
-  //    link) may be claimed here. Two identical real purchases keep
+  //    source is in EMAIL_SOURCES (the email alert the hash was built
+  //    to link) may be claimed here. Two identical real purchases keep
   //    coexisting, and the earliest matching alert row is the claim.
   if (!existing) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
       .eq('household_id', householdId).eq('dedupe_hash', hash)
-      .eq('source', 'amex_alert')
+      .in('source', [...EMAIL_SOURCES])
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
     existing = data;
   }
@@ -694,7 +973,7 @@ async function upsertPlaidTx(
   //     misses, also claim the earliest alert row with the same
   //     normalized merchant + date + signed amount whose suffix is
   //     '0000' (the suffix was never known, not a different card).
-  //     Same guards as the exact match: source 'amex_alert' only,
+  //     Same guards as the exact match: source in EMAIL_SOURCES only,
   //     earliest first. Two identical real purchases still coexist
   //     — the claim consumes one alert row; a second bank row finds
   //     no alert row left and inserts its own. The TOIREMORG $2
@@ -708,12 +987,31 @@ async function upsertPlaidTx(
   //     remaining gap is only for merchants nobody has taught yet,
   //     and those fall through to the auto-merge / review path below.
   if (!existing) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
       .eq('household_id', householdId)
       .eq('merchant', displayMerchant).eq('date', date).eq('amount_cents', signed)
-      .eq('source', 'amex_alert').eq('card_suffix', '0000')
+      .in('source', [...EMAIL_SOURCES]).eq('card_suffix', '0000')
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
     existing = data;
+  }
+
+  // 3c. Plaid hash fallback (build 44 change 1 expansion, fix 3):
+  //     a POSTED tx with NO pending_transaction_id misses the
+  //     pending lookup above, and the hash match (step 3) only claims
+  //     EMAIL_SOURCES rows — so the posted tx used to insert a second
+  //     row next to its own provisional predecessor. Claim the
+  //     EARLIEST matching provisional PLAID row by dedupe_hash.
+  //     Guards (pickPlaidHashClaim, re-checked on the fetched row):
+  //     provisional only, never a verified row — two identical real
+  //     purchases still coexist — and never an excluded row.
+  //     Gated on the incoming tx being posted: a pending tx must not
+  //     consume a provisional predecessor.
+  if (!existing && state === 'verified') {
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
+      .eq('household_id', householdId).eq('dedupe_hash', hash)
+      .eq('source', 'plaid').eq('state', 'provisional').eq('excluded', false)
+      .order('created_at', { ascending: true }).limit(1).maybeSingle();
+    existing = pickPlaidHashClaim(data ? [data] : []);
   }
 
   if (existing) {
@@ -747,10 +1045,55 @@ async function upsertPlaidTx(
         logLinkError(e);
       }
     }
-    return { result: 'updated' };
+    // Build 44 (item 5): pending→posted transition of an income row
+    // accrues charity at the household default rate. VERIFIED-only:
+    // a row that was already verified accrued at insert (or on an
+    // earlier transition). The stored kind governs (kind is set at
+    // insert only, never overwritten — merged-audit A14), and the
+    // helper skips rows already linked. Best-effort, never fails sync.
+    if (!trashed && state === 'verified' && existing.state !== 'verified') {
+      await accrueCharityForIncomeTx(supabaseAdmin, householdId, existing.id, existing.kind ?? kind, state);
+    }
+    return { result: 'updated', id: existing.id };
   }
   const { data: inserted, error } = await supabaseAdmin.from('transactions').insert(row).select('id, created_at').single();
-  if (error || !inserted) return { result: 'skipped', reason: 'insert-failed' };
+  if (error || !inserted) {
+    // Build 44 (item 3): a concurrent sync (or a re-delivery racing
+    // this one) can win the insert under the same external_id — the
+    // partial unique index from supabase/dedupe-fix.sql rejects the
+    // second insert with 23505. Re-select by external_id and update
+    // the row that won instead of reporting insert-failed.
+    if (error && txId && (error.code === '23505' || /duplicate key/i.test(error.message ?? ''))) {
+      const { data: raced } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
+        .eq('household_id', householdId).eq('external_id', txId).maybeSingle();
+      if (raced) {
+        const racedTrashed = raced.excluded === true || raced.state === 'excluded';
+        const retryUpdate: Record<string, unknown> = {
+          date, merchant: displayMerchant, amount_cents: signed, card_suffix: suffix,
+          external_id: txId, dedupe_hash: hash,
+          plaid_transaction_id: txId, plaid_pending_transaction_id: pendingTxId,
+        };
+        if (!racedTrashed) retryUpdate.state = state;
+        const { error: retryErr } = await supabaseAdmin.from('transactions').update(retryUpdate)
+          .eq('id', raced.id).eq('household_id', householdId);
+        if (!retryErr) {
+          if (kind === 'refund') {
+            try {
+              const { error: linkErr } = await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: raced.id });
+              logLinkError(linkErr);
+            } catch (e) {
+              logLinkError(e);
+            }
+          }
+          if (!racedTrashed && state === 'verified' && raced.state !== 'verified') {
+            await accrueCharityForIncomeTx(supabaseAdmin, householdId, raced.id, raced.kind ?? kind, state);
+          }
+          return { result: 'updated', id: raced.id };
+        }
+      }
+    }
+    return { result: 'skipped', reason: 'insert-failed' };
+  }
   // P0-1 (Nov 8, 2026): link this row to its purchase/refund so
   // restoration can reach it (supabase/refund-linking.sql). A refund
   // auto-links to its one exact-amount purchase; a charge links any
@@ -792,7 +1135,11 @@ async function upsertPlaidTx(
     id: inserted.id, merchant: displayMerchant, date, amount_cents: signed,
     card_suffix: suffix, source: 'plaid', created_at: inserted.created_at,
   });
-  return { result: 'added' };
+  // Build 44 (item 5): a newly inserted VERIFIED income row accrues
+  // charity now; a provisional one accrues on its pending→posted
+  // transition above. Best-effort, never fails the sync.
+  await accrueCharityForIncomeTx(supabaseAdmin, householdId, inserted.id, kind, state);
+  return { result: 'added', id: inserted.id };
 }
 
 function json(body: unknown, status = 200) {

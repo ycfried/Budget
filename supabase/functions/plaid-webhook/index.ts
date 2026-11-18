@@ -28,6 +28,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY = Deno.env.get('SERVICE_ROLE_SECRET') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
+// Build 44 (item 3): cache each kid's imported JWK for ~1h so a
+// burst of webhooks does not re-fetch + re-import Plaid's key on
+// every delivery. Cache only — the verification steps below are
+// unchanged (alg, iat window, signature, body hash).
+const jwkCache = new Map<string, { key: CryptoKey; fetchedAt: number }>();
+const JWK_CACHE_TTL_MS = 3600_000;
+
 function b64urlToBytes(s) {
   const b64 = s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '=');
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -77,14 +84,21 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'plaid not configured' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
   }
   try {
-    const keyRes = await fetch(`https://${env === 'production' ? 'production' : env}.plaid.com/webhook_verification_key/get`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, secret, key_id: header.kid }),
-    });
-    const keyData = await keyRes.json();
-    if (!keyRes.ok || !keyData.key) throw new Error('key fetch failed');
-    const key = await crypto.subtle.importKey('jwk', keyData.key, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    const cached = jwkCache.get(header.kid);
+    let key: CryptoKey;
+    if (cached && Date.now() - cached.fetchedAt < JWK_CACHE_TTL_MS) {
+      key = cached.key;
+    } else {
+      const keyRes = await fetch(`https://${env === 'production' ? 'production' : env}.plaid.com/webhook_verification_key/get`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId, secret, key_id: header.kid }),
+      });
+      const keyData = await keyRes.json();
+      if (!keyRes.ok || !keyData.key) throw new Error('key fetch failed');
+      key = await crypto.subtle.importKey('jwk', keyData.key, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+      jwkCache.set(header.kid, { key, fetchedAt: Date.now() });
+    }
     const signature = b64urlToBytes(parts[2]);
     const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
     const valid = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, signature, signed);
@@ -136,6 +150,7 @@ Deno.serve(async (req) => {
   // Server-side sync trigger (best-effort — never affects the 200).
   let syncTriggered = false;
   let syncOk = false;
+  let syncSkipped: string | null = null;
   try {
     const { data: itemRow } = await supabase.from('plaid_items')
       .select('household_id').eq('plaid_item_id', body.item_id ?? '').maybeSingle();
@@ -148,9 +163,16 @@ Deno.serve(async (req) => {
       });
       syncOk = syncRes.ok;
       if (!syncOk) console.warn('plaid-webhook: sync trigger failed:', syncRes.status);
+      else {
+        // Build 44 (item 3): surface the lock outcome — a sync that
+        // skipped because another run holds the lock is a normal
+        // 200, not a failure, and the caller can see it.
+        const syncBody = await syncRes.json().catch(() => null);
+        if (syncBody?.sync_skipped) syncSkipped = String(syncBody.sync_skipped);
+      }
     }
   } catch (e) {
     console.warn('plaid-webhook: sync trigger error:', (e as Error)?.message ?? e);
   }
-  return new Response(JSON.stringify({ recorded: true, webhook_code: code, sync_triggered: syncTriggered, sync_ok: syncOk }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify({ recorded: true, webhook_code: code, sync_triggered: syncTriggered, sync_ok: syncOk, ...(syncSkipped ? { sync_skipped: syncSkipped } : {}) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 });
