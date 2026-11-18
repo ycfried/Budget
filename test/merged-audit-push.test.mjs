@@ -126,7 +126,12 @@ test('A14: plaid-sync update never overwrites kind, never overwrites Trash state
   assert.doesNotMatch(plaidSync, /state, kind, external_id: txId/);
 });
 test('A15: plaid-sync hash match claims Gmail-alert rows only', () => {
-  assert.match(plaidSync, /\.eq\('source', 'amex_alert'\)/);
+  // Build 44, item 4: the hardcoded 'amex_alert' became the single
+  // EMAIL_SOURCES set (Amex-only today) — the guard is the same,
+  // only email-alert rows may be claimed by the hash match, in both
+  // step 3 and step 3b.
+  assert.match(plaidSync, /\.in\('source', \[\.\.\.EMAIL_SOURCES\]\)/);
+  assert.doesNotMatch(plaidSync, /\.eq\('source', 'amex_alert'\)/);
 });
 
 // ---- A16: server guards as prepared SQL only ----

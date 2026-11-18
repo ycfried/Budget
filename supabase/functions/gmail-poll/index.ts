@@ -67,7 +67,7 @@ import {
   headerValue,
   parseAmexAlertText,
 } from './gmail-parse.ts';
-import { applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, findCoveringBankRow, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
+import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, findCoveringBankRow, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -403,6 +403,13 @@ Deno.serve(async (req) => {
               } catch (e) {
                 logLinkError(e);
               }
+              // Build 44 (item 5): an income alert accrues charity
+              // once it posts. Email rows insert as provisional, so
+              // this call is dormant today (the helper returns
+              // immediately for non-verified rows) — it is wired now
+              // so the path is not forgotten when a multi-bank parser
+              // can emit income alerts. Best-effort, never fails poll.
+              await accrueCharityForIncomeTx(supabaseAdmin, householdId, inserted.id, kind, 'provisional');
             }
             await supabaseAdmin.from('processed_email_ids').insert({
               connection_id: conn.id, message_id: messageId, disposition: 'stored',

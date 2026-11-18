@@ -15,12 +15,14 @@ import fs from 'node:fs';
 import {
   authResultsPass,
   buildAlertQuery,
+  EMAIL_PARSERS,
   extractPlainText,
   filterNewMessageIds,
   gmailDateToNY,
   headerValue,
   htmlToText,
   parseAmexAlertText,
+  parseEmailAlert,
 } from '../supabase/functions/_shared/gmail-parse.ts';
 
 // --- Authentication-Results (exact ingest rule) -------------------------
@@ -181,9 +183,33 @@ test('parse copies stay identical: gmail-poll vs _shared (N12)', () => {
     assert.ok(body.length > 100, `${name} extraction too short to trust`);
     return body;
   };
-  for (const name of ['parseAmexAlertText', 'extractPlainText', 'htmlToText']) {
+  for (const name of ['parseAmexAlertText', 'extractPlainText', 'htmlToText', 'parseEmailAlert']) {
     assert.equal(extract(poll, name), extract(shared, name), `${name} drifted between parse copies`);
   }
+});
+
+// --- Per-bank dispatcher (build 44, item 4) --------------------------------
+// Structural skeleton only: Amex is the one registered parser. An
+// unknown source parses to null — no Chase / Capital One parser is
+// invented, and no sender/subject format is guessed.
+
+test('dispatcher: Amex registered, unknown sources return null (no invented parsers)', () => {
+  assert.deepEqual(Object.keys(EMAIL_PARSERS), ['amex_alert']);
+  assert.equal(EMAIL_PARSERS.amex_alert, parseAmexAlertText);
+  const input = { subject: 'Large Purchase Alert', body: 'You made a purchase of $48.25 at Amazon\non your card ending in 1005.', date: '2026-10-28' };
+  assert.deepEqual(parseEmailAlert('amex_alert', input), { amountCents: 4825, merchant: 'Amazon', cardSuffix: '1005', date: '2026-10-28' });
+  assert.equal(parseEmailAlert('chase_alert', input), null);
+  assert.equal(parseEmailAlert('capital_one_alert', input), null);
+  assert.equal(parseEmailAlert('', input), null);
+});
+
+test('dispatcher: gmail-poll copy carries the same dispatcher (N12)', () => {
+  const read = (p) => fs.readFileSync(new URL(p, import.meta.url), 'utf8');
+  const poll = read('../supabase/functions/gmail-poll/gmail-parse.ts');
+  const shared = read('../supabase/functions/_shared/gmail-parse.ts');
+  assert.ok(poll.includes('export const EMAIL_PARSERS: Record<string, EmailAlertParser> = {'));
+  assert.ok(poll.includes('amex_alert: parseAmexAlertText,'));
+  assert.ok(shared.includes('Do NOT register a Chase / Capital One parser here'));
 });
 
 test('headerValue: case-insensitive lookup, missing header is empty', () => {

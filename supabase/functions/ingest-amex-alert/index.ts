@@ -66,6 +66,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
+  accrueCharityForIncomeTx,
   applyMerchantRuleToMerchant,
   canonicalHash,
   classifyMerchantOnly,
@@ -310,6 +311,13 @@ Deno.serve(async (req) => {
       } catch (e) {
         logLinkError(e);
       }
+      // Build 44 (item 5): an income alert accrues charity once it
+      // posts. Email rows insert as provisional, so this call is
+      // dormant today (the helper returns immediately for
+      // non-verified rows) — it is wired now so the path is not
+      // forgotten when a multi-bank parser can emit income alerts.
+      // Best-effort, never fails ingest.
+      await accrueCharityForIncomeTx(supabase, householdId, inserted.id, kind, 'provisional');
     }
     // stored:true ONLY after a successful insert (or a proven
     // duplicate above). Never on 401/202/500.

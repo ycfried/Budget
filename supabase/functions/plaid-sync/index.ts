@@ -60,7 +60,7 @@
 //      plaid_pending_transaction_id = tx.pending_transaction_id, else
 //   3. canonical-hash MATCH (same household + dedupe_hash) — used only
 //      to update an existing cross-source row (e.g. an earlier Gmail
-//      alert row, source='amex_alert'), never as a uniqueness constraint,
+//      alert row, source in EMAIL_SOURCES), never as a uniqueness constraint,
 //      never to overwrite an unrelated identical purchase, else
 //   4. insert a new row.
 // Merged-audit A14/A15/B6: a re-delivery never overwrites a trashed
@@ -93,10 +93,18 @@
 // mid-sequence the cursor is NOT persisted, so the next run re-pulls
 // the same pages idempotently via the upsert order above.
 //
-// Overlap safety (server-sync build): overlapping sync runs need no
-// lock — upserts are idempotent (external_id / pending / hash
+// Overlap safety (build 44, item 3): overlapping sync runs ARE
+// serialised — plaid-sync claims a per-household lock
+// (try_claim_sync_lock, supabase/plaid-sync-lock.sql, TTL ~10 min)
+// right after auth, before loading items; a run that finds the lock
+// held returns 200 { sync_skipped: 'already_running' } and does
+// nothing. Upserts stay idempotent (external_id / pending / hash
 // matching updates instead of duplicating) and the cursor only moves
-// forward, so a stale cursor just re-pulls idempotently.
+// forward, so a stale cursor just re-pulls idempotently — the lock
+// covers the interleaving the upserts cannot: two runs sharing one
+// cursor and interleaving page sequences. An insert that still loses
+// a race under the same external_id (unique-violation 23505) is
+// re-selected and updated instead of reported insert-failed.
 //
 // Institution backfill: when plaid_items.institution_name is null,
 // call Plaid /item/get (for institution_id) then
@@ -105,7 +113,7 @@
 // file; no new auth flow is invented.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { applyMerchantRuleToMerchant, canonicalHash, classifyKind, flagLookalikes, loadMerchantRules, normalizeMerchant, type MerchantRule } from './canonical.ts';
+import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyKind, EMAIL_SOURCES, flagLookalikes, loadMerchantRules, normalizeMerchant, type MerchantRule } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -206,6 +214,10 @@ function logLinkError(error: unknown): void {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  // Build 44 (item 3): the lock releaser lives outside the try so
+  // the catch below can release on the error path too. It is null
+  // until the lock is claimed (after auth, below).
+  let releaseLock: (() => Promise<void>) | null = null;
   try {
     // Auth (server-sync build, Nov 2, 2026): verify_jwt=false in
     // config.toml, so the platform check is OFF and this in-code check
@@ -250,11 +262,41 @@ Deno.serve(async (req) => {
     if (!serviceKey) return json({ error: 'service key not configured' }, 503);
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
 
+    // Build 44 (item 3): overlap lock — claim right after auth /
+    // household validation, before loading items. A held lock is a
+    // 200 skip, not an error; the other run does the work. Fail OPEN
+    // when the lock SQL has not been applied yet (the RPC errors):
+    // log it and sync normally, so a function deploy ahead of the
+    // dashboard apply never blocks sync.
+    const lockOwner = `plaid-sync:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    let lockHeld = false;
+    try {
+      const { data: claimed, error: lockErr } = await supabaseAdmin.rpc('try_claim_sync_lock', {
+        p_household_id: householdId, p_owner: lockOwner, p_ttl_seconds: 600,
+      });
+      if (lockErr) {
+        console.error('plaid-sync: lock claim failed (syncing without lock):', lockErr.message ?? lockErr);
+      } else if (claimed === true) {
+        lockHeld = true;
+      } else {
+        return json({ sync_skipped: 'already_running' });
+      }
+    } catch (e) {
+      console.error('plaid-sync: lock claim threw (syncing without lock):', (e as Error)?.message ?? e);
+    }
+    releaseLock = async (): Promise<void> => {
+      if (!lockHeld) return;
+      lockHeld = false;
+      try {
+        await supabaseAdmin.rpc('release_sync_lock', { p_household_id: householdId, p_owner: lockOwner });
+      } catch { /* the lock expires on its own; never fail the sync */ }
+    };
+
     const clientId = Deno.env.get('PLAID_CLIENT_ID');
     const secret = Deno.env.get('PLAID_SECRET');
     const tokenKey = Deno.env.get('PLAID_TOKEN_KEY');
     const env = Deno.env.get('PLAID_ENV') ?? 'sandbox';
-    if (!clientId || !secret || !tokenKey) return json({ error: 'plaid not configured' }, 503);
+    if (!clientId || !secret || !tokenKey) { await releaseLock?.(); return json({ error: 'plaid not configured' }, 503); }
     const base = plaidBase(env);
 
     const { data: items } = await supabaseAdmin.from('plaid_items')
@@ -610,6 +652,7 @@ Deno.serve(async (req) => {
     }
 
     if (failedItems.length) {
+      await releaseLock?.();
       return json({ error: 'plaid sync failed', failed_items: failedItems, failed_institutions: failedInstitutions, added, updated, reversed, skipped, skipped_by_reason: skipReasons, minutes_since_previous_sync: minutesSincePreviousSync, stale }, 502);
     }
     // Notifications (push-notify, Nov 16, 2026): best-effort, never
@@ -635,6 +678,7 @@ Deno.serve(async (req) => {
         console.error('plaid-sync: push-notify call failed');
       }
     }
+    await releaseLock?.();
     return json({
       added, updated, reversed, skipped, skipped_by_reason: skipReasons,
       minutes_since_previous_sync: minutesSincePreviousSync, stale,
@@ -647,6 +691,7 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error('plaid-sync failed:', (e as Error)?.message ?? e);
+    try { await releaseLock?.(); } catch { /* never fail the error path */ }
     return json({ error: 'bank sync failed' }, 500);
   }
 });
@@ -699,15 +744,15 @@ async function upsertPlaidTx(
   };
 
   // 1. external_id (this transaction's own id).
-  let existing: { id: string; state?: string | null; excluded?: boolean | null; source?: string | null } | null = null;
+  let existing: { id: string; state?: string | null; excluded?: boolean | null; source?: string | null; kind?: string | null } | null = null;
   if (txId) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
       .eq('household_id', householdId).eq('external_id', txId).maybeSingle();
     existing = data;
   }
   // 2. pending_transaction_id linkage (pending -> posted transition).
   if (!existing && pendingTxId) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
       .eq('household_id', householdId)
       .or(`external_id.eq.${pendingTxId},plaid_pending_transaction_id.eq.${pendingTxId}`)
       .maybeSingle();
@@ -716,13 +761,13 @@ async function upsertPlaidTx(
   // 3. canonical-hash MATCH ONLY (cross-source, e.g. Gmail alert row).
   //    Merged-audit A15: never a uniqueness constraint, and never a
   //    claim on an unrelated identical purchase — only a row whose
-  //    source is 'amex_alert' (the Gmail alert the hash was built to
-  //    link) may be claimed here. Two identical real purchases keep
+  //    source is in EMAIL_SOURCES (the email alert the hash was built
+  //    to link) may be claimed here. Two identical real purchases keep
   //    coexisting, and the earliest matching alert row is the claim.
   if (!existing) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
       .eq('household_id', householdId).eq('dedupe_hash', hash)
-      .eq('source', 'amex_alert')
+      .in('source', [...EMAIL_SOURCES])
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
     existing = data;
   }
@@ -735,7 +780,7 @@ async function upsertPlaidTx(
   //     misses, also claim the earliest alert row with the same
   //     normalized merchant + date + signed amount whose suffix is
   //     '0000' (the suffix was never known, not a different card).
-  //     Same guards as the exact match: source 'amex_alert' only,
+  //     Same guards as the exact match: source in EMAIL_SOURCES only,
   //     earliest first. Two identical real purchases still coexist
   //     — the claim consumes one alert row; a second bank row finds
   //     no alert row left and inserts its own. The TOIREMORG $2
@@ -749,10 +794,10 @@ async function upsertPlaidTx(
   //     remaining gap is only for merchants nobody has taught yet,
   //     and those fall through to the auto-merge / review path below.
   if (!existing) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
       .eq('household_id', householdId)
       .eq('merchant', displayMerchant).eq('date', date).eq('amount_cents', signed)
-      .eq('source', 'amex_alert').eq('card_suffix', '0000')
+      .in('source', [...EMAIL_SOURCES]).eq('card_suffix', '0000')
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
     existing = data;
   }
@@ -788,10 +833,55 @@ async function upsertPlaidTx(
         logLinkError(e);
       }
     }
+    // Build 44 (item 5): pending→posted transition of an income row
+    // accrues charity at the household default rate. VERIFIED-only:
+    // a row that was already verified accrued at insert (or on an
+    // earlier transition). The stored kind governs (kind is set at
+    // insert only, never overwritten — merged-audit A14), and the
+    // helper skips rows already linked. Best-effort, never fails sync.
+    if (!trashed && state === 'verified' && existing.state !== 'verified') {
+      await accrueCharityForIncomeTx(supabaseAdmin, householdId, existing.id, existing.kind ?? kind, state);
+    }
     return { result: 'updated' };
   }
   const { data: inserted, error } = await supabaseAdmin.from('transactions').insert(row).select('id, created_at').single();
-  if (error || !inserted) return { result: 'skipped', reason: 'insert-failed' };
+  if (error || !inserted) {
+    // Build 44 (item 3): a concurrent sync (or a re-delivery racing
+    // this one) can win the insert under the same external_id — the
+    // partial unique index from supabase/dedupe-fix.sql rejects the
+    // second insert with 23505. Re-select by external_id and update
+    // the row that won instead of reporting insert-failed.
+    if (error && txId && (error.code === '23505' || /duplicate key/i.test(error.message ?? ''))) {
+      const { data: raced } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
+        .eq('household_id', householdId).eq('external_id', txId).maybeSingle();
+      if (raced) {
+        const racedTrashed = raced.excluded === true || raced.state === 'excluded';
+        const retryUpdate: Record<string, unknown> = {
+          date, merchant: displayMerchant, amount_cents: signed, card_suffix: suffix,
+          external_id: txId, dedupe_hash: hash,
+          plaid_transaction_id: txId, plaid_pending_transaction_id: pendingTxId,
+        };
+        if (!racedTrashed) retryUpdate.state = state;
+        const { error: retryErr } = await supabaseAdmin.from('transactions').update(retryUpdate)
+          .eq('id', raced.id).eq('household_id', householdId);
+        if (!retryErr) {
+          if (kind === 'refund') {
+            try {
+              const { error: linkErr } = await supabaseAdmin.rpc('auto_link_refund', { p_refund_id: raced.id });
+              logLinkError(linkErr);
+            } catch (e) {
+              logLinkError(e);
+            }
+          }
+          if (!racedTrashed && state === 'verified' && raced.state !== 'verified') {
+            await accrueCharityForIncomeTx(supabaseAdmin, householdId, raced.id, raced.kind ?? kind, state);
+          }
+          return { result: 'updated' };
+        }
+      }
+    }
+    return { result: 'skipped', reason: 'insert-failed' };
+  }
   // P0-1 (Nov 8, 2026): link this row to its purchase/refund so
   // restoration can reach it (supabase/refund-linking.sql). A refund
   // auto-links to its one exact-amount purchase; a charge links any
@@ -833,6 +923,10 @@ async function upsertPlaidTx(
     id: inserted.id, merchant: displayMerchant, date, amount_cents: signed,
     card_suffix: suffix, source: 'plaid', created_at: inserted.created_at,
   });
+  // Build 44 (item 5): a newly inserted VERIFIED income row accrues
+  // charity now; a provisional one accrues on its pending→posted
+  // transition above. Best-effort, never fails the sync.
+  await accrueCharityForIncomeTx(supabaseAdmin, householdId, inserted.id, kind, state);
   return { result: 'added' };
 }
 

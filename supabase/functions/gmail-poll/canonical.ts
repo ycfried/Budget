@@ -172,9 +172,10 @@ export async function hmacSha256Hex(secret: string, message: string): Promise<st
 // rename/apply RPCs in supabase/merchant-rules.sql (which recompute
 // dedupe_hash for renamed rows). Matching is deliberately strict —
 // normalized exact / includes / squashed-exact only, never fuzzy:
-// (Build 34: 'prefix' became 'includes'; build 39: Includes
-// squashes BOTH sides before the substring check — case- and
-// whitespace-insensitive, letters in order.)
+// (Build 34: 'prefix' became 'includes' — the name must CONTAIN
+// the pattern anywhere, not only start with it.)
+// (Build 39: Includes squashes BOTH sides before the substring
+// check — case- and whitespace-insensitive, letters in order.)
 // a rule must never rename a merchant it was not taught.
 //   key    = UPPER, trimmed, whitespace collapsed, leading
 //            non-alphanumeric bank artifacts stripped ('=TENYAD...'
@@ -208,6 +209,8 @@ export function merchantRuleSquash(name: string): string {
 export type MerchantRule = {
   pattern_key: string;
   pattern_squash: string;
+  // 'prefix' is the pre-migration value (build 34) — read as
+  // 'includes' below until the migration lands.
   match_type: 'exact' | 'includes' | 'prefix';
   display_name: string;
   fixed_kind?: string | null;
@@ -287,12 +290,26 @@ export async function loadMerchantRules(
   }
 }
 
+// --- Email source set (build 44, item 4) ---
+// The merge paths below used to hardcode source 'amex_alert'. The
+// set is the single place that knows which transaction sources are
+// email alerts; adding a bank means adding its source here (and a
+// parser in gmail-parse.ts) — no other merge code changes. Today
+// the only email source is the Amex Large Purchase alert.
+// NO Chase / Capital One source exists yet: no parser and no known
+// sender/subject format — do not add one without a real redacted
+// sample from the owner.
+export const EMAIL_SOURCES = ['amex_alert'] as const;
+export function isEmailSource(source: string): boolean {
+  return (EMAIL_SOURCES as readonly string[]).includes(source);
+}
+
 // --- Bank+Email auto-merge eligibility (build 30, task I) ---
 // The approved provisional-merge take: a bank row and an email row
 // for the SAME purchase merge automatically — bank row kept, email
 // row merged away, no manual review. Conservative by design: ALL
 // of these must hold, or the pair stays for manual review.
-//   * bank source 'plaid', email source 'amex_alert' (NEVER two
+//   * bank source 'plaid', email source in EMAIL_SOURCES (NEVER two
 //     bank rows, NEVER two email rows);
 //   * same household, same signed amount, same kind;
 //   * dates within 2 days (either direction);
@@ -350,7 +367,7 @@ export function autoMergeEligible(
   } = {},
 ): { eligible: boolean; reason: string } {
   if (bankRow.source !== 'plaid') return { eligible: false, reason: 'bank row is not plaid' };
-  if (emailRow.source !== 'amex_alert') return { eligible: false, reason: 'email row is not amex_alert' };
+  if (!isEmailSource(emailRow.source)) return { eligible: false, reason: 'email row is not an email source' };
   if (opts.resolvedPair) return { eligible: false, reason: 'pair already resolved' };
   if (bankRow.household_id && emailRow.household_id && bankRow.household_id !== emailRow.household_id) {
     return { eligible: false, reason: 'different households' };
@@ -426,7 +443,7 @@ export async function findCoveringBankRow(
       const bank = row as MergeRow;
       const emailLike: MergeRow = {
         id: '', household_id: householdId, merchant: alert.merchant,
-        source: 'amex_alert', date: alert.date, amount_cents: alert.amount_cents,
+        source: EMAIL_SOURCES[0], date: alert.date, amount_cents: alert.amount_cents,
         card_suffix: alert.card_suffix, kind: alert.kind,
       };
       if (autoMergeEligible(bank, emailLike, opts).eligible) return bank;
@@ -434,6 +451,40 @@ export async function findCoveringBankRow(
     return null;
   } catch {
     return null;
+  }
+}
+
+// --- Charity auto-accrual (build 44, item 5) ---
+// Best-effort hook shared by plaid-sync, gmail-poll and
+// ingest-amex-alert: after an income row lands VERIFIED, accrue
+// charity at the household default rate via the service-role-only
+// accrue_charity_for_transaction RPC
+// (supabase/charity-auto-accrue.sql). VERIFIED-only: a provisional
+// income row accrues nothing until the pending→posted transition
+// calls this again. Never fails the caller: a missing SQL apply, a
+// race, or a non-income kind is logged, not thrown. The RPC itself
+// is idempotent (unique index on (household_id, transaction_id)
+// WHERE status='active'); the pre-check here just avoids the call
+// when the link already exists. Transfers, refunds, payments and
+// cashback never reach this helper with kind='income'
+// (classifyKind), and the RPC refuses them too.
+export async function accrueCharityForIncomeTx(
+  supabaseAdmin: SupaAdmin,
+  householdId: string,
+  transactionId: string,
+  kind: string | undefined,
+  state: string,
+): Promise<void> {
+  if (kind !== 'income' || state !== 'verified') return;
+  try {
+    const { data: already } = await supabaseAdmin.from('charity_income')
+      .select('id').eq('household_id', householdId).eq('transaction_id', transactionId)
+      .eq('status', 'active').maybeSingle();
+    if (already) return;
+    const { error } = await supabaseAdmin.rpc('accrue_charity_for_transaction', { p_transaction_id: transactionId });
+    if (error) console.error('charity auto-accrual failed (best-effort):', (error as { message?: unknown })?.message ?? error);
+  } catch (e) {
+    console.error('charity auto-accrual failed (best-effort):', (e as Error)?.message ?? e);
   }
 }
 
