@@ -47,12 +47,17 @@ struct OnBudgetApp: App {
                 // timeline the next time the app opens. WidgetKit
                 // coalesces the calls; the snapshot itself is
                 // untouched (a failed load writes nothing).
+                // Build 43: schedule the background widget refresh
+                // alongside, so a missed or failed schedule is
+                // repaired every time the app opens.
                 .task {
                     WidgetCenter.shared.reloadAllTimelines()
+                    WidgetBackgroundRefreshTask.schedule()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
                         WidgetCenter.shared.reloadAllTimelines()
+                        WidgetBackgroundRefreshTask.schedule()
                     }
                 }
                 .onOpenURL { url in

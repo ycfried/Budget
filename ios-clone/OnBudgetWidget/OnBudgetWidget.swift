@@ -95,11 +95,13 @@ struct WidgetEntry: TimelineEntry {
 /// 16, 2026: "Sync button on widget doesn't look like it does
 /// anything..")
 ///
-/// HOW IT FETCHES (build 40): the app mirrors its session into the
-/// shared App Group container on every save (MirroredSessionStore),
-/// and writes the household id alongside the snapshot. The intent
-/// builds a SupabaseClient on an App-Group-backed session store,
-/// calls compute-week + the charity summary (active income, verified
+/// HOW IT FETCHES (build 40, moved to the kit in build 43): the
+/// app mirrors its session into the shared App Group container on
+/// every save (MirroredSessionStore), and writes the household id
+/// alongside the snapshot. The shared kit refresher
+/// (WidgetSnapshotRefresher.refreshSnapshot) builds a
+/// SupabaseClient on an App-Group-backed session store, calls
+/// compute-week + the charity summary (active income, verified
 /// gifts, cash gifts), and writes a new snapshot. The fund names
 /// ride along from the existing snapshot (a rename does not change
 /// the numbers, and the names are already pushed there on rename).
@@ -126,66 +128,17 @@ struct RefreshWidgetIntent: AppIntent {
         // the button flips to its spinner while the fetch runs;
         // then write the landed state (success / failure) and
         // reload again, so it flips to a checkmark (or a red
-        // refresh icon). The fetch itself is unchanged (build 40):
-        // fresh numbers on success, last snapshot on failure.
+        // refresh icon). The fetch itself is the shared kit path
+        // (WidgetSnapshotRefresher, build 43): fresh numbers on
+        // success, last snapshot on failure. The button state is
+        // written ONLY here — the background refresh task uses the
+        // same fetch but never touches the button state.
         WidgetSyncStateStore.write(.syncing)
         WidgetCenter.shared.reloadAllTimelines()
-        let ok = await Self.refreshSnapshot()
+        let ok = await WidgetSnapshotRefresher.refreshSnapshot()
         WidgetSyncStateStore.write(ok ? .succeeded : .failed)
         WidgetCenter.shared.reloadAllTimelines()
         return .result()
-    }
-
-    /// Fetch fresh dashboard numbers and write a new snapshot.
-    /// Returns false when there was nothing fresh to write (no
-    /// session / no household / fetch failed) — the caller still
-    /// reloads the timeline from the last saved snapshot.
-    @discardableResult
-    static func refreshSnapshot() async -> Bool {
-        guard let householdId = WidgetSnapshotStore.readHouseholdId() else { return false }
-        // The session mirrored into the App Group by the app
-        // (MirroredSessionStore). No session → signed out (or the
-        // app has never saved one) → nothing fresh to fetch.
-        guard let groupDefaults = UserDefaults(suiteName: WidgetSnapshotStore.groupID) else { return false }
-        let store = UserDefaultsSessionStore(defaults: groupDefaults)
-        guard store.load() != nil else { return false }
-        let client = SupabaseClient(store: store)
-        do {
-            let week = try await client.functions.computeWeek(householdId: householdId)
-            async let income = client.postgrest.activeCharityIncome(householdId: householdId)
-            async let given = client.postgrest.verifiedCharityGiftAmounts(householdId: householdId)
-            let incomeRows = try await income
-            let givenAmounts = try await given
-            // Cash gifts (build 40): fault-tolerant — if the
-            // charity_cash_gifts table does not exist yet (the SQL
-            // not applied), the fetch throws and the gifts read as
-            // empty rather than failing the whole sync.
-            let cashGiftRows: [CharityCashGift]
-            do {
-                cashGiftRows = try await client.postgrest.charityCashGifts(householdId: householdId)
-            } catch {
-                cashGiftRows = []
-            }
-            let committed = incomeRows.filter { $0.status == "active" }.reduce(0) { $0 + $1.committedCents }
-            let givenTotal = givenAmounts.reduce(0, +) + cashGiftRows.reduce(0) { $0 + $1.amountCents }
-            // The fund names ride along from the existing snapshot
-            // (a rename pushes them there immediately, and a Home
-            // refresh rewrites them) — a sync must not drop them.
-            let fundNames = WidgetSnapshotStore.read()?.fundNames
-            WidgetSnapshotStore.write(WidgetSnapshot(
-                weekStart: week.weekStart,
-                availableCents: week.availableCents,
-                charityRemainingCents: committed - givenTotal,
-                spentCents: week.chargesCents,
-                charityGivenCents: givenTotal,
-                charityCommittedCents: committed,
-                fundNames: fundNames,
-                computedAt: Date()
-            ))
-            return true
-        } catch {
-            return false
-        }
     }
 }
 

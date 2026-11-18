@@ -12,6 +12,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // Widget background refresh (build 43, owner Nov 17, 2026):
+        // register the BGAppRefreshTask handler early — registration
+        // must happen before the app finishes launching, or iOS
+        // never delivers the task — and schedule the first run.
+        // The task fetches fresh widget numbers in the background
+        // when iOS schedules it (a few times a day, at iOS's
+        // discretion); it is not a timer.
+        WidgetBackgroundRefreshTask.register()
+        WidgetBackgroundRefreshTask.schedule()
         return true
     }
 
