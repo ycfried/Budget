@@ -30,7 +30,7 @@
   If the clearance fails, the fallback is a rename before submission,
   not after: the bundle id, the APNs topic, and the store listing all
   carry the name.
-- **Subtitle (30 characters max):** `Guided Spending & Giving`
+- **Subtitle (30 characters max):** `Spend, Save, Track `Guided Spending & Giving` Give`
   (23 characters). States the job in plain words; no claim the app
   cannot back up.
 - **Keywords (100 characters max, comma-separated, no spaces):**
@@ -238,7 +238,7 @@ and, if the user is the last member, the household."
 ## 5. Metadata plan
 
 - **Name:** `OnBudget` (§1 flag applies).
-- **Subtitle:** `Guided Spending & Giving`.
+- **Subtitle:** `Spend, Save, Track `Guided Spending & Giving` Give`.
 - **Keywords:** `budget,household,weekly budget,family budget,expense tracker,allowance,savings,shared budget` (92/100 chars).
 - **Description outline** (write the full text at listing time,
   ~2,500–4,000 characters max, plain language, no hype):
