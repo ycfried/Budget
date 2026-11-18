@@ -382,6 +382,31 @@ final class PostgrestQueryTests: XCTestCase {
         XCTAssertEqual(limit, "101")
     }
 
+    func testTransactionsPageOrdersByDateDescThenIdDesc() async throws {
+        // Nov 18, 2026 — second "Load More" failure: `date desc`
+        // alone is nondeterministic (many rows share a date), so
+        // offset pages shifted rows between fetches. The `id desc`
+        // tiebreaker makes the order total and pages stable.
+        // The failing page was pageSize 25 at offset 50.
+        let transport = StubTransport(handler: { _ in StubTransport.json([]) })
+        let client = PostgrestClient(
+            configuration: testConfiguration(),
+            tokenProvider: testTokenProvider(),
+            transport: transport
+        )
+        let (rows, hasMore): ([Transaction], Bool) = try await client.transactionsPage(
+            householdId: UUID(), pageSize: 25, offset: 50
+        )
+        XCTAssertTrue(rows.isEmpty)
+        XCTAssertFalse(hasMore)
+        XCTAssertEqual(transport.requests.count, 1)
+        let items = URLComponents(url: transport.requests[0].url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let value = { (name: String) in items.first(where: { $0.name == name })?.value }
+        XCTAssertEqual(value("order"), "date.desc,id.desc")
+        XCTAssertEqual(value("limit"), "26")
+        XCTAssertEqual(value("offset"), "50")
+    }
+
     func testFetchAllPagesWalks1000RowPages() async throws {
         struct Row: Decodable { let n: Int }
         var offsets: [String] = []

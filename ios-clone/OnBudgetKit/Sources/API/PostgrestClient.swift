@@ -515,13 +515,17 @@ public struct PostgrestClient {
     /// household-scoped, `date >= 2026-11-01`, date desc, with the
     /// probe row. Callers filter client-side by state/kind/search —
     /// the server list is the whole household history page.
+    /// The `id desc` tiebreaker (Nov 18, 2026 — second "Load More"
+    /// failure): many rows share a `date`, so `date desc` alone is
+    /// a nondeterministic order and offset pages shift rows between
+    /// fetches. The unique tiebreaker makes every page stable.
     public func transactionsPage(householdId: UUID, pageSize: Int = 100, offset: Int = 0) async throws -> (rows: [Transaction], hasMore: Bool) {
         try await fetchPage(
             PostgrestQuery(
                 table: "transactions",
                 columns: "*",
                 filters: [.householdId(householdId), .onOrAfterNov1()],
-                orders: [PostgrestOrder("date", ascending: false)],
+                orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("id", ascending: false)],
                 offset: offset
             ),
             pageSize: pageSize
@@ -530,12 +534,14 @@ public struct PostgrestClient {
 
     /// Whole-history dedupe rows for CSV import (live.js:2468-2470):
     /// merchant, amount, date, suffix, ordered by created_at asc.
+    /// `id asc` tiebreaker: `fetchAllPages` walks by offset, so the
+    /// order must be total (same Nov 18, 2026 fix as transactionsPage).
     public func transactionsForCSVDedupe(householdId: UUID) async throws -> [TransactionDedupeRow] {
         try await fetchAllPages(PostgrestQuery(
             table: "transactions",
             columns: "merchant,amount_cents,date,card_suffix",
             filters: [.householdId(householdId)],
-            orders: [PostgrestOrder("created_at", ascending: true)]
+            orders: [PostgrestOrder("created_at", ascending: true), PostgrestOrder("id", ascending: true)]
         ))
     }
 
@@ -620,7 +626,7 @@ public struct PostgrestClient {
             // Transactions view model no longer works around it).
             columns: "id,household_id,date,merchant,amount_cents,card_suffix,source,state,kind,fund_allocation_cents,excluded,exclude_reason,late,dedupe_hash,created_at",
             filters: filters,
-            orders: [PostgrestOrder("date", ascending: false)],
+            orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("id", ascending: false)],
             limit: 20
         ))
     }
@@ -636,7 +642,7 @@ public struct PostgrestClient {
             table: "transactions",
             columns: "*",
             filters: [.householdId(householdId), .equal("kind", "refund"), .onOrAfterNov1()],
-            orders: [PostgrestOrder("date", ascending: false)]
+            orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("id", ascending: false)]
         ))
     }
 
@@ -647,7 +653,7 @@ public struct PostgrestClient {
             table: "transactions",
             columns: "*",
             filters: [.householdId(householdId), .in("kind", ["charge", "fund_charge"]), .onOrAfterNov1()],
-            orders: [PostgrestOrder("date", ascending: false)]
+            orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("id", ascending: false)]
         ))
     }
 
@@ -773,12 +779,14 @@ public struct PostgrestClient {
     // MARK: Savings (read-only)
 
     /// Whole-history savings ledger, newest first (live.js:1282-1285).
+    /// `id desc` tiebreaker: `fetchAllPages` walks by offset, so the
+    /// order must be total (same Nov 18, 2026 fix as transactionsPage).
     public func savingsLedger(householdId: UUID) async throws -> [SavingsLedgerEntry] {
         try await fetchAllPages(PostgrestQuery(
             table: "savings_ledger",
             columns: "*",
             filters: [.householdId(householdId)],
-            orders: [PostgrestOrder("created_at", ascending: false)]
+            orders: [PostgrestOrder("created_at", ascending: false), PostgrestOrder("id", ascending: false)]
         ))
     }
 
@@ -912,7 +920,7 @@ public struct PostgrestClient {
             // by the Auth+Home builder, Nov 9, 2026).
             columns: "id,household_id,source_label,amount_cents,income_date,rate_bp,status,replaces_id,note,created_by,created_at",
             filters: [.householdId(householdId), .equal("status", "active")],
-            orders: [PostgrestOrder("created_at", ascending: true)]
+            orders: [PostgrestOrder("created_at", ascending: true), PostgrestOrder("id", ascending: true)]
         ))
     }
 
@@ -1002,7 +1010,7 @@ public struct PostgrestClient {
                 .equal("excluded", "false"),
                 .onOrAfterNov1(),
             ],
-            orders: [PostgrestOrder("created_at", ascending: true)]
+            orders: [PostgrestOrder("created_at", ascending: true), PostgrestOrder("id", ascending: true)]
         ))
         return rows.map(\.amountCents)
     }
@@ -1151,7 +1159,11 @@ public struct PostgrestClient {
             table: "audit_log",
             columns: "*",
             filters: filters,
-            orders: [PostgrestOrder("created_at", ascending: false)],
+            // `id desc` tiebreaker: Load More grows `limit` and
+            // re-reads from the top, so a non-unique `created_at`
+            // order can shuffle the prefix between taps (same
+            // Nov 18, 2026 fix as transactionsPage).
+            orders: [PostgrestOrder("created_at", ascending: false), PostgrestOrder("id", ascending: false)],
             limit: limit,
             countExact: true
         ))

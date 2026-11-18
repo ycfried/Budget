@@ -362,7 +362,11 @@ public final class FundsViewModel: ObservableObject {
                     table: "transactions",
                     columns: "*",
                     filters: [.householdId(context.householdId), .onOrAfterNov1()],
-                    orders: [PostgrestOrder("date", ascending: false)]
+                    // `id desc` tiebreaker (Nov 18, 2026 — same fix as
+                    // transactionsPage): `date` alone is nondeterministic
+                    // and `fetchAllPages` walks by offset, so pages
+                    // would shift rows between fetches.
+                    orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("id", ascending: false)]
                 )
             )
             transactionsError = nil
