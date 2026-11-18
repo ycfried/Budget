@@ -21,6 +21,16 @@
 #   no JWT by design; validates the email itself, returns one boolean).
 # - true for everything the app calls with the signed-in user's JWT;
 #   each of those functions also verifies the caller itself.
+# - push-notify is false like gmail-poll: dual auth verified inside
+#   the function (member JWT or service-key bearer), so week-close,
+#   plaid-sync, and gmail-poll can call it server-to-server.
+# - register-push-token is true: the app calls it with the user's JWT.
+
+[functions.push-notify]
+verify_jwt = false
+
+[functions.register-push-token]
+verify_jwt = true
 
 [functions.compute-week]
 verify_jwt = true

@@ -172,9 +172,10 @@ export async function hmacSha256Hex(secret: string, message: string): Promise<st
 // rename/apply RPCs in supabase/merchant-rules.sql (which recompute
 // dedupe_hash for renamed rows). Matching is deliberately strict —
 // normalized exact / includes / squashed-exact only, never fuzzy:
-// (Build 34: 'prefix' became 'includes'; build 39: Includes
-// squashes BOTH sides before the substring check — case- and
-// whitespace-insensitive, letters in order.)
+// (Build 34: 'prefix' became 'includes' — the name must CONTAIN
+// the pattern anywhere, not only start with it.)
+// (Build 39: Includes squashes BOTH sides before the substring
+// check — case- and whitespace-insensitive, letters in order.)
 // a rule must never rename a merchant it was not taught.
 //   key    = UPPER, trimmed, whitespace collapsed, leading
 //            non-alphanumeric bank artifacts stripped ('=TENYAD...'
@@ -208,6 +209,8 @@ export function merchantRuleSquash(name: string): string {
 export type MerchantRule = {
   pattern_key: string;
   pattern_squash: string;
+  // 'prefix' is the pre-migration value (build 34) — read as
+  // 'includes' below until the migration lands.
   match_type: 'exact' | 'includes' | 'prefix';
   display_name: string;
   fixed_kind?: string | null;
@@ -287,12 +290,26 @@ export async function loadMerchantRules(
   }
 }
 
+// --- Email source set (build 44, item 4) ---
+// The merge paths below used to hardcode source 'amex_alert'. The
+// set is the single place that knows which transaction sources are
+// email alerts; adding a bank means adding its source here (and a
+// parser in gmail-parse.ts) — no other merge code changes. Today
+// the only email source is the Amex Large Purchase alert.
+// NO Chase / Capital One source exists yet: no parser and no known
+// sender/subject format — do not add one without a real redacted
+// sample from the owner.
+export const EMAIL_SOURCES = ['amex_alert'] as const;
+export function isEmailSource(source: string): boolean {
+  return (EMAIL_SOURCES as readonly string[]).includes(source);
+}
+
 // --- Bank+Email auto-merge eligibility (build 30, task I) ---
 // The approved provisional-merge take: a bank row and an email row
 // for the SAME purchase merge automatically — bank row kept, email
 // row merged away, no manual review. Conservative by design: ALL
 // of these must hold, or the pair stays for manual review.
-//   * bank source 'plaid', email source 'amex_alert' (NEVER two
+//   * bank source 'plaid', email source in EMAIL_SOURCES (NEVER two
 //     bank rows, NEVER two email rows);
 //   * same household, same signed amount, same kind;
 //   * dates within 2 days (either direction);
@@ -350,7 +367,7 @@ export function autoMergeEligible(
   } = {},
 ): { eligible: boolean; reason: string } {
   if (bankRow.source !== 'plaid') return { eligible: false, reason: 'bank row is not plaid' };
-  if (emailRow.source !== 'amex_alert') return { eligible: false, reason: 'email row is not amex_alert' };
+  if (!isEmailSource(emailRow.source)) return { eligible: false, reason: 'email row is not an email source' };
   if (opts.resolvedPair) return { eligible: false, reason: 'pair already resolved' };
   if (bankRow.household_id && emailRow.household_id && bankRow.household_id !== emailRow.household_id) {
     return { eligible: false, reason: 'different households' };
@@ -376,13 +393,13 @@ export function autoMergeEligible(
   if (isToiremorgMerchant(bankRow.merchant) || isToiremorgMerchant(emailRow.merchant)) {
     return { eligible: false, reason: 'toiremorg pair never auto-merges' };
   }
-  const nb = normalizeMerchant(bankRow.merchant);
-  const ne = normalizeMerchant(emailRow.merchant);
+  const nb = merchantRuleSquash(bankRow.merchant);
+  const ne = merchantRuleSquash(emailRow.merchant);
   let related = nb === ne || merchantsRelated(bankRow.merchant, emailRow.merchant);
   if (!related) {
     for (const a of opts.aliases ?? []) {
-      const x = normalizeMerchant(a.name_a);
-      const y = normalizeMerchant(a.name_b);
+      const x = merchantRuleSquash(a.name_a);
+      const y = merchantRuleSquash(a.name_b);
       if ((x === nb && y === ne) || (x === ne && y === nb)) { related = true; break; }
     }
   }
@@ -426,7 +443,7 @@ export async function findCoveringBankRow(
       const bank = row as MergeRow;
       const emailLike: MergeRow = {
         id: '', household_id: householdId, merchant: alert.merchant,
-        source: 'amex_alert', date: alert.date, amount_cents: alert.amount_cents,
+        source: EMAIL_SOURCES[0], date: alert.date, amount_cents: alert.amount_cents,
         card_suffix: alert.card_suffix, kind: alert.kind,
       };
       if (autoMergeEligible(bank, emailLike, opts).eligible) return bank;
@@ -434,6 +451,40 @@ export async function findCoveringBankRow(
     return null;
   } catch {
     return null;
+  }
+}
+
+// --- Charity auto-accrual (build 44, item 5) ---
+// Best-effort hook shared by plaid-sync, gmail-poll and
+// ingest-amex-alert: after an income row lands VERIFIED, accrue
+// charity at the household default rate via the service-role-only
+// accrue_charity_for_transaction RPC
+// (supabase/charity-auto-accrue.sql). VERIFIED-only: a provisional
+// income row accrues nothing until the pending→posted transition
+// calls this again. Never fails the caller: a missing SQL apply, a
+// race, or a non-income kind is logged, not thrown. The RPC itself
+// is idempotent (unique index on (household_id, transaction_id)
+// WHERE status='active'); the pre-check here just avoids the call
+// when the link already exists. Transfers, refunds, payments and
+// cashback never reach this helper with kind='income'
+// (classifyKind), and the RPC refuses them too.
+export async function accrueCharityForIncomeTx(
+  supabaseAdmin: SupaAdmin,
+  householdId: string,
+  transactionId: string,
+  kind: string | undefined,
+  state: string,
+): Promise<void> {
+  if (kind !== 'income' || state !== 'verified') return;
+  try {
+    const { data: already } = await supabaseAdmin.from('charity_income')
+      .select('id').eq('household_id', householdId).eq('transaction_id', transactionId)
+      .eq('status', 'active').maybeSingle();
+    if (already) return;
+    const { error } = await supabaseAdmin.rpc('accrue_charity_for_transaction', { p_transaction_id: transactionId });
+    if (error) console.error('charity auto-accrual failed (best-effort):', (error as { message?: unknown })?.message ?? error);
+  } catch (e) {
+    console.error('charity auto-accrual failed (best-effort):', (e as Error)?.message ?? e);
   }
 }
 
@@ -447,9 +498,20 @@ export async function findCoveringBankRow(
 // deno-lint-ignore no-explicit-any
 type SupaAdmin = { from: (table: string) => any };
 
+// STANDING RULE (owner, Nov 16, 2026 — build 40): same date +
+// same amount + similar merchant + one Email + one Bank = the SAME
+// transaction and must auto-merge (bank row kept). Slight spelling
+// differences — punctuation (apostrophe), case, whitespace, minor
+// variation — must NOT prevent the merge. So the comparison uses
+// the SQUASH (UPPER + strip every non-alphanumeric), not the
+// normalizeMerchant key (which keeps internal punctuation:
+// "Cocoaccino's" never matched "Cocoaccinos" by key, so the $3.13
+// Bank+Email pair never merged). No fuzzy matching: squash
+// equality / substring only. TOIREMORG never merges and ambiguity
+// refuses — those safeguards are separate and unchanged.
 export function merchantsRelated(a: string, b: string): boolean {
-  const na = normalizeMerchant(a);
-  const nb = normalizeMerchant(b);
+  const na = merchantRuleSquash(a);
+  const nb = merchantRuleSquash(b);
   if (!na || !nb || na === nb) return false;
   if (na.length < 4 || nb.length < 4) return false;
   return na.includes(nb) || nb.includes(na);
@@ -511,14 +573,14 @@ export async function flagLookalikes(
     }
     const aliasSet = new Set<string>();
     for (const a of aliases) {
-      const x = normalizeMerchant(a.name_a);
-      const y = normalizeMerchant(a.name_b);
+      const x = merchantRuleSquash(a.name_a);
+      const y = merchantRuleSquash(a.name_b);
       aliasSet.add(`${x}|${y}`);
       aliasSet.add(`${y}|${x}`);
     }
     const related = (m1: string, m2: string): boolean => {
       if (merchantsRelated(m1, m2)) return true;
-      if (aliasSet.has(`${normalizeMerchant(m1)}|${normalizeMerchant(m2)}`)) return true;
+      if (aliasSet.has(`${merchantRuleSquash(m1)}|${merchantRuleSquash(m2)}`)) return true;
       const r1 = matchMerchantRule(rules, m1);
       const r2 = matchMerchantRule(rules, m2);
       return !!r1 && !!r2 && normalizeMerchant(r1.display_name) === normalizeMerchant(r2.display_name);
@@ -555,4 +617,192 @@ export async function flagLookalikes(
   } catch {
     return 0;
   }
+}
+
+// --- removed[] handling (build 44, change 1, Nov 18, 2026) ---
+// A pending transaction disappearing from the bank feed is NORMAL:
+// it posted under a new transaction ID, so Plaid reports the pending
+// id in removed[] and the posted version in added[] (usually with a
+// pending_transaction_id link back to it). The old code treated every
+// removed[] entry as a genuine bank reversal and marked the row
+// state='reversed' + excluded=true — which is how the $3,500 Mobile
+// Check Deposit (Nov 17, Amex Rewards Checking) was wrongly excluded:
+// its pending version vanished, the posted version never landed as
+// its own row, and the pending row was excluded instead. (A $75 Mobile
+// Check Deposit, Nov 12, is in the same state.) Rules, decided by
+// decideRemovedRow — the caller only ever UPDATEs on 'exclude':
+//   * provisional row in removed[] -> LEAVE it (state stays
+//     provisional, excluded stays false). Only a VERIFIED row is a
+//     genuine reversal.
+//   * verified row + a same-merchant + same-amount + same-date
+//     arrival in the SAME sync -> LEAVE it: a re-issue, not a
+//     reversal; the new row is the live one.
+//   * a pending_transaction_id link from an arrival in the same sync
+//     to the removed row is the same re-issue signal, used when it
+//     aligns on amount + date (the merchant string may legitimately
+//     differ between the pending and posted versions). The link is
+//     matched ONLY against the row's LIVE ids (external_id /
+//     plaid_transaction_id) — never against
+//     plaid_pending_transaction_id, which still holds the OLD pending
+//     id after a pending→posted link, so a later removed[] entry for
+//     that old id must never match the live posted row.
+//   * EXPANSION (Nov 18, ~11:16): before a verified row is excluded,
+//     the caller searches for a REPLACEMENT — same merchant + amount
+//     + date + card_suffix — in this sync's arrivals and, failing
+//     that, in a recent window of the household's transactions. A
+//     replacement is the same money under a new id: the row is
+//     LINKED to it (updated to the new id / state, kind kept), not
+//     trashed, and the duplicate arrival row is excluded. Only when
+//     no replacement exists is the row excluded as a reversal.
+// Append-only: this decision never deletes anything.
+export type RemovedRowLike = {
+  state?: string | null;
+  excluded?: boolean | null;
+  merchant: string;
+  date: string;
+  amount_cents: number;
+  card_suffix?: string | null;
+  external_id?: string | null;
+  plaid_transaction_id?: string | null;
+  plaid_pending_transaction_id?: string | null;
+};
+
+export type SyncArrivalLike = {
+  // Display merchant in stored (normalized UPPER) form, signed cents
+  // in the same convention as the row, date YYYY-MM-DD — i.e. the
+  // same triple upsertPlaidTx stores for an added/modified tx.
+  merchant: string;
+  date: string;
+  amount_cents: number;
+  // Card suffix, derived from the account mask exactly as
+  // upsertPlaidTx derives it. Required for the replacement match:
+  // an arrival without a known suffix can never be a confirmed
+  // replacement, only a re-issue signal.
+  card_suffix?: string | null;
+  // The arrival's own live transaction id (its new external_id).
+  external_id?: string | null;
+  // 'verified' for a posted arrival, 'provisional' for a pending
+  // one. Only a posted arrival can be a replacement link target.
+  state?: 'provisional' | 'verified';
+  // The upserted row id of this arrival, when the caller knows it.
+  rowId?: string | null;
+  pending_transaction_id?: string | null;
+};
+
+export type RemovedReplacement = {
+  external_id: string;
+  plaid_transaction_id: string;
+  pending_transaction_id: string | null;
+  state: 'verified';
+  // The upserted row id of the replacement, when the caller knows
+  // it — the caller excludes that row as the duplicate of the
+  // linked row. Null for a replacement found only as a sync
+  // arrival the caller could not resolve to a row.
+  rowId: string | null;
+};
+
+export type RemovedDecision = {
+  action: 'leave' | 'exclude' | 'link';
+  reason: string;
+  replacement?: RemovedReplacement;
+};
+
+export function decideRemovedRow(
+  row: RemovedRowLike,
+  arrivals: SyncArrivalLike[],
+): RemovedDecision {
+  if (row.state === 'provisional') {
+    return { action: 'leave', reason: 'provisional-removed-is-normal' };
+  }
+  if (row.excluded === true || row.state === 'excluded' || row.state === 'reversed') {
+    return { action: 'leave', reason: 'already-excluded' };
+  }
+  if (row.state !== 'verified') {
+    return { action: 'leave', reason: 'not-verified' };
+  }
+  // LIVE ids only. plaid_pending_transaction_id is deliberately NOT
+  // in this set: after a pending→posted link it still holds the old
+  // pending id, and a removed[] entry for that old id must not match
+  // the live posted row (fix 1).
+  const rowIds = new Set(
+    [row.external_id, row.plaid_transaction_id]
+      .filter((v): v is string => typeof v === 'string' && v.length > 0),
+  );
+  const merchant = normalizeMerchant(row.merchant);
+  for (const tx of arrivals) {
+    // Replacement link (fix 2): a POSTED arrival under a new id with
+    // the same merchant + amount + date + card is the same money,
+    // not a reversal — link the row to it. The arrival must carry a
+    // new id (not the row's own id: a re-delivered row is a re-issue,
+    // not a replacement) and a known card suffix.
+    if (
+      tx.state === 'verified' &&
+      tx.external_id &&
+      !rowIds.has(tx.external_id) &&
+      row.card_suffix &&
+      tx.card_suffix &&
+      tx.card_suffix === row.card_suffix &&
+      normalizeMerchant(tx.merchant) === merchant &&
+      tx.date === row.date &&
+      tx.amount_cents === row.amount_cents
+    ) {
+      return {
+        action: 'link',
+        reason: 'replacement-same-merchant-amount-date-card',
+        replacement: {
+          external_id: tx.external_id,
+          plaid_transaction_id: tx.external_id,
+          pending_transaction_id: tx.pending_transaction_id ?? null,
+          state: 'verified',
+          rowId: tx.rowId ?? null,
+        },
+      };
+    }
+    if (
+      normalizeMerchant(tx.merchant) === merchant &&
+      tx.date === row.date &&
+      tx.amount_cents === row.amount_cents
+    ) {
+      return { action: 'leave', reason: 'reissue-same-merchant-amount-date' };
+    }
+    if (
+      tx.pending_transaction_id &&
+      rowIds.has(tx.pending_transaction_id) &&
+      tx.date === row.date &&
+      tx.amount_cents === row.amount_cents
+    ) {
+      return { action: 'leave', reason: 'reissue-pending-link' };
+    }
+  }
+  return { action: 'exclude', reason: 'verified-reversal' };
+}
+
+// --- Plaid hash-fallback claim (build 44, change 1 expansion, fix 3) ---
+// When a posted Plaid tx arrives with NO pending_transaction_id, the
+// pending→posted lookup misses, and the canonical-hash match (step 3
+// in upsertPlaidTx) only claims EMAIL_SOURCES rows — so the posted tx
+// used to insert a second row next to its own provisional predecessor.
+// The fallback claims the EARLIEST matching provisional PLAID row by
+// dedupe_hash. Guards: only a provisional row may be claimed, never
+// a verified one (two identical real purchases still coexist — a
+// verified row is never merged away); an excluded row is never
+// claimed. `rows` must be in created_at order, earliest first; the
+// first claimable row wins and the rest are untouched.
+export type HashClaimCandidate = {
+  id: string;
+  source?: string | null;
+  state?: string | null;
+  excluded?: boolean | null;
+};
+
+export function pickPlaidHashClaim(
+  rows: HashClaimCandidate[],
+): HashClaimCandidate | null {
+  for (const row of rows) {
+    if (row.source !== 'plaid') continue;
+    if (row.state !== 'provisional') continue;
+    if (row.excluded === true) continue;
+    return row;
+  }
+  return null;
 }

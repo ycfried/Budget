@@ -133,6 +133,15 @@ async function fetchHouseholdTxns(
   }
 }
 
+// Timing-safe string comparison for the service-key check below
+// (same helper as gmail-poll / plaid-sync).
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -142,13 +151,27 @@ Deno.serve(async (req) => {
     if (!auth.startsWith('Bearer ')) {
       return json({ error: 'missing authorization' }, 401);
     }
-    const supabase = createClient(
+    const bearer = auth.slice('Bearer '.length);
+    const serviceKey = Deno.env.get('SERVICE_ROLE_SECRET') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    // Dual auth (Nov 16, 2026): the user-JWT path below is unchanged.
+    // The service-key path lets push-notify call compute-week
+    // server-to-server for the new-week amount and the over-budget
+    // check. The service key already grants full DB access, so this
+    // path adds no privilege; the membership check is skipped and
+    // reads use the admin client.
+    let supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: auth } } },
     );
-    const { data: { user }, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !user) return json({ error: 'unauthorized' }, 401);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      // User path — membership checked below.
+    } else if (serviceKey && timingSafeEqual(bearer, serviceKey)) {
+      supabase = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
+    } else {
+      return json({ error: 'unauthorized' }, 401);
+    }
 
     const body = await req.json().catch(() => ({}));
     const householdId = String(body.household_id ?? '');
@@ -167,13 +190,17 @@ Deno.serve(async (req) => {
     // NOTE: body.D, body.T, and any legacy credit fields are
     // deliberately never read here. Server-side derivation only.
 
-    const { data: membership, error: memErr } = await supabase
-      .from('household_members')
-      .select('role')
-      .eq('household_id', householdId)
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (memErr || !membership) return json({ error: 'not a household member' }, 403);
+    // User path only: the service-key path skips the membership
+    // check (the key already grants full DB access).
+    if (user) {
+      const { data: membership, error: memErr } = await supabase
+        .from('household_members')
+        .select('role')
+        .eq('household_id', householdId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (memErr || !membership) return json({ error: 'not a household member' }, 403);
+    }
 
     const { data: household, error: hhErr } = await supabase
       .from('households')

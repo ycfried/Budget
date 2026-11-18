@@ -237,3 +237,32 @@ export function filterNewMessageIds(allIds: string[], processedIds: string[]): s
   const seen = new Set(processedIds ?? []);
   return (allIds ?? []).filter((id) => id && !seen.has(id));
 }
+
+// --- Per-bank parser dispatcher (build 44, item 4) ---
+// Structural skeleton only: the Gmail path knows ONE email source
+// today (Amex Large Purchase alerts). A future bank registers its
+// parser here and adds its source to EMAIL_SOURCES in canonical.ts;
+// the merge paths (autoMergeEligible, findCoveringBankRow,
+// plaid-sync steps 3/3b) then accept that bank's rows with no other
+// code change. Do NOT register a Chase / Capital One parser here:
+// no real redacted sample exists, and no sender/subject format is
+// known — inventing one would mis-parse real mail. That work is
+// blocked on samples from the owner.
+export type EmailAlertParser = (input: {
+  subject: string;
+  body: string;
+  date: string;
+}) => ParsedAlert | null;
+
+export const EMAIL_PARSERS: Record<string, EmailAlertParser> = {
+  amex_alert: parseAmexAlertText,
+};
+
+export function parseEmailAlert(
+  source: string,
+  input: { subject: string; body: string; date: string },
+): ParsedAlert | null {
+  const parser = EMAIL_PARSERS[source];
+  if (!parser) return null;
+  return parser(input);
+}
