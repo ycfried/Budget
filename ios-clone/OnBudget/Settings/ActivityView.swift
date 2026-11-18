@@ -1,4 +1,4 @@
-// OnBudget — Activity (live web v66, §13).
+// STAG — Activity (live web v66, §13).
 //
 // General Activity: who did what, and when — not the transaction
 // list. Grouped by day (newest day first), each entry: small muted

@@ -1,4 +1,4 @@
-// OnBudget — SharedViews.swift
+// STAG — SharedViews.swift
 //
 // Shared SwiftUI building blocks for the Auth + Home screens.
 // Colours come from OnBudgetKit DesignTokens only — never hard-coded
@@ -403,7 +403,7 @@ public struct SuccessBox: View {
 // MARK: - Loading screen
 
 /// Full-screen loading view (live.html:39-43): logo + blue ring,
-/// "OnBudget", "Loading Your Household". Shown on first paint and
+/// "STAG", "Loading Your Household". Shown on first paint and
 /// kept until the first data load completes or fails — never a blank
 /// or half-built page, and never an endless spinner with no error.
 /// The logo wears the animated blue ring (BrandedLoader) — the
@@ -416,7 +416,7 @@ public struct LoadingView: View {
             // placeholder ring (owner, Nov 11, 2026), with the
             // animated brand-blue ring around it.
             BrandedLoader(size: 72)
-            Text("OnBudget")
+            Text("STAG")
                 .font(.system(size: 28, weight: .bold, design: .default))
                 .foregroundStyle(DesignTokens.ink)
             Text("Loading Your Household")

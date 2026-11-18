@@ -1,4 +1,4 @@
-// OnBudget — UITestSecrets.swift
+// STAG — UITestSecrets.swift
 //
 // Compile-time carrier for the Supabase service-role key the UI
 // tests need to confirm fresh accounts via the Auth Admin API

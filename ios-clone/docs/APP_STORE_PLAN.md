@@ -15,14 +15,12 @@
 
 ## 1. App name — FLAG: clearance NOT verified
 
-- **Store name: `OnBudget: Family Budget`.** Plain `OnBudget` was
-  already taken as a store name when the app record was created
-  (Nov 11, 2026); the store name can be changed any time before
+- **Store name: `STAG`.** (Build 44: renamed from `OnBudget: Family Budget`; plain `OnBudget` was already taken as a store name when the app record was created, Nov 11, 2026.) The store name can be changed any time before
   release. **Bundle id: `com.onbudget.ios`** — `com.onbudget.app`
   already belongs to another account, so the friend registered
-  `com.onbudget.ios` instead. **Display name under the icon stays
-  `OnBudget`** (CFBundleDisplayName / PRODUCT_NAME, untouched by
-  the bundle-id change).
+  `com.onbudget.ios` instead. **Display name under the icon is
+  `STAG`** (CFBundleDisplayName, renamed in build 44; the bundle id
+  is unchanged).
 - **FLAG — do not skip this.** The name check is crowded: no App Store
   app is literally named OnBudget, but a San Diego company literally
   named OnBudget sold a budgeting tool, and **USPTO status is NOT
@@ -32,7 +30,7 @@
   If the clearance fails, the fallback is a rename before submission,
   not after: the bundle id, the APNs topic, and the store listing all
   carry the name.
-- **Subtitle (30 characters max):** `Weekly Household Budget`
+- **Subtitle (30 characters max):** `Guided Spending & Giving`
   (23 characters). States the job in plain words; no claim the app
   cannot back up.
 - **Keywords (100 characters max, comma-separated, no spaces):**
@@ -40,7 +38,7 @@
   (92 characters). No competitor names, no "free" (Apple rejects
   "free" in keywords/metadata), no keyword stuffing.
 - **Category:** Finance (primary). No secondary category in v1 — the
-  app is a budget tracker, nothing else.
+  app is a spending, saving, and giving tracker — nothing else.
 - **Price:** Free. No in-app purchases, no subscriptions in v1.
 - **Age rating:** 4+. No objectionable content, no user-generated
   content shared beyond the household, no payments.
@@ -65,7 +63,7 @@ brokering — **nothing in OnBudget is used for tracking**.
 |---|---|---|---|---|---|
 | Contact Info | Email Address | Yes | Yes | No | App Functionality (sign-in; the account identifier) |
 | Contact Info | Name | Yes | Yes | No | App Functionality (display name in the household; required at sign-up since v60) |
-| Purchases | Purchase History | Yes | Yes | No | App Functionality (merchant, amount, date, card suffix — the budget itself) |
+| Purchases | Purchase History | Yes | Yes | No | App Functionality (merchant, amount, date, card suffix — the spending record) |
 | Financial Info | Other Financial Info | Yes | Yes | No | App Functionality (bank transactions and balances pulled read-only through Plaid; the encrypted Plaid access token is stored server-side) |
 | Financial Info | Payment Info | No | — | — | The app never sees bank usernames, passwords, or full card numbers. Card numbers appear only as a last-4 suffix. |
 | Identifiers | User ID | Yes | Yes | No | App Functionality (Supabase auth id — the account) |
@@ -240,12 +238,12 @@ and, if the user is the last member, the household."
 ## 5. Metadata plan
 
 - **Name:** `OnBudget` (§1 flag applies).
-- **Subtitle:** `Weekly Household Budget`.
+- **Subtitle:** `Guided Spending & Giving`.
 - **Keywords:** `budget,household,weekly budget,family budget,expense tracker,allowance,savings,shared budget` (92/100 chars).
 - **Description outline** (write the full text at listing time,
   ~2,500–4,000 characters max, plain language, no hype):
-  1. One paragraph — what it is: a shared weekly budget for a
-     household. One allowance, one week, both people see the same
+  1. One paragraph — what it is: a tracking tool for guided spending, saving, and giving.
+     One weekly allowance, one shared record — both people see the same
      numbers.
   2. Weekly allowance — set one amount per week; what's left is
      always on Home; overspending carries as debt into next week,
@@ -326,7 +324,7 @@ may appear in any screenshot or test account.
 
 **Review-notes draft (paste at submission time, adapt to the build):**
 
-> OnBudget is a native SwiftUI household budget app (not a web
+> STAG is a native SwiftUI tracking app for guided spending, saving, and giving (not a web
 > wrapper). Sign-ups are open — you can create an account, or use the
 > test account below to open a populated test household. Bank
 > connection uses Plaid Link (account linking only — no purchase, no

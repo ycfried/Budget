@@ -1,9 +1,9 @@
-// OnBudget — AuthViews.swift
+// STAG — AuthViews.swift
 //
 // Auth screens (CLONE_SPEC §4, live.html:45-74, live.js:2397-2620).
-// Top bar: app logo + "OnBudget" brand block, no card heading, no
+// Top bar: app logo + "STAG" brand block, no card heading, no
 // subtitle. Footer under the card on both auth screens:
-// "Your household budget, shared in one place." / "Bank and email
+// "Guided spending, saving, and giving — shared in one place." / "Bank and email
 // are read-only — nothing is ever moved or changed." / "Privacy ·
 // Terms" links.
 //
@@ -60,7 +60,7 @@ public struct AuthBrandHeader: View {
                 .scaledToFit()
                 .frame(width: 72, height: 72)
                 .clipShape(Circle())
-            Text("OnBudget")
+            Text("STAG")
                 .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
         }
@@ -74,17 +74,17 @@ public struct AuthFooter: View {
     public init() {}
     public var body: some View {
         VStack(spacing: 4) {
-            Text("Your household budget, shared in one place.")
+            Text("Guided spending, saving, and giving — shared in one place.")
             Text("Bank and email are read-only — nothing is ever moved or changed.")
             // Privacy / Terms look like links now (owner, Nov 12,
             // 2026): brand blue + underlined, like "Forgot
             // Password?" — the grey text did not read as tappable.
             HStack(spacing: 4) {
-                Link("Privacy", destination: URL(string: "https://ycfried.github.io/Budget/privacy.html")!)
+                Link("Privacy", destination: URL(string: "https://getstag.us/privacy")!)
                     .foregroundStyle(DesignTokens.primary)
                     .underline()
                 Text("·")
-                Link("Terms", destination: URL(string: "https://ycfried.github.io/Budget/terms.html")!)
+                Link("Terms", destination: URL(string: "https://getstag.us/terms")!)
                     .foregroundStyle(DesignTokens.primary)
                     .underline()
             }
@@ -555,7 +555,7 @@ public struct NameStepView: View {
                 // Inline success is GREEN (owner decision, Nov 12,
                 // 2026), like the success toasts — not the blue InfoBox.
                 SuccessBox("Account created. Check your email to confirm it, then sign in.")
-                Text("The confirmation link opens the OnBudget app. If it doesn't open, tap it on the iPhone or iPad where OnBudget is installed — the email is confirmed either way, then just sign in.")
+                Text("The confirmation link opens the STAG app. If it doesn't open, tap it on the iPhone or iPad where STAG is installed — the email is confirmed either way, then just sign in.")
                     .font(.system(size: 15))
                     .foregroundStyle(Color(hex: "#6b7280"))
                 Button("Back to Sign In") { onBack() }
@@ -706,7 +706,7 @@ public struct ForgotPasswordSheet: View {
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
                 InfoBox("If an account exists for \(sentEmail), a password-reset link was sent to it.")
-                Text("Check your inbox (and spam folder) for the link. The link opens the OnBudget app, where you choose a new password. If the link has expired, send a fresh one from here.")
+                Text("Check your inbox (and spam folder) for the link. The link opens the STAG app, where you choose a new password. If the link has expired, send a fresh one from here.")
                     .font(.system(size: 15))
                     .foregroundStyle(DesignTokens.ink)
                 // Audit A-P2-10: the error box sits above the

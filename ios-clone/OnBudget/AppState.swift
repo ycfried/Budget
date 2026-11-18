@@ -1,4 +1,4 @@
-// OnBudget — AppState.swift
+// STAG — AppState.swift
 //
 // App shell state: boot flow, session, household membership, tab
 // selection, toasts, and the handoffs between screens (recent-row

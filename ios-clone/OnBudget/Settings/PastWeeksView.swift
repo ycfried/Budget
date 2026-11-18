@@ -1,4 +1,4 @@
-// OnBudget — Past Weeks (live web v66, §12).
+// STAG — Past Weeks (live web v66, §12).
 //
 // Closed weeks, read-only. Tap a week to see its summary and its
 // transactions.

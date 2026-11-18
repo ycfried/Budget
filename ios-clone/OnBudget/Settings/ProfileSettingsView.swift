@@ -1,4 +1,4 @@
-// OnBudget — Settings: Profile card (live web v66, §10.1).
+// STAG — Settings: Profile card (live web v66, §10.1).
 //
 // Display name + email; Save Name + Save Email BOTH primary blue;
 // Change Password grey tertiary. Sign-out. Delete Account lives in
@@ -316,7 +316,7 @@ struct ProfileSettingsView: View {
                 .alert(viewModel.faceIDLabel, isPresented: $showingFaceIDInfo) {
                     Button("OK") {}
                 } message: {
-                    Text("Unlock OnBudget with \(viewModel.faceIDBiometryName) instead of typing your password.")
+                    Text("Unlock STAG with \(viewModel.faceIDBiometryName) instead of typing your password.")
                 }
             }
 

@@ -1,4 +1,4 @@
-// OnBudget — HomeView.swift
+// STAG — HomeView.swift
 //
 // Home screen (CLONE_SPEC §6, live.html:103-141,
 // live.js:594-730, 1040-1110, 3457-3650) + Weekly sheet (§14).

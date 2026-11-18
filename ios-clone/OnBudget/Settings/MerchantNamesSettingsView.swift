@@ -1,7 +1,7 @@
 import SwiftUI
 import OnBudgetKit
 
-// OnBudget — Settings: Merchant Names card (build 30, task E).
+// STAG — Settings: Merchant Names card (build 30, task E).
 //
 // The saved merchant-name rules: one pattern maps to a clean
 // display name plus a fixed kind (or none). Rules apply to every

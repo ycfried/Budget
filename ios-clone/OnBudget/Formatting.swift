@@ -1,4 +1,4 @@
-// OnBudget — Formatting.swift
+// STAG — Formatting.swift
 //
 // Pure formatting + client-side validation for the Auth + Home screens.
 // Foundation only (no SwiftUI) so the logic stays parseable and testable

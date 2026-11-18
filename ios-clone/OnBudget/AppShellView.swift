@@ -1,4 +1,4 @@
-// OnBudget — AppShellView.swift
+// STAG — AppShellView.swift
 //
 // App shell + tab bar (CLONE_SPEC §0.1–0.2, §2.2).
 // Home on EVERY fresh load (app start, login, reopen), never on
@@ -211,7 +211,7 @@ public struct AppShellView: View {
         // Nov 11 "Profile" text-label addition).
         // The Menu still opens Profile → Settings / Sign Out.
         ZStack {
-            Text(appState.householdName ?? "OnBudget")
+            Text(appState.householdName ?? "STAG")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
                 .lineLimit(1)

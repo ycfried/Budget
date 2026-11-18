@@ -1,4 +1,4 @@
-// OnBudgetWidget — OnBudgetWidget.swift
+// STAGWidget — OnBudgetWidget.swift
 //
 // Home-screen widget (native build 17, owner-approved Nov 12, 2026;
 // redesigned build 26, owner Nov 14, 2026): the weekly spending
@@ -8,7 +8,7 @@
 //
 // Redesign (owner, Nov 14, 2026 — the medium widget was "super
 // ugly.. basic.. like a kindergartener made it"): no more plain
-// blue "OnBudget" text header and flat white — a quiet ink wordmark,
+// blue "STAG" text header and flat white — a quiet ink wordmark,
 // muted small labels, big figures with tabular numerals, generous
 // spacing, a subtle tinted background, and a hairline divider
 // between the two numbers. The data is unchanged: the same two
@@ -303,7 +303,7 @@ struct WidgetView: View {
 
     /// Quiet brandmark: the real logo mark beside the ink wordmark
     /// (owner, Nov 15, 2026 — the header showed only the plain
-    /// "OnBudget" wordmark). AppLogo comes from the shared asset
+    /// "STAG" wordmark). AppLogo comes from the shared asset
     /// catalog, which the widget target includes. Build 35: bigger
     /// than the old 20pt logo / subheadline wordmark — 24pt logo and
     /// a headline wordmark by default; the small size takes the
@@ -318,7 +318,7 @@ struct WidgetView: View {
             if isPlaceholder {
                 skeletonBar(width: 88, height: 16)
             } else {
-                Text("OnBudget")
+                Text("STAG")
                     .font(font)
                     .foregroundStyle(DesignTokens.ink)
             }
@@ -827,8 +827,8 @@ struct OnBudgetWidget: Widget {
                 // onOpenURL (AppState.goHome()).
                 .widgetURL(URL(string: "onbudget://home"))
         }
-        .configurationDisplayName("OnBudget")
-        .description("Weekly spending balance and charity balance.")
+        .configurationDisplayName("STAG")
+        .description("Spending, saving, and giving balances for the week.")
         // Extra-large is iPad-only — it never appears on iPhone,
         // where large stays the biggest.
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])

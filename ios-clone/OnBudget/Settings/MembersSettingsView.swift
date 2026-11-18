@@ -1,4 +1,4 @@
-// OnBudget — Settings: Account & Household card (live web v66, §10.5).
+// STAG — Settings: Account & Household card (live web v66, §10.5).
 //
 // Members list, invite code inline, Delete Account (two-step).
 //
@@ -47,7 +47,7 @@
 //   existed).
 //   Copy writes the clipboard and flips to "Copied" for 2s; Share
 //   uses the native share sheet with
-//   "Join my household on OnBudget with invite code CODE".
+//   "Join my household on STAG with invite code CODE".
 // - Delete Account: two-step confirm, then
 //   `EdgeFunctionsClient.deleteAccount()` (no household id — the
 //   function derives it from the caller). On failure the server
@@ -361,7 +361,7 @@ final class MembersSettingsViewModel: ObservableObject {
 
     var shareText: String {
         guard let code = inviteCode else { return "" }
-        return "Join my household on OnBudget with invite code \(code)"
+        return "Join my household on STAG with invite code \(code)"
     }
 
     // MARK: - Delete Account (two-step)

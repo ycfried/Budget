@@ -1,4 +1,4 @@
-// OnBudget — Settings screen (live web v66, §10).
+// STAG — Settings screen (live web v66, §10).
 //
 // Entry: profile menu → Settings. Heading "Settings" + "← Back"
 // (returns to `previousView`, or Home after a reload — the
@@ -72,9 +72,9 @@ private struct PrivacyTermsSettingsCard: View {
     var body: some View {
         SettingsCard(title: "Privacy · Terms") {
             HStack(spacing: 4) {
-                Link("Privacy", destination: URL(string: "https://ycfried.github.io/Budget/privacy.html")!)
+                Link("Privacy", destination: URL(string: "https://getstag.us/privacy")!)
                 Text("·")
-                Link("Terms", destination: URL(string: "https://ycfried.github.io/Budget/terms.html")!)
+                Link("Terms", destination: URL(string: "https://getstag.us/terms")!)
             }
             .font(.subheadline)
             .foregroundStyle(DesignTokens.mid)
