@@ -32,7 +32,10 @@ enum WidgetBackgroundRefreshTask {
             using: nil
         ) { task in
             guard let refreshTask = task as? BGAppRefreshTask else { return }
-            handle(refreshTask)
+            // handle is @MainActor (TaskCompleter is main-actor
+            // isolated): hop there. The handler already runs on
+            // the main queue, so this lands immediately.
+            Task { @MainActor in handle(refreshTask) }
         }
     }
 
@@ -57,6 +60,11 @@ enum WidgetBackgroundRefreshTask {
     /// a new snapshot was written (on failure the last snapshot
     /// stands — there is no button state to update, so no reload),
     /// end the task, then schedule the next run.
+    /// @MainActor: TaskCompleter is main-actor isolated, so the
+    /// handler must construct it on the main actor (run
+    /// 44237070772 failed to compile without this — Swift 6 rejects
+    /// a main-actor-isolated init from a nonisolated context).
+    @MainActor
     private static func handle(_ task: BGAppRefreshTask) {
         // One completion only: the expiration handler and the fetch
         // both end the task, and whichever runs first wins. Both
