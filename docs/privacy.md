@@ -1,11 +1,6 @@
-# OnBudget — Privacy Policy (DRAFT)
+# STAG — Privacy Policy
 
-> DRAFT — not published, not a legal claim. Written for the future
-> verified-domain homepage (the privacy-policy page Google requires
-> for Gmail verification). Have a lawyer review it before it goes
-> live, and update it whenever the app's data handling changes.
-
-OnBudget is a shared household budget app. One household — the
+STAG is a shared household budget app. One household — the
 people you invite — shares one budget. This policy explains what
 we collect, what we do with it, and how you can remove it.
 
@@ -21,7 +16,7 @@ we collect, what we do with it, and how you can remove it.
   or connect.
 - **Bank connections (optional):** if you connect a bank, we use
   Plaid, a bank-linking service. You type your bank username and
-  password into Plaid's own window — OnBudget never sees them.
+  password into Plaid's own window — STAG never sees them.
   What we store is an encrypted, read-only token that can only
   pull transactions. It cannot move money, and it cannot change
   anything at your bank.
