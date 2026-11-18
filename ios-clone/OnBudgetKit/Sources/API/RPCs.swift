@@ -727,16 +727,6 @@ extension RPCClient {
 // MARK: - Household & members
 
 extension RPCClient {
-    /// `create_household(p_name)` (`signup-display-name.sql:102-143`).
-    /// Returns the new household id. The caller must not already be
-    /// in a household ("already in a household"). The name is REQUIRED
-    /// by the app (live.js:2650-2660) — pass a non-empty name, max 80
-    /// chars. NOTE: the older no-arg `create_household()` is
-    /// superseded; live.js passes `{p_name}` (live.js:2661).
-    public func createHousehold(pName: String) async throws -> UUID {
-        try await callScalar(name: "create_household", params: ["p_name": pName])
-    }
-
     /// `join_household_by_code(code)` (`n13-invite-rate-limit.sql:90-142`).
     /// Returns the household id, or nil when the code is invalid (the
     /// function logs the failed attempt and returns NULL instead of

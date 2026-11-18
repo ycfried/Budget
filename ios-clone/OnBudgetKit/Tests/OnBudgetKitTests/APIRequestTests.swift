@@ -181,21 +181,6 @@ final class RPCRequestTests: XCTestCase {
         XCTAssertEqual(jsonBody(of: transport.requests[0])["code"] as? String, "BADCODE")
     }
 
-    func testCreateHouseholdPassesPName() async throws {
-        let householdId = UUID()
-        let transport = StubTransport(handler: { _ in
-            StubTransport.raw("\"\(householdId.uuidString)\"")
-        })
-        let client = RPCClient(
-            configuration: testConfiguration(),
-            tokenProvider: testTokenProvider(),
-            transport: transport
-        )
-        let returned = try await client.createHousehold(pName: "Friedman Household")
-        XCTAssertEqual(returned, householdId)
-        XCTAssertEqual(jsonBody(of: transport.requests[0])["p_name"] as? String, "Friedman Household")
-    }
-
     func testAddFundMoneyParams() throws {
         let request = try rpcs.makeRequest(name: "add_fund_money", params: [
             "p_household_id": UUID().uuidString,
