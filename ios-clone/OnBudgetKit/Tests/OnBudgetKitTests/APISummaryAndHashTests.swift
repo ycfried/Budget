@@ -87,6 +87,38 @@ final class APISummaryTests: XCTestCase {
         XCTAssertEqual(summary.remainingCents, 4800)
     }
 
+    func testCharitySummaryIncludesCashGifts() {
+        // Build 43, item 22 (owner Nov 17, 2026): cash gifts given
+        // off-card live in charity_cash_gifts, not in transactions —
+        // Given must include them. The 6768 figure is the live
+        // "Leftover from previous Ma'aser Sheet" row (Nov 16, 2026).
+        let householdId = UUID()
+        let income = [
+            CharityIncome(id: UUID(), householdId: householdId, sourceLabel: "Pay",
+                          amountCents: 100000, incomeDate: "2026-11-01", rateBp: 1000,
+                          status: "active", replacesId: nil, note: "", createdBy: nil, createdAt: nil),
+        ]
+        let gifts = [
+            Transaction(id: UUID(), householdId: householdId, date: "2026-11-03", merchant: "ORG",
+                        amountCents: 200, cardSuffix: "0000", source: .manual, state: .verified,
+                        kind: .charity, fundAllocationCents: 0, excluded: false, excludeReason: "",
+                        late: false, externalId: nil, dedupeHash: "h", originalPurchaseId: nil,
+                        preExclusionState: nil, plaidPendingTransactionId: nil,
+                        plaidTransactionId: nil, createdAt: "2026-11-03T00:00:00Z"),
+        ]
+        let summary = CharitySummary.compute(activeIncome: income, charityTransactions: gifts,
+                                             defaultRateBp: 1000, cashGiftCents: 6768)
+        XCTAssertEqual(summary.committedCents, 10000) // 10% of 100000; Total unchanged by gifts
+        XCTAssertEqual(summary.givenCents, 6968) // 200 verified gift + 6768 cash gift
+        XCTAssertEqual(summary.pendingGiftCents, 0)
+        XCTAssertEqual(summary.remainingCents, 3032) // Available falls by the cash gift
+        // Without the cash-gift sum, Given reads 200 — the exact
+        // build-42 behaviour the owner reported.
+        let withoutCash = CharitySummary.compute(activeIncome: income, charityTransactions: gifts,
+                                                 defaultRateBp: 1000)
+        XCTAssertEqual(withoutCash.givenCents, 200)
+    }
+
     func testFundRequestApprovedCents() {
         let householdId = UUID()
         let approved = FundRequest(id: UUID(), householdId: householdId, transactionId: nil,

@@ -212,6 +212,17 @@ public final class HomeViewModel: ObservableObject {
         let charitySettingsTask = Task<CharitySettings?, Error> {
             try await client.postgrest.charitySettings(householdId: householdId)
         }
+        // Cash gifts (build 43, item 22, owner Nov 17, 2026): cash
+        // given off-card lives in charity_cash_gifts, NOT in the
+        // transactions table, so Home must fetch it separately —
+        // otherwise "Record a Gift" never shows in the Tzedaka
+        // figures. Awaited fault-tolerantly below (the Funds
+        // pattern): if the table does not exist yet, the fetch
+        // throws and the gifts read as $0 rather than failing the
+        // whole charity section.
+        let charityCashGiftsTask = Task<[CharityCashGift], Error> {
+            try await client.postgrest.charityCashGifts(householdId: householdId)
+        }
         let fundLedgerTask = Task<[FundLedgerEntry], Error> {
             try await client.postgrest.fundLedger(householdId: householdId)
         }
@@ -310,10 +321,13 @@ public final class HomeViewModel: ObservableObject {
                 let income = try await charityIncomeTask.value
                 let settings = try await charitySettingsTask.value
                 let charityRows = txRows.filter { $0.kind == .charity }
+                let cashGiftCents = (try? await charityCashGiftsTask.value)?
+                    .reduce(0) { $0 + $1.amountCents } ?? 0
                 charitySummary = CharitySummary.compute(
                     activeIncome: income,
                     charityTransactions: charityRows,
-                    defaultRateBp: settings?.defaultRateBp ?? 1000)
+                    defaultRateBp: settings?.defaultRateBp ?? 1000,
+                    cashGiftCents: cashGiftCents)
             } catch let error as OnBudgetError {
                 if error == .sessionExpired { appState.showSessionExpired(); return }
                 charityError = error

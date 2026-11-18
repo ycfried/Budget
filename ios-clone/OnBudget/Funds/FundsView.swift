@@ -523,8 +523,17 @@ public struct FundsView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 12) {
                         FundsBreakdownRow("Base", value: MoneyFormat.formatCents(base))
-                        if let override = viewModel.debtWeek?.overrideCents, override != base {
-                            let delta = override - base
+                        // Build 43, item 21 (owner, Nov 17, 2026):
+                        // the "Top Ups" line — the total of one-time
+                        // top-ups added to the current week via
+                        // "Top Up Budget". Shown ALWAYS, even $0.00:
+                        // the owner wants Base + Top Ups = Total to
+                        // read explicitly, not Base and Total
+                        // repeating the same number. Until
+                        // supabase/weekly-budget-topups.sql is
+                        // applied live this reads $0.00.
+                        FundsBreakdownRow("Top Ups", value: MoneyFormat.formatCents(viewModel.topUpsCents))
+                        if let delta = viewModel.temporaryAllowanceDeltaCents {
                             FundsBreakdownRow(
                                 delta > 0 ? "Temporary Increase" : "Temporary Decrease",
                                 value: "\(delta > 0 ? "+" : "−")\(MoneyFormat.formatCents(abs(delta)))"

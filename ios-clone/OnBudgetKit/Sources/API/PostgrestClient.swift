@@ -945,6 +945,23 @@ public struct PostgrestClient {
         ))
     }
 
+    /// One-time "Top Up Budget" grants for one week (build 43,
+    /// item 21, Nov 17, 2026): rows of `weekly_budget_topups`
+    /// (`supabase/weekly-budget-topups.sql`), one per grant, oldest
+    /// first. The caller sums `amountCents` for the "Top Ups" line
+    /// of the Spending breakdown. Throws when the table does not
+    /// exist yet (the SQL not applied live); the caller treats that
+    /// as $0, never a failed card — same fault-tolerant pattern as
+    /// the cash-gifts read above.
+    public func weeklyBudgetTopups(householdId: UUID, weekStart: String) async throws -> [WeeklyBudgetTopup] {
+        try await fetch(PostgrestQuery(
+            table: "weekly_budget_topups",
+            columns: "id,household_id,week_start,amount_cents,created_by,created_at",
+            filters: [.householdId(householdId), .equal("week_start", weekStart)],
+            orders: [PostgrestOrder("created_at", ascending: true)]
+        ))
+    }
+
     /// The household's charity default rate (live.js:1703-1704).
     /// Selects household_id too: `CharitySettings.householdId` is
     /// non-optional, so the previous select failed decoding (found

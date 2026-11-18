@@ -1266,8 +1266,12 @@ public struct CharityGiftResult: Equatable, Codable {
 
 /// Charity aggregates — DISPLAY ONLY, mirroring live.js:1696-1720.
 /// Committed = Σ amount × rate over ACTIVE income rows; Given = Σ
-/// verified charity transactions dated ≥ 2026-11-01. Pending (provisional)
-/// gifts count toward Given only once they post (live.js:3814-3820).
+/// verified charity transactions dated ≥ 2026-11-01 PLUS active
+/// cash gifts (build 40: cash given off-card, recorded in
+/// charity_cash_gifts — NOT transaction rows, so the caller passes
+/// their sum as cashGiftCents, exactly as FundsViewModel.loadCharity
+/// does). Pending (provisional) gifts count toward Given only once
+/// they post (live.js:3814-3820).
 public struct CharitySummary: Equatable {
     public let committedCents: Int
     public let givenCents: Int
@@ -1294,7 +1298,8 @@ public struct CharitySummary: Equatable {
     public static func compute(
         activeIncome: [CharityIncome],
         charityTransactions: [Transaction],
-        defaultRateBp: Int
+        defaultRateBp: Int,
+        cashGiftCents: Int = 0
     ) -> CharitySummary {
         let committed = activeIncome
             .filter { $0.status == "active" }
@@ -1307,7 +1312,7 @@ public struct CharitySummary: Equatable {
         }
         return CharitySummary(
             committedCents: committed,
-            givenCents: verified.reduce(0) { $0 + $1.amountCents },
+            givenCents: verified.reduce(0) { $0 + $1.amountCents } + cashGiftCents,
             pendingGiftCents: pending.reduce(0) { $0 + $1.amountCents },
             defaultRateBp: defaultRateBp
         )

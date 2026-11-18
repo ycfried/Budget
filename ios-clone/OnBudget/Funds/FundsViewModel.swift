@@ -159,6 +159,30 @@ public final class FundsViewModel: ObservableObject {
     // MARK: - Allowance (Temporary Allowance preview)
 
     @Published public var baseAllowanceCents: Int?
+    /// One-time "Top Up Budget" grants to the CURRENT week (build
+    /// 43, item 21, Nov 17, 2026): the sum of this week's
+    /// `weekly_budget_topups` rows, in cents. Default 0 — including
+    /// while the SQL is not applied live yet, when the fetch throws
+    /// and the load reads as 0 rather than failing the Spending
+    /// card (same fault-tolerant pattern as the cash-gifts load in
+    /// `loadCharity`). Shown on the Spending breakdown's "Top Ups"
+    /// line, always — even $0.00 — so Base + Top Ups = Total reads
+    /// explicitly.
+    @Published public var topUpsCents: Int = 0
+
+    /// The Spending breakdown's Temporary Increase/Decrease delta
+    /// (build 43, item 21): the override's delta against the stored
+    /// base, EXCLUDING the top-ups above — they get their own line,
+    /// so counting them here too would double-count. Nil when there
+    /// is no override or the delta is 0 (nothing left to explain);
+    /// the view shows the row only when this is non-nil.
+    public var temporaryAllowanceDeltaCents: Int? {
+        WeeklyBudgetTopup.temporaryDeltaCents(
+            overrideCents: debtWeek?.overrideCents,
+            baseAllowanceCents: baseAllowanceCents,
+            topUpsCents: topUpsCents
+        )
+    }
     @Published public var allowanceExplicitlySet = false
     /// Non-nil when the base allowance failed to load, so the
     /// Temporary Allowance form can say so with a retry instead of
@@ -280,17 +304,22 @@ public final class FundsViewModel: ObservableObject {
         async let savingsLoad: Void = loadSavings()
         async let reviewLoad: Void = loadReview()
         async let allowanceLoad: Void = loadAllowance()
+        async let weeklyTopupsLoad: Void = loadWeeklyBudgetTopups()
         async let debtLoad: Void = loadDebt()
         async let merchantRulesLoad: Void = loadMerchantRules()
         // The four cards reveal together once their four loads have
         // resolved (success or failure — a failed card shows its
         // error state, never a lingering skeleton). The top-ups
         // load resolves here too: the Savings Pending figure needs
-        // it (build 42).
+        // it (build 42). The weekly top-ups load resolves here too
+        // (build 43, item 21): the Spending breakdown's "Top Ups"
+        // line needs it before the card reveals, so the rows never
+        // flash from a $0.00 Top Ups to the real figure.
         await fundLoad
         await topupsLoad
         await charityLoad
         await allowanceLoad
+        await weeklyTopupsLoad
         await debtLoad
         cardsReady = true
         // The supporting loads finish in their own time.
@@ -559,6 +588,29 @@ public final class FundsViewModel: ObservableObject {
         // so a missing column (migration not yet applied) fails only
         // this read — nil means the $100 default.
         largePurchaseThresholdCents = try? await context.client.postgrest.householdLargePurchaseThreshold(householdId: context.householdId)
+    }
+
+    /// The current week's one-time "Top Up Budget" grants (build 43,
+    /// item 21, Nov 17, 2026): the sum of the week's
+    /// `weekly_budget_topups` rows. Fault-tolerant like the
+    /// cash-gifts load in `loadCharity` — if the table does not exist
+    /// yet because `supabase/weekly-budget-topups.sql` is not applied
+    /// live, the fetch throws and the sum reads as 0 rather than
+    /// failing the Spending card (the breakdown then reads exactly
+    /// as it does today). Top-ups are only ever granted to the
+    /// current week (`addToBudget` passes `currentSundayNY()`), so
+    /// the current Sunday is the week to sum — not `debtWeek`'s
+    /// week, which this load runs in parallel with.
+    private func loadWeeklyBudgetTopups() async {
+        do {
+            let rows = try await context.client.postgrest.weeklyBudgetTopups(
+                householdId: context.householdId,
+                weekStart: MoneyFormat.currentSundayNY()
+            )
+            topUpsCents = rows.reduce(0) { $0 + $1.amountCents }
+        } catch {
+            topUpsCents = 0
+        }
     }
 
     /// Retry just the allowance load (Temporary Allowance error state).
@@ -1307,6 +1359,10 @@ public final class FundsViewModel: ObservableObject {
             ])
             succeeded = true
             succeed("Added \(MoneyFormat.formatCents(amountCents)). This week's budget is now \(MoneyFormat.formatCents(newTotalCents)).")
+            // Build 43, item 21: refresh() reloads the week's
+            // top-ups (`loadWeeklyBudgetTopups`), so the Spending
+            // breakdown's "Top Ups" line updates without a manual
+            // refresh — no separate reload call needed here.
             await refresh()
         }
         return succeeded
