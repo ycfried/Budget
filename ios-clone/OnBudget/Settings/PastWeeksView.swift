@@ -13,9 +13,9 @@
 // - Carry-in = the previous closed week's outgoing debt (the
 //   debt-carry chain, computed over the FULL chain before filtering,
 //   so it stays true); a first week has no carry-in on record.
-//   Missing figures read "not recorded", never $0.
-// - Release label/value: no release row -> "Release" / "not
-//   recorded"; released -> "Released" / `released_cents ??
+//   Missing figures read "N/A", never $0.
+// - Release label/value: no release row -> "Release" / "N/A";
+//   released -> "Released" / `released_cents ??
 //   surplus_cents`; pending -> "Pending release" / `surplus_cents`;
 //   held -> "Held" / `surplus_cents`.
 // - Tap: `context.onShowWeekTransactions(weekStart)` (the
@@ -83,7 +83,7 @@ struct PastWeekRow: Identifiable {
     var heading: String { OnBudgetKit.MoneyFormat.fmtLong(weekStart) }
 
     func moneyOrMissing(_ cents: Int?) -> String {
-        cents.map { OnBudgetKit.MoneyFormat.formatCents($0) } ?? "not recorded"
+        cents.map { OnBudgetKit.MoneyFormat.formatCents($0) } ?? "N/A"
     }
 }
 
@@ -266,17 +266,21 @@ struct PastWeeksView: View {
                 // green with a "+" prefix under the shared kind
                 // rule, but only once actually released. A held or
                 // pending release has not moved yet, so it stays
-                // plain ink; "not recorded" stays plain too.
+                // plain ink; "N/A" stays plain too.
                 metricRow(
                     label: week.releaseLabel,
-                    value: week.releaseCents.map { TransactionFormatting.inflowDisplay(cents: $0).text } ?? "not recorded",
+                    value: week.releaseCents.map { TransactionFormatting.inflowDisplay(cents: $0).text } ?? "N/A",
                     isInflow: week.releaseLabel == "Released" && (week.releaseCents ?? 0) > 0
                 )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(DesignTokens.infoBackground)
+            // Build 42 item 26 (owner, Nov 17, 2026): regular
+            // white cards with a shadow, not the pale-blue info
+            // background.
+            .background(Color.white)
             .cornerRadius(12)
+            .fundCardShadow()
             // Whole-area tap target (owner, Nov 15, 2026 app-wide
             // pass): the block responds across its full frame.
             .contentShape(Rectangle())

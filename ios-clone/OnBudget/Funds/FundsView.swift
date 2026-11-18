@@ -288,7 +288,7 @@ public struct FundsView: View {
                 },
                 onClose: { renamingFund = nil }
             )
-            .presentationSizing(.fitted)
+            .presentationDetents([.medium, .large])
         }
         .task {
             loadFundOrder()
@@ -668,7 +668,7 @@ public struct FundsView: View {
                                         fundName: FundSectionID.fund.displayName(customNames: appState.fundNames),
                                         onClose: { showRemoveFromSavings = false }
                                     )
-                                    .presentationSizing(.fitted)
+                                    .presentationDetents([.medium, .large])
                                 }
                         }
                     }
@@ -945,7 +945,7 @@ public struct FundsView: View {
                                 debtName: FundSectionID.debt.displayName(customNames: appState.fundNames),
                                 onClose: { showEditDebt = false }
                             )
-                            .presentationSizing(.fitted)
+                            .presentationDetents([.medium, .large])
                         }
                     }
                     Divider()

@@ -159,8 +159,10 @@ public struct AuthView: View {
                 // iPad width (owner, Nov 12, 2026): same treatment
                 // as the Weekly Budget sheet — a plain .sheet is a
                 // narrow form sheet on iPad and the content floated
-                // in dead space. .fitted hugs the content height.
-                .presentationSizing(.fitted)
+                // in dead space. Detents (build 42 item 24) open at
+                // a compact medium height with the content at the
+                // top of the sheet.
+                .presentationDetents([.medium, .large])
                 .presentationBackground(.white)
         }
         .onAppear {
@@ -706,14 +708,14 @@ public struct ForgotPasswordSheet: View {
             }
         }
         .padding(20)
-        // iPad width (owner, Nov 12, 2026): with
-        // .presentationSizing(.fitted) at the presentation site,
-        // the sheet sizes to this content — so a fixed 600pt width
-        // here actually widens the sheet on iPad (regular size
-        // class) instead of the system ~540pt form sheet. On iPhone
-        // (compact) no width is fixed and the sheet stays
-        // full-width. The trailing Spacer is gone: it stretched
-        // the middle empty against the tall form sheet.
+        // iPad width (owner, Nov 12, 2026): with detents at the
+        // presentation site, the sheet opens at a compact medium
+        // height — so a fixed 600pt width here actually widens
+        // the sheet on iPad (regular size class) instead of the
+        // system ~540pt form sheet. On iPhone (compact) no width
+        // is fixed and the sheet stays full-width. The trailing
+        // Spacer is gone: it stretched the middle empty against
+        // the tall form sheet.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 

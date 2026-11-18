@@ -695,9 +695,9 @@ public struct FundRequestQueue: View {
                 onCancel: { approving = nil; approveError = nil }
             )
                 // iPad width (owner, Nov 12, 2026): same treatment
-                // as the Weekly Budget sheet — fitted height + 600pt
+                // as the Weekly Budget sheet — detent height + 600pt
                 // width in the regular size class.
-                .presentationSizing(.fitted)
+                .presentationDetents([.medium, .large])
                 .presentationBackground(.white)
         }
         .alert("Fund Is Short", isPresented: $showOverride) {
@@ -873,10 +873,10 @@ public struct ApproveRequestSheet: View {
 
     public var body: some View {
         // No NavigationStack root (owner, Nov 14, 2026 — same
-        // fitted-sizing rule as the Actions sheet): a NavigationStack
+        // sheet-sizing rule as the Actions sheet): a NavigationStack
         // reports an unbounded ideal height, so the fitted sheet
         // rendered tall and mostly empty. Plain VStack + SheetHeader
-        // lets fitted measure the real content.
+        // keeps the content at the top of the sheet.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: "Approve from the Fund"), onClose: onCancel)
             FundsMuted("Approve how much of this \(MoneyFormat.formatCents(request.amountCents)) request? Enter less for a split approval.")
@@ -975,10 +975,10 @@ public struct RenameFundSheet: View {
 
     public var body: some View {
         // No NavigationStack root (owner, Nov 14, 2026 — same
-        // fitted-sizing rule as the Actions sheet): a NavigationStack
+        // sheet-sizing rule as the Actions sheet): a NavigationStack
         // reports an unbounded ideal height, so the fitted sheet
         // rendered tall and mostly empty. Plain VStack + SheetHeader
-        // lets fitted measure the real content.
+        // keeps the content at the top of the sheet.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: "Edit \(section.displayName)"), onClose: onClose)
             TextField("Fund name", text: $nameText)

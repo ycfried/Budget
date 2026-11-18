@@ -175,10 +175,11 @@ public struct TransactionsView: View {
                 .presentationBackground(.white)
                 // No sizing here (owner, Nov 14, 2026): the size
                 // depends on the step, so AddTransactionView sets
-                // it itself — fitted on the options step, detents
-                // [.medium, .large] on the purchase / donation
-                // forms (ScrollViews — .fitted collapsed them in
-                // build 23).
+                // it itself — detents [.medium, .large] on both
+                // steps (build 42 item 24: fitted centred the
+                // options buttons mid-sheet with a gap above).
+                // The purchase / donation forms are ScrollViews —
+                // .fitted collapsed them in build 23.
         }
         .sheet(isPresented: $showingTrash) {
             TrashView(viewModel: viewModel, onBack: { showingTrash = false })

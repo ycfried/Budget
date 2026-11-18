@@ -247,7 +247,7 @@ public struct AddToCharitySection: View {
                 fundName: fundName,
                 onClose: { showPopup = false }
             )
-            .presentationSizing(.fitted)
+            .presentationDetents([.medium, .large])
         }
     }
 }
@@ -359,7 +359,7 @@ public struct RecordCashGiftSection: View {
                 fundName: fundName,
                 onClose: { showPopup = false }
             )
-            .presentationSizing(.fitted)
+            .presentationDetents([.medium, .large])
         }
     }
 }

@@ -160,7 +160,7 @@ public struct TrashView: View {
             }
         }
         // iPad width (owner, Nov 12, 2026): same treatment as the
-        // Weekly Budget sheet — fitted height + 600pt width in the
+        // Weekly Budget sheet — detent height + 600pt width in the
         // regular size class; full-width on iPhone (compact).
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }

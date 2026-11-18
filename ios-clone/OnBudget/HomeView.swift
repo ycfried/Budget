@@ -551,13 +551,14 @@ public struct HomeView: View {
                 WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, purchasesThisWeek: viewModel.purchasesThisWeek, appState: appState)
                     // iPad width (owner, Nov 12 2026): a plain .sheet
                     // is a ~540pt form sheet on iPad — narrow and
-                    // cramped for this content. .fitted sizes the
-                    // sheet to the content, and WeeklySheet fixes its
+                    // cramped for this content. WeeklySheet fixes its
                     // width to 600pt in the regular size class, so the
                     // sheet opens 600pt wide and centred; on iPhone
-                    // (compact) the width stays full-screen and only
-                    // the height hugs the content.
-                    .presentationSizing(.fitted)
+                    // (compact) the width stays full-screen. Detents
+                    // (build 42 item 24) open at a compact medium
+                    // height with the content at the top — fitted
+                    // centred the content mid-sheet with a gap above.
+                    .presentationDetents([.medium, .large])
                     .presentationBackground(.white)
             }
         }
@@ -1098,6 +1099,20 @@ public struct HomeView: View {
         // line: the amount keeps its 0.7 shrink and the title
         // gains a 0.85 shrink, so a long fund name still fits
         // beside a big amount in a half-width card.
+        // Build 42 (owner, Nov 17, 2026 — item 22): on a compact
+        // iPhone the title does NOT fit beside the amount in a
+        // half-width card — "Tze..." / "$6..." truncated. So the
+        // collapsed header shows icon + amount only; the fund
+        // name moves into the expanded body as a heading. iPad
+        // keeps the name in the header (room for it). This also
+        // fixes item 23 (Home horizontal overflow): the title +
+        // its 90pt skeleton were the ~60-70pt that forced the
+        // half-width row wider than the screen, clipping the
+        // "Recent Transactions" heading and the skeleton bars.
+        // Loaded header after this: icon 34 + amount (~85, shrinks
+        // to 0.7) + padding 32 ≈ the ~173pt card width; loading:
+        // 34 + 72 + 32 ≈ 146pt. Both fit.
+        let hideTitle = compact && !isIPad
         let chip: CGFloat = compact ? (isIPad ? 40 : 34) : 40
         let iconSize: CGFloat = compact ? (isIPad ? 18 : 16) : 20
         let titleSize: CGFloat = compact ? (isIPad ? 20 : 18) : 20
@@ -1130,6 +1145,9 @@ public struct HomeView: View {
         return VStack(alignment: .leading, spacing: 0) {
             // Header strip (colored, short): ONE ROW — icon in a
             // white circle + title + amount, all on the fund color.
+            // Build 42 item 22: on a compact iPhone the title is
+            // hidden here (icon + amount only); it lives in the
+            // expanded body instead.
             HStack(spacing: 8) {
                 if isLoading {
                     SkeletonBlock(width: chip, height: chip, cornerRadius: chip / 2)
@@ -1146,18 +1164,20 @@ public struct HomeView: View {
                         .background(.white)
                         .clipShape(Circle())
                 }
-                if isLoading {
-                    // Skeleton title while loading (owner, Nov 16,
-                    // 2026 — build 38): real dark-ink text on the
-                    // placeholder read as a finished card. The
-                    // failed state keeps the real title.
-                    SkeletonBlock(width: 90, height: 20, cornerRadius: 6)
-                } else {
-                    Text(title)
-                        .font(.system(size: titleSize, weight: .bold))
-                        .foregroundStyle(onBanner)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                if !hideTitle {
+                    if isLoading {
+                        // Skeleton title while loading (owner, Nov 16,
+                        // 2026 — build 38): real dark-ink text on the
+                        // placeholder read as a finished card. The
+                        // failed state keeps the real title.
+                        SkeletonBlock(width: 90, height: 20, cornerRadius: 6)
+                    } else {
+                        Text(title)
+                            .font(.system(size: titleSize, weight: .bold))
+                            .foregroundStyle(onBanner)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
                 }
                 Spacer()
                 if isLoading {
@@ -1194,6 +1214,16 @@ public struct HomeView: View {
                 if isLoading {
                     SkeletonBlock(height: 14)
                 } else if isExpanded {
+                    // Build 42 item 22: on a compact iPhone the
+                    // fund name is not in the header, so it heads
+                    // the expanded body — the only place the name
+                    // appears on the collapsed-width card.
+                    if hideTitle {
+                        Text(title)
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(DesignTokens.ink)
+                            .lineLimit(1)
+                    }
                     rows()
                     HStack {
                         Spacer()
@@ -1478,7 +1508,7 @@ public struct HomeView: View {
 /// marked." line crowded the header, and pending state is already
 /// marked on the rows. Show Transactions (primary) + Close
 /// (tertiary) — two-button sheet rule. iPad: 600pt wide, centred
-/// (.presentationSizing(.fitted) + fixed width in the regular size
+/// (detents + fixed width in the regular size
 /// class); iPhone: full-width.
 public struct WeeklySheet: View {
     let week: WeekResult
@@ -1552,9 +1582,9 @@ public struct WeeklySheet: View {
         .padding(.horizontal, 24)
         .padding(.top, 20)
         .padding(.bottom, 24)
-        // iPad width (owner, Nov 12 2026): with .presentationSizing
-        // (.fitted) at the presentation site, the sheet sizes to
-        // this content — so a fixed 600pt width here actually widens
+        // iPad width (owner, Nov 12 2026): with detents at the
+        // presentation site, the sheet opens at a compact medium
+        // height — so a fixed 600pt width here actually widens
         // the sheet on iPad (regular size class) instead of the
         // system ~540pt form sheet. On iPhone (compact) no width is
         // fixed and the sheet stays full-width.

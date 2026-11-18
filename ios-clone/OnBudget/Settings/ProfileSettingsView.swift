@@ -296,9 +296,9 @@ struct ProfileSettingsView: View {
         .sheet(isPresented: $viewModel.showChangePassword) {
             changePasswordSheet
                 // iPad width (owner, Nov 12, 2026): same treatment
-                // as the Weekly Budget sheet — fitted height + 600pt
+                // as the Weekly Budget sheet — detent height + 600pt
                 // width in the regular size class.
-                .presentationSizing(.fitted)
+                .presentationDetents([.medium, .large])
                 .presentationBackground(.white)
         }
         .alert(item: $viewModel.passwordAlert) { alert in
@@ -340,10 +340,10 @@ struct ProfileSettingsView: View {
 
     private var changePasswordSheet: some View {
         // No NavigationStack root (owner, Nov 14, 2026 — same
-        // fitted-sizing rule as the Actions sheet): a NavigationStack
+        // sheet-sizing rule as the Actions sheet): a NavigationStack
         // reports an unbounded ideal height, so the fitted sheet
         // rendered tall and mostly empty. Plain VStack + SheetHeader
-        // lets fitted measure the real content.
+        // keeps the content at the top of the sheet.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: "Change Password", onClose: {
                 viewModel.newPassword = ""

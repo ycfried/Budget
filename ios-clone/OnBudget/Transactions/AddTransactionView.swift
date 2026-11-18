@@ -34,19 +34,13 @@ public struct AddTransactionView: View {
         // toolbar "Cancel" truncated to "Ca…", and a NavigationStack
         // reports an unbounded ideal height, so a fitted sheet
         // rendered tall and mostly empty (build 24). A plain VStack
-        // root + SheetHeader (X close, centred title) lets the
-        // options step size itself to its content; the forms keep
-        // real detents because their ScrollView content has no
-        // ideal height (build-23 lesson).
-        Group {
-            if step == .options {
-                sheetContent
-                    .presentationSizing(.fitted)
-            } else {
-                sheetContent
-                    .presentationDetents([.medium, .large])
-            }
-        }
+        // root + SheetHeader (X close, centred title) keeps the
+        // content at the top of the sheet. Both steps use detents
+        // [.medium, .large] (build 42 item 24: fitted centred the
+        // options buttons mid-sheet with a gap above); the forms
+        // are ScrollViews, so fitted collapsed them in build 23.
+        sheetContent
+            .presentationDetents([.medium, .large])
     }
 
     private var sheetContent: some View {

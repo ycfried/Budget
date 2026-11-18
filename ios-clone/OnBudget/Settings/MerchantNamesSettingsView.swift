@@ -255,13 +255,12 @@ struct MerchantNamesSettingsView: View {
             // with a header, like the other editors.
             .sheet(isPresented: $showingForm) {
                 // iPad width (owner, Nov 15, 2026 — build 34): same
-                // treatment as the Weekly Budget sheet — fitted
+                // treatment as the Weekly Budget sheet — detent
                 // height + 600pt width in the regular size class.
                 // The sheet rendered as a ~400pt popup with cramped
-                // buttons on iPad. The content is a short fixed form,
-                // so the ScrollView root is gone: fitted must never
-                // be applied to a scrolling sheet, and a plain VStack
-                // lets fitted measure the real content.
+                // buttons on iPad. The content is a short fixed form
+                // in a plain VStack (no ScrollView root), so it sits
+                // at the top of the sheet.
                 VStack(alignment: .leading, spacing: 16) {
                     SheetHeader(title: editingRule == nil ? "Add a Name" : "Edit Name") {
                         showingForm = false
@@ -271,7 +270,7 @@ struct MerchantNamesSettingsView: View {
                 }
                 .padding()
                 .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-                .presentationSizing(.fitted)
+                .presentationDetents([.medium, .large])
                 .presentationBackground(.white)
                 // The alert lives on the sheet (delete confirm +
                 // save failures both come from this form).

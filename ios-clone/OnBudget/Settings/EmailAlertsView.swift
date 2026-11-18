@@ -534,7 +534,7 @@ struct EmailAlertsView: View {
                 }
             }
         }
-        // iPad width (owner, Nov 12, 2026): fitted height + 600pt
+        // iPad width (owner, Nov 12, 2026): detent height + 600pt
         // width in the regular size class; full-width on iPhone.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }

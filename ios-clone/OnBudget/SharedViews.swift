@@ -152,7 +152,7 @@ public struct BackButton: View {
 /// .presentationSizing(.fitted) — a NavigationStack reports an
 /// unbounded ideal height, so fitted sheets rendered tall and
 /// mostly empty (Add / Actions sheets, build 24). A plain VStack
-/// root + this header lets fitted measure the real content. When
+/// root + this header keeps the content at the top of the sheet. When
 /// onBack is given, the leading control is a back chevron that
 /// returns to the previous step instead of closing.
 public struct SheetHeader: View {
@@ -299,7 +299,7 @@ public struct DateField: View {
                     .buttonStyle(PrimaryButtonStyle())
             }
             .padding()
-            .presentationSizing(.fitted)
+            .presentationDetents([.medium, .large])
             .presentationBackground(.white)
         }
     }
