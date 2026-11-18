@@ -80,5 +80,4 @@ the app after a change means you accept the new version.
 
 ## Contact
 
-Questions about this policy go to the app owner. (Contact details
-to be filled in before publication.)
+Questions about this policy go to the app owner at ycfried1@gmail.com.
