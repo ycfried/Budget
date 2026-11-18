@@ -1,18 +1,19 @@
 # STAG — Privacy Policy
 
-STAG is a shared household budget app. One household — the
-people you invite — shares one budget. This policy explains what
-we collect, what we do with it, and how you can remove it.
+STAG is a tracking tool for guided spending, saving, and
+giving. Two people — you and the person you invite — share one
+record. This policy explains what we collect, what we do with
+it, and how you can remove it.
 
 ## What we collect
 
 - **Your account:** your email address and password (for sign-in
   only). Passwords are stored by our sign-in provider, never in
   plain text in the app.
-- **Your household's budget data:** the weekly allowance you set,
+- **Your data:** the weekly spending amount you set,
   purchases (merchant, amount, date, card suffix), the Extra Fund
   ledger and requests, savings records, and an audit trail of
-  changes. This is the data you and your household members enter
+  changes. This is the data you and the other member enter
   or connect.
 - **Bank connections (optional):** if you connect a bank, we use
   Plaid, a bank-linking service. You type your bank username and
@@ -28,18 +29,18 @@ we collect, what we do with it, and how you can remove it.
 - **Nothing else:** no location, no contacts, no photos, no
   advertising identifiers.
 
-## How household data is kept apart
+## How your data is kept apart
 
-Every household's data is isolated: members only ever see their
-own household's budget. Nobody can see another household's data,
-and joining a household requires its invite code.
+Every shared record is isolated: members only ever see their
+own record. Nobody can see another record, and joining
+requires an invite code.
 
 ## What we do NOT do
 
 - We do not sell your data, to anyone, ever.
 - We do not show ads, and we do not share data with advertisers
   or data brokers.
-- We do not use your purchases or budget data to train models
+- We do not use your purchases or spending data to train models
   or to market anything to you.
 
 ## The services that touch your data
@@ -54,18 +55,18 @@ policies, and we send them only what they need to do their job.
 
 ## How long we keep data
 
-Your budget data stays until you delete it. Purchases you remove
-from the budget are excluded, not erased, so the week's history
-stays honest; the underlying record remains in your household's
-data until the household is deleted.
+Your data stays until you delete it. Purchases you remove
+are excluded, not erased, so the week's history
+stays honest; the underlying entry remains in your
+record until the record is deleted.
 
 ## Deleting your account
 
 You can delete your account from inside the app. Deleting your
-account removes your memberships; any household left with no
-members is deleted along with its budget data, and your sign-in
-is removed. If other members remain in a household, that
-household and its data stay for them.
+account removes your memberships; any record left with no
+members is deleted along with its data, and your sign-in
+is removed. If other members remain, that
+record and its data stay for them.
 
 ## Changes to this policy
 

@@ -2,21 +2,22 @@
 
 ## What STAG is
 
-STAG is a shared household budget app. It tracks a weekly
-allowance, purchases, an Extra Fund for leftovers, and savings.
-It is a budgeting tool, not a bank, not a financial advisor, and
-not a tax service. Nothing in the app is financial advice.
+STAG is a tracking tool for guided spending, saving, and
+giving. It tracks a weekly spending amount, purchases, an Extra
+Fund for leftovers, and savings. It is a tracking tool, not a
+bank, not a financial advisor, and not a tax service. Nothing
+in the app is financial advice.
 
 ## Your account
 
 - You sign in with an email address and password. Keep your
   password private; you are responsible for activity under your
   account.
-- A household has one admin and any number of members. The admin
+- A shared record has one admin and any number of members. The admin
   changes policy, exclusions, and fund allocations; members can
   ask for fund money and the admin approves or declines.
-- You join a household with its invite code. Do not share an
-  invite code with people you do not want in your budget — anyone
+- You join a shared record with its invite code. Do not share an
+  invite code with people you do not want in your record — anyone
   with the code can join as a member.
 
 ## Bank and email connections (optional)
@@ -31,14 +32,14 @@ not a tax service. Nothing in the app is financial advice.
   provisional until the bank confirms them.
 - You can disconnect a bank or an email account at any time from
   inside the app. Disconnecting a bank stops future syncing; past
-  purchases stay in the budget. A disconnected bank stays listed
+  purchases stay in your record. A disconnected bank stays listed
   as "previously connected" for the record, with no token kept.
 
 ## What you must not do
 
 - Do not use the app to break the law, to abuse other users, or
   to interfere with the service.
-- Do not try to access another household's data, forge records,
+- Do not try to access another record's data, forge records,
   or bypass the app's access controls.
 
 ## Availability
@@ -51,10 +52,10 @@ we will say so in the app where practical.
 
 ## Your data and deletion
 
-Your household's budget data belongs to your household. You can
+Your data belongs to your shared record. You can
 delete your account from inside the app: your memberships are
-removed, any household left with no members is deleted with its
-data, and your sign-in is removed. Households with remaining
+removed, any record left with no members is deleted with its
+data, and your sign-in is removed. Records with remaining
 members keep their data.
 
 ## Liability
@@ -62,7 +63,7 @@ members keep their data.
 To the fullest extent allowed by law, STAG is not liable for
 indirect or consequential losses, including losses from delayed
 or incorrect bank or email data, or from decisions you make
-based on the budget figures. Your total liability and ours under
+based on the figures. Your total liability and ours under
 these terms is limited to the amounts you paid for the app, if
 any.
 
@@ -74,5 +75,4 @@ the new version.
 
 ## Contact
 
-Questions about these terms go to the app owner. (Contact details
-to be filled in before publication.)
+Questions about these terms go to the app owner at ycfried1@gmail.com.
