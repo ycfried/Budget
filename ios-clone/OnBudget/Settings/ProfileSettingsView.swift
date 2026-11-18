@@ -332,13 +332,13 @@ struct ProfileSettingsView: View {
             .disabled(viewModel.isSigningOut)
             .padding(.top, 4)
         }
-        .sheet(isPresented: $viewModel.showChangePassword) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        .fullScreenCover(isPresented: $viewModel.showChangePassword) {
             changePasswordSheet
                 // iPad width (owner, Nov 12, 2026): same treatment
-                // as the Weekly Budget sheet — detent height + 600pt
-                // width in the regular size class.
-                .presentationDetents([.medium, .large])
-                .presentationBackground(.white)
+                // as the Weekly Budget sheet — 600pt width in the
+                // regular size class, in a full-screen cover.
         }
         .alert(item: $viewModel.passwordAlert) { alert in
             switch alert {
@@ -382,7 +382,7 @@ struct ProfileSettingsView: View {
         // sheet-sizing rule as the Actions sheet): a NavigationStack
         // reports an unbounded ideal height, so the fitted sheet
         // rendered tall and mostly empty. Plain VStack + SheetHeader
-        // keeps the content at the top of the sheet.
+        // keeps the content at the top of the full-screen popup.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: "Change Password", onClose: {
                 viewModel.newPassword = ""
@@ -416,12 +416,16 @@ struct ProfileSettingsView: View {
                 }
                 .buttonStyle(TertiaryButtonStyle())
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the
+            // trailing Spacer top-anchors the content in the
+            // full-screen cover — without it the short form
+            // centres itself vertically in the full screen.
+            Spacer()
         }
         .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
         // size class, full-width on iPhone — same treatment as the
-        // Weekly Budget sheet. The trailing Spacer is gone: it
-        // stretched the middle empty against the tall form sheet.
+        // Weekly Budget sheet.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 }

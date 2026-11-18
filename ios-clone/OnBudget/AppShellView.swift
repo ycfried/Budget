@@ -147,6 +147,14 @@ public struct AppShellView: View {
         }
         .task { ensureTransactionsViewModel(); ensureReviewViewModel() }
         .onChange(of: appState.householdId) { _, _ in ensureTransactionsViewModel(); ensureReviewViewModel() }
+        // Build 43 (owner, Nov 17, 2026 — item 16): the shell-owned
+        // view models compose toasts/alerts with the funds' CURRENT
+        // display names — a rename must reach them too, not just
+        // the views that read `appState.fundNames` directly.
+        .onChange(of: appState.fundNames) { _, names in
+            transactionsViewModel?.fundNames = names
+            reviewViewModel?.fundNames = names
+        }
     }
 
     /// Settings as a full-screen cover (CLONE_SPEC §2.2 — not a
@@ -370,6 +378,7 @@ public struct AppShellView: View {
             currentUserId: userId
         )
         viewModel.onSignInAgain = { appState.showSessionExpired() }
+        viewModel.fundNames = appState.fundNames
         transactionsViewModel = viewModel
     }
 
@@ -382,11 +391,13 @@ public struct AppShellView: View {
               let role = appState.role,
               let userId = appState.client.currentSession?.user.id else { return }
         guard reviewViewModel?.context.householdId != householdId else { return }
-        reviewViewModel = FundsViewModel(context: FundsContext(
+        let review = FundsViewModel(context: FundsContext(
             client: appState.client,
             householdId: householdId,
             role: role,
             userId: userId
         ))
+        review.fundNames = appState.fundNames
+        reviewViewModel = review
     }
 }

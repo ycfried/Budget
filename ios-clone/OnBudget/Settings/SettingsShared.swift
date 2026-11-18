@@ -350,21 +350,15 @@ struct HistoryDateFilterCard: View {
                 MutedLine(text: filter.countLine)
             }
         }
-        .sheet(isPresented: $showingCalendar, onDismiss: commitCalendarSelection) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        // The calendar is a ScrollView in a NavigationStack, so it
+        // fills the full screen and starts at the top; Back / Done
+        // dismiss it, and onDismiss still commits the pick.
+        .fullScreenCover(isPresented: $showingCalendar, onDismiss: commitCalendarSelection) {
             NavigationStack {
                 DateRangeCalendarView(selection: calendarBinding)
             }
-            // iPad sheet height (owner, Nov 13, 2026): the
-            // calendar content is a ScrollView, and
-            // .presentationSizing(.fitted) sizes a sheet to its
-            // content's ideal height — a ScrollView has none, so
-            // the sheet collapsed in build 23. Detents give it a
-            // real height on iPhone; on iPad they are ignored and
-            // the sheet takes the default form-sheet height. The
-            // month grid is flexible (7 columns), so it uses the
-            // extra width.
-            .presentationDetents([.medium, .large])
-            .presentationBackground(.white)
             .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         }
     }

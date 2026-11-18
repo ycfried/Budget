@@ -498,21 +498,17 @@ struct EmailAlertsView: View {
                 )
             }
         }
-        .sheet(isPresented: Binding(
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        // The picker is a NavigationStack + List, so it fills the
+        // full screen and starts at the top; Cancel in the toolbar
+        // is the dismiss path.
+        .fullScreenCover(isPresented: Binding(
             get: { viewModel.householdChoices != nil },
             set: { if !$0 { viewModel.cancelHouseholdChoice() } }
         )) {
             if let choices = viewModel.householdChoices {
                 householdPickerSheet(choices: choices)
-                    // iPad sheet height (owner, Nov 13, 2026): the
-                    // picker content is a List, and
-                    // .presentationSizing(.fitted) sizes a sheet to
-                    // its content's ideal height — a List has none,
-                    // so the sheet collapsed in build 23. Detents
-                    // give it a real height on iPhone; on iPad they
-                    // are ignored and the sheet takes the default
-                    // form-sheet height.
-                    .presentationDetents([.medium, .large])
             }
         }
     }
@@ -534,8 +530,9 @@ struct EmailAlertsView: View {
                 }
             }
         }
-        // iPad width (owner, Nov 12, 2026): detent height + 600pt
-        // width in the regular size class; full-width on iPhone.
+        // iPad width (owner, Nov 12, 2026): 600pt width in the
+        // regular size class in the full-screen cover; full-width
+        // on iPhone.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 

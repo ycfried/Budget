@@ -391,10 +391,16 @@ public struct FundTransactionRow: View {
     /// Empty by default — then the row shows the raw name,
     /// Title-Cased, exactly as before this change.
     public let merchantRules: [MerchantRule]
+    /// The Extra Fund's CURRENT display name (build 43, owner Nov
+    /// 17, 2026 — item 16): the "covered by …" line reads it, so a
+    /// renamed fund never shows the stale default. Nil falls back
+    /// to the generic "the fund".
+    public let fundName: String?
 
-    public init(_ transaction: Transaction, merchantRules: [MerchantRule] = []) {
+    public init(_ transaction: Transaction, merchantRules: [MerchantRule] = [], fundName: String? = nil) {
         self.transaction = transaction
         self.merchantRules = merchantRules
+        self.fundName = fundName
     }
 
     public var body: some View {
@@ -425,7 +431,7 @@ public struct FundTransactionRow: View {
                     Text("Reversed.")
                 }
                 if transaction.fundAllocationCents > 0 {
-                    Text("\(MoneyFormat.formatCents(transaction.fundAllocationCents)) covered by the Extra Fund.")
+                    Text("\(MoneyFormat.formatCents(transaction.fundAllocationCents)) covered by \(fundName ?? "the fund").")
                 }
             }
             .font(.system(size: 14))

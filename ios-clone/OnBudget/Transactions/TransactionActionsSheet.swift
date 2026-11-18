@@ -59,7 +59,6 @@ public struct TransactionActionsSheet: View {
         case reclassify
         case delete
         case rename
-        case savings
     }
 
     /// Fixed-kind options for the rename flow: the server's kind
@@ -132,7 +131,11 @@ public struct TransactionActionsSheet: View {
     /// money-in kind (income / refund / cashback), a non-zero
     /// amount, and a live row — never a reversed or trashed one.
     /// Members never see it (owner rule, Nov 13, 2026: the sheet
-    /// never renders a row that cannot work).
+    /// never renders a row that cannot work). Build 43 (owner, Nov
+    /// 17, 2026 — item 19): it is no longer a standalone top-level
+    /// row — it lives inside the reclassify list ("Other → Change
+    /// how this transaction counts"), next to the other
+    /// reclassification options, and routes to .savingsConfirm.
     private var canDesignateAsSavings: Bool {
         guard isAdmin else { return false }
         guard transaction.amountCents != 0 else { return false }
@@ -141,16 +144,6 @@ public struct TransactionActionsSheet: View {
         case .charge, .income, .refund, .cashback: return true
         default: return false
         }
-    }
-
-    /// The "Designate as <Extra Fund>" row: money-in adds to the
-    /// fund, a charge pays out of it (Available → Pending →
-    /// carried debt).
-    private var savingsAction: SheetAction {
-        if transaction.kind.isMoneyIn {
-            return SheetAction(id: .savings, label: "Designate as \(extraFundName)", subline: "Adds this money to the Extra Fund's Available balance")
-        }
-        return SheetAction(id: .savings, label: "Designate as \(extraFundName)", subline: "Pays this charge from the Extra Fund — Available first, then Pending, then carried debt")
     }
 
     var actions: [SheetAction] {
@@ -168,7 +161,6 @@ public struct TransactionActionsSheet: View {
                     SheetAction(id: .charity, label: "Mark as \(charityName)", subline: charitySubline),
                     SheetAction(id: .extraFund, label: "Use \(extraFundName)", subline: "Ask for this charge to be covered from the fund"),
                 ]
-                if canDesignateAsSavings { list.append(savingsAction) }
                 list += [
                     SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
                     SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
@@ -189,7 +181,6 @@ public struct TransactionActionsSheet: View {
             var list = [
                 SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline),
             ]
-            if canDesignateAsSavings { list.append(savingsAction) }
             list += [
                 SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
                 SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
@@ -201,7 +192,6 @@ public struct TransactionActionsSheet: View {
             var list: [SheetAction] = []
             // Only cashback is money-in here: a transfer, a card
             // payment and a fund charge cannot be designated.
-            if canDesignateAsSavings { list.append(savingsAction) }
             list += [
                 SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
                 SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
@@ -219,7 +209,6 @@ public struct TransactionActionsSheet: View {
             var list: [SheetAction] = []
             // Only income is money-in here: "other" has no
             // direction to designate.
-            if canDesignateAsSavings { list.append(savingsAction) }
             list += [
                 SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
                 SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
@@ -244,12 +233,12 @@ public struct TransactionActionsSheet: View {
         // reports an unbounded ideal height, so the fitted sheet
         // rendered tall and mostly empty (build 24) — a single
         // "Use Extra Fund" row in a full-height card. A plain VStack
-        // root + SheetHeader keeps the content short; the sheet is
-        // sized by .presentationDetents([.medium, .large]) at the
-        // presentation site (owner, Nov 15, 2026 — build 34: fitted
-        // still rendered nearly full-screen on the phone). On the
-        // list flow the header shows X (dismiss); on a sub-flow it
-        // shows a back chevron (return to the list).
+        // root + SheetHeader keeps the content at the top of the
+        // full-screen popup (build 43, item 17 — the cover is
+        // full-screen now, no detents; the trailing Spacer below
+        // is what top-anchors it, item 18). On the list flow the
+        // header shows X (dismiss); on a sub-flow it shows a back
+        // chevron (return to the list).
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(
                 title: flowTitle,
@@ -268,12 +257,19 @@ public struct TransactionActionsSheet: View {
             case .rename: renameContent
             case .savingsConfirm: savingsConfirmContent
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the
+            // trailing Spacer top-anchors the content in the
+            // full-screen cover — without it the short flows
+            // centre themselves vertically in the full screen.
+            Spacer()
         }
         .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
         // size class, full-width on iPhone — same treatment as the
-        // Weekly Budget sheet. The trailing Spacer is gone: it
-        // stretched the middle empty against the tall form sheet.
+        // Weekly Budget sheet. The trailing Spacer is back (build
+        // 43, item 18): in the full-screen cover it top-anchors
+        // the short flows — in the old detent sheet it stretched
+        // the middle empty against the tall form sheet.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         // T-P2-1: the failure alert lives on this sheet, not on the
         // Transactions parent — an alert attached behind a presented
@@ -368,8 +364,6 @@ public struct TransactionActionsSheet: View {
         switch action {
         case .charity:
             flow = .charityConfirm
-        case .savings:
-            flow = .savingsConfirm
         case .extraFund:
             extraFundAmount = String(format: "%.2f", Double(transaction.amountCents) / 100.0)
             flow = .extraFund
@@ -440,12 +434,17 @@ public struct TransactionActionsSheet: View {
     /// tab re-reads on its next refresh.)
     private func makeFundsViewModel() -> FundsViewModel? {
         guard let userId = viewModel.currentUserId else { return nil }
-        return FundsViewModel(context: FundsContext(
+        // Build 43 (owner, Nov 17, 2026 — item 16): the throwaway
+        // instance gets the sheet's fund names, so its toasts and
+        // alerts read with the fund's CURRENT display name.
+        let fundsViewModel = FundsViewModel(context: FundsContext(
             client: viewModel.client,
             householdId: viewModel.householdId,
             role: isAdmin ? .admin : .member,
             userId: userId
         ))
+        fundsViewModel.fundNames = fundNames
+        return fundsViewModel
     }
 
     private var savingsConfirmContent: some View {
@@ -488,16 +487,16 @@ public struct TransactionActionsSheet: View {
         let amount = TransactionFormatting.amountDisplay(for: transaction).text
         let merchant = TransactionFormatting.displayMerchant(transaction.merchant)
         if transaction.kind.isMoneyIn {
-            return "This adds \(amount) to the Extra Fund's Available balance — “\(merchant)” is already in checking, so it counts immediately, with no pending state. If money is owed back, the fund's shortfall is covered first and the rest is added to Available."
+            return "This adds \(amount) to the \(extraFundName) Available balance — “\(merchant)” is already in checking, so it counts immediately, with no pending state. If money is owed back, the fund's shortfall is covered first and the rest is added to Available."
         }
-        return "This takes \(amount) out of the Extra Fund's Available balance for “\(merchant)”. If Available runs out, the rest comes from Pending top-ups, then adds to carried debt. The transaction row itself stays a charge — it still counts toward weekly spending; only the fund balance moves."
+        return "This takes \(amount) out of the \(extraFundName) Available balance for “\(merchant)”. If Available runs out, the rest comes from Pending top-ups, then adds to carried debt. The transaction row itself stays a charge — it still counts toward weekly spending; only the fund balance moves."
     }
 
     // MARK: - Extra Fund
 
     private var extraFundContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Ask the admin to cover “\(TransactionFormatting.displayMerchant(transaction.merchant))” (\(TransactionFormatting.amountDisplay(for: transaction).text)) from the Extra Fund?")
+            Text("Ask the admin to cover “\(TransactionFormatting.displayMerchant(transaction.merchant))” (\(TransactionFormatting.amountDisplay(for: transaction).text)) from the \(extraFundName)?")
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
             VStack(alignment: .leading, spacing: 6) {
@@ -716,6 +715,32 @@ public struct TransactionActionsSheet: View {
                         Divider()
                     }
                 }
+                // Build 43 (owner, Nov 17, 2026 — item 19):
+                // "Designate as <Extra Fund>" is a reclassification
+                // (it changes how the transaction counts), so it
+                // lives here with the other reclassify options
+                // instead of as a standalone Actions row. Money-in
+                // adds to the fund, a charge pays out of it — the
+                // confirm screen explains the direction.
+                if canDesignateAsSavings {
+                    Divider()
+                    Button {
+                        flow = .savingsConfirm
+                    } label: {
+                        HStack {
+                            Text("Designate as \(extraFundName)")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(DesignTokens.ink)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                        }
+                        .padding(.vertical, 12)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
@@ -732,7 +757,7 @@ public struct TransactionActionsSheet: View {
             (.payment, "Payment"),
             (.cashback, "Cashback"),
             (.income, "Income"),
-            (.charity, "Charity"),
+            (.charity, charityName),
         ]
     }
 

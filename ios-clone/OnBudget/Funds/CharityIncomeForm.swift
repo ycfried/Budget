@@ -20,6 +20,10 @@ public struct CharityIncomeForm: View {
     /// Owned by the parent (FundsView) so the Correct button in Fund
     /// Activity can open this form prefilled.
     @Binding public var correcting: CharityIncome?
+    /// The charity fund's CURRENT display name (build 43, owner Nov
+    /// 17, 2026 — item 16): the heading, the rate hint and the
+    /// date error read it, never a hardcoded "Charity".
+    public let fundName: String
     /// Closes the form back to the Funds list (owned by FundsView).
     public var onClose: () -> Void = {}
 
@@ -30,8 +34,9 @@ public struct CharityIncomeForm: View {
     @State private var note = ""
     @State private var fieldError: String?
 
-    public init(viewModel: FundsViewModel, correcting: Binding<CharityIncome?>, onClose: @escaping () -> Void = {}) {
+    public init(viewModel: FundsViewModel, fundName: String, correcting: Binding<CharityIncome?>, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.fundName = fundName
         self._correcting = correcting
         self.onClose = onClose
     }
@@ -66,11 +71,11 @@ public struct CharityIncomeForm: View {
     public var body: some View {
         FundsCard {
             VStack(alignment: .leading, spacing: 16) {
-                FundsHeading("Charity Income & Rate")
+                FundsHeading("\(fundName) Income & Rate")
                 FundsMuted("Admin only. Nothing is pulled in automatically.")
                 Text("Current default rate: \(MoneyFormat.formatRateBp(defaultRateBp))%.")
                     .font(.system(size: 15))
-                FundsMuted("Change the default rate in Default Charity Rate under Charity on the Funds page. A change affects future incomes only.")
+                FundsMuted("Change the default rate in Default \(fundName) Rate under \(fundName) on the Funds page. A change affects future incomes only.")
 
                 Divider()
 
@@ -176,7 +181,7 @@ public struct CharityIncomeForm: View {
         }
         let dateString = MoneyFormat.dateString(from: incomeDate)
         guard dateString >= MoneyFormat.dataFloor else {
-            fieldError = "Charity starts November 2026 — income before then cannot accrue."
+            fieldError = "\(fundName) starts November 2026 — income before then cannot accrue."
             return
         }
         if !rateOverrideText.trimmingCharacters(in: .whitespaces).isEmpty, overrideBp == nil {
@@ -241,13 +246,14 @@ public struct AddToCharitySection: View {
             showPopup = true
         }
         .accessibilityIdentifier("funds.addToCharity")
-        .sheet(isPresented: $showPopup) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        .fullScreenCover(isPresented: $showPopup) {
             AddToCharitySheet(
                 viewModel: viewModel,
                 fundName: fundName,
                 onClose: { showPopup = false }
             )
-            .presentationDetents([.medium, .large])
         }
     }
 }
@@ -286,6 +292,11 @@ public struct AddToCharitySheet: View {
                 }
                 FundsTertiaryButton("Cancel") { onClose() }
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the
+            // trailing Spacer top-anchors the content in the
+            // full-screen cover — without it the short form
+            // centres itself vertically in the full screen.
+            Spacer()
         }
         .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
@@ -353,13 +364,14 @@ public struct RecordCashGiftSection: View {
             showPopup = true
         }
         .accessibilityIdentifier("funds.recordCashGift")
-        .sheet(isPresented: $showPopup) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        .fullScreenCover(isPresented: $showPopup) {
             RecordCashGiftSheet(
                 viewModel: viewModel,
                 fundName: fundName,
                 onClose: { showPopup = false }
             )
-            .presentationDetents([.medium, .large])
         }
     }
 }
@@ -412,6 +424,11 @@ public struct RecordCashGiftSheet: View {
                 }
                 FundsTertiaryButton("Cancel") { onClose() }
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the
+            // trailing Spacer top-anchors the content in the
+            // full-screen cover — without it the short form
+            // centres itself vertically in the full screen.
+            Spacer()
         }
         .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
@@ -530,7 +547,7 @@ public struct CharityIncomeHistory: View {
                     case .income(let row):
                         incomeRow(row)
                     case .gift(let tx):
-                        FundTransactionRow(tx, merchantRules: viewModel.merchantRules)
+                        FundTransactionRow(tx, merchantRules: viewModel.merchantRules, fundName: viewModel.fundName)
                     case .cashGift(let gift):
                         cashGiftRow(gift)
                     }
@@ -721,7 +738,7 @@ public struct FundTopupsHistory: View {
                     case .topup(let row):
                         topupRow(row)
                     case .transaction(let tx):
-                        FundTransactionRow(tx, merchantRules: viewModel.merchantRules)
+                        FundTransactionRow(tx, merchantRules: viewModel.merchantRules, fundName: viewModel.fundName)
                     case .allocation(let entry):
                         allocationRow(entry)
                     }

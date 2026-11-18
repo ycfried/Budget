@@ -289,7 +289,9 @@ public struct DateField: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Date, \(Self.displayFormatter.string(from: date))")
-        .sheet(isPresented: $showingPicker) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        .fullScreenCover(isPresented: $showingPicker) {
             VStack(alignment: .leading, spacing: 16) {
                 SheetHeader(title: "Choose Date", onClose: { showingPicker = false })
                 DatePicker("", selection: $date, displayedComponents: .date)
@@ -297,10 +299,14 @@ public struct DateField: View {
                     .labelsHidden()
                 Button("Done") { showingPicker = false }
                     .buttonStyle(PrimaryButtonStyle())
+                // Build 43 (owner, Nov 17, 2026 — item 18): the
+                // trailing Spacer top-anchors the content in the
+                // full-screen cover — without it the picker and
+                // button centre themselves vertically in the
+                // full screen.
+                Spacer()
             }
             .padding()
-            .presentationDetents([.medium, .large])
-            .presentationBackground(.white)
         }
     }
 }

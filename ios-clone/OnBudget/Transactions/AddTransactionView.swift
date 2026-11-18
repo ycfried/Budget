@@ -35,12 +35,10 @@ public struct AddTransactionView: View {
         // reports an unbounded ideal height, so a fitted sheet
         // rendered tall and mostly empty (build 24). A plain VStack
         // root + SheetHeader (X close, centred title) keeps the
-        // content at the top of the sheet. Both steps use detents
-        // [.medium, .large] (build 42 item 24: fitted centred the
-        // options buttons mid-sheet with a gap above); the forms
-        // are ScrollViews, so fitted collapsed them in build 23.
+        // content at the top of the full-screen popup (build 43,
+        // item 17 — the cover is full-screen now, so no detents;
+        // the forms are ScrollViews, so they start at the top).
         sheetContent
-            .presentationDetents([.medium, .large])
     }
 
     private var sheetContent: some View {
@@ -95,6 +93,13 @@ public struct AddTransactionView: View {
                 // stack under Primary "Purchase".
                 .buttonStyle(TertiaryButtonStyle())
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the
+            // trailing Spacer top-anchors the options in the
+            // full-screen cover — without it the two buttons
+            // centre themselves vertically in the full screen.
+            // (The purchase / donation steps are ScrollViews, so
+            // they start at the top without one.)
+            Spacer()
         }
     }
 
@@ -449,10 +454,17 @@ public struct AddDonationForm: View {
         self.onDone = onDone
     }
 
+    /// The charity fund's CURRENT display name (build 43, owner
+    /// Nov 17, 2026 — item 16): the heading and the missing-RPC
+    /// error read it, never a hardcoded "Charity". The view model
+    /// carries the household's fund names (synced by
+    /// TransactionsView).
+    private var charityName: String { FundSectionID.charity.displayName(customNames: viewModel.fundNames) }
+
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Give to Charity")
+                Text("Give to \(charityName)")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
                 Text("Counts as given at once, never as weekly spending. Admin only.")
@@ -608,7 +620,7 @@ public struct AddDonationForm: View {
     /// server text becomes a generic line).
     private func donationErrorMessage(_ error: OnBudgetError) -> String {
         if case .notFound = error {
-            return "Charity isn't live yet — the database step still needs approval."
+            return "\(charityName) isn't live yet — the database step still needs approval."
         }
         if case .adminOnly = error {
             return "Only the admin can record charity gifts."

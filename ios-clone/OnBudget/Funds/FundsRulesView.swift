@@ -74,11 +74,18 @@ public struct CharityRateSection: View {
     @State private var showHowItWorks = false
     /// True inside the Charity fund container: no card of its own.
     public let bare: Bool
+    /// The household's custom fund names (build 43, owner Nov 17,
+    /// 2026 — item 16): the "Default <fund> Rate" label and the
+    /// How It Works copy read the fund's CURRENT display name.
+    public let fundNames: [String: String]
 
-    public init(viewModel: FundsViewModel, bare: Bool = false) {
+    public init(viewModel: FundsViewModel, bare: Bool = false, fundNames: [String: String] = [:]) {
         self.viewModel = viewModel
         self.bare = bare
+        self.fundNames = fundNames
     }
+
+    private var charityName: String { FundSectionID.charity.displayName(customNames: fundNames) }
 
     private var isAdmin: Bool { viewModel.context.isAdmin }
     private var defaultRateBp: Int { viewModel.charitySettings?.defaultRateBp ?? 1000 }
@@ -113,8 +120,10 @@ public struct CharityRateSection: View {
             // always shows the live default, not a stale edit.
             rateText = MoneyFormat.formatRateBp(newValue)
         }
-        .sheet(isPresented: $showHowItWorks) {
-            HowItWorksSheet(defaultRateBp: defaultRateBp)
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        .fullScreenCover(isPresented: $showHowItWorks) {
+            HowItWorksSheet(defaultRateBp: defaultRateBp, fundNames: fundNames)
         }
     }
 
@@ -135,7 +144,7 @@ public struct CharityRateSection: View {
             } else {
                 HStack(spacing: 8) {
                     FundsBreakdownRow(
-                        "Default Charity Rate",
+                        "Default \(charityName) Rate",
                         value: "\(MoneyFormat.formatRateBp(defaultRateBp))%"
                     )
                     Button {
@@ -173,7 +182,7 @@ public struct CharityRateSection: View {
     private var rateEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Text("Default Charity Rate")
+                Text("Default \(charityName) Rate")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 Button {
@@ -251,49 +260,58 @@ public struct CharityRateSection: View {
 
 /// How It Works, as a popup (owner, Nov 15, 2026 — the expandable
 /// row under the Charity card is gone; the ⓘ at the right of the
-/// Default Charity Rate row opens this sheet instead). The three
+/// Default Charity Rate row opens this popup instead). The three
 /// rule blocks are unchanged.
 public struct HowItWorksSheet: View {
     public let defaultRateBp: Int
+    public let fundNames: [String: String]
     @Environment(\.dismiss) private var dismiss
 
-    public init(defaultRateBp: Int) {
+    public init(defaultRateBp: Int, fundNames: [String: String] = [:]) {
         self.defaultRateBp = defaultRateBp
+        self.fundNames = fundNames
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: "How It Works") { dismiss() }
-            HowItWorksContent(defaultRateBp: defaultRateBp)
+            HowItWorksContent(defaultRateBp: defaultRateBp, fundNames: fundNames)
+            // The trailing Spacer top-anchors the content in the
+            // full-screen cover (build 43, item 18) — without it
+            // the short content centres itself vertically.
             Spacer(minLength: 0)
         }
         .padding()
-        .presentationDetents([.medium, .large])
-        .presentationBackground(.white)
     }
 }
 
-/// The three rule blocks: Charity Basis, Rate per Entry, Extra Fund
-/// Top-Ups.
+/// The three rule blocks: charity Basis, Rate per Entry, fund
+/// Top-Ups — each titled with the fund's CURRENT display name
+/// (build 43, item 16).
 public struct HowItWorksContent: View {
     public let defaultRateBp: Int
+    public let fundNames: [String: String]
 
-    public init(defaultRateBp: Int) {
+    public init(defaultRateBp: Int, fundNames: [String: String] = [:]) {
         self.defaultRateBp = defaultRateBp
+        self.fundNames = fundNames
     }
+
+    private var charityName: String { FundSectionID.charity.displayName(customNames: fundNames) }
+    private var extraFundName: String { FundSectionID.fund.displayName(customNames: fundNames) }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ruleBlock(
-                title: "Charity Basis",
-                text: "Charity is \(MoneyFormat.formatRateBp(defaultRateBp))% of money actually received and manually entered amounts, from November 2026. Transfers, refunds, reimbursements, loans, and Extra Fund top-ups do not count on their own — nothing is pulled in automatically."
+                title: "\(charityName) Basis",
+                text: "\(charityName) is \(MoneyFormat.formatRateBp(defaultRateBp))% of money actually received and manually entered amounts, from November 2026. Transfers, refunds, reimbursements, loans, and \(extraFundName) top-ups do not count on their own — nothing is pulled in automatically."
             )
             ruleBlock(
                 title: "Rate per Entry",
                 text: "A rate set on one income replaces the default for that entry only — it never adds to it. Correcting an old income reverses it and adds a replacement; the old entry stays, marked reversed."
             )
             ruleBlock(
-                title: "Extra Fund Top-Ups",
+                title: "\(extraFundName) Top-Ups",
                 text: "Money added covers what the fund owes back first, then the rest increases spendable Available. The Add Money form shows that split before you save."
             )
         }
@@ -336,11 +354,18 @@ public struct DebtRuleSection: View {
     @State private var ruleError: String?
     /// True inside the Carried Debt fund container: no card of its own.
     public let bare: Bool
+    /// The household's custom fund names (build 43, owner Nov 17,
+    /// 2026 — item 16): the "<debt> Repayment Rule" label reads
+    /// the debt fund's CURRENT display name.
+    public let fundNames: [String: String]
 
-    public init(viewModel: FundsViewModel, bare: Bool = false) {
+    public init(viewModel: FundsViewModel, bare: Bool = false, fundNames: [String: String] = [:]) {
         self.viewModel = viewModel
         self.bare = bare
+        self.fundNames = fundNames
     }
+
+    private var debtName: String { FundSectionID.debt.displayName(customNames: fundNames) }
 
     private var isAdmin: Bool { viewModel.context.isAdmin }
     private var savedRule: DebtRule { viewModel.debtRule ?? .default }
@@ -400,7 +425,7 @@ public struct DebtRuleSection: View {
             } else if isAdmin {
                 ruleEditor
             } else {
-                FundsBreakdownRow("Debt Repayment Rule", value: ruleText)
+                FundsBreakdownRow("\(debtName) Repayment Rule", value: ruleText)
                 FundsMuted("Only the admin can change the debt repayment rule.")
             }
         }
@@ -431,7 +456,7 @@ public struct DebtRuleSection: View {
     /// A bad Save still reports via the error box.
     private var ruleEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Debt Repayment Rule")
+            Text("\(debtName) Repayment Rule")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
             Picker("Rule", selection: $selectedMode) {
@@ -804,7 +829,7 @@ public struct SpendingAllowanceSection: View {
                 // size (16pt, 12pt padding) to the same large size so
                 // the two match — the Charity fund's stacked-button
                 // pattern.
-                FundsPrimaryButton("Add to Budget", isBusy: viewModel.busyAction == "add-budget", isLarge: true) {
+                FundsPrimaryButton("Top Up Budget", isBusy: viewModel.busyAction == "add-budget", isLarge: true) {
                     showAddToBudget = true
                 }
                 FundsTertiaryButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance", isLarge: true) {
@@ -813,15 +838,17 @@ public struct SpendingAllowanceSection: View {
             }
         }
         .padding(.top, 8)
-        .sheet(isPresented: $showAddToBudget) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        .fullScreenCover(isPresented: $showAddToBudget) {
             AddToBudgetSheet(viewModel: viewModel, onClose: { showAddToBudget = false })
         }
     }
 }
 
-// MARK: - Add to Budget (Nov 16, 2026)
+// MARK: - Top Up Budget (Nov 16, 2026; renamed from "Add to Budget", build 43, owner Nov 17, 2026)
 
-/// The Add to Budget popup (owner, Nov 16, 2026): a one-time top-up
+/// The Top Up Budget popup (owner, Nov 16, 2026): a one-time top-up
 /// to the CURRENT week's budget only. An amount field + Add/Cancel,
 /// in the Add to Charity popup's style (iPad 600pt centred, 17pt).
 /// Validation lives here: the amount must be above $0.00 — empty /
@@ -845,7 +872,7 @@ public struct AddToBudgetSheet: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SheetHeader(title: "Add to Budget", onClose: onClose)
+            SheetHeader(title: "Top Up Budget", onClose: onClose)
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
             if let addError {
                 FundsErrorBox(addError)
@@ -856,6 +883,11 @@ public struct AddToBudgetSheet: View {
                 }
                 FundsTertiaryButton("Cancel") { onClose() }
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the
+            // trailing Spacer top-anchors the content in the
+            // full-screen cover — without it the short form
+            // centres itself vertically in the full screen.
+            Spacer()
         }
         .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular

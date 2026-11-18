@@ -336,7 +336,9 @@ public final class HomeViewModel: ObservableObject {
             if error == .sessionExpired { appState.showSessionExpired(); return }
             fundError = error
         } catch {
-            fundError = .unknown("Could not load Extra Fund balances.")
+            // Build 43 (owner, Nov 17, 2026 — item 16): the fund's
+            // CURRENT display name, never the hardcoded default.
+            fundError = .unknown("Could not load \(FundSectionID.fund.displayName(customNames: appState.fundNames)) balances.")
         }
 
         // Plaid suffix → institution map (bank icons). Best-effort —
@@ -572,20 +574,16 @@ public struct HomeView: View {
         .onChange(of: appState.showSettings) { _, isShowing in
             if !isShowing { Task { await viewModel.refresh() } }
         }
-        .sheet(isPresented: $showWeeklySheet) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        .fullScreenCover(isPresented: $showWeeklySheet) {
             if case .loaded(let result) = viewModel.week {
                 WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, purchasesThisWeek: viewModel.purchasesThisWeek, appState: appState)
-                    // iPad width (owner, Nov 12 2026): a plain .sheet
-                    // is a ~540pt form sheet on iPad — narrow and
-                    // cramped for this content. WeeklySheet fixes its
-                    // width to 600pt in the regular size class, so the
-                    // sheet opens 600pt wide and centred; on iPhone
-                    // (compact) the width stays full-screen. Detents
-                    // (build 42 item 24) open at a compact medium
-                    // height with the content at the top — fitted
-                    // centred the content mid-sheet with a gap above.
-                    .presentationDetents([.medium, .large])
-                    .presentationBackground(.white)
+                    // iPad width (owner, Nov 12 2026): WeeklySheet
+                    // fixes its width to 600pt in the regular size
+                    // class, so the popup opens 600pt wide and
+                    // centred; on iPhone (compact) the width stays
+                    // full-screen.
             }
         }
         .alert(notLoadedAlertTitle, isPresented: $showNotLoadedAlert) {
@@ -772,8 +770,8 @@ public struct HomeView: View {
                     .lineLimit(1)
                     .accessibilityLabel(
                         result.availableCents < 0
-                            ? "Spending, over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
-                            : "Spending, \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
+                            ? "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
+                            : "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
                     )
             }
             if viewModel.isAdmin {
@@ -1069,7 +1067,7 @@ public struct HomeView: View {
     private var fundRows: some View {
         Group {
             if case .failed = viewModel.fund {
-                ErrorBox("Could not load Extra Fund balances.")
+                ErrorBox("Could not load \(FundSectionID.fund.displayName(customNames: appState.fundNames)) balances.")
                 Button("Try Again") { Task { await viewModel.refresh() } }
                     .buttonStyle(TertiaryButtonStyle())
             } else if case .loaded(let summary) = viewModel.fund {
@@ -1386,34 +1384,36 @@ public struct HomeView: View {
     }
 
     private var charityAriaLabel: String {
+        let name = FundSectionID.charity.displayName(customNames: appState.fundNames)
         switch viewModel.charity {
         case .loaded(let summary):
             if summary.committedCents == 0 && summary.givenCents == 0 {
-                return "Charity, no charity tracked yet, show breakdown"
+                return "\(name), no charity tracked yet, show breakdown"
             }
             if summary.remainingCents < 0 {
-                return "Charity, ahead by \(MoneyFormat.string(cents: -summary.remainingCents)), show breakdown"
+                return "\(name), ahead by \(MoneyFormat.string(cents: -summary.remainingCents)), show breakdown"
             }
-            return "Charity, \(MoneyFormat.string(cents: summary.remainingCents)) remaining, \(MoneyFormat.string(cents: summary.givenCents)) given, \(MoneyFormat.string(cents: summary.committedCents)) committed, show breakdown"
+            return "\(name), \(MoneyFormat.string(cents: summary.remainingCents)) remaining, \(MoneyFormat.string(cents: summary.givenCents)) given, \(MoneyFormat.string(cents: summary.committedCents)) committed, show breakdown"
         case .failed:
-            return "Charity, could not load, show breakdown"
+            return "\(name), could not load, show breakdown"
         case .loading:
-            return "Charity, loading, show breakdown"
+            return "\(name), loading, show breakdown"
         }
     }
 
     private var fundAriaLabel: String {
+        let name = FundSectionID.fund.displayName(customNames: appState.fundNames)
         switch viewModel.fund {
         case .loaded(let summary):
             let pending = summary.pendingIncludingHeldCents + viewModel.pendingTopupsCents
             if pending > 0 {
-                return "Extra Fund, \(MoneyFormat.string(cents: summary.availableCents)) available, \(MoneyFormat.string(cents: pending)) pending, show breakdown"
+                return "\(name), \(MoneyFormat.string(cents: summary.availableCents)) available, \(MoneyFormat.string(cents: pending)) pending, show breakdown"
             }
-            return "Extra Fund, \(MoneyFormat.string(cents: summary.availableCents)) available, show breakdown"
+            return "\(name), \(MoneyFormat.string(cents: summary.availableCents)) available, show breakdown"
         case .failed:
-            return "Extra Fund, could not load balances, show breakdown"
+            return "\(name), could not load balances, show breakdown"
         case .loading:
-            return "Extra Fund, loading, show breakdown"
+            return "\(name), loading, show breakdown"
         }
     }
 
@@ -1606,17 +1606,19 @@ public struct WeeklySheet: View {
                     .font(.system(size: 12))
                     .foregroundStyle(DesignTokens.muted)
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the trailing
+            // Spacer top-anchors the content in the full-screen
+            // cover — it already did this in the detent sheet, and
+            // it is what keeps the rows at the top now.
             Spacer()
         }
         .padding(.horizontal, 24)
         .padding(.top, 20)
         .padding(.bottom, 24)
-        // iPad width (owner, Nov 12 2026): with detents at the
-        // presentation site, the sheet opens at a compact medium
-        // height — so a fixed 600pt width here actually widens
-        // the sheet on iPad (regular size class) instead of the
-        // system ~540pt form sheet. On iPhone (compact) no width is
-        // fixed and the sheet stays full-width.
+        // iPad width (owner, Nov 12 2026): a fixed 600pt width here
+        // widens the popup on iPad (regular size class) instead of
+        // the system ~540pt form sheet. On iPhone (compact) no width
+        // is fixed and the popup stays full-width.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 

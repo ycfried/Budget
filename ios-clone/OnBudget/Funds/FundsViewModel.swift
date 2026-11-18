@@ -26,6 +26,21 @@ import OnBudgetKit
 public final class FundsViewModel: ObservableObject {
     public let context: FundsContext
 
+    /// The household's custom fund names (build 43, owner Nov 17,
+    /// 2026 — item 16, fund rename propagation): the `fund_names`
+    /// map, synced from `appState.fundNames` by the owning view
+    /// (FundsView; the Actions sheet's throwaway instance gets it
+    /// from the sheet's `fundNames`). [:] means the defaults. Every
+    /// user-facing string below reads through the helpers, never a
+    /// hardcoded default name.
+    public var fundNames: [String: String] = [:]
+
+    /// The funds' CURRENT display names (build 43, item 16).
+    public var fundName: String { FundSectionID.fund.displayName(customNames: fundNames) }
+    public var charityName: String { FundSectionID.charity.displayName(customNames: fundNames) }
+    public var debtName: String { FundSectionID.debt.displayName(customNames: fundNames) }
+    public var spendingName: String { FundSectionID.spending.displayName(customNames: fundNames) }
+
     // MARK: - Load state
 
     @Published public var isLoading = false
@@ -808,7 +823,7 @@ public final class FundsViewModel: ObservableObject {
         // default: a failed fund load reads as $0 Available, and a
         // failed top-ups load reads as $0 Pending.
         guard fundSummary != nil else {
-            return outcome(OnBudgetError.validationFailed("Could not load the Savings balance. Try again."))
+            return outcome(OnBudgetError.validationFailed("Could not load the \(fundName) balance. Try again."))
         }
         // 1. Available.
         let takeAvailable = min(remainder, max(0, fundSummary?.availableCents ?? 0))
@@ -893,7 +908,7 @@ public final class FundsViewModel: ObservableObject {
     /// it stopped. …") — empty when nothing moved.
     private func partialSavingsMessage(_ outcome: SavingsSpendOutcome, amountCents: Int) -> String {
         guard outcome.totalCents > 0 else { return "" }
-        return "Removed \(MoneyFormat.formatCents(outcome.totalCents)) of \(MoneyFormat.formatCents(amountCents)) before it stopped\(savingsSplitSuffix(outcome)). The completed part is recorded — check the Savings Activity feed. "
+        return "Removed \(MoneyFormat.formatCents(outcome.totalCents)) of \(MoneyFormat.formatCents(amountCents)) before it stopped\(savingsSplitSuffix(outcome)). The completed part is recorded — check the \(fundName) Activity feed. "
     }
 
     /// "Remove from Savings" (build 42): the Savings card's single
@@ -904,11 +919,11 @@ public final class FundsViewModel: ObservableObject {
     public func removeFromSavings(amountCents: Int, note: String) async -> Bool {
         guard context.isAdmin else {
             alertTitle = "Admin Only"
-            alertMessage = "Only the admin can remove money from Savings."
+            alertMessage = "Only the admin can remove money from \(fundName)."
             return false
         }
         guard amountCents > 0 else {
-            alertTitle = "Could Not Remove From Savings"
+            alertTitle = "Could Not Remove From \(fundName)"
             alertMessage = "Enter an amount above $0.00."
             return false
         }
@@ -916,15 +931,15 @@ public final class FundsViewModel: ObservableObject {
         busyAction = "remove-from-savings"
         defer { busyAction = nil }
         let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let ledgerNote = cleanNote.isEmpty ? "Removed from Savings" : "Removed from Savings — \(cleanNote)"
+        let ledgerNote = cleanNote.isEmpty ? "Removed from \(fundName)" : "Removed from \(fundName) — \(cleanNote)"
         let outcome = await spendFromSavings(amountCents: amountCents, note: ledgerNote)
         if let error = outcome.error {
-            alertTitle = "Could Not Remove From Savings"
+            alertTitle = "Could Not Remove From \(fundName)"
             alertMessage = partialSavingsMessage(outcome, amountCents: amountCents) + userMessage(for: error)
             await refresh()
             return false
         }
-        succeed("Removed \(MoneyFormat.formatCents(amountCents)) from Savings\(savingsSplitSuffix(outcome)).")
+        succeed("Removed \(MoneyFormat.formatCents(amountCents)) from \(fundName)\(savingsSplitSuffix(outcome)).")
         await refresh()
         return true
     }
@@ -967,18 +982,18 @@ public final class FundsViewModel: ObservableObject {
     public func designateTransactionAsSavings(_ transaction: Transaction) async -> String? {
         guard context.isAdmin else {
             alertTitle = "Admin Only"
-            alertMessage = "Only the admin can designate transactions as Savings."
+            alertMessage = "Only the admin can designate transactions as \(fundName)."
             return nil
         }
         let cents = abs(transaction.amountCents)
         guard cents > 0 else {
-            alertTitle = "Could Not Designate as Savings"
+            alertTitle = "Could Not Designate as \(fundName)"
             alertMessage = "This transaction has no amount to designate."
             return nil
         }
         guard transaction.state != .reversed && !transaction.isInTrash else {
-            alertTitle = "Could Not Designate as Savings"
-            alertMessage = "A reversed or trashed transaction cannot be designated as Savings."
+            alertTitle = "Could Not Designate as \(fundName)"
+            alertMessage = "A reversed or trashed transaction cannot be designated as \(fundName)."
             return nil
         }
         guard busyAction == nil else { return nil }
@@ -988,7 +1003,7 @@ public final class FundsViewModel: ObservableObject {
         // and the pending top-ups list.
         await refresh()
         let merchant = TransactionFormatting.displayMerchant(transaction.merchant)
-        let ledgerNote = "Savings: \(merchant) — \(transaction.date)"
+        let ledgerNote = "\(fundName): \(merchant) — \(transaction.date)"
         if transaction.kind.isMoneyIn {
             do {
                 let result = try await context.client.rpcs.addFundMoney(
@@ -1000,40 +1015,43 @@ public final class FundsViewModel: ObservableObject {
                 )
                 if result.replayed {
                     alertTitle = "Already Designated"
-                    alertMessage = "This transaction was already designated as Savings."
+                    alertMessage = "This transaction was already designated as \(fundName)."
                     return nil
                 }
                 await refresh()
                 if result.shortfallCoveredCents > 0 {
-                    return "Designated as Savings: \(MoneyFormat.formatCents(cents)) in — \(MoneyFormat.formatCents(result.shortfallCoveredCents)) covered owed back, \(MoneyFormat.formatCents(result.fundAddedCents)) added to Savings Available."
+                    return "Designated as \(fundName): \(MoneyFormat.formatCents(cents)) in — \(MoneyFormat.formatCents(result.shortfallCoveredCents)) covered owed back, \(MoneyFormat.formatCents(result.fundAddedCents)) added to \(fundName) Available."
                 }
-                return "Designated as Savings: \(MoneyFormat.formatCents(cents)) added to Savings Available."
+                return "Designated as \(fundName): \(MoneyFormat.formatCents(cents)) added to \(fundName) Available."
             } catch {
-                fail(title: "Could Not Designate as Savings", error: error)
+                fail(title: "Could Not Designate as \(fundName)", error: error)
                 return nil
             }
         }
         guard transaction.kind == .charge else {
             alertTitle = "Does Not Qualify"
-            alertMessage = "Only a charge or money-in can be designated as Savings."
+            alertMessage = "Only a charge or money-in can be designated as \(fundName)."
             return nil
         }
         let outcome = await spendFromSavings(amountCents: cents, note: ledgerNote)
         if let error = outcome.error {
-            alertTitle = "Could Not Designate as Savings"
+            alertTitle = "Could Not Designate as \(fundName)"
             alertMessage = partialSavingsMessage(outcome, amountCents: cents) + userMessage(for: error)
             await refresh()
             return nil
         }
         await refresh()
-        return "Designated as Savings: \(MoneyFormat.formatCents(cents)) out of Savings\(savingsSplitSuffix(outcome))."
+        return "Designated as \(fundName): \(MoneyFormat.formatCents(cents)) out of \(fundName)\(savingsSplitSuffix(outcome))."
     }
 
     // MARK: - Ask for Fund Money (all roles)
 
     /// Inserts a pending `fund_requests` row; audits
-    /// "Extra Fund request created" (best-effort — a blocked audit
-    /// insert must not fail the request itself).
+    /// "<fund> request created" with the fund's CURRENT display
+    /// name (build 43, item 16 — composed at action time, so a
+    /// renamed fund reads with its new name; old rows stay as
+    /// recorded). Best-effort — a blocked audit insert must not
+    /// fail the request itself.
     /// Returns true only when the request was sent, so the caller
     /// clears the typed input on success only (F-P1-4).
     public func createFundRequest(amountCents: Int, note: String, transactionId: UUID?) async -> Bool {
@@ -1052,7 +1070,7 @@ public final class FundsViewModel: ObservableObject {
                     householdId: context.householdId,
                     actor: context.userId,
                     actorName: name,
-                    action: "Extra Fund request created",
+                    action: "\(fundName) request created",
                     detail: "\(MoneyFormat.formatCents(amountCents)) requested."
                 ))
             } catch {
@@ -1163,7 +1181,7 @@ public final class FundsViewModel: ObservableObject {
     /// success only (F-P1-4).
     public func addToCharity(amountCents: Int) async -> Bool {
         var succeeded = false
-        await guarded("add-charity", title: "Could Not Add to Charity") {
+        await guarded("add-charity", title: "Could Not Add to \(charityName)") {
             let result = try await context.client.rpcs.recordCharityIncome(
                 pHouseholdId: context.householdId,
                 pAmountCents: amountCents,
@@ -1172,7 +1190,7 @@ public final class FundsViewModel: ObservableObject {
                 pRateBp: 10000,
                 pNote: ""
             )
-            succeed("Added \(MoneyFormat.formatCents(result.committedCents)) to Charity.")
+            succeed("Added \(MoneyFormat.formatCents(result.committedCents)) to \(charityName).")
             succeeded = true
             await refresh()
         }
@@ -1273,7 +1291,7 @@ public final class FundsViewModel: ObservableObject {
     /// success only (like addToCharity).
     public func addToBudget(amountCents: Int) async -> Bool {
         var succeeded = false
-        await guarded("add-budget", title: "Could Not Add to Budget") {
+        await guarded("add-budget", title: "Could Not Top Up Budget") {
             let newTotalCents = try await context.client.rpcs.addToWeeklyBudget(
                 pHouseholdId: context.householdId,
                 pWeekStart: MoneyFormat.currentSundayNY(),
@@ -1300,7 +1318,7 @@ public final class FundsViewModel: ObservableObject {
     public func setDebtRule(_ rule: DebtRule) async {
         await guarded("debt-rule", title: "Could Not Save Rule") {
             try await context.client.rpcs.setDebtRepaymentRule(pHouseholdId: context.householdId, rule: rule)
-            succeed("Debt repayment rule saved.")
+            succeed("\(debtName) repayment rule saved.")
             await refresh()
         }
     }
@@ -1318,7 +1336,7 @@ public final class FundsViewModel: ObservableObject {
             pNote: note,
             pOverrideReason: overrideReason
         )
-        succeed("Debt payment recorded — \(MoneyFormat.formatCents(remaining)) left.")
+        succeed("\(debtName) payment recorded — \(MoneyFormat.formatCents(remaining)) left.")
         await refresh()
         return remaining
     }
@@ -1341,14 +1359,14 @@ public final class FundsViewModel: ObservableObject {
             )
             let remaining = max(0, before - cleared)
             if cleared >= before {
-                succeed("Debt cleared — \(MoneyFormat.formatCents(cleared)) erased.")
+                succeed("\(debtName) cleared — \(MoneyFormat.formatCents(cleared)) erased.")
             } else {
                 succeed("Cleared \(MoneyFormat.formatCents(cleared)) — \(MoneyFormat.formatCents(remaining)) of carried debt left.")
             }
             await refresh()
             return true
         } catch {
-            fail(title: "Could Not Clear Debt", error: error)
+            fail(title: "Could Not Clear \(debtName)", error: error)
             return false
         }
     }
@@ -1365,11 +1383,11 @@ public final class FundsViewModel: ObservableObject {
             let balance = try await context.client.rpcs.addDebt(
                 pHouseholdId: context.householdId, pAmountCents: amountCents, pNote: note
             )
-            succeed("Debt increased by \(MoneyFormat.formatCents(amountCents)) — now \(MoneyFormat.formatCents(balance)).")
+            succeed("\(debtName) increased by \(MoneyFormat.formatCents(amountCents)) — now \(MoneyFormat.formatCents(balance)).")
             await refresh()
             return true
         } catch {
-            fail(title: "Could Not Add Debt", error: error)
+            fail(title: "Could Not Add \(debtName)", error: error)
             return false
         }
     }
@@ -1387,11 +1405,11 @@ public final class FundsViewModel: ObservableObject {
             let balance = try await context.client.rpcs.setDebt(
                 pHouseholdId: context.householdId, pAmountCents: amountCents, pNote: note
             )
-            succeed("Debt set to \(MoneyFormat.formatCents(balance)).")
+            succeed("\(debtName) set to \(MoneyFormat.formatCents(balance)).")
             await refresh()
             return true
         } catch {
-            fail(title: "Could Not Set Debt", error: error)
+            fail(title: "Could Not Set \(debtName)", error: error)
             return false
         }
     }

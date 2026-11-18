@@ -247,32 +247,32 @@ struct MerchantNamesSettingsView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
             }
-            // The editor is a proper sheet, not inline below the
+            // The editor is a proper popup, not inline below the
             // list (owner, Nov 15, 2026 — build 33: the inline
             // editor was hard to use and not properly clickable,
             // though the idea and the fields were right). Same
-            // fields, same behaviour — just presented as a sheet
-            // with a header, like the other editors.
-            .sheet(isPresented: $showingForm) {
+            // fields, same behaviour — just presented full-screen
+            // (build 43, item 17) with a header, like the other
+            // editors.
+            .fullScreenCover(isPresented: $showingForm) {
                 // iPad width (owner, Nov 15, 2026 — build 34): same
-                // treatment as the Weekly Budget sheet — detent
-                // height + 600pt width in the regular size class.
-                // The sheet rendered as a ~400pt popup with cramped
-                // buttons on iPad. The content is a short fixed form
-                // in a plain VStack (no ScrollView root), so it sits
-                // at the top of the sheet.
+                // treatment as the Weekly Budget sheet — 600pt width
+                // in the regular size class, in a full-screen cover
+                // (build 43, item 17). The content is a short fixed
+                // form in a plain VStack (no ScrollView root); the
+                // trailing Spacer below keeps it at the top of the
+                // full screen (build 43, item 18).
                 VStack(alignment: .leading, spacing: 16) {
                     SheetHeader(title: editingRule == nil ? "Add a Name" : "Edit Name") {
                         showingForm = false
                         editingRule = nil
                     }
                     ruleForm
+                    Spacer()
                 }
                 .padding()
                 .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-                .presentationDetents([.medium, .large])
-                .presentationBackground(.white)
-                // The alert lives on the sheet (delete confirm +
+                // The alert lives on the popup (delete confirm +
                 // save failures both come from this form).
                 .alert(item: $viewModel.alert) { alert in
                     switch alert {

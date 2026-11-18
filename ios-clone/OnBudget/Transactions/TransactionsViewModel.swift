@@ -51,6 +51,19 @@ public final class TransactionsViewModel {
     /// signs the user out to the sign-in panel ("Sign In Again").
     public var onSignInAgain: (() -> Void)?
 
+    /// The household's custom fund names (build 43, owner Nov 17,
+    /// 2026 — item 16, fund rename propagation): the `fund_names`
+    /// map, synced from `appState.fundNames` by the owning view
+    /// (TransactionsView). [:] means the defaults. Every
+    /// user-facing string below reads through the helpers, never a
+    /// hardcoded default name.
+    public var fundNames: [String: String] = [:]
+
+    /// The funds' CURRENT display names (build 43, item 16).
+    public var fundName: String { FundSectionID.fund.displayName(customNames: fundNames) }
+    public var charityName: String { FundSectionID.charity.displayName(customNames: fundNames) }
+    public var debtName: String { FundSectionID.debt.displayName(customNames: fundNames) }
+
     // MARK: - List state
 
     /// Rows fetched so far, date desc, append-only: the first load
@@ -499,10 +512,10 @@ public final class TransactionsViewModel {
             if error == .sessionExpired {
                 loadState = .failed(error)
             }
-            showAlert(title: "Could Not Mark as Charity", message: error.displayMessage)
+            showAlert(title: "Could Not Mark as \(charityName)", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Mark as Charity", message: OnBudgetError.displayMessage(for: error))
+            showAlert(title: "Could Not Mark as \(charityName)", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -572,13 +585,13 @@ public final class TransactionsViewModel {
     /// covers a charge, never more than it).
     public func requestExtraFund(for transaction: Transaction, amountCents: Int) async -> Bool {
         if transaction.kind == .charity {
-            showAlert(title: "Does Not Qualify", message: "Charity gifts cannot be covered by the Extra Fund.")
+            showAlert(title: "Does Not Qualify", message: "\(charityName) gifts cannot be covered by the \(fundName).")
             return false
         }
         if transaction.kind != .charge {
             showAlert(
                 title: "Does Not Qualify",
-                message: "Only a charge can be covered by the Extra Fund. This row does not count toward weekly spending, so there is nothing for the fund to cover."
+                message: "Only a charge can be covered by the \(fundName). This row does not count toward weekly spending, so there is nothing for the fund to cover."
             )
             return false
         }
@@ -602,10 +615,10 @@ public final class TransactionsViewModel {
                 transactionId: transaction.id
             )
             await appendAudit(
-                action: "Extra Fund request created",
+                action: "\(fundName) request created",
                 detail: "Requested \(TransactionFormatting.formatCents(amountCents)) for \(TransactionFormatting.displayMerchant(transaction.merchant))."
             )
-            toastManager.show("Extra Fund request sent.", kind: .success)
+            toastManager.show("\(fundName) request sent.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {

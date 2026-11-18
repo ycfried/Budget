@@ -157,16 +157,13 @@ public struct AuthView: View {
             }
             .background(DesignTokens.background)
         }
-        .sheet(isPresented: $showForgotSheet) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        .fullScreenCover(isPresented: $showForgotSheet) {
             ForgotPasswordSheet(email: email)
                 // iPad width (owner, Nov 12, 2026): same treatment
-                // as the Weekly Budget sheet — a plain .sheet is a
-                // narrow form sheet on iPad and the content floated
-                // in dead space. Detents (build 42 item 24) open at
-                // a compact medium height with the content at the
-                // top of the sheet.
-                .presentationDetents([.medium, .large])
-                .presentationBackground(.white)
+                // as the Weekly Budget sheet — 600pt width in the
+                // regular size class, in a full-screen cover.
         }
         .onAppear {
             // Sign-out lands here fresh: password and message
@@ -754,6 +751,11 @@ public struct ForgotPasswordSheet: View {
                         .disabled(busy)
                 }
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the
+            // trailing Spacer top-anchors the content in the
+            // full-screen cover — without it the short form
+            // centres itself vertically in the full screen.
+            Spacer()
         }
         .padding(20)
         // iPad width (owner, Nov 12, 2026): with detents at the

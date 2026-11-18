@@ -185,20 +185,20 @@ public struct PayDebtForm: View {
 
     private var amountCents: Int? { MoneyFormat.parseDollarsStrict(amountText) }
 
-    /// The preview line: what leaves the Extra Fund and what the
+    /// The preview line: what leaves the fund and what the
     /// debt becomes. Client-side only — the server's remaining debt
     /// (returned by the RPC) is authoritative.
     private var previewText: String? {
         guard let cents = amountCents, cents > 0,
               let debt = viewModel.debtBalanceCents else { return nil }
-        return "\(MoneyFormat.formatCents(cents)) leaves the Extra Fund, debt becomes \(MoneyFormat.formatCents(max(0, debt - cents)))."
+        return "\(MoneyFormat.formatCents(cents)) leaves the \(fundName), debt becomes \(MoneyFormat.formatCents(max(0, debt - cents)))."
     }
 
     public var body: some View {
         FundsCard {
             VStack(alignment: .leading, spacing: 12) {
                 FundsHeading("Pay \(debtName) from \(fundName)")
-                FundsMuted("Lowers the carried debt and the Extra Fund balance.")
+                FundsMuted("Lowers the \(debtName) and the \(fundName) balance.")
                 FundsMoneyField("Amount", text: $amountText)
                 VStack(alignment: .leading, spacing: 4) {
                     FieldLabel("Note")
@@ -276,11 +276,11 @@ public struct PayDebtForm: View {
             if case .insufficientFund = error, overrideReason == nil {
                 showOverride = true
             } else {
-                viewModel.alertTitle = "Could Not Pay Debt"
+                viewModel.alertTitle = "Could Not Pay \(debtName)"
                 viewModel.alertMessage = error.displayMessage
             }
         } catch {
-            viewModel.alertTitle = "Could Not Pay Debt"
+            viewModel.alertTitle = "Could Not Pay \(debtName)"
             viewModel.alertMessage = OnBudgetError.displayMessage(for: error)
         }
     }
@@ -300,6 +300,10 @@ public struct PayDebtForm: View {
 
 public struct ClearDebtForm: View {
     @ObservedObject public var viewModel: FundsViewModel
+    /// The debt fund's CURRENT display name (build 43, owner Nov
+    /// 17, 2026 — item 16): the heading, buttons, alert titles
+    /// and confirm copy read it, never a hardcoded "Debt".
+    public let debtName: String
     /// Closes the form back to the Funds list (owned by FundsView).
     public var onClose: () -> Void = {}
     @State private var amountCents = 0
@@ -311,8 +315,9 @@ public struct ClearDebtForm: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     private var isIPad: Bool { horizontalSizeClass == .regular }
 
-    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
+    public init(viewModel: FundsViewModel, debtName: String, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.debtName = debtName
         self.onClose = onClose
     }
 
@@ -363,7 +368,7 @@ public struct ClearDebtForm: View {
     public var body: some View {
         FundsCard {
             VStack(alignment: .leading, spacing: 12) {
-                FundsHeading("Clear Debt")
+                FundsHeading("Clear \(debtName)")
                 FundsMuted("Write off part of the carried debt — or all of it. No money moves; the amount is recorded in the activity log.")
                 if let debt = debtCents {
                     FundsMoneyField("Amount to Clear", text: $amountText)
@@ -402,7 +407,7 @@ public struct ClearDebtForm: View {
                         }
                     }
                     if amountCents > 0, let remaining = remainingCents {
-                        FundsBreakdownRow("Remaining Debt", value: MoneyFormat.formatCents(remaining))
+                        FundsBreakdownRow("Remaining \(debtName)", value: MoneyFormat.formatCents(remaining))
                     } else {
                         FundsMuted("Drag the slider or type an amount.")
                     }
@@ -433,10 +438,10 @@ public struct ClearDebtForm: View {
         // precedent as the ReviewView Same Purchase / Separate
         // confirms). The bottom success toast is untouched.
         .alert(
-            "Clear Debt",
+            "Clear \(debtName)",
             isPresented: $showConfirm
         ) {
-            Button(TitleCase.apply(to: "Clear Debt"), role: .destructive) {
+            Button(TitleCase.apply(to: "Clear \(debtName)"), role: .destructive) {
                 if let pendingCents {
                     Task {
                         if await viewModel.clearDebt(amountCents: pendingCents, note: "") {
@@ -448,7 +453,7 @@ public struct ClearDebtForm: View {
             Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
         } message: {
             if let pendingCents, let remaining = remainingCents {
-                Text("Write off \(MoneyFormat.formatCents(pendingCents)) of the carried debt? \(MoneyFormat.formatCents(remaining)) will remain. No money moves.")
+                Text("Write off \(MoneyFormat.formatCents(pendingCents)) of the \(debtName)? \(MoneyFormat.formatCents(remaining)) will remain. No money moves.")
             }
         }
     }
@@ -501,7 +506,7 @@ struct EditDebtSheet: View {
         FundsCard {
             VStack(alignment: .leading, spacing: 12) {
                 FundsHeading("Edit \(debtName)")
-                FundsMuted("Current Debt \(MoneyFormat.formatCents(currentCents))")
+                FundsMuted("Current \(debtName) \(MoneyFormat.formatCents(currentCents))")
                 // Add Debt — primary blue (the first action, and
                 // the one that grows the balance).
                 VStack(alignment: .leading, spacing: 12) {
@@ -515,7 +520,7 @@ struct EditDebtSheet: View {
                             }
                     }
                     if addCents > 0 {
-                        FundsPrimaryButton("Add Debt", isBusy: viewModel.busyAction == "debt-add") {
+                        FundsPrimaryButton("Add to \(debtName)", isBusy: viewModel.busyAction == "debt-add") {
                             pending = PendingDebtChange(kind: .add, cents: addCents, note: addNote)
                             showConfirm = true
                         }
@@ -527,7 +532,7 @@ struct EditDebtSheet: View {
                 // differs from the current balance — setting it to
                 // the same amount is a no-op the server refuses.
                 VStack(alignment: .leading, spacing: 12) {
-                    FundsMoneyField("New Total Debt", text: $setText)
+                    FundsMoneyField("New Total \(debtName)", text: $setText)
                     VStack(alignment: .leading, spacing: 4) {
                         FieldLabel("Note")
                         TextField("", text: $setNote)
@@ -537,7 +542,7 @@ struct EditDebtSheet: View {
                             }
                     }
                     if setCents > 0 && setCents != currentCents {
-                        FundsPaleButton("Set Debt", isBusy: viewModel.busyAction == "debt-set") {
+                        FundsPaleButton("Set \(debtName)", isBusy: viewModel.busyAction == "debt-set") {
                             pending = PendingDebtChange(kind: .set, cents: setCents, note: setNote)
                             showConfirm = true
                         }
@@ -546,13 +551,23 @@ struct EditDebtSheet: View {
                 FundsTertiaryButton("Cancel") { onClose() }
             }
         }
+        // Build 43 (owner, Nov 17, 2026 — item 18): the frame
+        // top-anchors the card in the full-screen cover — a bare
+        // FundsCard root would centre itself vertically in the
+        // full screen. The .padding() gives the card the same
+        // page margins as the other popups. Dismiss is the Cancel
+        // button at the bottom (no swipe-down on a full-screen
+        // cover); there is no SheetHeader here because the
+        // FundsHeading already titles the card.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding()
         // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
         // confirmationDialog — the Clear Debt precedent.
         .alert(
-            pending?.kind == .set ? "Set Debt" : "Add Debt",
+            pending?.kind == .set ? "Set \(debtName)" : "Add to \(debtName)",
             isPresented: $showConfirm
         ) {
-            Button(TitleCase.apply(to: pending?.kind == .set ? "Set Debt" : "Add Debt")) {
+            Button(TitleCase.apply(to: pending?.kind == .set ? "Set \(debtName)" : "Add to \(debtName)")) {
                 guard let pending else { return }
                 self.pending = nil
                 Task {
@@ -569,9 +584,9 @@ struct EditDebtSheet: View {
         } message: {
             if let pending {
                 if pending.kind == .add {
-                    Text("Add \(MoneyFormat.formatCents(pending.cents)) to the carried debt? The new total will be \(MoneyFormat.formatCents(currentCents + pending.cents)).")
+                    Text("Add \(MoneyFormat.formatCents(pending.cents)) to \(debtName)? The new total will be \(MoneyFormat.formatCents(currentCents + pending.cents)).")
                 } else {
-                    Text("Set the carried debt to \(MoneyFormat.formatCents(pending.cents))? This replaces the current \(MoneyFormat.formatCents(currentCents)).")
+                    Text("Set \(debtName) to \(MoneyFormat.formatCents(pending.cents))? This replaces the current \(MoneyFormat.formatCents(currentCents)).")
                 }
             }
         }
@@ -686,7 +701,9 @@ public struct FundRequestQueue: View {
                 }
             }
         }
-        .sheet(item: $approving) { request in
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        .fullScreenCover(item: $approving) { request in
             ApproveRequestSheet(
                 request: request,
                 amountText: $approveAmountText,
@@ -695,10 +712,8 @@ public struct FundRequestQueue: View {
                 onCancel: { approving = nil; approveError = nil }
             )
                 // iPad width (owner, Nov 12, 2026): same treatment
-                // as the Weekly Budget sheet — detent height + 600pt
-                // width in the regular size class.
-                .presentationDetents([.medium, .large])
-                .presentationBackground(.white)
+                // as the Weekly Budget sheet — 600pt width in the
+                // regular size class, in a full-screen cover.
         }
         .alert("Fund Is Short", isPresented: $showOverride) {
             TextField("Reason for overriding", text: $overrideReason)
@@ -876,7 +891,7 @@ public struct ApproveRequestSheet: View {
         // sheet-sizing rule as the Actions sheet): a NavigationStack
         // reports an unbounded ideal height, so the fitted sheet
         // rendered tall and mostly empty. Plain VStack + SheetHeader
-        // keeps the content at the top of the sheet.
+        // keeps the content at the top of the full-screen popup.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: "Approve from the Fund"), onClose: onCancel)
             FundsMuted("Approve how much of this \(MoneyFormat.formatCents(request.amountCents)) request? Enter less for a split approval.")
@@ -888,12 +903,16 @@ public struct ApproveRequestSheet: View {
                 FundsPrimaryButton("Approve", action: onApprove)
                 FundsTertiaryButton("Cancel", action: onCancel)
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the
+            // trailing Spacer top-anchors the content in the
+            // full-screen cover — without it the short form
+            // centres itself vertically in the full screen.
+            Spacer()
         }
         .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
         // size class, full-width on iPhone — same treatment as the
-        // Weekly Budget sheet. The trailing Spacer is gone: it
-        // stretched the middle empty against the tall form sheet.
+        // Weekly Budget sheet.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
     }
 }
@@ -978,7 +997,7 @@ public struct RenameFundSheet: View {
         // sheet-sizing rule as the Actions sheet): a NavigationStack
         // reports an unbounded ideal height, so the fitted sheet
         // rendered tall and mostly empty. Plain VStack + SheetHeader
-        // keeps the content at the top of the sheet.
+        // keeps the content at the top of the full-screen popup.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: "Edit \(section.displayName)"), onClose: onClose)
             TextField("Fund name", text: $nameText)
@@ -1028,6 +1047,11 @@ public struct RenameFundSheet: View {
                 }
                 FundsTertiaryButton("Cancel") { onClose() }
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the
+            // trailing Spacer top-anchors the content in the
+            // full-screen cover — without it the short form
+            // centres itself vertically in the full screen.
+            Spacer()
         }
         .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular

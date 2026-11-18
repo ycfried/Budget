@@ -137,6 +137,12 @@ public struct TransactionsView: View {
         // mainContentWidth), never stretched edge-to-edge.
         .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
         .task {
+            // Build 43 (owner, Nov 17, 2026 — item 16): the view
+            // model composes alerts/toasts with the funds' CURRENT
+            // display names, so it reads the same `appState.fundNames`
+            // source as the views — synced here and on every rename
+            // below.
+            viewModel.fundNames = appState.fundNames
             if case .idle = viewModel.loadState {
                 await viewModel.load()
             }
@@ -148,48 +154,38 @@ public struct TransactionsView: View {
             consumeHandoffs()
         }
         .onChange(of: appState.pendingWeekFilter) { _, _ in consumeHandoffs() }
+        .onChange(of: appState.fundNames) { _, names in viewModel.fundNames = names }
         .onChange(of: appState.pendingTransactionJump) { _, _ in consumeHandoffs() }
         .onChange(of: appState.pendingClearTransactionFilters) { _, _ in consumeHandoffs() }
-        .sheet(isPresented: $showingFilters) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet — popups are always full size.
+        // The Filters content is a ScrollView in a NavigationStack,
+        // so it fills the full screen and starts at the top;
+        // Apply / Cancel at the bottom dismiss it. Width stays
+        // 600pt (regular) via the frame inside the sheet content.
+        .fullScreenCover(isPresented: $showingFilters) {
             TransactionsFilterSheet(viewModel: viewModel, fundNames: appState.fundNames, onDismiss: { showingFilters = false })
-                // iPad sheet height (owner, Nov 13, 2026): the
-                // Filters content is a ScrollView, and
-                // .presentationSizing(.fitted) sizes a sheet to
-                // its content's ideal height — a ScrollView has
-                // no ideal height, so the sheet collapsed to a
-                // sliver and clipped the rows (build 23). Detents
-                // give it a real height on iPhone; on iPad they
-                // are ignored and the sheet takes the default
-                // form-sheet height. Width stays 600pt (regular)
-                // via the frame inside the sheet content. Opens
-                // at the LARGE detent only (owner, Nov 14, 2026):
-                // at [.medium, .large] it opened half-height and
-                // cut "Sort by" off at the bottom edge.
-                .presentationDetents([.large])
-                // White sheet background (owner, Nov 15, 2026): the
-                // default sheet grey is off brand for form sheets.
-                .presentationBackground(.white)
         }
-        .sheet(isPresented: $showingAdd) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet. AddTransactionView sets no
+        // sizing itself any more — the cover is full-screen on
+        // both steps; the forms are ScrollViews, so they start at
+        // the top, and the options step top-anchors with its own
+        // trailing Spacer (build 43, item 18).
+        .fullScreenCover(isPresented: $showingAdd) {
             AddTransactionView(viewModel: viewModel, onDismiss: { showingAdd = false })
-                .presentationBackground(.white)
-                // No sizing here (owner, Nov 14, 2026): the size
-                // depends on the step, so AddTransactionView sets
-                // it itself — detents [.medium, .large] on both
-                // steps (build 42 item 24: fitted centred the
-                // options buttons mid-sheet with a gap above).
-                // The purchase / donation forms are ScrollViews —
-                // .fitted collapsed them in build 23.
         }
-        .sheet(isPresented: $showingTrash) {
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet. The Trash content is a
+        // ScrollView in a NavigationStack, so it fills the full
+        // screen and starts at the top; Back dismisses it.
+        .fullScreenCover(isPresented: $showingTrash) {
             TrashView(viewModel: viewModel, onBack: { showingTrash = false })
-                // iPad sheet height (owner, Nov 13, 2026): the
-                // Trash content is a ScrollView — see the Filters
-                // note above. .fitted collapsed it in build 23;
-                // detents give a real height.
-                .presentationDetents([.medium, .large])
         }
-        .sheet(item: $actionsTransaction) { transaction in
+        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+        // cover, not a detent sheet. iPad width stays 600pt
+        // (regular) via the frame inside the sheet content.
+        .fullScreenCover(item: $actionsTransaction) { transaction in
             TransactionActionsSheet(
                 transaction: transaction,
                 isAdmin: viewModel.isAdmin,
@@ -197,18 +193,6 @@ public struct TransactionsView: View {
                 fundNames: appState.fundNames,
                 onDismiss: { actionsTransaction = nil }
             )
-                // Size (owner, Nov 15, 2026 — build 34): the Actions
-                // list flow and the Reclassify flow are one sheet —
-                // fitted sizing rendered it nearly full-screen on
-                // the phone with empty space above and below the
-                // short content. Detents open it at a compact
-                // medium height that fits the content, draggable to
-                // large when needed. iPad width stays 600pt
-                // (regular) via the frame inside the sheet content
-                // — detents are ignored on iPad, same as the
-                // Filters sheet.
-                .presentationDetents([.medium, .large])
-                .presentationBackground(.white)
         }
         // NOTE (T-P2-1): no `.alert` here — the failure alert lives
         // on the Actions and Trash sheets themselves, because an

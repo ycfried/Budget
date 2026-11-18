@@ -188,13 +188,13 @@ public struct FundsView: View {
                     case .ask:
                         AskFundForm(viewModel: viewModel, onClose: { openForm = nil })
                     case .income:
-                        CharityIncomeForm(viewModel: viewModel, correcting: $correctingIncome, onClose: { openForm = nil })
+                        CharityIncomeForm(viewModel: viewModel, fundName: FundSectionID.charity.displayName(customNames: appState.fundNames), correcting: $correctingIncome, onClose: { openForm = nil })
                     case .temp:
                         TemporaryAllowanceView(viewModel: viewModel)
                     case .payDebt:
                         PayDebtForm(viewModel: viewModel, fundName: FundSectionID.fund.displayName(customNames: appState.fundNames), debtName: FundSectionID.debt.displayName(customNames: appState.fundNames), onClose: { openForm = nil })
                     case .clearDebt:
-                        ClearDebtForm(viewModel: viewModel, onClose: { openForm = nil })
+                        ClearDebtForm(viewModel: viewModel, debtName: FundSectionID.debt.displayName(customNames: appState.fundNames), onClose: { openForm = nil })
                     }
                 } else {
                     rearrangeRow
@@ -221,7 +221,7 @@ public struct FundsView: View {
                     // its own card, a suggestion only, never
                     // setting the allowance (there is no apply
                     // button anywhere in it).
-                    WeeklyBudgetCalculatorCard(householdId: viewModel.context.householdId)
+                    WeeklyBudgetCalculatorCard(householdId: viewModel.context.householdId, charityName: FundSectionID.charity.displayName(customNames: appState.fundNames))
                 }
             }
             .padding()
@@ -259,14 +259,15 @@ public struct FundsView: View {
         } message: {
             Text(viewModel.alertMessage ?? "")
         }
-        // Rename sheet (build 37 — fund rename, owner Nov 16,
+        // Rename popup (build 37 — fund rename, owner Nov 16,
         // 2026; build 41 — it is now the combined edit sheet: the
-        // pencil opens it for the name AND the icon): a fund's
+        // pencil opens it for the name AND the icon; build 43,
+        // item 17 — full-screen cover, not a detent sheet): a fund's
         // Rename button sets `renamingFund`. On a successful save
         // the shared `appState.fundNames` / `appState.fundIcons`
         // are refreshed from the RPC results, so the new name and
         // icon update everywhere at once (Funds, Home).
-        .sheet(item: $renamingFund) { section in
+        .fullScreenCover(item: $renamingFund) { section in
             RenameFundSheet(
                 section: section,
                 currentName: section.displayName(customNames: appState.fundNames),
@@ -294,11 +295,19 @@ public struct FundsView: View {
                 },
                 onClose: { renamingFund = nil }
             )
-            .presentationDetents([.medium, .large])
         }
         .task {
+            // Build 43 (owner, Nov 17, 2026 — item 16): the view
+            // model composes toasts/alerts with the funds' CURRENT
+            // display names, so it reads the same `appState.fundNames`
+            // source as the views — synced here and on every rename
+            // below.
+            viewModel.fundNames = appState.fundNames
             loadFundOrder()
             await viewModel.refresh()
+        }
+        .onChange(of: appState.fundNames) { _, names in
+            viewModel.fundNames = names
         }
         .onChange(of: fundOrder) { _, _ in
             saveFundOrder()
@@ -522,7 +531,7 @@ public struct FundsView: View {
                             )
                         }
                         if let payment = viewModel.debtWeek?.debtPaymentCents, payment > 0 {
-                            FundsBreakdownRow("Less Debt Payment", value: "−\(MoneyFormat.formatCents(payment))")
+                            FundsBreakdownRow("Less \(FundSectionID.debt.displayName(customNames: appState.fundNames)) Payment", value: "−\(MoneyFormat.formatCents(payment))")
                         }
                         if let total = spendingTotalCents {
                             FundsBreakdownRow("Total", value: MoneyFormat.formatCents(total))
@@ -579,10 +588,11 @@ public struct FundsView: View {
     }
 
     private var spendingAccessibilityLabel: String {
+        let name = FundSectionID.spending.displayName(customNames: appState.fundNames)
         guard let cents = spendingFaceCents else {
-            return "Spending, could not load allowance, show breakdown"
+            return "\(name), could not load allowance, show breakdown"
         }
-        return "Spending, \(MoneyFormat.formatCents(cents)) left this week, show breakdown"
+        return "\(name), \(MoneyFormat.formatCents(cents)) left this week, show breakdown"
     }
 
     // MARK: - Extra Fund card (§9.1)
@@ -671,13 +681,14 @@ public struct FundsView: View {
                             FundsPrimaryButton("Add Money") { openForm = .add }
                             FundsTertiaryButton("Remove from \(FundSectionID.fund.displayName(customNames: appState.fundNames))") { showRemoveFromSavings = true }
                                 .accessibilityIdentifier("funds.removeFromSavings")
-                                .sheet(isPresented: $showRemoveFromSavings) {
+                                // Build 43 (owner, Nov 17, 2026 — item 17):
+                                // full-screen cover, not a detent sheet.
+                                .fullScreenCover(isPresented: $showRemoveFromSavings) {
                                     RemoveFromSavingsSheet(
                                         viewModel: viewModel,
                                         fundName: FundSectionID.fund.displayName(customNames: appState.fundNames),
                                         onClose: { showRemoveFromSavings = false }
                                     )
-                                    .presentationDetents([.medium, .large])
                                 }
                         }
                     }
@@ -709,14 +720,15 @@ public struct FundsView: View {
     }
 
     private var fundAccessibilityLabel: String {
+        let name = FundSectionID.fund.displayName(customNames: appState.fundNames)
         guard let summary = viewModel.fundSummary else {
-            return "Extra Fund, could not load balances, show breakdown"
+            return "\(name), could not load balances, show breakdown"
         }
         let word = isAdmin ? "available to use" : "available to request"
         if viewModel.savingsPendingCents > 0 {
-            return "Extra Fund, \(MoneyFormat.formatCents(summary.availableCents)) \(word), \(MoneyFormat.formatCents(viewModel.savingsPendingCents)) pending, show breakdown"
+            return "\(name), \(MoneyFormat.formatCents(summary.availableCents)) \(word), \(MoneyFormat.formatCents(viewModel.savingsPendingCents)) pending, show breakdown"
         }
-        return "Extra Fund, \(MoneyFormat.formatCents(summary.availableCents)) \(word), show breakdown"
+        return "\(name), \(MoneyFormat.formatCents(summary.availableCents)) \(word), show breakdown"
     }
 
     // MARK: - Charity card (§9.1)
@@ -808,7 +820,7 @@ public struct FundsView: View {
                         }
                     }
                     Divider()
-                    CharityRateSection(viewModel: viewModel, bare: true)
+                    CharityRateSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames)
                     Divider()
                     charityActivitySection
                 }
@@ -831,16 +843,17 @@ public struct FundsView: View {
     }
 
     private var charityAccessibilityLabel: String {
+        let name = FundSectionID.charity.displayName(customNames: appState.fundNames)
         guard let summary = viewModel.charitySummary else {
-            return "Charity, could not load, show breakdown"
+            return "\(name), could not load, show breakdown"
         }
         if summary.committedCents == 0 && summary.givenCents == 0 {
-            return "Charity, no charity tracked yet, show breakdown"
+            return "\(name), no charity tracked yet, show breakdown"
         }
         if summary.remainingCents < 0 {
-            return "Charity, ahead by \(MoneyFormat.formatCents(-summary.remainingCents)), show breakdown"
+            return "\(name), ahead by \(MoneyFormat.formatCents(-summary.remainingCents)), show breakdown"
         }
-        return "Charity, \(MoneyFormat.formatCents(summary.remainingCents)) remaining, \(MoneyFormat.formatCents(summary.givenCents)) given, \(MoneyFormat.formatCents(summary.committedCents)) committed, show breakdown"
+        return "\(name), \(MoneyFormat.formatCents(summary.remainingCents)) remaining, \(MoneyFormat.formatCents(summary.givenCents)) given, \(MoneyFormat.formatCents(summary.committedCents)) committed, show breakdown"
     }
 
     // MARK: - Carried Debt card (§9.1, build 29)
@@ -903,7 +916,7 @@ public struct FundsView: View {
                     // comes BEFORE the action buttons — Balances
                     // → Rule → Actions → Activity & Transactions.
                     Divider()
-                    DebtRuleSection(viewModel: viewModel, bare: true)
+                    DebtRuleSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames)
                     Divider()
                     // Three actions cannot sit side by side on an
                     // iPhone — their labels wrap (owner button
@@ -937,7 +950,7 @@ public struct FundsView: View {
                             if week.carriedDebtCents > 0 {
                                 FundsPrimaryButton("Pay from \(FundSectionID.fund.displayName(customNames: appState.fundNames))") { openForm = .payDebt }
                             }
-                            FundsPaleButton("Edit Debt") { showEditDebt = true }
+                            FundsPaleButton("Edit \(FundSectionID.debt.displayName(customNames: appState.fundNames))") { showEditDebt = true }
                             // No button that cannot work (owner, Nov 13):
                             // with no debt left there is nothing to clear.
                             if week.carriedDebtCents > 0 {
@@ -947,14 +960,15 @@ public struct FundsView: View {
                             // grey "Close" button is gone — the card
                             // collapses by tapping its header/chevron.
                         }
-                        .sheet(isPresented: $showEditDebt) {
+                        // Build 43 (owner, Nov 17, 2026 — item 17):
+                        // full-screen cover, not a detent sheet.
+                        .fullScreenCover(isPresented: $showEditDebt) {
                             EditDebtSheet(
                                 viewModel: viewModel,
                                 currentCents: viewModel.debtBalanceCents ?? 0,
                                 debtName: FundSectionID.debt.displayName(customNames: appState.fundNames),
                                 onClose: { showEditDebt = false }
                             )
-                            .presentationDetents([.medium, .large])
                         }
                     }
                     Divider()
@@ -982,13 +996,14 @@ public struct FundsView: View {
     }
 
     private var debtAccessibilityLabel: String {
+        let name = FundSectionID.debt.displayName(customNames: appState.fundNames)
         guard let week = viewModel.debtWeek else {
-            return "Carried Debt, could not load, show breakdown"
+            return "\(name), could not load, show breakdown"
         }
         if week.carriedDebtCents == 0 {
-            return "Carried Debt, no debt, show breakdown"
+            return "\(name), no debt, show breakdown"
         }
-        return "Carried Debt, \(MoneyFormat.formatCents(week.carriedDebtCents)) owed, show breakdown"
+        return "\(name), \(MoneyFormat.formatCents(week.carriedDebtCents)) owed, show breakdown"
     }
 
     // MARK: - One container per fund (owner, Nov 15, 2026;
@@ -1079,12 +1094,12 @@ public struct FundsView: View {
             Spacer()
             if let index = fundOrder.firstIndex(of: id) {
                 if index > fundOrder.startIndex {
-                    reorderArrowButton(systemName: "chevron.up", label: "Move \(id.displayName) up") {
+                    reorderArrowButton(systemName: "chevron.up", label: "Move \(id.displayName(customNames: appState.fundNames)) up") {
                         moveFund(id, by: -1)
                     }
                 }
                 if index < fundOrder.index(before: fundOrder.endIndex) {
-                    reorderArrowButton(systemName: "chevron.down", label: "Move \(id.displayName) down") {
+                    reorderArrowButton(systemName: "chevron.down", label: "Move \(id.displayName(customNames: appState.fundNames)) down") {
                         moveFund(id, by: 1)
                     }
                 }
@@ -1135,7 +1150,7 @@ public struct FundsView: View {
         // ONE activity header per fund (owner, Nov 15, 2026 —
         // build 30): the top-ups and the past savings records share
         // this one expandable. The savings part keeps a quiet inline
-        // label ("Past Savings", muted — not a bold header).
+        // label ("Past <fund>", muted — not a bold header).
         // Top-ups stay admin-only; the savings records stay visible
         // to every role.
         fundsSectionRow(
@@ -1149,7 +1164,7 @@ public struct FundsView: View {
                     FundTopupsHistory(viewModel: viewModel)
                     Divider()
                 }
-                Text("Past Savings")
+                Text("Past \(FundSectionID.fund.displayName(customNames: appState.fundNames))")
                     .font(.system(size: 14))
                     .foregroundStyle(Color(hex: "#6b7280"))
                 SavingsSection(viewModel: viewModel)
@@ -1191,7 +1206,11 @@ public struct FundsView: View {
             hPad: 0
         ) {
             VStack(alignment: .leading, spacing: 8) {
-                DebtActivityView(viewModel: viewModel)
+                DebtActivityView(
+                    viewModel: viewModel,
+                    fundName: FundSectionID.fund.displayName(customNames: appState.fundNames),
+                    debtName: FundSectionID.debt.displayName(customNames: appState.fundNames)
+                )
                 Divider()
                 Text("Where it came from")
                     .font(.system(size: 14))
@@ -1333,6 +1352,11 @@ public struct RemoveFromSavingsSheet: View {
                 }
                 FundsTertiaryButton("Cancel") { onClose() }
             }
+            // Build 43 (owner, Nov 17, 2026 — item 18): the
+            // trailing Spacer top-anchors the content in the
+            // full-screen cover — without it the short form
+            // centres itself vertically in the full screen.
+            Spacer()
         }
         .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
@@ -1367,7 +1391,7 @@ public struct RemoveFromSavingsSheet: View {
                 // show the failure inside the sheet instead (the
                 // T-P2-1 lesson from the Actions sheet) and clear
                 // it there so it cannot pop up later.
-                removeError = viewModel.alertMessage ?? "Could not remove from Savings. Try again."
+                removeError = viewModel.alertMessage ?? "Could not remove from \(fundName). Try again."
                 viewModel.alertMessage = nil
                 viewModel.alertTitle = nil
             }
@@ -1510,9 +1534,16 @@ public struct SavingsSection: View {
 
 public struct DebtActivityView: View {
     @ObservedObject public var viewModel: FundsViewModel
+    /// The funds' CURRENT display names (build 43, owner Nov 17,
+    /// 2026 — item 16): the payment / adjustment titles read
+    /// them, never hardcoded "Extra Fund" / "Debt".
+    public let fundName: String
+    public let debtName: String
 
-    public init(viewModel: FundsViewModel) {
+    public init(viewModel: FundsViewModel, fundName: String, debtName: String) {
         self.viewModel = viewModel
+        self.fundName = fundName
+        self.debtName = debtName
     }
 
     private struct Entry: Identifiable {
@@ -1528,10 +1559,10 @@ public struct DebtActivityView: View {
         var dated: [(Entry, String)] = viewModel.debtPayments.map { payment in
             let label: String
             switch payment.source {
-            case "extra_fund": label = "Paid from Extra Fund"
+            case "extra_fund": label = "Paid from \(fundName)"
             case "surplus": label = "Paid from Surplus"
-            case "clear": label = "Debt Cleared"
-            default: label = "Debt Payment"
+            case "clear": label = "\(debtName) Cleared"
+            default: label = "\(debtName) Payment"
             }
             let detail = "\(payment.createdAt.map { MoneyFormat.displayDay($0) } ?? "") · Week of \(MoneyFormat.fmtLong(payment.weekStart))\(payment.note.isEmpty ? "" : " · \(payment.note)")"
             return (Entry(
@@ -1553,9 +1584,9 @@ public struct DebtActivityView: View {
         dated += viewModel.debtAdjustments.map { adj in
             let title: String
             if adj.kind == "set" {
-                title = "Debt Set to \(MoneyFormat.formatCents(adj.balanceAfterCents))"
+                title = "\(debtName) Set to \(MoneyFormat.formatCents(adj.balanceAfterCents))"
             } else {
-                title = "Debt Added \(MoneyFormat.formatCents(adj.amountCents))"
+                title = "\(debtName) Added \(MoneyFormat.formatCents(adj.amountCents))"
             }
             let before = adj.balanceAfterCents - adj.amountCents
             let detail = "\(adj.createdAt.map { MoneyFormat.displayDay($0) } ?? "") · Week of \(MoneyFormat.fmtLong(adj.weekStart)) · \(MoneyFormat.formatCents(before)) → \(MoneyFormat.formatCents(adj.balanceAfterCents))\(adj.note.isEmpty ? "" : " · \(adj.note)")"
@@ -1776,6 +1807,10 @@ public enum LifestyleHoldback: String, Codable, CaseIterable {
 
 public struct WeeklyBudgetCalculatorCard: View {
     public let householdId: UUID
+    /// The charity fund's CURRENT display name (build 43, owner
+    /// Nov 17, 2026 — item 16): the "Expected <fund>" section
+    /// reads it, never a hardcoded "Charity".
+    public let charityName: String
     @State private var incomeItems: [CalculatorItem] = []
     @State private var chargeItems: [CalculatorItem] = []
     @State private var charityText = ""
@@ -1797,8 +1832,9 @@ public struct WeeklyBudgetCalculatorCard: View {
     /// stored values with the empty defaults.
     @State private var didLoad = false
 
-    public init(householdId: UUID) {
+    public init(householdId: UUID, charityName: String) {
         self.householdId = householdId
+        self.charityName = charityName
     }
 
     // MARK: - Local persistence (per household, no server)
@@ -2090,7 +2126,7 @@ public struct WeeklyBudgetCalculatorCard: View {
 
     private var charitySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Expected Charity")
+            Text("Expected \(charityName)")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
             HStack(spacing: 8) {
