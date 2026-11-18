@@ -1,12 +1,8 @@
-# OnBudget — Terms of Use (DRAFT)
+# STAG — Terms of Use
 
-> DRAFT — not published, not a legal claim. Written for the future
-> verified-domain homepage. Have a lawyer review it before it goes
-> live, and update it whenever the app changes.
+## What STAG is
 
-## What OnBudget is
-
-OnBudget is a shared household budget app. It tracks a weekly
+STAG is a shared household budget app. It tracks a weekly
 allowance, purchases, an Extra Fund for leftovers, and savings.
 It is a budgeting tool, not a bank, not a financial advisor, and
 not a tax service. Nothing in the app is financial advice.
@@ -63,7 +59,7 @@ members keep their data.
 
 ## Liability
 
-To the fullest extent allowed by law, OnBudget is not liable for
+To the fullest extent allowed by law, STAG is not liable for
 indirect or consequential losses, including losses from delayed
 or incorrect bank or email data, or from decisions you make
 based on the budget figures. Your total liability and ours under
