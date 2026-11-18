@@ -3,12 +3,16 @@
 // Household screen (CLONE_SPEC §5, live.html:76-101,
 // live.js:2622-2720). Same brand block and footer as Auth.
 //
-// Choice panel: heading "Your Household", subtext "Create a
-// household as its owner, or join one with an invite code." Create
-// Household (I Am the Owner) (primary, full-width) opens the name
-// panel (it does NOT call the RPC itself). Label "Or Join a
-// Household" + invite-code input (placeholder "Invite Code from
-// the Owner") + Join as Member (tertiary, full-width).
+// INVITE-ONLY (Nov 17, 2026 — App Store launch): the ONLY way into
+// a household is an invite code shared by a household owner. The
+// "Create Household (I Am the Owner)" path is REMOVED — the server
+// revokes create_household() for app users in the same launch
+// (supabase/invite-only-close-household-creation.sql), so a create
+// button here would always fail. A new household can only be made
+// by the owner via dashboard SQL (see that file). The screen is
+// join-only: heading "Your Household", invite-code input
+// (placeholder "Invite Code from the Owner") + Join as Member
+// (primary, full-width).
 //
 // Boot failure (audit F-P1-1): when the membership read fails, the
 // choice panel stays hidden and a persistent error + Retry shows
@@ -16,14 +20,6 @@
 // just failed. The screen also shows the signed-in email + a Sign
 // Out link (audit F-P1-4): without them a wrong-account sign-in is
 // a dead end with no escape and no way to tell which account it is.
-//
-// Name panel: heading "Name Your Household", Household Name field
-// (max 80, placeholder "Household"), button row ← Back +
-// Create Household (primary). Household name is REQUIRED (owner,
-// Nov 4): blank fails before any call, no fallback to the default
-// "Household". Create calls RPC create_household(p_name) — the ONLY
-// path to admin; on success the client sets membership directly
-// (it does NOT re-read membership).
 //
 // Join calls RPC join_household_by_code({code}). Empty code → "Enter
 // the invite code from the household owner." Invalid code (error OR
@@ -42,7 +38,6 @@ public struct HouseholdView: View {
     @ObservedObject var appState: AppViewModel
 
     @State private var joinCode = ""
-    @State private var showNamePanel = false
     @State private var message: String?
     @State private var messageIsError = false
     /// The boot-failure red box dismissed itself (4s timer / tap) —
@@ -58,8 +53,6 @@ public struct HouseholdView: View {
                 AuthBrandHeader()
                 if let bootError = appState.bootError {
                     bootErrorPanel(bootError)
-                } else if showNamePanel {
-                    namePanel
                 } else {
                     choicePanel
                 }
@@ -123,21 +116,10 @@ public struct HouseholdView: View {
             Text("Your Household")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
-            Text("Create a household as its owner, or join one with an invite code.")
+            Text("Join your household with the invite code from the household owner.")
                 .font(.system(size: 15))
                 .foregroundStyle(Color(hex: "#6b7280"))
 
-            Button(busy == "create" ? "Creating…" : "Create Household (I Am the Owner)") {
-                showNamePanel = true
-                message = nil
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            .accessibilityIdentifier("household.createHousehold")
-            .disabled(busy != nil)
-
-            Text("Or Join a Household")
-                .font(.system(size: 14, weight: .bold))
-                .padding(.top, 8)
             TextField("Invite Code from the Owner", text: $joinCode)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -149,7 +131,7 @@ public struct HouseholdView: View {
                 .onChange(of: joinCode) { message = nil }
 
             Button(busy == "join" ? "Joining…" : "Join as Member") { Task { await join() } }
-                .buttonStyle(TertiaryButtonStyle())
+                .buttonStyle(PrimaryButtonStyle())
                 .accessibilityIdentifier("household.joinAsMember")
                 .disabled(busy != nil)
 
@@ -160,21 +142,6 @@ public struct HouseholdView: View {
                 if messageIsError { DismissableErrorBox(message) { self.message = nil } } else { InfoBox(message) }
             }
         }
-    }
-
-    // MARK: Name panel
-
-    private var namePanel: some View {
-        HouseholdNamePanel(
-            onBack: { showNamePanel = false; message = nil },
-            onCreated: { id in
-                Task { await appState.enterHousehold(id: id, role: .admin) }
-            },
-            onError: { text in
-                message = text
-                messageIsError = true
-            }
-        )
     }
 
     // MARK: Join
@@ -237,77 +204,6 @@ public struct HouseholdView: View {
             message = "Join failed. Check the invite code and try again, or ask the household owner to share it again from Settings."
             messageIsError = true
             busy = nil
-        }
-    }
-}
-
-/// Name panel: "Name Your Household" + Household Name field +
-/// ← Back + Create Household (primary).
-public struct HouseholdNamePanel: View {
-    @EnvironmentObject private var appState: AppViewModel
-    @State private var householdName = ""
-    @State private var localError: String?
-    @State private var busy = false
-
-    let onBack: () -> Void
-    let onCreated: (UUID) -> Void
-    let onError: (String) -> Void
-
-    public init(onBack: @escaping () -> Void, onCreated: @escaping (UUID) -> Void, onError: @escaping (String) -> Void) {
-        self.onBack = onBack
-        self.onCreated = onCreated
-        self.onError = onError
-    }
-
-    public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Back goes top-left, same place on every screen (owner,
-            // Nov 11, 2026) — never squeezed next to the primary
-            // button at the bottom.
-            HStack {
-                BackButton(action: onBack)
-                Spacer()
-            }
-            Text("Name Your Household")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(DesignTokens.ink)
-            FieldLabel("Household Name", required: true, weight: .bold)
-            TextField("Household", text: $householdName)
-                .accessibilityIdentifier("household.nameField")
-                .onChange(of: householdName) { _, newValue in
-                    if newValue.count > 80 { householdName = String(newValue.prefix(80)) }
-                }
-                .padding(12)
-                .background(.white)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            if let localError { ErrorBox(localError) }
-            Button(busy ? "Creating…" : "Create Household") { Task { await create() } }
-                .buttonStyle(PrimaryButtonStyle())
-                .accessibilityIdentifier("household.createConfirm")
-                .disabled(busy)
-        }
-    }
-
-    private func create() async {
-        if let error = AuthValidation.householdNameError(householdName) {
-            localError = error
-            return
-        }
-        busy = true
-        localError = nil
-        do {
-            let id = try await appState.client.rpcs.createHousehold(
-                pName: householdName.trimmingCharacters(in: .whitespacesAndNewlines))
-            busy = false
-            // Success message (live.js:2622-2720); the app moves
-            // straight to the app + refresh.
-            appState.showToast("Household created. Share the invite code from Settings so the second account can join as member.", kind: .success)
-            onCreated(id)
-        } catch {
-            localError = "Could not create household. Try again."
-            onError("Could not create household. Try again.")
-            busy = false
         }
     }
 }
