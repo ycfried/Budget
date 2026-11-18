@@ -618,3 +618,191 @@ export async function flagLookalikes(
     return 0;
   }
 }
+
+// --- removed[] handling (build 44, change 1, Nov 18, 2026) ---
+// A pending transaction disappearing from the bank feed is NORMAL:
+// it posted under a new transaction ID, so Plaid reports the pending
+// id in removed[] and the posted version in added[] (usually with a
+// pending_transaction_id link back to it). The old code treated every
+// removed[] entry as a genuine bank reversal and marked the row
+// state='reversed' + excluded=true — which is how the $3,500 Mobile
+// Check Deposit (Nov 17, Amex Rewards Checking) was wrongly excluded:
+// its pending version vanished, the posted version never landed as
+// its own row, and the pending row was excluded instead. (A $75 Mobile
+// Check Deposit, Nov 12, is in the same state.) Rules, decided by
+// decideRemovedRow — the caller only ever UPDATEs on 'exclude':
+//   * provisional row in removed[] -> LEAVE it (state stays
+//     provisional, excluded stays false). Only a VERIFIED row is a
+//     genuine reversal.
+//   * verified row + a same-merchant + same-amount + same-date
+//     arrival in the SAME sync -> LEAVE it: a re-issue, not a
+//     reversal; the new row is the live one.
+//   * a pending_transaction_id link from an arrival in the same sync
+//     to the removed row is the same re-issue signal, used when it
+//     aligns on amount + date (the merchant string may legitimately
+//     differ between the pending and posted versions). The link is
+//     matched ONLY against the row's LIVE ids (external_id /
+//     plaid_transaction_id) — never against
+//     plaid_pending_transaction_id, which still holds the OLD pending
+//     id after a pending→posted link, so a later removed[] entry for
+//     that old id must never match the live posted row.
+//   * EXPANSION (Nov 18, ~11:16): before a verified row is excluded,
+//     the caller searches for a REPLACEMENT — same merchant + amount
+//     + date + card_suffix — in this sync's arrivals and, failing
+//     that, in a recent window of the household's transactions. A
+//     replacement is the same money under a new id: the row is
+//     LINKED to it (updated to the new id / state, kind kept), not
+//     trashed, and the duplicate arrival row is excluded. Only when
+//     no replacement exists is the row excluded as a reversal.
+// Append-only: this decision never deletes anything.
+export type RemovedRowLike = {
+  state?: string | null;
+  excluded?: boolean | null;
+  merchant: string;
+  date: string;
+  amount_cents: number;
+  card_suffix?: string | null;
+  external_id?: string | null;
+  plaid_transaction_id?: string | null;
+  plaid_pending_transaction_id?: string | null;
+};
+
+export type SyncArrivalLike = {
+  // Display merchant in stored (normalized UPPER) form, signed cents
+  // in the same convention as the row, date YYYY-MM-DD — i.e. the
+  // same triple upsertPlaidTx stores for an added/modified tx.
+  merchant: string;
+  date: string;
+  amount_cents: number;
+  // Card suffix, derived from the account mask exactly as
+  // upsertPlaidTx derives it. Required for the replacement match:
+  // an arrival without a known suffix can never be a confirmed
+  // replacement, only a re-issue signal.
+  card_suffix?: string | null;
+  // The arrival's own live transaction id (its new external_id).
+  external_id?: string | null;
+  // 'verified' for a posted arrival, 'provisional' for a pending
+  // one. Only a posted arrival can be a replacement link target.
+  state?: 'provisional' | 'verified';
+  // The upserted row id of this arrival, when the caller knows it.
+  rowId?: string | null;
+  pending_transaction_id?: string | null;
+};
+
+export type RemovedReplacement = {
+  external_id: string;
+  plaid_transaction_id: string;
+  pending_transaction_id: string | null;
+  state: 'verified';
+  // The upserted row id of the replacement, when the caller knows
+  // it — the caller excludes that row as the duplicate of the
+  // linked row. Null for a replacement found only as a sync
+  // arrival the caller could not resolve to a row.
+  rowId: string | null;
+};
+
+export type RemovedDecision = {
+  action: 'leave' | 'exclude' | 'link';
+  reason: string;
+  replacement?: RemovedReplacement;
+};
+
+export function decideRemovedRow(
+  row: RemovedRowLike,
+  arrivals: SyncArrivalLike[],
+): RemovedDecision {
+  if (row.state === 'provisional') {
+    return { action: 'leave', reason: 'provisional-removed-is-normal' };
+  }
+  if (row.excluded === true || row.state === 'excluded' || row.state === 'reversed') {
+    return { action: 'leave', reason: 'already-excluded' };
+  }
+  if (row.state !== 'verified') {
+    return { action: 'leave', reason: 'not-verified' };
+  }
+  // LIVE ids only. plaid_pending_transaction_id is deliberately NOT
+  // in this set: after a pending→posted link it still holds the old
+  // pending id, and a removed[] entry for that old id must not match
+  // the live posted row (fix 1).
+  const rowIds = new Set(
+    [row.external_id, row.plaid_transaction_id]
+      .filter((v): v is string => typeof v === 'string' && v.length > 0),
+  );
+  const merchant = normalizeMerchant(row.merchant);
+  for (const tx of arrivals) {
+    // Replacement link (fix 2): a POSTED arrival under a new id with
+    // the same merchant + amount + date + card is the same money,
+    // not a reversal — link the row to it. The arrival must carry a
+    // new id (not the row's own id: a re-delivered row is a re-issue,
+    // not a replacement) and a known card suffix.
+    if (
+      tx.state === 'verified' &&
+      tx.external_id &&
+      !rowIds.has(tx.external_id) &&
+      row.card_suffix &&
+      tx.card_suffix &&
+      tx.card_suffix === row.card_suffix &&
+      normalizeMerchant(tx.merchant) === merchant &&
+      tx.date === row.date &&
+      tx.amount_cents === row.amount_cents
+    ) {
+      return {
+        action: 'link',
+        reason: 'replacement-same-merchant-amount-date-card',
+        replacement: {
+          external_id: tx.external_id,
+          plaid_transaction_id: tx.external_id,
+          pending_transaction_id: tx.pending_transaction_id ?? null,
+          state: 'verified',
+          rowId: tx.rowId ?? null,
+        },
+      };
+    }
+    if (
+      normalizeMerchant(tx.merchant) === merchant &&
+      tx.date === row.date &&
+      tx.amount_cents === row.amount_cents
+    ) {
+      return { action: 'leave', reason: 'reissue-same-merchant-amount-date' };
+    }
+    if (
+      tx.pending_transaction_id &&
+      rowIds.has(tx.pending_transaction_id) &&
+      tx.date === row.date &&
+      tx.amount_cents === row.amount_cents
+    ) {
+      return { action: 'leave', reason: 'reissue-pending-link' };
+    }
+  }
+  return { action: 'exclude', reason: 'verified-reversal' };
+}
+
+// --- Plaid hash-fallback claim (build 44, change 1 expansion, fix 3) ---
+// When a posted Plaid tx arrives with NO pending_transaction_id, the
+// pending→posted lookup misses, and the canonical-hash match (step 3
+// in upsertPlaidTx) only claims EMAIL_SOURCES rows — so the posted tx
+// used to insert a second row next to its own provisional predecessor.
+// The fallback claims the EARLIEST matching provisional PLAID row by
+// dedupe_hash. Guards: only a provisional row may be claimed, never
+// a verified one (two identical real purchases still coexist — a
+// verified row is never merged away); an excluded row is never
+// claimed. `rows` must be in created_at order, earliest first; the
+// first claimable row wins and the rest are untouched.
+export type HashClaimCandidate = {
+  id: string;
+  source?: string | null;
+  state?: string | null;
+  excluded?: boolean | null;
+};
+
+export function pickPlaidHashClaim(
+  rows: HashClaimCandidate[],
+): HashClaimCandidate | null {
+  for (const row of rows) {
+    if (row.source !== 'plaid') continue;
+    if (row.state !== 'provisional') continue;
+    if (row.excluded === true) continue;
+    return row;
+  }
+  return null;
+}

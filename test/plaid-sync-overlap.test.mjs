@@ -95,7 +95,7 @@ test('plaid-sync: insert unique-violation re-selects by external_id and updates'
   const retryBlock = plaidSync.slice(retryAt, retryAt + 2500);
   assert.match(retryBlock, /\.eq\('external_id', txId\)\.maybeSingle\(\)/);
   assert.match(retryBlock, /\.update\(retryUpdate\)/);
-  assert.match(retryBlock, /return \{ result: 'updated' \}/);
+  assert.match(retryBlock, /return \{ result: 'updated', id: raced\.id \}/);
   assert.match(plaidSync, /return \{ result: 'skipped', reason: 'insert-failed' \}/);
 });
 
