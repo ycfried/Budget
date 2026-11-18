@@ -1029,12 +1029,14 @@ public struct FundsMoneyField: View {
 
 /// Source label, display only (live.js:347): plaid → Bank,
 /// manual → By hand, csv → File, amex_alert → Email (renamed from
-/// "Email alert", owner Nov 11, 2026).
+/// "Email alert", owner Nov 11, 2026). restored → Restored
+/// (build 44, change 2): a bank-dropped row restored from Trash.
 public func sourceLabel(_ source: TransactionSource) -> String {
     switch source {
     case .plaid: return "Bank"
     case .manual: return "By hand"
     case .csv: return "File"
     case .amexAlert: return "Email"
+    case .restored: return "Restored"
     }
 }

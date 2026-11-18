@@ -453,12 +453,15 @@ public enum TransactionFormatting {
 
     /// Source labels, display only (live.js:347): Bank / By hand /
     /// File / Email (renamed from "Email alert", owner Nov 11, 2026).
+    /// Restored (build 44, change 2): a bank-dropped row restored
+    /// from Trash with no prior state — "Restored", never "Bank".
     public static func sourceLabel(for source: TransactionSource) -> String {
         switch source {
         case .plaid: return "Bank"
         case .manual: return "By hand"
         case .csv: return "File"
         case .amexAlert: return "Email"
+        case .restored: return "Restored"
         }
     }
 

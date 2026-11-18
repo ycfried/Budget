@@ -183,6 +183,20 @@ extension RPCClient {
         ])
     }
 
+    /// `force_restore_transaction(txn_id)` — force-restore a Trash row
+    /// with NO pre-exclusion snapshot (`restored-source.sql`, build
+    /// 44 change 2). Admin only, 35-day lock, same guards as
+    /// `restoreTransaction`. Refuses rows WITH a snapshot ("transaction
+    /// has a prior state recorded: use restore_transaction") — those
+    /// take the normal path. Restores as verified with
+    /// source='restored'. Call only after the admin confirmed the
+    /// bank really still holds the money.
+    public func forceRestoreTransaction(txnId: UUID) async throws {
+        try await callVoid(name: "force_restore_transaction", params: [
+            "txn_id": txnId.uuidString,
+        ])
+    }
+
     /// `delete_transaction(p_transaction_id)` — permanently delete a
     /// HAND-ENTERED purchase only (`delete-transaction-rpc.sql:21-56`).
     /// Admin only, 35-day lock. Bank records must be moved to Trash

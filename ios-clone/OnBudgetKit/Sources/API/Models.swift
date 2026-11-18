@@ -122,11 +122,15 @@ public enum TransactionState: String, Equatable, Codable {
 
 /// Where a row came from. `plaid` is authoritative; `amex_alert` rows
 /// start provisional and are merged into the Plaid row on arrival.
+/// `restored` (build 44, change 2): a bank-dropped row the admin
+/// restored from Trash with no prior state recorded — it came back
+/// verified, and it is neither bank, email, file, nor hand-entered.
 public enum TransactionSource: String, Equatable, Codable {
     case csv
     case amexAlert = "amex_alert"
     case plaid
     case manual
+    case restored
 }
 
 /// Household role. Admin-only enforcement lives server-side (RPCs /

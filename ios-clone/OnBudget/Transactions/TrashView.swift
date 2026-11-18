@@ -10,8 +10,17 @@ import OnBudgetKit
 /// anywhere on a row restores it, the same action as the Restore
 /// button; the button is only the visual hint. Restore →
 /// `restore_transaction`, which restores the stored
-/// `pre_exclusion_state` and clears excluded/reason/snapshot. Refuses with an alert when no prior state was recorded
-/// ("cannot restore: no prior state recorded" — surfaced verbatim).
+/// `pre_exclusion_state` and clears excluded/reason/snapshot.
+///
+/// Build 44, change 2 — bank-dropped rows: a row with NO snapshot
+/// (`preExclusionState == nil`, e.g. Plaid reported it in
+/// removed[]) does NOT call `restore_transaction` at all. Tapping
+/// it sets `viewModel.pendingForceRestoreTransaction` and this view
+/// shows a CENTRED .alert (the Delete Account / Clear Debt
+/// precedent — a confirmationDialog is a popover anchored at the
+/// top of the screen on iPad): "The bank dropped this transaction.
+/// Restore it anyway?" Confirm calls `force_restore_transaction`,
+/// which restores the row as verified with source='restored'.
 /// Empty: "Trash is empty."
 ///
 /// The single TrashView (integration, Nov 9, 2026): the Funds copy
@@ -20,11 +29,12 @@ import OnBudgetKit
 /// Transactions "Trash" link only (admin-only, hidden when empty —
 /// no count is shown).
 ///
-/// KNOWN LIVE DEFECT (not worked around): merged duplicates were
+/// BANK-DROPPED ROWS (build 44, change 2): merged duplicates were
 /// excluded without recording `pre_exclusion_state`, so restoring
-/// one always refuses until the server fix lands (branch-only fix
-/// `fix-live-defects-dedupe-held`, awaiting owner approval). When the
-/// fix lands, restore works with no clone change.
+/// one always refused until the server fix landed. The fix is the
+/// force-restore path in this branch (`force_restore_transaction`
+/// + the confirm popup above) — a no-snapshot row now restores as
+/// verified with source='restored' instead of refusing.
 public struct TrashView: View {
     @Bindable var viewModel: TransactionsViewModel
     let onBack: () -> Void
@@ -138,6 +148,27 @@ public struct TrashView: View {
                     }
                 }
                 .padding()
+                // Build 44, change 2 — force-restore confirm: a
+                // CENTRED .alert (not a confirmationDialog — on iPad
+                // that is a popover anchored at the top of the screen;
+                // same fix as the Clear Debt confirm). Attached to
+                // this VStack, not to the ScrollView — the ScrollView
+                // already carries the failure .alert below, and two
+                // .alert modifiers on one view fight. The exact
+                // owner-directed message; Confirm force-restores the
+                // row as verified, source='restored'.
+                .alert(item: $viewModel.pendingForceRestoreTransaction) { transaction in
+                    Alert(
+                        title: Text("Restore Transaction"),
+                        message: Text("The bank dropped this transaction. Restore it anyway?"),
+                        primaryButton: .default(Text("Restore Anyway")) {
+                            Task {
+                                _ = await viewModel.forceRestore(transaction)
+                            }
+                        },
+                        secondaryButton: .cancel()
+                    )
+                }
             }
             .navigationTitle("Trash")
             .navigationBarTitleDisplayMode(.inline)

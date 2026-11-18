@@ -16,7 +16,10 @@ import OnBudgetKit
 ///   `client.postgrest.refundLinkCandidates(...)`.
 /// - Delete (hand-written, permanent): `client.rpcs.deleteTransaction(pTransactionId:)`.
 /// - Exclude (bank/email/file → Trash): `client.rpcs.excludeTransaction(txnId:reason:)`.
-/// - Restore from Trash: `client.rpcs.restoreTransaction(txnId:)`.
+/// - Restore from Trash: `client.rpcs.restoreTransaction(txnId:)` —
+///   or `forceRestoreTransaction(txnId:)` for a bank-dropped row
+///   with no snapshot, only after the Trash confirm popup
+///   (build 44, change 2).
 /// - Extra Fund request: `client.postgrest.createFundRequest(...)`.
 /// - Manual purchase: `client.postgrest.insertTransactions([ManualTransactionInsert])`.
 /// - Donation: `client.rpcs.recordCharityGift(...)` (8-arg, idempotent
@@ -109,6 +112,15 @@ public final class TransactionsViewModel {
     public var alertTitle: String?
     public var alertMessage: String?
     public var showAlert: Bool = false
+
+    /// Trash row awaiting force-restore confirmation (build 44,
+    /// change 2): a row with NO `pre_exclusion_state` snapshot —
+    /// the bank dropped it, so the normal restore has no prior
+    /// state to put back. Set by `restore(_:)` (pre-check) or by
+    /// the cannot-restore refusal; TrashView shows the confirm
+    /// popup from this and calls `forceRestore(_:)` on confirm.
+    /// Nil means no popup. Dismissing the popup nils this.
+    public var pendingForceRestoreTransaction: Transaction?
 
     public let toastManager = ToastManager()
 
@@ -660,13 +672,24 @@ public final class TransactionsViewModel {
     /// Restore a trashed row (live.js:1190). Restores the stored
     /// `pre_exclusion_state`; refuses with "cannot restore: no prior
     /// state recorded" when none was recorded — that text is carried
-    /// through unchanged. KNOWN LIVE DEFECT: merged duplicates were
-    /// excluded without recording `pre_exclusion_state`, so restoring
-    /// one always refuses until the server fix lands (branch-only fix
-    /// `fix-live-defects-dedupe-held`, awaiting owner approval).
+    /// through unchanged.
+    ///
+    /// Build 44, change 2 — PRE-CHECK, not error-driven: the Trash
+    /// row already carries `preExclusionState` (decoded from the
+    /// `*` list load, same load as `trashTransactions`), so a NULL
+    /// snapshot is known BEFORE any RPC call. A nil snapshot sets
+    /// `pendingForceRestoreTransaction` and TrashView shows the
+    /// confirm popup directly — no wasted restore call, no failure
+    /// alert flashed first. The error-driven fallback below covers
+    /// only stale data (a snapshot present at load, gone by the
+    /// time the server looks).
     public func restore(_ transaction: Transaction) async -> Bool {
         guard isAdmin else {
             showAlert(title: "Admin Only", message: "Only the admin can restore transactions.")
+            return false
+        }
+        if transaction.preExclusionState == nil {
+            pendingForceRestoreTransaction = transaction
             return false
         }
         do {
@@ -674,6 +697,39 @@ public final class TransactionsViewModel {
             await appendAudit(
                 action: "Transaction restored",
                 detail: "\(TransactionFormatting.displayMerchant(transaction.merchant)) returned to the week."
+            )
+            toastManager.show("Transaction restored.", kind: .success)
+            await reloadAfterMutation()
+            return true
+        } catch let error as OnBudgetError {
+            if case .cannotRestore = error {
+                pendingForceRestoreTransaction = transaction
+                return false
+            }
+            showAlert(title: "Could Not Restore", message: error.displayMessage)
+            return false
+        } catch {
+            showAlert(title: "Could Not Restore", message: OnBudgetError.displayMessage(for: error))
+            return false
+        }
+    }
+
+    /// Force-restore a bank-dropped Trash row (build 44, change 2):
+    /// called only from the Trash confirm popup, after the admin
+    /// confirmed the bank really still holds the money. Calls
+    /// `force_restore_transaction`, which restores the row as
+    /// verified with source='restored'. The normal `restore(_:)`
+    /// path is untouched — rows WITH a snapshot never reach here.
+    public func forceRestore(_ transaction: Transaction) async -> Bool {
+        guard isAdmin else {
+            showAlert(title: "Admin Only", message: "Only the admin can restore transactions.")
+            return false
+        }
+        do {
+            try await client.rpcs.forceRestoreTransaction(txnId: transaction.id)
+            await appendAudit(
+                action: "Transaction force-restored",
+                detail: "\(TransactionFormatting.displayMerchant(transaction.merchant)) returned to the week as verified (bank-dropped row)."
             )
             toastManager.show("Transaction restored.", kind: .success)
             await reloadAfterMutation()
