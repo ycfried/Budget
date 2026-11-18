@@ -1,4 +1,15 @@
--- R13 Charity — PREPARED ONLY, DO NOT APPLY without owner approval.
+-- R13 Charity — APPLIED LIVE Nov 9, 2026, step 4 (RPC BODIES ONLY;
+-- the §1 kind-constraint step was NOT run — see the NEVER-RUN banner
+-- on §1 below). Verified Nov 9: all five charity RPCs live, P2-B14
+-- bigint in record_charity_income / correct_charity_income, kind
+-- constraint still the live 8-kind list. Do NOT re-apply this file
+-- blindly: a whole-file re-apply on Nov 9 resurrected the stale 7-arg
+-- record_charity_gift overload live (R4-BE-1) — the gift definition
+-- in this file is now the single canonical 8-arg copy, and the 7-arg
+-- overload is removed live only by
+-- supabase/drop-record-charity-gift-7arg.sql (owner approval).
+-- The "PREPARED ONLY" header this file carried before is stale
+-- (R4-BE-2, Nov 9, 2026).
 --
 -- Basis (owner decisions, Nov 3, 2026): charity is 10% of money
 -- actually received plus manually entered amounts, starting November
@@ -30,8 +41,32 @@
 -- income row 'reversed' and inserts a replacement (replaces_id set);
 -- no income row is ever edited or deleted. Rates are integer basis
 -- points (1000 = 10%); committed per income is half-up rounded:
--- (amount_cents * rate_bp + 5000) / 10000 in integer arithmetic.
+-- (amount_cents::bigint * rate_bp + 5000) / 10000. The product runs
+-- in bigint, NOT int4 (P2-B14, Nov 8, 2026): in int4 the product
+-- overflows above ~$21.5k of income at the 10% default rate
+-- (2,147,484 cents x 1000 = 2,147,484,000 > int4 max 2,147,483,647;
+-- the first audit's "~$214k" was 10x too high — the true threshold
+-- at 10% is ~$21.5k, and at a 100% rate it is ~$2.1k), erroring the
+-- RPC instead of recording the income. The half-up rounding itself
+-- is unchanged, and the committed result still fits integer cents
+-- (it never exceeds amount_cents), so no stored column changes:
+-- charity_income has no committed_cents column — committed is
+-- computed in the RPCs and returned, never stored — and
+-- amount_cents / rate_bp stay integer inputs bounded by their
+-- CHECKs (a caller passing an amount past int4 range fails at the
+-- parameter boundary, it cannot silently overflow).
 begin;
+-- NEVER RUN §1 (R4-BE-1, Nov 9, 2026 — same treatment as
+-- supabase/create-household-name.sql, which is marked SUPERSEDED,
+-- NEVER APPLY). §1 drops the live transactions kind constraint and
+-- re-adds a 6-kind list (missing 'transfer' and 'income'): running
+-- it today would fail outright if any transfer/income rows exist,
+-- or silently narrow the live 8-kind constraint. The live 8-kind
+-- constraint is owned by supabase/refund-classification-income-kind.sql
+-- (applied live Nov 9, 2026, step 3). Step 4 of the Nov 9 P2 apply
+-- correctly skipped §1; this banner exists so the next applier does
+-- too. The RPC bodies below (§2 onward) are the only re-appliable
+-- part of this file.
 -- 1. Extend the transactions kind check with 'charity', following the
 -- payment-kind.sql pattern (look the constraint up, drop it, re-add).
 do $$
@@ -125,7 +160,7 @@ declare
   v_rate integer;
   v_label text;
   v_id uuid;
-  v_committed integer;
+  v_committed bigint;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   if p_amount_cents is null or p_amount_cents <= 0 then raise exception 'amount must be positive'; end if;
@@ -140,7 +175,9 @@ begin
   v_rate := coalesce(p_rate_bp, v_rate, 1000);
   v_label := nullif(btrim(coalesce(p_source_label, '')), '');
   if v_label is null then v_label := 'Income'; end if;
-  v_committed := (p_amount_cents * v_rate + 5000) / 10000;
+  -- P2-B14: bigint product — the int4 product overflows above
+  -- ~$21.5k income at the 10% default rate (see file header).
+  v_committed := (p_amount_cents::bigint * v_rate + 5000) / 10000;
   insert into public.charity_income
     (household_id, source_label, amount_cents, income_date, rate_bp, note, created_by)
   values (p_household_id, v_label, p_amount_cents, p_income_date, v_rate,
@@ -167,7 +204,7 @@ declare
   v_rate integer;
   v_label text;
   v_id uuid;
-  v_committed integer;
+  v_committed bigint;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_old from public.charity_income where id = p_income_id;
@@ -186,7 +223,9 @@ begin
   v_rate := coalesce(p_rate_bp, v_old.rate_bp);
   v_label := nullif(btrim(coalesce(p_source_label, '')), '');
   if v_label is null then v_label := v_old.source_label; end if;
-  v_committed := (p_amount_cents * v_rate + 5000) / 10000;
+  -- P2-B14: bigint product — the int4 product overflows above
+  -- ~$21.5k income at the 10% default rate (see file header).
+  v_committed := (p_amount_cents::bigint * v_rate + 5000) / 10000;
   insert into public.charity_income
     (household_id, source_label, amount_cents, income_date, rate_bp, replaces_id, note, created_by)
   values (v_old.household_id, v_label, p_amount_cents, p_income_date, v_rate, p_income_id,
@@ -201,9 +240,21 @@ begin
 end;
 $$;
 
+-- record_charity_gift — SINGLE CANONICAL COPY (R4-BE-1, Nov 9, 2026):
+-- the 8-arg idempotent version from supabase/r13-gift-idempotency.sql
+-- (applied live Nov 3, 2026). The 7-arg pre-idempotency definition
+-- this file used to carry was resurrected live by the Nov 9 P2
+-- step-4 "RPC bodies only" apply of this file (live oids 18506 =
+-- 8-arg, 18701 = 7-arg): CREATE OR REPLACE on the 7-arg signature
+-- does not touch the 8-arg overload. This copy keeps the idempotency
+-- file's drop-first line, so a future re-apply of THIS file drops
+-- the 7-arg overload instead of resurrecting it. Requires
+-- transactions.client_key + the partial unique index from
+-- r13-gift-idempotency.sql (both live since Nov 3, 2026).
+drop function if exists public.record_charity_gift(uuid, text, integer, date, text, text, text);
 create or replace function public.record_charity_gift(
   p_household_id uuid, p_merchant text, p_amount_cents integer, p_date date,
-  p_card_suffix text, p_note text, p_dedupe_hash text)
+  p_card_suffix text, p_note text, p_dedupe_hash text, p_client_key text default null)
 returns jsonb
 language plpgsql
 security definer
@@ -213,6 +264,7 @@ declare
   v_merchant text;
   v_suffix text;
   v_hash text;
+  v_key text;
   v_id uuid;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
@@ -228,6 +280,16 @@ begin
                    and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';
   end if;
+  v_key := nullif(btrim(coalesce(p_client_key, '')), '');
+  if v_key is not null then
+    -- Exact replay of an intended gift: return the original row,
+    -- write nothing, and never double-count Given.
+    select id into v_id from public.transactions
+     where household_id = p_household_id and client_key = v_key;
+    if found then
+      return jsonb_build_object('transaction_id', v_id, 'replayed', true);
+    end if;
+  end if;
   -- A gift entered by hand is explicitly confirmed by the admin
   -- entering it, so it posts as verified (Given) at once. It is
   -- kind 'charity', so it never enters weekly spending math.
@@ -238,13 +300,21 @@ begin
     v_hash := md5('charity|' || p_date::text || '|' || v_merchant || '|' || p_amount_cents::text || '|' || v_suffix || '|' || gen_random_uuid()::text);
   end if;
   insert into public.transactions
-    (household_id, date, merchant, amount_cents, card_suffix, source, state, kind, dedupe_hash)
-  values (p_household_id, p_date, v_merchant, p_amount_cents, v_suffix, 'manual', 'verified', 'charity', v_hash)
+    (household_id, date, merchant, amount_cents, card_suffix, source, state, kind, dedupe_hash, client_key)
+  values (p_household_id, p_date, v_merchant, p_amount_cents, v_suffix, 'manual', 'verified', 'charity', v_hash, v_key)
+  on conflict (household_id, client_key) where client_key is not null do nothing
   returning id into v_id;
+  if v_id is null and v_key is not null then
+    -- Lost a race with an identical key: return the row that won.
+    select id into v_id from public.transactions
+     where household_id = p_household_id and client_key = v_key;
+    if v_id is null then raise exception 'gift idempotency conflict without a stored row'; end if;
+    return jsonb_build_object('transaction_id', v_id, 'replayed', true);
+  end if;
   insert into public.audit_log (household_id, actor, actor_name, action, detail)
   values (p_household_id, auth.uid(), 'admin', 'Charity gift recorded',
           'Gift ' || v_merchant || ' ' || p_amount_cents::text || ' cents on ' || p_date::text || '.');
-  return jsonb_build_object('transaction_id', v_id);
+  return jsonb_build_object('transaction_id', v_id, 'replayed', false);
 end;
 $$;
 
@@ -269,7 +339,11 @@ begin
     raise exception 'admin only';
   end if;
   if v_row.kind <> 'charge' then raise exception 'only a charge can be marked as a charity gift'; end if;
-  if v_row.state <> 'verified' then raise exception 'only a posted transaction can be marked as a charity gift'; end if;
+  -- Pending gifts may be marked (owner, Nov 8, 2026): the row keeps
+  -- its state, so Given — which counts verified charity rows only —
+  -- stays $0 until the bank confirms it. A reversed row still refuses.
+  -- See supabase/pending-charity-mark.sql, applied live Nov 8, 2026.
+  if v_row.state not in ('provisional', 'verified') then raise exception 'only a pending or posted transaction can be marked as a charity gift'; end if;
   if v_row.excluded then raise exception 'an excluded transaction cannot be marked as a charity gift'; end if;
   if coalesce(v_row.fund_allocation_cents, 0) <> 0 then raise exception 'a transaction partly paid from the fund cannot be marked as a charity gift'; end if;
   if v_row.date < date '2026-11-01' then raise exception 'charity starts November 2026'; end if;
@@ -293,8 +367,8 @@ revoke execute on function public.record_charity_income(uuid, integer, date, tex
 grant execute on function public.record_charity_income(uuid, integer, date, text, integer, text) to authenticated;
 revoke execute on function public.correct_charity_income(uuid, integer, date, text, integer, text) from public;
 grant execute on function public.correct_charity_income(uuid, integer, date, text, integer, text) to authenticated;
-revoke execute on function public.record_charity_gift(uuid, text, integer, date, text, text, text) from public;
-grant execute on function public.record_charity_gift(uuid, text, integer, date, text, text, text) to authenticated;
+revoke execute on function public.record_charity_gift(uuid, text, integer, date, text, text, text, text) from public;
+grant execute on function public.record_charity_gift(uuid, text, integer, date, text, text, text, text) to authenticated;
 revoke execute on function public.mark_transaction_charity(uuid) from public;
 grant execute on function public.mark_transaction_charity(uuid) to authenticated;
 commit;

@@ -1,4 +1,11 @@
--- R12 Add Money — PREPARED ONLY, DO NOT APPLY without owner approval.
+-- R12 Add Money — APPLIED LIVE Nov 3, 2026 (R12 chain: A1 grants,
+-- dedupe, R3 nicknames, R12, R13, Amazon merge — all six files
+-- applied in order via the SQL editor and verified. R4-BE-2,
+-- Nov 9, 2026 — the "PREPARED ONLY" header this file carried
+-- before is stale). Do NOT re-apply blindly: add_fund_money is
+-- idempotent on the client key, but re-apply only if a live probe
+-- shows the live body has drifted from this file, and reconcile
+-- first.
 --
 -- What it adds: logging cash the admin already deposited into checking
 -- as Extra Fund money. The admin-only RPC add_fund_money is the only

@@ -30,20 +30,24 @@ test('charity Home figure is a confirmed number, never a dash on success', () =>
   // assigns the dash for the failed-load state. (Loading-indicators:
   // the success line also clears the skeleton aria-busy flag, so the
   // match allows the braced form.)
-  assert.match(js, /if \(cp\) \{ cp\.textContent = formatCents\(remaining\); cp\.removeAttribute\('aria-busy'\); \}/);
+  // Merged-audit A12: success also toggles the negative class.
+  assert.match(js, /if \(cp\) \{ cp\.textContent = formatCents\(remaining\); cp\.classList\.toggle\('negative', remaining < 0\); cp\.removeAttribute\('aria-busy'\); \}/);
   assert.doesNotMatch(js, /committed === 0 && given === 0\) \? '—'/);
 });
 
 test('weekly hero kicker is neutral and the sign-instruction sentence is gone', () => {
-  assert.ok(html.includes('<div class="kicker">This week · <span id="weekLabel">'));
+  assert.ok(html.includes('<div class="kicker"><span id="weekLabel">'), 'kicker drops the This week prefix, date range only');
   assert.doesNotMatch(html, /Available this week/);
   assert.doesNotMatch(html, /If the big number is negative/);
 });
 
 // --- Blank shell --------------------------------------------------------
-test('boot shows the current view before refresh, and refresh re-shows on failure', () => {
-  const boot = js.slice(js.indexOf('async function boot()'), js.indexOf('async function boot()') + 1200);
-  assert.match(boot, /await show\('app'\);\s*\/\/ UX-review-fix, blank shell[\s\S]*?showView\(currentView\);/);
+test('boot keeps loading visible until refresh finishes, then shows the app', () => {
+  const boot = js.slice(js.indexOf('async function boot()'), js.indexOf('async function boot()') + 1600);
+  assert.match(boot, /await show\('loading'\);/);
+  assert.match(boot, /try \{ await refresh\(\); \} catch/);
+  assert.match(boot, /await show\('app'\);/);
+  assert.match(boot, /showView\(currentView\);/);
   assert.match(js, /try \{ if \(household\) showView\(currentView, \{ preserveScroll: true \}\); \} catch/);
 });
 
@@ -63,12 +67,13 @@ test('button levels are solid colors, no pale tint or white outline', () => {
   assert.doesNotMatch(html, /btn-outline/);
   assert.doesNotMatch(js, /btn-outline/);
   // Funds actions: primary, pale, grey — three buttons, three
-  // treatments (Record income left the row for the Charity sheet).
-  // Task 7: fund actions live in the Extra Fund sheet, not a card.
+  // treatments (Record income left the row for the Charity expansion).
+  // Funds expand-in-place (owner, Nov 6): fund actions live in the
+  // expanded Extra Fund card, not a sheet and not a card.
   assert.equal(html.includes('id="section-fund-actions"'), false);
-  assert.match(js, /label: 'Add money', result: 'add', btnClass: 'btn btn-primary'/);
-  assert.match(js, /label: 'Use fund money', result: 'use', btnClass: 'btn'/);
-  assert.match(js, /label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary'/);
+  assert.match(js, /label: 'Add Money', result: 'add', btnClass: 'btn btn-primary'/);
+  assert.match(js, /label: 'Spend from Fund', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary'/);
   assert.equal(html.includes('fundActionIncomeBtn'), false);
   // Detail: send-live-bundle replaced the button row with one
   // Actions line (see send-live-bundle tests); the old Mark/Use
@@ -82,30 +87,42 @@ test('held button removed; held amount folds into the fund sheet Pending', () =>
   // Audit-fixes-morning B1: the Funds "Held for review" button and
   // its wrap are gone from the HTML (it duplicated the Review
   // card's opener on the same page). The guarded JS references
-  // remain as no-ops, and the fund sheet's Pending row folds held
+  // remain as no-ops, and the fund expansion's Pending row folds held
   // weeks in (fund-sheet-button-rule, owner Nov 4) — no Held row.
   assert.equal(html.includes('id="fundHeldLinkWrap"'), false);
   assert.equal(html.includes('id="fundHeldLinkBtn"'), false);
   assert.equal(css.includes('#fundHeldLinkWrap'), false);
-  assert.match(js, /fundHeldLinkBtn.*addEventListener\('click'/);
-  assert.match(js, /moreReviewOpen = true/);
-  assert.match(js, /getElementById\('section-fund-review-more'\)\?\.scrollIntoView/);
+  // Merged-audit A18: the dead held-link handler is removed; the
+  // Review row label (Review (N)) is now the held queue's opener.
+  assert.equal(js.includes('fundHeldLink'), false);
+  assert.match(js, /Review \(\$\{reviewNeedsCount\}\)/);
+  assert.match(js, /moreReviewOpen/);
   const fundRows = js.slice(js.indexOf('function fundBreakdownRows'), js.indexOf('function charityBreakdownRows'));
-  assert.ok(fundRows.includes('heldTotal'), 'fund sheet Pending must fold in held weeks');
+  assert.ok(fundRows.includes('heldTotal'), 'fund expansion Pending must fold in held weeks');
   assert.doesNotMatch(fundRows, /\['Held for review',/);
 });
 
-test('bank Disconnect identifies the exact connection by masked accounts', () => {
-  assert.match(js, /const connMasks = acctRows\.filter/);
-  assert.match(js, /Disconnect \$\{connId\}/);
-  assert.match(js, /stop syncing this connection only/);
+test('bank Disconnect is per-account, not per-connection', () => {
+  // Connected-accounts-rework (owner, Nov 4, 2026): one row per
+  // account, each with its own Disconnect that names THAT account
+  // (name + mask) and says this account only. The old whole-item
+  // Disconnect (connMasks / plaid-disconnect per item) is gone from
+  // the list.
+  assert.equal(js.includes('const connMasks = acctRows.filter'), false);
+  assert.match(js, /plaid-account-disconnect/);
+  assert.match(js, /Disconnect \$\{acctId\}/);
+  assert.match(js, /This stops syncing this account only/);
+  assert.match(js, /Other accounts on the same bank connection keep syncing/);
 });
 
 // --- Sign-in / profile / password ---------------------------------------
-test('sign-in: primary Sign in, password toggle, recovery copy on failure', () => {
+test('sign-in: primary Sign In, password toggle, red Incorrect email or password in the inline box on failure', () => {
   assert.ok(html.includes('id="togglePasswordBtn"'));
   assert.match(js, /togglePasswordBtn.*addEventListener\('click'/);
-  assert.match(js, /Forgot password\? below to reset it/);
+  // Design item 2 (owner, Nov 5): the sign-in failure is an inline
+  // soft-red box saying what is wrong, not a toast and not the old
+  // long generic inline sentence.
+  assert.match(js, /setResultMsg\('authMsg', 'Incorrect email or password', true\)/);
   // Auth-card-cleanup: the "New to OnBudget?" lead-in is gone (the
   // side-by-side buttons make the choice self-evident).
   assert.equal(html.includes('New to OnBudget?'), false);
@@ -138,7 +155,7 @@ test('Show/Hide toggle exists on every password field', () => {
   assert.ok(html.includes('id="togglePasswordBtn"'));
   // Change-password sheet (generic showSheet password branch).
   assert.match(js, /safeType === 'password'/);
-  assert.match(js, /aria-label', showing \? 'Hide password' : 'Show password'/);
+  assert.match(js, /aria-label', showing \? 'Hide Password' : 'Show Password'/);
   // Reset page: both fields.
   assert.ok(reset.includes('id="toggleNewPasswordBtn"'));
   assert.ok(reset.includes('id="toggleConfirmPasswordBtn"'));
@@ -169,7 +186,7 @@ test('Funds chevrons sit bottom-right and face down', () => {
 test('weight rebalance: figures 800, headings 700, buttons 600', () => {
   assert.match(css, /body\.live \.hero \.big \{ font-size: 42px; font-weight: 800;/);
   assert.match(css, /body\.live \.num \{ font-size: 26px; font-weight: 800;/);
-  assert.match(css, /body\.live \.fund-balance \{ font-size: 32px; font-weight: 800;/);
+  assert.match(css, /body\.live \.fund-balance \{ font-size: 34px; font-weight: 800;/);
   assert.match(css, /body\.live h1, body\.live h2, body\.live h3 \{ letter-spacing: -0\.02em; font-weight: 700; \}/);
   assert.match(css, /font-size: 15px; font-weight: 600; \}\s*body\.live #view-app \.btn-primary/);
   // No other body.live 800 weights remain.
@@ -213,7 +230,7 @@ test('Home stat cards are Title + Amount only, words in aria-labels', () => {
 test('Add is a blue + button opening an options popup, no choice card', () => {
   assert.doesNotMatch(html, /section-add-choice/);
   assert.doesNotMatch(html, /Add \/ Import transaction/);
-  assert.match(html, /id="txAddBtn"[^>]*aria-label="Add">\+</);
+  assert.match(html, /id="txAddBtn"[^>]*aria-label="Add Transaction">/);
   assert.match(html, /id="addPopupOverlay"/);
   assert.match(html, /id="addOptionPurchaseBtn"/);
   assert.match(html, /id="addOptionDonationBtn"/);

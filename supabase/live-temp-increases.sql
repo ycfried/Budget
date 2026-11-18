@@ -26,6 +26,12 @@ alter table temp_increases enable row level security;
 -- with "permission denied for table" before RLS is even consulted).
 grant select on temp_increases to authenticated;
 
+-- R4 (Nov 9, 2026): drop-before-create, so re-applying this file
+-- is idempotent — the Nov 9 step-6 first attempt failed with
+-- ERROR 42710 (policy already exists) because this create had no
+-- drop. Dropping and recreating the identical policy changes
+-- nothing about the applied-live effect.
+drop policy if exists "members read own temp increases" on temp_increases;
 create policy "members read own temp increases"
   on temp_increases for select
   using (household_id in (select household_id from household_members
@@ -40,6 +46,17 @@ as $$
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   if p_amount_cents is null or p_amount_cents <= 0 then raise exception 'increase must be positive'; end if;
+  -- P2-B4 (Nov 8, 2026): week_start must be a Sunday, for the same
+  -- reason as set_weekly_allowance_override — compute-week sums temp
+  -- increases by exact Sunday (weekStartOf), so a non-Sunday row
+  -- would silently never match. The DB CHECK in
+  -- supabase/p2-sunday-week-start-checks.sql enforces the same rule
+  -- at the table level. (Note: no client calls this RPC today —
+  -- live.js uses set_weekly_allowance_override — but the guard
+  -- stands for any future or direct caller.)
+  if p_week_start is null or extract(dow from p_week_start) <> 0 then
+    raise exception 'week_start must be a Sunday';
+  end if;
   if not exists (select 1 from household_members
                  where household_id = p_household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';

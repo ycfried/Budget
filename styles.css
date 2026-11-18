@@ -293,6 +293,9 @@ label { font-size: 14px; font-weight: 600; }
 .hidden { display: none !important; }
 .inline-form { margin-bottom: 12px; }
 .foot { text-align: center; padding: 16px; }
+/* P2-C5: scheduled-sync staleness warning in the footer — dark red
+   text on the plain footer, same error colour as other warnings. */
+.sync-stale-warn { color: #dc2626; }
 @media (max-width: 480px) {
   .grid { grid-template-columns: 1fr 1fr; }
   .hero .big { font-size: 36px; }
@@ -314,6 +317,15 @@ label { font-size: 14px; font-weight: 600; }
   box-shadow: 0 12px 40px rgba(0,0,0,.25); }
 #sheetOverlay .sheet h3 { margin: 0 0 8px; font-family: var(--serif); }
 #sheetOverlay .sheet p { margin: 0 0 14px; color: var(--muted); line-height: 1.5; }
+/* Design item 4 (owner, Nov 5): failure dialogs use the soft-red error
+   style — background #fef2f2, text #dc2626, border #fecaca — the same
+   as inline .result.error boxes and error toasts. Success/info sheets
+   stay white. Applied only when showSheet is called with kind:'error'
+   (showAlert); showConfirm and form sheets are unaffected. */
+#sheetOverlay .sheet.sheet-error { background: #fef2f2; border: 1px solid #fecaca; }
+#sheetOverlay .sheet.sheet-error h3 { color: #dc2626; }
+#sheetOverlay .sheet.sheet-error p { color: #7f1d1d; }
+#sheetOverlay .sheet.sheet-error .sheet-handle { background: #fecaca; }
 #sheetOverlay .sheet label { display: block; margin-bottom: 14px; font-weight: 600; }
 #sheetOverlay .sheet input { width: 100%; margin-top: 6px; }
 #sheetOverlay .sheet-btns { display: flex; gap: 10px; justify-content: center; }
@@ -334,7 +346,7 @@ label { font-size: 14px; font-weight: 600; }
 
 /* App sections stay hidden until the view switcher shows one — no
    flashing every section while the first refresh is still loading. */
-#view-app > .card, #view-app > .grid, #view-app > p { display: none; }
+#view-app > .card, #view-app > .grid, #view-app > p, #view-app > .page-head { display: none; }
 /* Header buttons match the in-app buttons (the header sits outside
    #view-app, so the earlier restyle missed them and they looked like
    a different app). Refresh is a normal secondary button; Sign out
@@ -380,7 +392,15 @@ body.live h1, body.live h2, body.live h3 { letter-spacing: -0.02em; font-weight:
 /* Header scrolls away; the tab bar is the persistent navigation now. */
 body.live #liveTopbar { position: relative; background: #fff; border-bottom: 1px solid #ececf1; }
 body.live #liveTopbar strong { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
-body.live .profile-btn { background: #eef4ff; border: 1px solid #2f6bff; color: #2f6bff; }
+/* Home-hero-fix (owner, Nov 4): profile icon was primary blue
+   #2f6bff — wrong, owner wants MUCH LIGHTER, maybe not blue at
+   all. It is now white with a dark icon and a light grey border,
+   no blue fill, no glow. The hero sync button is covered by its
+   own ancestor-independent rule below (see the specificity note
+   there); the row rule that used to sit here lost to the pale
+   #view-app .btn rule, which is why the sync button still looked
+   pale on the owner's device despite the blue rule existing. */
+body.live .profile-btn { background: #fff; border: 1px solid #e5e7eb; color: #0f172a; box-shadow: none; }
 body.live .profile-menu { border-color: #ececf1; border-radius: 18px; box-shadow: 0 12px 32px rgba(16,24,40,.14); }
 /* Bottom tab bar with icons, like the reference apps. */
 body.live #view-app .app-nav { position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 30;
@@ -400,17 +420,31 @@ body.live #view-app .app-nav-link { flex: 1 1 0; display: flex; flex-direction: 
 body.live #view-app .app-nav-link svg { width: 22px; height: 22px; display: block; }
 body.live #view-app .app-nav-link.active { color: #2f6bff; border-bottom: 0; }
 /* Bottom toast: in-app messages float above the tab bar instead of
-   pushing cards around. Brand blue for all messages, errors included
-   (owner: the red error bar was ugly and off-brand). It sits well
-   clear of the tab bar (owner: it was too close to the bottom).
+   pushing cards around. Brand blue for success/info messages; red
+   for errors (owner override, Nov 4 — blue did not read as an
+   error). It sits well clear of the tab bar (owner: it was too
+   close to the bottom).
    It auto-dismisses after 4 seconds; tapping it dismisses it sooner;
    switching tabs clears it. */
 body.live .toast { position: fixed; left: 16px; right: 16px; bottom: 120px; z-index: 40;
+  box-sizing: border-box; max-width: calc(100vw - 32px); overflow-wrap: break-word;
   background: #2f6bff; color: #fff; padding: 12px 14px; border-radius: 12px;
   font-size: 14px; line-height: 1.4; box-shadow: 0 8px 24px rgba(16,24,40,.25); }
-/* Error toasts stay white on blue: the generic .error color below
-   otherwise leaks red text into the toast (Nov 3 fix round). */
-body.live .toast.error { color: #fff; }
+/* Error-red-fix (owner, Nov 4): the error toast went off the screen
+   a little on the sides. The fixed left/right 16px offsets only
+   guarantee the margins if padding is inside the width, so the
+   toast now declares box-sizing: border-box and
+   max-width: calc(100vw - 32px) explicitly — it can never be wider
+   than the viewport minus its 16px margins on both sides. */
+/* Error-red-fix (owner, Nov 4): error pop-ups are RED, not blue —
+   an owner override of the Nov 2 "no red toasts ever" rule, for
+   genuine errors only. Success/info toasts stay brand blue #2f6bff;
+   only showToast(..., true) gets the red background. The red is
+   the LIGHTER red, the same as inline .result.error boxes and the
+   soft status/badge reds: light red background #fef2f2, dark red
+   text #dc2626, border #fecaca — NOT the old solid #dc2626 bar
+   with white text, which was too heavy and dark. */
+body.live .toast.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; font-weight: 600; }
 /* Buttons: light-grey secondary, blue primary, red destructive, quiet text.
    One gap system: rows use flex gap; standalone buttons use one margin. */
 /* Button levels (Nov 4, pale option B): primary = strong #2f6bff
@@ -429,9 +463,11 @@ body.live #view-app .btn { margin: 0 10px 10px 0; }
 /* Money inputs are sized to what is necessary (Nov 2 design rule):
    a 4–6 digit figure never needs the full card width. */
 body.live input[type="number"] { max-width: 220px; }
-/* Sort row: the native select matches the secondary (light-blue)
-   direction button (same background, padding, font, radius) instead
-   of sitting beside it in default browser styling. */
+/* Sort row: the native select keeps the secondary (light-blue)
+   treatment; the direction button beside it is grey tertiary, so
+   the two adjacent controls never share a treatment (P2-F3, Nov 8,
+   2026 — the button used to be a bare .btn, pale like the select).
+   Same padding, font, radius — only the treatment differs. */
 body.live #txSortField { background: #bfdbfe; border: 0; border-radius: 14px; padding: 13px 18px; font-size: 15px; font-weight: 600; color: #0f172a; }
 body.live #view-app .card .btn + .btn { margin-left: 0; }
 body.live #view-app .tx-detail .btn { margin-right: 10px; }
@@ -448,6 +484,25 @@ body.live .hero-head { display: flex; align-items: center; gap: 10px; }
 body.live .hero-number-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 body.live .hero-number-row #weeklyAvailable { flex: 1; min-width: 0; }
 body.live .hero-number-row .hero-sync-btn { margin: 0; width: 44px; height: 44px; min-width: 44px; padding: 0; font-size: 22px; line-height: 1; border-radius: 50%; }
+/* Home-hero-fix (owner, Nov 4): the sync button still looked pale
+   on the owner's device even though a blue rule existed. Why: the
+   old rule was `body.live .hero-number-row .hero-sync-btn`
+   (specificity 0,3,1), but the button also carried the plain `btn`
+   class, so `body.live #view-app .btn` (specificity 1,2,1 — the
+   #view-app ID) won and painted it pale #bfdbfe. The class-name
+   tests only checked the blue rule existed, never the rendered
+   colour. Fix, belt and braces: the button no longer carries the
+   `btn` class (live.html), and this rule is ancestor-independent
+   with ID-level specificity (1,2,1) placed AFTER the pale .btn
+   rule, so it wins even if `btn` is ever re-added. */
+body.live #view-app .hero-sync-btn { background: #2f6bff; color: #fff; border: 0; box-shadow: none; }
+/* Design-questions (owner, Nov 5): when no weekly allowance is set
+   yet, "Set Your Weekly Allowance" is the hero's only primary blue
+   control — the sync button goes grey tertiary (same #e5e7eb / ink
+   as .btn-tertiary) until an allowance is set, then returns to
+   primary blue. Placed after the blue rule so it wins when the
+   .sync-unset class is present. */
+body.live #view-app .hero-sync-btn.sync-unset { background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; }
 /* Excluded-decisions: the hero number is the Weekly breakdown target
    (the small stat card is gone). Only the number is tappable — the
    Sync button beside it is a separate control. */
@@ -455,6 +510,28 @@ body.live #weeklyAvailable[role="button"] { cursor: pointer; }
 /* R2: deletion lives in a distinct danger area inside Settings. */
 body.live .danger-area { border: 1px solid #fecaca; border-radius: 12px; padding: 12px; margin-top: 12px; }
 body.live .btn-row .btn { margin: 0; }
+/* Settings bank buttons (owner, Nov 4): the three long buttons took up
+   too much space. The two shortened buttons now share one row on a
+   phone width — no wrap, equal halves, compact padding, no wrap of
+   the label text — and Automatic Sync is a switch on its own row
+   below them, not a third button. P1-F1 (Nov 8, 2026): below 360px
+   the two labels physically cannot share one row (240–280px inner
+   vs ~308px needed), so the row stacks there — full-width buttons,
+   no clipping. Above 360px the owner's no-wrap row is unchanged. */
+body.live #section-bank .btn-row { flex-wrap: nowrap; }
+body.live #section-bank .btn-row .btn { flex: 1 1 0; min-width: 0; padding: 13px 8px; white-space: nowrap; }
+@media (max-width: 360px) {
+  body.live #section-bank .btn-row { flex-wrap: wrap; }
+  body.live #section-bank .btn-row .btn { flex: 1 1 100%; }
+}
+body.live .auto-sync-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+body.live .auto-sync-label { font-size: 15px; font-weight: 600; color: #0f172a; }
+body.live .auto-sync-switch { flex: none; width: 52px; height: 30px; border: 0; border-radius: 999px; background: #e5e7eb; padding: 0; cursor: pointer; position: relative; transition: background 0.15s ease; }
+body.live .auto-sync-switch .auto-sync-knob { position: absolute; left: 3px; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.15s ease; }
+body.live .auto-sync-switch[aria-checked="true"] { background: #2f6bff; }
+body.live .auto-sync-switch[aria-checked="true"] .auto-sync-knob { transform: translateX(22px); }
+body.live .auto-sync-switch:focus-visible { outline: 2px solid #2f6bff; outline-offset: 2px; }
+body.live .auto-sync-switch:disabled { opacity: 0.6; cursor: default; }
 /* Chips: grey pills, blue when active. */
 body.live #view-app .tx-chip { background: #bfdbfe; color: #1e40af; padding: 9px 15px; font-weight: 600; }
 body.live #view-app .tx-chip.active { background: #2f6bff; color: #fff; }
@@ -464,7 +541,7 @@ body.live .kicker { color: #6b7280; font-size: 12px; font-weight: 600; letter-sp
 body.live .num { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; }
 body.live .hero-progress { height: 6px; background: #eef1f6; border-radius: 999px; overflow: hidden; margin: 12px 0 6px; }
 body.live .hero-progress > div { height: 100%; background: #2f6bff; border-radius: 999px; width: 0%; }
-body.live .fund-balance { font-size: 32px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0 0 4px; }
+body.live .fund-balance { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0 0 4px; }
 /* Transaction rows: icon square + merchant, like the reference lists. */
 body.live .tx-line1 { display: flex; align-items: center; gap: 10px; }
 body.live .tx-icon { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 10px; background: #eef1f6;
@@ -476,10 +553,16 @@ body.live #txFilters { margin-top: 10px; }
 body.live #txFilters label { display: block; margin: 10px 0 4px; font-weight: 600; }
 body.live #txFilters label select { display: block; width: 100%; margin-top: 4px; }
 
-/* Home stats: two-by-two tiles (owner request Nov 2 — the four-in-a-row
-   tiles left numbers small and cards mostly empty), and the
+/* Home stats (owner, Nov 8, 2026, mockup:
+   home-stacked-fund-charity.png): Charity ABOVE Extra Fund, stacked
+   vertically, both full-width — one column, not two. The old two-column
+   row plus the expanded card spanning both columns is what made the
+   Extra Fund box wrap down below the small Charity card when tapped
+   (the bug: Charity is first in the row so it looked in place, Extra
+   Fund is second so it jumped). Stacked, each card expands downward
+   in place and the other stays collapsed in its own spot. The
    Recent purchases buttons get breathing room from the last row. */
-body.live #section-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+body.live #section-stats { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 body.live #section-stats .stat-card { padding: 14px 12px; min-width: 0; }
 body.live #section-stats .kicker { font-size: 11px; }
 body.live #section-stats .num { font-size: 24px; }
@@ -488,6 +571,13 @@ body.live #section-week .btn-row { margin-bottom: 12px; }
 
 /* New branding: message boxes are a light blue tint, not the old warm beige. */
 body.live .result { background: #eef4ff; color: #0f172a; }
+/* Feedback-bundle (owner, Nov 4): ALL genuine error messages are
+   RED platform-wide, not blue. This rule restores red for inline
+   .result.error boxes in the live theme, which the blue .result
+   override above would otherwise wash out. Plain .result boxes
+   (mixed success/info messages) stay blue — only messages marked
+   .error, and error toasts, go red. */
+body.live .result.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
 
 /* ===== S4 live-only additions (scoped under body.live / #view-app) ===== */
 body.live #sheetOverlay .sheet p { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -515,6 +605,19 @@ body.live .bank-row .bank-logo, body.live .bank-row .bank-logo-tile { align-self
    the row's own alignment are untouched. */
 body.live .bank-row .btn-danger { align-self: flex-start; }
 body.live .bank-logo-img { width: 100%; height: 100%; object-fit: contain; }
+/* Connected accounts, one row per account (owner, Nov 4, 2026):
+   the account row is a mature card row, not a grouped institution
+   block. Top-aligned (logo, info, actions) so the Disconnect reads
+   as acting on THIS account; the account name is the bold title and
+   the bank is a quiet meta line. The shared .bank-row base rule
+   above is untouched (other lists and tests rely on it). */
+body.live .bank-row.bank-acct-row { align-items: flex-start; padding: 16px 0; }
+body.live .bank-acct-name { font-size: 16px; font-weight: 700; color: #0f172a; overflow-wrap: break-word; }
+body.live .bank-acct-meta { font-size: 13px; color: #6b7280; margin-top: 2px; overflow-wrap: break-word; }
+body.live .bank-acct-sub { font-size: 13px; color: #6b7280; margin-top: 2px; overflow-wrap: break-word; }
+body.live .bank-acct-fail { font-size: 13px; color: #dc2626; font-weight: 600; margin-top: 2px; overflow-wrap: break-word; }
+body.live .bank-acct-row .btn-quiet { padding: 2px 0; margin-top: 6px; font-size: 13px; }
+body.live .bank-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: 0 0 auto; align-self: flex-start; }
 body.live .sav-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 body.live .sav-grid > div { min-width: 0; }
 body.live .sav-grid .num { font-size: 20px; overflow-wrap: break-word; }
@@ -524,7 +627,7 @@ body.live .sav-grid .num { font-size: 20px; overflow-wrap: break-word; }
 body.live #csvPreview:empty { display: none; }
 body.live .csv-row.csv-dupe { opacity: 0.55; }
 body.live #weekHistoryList li { line-height: 1.5; }
-body.live #bankAccountsList:empty, body.live #bankPreviouslyList:empty { display: none; }
+body.live #bankAccountsList:empty { display: none; }
 body.live .error { color: #dc2626; }
 
 /* ===== Delta package (Nov 3, 2026) — live app only ===== */
@@ -587,17 +690,41 @@ body.live .fund-balance-head h2 { margin: 0; min-width: 0; }
    margin-top:auto pushes it to the bottom; the whole panel stays
    the tap target, with the same size and accessibility label. */
 body.live .fund-balance-chevron { color: #2f6bff; font-weight: 700; font-size: 22px; line-height: 1; align-self: flex-end; margin-top: auto; padding-top: 8px; }
+
+/* Funds expand-in-place (owner approval, Nov 6, 2026, mockup:
+   funds-expand-in-place.png): the card expands where it is — no
+   overlay, no dimmed page, no sheet. The expanded card gets the
+   brand-blue border from the mockup. Home stat cards are stacked
+   vertically (owner, Nov 8, 2026, mockup:
+   home-stacked-fund-charity.png), so an expanded Home card already
+   spans the full width and needs no grid-column span — the old
+   span rule is gone, it only existed for the two-column row that
+   made the Extra Fund box wrap below Charity. Rows are the
+   same three labeled rows as before (Available / Pending / Total
+   for the fund, Available / Given / Total for charity). Buttons
+   wrap instead of squeezing: the mockup's middle button text
+   overflows its button at phone width, so the row wraps to keep
+   every label readable. Chevron flip is text (⌄/⌃) in live.js. */
+body.live .fund-balance-panel.fund-expanded, body.live .stat-card.fund-expanded { border-color: #2f6bff; }
+body.live .fund-expand { margin-top: 12px; border-top: 1px solid #e5e7eb; padding-top: 4px; }
+body.live .fund-expand-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #e5e7eb; font-size: 15px; color: #0f172a; }
+body.live .fund-expand-row strong { font-weight: 700; color: #0f172a; white-space: nowrap; }
+body.live .fund-expand-period { margin: 8px 0 0; }
+body.live .fund-expand-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+body.live .fund-expand-btns .btn { flex: 1 1 auto; white-space: nowrap; }
 @media (max-width: 420px) {
   body.live .fund-balance-grid { grid-template-columns: 1fr; }
 }
 /* B2: Transactions heading row (Add top right) and search row
-   (search box + ONE compact Filters button beside it). */
-body.live .tx-head-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+   (search box + ONE compact Filters button beside it). P1-F2 (Nov 8,
+   2026): the row wraps at 320px — title + Filters + Add need ~264px
+   against a 240px inner width, so without a wrap the row overflows. */
+body.live .tx-head-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 body.live .tx-head-row h2 { margin-bottom: 0; }
 /* Filters on the header line (owner, Nov 3, ~10:38 PM): Filters sits
    immediately left of the + button, grouped at the right so the
-   title stays left. Filters keeps its secondary pale-blue treatment
-   and + keeps primary blue — adjacent buttons never share a color.
+   title stays left. Filters is grey tertiary (btn-tertiary) and + keeps primary
+   blue — adjacent buttons never share a color.
    The search input now spans its row alone. */
 body.live .tx-head-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; flex: 0 0 auto; }
 body.live .tx-head-actions #txFiltersToggle { flex: 0 0 auto; }
@@ -708,11 +835,30 @@ body.live .profile-menu-row-danger { color: #dc2626; }
    8 characters" note itself moved out of this card entirely: the
    change-password sheet already states the requirement where the
    new password is entered, so it is not duplicated here. */
-#section-history-filter .form-row-2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
-#section-history-filter .form-row-2 label, #section-history-filter .form-row-2 input { min-width: 0; box-sizing: border-box; }
-#section-history-filter .form-row-2 input { border: 1px solid #e5e7eb; background: #fff; }
+/* Feedback-bundle (owner, Nov 4): Past weeks From/To were not the
+   same shape and ran into each other on phone. iOS Safari date
+   inputs have a wide intrinsic width that ignores min-width: 0
+   at phone card widths, so the two tracks overflowed into each
+   other. Both fields now share one explicit rule (same padding,
+   font, height, border, width: 100%, min-width: 0, labels as
+   block grid items with overflow hidden so a track can never
+   paint over its neighbour), with a 12px gap. At 390px each field
+   is ~155px — a full tap target. At 320px two date inputs cannot
+   fit side by side at any readable size, so they stack there
+   (this intentionally supersedes the earlier "side by side at
+   every width" rule — equal and non-overlapping wins). Real-phone
+   proving at 320px and 390px is still owed. */
+#section-history-filter .form-row-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+#section-history-filter .form-row-2 label { display: block; width: 100%; min-width: 0; overflow: hidden; box-sizing: border-box; }
+#section-history-filter .form-row-2 input { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #e5e7eb; background: #fff; padding: 10px 8px; font-size: 15px; margin: 6px 0 0; }
+@media (max-width: 360px) {
+  #section-history-filter .form-row-2 { grid-template-columns: 1fr; }
+}
 #section-profile .profile-email-label { display: block; margin-top: 20px; }
-#section-profile h3 { margin-top: 20px; }
+/* Header-back-swipe (owner, Nov 4): Password must be the SAME SIZE
+   as Name and Email in the Profile card — it was an h3 (~17px bold)
+   next to 14px/600 labels. Matched exactly to the label size. */
+#section-profile h3 { font-size: 14px; font-weight: 600; margin-top: 20px; }
 
 /* ===== Delta3 additions ===== */
 /* Loading screen: on-brand S-mark treatment + app name, stable until
@@ -724,11 +870,22 @@ body.live .profile-menu-row-danger { color: #dc2626; }
    surfaces. Figures and recent rows load behind brand-palette
    skeleton shimmer bars, sized like the content they stand in for,
    so nothing jumps when the real number arrives. */
-body.live .loading-screen { text-align: center; padding: 48px 22px; }
+/* Feedback-bundle (owner, Nov 4): the loading view fills the
+   screen, not a card floating in white space. The header stays
+   (it is app chrome); the section fills the rest of the viewport,
+   with no card border, shadow, or surrounding gap, and the footer
+   is hidden while loading (both the .is-loading body class set by
+   show() and the :has fallback, so the footer never shows on the
+   first paint before JS runs either). */
+body.live .loading-screen { text-align: center; padding: 24px 22px calc(24px + env(safe-area-inset-bottom));
+  min-height: calc(100dvh - 60px); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #fff; border: 0; border-radius: 0; box-shadow: none; margin: 0; }
+body.live.is-loading main { padding: 0; }
+body.live.is-loading footer.foot, body.live:has(#view-loading:not(.hidden)) footer.foot { display: none; }
+body.live:has(#view-loading:not(.hidden)) main { padding: 0; }
 body.live .loading-mark { font-family: var(--serif); font-size: 28px; font-weight: 700; margin-bottom: 20px; }
 body.live .loading-brand { position: relative; width: 72px; height: 72px; margin: 0 auto 20px; }
 body.live .loading-brand-ring { position: absolute; inset: 0; border: 2px solid #dbeafe; border-top-color: #2f6bff; border-radius: 50%; animation: loading-ring 2.4s linear infinite; }
-body.live .loading-brand-s { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: 700; color: #2f6bff; animation: loading-pulse 2.4s ease-in-out infinite; }
 @keyframes loading-ring { to { transform: rotate(360deg); } }
 @keyframes loading-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.75; transform: scale(0.96); } }
 /* Screen-reader-only text for skeleton loading states. */
@@ -746,7 +903,7 @@ body.live .skel-lines { display: flex; flex-direction: column; gap: 8px; }
 body.live .skel-line { width: 140px; height: 12px; }
 body.live .skel-line.short { width: 88px; }
 @media (prefers-reduced-motion: reduce) {
-  body.live .skel::after, body.live .loading-brand-ring, body.live .loading-brand-s { animation: none; }
+  body.live .skel::after, body.live .loading-brand-ring, body.live .loading-brand-logo { animation: none; }
 }
 /* Inline card header: subtitle sits on the same line as the heading
    (Add card), so the card gets smaller. Wraps gracefully on very
@@ -790,7 +947,12 @@ body.live .password-row .btn { flex: 0 0 auto; margin: 0; }
    #view-auth: the change-password sheet keeps the generic flex row
    with its side-by-side Show/Hide text toggle above. */
 #view-auth .password-row { position: relative; display: block; margin-top: 6px; }
-#view-auth .password-row input { width: 100%; box-sizing: border-box; margin-top: 0; padding-right: 48px; }
+/* Feedback-bundle (owner, Nov 4): the eye icon sat low because the
+   password input kept its 14px bottom margin inside the relatively
+   positioned row, so 50% of the row was below the input's centre.
+   The input's bottom margin is now 0 in this row, so top: 50% +
+   translateY(-50%) truly centres the icon on the input. */
+#view-auth .password-row input { width: 100%; box-sizing: border-box; margin: 0; padding-right: 48px; }
 #view-auth .password-row .auth-eye-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: none; border: 0; color: #6b7280; cursor: pointer; padding: 0; margin: 0; font: inherit; }
 #view-auth .password-row .auth-eye-btn svg { display: block; }
 #view-auth .password-row .auth-eye-btn:focus-visible { outline: 2px solid #2f6bff; outline-offset: 2px; border-radius: 8px; }
@@ -799,6 +961,26 @@ body.live .password-row .btn { flex: 0 0 auto; margin: 0; }
    same two-button row (Back + Create household). */
 #view-auth .auth-btn-row, #view-household .auth-btn-row { display: flex; gap: 10px; flex-wrap: nowrap; }
 #view-auth .auth-btn-row .btn, #view-household .auth-btn-row .btn { flex: 1 1 0; min-width: 0; margin: 0; }
+/* Error-red-fix (owner, Nov 4): the Sign In / Create Account row
+   hugged the password field. The eye-centring fix set the password
+   input's bottom margin to 0, removing the standard 14px field gap
+   every other input gets. Restore that gap on the sign-in button
+   row only (margin-top: 14px, the same standard gap). The
+   create-account name step and the household name step share the
+   .auth-btn-row class, but their preceding inputs keep the 14px
+   bottom margin, so they already have this gap and are unchanged.
+   This is a gap inside the card only — it does not stretch the
+   card or move the buttons anywhere. */
+#view-auth #authSigninPanel .auth-btn-row { margin-top: 14px; }
+/* P2-F10 (Nov 8, 2026): at 320/360px the two equal-width buttons
+   squeezed "Create Account" onto two lines (nowrap row, flex
+   1 1 0). At 380px and below the row wraps and each button takes
+   the full width, so both labels stay on one line. Above 380px
+   the side-by-side row is unchanged. */
+@media (max-width: 380px) {
+  #view-auth .auth-btn-row, #view-household .auth-btn-row { flex-wrap: wrap; }
+  #view-auth .auth-btn-row .btn, #view-household .auth-btn-row .btn { flex: 1 1 100%; }
+}
 /* Possible-duplicates comparison cards: vertical, NOT a horizontal
    bank-row. Merchant on its own bold line (full name, wraps at word
    boundaries, never mid-word), labeled Amount/Date/Card/Source rows
@@ -866,6 +1048,9 @@ body.live .profile-email { font-size: 14px; overflow-wrap: anywhere; }
 body.live .tx-sheet-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 body.live .tx-sheet-pair label { min-width: 0; }
 body.live .tx-sheet-pair input { width: 100%; box-sizing: border-box; min-width: 0; }
+@media (max-width: 360px) {
+  body.live .tx-sheet-pair { grid-template-columns: 1fr; }
+}
 /* Add popup (owner design Nov 3, 9:49 PM): the Transactions header's
    blue + button opens this overlay. Options are one full-width row
    each; a chosen form's existing section is moved into the slot, so
@@ -898,14 +1083,59 @@ body.live { font-size: 16px; }
    32px of breathing room — no more, no less. Tab-bar clearance is
    NOT touched: body padding-bottom (72px + safe-area) below the
    footer still keeps the footer clear of the fixed tab bar. */
-body.live main { padding: 24px 16px 0; }
+/* Feedback-bundle (owner, Nov 4): pages must fill the screen, on
+   phone and tablet. main stretches to at least the viewport height
+   (minus the header) as a flex column, and #view-app stretches with
+   it. Cards keep their natural height — nothing is stretched. */
+body.live main { padding: 24px 16px 0; min-height: calc(100dvh - 60px); display: flex; flex-direction: column; }
+body.live #view-app { flex: 1 1 auto; display: flex; flex-direction: column; }
+body.live #view-app > .card, body.live #view-app > .grid { width: 100%; }
+/* Design-questions (owner, Nov 5): the footer sits directly under
+   the last card (margin-top 16px), not pushed to the bottom of the
+   viewport — on Home the old margin-top:auto left a large dead gap
+   between the Recent card and the footer. Any remaining space is
+   below the footer, above the tab bar, not in the middle of the
+   page. Tab-bar clearance is NOT touched: body padding-bottom
+   (72px + safe-area) below the footer still keeps the footer clear
+   of the fixed tab bar. */
+body.live footer.foot { margin-top: 16px; }
+/* Feedback-bundle (owner, Nov 4): the sign-in card also fills the
+   page, on phone and iPad — layout only, no flow/field/button
+   change. The card stretches to fill main's height and its panel
+   centres vertically inside it, instead of a small card at the
+   top with dead space below. .hidden still wins via !important
+   when the view is not shown. */
+/* Final little things (owner, Nov 4): sign-in/up smart fill —
+   logo on top, natural-height card, useful bottom line. The old
+   stretch (card fills main, panel centred vertically) is gone: the
+   card is now its natural height, the larger OnBudget logo sits
+   above it, and a quiet tagline + read-only trust line sits below
+   it, so the page is complete top to bottom without a stretched
+   empty card or a giant padded container. Applies to sign-in and
+   sign-up/household pages; Home is untouched. */
+body.live #view-auth, body.live #view-household { flex: 0 0 auto; display: block; }
+body.live .auth-brand { text-align: center; padding: 12px 0 20px; }
+body.live .auth-brand-logo { width: 72px; height: 72px; border-radius: 50%; }
+body.live .auth-brand-name { font-family: var(--serif); font-size: 28px; font-weight: 700; margin-top: 10px; }
+body.live .auth-foot { text-align: center; color: #6b7280; font-size: 14px; line-height: 1.6; margin: 20px 0 8px; }
+body.live .auth-foot span { font-size: 13px; }
 body.live .card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px; margin-bottom: 16px; box-shadow: 0 4px 16px rgba(15, 23, 42, .06); }
-/* Send-live-bundle, card colour subtle (owner, Nov 4): the hero gets
-   a faint blue wash plus a soft shadow; every other card stays white
-   with the same soft shadow. No new hues, numbers untouched. */
-body.live .hero { background: linear-gradient(#ffffff, #eef4ff); box-shadow: 0 8px 24px rgba(47, 107, 255, .12); }
+/* Home-hero-fix (owner, Nov 4): the hero's blue wash did not
+   match the rest of the page. The hero is now white like every
+   other card, with a coloured outline instead: a 1.5px brand-blue
+   border, no blue shadow, so it has life without a coloured fill. */
+body.live .hero { background: #fff; border: 1.5px solid #2f6bff; box-shadow: none; }
+/* Feedback-bundle (owner, Nov 4): the "Or Join A Household" section
+   sat too close/claustrophobic under the Create button. It now
+   sits clearly lower, with breathing room below the button. */
+#householdChoicePanel > label { margin-top: 28px; display: block; }
+/* Feedback-bundle (owner, Nov 4): Forgot Password did not look
+   tapable and its grey was boring. It is now an underlined brand-
+   blue link with the button's full tap area. #60a5fa was considered
+   (owner's suggested light blue) but is too light for link text on
+   white, so #2f6bff is used for readability. */
+#forgotPasswordBtn { color: #2f6bff !important; text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }
 body.live .quiet-link { color: #2f6bff; font-weight: 600; font-size: 15px; text-decoration: none; }
-body.live .history-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; cursor: pointer; font-size: 16px; }
 /* Task 7 (owner, Nov 4): Funds More rows — quiet tap rows with a ›
    chevron, no ▶ triangles, no explainer sentences. Same pattern as
    the Home History row: title left, chevron right, divider between. */
@@ -916,26 +1146,66 @@ body.live .more-row:last-child { border-bottom: 0; }
    button row as Close; Close is quiet when actions are present so
    it cannot be mistaken for a fourth money action. */
 body.live .sheet-btns { display: flex; flex-wrap: wrap; gap: 10px; }
-body.live .history-row-card { cursor: pointer; }
 body.live .settings-head-line { display: flex; justify-content: space-between; align-items: center; }
 body.live .settings-head-line h2 { margin: 0; }
-body.live .settings-back-link { background: none; border: 0; color: #475569; font-weight: 600; font-size: 14px; cursor: pointer; padding: 4px 0; }
+/* Header-back-swipe (owner, Nov 4): page headers are NOT cards —
+   a header-only card is an empty card. .page-head is a plain header
+   row: no card background, border, or shadow, just the title, the
+   Back link, and (Past Weeks / Activity) one subtext line. */
+body.live .page-head { background: none; border: 0; box-shadow: none; border-radius: 0; padding: 4px 4px 12px; margin-bottom: 4px; }
+body.live .page-head .muted.small { margin: 6px 0 0; }
+/* Header-back-swipe (owner, Nov 4): every Back control is the same
+   light brand blue, bold, so it reads as tapable — the old grey
+   (#475569) looked dead. #60a5fa was considered but is ~2.5:1 on
+   white, too light for 15px link text; #3b82f6 is the brand light
+   blue that stays readable. Auth sign-up Backs and form Backs use
+   the same class now (owner: Back should ALWAYS be light blue),
+   which supersedes the old primary+tertiary pair for Back buttons
+   only — other two-button rows are unchanged. */
+body.live .back-link, body.live .settings-back-link { background: none; border: 0; color: #3b82f6; font-weight: 700; font-size: 15px; cursor: pointer; padding: 4px 0; font-family: inherit; text-align: left; }
 body.live .money-input-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
 body.live .money-prefix { font-size: 16px; font-weight: 600; color: #0f172a; }
 body.live .temp-increase-heading { margin-top: 28px; }
-body.live .temp-increase-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-body.live .temp-increase-row .money-input-row input, body.live .temp-increase-row .weeks-label select { min-width: 0; box-sizing: border-box; }
-body.live .temp-increase-row .money-input-row { margin-bottom: 12px; }
-body.live .weeks-label { font-size: 14px; font-weight: 600; color: #0f172a; }
-body.live .weeks-label select { display: block; margin-top: 4px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; font-size: 15px; }
+/* Design-questions (owner, Nov 5, item A; refined Nov 6): the $ amount
+   and Weeks fields are symmetrical — same label style, same control
+   height (46px), same border, radius and padding, same 4px gap under
+   the label, aligned baselines. The $ field is capped at 200px so the
+   Weeks field sits CLOSE beside it instead of being pushed to the far
+   edge of a stretched field, and Weeks is a narrow 64px — the biggest
+   number that ever goes in it is 4, one digit plus the dropdown
+   arrow. Clear space (12px) sits between the fields and the "Set new
+   total" button, so the field never touches the button. */
+body.live .temp-increase-row { display: flex; align-items: flex-start; gap: 12px; flex-wrap: nowrap; }
+body.live .temp-increase-row .temp-field-label { flex: 0 1 200px; min-width: 0; font-size: 14px; font-weight: 600; color: #0f172a; }
+body.live .temp-increase-row .temp-field-label.weeks-field { flex: 0 0 64px; }
+body.live .temp-increase-row .money-input-row { margin: 4px 0 0; }
+body.live .temp-increase-row .money-input-row input, body.live .temp-increase-row .weeks-field select { width: 100%; height: 46px; margin: 0; padding: 11px 12px; font-size: 16px; border: 1px solid #e5e7eb; border-radius: 12px; min-width: 0; box-sizing: border-box; }
+body.live .temp-increase-row .weeks-field select { display: block; margin-top: 4px; padding: 11px 6px; }
+body.live #addTempBtn { margin-top: 12px; }
+/* Design-questions (owner, Nov 6): invite code inline in the Account
+   & Household card — a big monospace code box, no sheet. Copy is
+   primary blue, Share is grey tertiary. */
+body.live .invite-code-box { margin: 8px 0 0; padding: 14px; border: 1.5px solid #2f6bff; border-radius: 12px; background: #fff; }
+body.live .invite-code { display: block; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 28px; font-weight: 700; letter-spacing: 4px; color: #0f172a; text-align: center; overflow-wrap: break-word; }
+body.live .invite-code-btns { margin-top: 12px; }
+/* Design-questions (owner, Nov 5, item C): household members list
+   in the Account & Household card — one row per member, name on the
+   left, role pill on the right. */
+body.live .member-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eef1f6; }
+body.live .member-row:last-child { border-bottom: 0; }
+body.live .member-name { flex: 1; min-width: 0; font-weight: 600; color: #0f172a; }
+/* Admin remove-member (Nov 8, 2026): the Remove button sits at the
+   right edge of the row, after the role pill. */
+body.live .member-row .btn-small { margin-left: auto; flex: 0 0 auto; }
 body.live .activity-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; }
 body.live .activity-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; }
 body.live .activity-dot-money { background: #2f6bff; }
 body.live .activity-dot-charity { background: #2e6b3e; }
 body.live .activity-dot-system { background: #94a3b8; }
 body.live .tx-action-row { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #e5e7eb; padding: 14px 4px; font-size: 15px; color: #0f172a; cursor: pointer; font-family: inherit; }
-body.live .trash-bin-row { margin-top: 16px; text-align: center; }
-body.live .trash-bin-btn { font-size: 20px; }
+/* P1-NEW1 (Nov 8, 2026): a disabled action row (Charity on a pending
+   charge, or for a member) is visible but dimmed and never fires. */
+body.live .tx-action-row[disabled] { opacity: .55; cursor: default; }
 body.live .grid .card { margin-bottom: 0; }
 body.live .grid, body.live #section-stats { gap: 16px; }
 body.live #section-stats .stat-card { padding: 16px; }
@@ -949,3 +1219,104 @@ body.live .tx-line1 .tx-amount.negative { color: #2e6b3e; }
 body.live .hero .big.negative { color: var(--soft-red); }
 body.live .stat-card .num.negative { color: var(--soft-red); }
 body.live #section-recent .quiet-link { color: #2f6bff; }
+
+/* Native-style-live (owner, Nov 4, 7:11 PM, mockup direction):
+   combined Home hero, bottom sheets for all popups, Past weeks
+   inside Transactions, quiet Trash link, Title Case / Today /
+   Yesterday display, breathing room, and the original-picture
+   logo as the header O and loading mark. UI only: no figure,
+   week, fund, or charity math changes here. */
+body.live #liveTopbar strong { display: inline-flex; align-items: center; gap: 0; }
+body.live .wordmark-logo { width: 1em; height: 1em; flex: 0 0 auto; vertical-align: middle; }
+body.live .loading-brand-logo { position: absolute; inset: 6px; width: 60px; height: 60px; border-radius: 50%; animation: loading-pulse 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { body.live .loading-brand-logo { animation: none; } }
+body.live .hero { padding: 28px 24px 24px; }
+body.live .hero .big { font-size: 44px; line-height: 1.1; }
+body.live .hero-spent-line { display: flex; justify-content: space-between; gap: 12px; margin: 14px 0 4px; font-size: 15px; font-weight: 600; color: #0f172a; }
+body.live .hero-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid #e5e7eb; margin-top: 14px; padding-top: 14px; }
+body.live .hero-stat { display: flex; flex-direction: column; gap: 2px; }
+body.live .hero-stat-label { font-size: 13px; color: #64748b; }
+body.live .hero-stat-value { font-size: 18px; font-weight: 700; color: #0f172a; }
+body.live .stat-card { position: relative; }
+body.live .pot-chevron { position: absolute; right: 20px; bottom: 18px; font-size: 22px; font-weight: 700; color: #2f6bff; }
+/* Home-stat-chevron fix (owner, Nov 8, 2026): the chevron is
+   absolutely positioned at the card's bottom-right, so on an expanded
+   card it overlapped the Total row's amount. The expanded detail gets
+   bottom clearance, so the chevron sits in clear space below the
+   rows instead of on top of them. Collapsed cards are untouched. */
+body.live #section-stats .stat-card.fund-expanded .fund-expand { padding-bottom: 44px; }
+body.live .trash-link-row { margin: 2px 0 10px; }
+body.live .trash-link { font-size: 14px; font-weight: 600; color: #64748b; }
+body.live .past-weeks-section { margin-top: 28px; border-top: 3px solid #e5e7eb; }
+body.live .sheet-handle { display: block; width: 40px; height: 5px; border-radius: 3px; background: #e5e7eb; margin: 2px auto 12px; }
+body.live .sheet-top { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+body.live .sheet-top h3 { flex: 1; text-align: center; margin: 0; font-family: var(--sans); }
+body.live .sheet-top-cancel { background: none; border: 0; color: #2f6bff; font-size: 15px; font-weight: 600; padding: 6px 4px; cursor: pointer; white-space: nowrap; }
+body.live .sheet-top-spacer { width: 56px; flex: 0 0 auto; }
+#sheetOverlay { padding: 0; }
+#sheetOverlay .sheet { border-radius: 20px 20px 0 0; padding: 12px 22px calc(24px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; max-height: 88dvh; box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.18); }
+#sheetOverlay .sheet-btns { justify-content: stretch; }
+#sheetOverlay .sheet-btns .btn { flex: 1 1 auto; }
+body.live .tx-sheet { padding: 0; }
+body.live .tx-sheet-card { border-radius: 20px 20px 0 0; padding: 12px 22px calc(22px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; max-height: 88dvh; box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.18); }
+body.live .add-popup-overlay { align-items: flex-end; padding: 0; }
+body.live .add-popup-card { border-radius: 20px 20px 0 0; padding: 12px 22px calc(22px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; max-height: 88dvh; box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.18); }
+body.live .tx-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.live .tx-amount { flex: 0 0 auto; }
+
+/* Merged-audit A13: the Add popup is a true bottom sheet, matching
+   the other sheets — solid background and its own scroll, with the
+   handle on the card, not on the scrim. */
+body.live .add-popup-card { background: #ffffff; overflow-y: auto; }
+/* Merged-audit A11: narrow-screen fund amounts. The two fund cards
+   stack sooner (below 420px, as before) and, at 390px and below,
+   the big numbers shrink so a four- or five-digit balance with
+   cents still fits its card; cents stay readable at 22px. */
+@media (max-width: 390px) {
+  body.live #section-stats .num, body.live .stat-card .num, body.live .fund-balance { font-size: 22px; white-space: nowrap; overflow-wrap: normal; }
+  body.live .hero .big { font-size: 36px; white-space: nowrap; overflow-wrap: normal; }
+}
+/* P2-F13 (Nov 8, 2026): the old overflow-wrap:anywhere above broke
+   five-digit amounts mid-number at 320px ("$12,345.67" split across
+   lines). Numbers now never wrap mid-number; at 360px and below the
+   hero figure also shrinks to 30px, because it shares its row with
+   the sync button and 36px still does not fit a five-digit amount
+   in the space left. */
+@media (max-width: 360px) {
+  body.live .hero .big { font-size: 30px; }
+}
+/* Merged-audit A12: negative Charity/Extra Fund pots turn red, like
+   the hero. (.stat-card .num.negative already exists.) */
+body.live .fund-balance.negative { color: var(--soft-red); }
+body.live .stat-card .num.negative { color: var(--soft-red); }
+/* Merged-audit A6: temporary highlight on a row reached from Home
+   Recent, so the exact record is visible after the jump. */
+body.live .tx-recent-highlight { outline: 2px solid #2f6bff; background: #eef4ff; }
+/* Merged-audit B3: tappable closed-week blocks on Past Weeks,
+   and the quiet page links at the top of Transactions. */
+body.live .week-block-tappable { cursor: pointer; }
+body.live .tx-page-links { display: flex; gap: 12px; margin: 0 0 8px; }
+body.live .tx-page-links .quiet-link { background: none; border: none; color: #2f6bff; font-size: 14px; padding: 4px 0; cursor: pointer; }
+/* Merged-audit B4: desktop-only "Add transaction" label next to +.
+   Phone keeps + only; desktop shows a pill button with the label. */
+body.live .add-label-desktop { display: none; }
+@media (min-width: 768px) {
+  body.live .add-plus-btn { width: auto; height: 44px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 15px; }
+  body.live .add-label-desktop { display: inline; }
+}
+
+/* Card standardization B5 (owner pick, Nov 4, 2026; mockup:
+   card-standardization-mockup.html): same heading style, same
+   chevron, same label-then-amount order on the amount cards.
+   Heading: 17px, bold 700, sans, ink, 8px below. Amount: 34px
+   bold (hero keeps 44px). Chevron: brand blue #2f6bff, 700,
+   22px, line-height 1. No figure, math, flow, or destination
+   change here — style/consistency only. Narrow-screen rules
+   (hero 36px, pots/funds 22px at <=390px) are unchanged.
+   Home-hero-fix (owner, Nov 4, later the same evening): the
+   hero title chevron was removed entirely — it did nothing when
+   tapped, so it did not belong there. Pot/fund chevrons remain. */
+body.live .hero-title { font-family: var(--sans); font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin: 0 0 8px; }
+body.live #section-stats .stat-card .kicker { font-family: var(--sans); font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin-bottom: 8px; }
+body.live .pot-chevron { color: #2f6bff; font-weight: 700; font-size: 22px; line-height: 1; }
+body.live .fund-balance-head h2 { font-family: var(--sans); font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin: 0 0 8px; }

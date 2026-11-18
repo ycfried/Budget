@@ -12,12 +12,9 @@ const html = readFileSync(new URL('../live.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 
-test('version pins: styles v35, live.js v45', () => {
-  assert.match(html, /styles\.css\?v=35/);
-  assert.match(html, /live\.js\?v=45/);
-});
-
-// ---- Task 1: removed sentences are gone ----
+test('version pins: styles v53, live.js v69', () => {
+  assert.match(html, /styles\.css\?v=53/);
+  assert.match(html, /live\.js\?v=69/);});// ---- Task 1: removed sentences are gone ----
 const REMOVED = [
   'Weekly summaries below are the financial record',
   'Closed weeks, read-only — week start, surplus, debt carried',
@@ -70,7 +67,7 @@ test('Task 1: period line empty with no filter; count line only when meaningful'
 
 // ---- Task 2: field spacing ----
 test('Task 2: every adjacent pair has a visible gap, own border, no overflow', () => {
-  assert.match(css, /#section-history-filter \.form-row-2 \{[^}]*gap: 16px;/);
+  assert.match(css, /#section-history-filter \.form-row-2 \{[^}]*gap: 12px;/);
   assert.match(css, /#section-history-filter \.form-row-2 input \{[^}]*border: 1px solid #e5e7eb; background: #fff;/);
   assert.match(css, /\.form-row-2 \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 12px;/);
   assert.match(css, /\.form-row-3 \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 12px;/);
@@ -128,7 +125,7 @@ test('Task 4: refresh never scrolls to top; dedupe repro path is covered', () =>
   // Dedupe actions still do exactly what they did — merge/exclude + refresh — only scroll changes.
   assert.match(js, /p_action: 'merge'[\s\S]*?else await refresh\(\)/s);
   assert.match(js, /p_action: 'separate'[\s\S]*?else await refresh\(\)/s);
-  assert.match(js, /'Same purchase', 'Keep one transaction and exclude the other from counts\? Neither row is deleted\.'/);
+  assert.match(js, /'Same Purchase', 'Keep one transaction and exclude the other from counts\? Neither row is deleted\.'/);
   // Tab taps still scroll to top (intentional navigation, not a refresh jump).
   assert.match(js, /showView\(b\.dataset\.view, \{ clearMessages: true \}\)/);
 });
@@ -146,13 +143,17 @@ test('Task 5: resolveRestoredView / sub-view / scroll key', () => {
   assert.equal(scrollStorageKey('money'), 'hb-scroll-money');
 });
 
-test('Task 5: live.js persists every view incl. Settings, plus scroll, plus Trash sub-view', () => {
+test('Task 5: live.js persists every view incl. Settings, plus scroll (Trash is now its own view, not a sub-view)', () => {
   assert.equal(js.includes("if (name !== 'settings') localStorage.setItem('hb-view', name)"), false);
   assert.match(js, /localStorage\.setItem\(VIEW_STORAGE_KEY, name\)/);
   assert.match(js, /localStorage\.setItem\(PREV_VIEW_STORAGE_KEY, previousView\)/);
   assert.match(js, /window\.addEventListener\('beforeunload'/);
-  assert.match(js, /localStorage\.setItem\('hb-view-sub', nowHidden \? '' : 'trash'\)/);
-  assert.match(js, /resolveRestoredSubView\(currentView, localStorage\.getItem\('hb-view-sub'\), household\?\.role\)/);
+  // Design-questions (owner, Nov 5, item D): Trash moved from an
+  // inline toggle inside Transactions to its own page — no Trash
+  // sub-view is persisted or restored any more.
+  assert.equal(js.includes("localStorage.setItem('hb-view-sub'"), false);
+  assert.equal(js.includes('resolveRestoredSubView(currentView'), false);
+  assert.match(js, /trash: \['section-trash-head', 'section-trash'\]/);
   assert.match(js, /const saved = Number\(localStorage\.getItem\(scrollStorageKey\(currentView\)\)\)/);
   // Auth / household screens still come first in boot().
   assert.match(js, /if \(!session\) \{ await show\('auth'\); return; \}/);
@@ -161,7 +162,10 @@ test('Task 5: live.js persists every view incl. Settings, plus scroll, plus Tras
 
 // ---- Task 6: footer never shows Updating ----
 test('Task 6: footer is the last-sync line only, in every state', () => {
-  assert.match(html, /OnBudget · Last bank sync <span id="lastSync">—<\/span>\s*\n<\/footer>/);
+  // P2-C5 (Nov 9, 2026): the footer may also carry the hidden
+  // syncStaleWarn span — it is part of the same last-sync line (hidden
+  // unless scheduled sync is stale) and adds no other content.
+  assert.match(html, /OnBudget · Last bank sync <span id="lastSync">—<\/span>(<span id="syncStaleWarn" class="sync-stale-warn" hidden>[^<]*<\/span>)?\s*\n<\/footer>/);
   assert.equal(html.includes('refreshState'), false);
   assert.equal(js.includes('refreshState'), false);
   assert.equal(js.includes("textContent = 'Updating"), false);
@@ -216,30 +220,29 @@ test('Task 7: one quiet More card with › rows, no triangles', () => {
 });
 
 test('Task 7: Review count shows only when something needs review', () => {
-  assert.match(js, /reviewNeedsCount = \(heldRows2 \?\? \[\]\)\.filter\(\(h\) => h\.status === 'pending'\)\.length;/);
+  assert.match(js, /reviewNeedsCount = \(heldRows2 \?\? \[\]\)\.filter\(\(h\) => h\.status === 'held'\)\.length;/);
   assert.match(js, /reviewNeedsCount \+= \(candRows \?\? \[\]\)\.length;/);
   assert.match(js, /lbl\.textContent = reviewNeedsCount > 0 \? `Review \(\$\{reviewNeedsCount\}\)` : 'Review';/);
   // Restorations (already posted history) do not feed the count.
   assert.equal(js.includes('restRows') && js.includes('reviewNeedsCount = (restRows'), false);
 });
 
-test('Task 7: three fund actions live in the Extra Fund sheet, original order/treatments/gating', () => {
-  const sheet = js.slice(js.indexOf('async function openFundSheet'), js.indexOf(": [{ label: 'Ask for fund money'"));
-  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add money', 'Use fund money', 'Ask for fund money']);
+test('Task 7: three fund actions live in the expanded Extra Fund card, original order/treatments/gating', () => {
+  const sheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request Money'"));
+  assert.deepEqual([...sheet.matchAll(/label: '([^']+)'/g)].map((m) => m[1]), ['Add Money', 'Spend from Fund', 'Request Money']);
   assert.deepEqual([...sheet.matchAll(/btnClass: '([^']+)'/g)].map((m) => m[1]), ['btn btn-primary', 'btn', 'btn btn-tertiary']);
   assert.deepEqual([...sheet.matchAll(/result: '([^']+)'/g)].map((m) => m[1]), ['add', 'use', 'ask']);
-  // Members see Ask only, in the same tertiary treatment.
-  assert.ok(js.includes(": [{ label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary' }]"));
+  // Members see Request only, in the same tertiary treatment.
+  assert.ok(js.includes(": [{ label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary' }]"));
   // Choosing an action opens the same form as the old card buttons did.
-  assert.match(js, /if \(result === 'add'\) setFundForm\('add'\);/);
-  assert.match(js, /else if \(result === 'use'\) setFundForm\('use'\);/);
-  assert.match(js, /else if \(result === 'ask'\) setFundForm\('ask'\);/);
-  // Funds panel gets actions; Home stat card stays read-only.
-  assert.ok(js.includes('await openFundSheet(true)'));
-  assert.ok(js.includes('await openFundSheet(false)'));
-  // Charity Record income stays in the Charity sheet, not in More.
-  assert.match(js, /extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null/);
-  assert.equal(html.slice(html.indexOf('id="section-fund-more"'), html.indexOf('id="section-fund-activity-more"')).includes('Record income'), false);
+  assert.match(js, /setFundForm\(result === 'record-income' \? 'income' : result\)/);
+  // Both surfaces expand with the same actions: the Funds panel and
+  // the Home stat card share one toggle (no read-only Home variant).
+  assert.match(js, /document\.querySelectorAll\('\[data-fund-card\], \[data-home-card\]'\)/);
+  assert.equal(js.includes('openFundSheet'), false);
+  // Charity Record income stays in the Charity expansion, not in More.
+  assert.match(js, /label: 'Record Income', result: 'record-income', btnClass: 'btn btn-primary'/);
+  assert.equal(html.slice(html.indexOf('id="section-fund-more"'), html.indexOf('id="section-fund-activity-more"')).includes('Record Income'), false);
   // More rows gate by role exactly as the old content did.
   assert.match(js, /setBtn\('moreFundActivityBtn', !!isAdmin\)/);
   assert.match(js, /setBtn\('moreReviewBtn', !!isAdmin\)/);

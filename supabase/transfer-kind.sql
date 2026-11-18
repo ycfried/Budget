@@ -13,13 +13,29 @@
 -- week math in engine.mjs — but the database CHECK constraint still
 -- rejects the new kind, so the constraint must be extended first.
 --
+-- NEVER RUN §1 (R4, Nov 9, 2026 — same treatment as
+-- supabase/create-household-name.sql, which is marked SUPERSEDED,
+-- NEVER APPLY, and as r13-charity.sql §1). §1 drops the live
+-- transactions kind constraint and re-adds a 7-kind list (missing
+-- 'charity' and 'income'): running it today would fail outright if
+-- any charity/income rows exist, or silently narrow the live 8-kind
+-- constraint. The live 8-kind constraint is owned by
+-- supabase/refund-classification-income-kind.sql (applied live
+-- Nov 9, 2026, step 3). This file itself was never applied live —
+-- how 'transfer' reached the live 8-kind list is not traced in the
+-- repo (R4 §6 open micro-question) — and its §1 must stay unrun.
+-- The "Re-running is safe" note below is stale as written: it was
+-- true only while the live constraint matched this file's 7-kind
+-- list, which it no longer does.
+--
 -- Pattern: same drop/re-add as supabase/payment-kind.sql. The original
 -- schema.sql check constraint is anonymous, so its generated name is
 -- looked up from pg_constraint rather than guessed; the lookup filters
 -- conrelid = 'transactions' so the savings_ledger kind check (which
 -- also mentions transfer_in/withdrawal/interest/adjustment) is never
--- touched. Re-running is safe: if the constraint already includes
--- 'transfer', the DO block drops it and the ADD restores the same list.
+-- touched. Re-running is NOT safe any more (R4, Nov 9, 2026): the
+-- live constraint is now 8-kind, so the ADD below would narrow it
+-- to this file's 7-kind list — see the NEVER RUN §1 banner above.
 --
 -- NOTE: if payment-kind.sql was never applied, the live constraint may
 -- still be the original ('charge','refund','fund_charge'). This file

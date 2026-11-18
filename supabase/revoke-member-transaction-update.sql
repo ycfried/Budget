@@ -1,0 +1,31 @@
+-- =====================================================================
+-- Revoke the member UPDATE grant on transactions (P1-B9, Nov 8, 2026).
+-- PREPARED FOR OWNER-APPROVED APPLY — NOT APPLIED BY THIS BRANCH.
+--
+-- WHY: supabase/fix-transactions-upsert.sql (Nov 1, 2026, evening)
+-- granted UPDATE on transactions to authenticated plus a "members
+-- update own transactions" policy, so a Plaid upsert would not be
+-- refused by RLS. That grant lets ANY household member rewrite ANY
+-- transaction row directly (kind, amount, state), bypassing the
+-- admin-only mutation RPCs — the exact hole 02-rls-hardening.sql
+-- had closed ("which revoked direct member UPDATE on transactions")
+-- and S1 migration 05 was written to replace. No live path needs
+-- the grant today: the client only INSERTs transactions (CSV import,
+-- manual add) and every Edge Function writes through the service-role
+-- client, which bypasses RLS.
+--
+-- APPLY ONLY IF THE PROBE FINDS THE GRANT (owner approval):
+--   select grantee, privilege_type
+--     from information_schema.table_privileges
+--    where table_name = 'transactions' and privilege_type = 'UPDATE';
+--   -- expected after this file: no 'authenticated' row.
+--   select policyname from pg_policies
+--    where tablename = 'transactions' and policyname = 'members update own transactions';
+--   -- expected after this file: no row.
+-- If the probe shows no member UPDATE grant, this file is already a
+-- no-op — do not apply it blind. After applying, retest on a
+-- synthetic household: CSV import, manual add, and a plaid-sync run.
+-- =====================================================================
+
+revoke update on transactions from authenticated;
+drop policy if exists "members update own transactions" on transactions;

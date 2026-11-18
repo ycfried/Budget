@@ -25,8 +25,8 @@ const sheetFn = js.slice(
 );
 assert.ok(sheetFn.length > 0, 'openWeeklySheet body found');
 const visible = sheetFn.slice(
-  sheetFn.indexOf('const weeklyRows = ['),
-  sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')),
+  sheetFn.indexOf('const weeklyRows = [];'),
+  sheetFn.indexOf("if (unlinkedExcess > 0) weeklyRows.push"),
 );
 
 const menuHead = html.slice(
@@ -38,15 +38,20 @@ const menuRows = html.slice(
   html.indexOf('</div>', html.indexOf('<div class="profile-menu-rows">')),
 );
 
-test('Weekly sheet rows are exactly Allowance, Spent, Balance', () => {
+test('Weekly sheet rows are Allowance, Spent, Balance — plus reconciliation rows when debt/temp changes the number', () => {
   // Send-live-bundle supersedes Left-only: Allowance is base room +
   // temp (so Allowance - Spent = Balance), Spent is the week total,
-  // Balance is availableCents (old Left).
-  const labels = [...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ['Allowance', 'Spent', 'Balance']);
-  assert.ok(visible.includes("['Balance', formatCents(w.availableCents)]"));
-  assert.ok(visible.includes("['Spent', formatCents(w.chargesCents)]"));
-  assert.match(sheetFn, /extraAction: \{ label: 'Show transactions', result: 'show-transactions' \}/);
+  // Balance is availableCents (old Left). R6-NEW-P1-1: Base
+  // allowance / Temporary increases / Carried debt lines appear
+  // above the three base rows exactly when debt or temp changes
+  // the number, so a $0 allowance explains itself.
+  // Temp-override reconciliation (Nov 11, 2026): a lower override
+  // shows a Temporary decrease row in the same position.
+  const labels = [...visible.matchAll(/weeklyRows\.push\(\['([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(labels, ['Base allowance', 'Temporary increases', 'Temporary decrease', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
+  assert.ok(visible.includes("weeklyRows.push(['Balance', formatCents(w.availableCents)])"));
+  assert.ok(visible.includes("weeklyRows.push(['Spent', formatCents(w.chargesCents)])"));
+  assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
 });
 
@@ -167,7 +172,7 @@ test('name step (not the sign-in card) has the Name input', () => {
   assert.equal(signinPanel.includes('id="authName"'), false, 'no Name input on the sign-in panel');
   const namePanel = html.slice(html.indexOf('id="authNamePanel"'), html.indexOf('id="view-household"'));
   assert.ok(namePanel.includes('id="authName"'), 'Name input is in the name step');
-  assert.ok(namePanel.includes('Choose your name'), 'name step is titled');
+  assert.ok(namePanel.includes('Choose Your Name'), 'name step is Title Cased');
   assert.ok(namePanel.includes('id="authNameBackBtn"'), 'name step has a Back button');
 });
 
@@ -186,7 +191,7 @@ test('sign-up with an empty name is refused before signUp is called', () => {
   assert.match(signUpFn, /if \(!signName\?\.value\.trim\(\)\) \{ fail\('Enter a name for your new account\.', signName\); return; \}/);
   assert.ok(signUpFn.indexOf("fail('Enter a name for your new account.'") < signUpFn.indexOf('supabase.auth.signUp('));
   // fail() writes the name step's message area and focuses the field.
-  assert.match(signUpFn, /const fail = \(msg, field\) => \{ \$\('authNameMsg'\)\.textContent = msg; if \(field\) field\.focus\(\)/);
+  assert.match(signUpFn, /const fail = \(msg, field\) => \{ setResultMsg\('authNameMsg', msg, true\); if \(field\) field\.focus\(\)/);
 });
 
 test('sign-up with a name passes full_name in metadata', () => {
@@ -225,25 +230,29 @@ test('tertiary buttons are grey fill with ink text, distinct from primary and se
 });
 
 test('no two adjacent buttons share a treatment after the tertiary change', () => {
-  // Bank card (the reported row): Connect primary, Sync secondary,
-  // Enable automatic sync tertiary-grey — all three distinct.
+  // Bank card (the reported row, settings-bank-buttons Nov 4): two
+  // shortened buttons, Connect primary and Sync tertiary-grey, plus
+  // the Automatic Sync switch on its own row below them.
   const bank = html.slice(html.indexOf('id="section-bank"'), html.indexOf('id="bankMsg"'));
   const bankBtns = [...bank.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());
-  assert.deepEqual(bankBtns, ['btn-primary', '', 'btn-tertiary']);
+  assert.deepEqual(bankBtns, ['btn-primary', 'btn-tertiary']);
+  assert.match(bank, /id="autoSyncSwitch"[^>]*role="switch"/);
   // Filters sheet: Apply primary, Reset secondary, Cancel tertiary.
   const sheet = html.slice(html.indexOf('id="txFiltersSheet"'), html.indexOf('id="txCount"'));
   const sheetBtns = [...sheet.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());
   assert.ok(sheetBtns.includes('btn-primary'));
   assert.ok(sheetBtns.includes('btn-tertiary'));
   // Funds actions: primary, secondary, tertiary in order (Record
-  // income left the row for the Charity sheet, funds-actions-three).
-  // Task 7: fund actions live in the Extra Fund sheet (openFundSheet).
-  const fundSheet = js.slice(js.indexOf('async function openFundSheet'), js.indexOf(": [{ label: 'Ask for fund money'"));
+  // income left the row for the Charity expansion, funds-actions-three).
+  // Funds expand-in-place (owner, Nov 6): fund actions live in
+  // fundExpandActions, rendered inside the expanded card.
+  const fundSheet = js.slice(js.indexOf('function fundExpandActions'), js.indexOf(": [{ label: 'Request Money'"));
   const fundBtns = [...fundSheet.matchAll(/btnClass: 'btn([^']*)'/g)].map((m) => m[1].trim());
   assert.deepEqual(fundBtns, ['btn-primary', '', 'btn-tertiary']);
-  // Settings Account card: Share only (audit-fixes-morning B2
-  // deleted the duplicate Change password button).
+  // Settings Account card: invite Copy (primary blue) + Share
+  // (grey tertiary) in the inline code box (owner, Nov 6). The old
+  // "Share invite code" button and its sheet are gone.
   const acct = html.slice(html.indexOf('id="section-settings-account"'), html.indexOf('id="settingsDeleteBtn"'));
   const acctBtns = [...acct.matchAll(/<button[^>]*class="btn([^"]*)"/g)].map((m) => m[1].trim());
-  assert.deepEqual(acctBtns, ['']);
+  assert.deepEqual(acctBtns, ['btn-primary', 'btn-tertiary']);
 });

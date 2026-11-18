@@ -94,6 +94,15 @@ create policy "members write own fund ledger"
 -- Both refuse when amount > available UNLESS an override reason is
 -- given, in which case the entry is kind 'override_allocation' and the
 -- reason is logged. The fund may go negative ONLY via an override.
+--
+-- DO NOT RE-APPLY THE approve_and_allocate DEFINITION BELOW
+-- (P1-B1, Nov 8, 2026). It is the WEAK version: no household-row
+-- lock, no over-approval check, no linked-transaction household
+-- check, it OVERWRITES fund_allocation_cents instead of
+-- accumulating, and it records no decided_by / decided_at /
+-- remainder_cents. The CANONICAL definition is
+-- supabase/approve-ambiguity-fix.sql. Apply that file instead.
+-- (The allocate_fund definition below is unaffected by this banner.)
 
 create or replace function public.approve_and_allocate(p_request_id uuid, p_amount_cents integer, p_override_reason text)
 returns void

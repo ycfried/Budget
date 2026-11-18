@@ -26,7 +26,7 @@ const historyFilter = html.slice(html.indexOf('id="section-history-filter"'), ht
 assert.ok(historyFilter.length > 0, 'history filter section found');
 
 test('footer gap is 32px: card margin 16 + main bottom 0 + footer top 16', () => {
-  assert.match(css, /body\.live main \{ padding: 24px 16px 0; \}/, 'main bottom padding is 0');
+  assert.match(css, /body\.live main \{ padding: 24px 16px 0;[^}]*\}/, 'main bottom padding is still 0 (min-height/flex added, gap arithmetic unchanged)');
   assert.match(css, /body\.live \.card \{[^}]*margin-bottom: 16px/, 'card margin-bottom stays 16');
   assert.match(css, /\.foot \{ text-align: center; padding: 16px; \}/, 'footer padding stays 16 (top 16)');
 });
@@ -55,7 +55,11 @@ test('scroll lock is called on every overlay open and close path', () => {
 });
 
 test('overlay cards scroll internally and do not chain-scroll the page', () => {
-  assert.match(css, /#sheetOverlay \.sheet \{[^}]*max-height: calc\(100dvh - 32px\); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;/, 'generic sheet scrolls internally');
+  // Native-style-live: the appended bottom-sheet rule caps the sheet
+  // at 88dvh; the original rule's internal-scroll properties still
+  // apply (later rules only override the properties they set).
+  assert.match(css, /#sheetOverlay \.sheet \{[^}]*max-height: 88dvh/, 'generic bottom sheet height capped');
+  assert.match(css, /#sheetOverlay \.sheet \{[^}]*overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;/, 'generic sheet scrolls internally');
   assert.match(css, /body\.live \.tx-sheet-card \{[^}]*overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;/, 'filters card scrolls internally');
   assert.match(css, /body\.live \.add-popup-overlay \{[^}]*overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;/, 'add popup backdrop contains scroll');
 });
@@ -66,8 +70,9 @@ test('filters From/To pair cannot overlap: minmax tracks, not bare 1fr', () => {
   assert.match(css, /body\.live \.tx-sheet-pair input \{ width: 100%; box-sizing: border-box; min-width: 0; \}/);
 });
 
-test('history From/To sit side by side with short labels', () => {
-  assert.match(css, /#section-history-filter \.form-row-2 \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 16px; \}/, 'history pair exempt from phone stacking');
+test('history From/To sit side by side with short labels (stacking only at <=360px)', () => {
+  assert.match(css, /#section-history-filter \.form-row-2 \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); gap: 12px; \}/, 'history pair side by side with a real gap');
+  assert.match(css, /@media \(max-width: 360px\) \{\s*#section-history-filter \.form-row-2 \{ grid-template-columns: 1fr; \}/, 'history pair stacks only where two date inputs cannot fit');
   const pair = historyFilter.slice(historyFilter.indexOf('form-row-2'), historyFilter.indexOf('btn-row'));
   assert.ok(pair.includes('id="historyFromInput"') && pair.includes('id="historyToInput"'), 'both date inputs share the one pair row');
   assert.ok(historyFilter.includes('<label>From'), 'visible label is From, not From date');
@@ -92,7 +97,7 @@ test('profile intro, Email h3, and email explainer are gone; field and button st
   assert.equal(profile.includes('Changing your email sends a confirmation'), false, 'email explainer deleted');
   assert.ok(profile.includes('class="profile-email-label">Email'), 'Email field label present');
   assert.ok(profile.includes('id="profileEmailInput"'), 'Email input present');
-  assert.ok(profile.includes('id="saveProfileEmailBtn" class="btn"'), 'Save email button present with treatment unchanged');
+  assert.ok(profile.includes('id="saveProfileEmailBtn" class="btn btn-primary"'), 'Save Email button now primary blue, matching Save Name (final little things)');
 });
 
 test('password note moved out of the profile card into the change-password sheet', () => {
@@ -104,13 +109,14 @@ test('password note moved out of the profile card into the change-password sheet
 
 test('profile blocks share even 20px section spacing, still one card', () => {
   assert.match(css, /#section-profile \.profile-email-label \{ display: block; margin-top: 20px; \}/, 'Email label spacing');
-  assert.match(css, /#section-profile h3 \{ margin-top: 20px; \}/, 'Password h3 spacing matches');
+  assert.match(css, /#section-profile h3 \{ font-size: 14px; font-weight: 600; margin-top: 20px; \}/, 'Password h3 matches the Name/Email label size (14px/600)');
   assert.equal(profile.split('class="card"').length, 2, 'exactly one card-class occurrence in the slice — the trailing bank div fragment at the slice boundary — so profile is still one card, not split');
 });
 
 test('settings header and back button untouched', () => {
   assert.ok(html.includes('id="settingsBackBtn"'), 'Settings back button present');
-  assert.ok(html.includes('<h2>Settings</h2>'), 'Settings heading present');
+  // Merged-audit A9: Settings heading is focusable so focus can move to it when Settings opens.
+  assert.ok(html.includes('<h2 tabindex="-1">Settings</h2>'), 'Settings heading present and focusable');
 });
 
 test('bank card heading and sentence are the short versions, nothing else retitled', () => {
@@ -122,11 +128,10 @@ test('bank card heading and sentence are the short versions, nothing else retitl
   assert.ok(html.includes('<h2>Profile</h2>'), 'Profile heading untouched');
   // Send-live-bundle: the separate History card is gone; History
   // is one tappable row on Home instead.
-  assert.ok(html.includes('id="section-history-row"'), 'History row present');
+  assert.equal(html.includes('id="section-history-row"'), false, 'Home History row removed (Past weeks live inside Transactions)');
   assert.equal(html.includes('id="section-history-link"'), false, 'separate History card gone');
 });
 
-test('version pins: styles v35, live.js v45', () => {
-  assert.match(html, /styles\.css\?v=35/);
-  assert.match(html, /live\.js\?v=45/);
-});
+test('version pins: styles v53, live.js v69', () => {
+  assert.match(html, /styles\.css\?v=53/);
+  assert.match(html, /live\.js\?v=69/);});

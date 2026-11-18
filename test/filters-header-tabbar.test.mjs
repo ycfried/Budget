@@ -16,12 +16,12 @@ const js = readFileSync(new URL('../live.js', import.meta.url), 'utf8');
 const headRow = html.slice(html.indexOf('tx-head-row'), html.indexOf('tx-search-row'));
 const searchRow = html.slice(html.indexOf('tx-search-row'), html.indexOf('txActiveFilters'));
 
-test('Filters button is inside the header row, immediately before the + button', () => {
+test('Add button is inside the header row, immediately before the Filters button (P2-F4 swap, owner Nov 8)', () => {
   assert.ok(headRow.includes('id="txFiltersToggle"'), 'Filters button is in the head row');
   assert.ok(headRow.includes('id="txAddBtn"'), '+ button is in the head row');
   assert.ok(
-    headRow.indexOf('id="txFiltersToggle"') < headRow.indexOf('id="txAddBtn"'),
-    'Filters comes before + in the header row',
+    headRow.indexOf('id="txAddBtn"') < headRow.indexOf('id="txFiltersToggle"'),
+    '+ comes before Filters in the header row',
   );
   assert.ok(headRow.includes('class="tx-head-actions"'), 'header buttons are grouped at the right');
   // Fund-sheet-button-rule (owner Nov 4): the header is a two-button

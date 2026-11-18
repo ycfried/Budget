@@ -1,4 +1,12 @@
 -- Household Budget — plaid_items grants fix (Nov 1, 2026, evening).
+--
+-- DO NOT RE-APPLY THIS FILE (P1-B9, Nov 8, 2026). The INSERT +
+-- UPDATE grants below let members write plaid_items directly,
+-- including overwriting the encrypted access token (audit P1-16).
+-- 03-plaid-vault.sql revoked member SELECT and 07-service-rpc-access.sql
+-- revoked member INSERT/UPDATE; all live writes go through the
+-- service-role Edge Functions. Re-applying this file reopens the
+-- ciphertext-overwrite risk.
 -- WHY: the reconnect with the fixed exchange finally surfaced the real
 -- error: "permission denied for table plaid_items". The original
 -- fix-grants.sql granted only SELECT on plaid_items, and the

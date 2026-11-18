@@ -83,7 +83,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
-  chargeContribution,
+  chargeContribution, linkedRefundNormalPortionCents,
+  restorationDebtCutsAfterClose,
+  debtRulePayment, debtPaymentsAfterClose, debtAdjustmentsAfterClose,
 } from './engine.mjs';
 import {
   computeRestorationTotal, computeIncrementalRestoration,
@@ -93,6 +95,35 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+
+// B6 (Nov 9, 2026): the old .limit(10000) silently dropped rows past
+// 10,000 — and a single PostgREST response is capped at 1000 rows by
+// default, so the cap could bite far earlier, on whichever rows the
+// unordered query happened to return. Page through the whole
+// household history in 1000-row pages, ordered so pages are stable;
+// behaviour is identical below the old cap. withLinkage=false is the
+// pre-migration fallback (no original_purchase_id column yet).
+async function fetchHouseholdTxns(
+  client: any, householdId: string, withLinkage: boolean,
+): Promise<{ rows: any[]; error: any }> {
+  const cols = withLinkage
+    ? 'id, date, amount_cents, kind, state, excluded, fund_allocation_cents, original_purchase_id, created_at'
+    : 'id, date, amount_cents, kind, state, excluded, fund_allocation_cents, created_at';
+  const rows: any[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client.from('transactions')
+      .select(cols)
+      .eq('household_id', householdId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) return { rows, error };
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < PAGE) return { rows, error: null };
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -142,23 +173,20 @@ Deno.serve(async (req) => {
     // except the explicitly optional restoration tables). ----
     let txns: any[] = [];
     let hasLinkage = true;
-    const txRes = await supabase
-      .from('transactions')
-      .select('id, date, amount_cents, kind, state, excluded, fund_allocation_cents, original_purchase_id, created_at')
-      .eq('household_id', householdId)
-      .limit(10000);
+    const txRes = await fetchHouseholdTxns(supabase, householdId, true);
     if (txRes.error) {
-      const retry = await supabase
-        .from('transactions')
-        .select('id, date, amount_cents, kind, state, excluded, fund_allocation_cents, created_at')
-        .eq('household_id', householdId)
-        .limit(10000);
+      const retry = await fetchHouseholdTxns(supabase, householdId, false);
       if (retry.error) return json({ error: 'transaction read failed' }, 500);
-      txns = (retry.data ?? []).map((t: any) => ({ ...t, original_purchase_id: null }));
+      txns = retry.rows.map((t: any) => ({ ...t, original_purchase_id: null }));
       hasLinkage = false;
     } else {
-      txns = txRes.data ?? [];
+      txns = txRes.rows;
     }
+    // Merged-audit B6 floor: a slipped pre-November row can never
+    // stamp an old week or chain debt into November. The app starts
+    // November 2026; rows before 2026-11-01 are dropped from this
+    // run's walk (plaid-sync drops them at pull time too).
+    txns = txns.filter((t: any) => (t.date ?? '') >= '2026-11-01');
     const { data: temps, error: tempErr } = await supabase
       .from('temp_increases')
       .select('week_start, amount_cents')
@@ -185,7 +213,7 @@ Deno.serve(async (req) => {
     let closes: any[] = [];
     const closesRes = await supabase
       .from('week_closes')
-      .select('week_start, surplus_cents, outgoing_debt_cents, late_adjustment_cents, base_allowance_cents, temp_increase_cents, created_at')
+      .select('week_start, surplus_cents, outgoing_debt_cents, late_adjustment_cents, base_allowance_cents, temp_increase_cents, debt_payment_cents, created_at')
       .eq('household_id', householdId);
     if (closesRes.error) {
       const retry = await supabase
@@ -193,7 +221,7 @@ Deno.serve(async (req) => {
         .select('week_start, surplus_cents, outgoing_debt_cents, created_at')
         .eq('household_id', householdId);
       if (retry.error) return json({ error: 'week close read failed' }, 500);
-      closes = (retry.data ?? []).map((c: any) => ({ ...c, late_adjustment_cents: 0, base_allowance_cents: null, temp_increase_cents: null }));
+      closes = (retry.data ?? []).map((c: any) => ({ ...c, late_adjustment_cents: 0, base_allowance_cents: null, temp_increase_cents: null, debt_payment_cents: null }));
     } else {
       closes = closesRes.data ?? [];
     }
@@ -239,6 +267,70 @@ Deno.serve(async (req) => {
       if (!heldRes.error) heldRows = heldRes.data ?? [];
     }
 
+    // Debt repayment rule (Carried Debt fund, build 29): read once
+    // for the whole walk, same fallbacks as compute-week. A missing
+    // table (the SQL not applied yet) means the OLD behaviour for
+    // the entire walk — no rule, no surplus-to-debt step. A missing
+    // ROW means the default: 25% of the base allowance.
+    let debtRule: { mode: string; percentBp?: number; fixedCents?: number } | null = null;
+    let debtRuleMissing = false;
+    const ruleRes = await supabase
+      .from('debt_settings')
+      .select('mode, percent_bp, fixed_cents')
+      .eq('household_id', householdId)
+      .maybeSingle();
+    if (ruleRes.error) {
+      debtRuleMissing = true;
+    } else if (ruleRes.data) {
+      debtRule = { mode: ruleRes.data.mode, percentBp: ruleRes.data.percent_bp, fixedCents: ruleRes.data.fixed_cents };
+    } else {
+      debtRule = { mode: 'percent', percentBp: 2500 };
+    }
+
+    // Debt payments (Pay from Extra Fund / Clear rows) posted
+    // after a close, keyed by week — they reduce the incoming debt
+    // for later weeks in the walk. 'surplus' rows are NOT in this
+    // map: they are already inside the close that recorded them
+    // (see engine.mjs debtPaymentsAfterClose). A missing table
+    // means no payments. The raw rows are kept too: the restoration
+    // phase needs them for the same window helper.
+    const debtPaymentsByWeek = new Map<string, number>();
+    let debtPaymentRows: any[] = [];
+    const payRes = await supabase
+      .from('debt_payments')
+      .select('week_start, amount_cents, source')
+      .eq('household_id', householdId);
+    if (!payRes.error) {
+      debtPaymentRows = payRes.data ?? [];
+      for (const p of debtPaymentRows) {
+        if (p.source === 'extra_fund' || p.source === 'clear') {
+          debtPaymentsByWeek.set(p.week_start, (debtPaymentsByWeek.get(p.week_start) ?? 0) + p.amount_cents);
+        }
+      }
+    }
+
+    // Manual debt adjustments (Add / Set Carried Debt, build 41),
+    // keyed by week like the payments: each adjustment enters the
+    // walk's debt chain exactly once, in its own week, then flows
+    // into the stored close like any other debt. The amount is a
+    // SIGNED delta (+ = added, − = a Set below the balance), so
+    // there is no source filter — every adjustment counts. A
+    // missing table means no adjustments. The raw rows are kept
+    // too: the restoration phase needs them for the same window
+    // helper.
+    const debtAdjustmentsByWeek = new Map<string, number>();
+    let debtAdjustmentRows: any[] = [];
+    const adjRes = await supabase
+      .from('debt_adjustments')
+      .select('week_start, amount_cents')
+      .eq('household_id', householdId);
+    if (!adjRes.error) {
+      debtAdjustmentRows = adjRes.data ?? [];
+      for (const a of debtAdjustmentRows) {
+        debtAdjustmentsByWeek.set(a.week_start, (debtAdjustmentsByWeek.get(a.week_start) ?? 0) + a.amount_cents);
+      }
+    }
+
     const today = nyTodayString();
     const currentWeekStart = weekStartOf(today);
     const lastCompleted = addDays(currentWeekStart, -7);
@@ -253,22 +345,68 @@ Deno.serve(async (req) => {
     const inWeek = (t: any, ws: string) => t.date >= ws && t.date < addDays(ws, 7);
     const ownCharges = (ws: string) =>
       txns.filter((t: any) => inWeek(t, ws)).reduce((s: number, t: any) => s + chargeContribution(t), 0);
-    const linkedPostedToWeek = (ws: string) => {
-      const purchaseIds = new Set(
-        txns.filter((t: any) => inWeek(t, ws) && (t.kind === 'charge' || t.kind === 'fund_charge')).map((t: any) => t.id),
+    // N1 Option A — fund-first, counted once (Nov 5, 2026): the
+    // NORMAL portion of each linked refund for purchases in this
+    // week, aggregated per purchase from the cumulative refund
+    // total (see engine.mjs linkedRefundNormalPortionCents). The
+    // fund portion is credited to the fund by refund restoration,
+    // never by this walk. Returns a Map purchaseId -> normal
+    // portion (positive cents) so the restoration simulation can
+    // add back exactly what this walk netted for one purchase.
+    const linkedNormalPortionByPurchase = (ws: string) => {
+      const purchaseById = new Map(
+        txns.filter((t: any) => inWeek(t, ws) && (t.kind === 'charge' || t.kind === 'fund_charge')).map((t: any) => [t.id, t]),
       );
-      return txns
-        .filter((t: any) => postedRefund(t) && t.original_purchase_id && purchaseIds.has(t.original_purchase_id))
-        .reduce((s: number, t: any) => s + (t.amount_cents ?? 0), 0);
+      const refundTotalByPurchase = new Map<string, number>();
+      for (const r of txns) {
+        if (postedRefund(r) && r.original_purchase_id && purchaseById.has(r.original_purchase_id)) {
+          refundTotalByPurchase.set(
+            r.original_purchase_id,
+            (refundTotalByPurchase.get(r.original_purchase_id) ?? 0) + Math.abs(r.amount_cents ?? 0),
+          );
+        }
+      }
+      const out = new Map<string, number>();
+      for (const [purchaseId, totalRefunded] of refundTotalByPurchase) {
+        const purchase: any = purchaseById.get(purchaseId);
+        out.set(purchaseId, linkedRefundNormalPortionCents(
+          purchase.amount_cents, purchase.fund_allocation_cents, totalRefunded,
+        ));
+      }
+      return out;
     };
-    const unlinkedPostedInWeek = (ws: string) =>
+    const linkedPostedToWeek = (ws: string) => {
+      let total = 0;
+      for (const portion of linkedNormalPortionByPurchase(ws).values()) total += portion;
+      return -total; // negative: reduces C, as the old full-amount sum did
+    };
+    const unlinkedAbsInWeek = (ws: string) =>
       txns.filter((t: any) => inWeek(t, ws) && postedRefund(t) && !t.original_purchase_id)
-        .reduce((s: number, t: any) => s + (t.amount_cents ?? 0), 0);
+        .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
+    // Defence in depth (Nov 5, 2026), mirroring compute-week: unlinked
+    // posted refunds net only up to the week's charges after linked
+    // refunds. The excess is NOT netted; unlinkedExcessInWeek exposes
+    // it so a future misclassification is visible instead of silent.
+    // P1-M1 (Nov 8, 2026): locked weeks never net unlinked refunds —
+    // the same rule as compute-week. Locked history is rewritten only
+    // by restoration, never by re-netting.
+    const unlinkedPostedInWeek = (ws: string) => {
+      if (isWeekLocked(ws, currentWeekStart)) return 0;
+      const cap = Math.max(0, ownCharges(ws) + linkedPostedToWeek(ws));
+      return -Math.min(unlinkedAbsInWeek(ws), cap);
+    };
+    const unlinkedExcessInWeek = (ws: string) => {
+      // Locked: nothing netted, so the whole unlinked amount is excess.
+      if (isWeekLocked(ws, currentWeekStart)) return unlinkedAbsInWeek(ws);
+      const cap = Math.max(0, ownCharges(ws) + linkedPostedToWeek(ws));
+      return unlinkedAbsInWeek(ws) - Math.min(unlinkedAbsInWeek(ws), cap);
+    };
     // Charges for a week as the walk/simulation reconstruct them.
     // Open weeks net linked refunds (recompute); locked weeks never
     // net linked refunds (restoration instead). Unlinked posted
-    // refunds dated in the week net in that week whenever it is
-    // (re)computed. Stored late adjustments are part of the week.
+    // refunds dated in the week net in that week only while it is
+    // open (P1-M1) — a locked week never re-nets them. Stored late
+    // adjustments are part of the week.
     const weekCharges = (ws: string) => {
       const locked = isWeekLocked(ws, currentWeekStart);
       const storedLate = closeByWeek.get(ws)?.late_adjustment_cents ?? 0;
@@ -292,6 +430,54 @@ Deno.serve(async (req) => {
     let fundAvailable = (ledger ?? []).reduce((s: number, r: any) => s + (r.amount_cents ?? 0), 0);
     let shortfall = household.fund_shortfall_cents ?? 0;
     const shortfallAtStart = shortfall;
+    // Merged-audit B9: week-close never writes its stale in-memory
+    // shortfall absolutely. persistShortfall re-reads the live row
+    // fresh, applies only the delta this run made since its last
+    // persist, and writes that — so a concurrent top-up (which
+    // serializes on the households row inside its own RPC) is never
+    // clobbered by this run's absolute write. The delta window is
+    // the read-to-write gap only, not the whole run.
+    let lastPersistedShortfall = shortfallAtStart;
+    // Design-questions (owner, Nov 5, audit N20): the same stale-read
+    // problem also hit the surplus reductions themselves — a
+    // concurrent top-up's ledger insert was invisible to the run, so
+    // a same-run surplus reduction could under-apply and overstate
+    // the shortfall. refreshFundState re-reads the live shortfall
+    // and the live ledger sum just before a surplus reduction, and
+    // reconciles this run's own deltas on top of the fresh values
+    // (the same delta accounting persistShortfall uses), so the
+    // reduction sees the fund as it is now, not as it was at run
+    // start. A failed re-read keeps the previous values — the run
+    // then behaves exactly as it did before this fix. No lock.
+    let fundAvailableAtSync = fundAvailable;
+    const refreshFundState = async () => {
+      const { data: freshHh } = await supabaseAdmin.from('households')
+        .select('fund_shortfall_cents').eq('id', householdId).single();
+      if (freshHh) {
+        const freshShortfall = freshHh.fund_shortfall_cents ?? lastPersistedShortfall;
+        shortfall = Math.max(0, freshShortfall + (shortfall - lastPersistedShortfall));
+        lastPersistedShortfall = freshShortfall;
+      }
+      const { data: freshLedger } = await supabaseAdmin.from('fund_ledger')
+        .select('amount_cents').eq('household_id', householdId);
+      if (freshLedger) {
+        const freshSum = freshLedger.reduce((s: number, r: any) => s + (r.amount_cents ?? 0), 0);
+        fundAvailable = freshSum + (fundAvailable - fundAvailableAtSync);
+        fundAvailableAtSync = freshSum;
+      }
+    };
+    const persistShortfall = async () => {
+      const { data: fresh } = await supabaseAdmin.from('households')
+        .select('fund_shortfall_cents').eq('id', householdId).single();
+      const freshVal = fresh?.fund_shortfall_cents ?? lastPersistedShortfall;
+      const target = Math.max(0, freshVal + (shortfall - lastPersistedShortfall));
+      if (target !== freshVal) {
+        const rpc = await supabase.rpc('update_fund_shortfall', { household_id: householdId, shortfall_cents: target });
+        check(rpc, 'update_fund_shortfall RPC');
+        shortfall = target;
+      }
+      lastPersistedShortfall = shortfall;
+    };
 
     // ---- Walk range ----
     const candidateWeeks: string[] = [];
@@ -386,6 +572,9 @@ Deno.serve(async (req) => {
       // Computes the shortfall offset from CURRENT in-memory shortfall,
       // claims, then inserts the ledger row. On ledger failure the
       // claim is best-effort reverted and the error propagates.
+      // Design-questions (owner, Nov 5): re-read the fund first, so
+      // a concurrent top-up is visible to this reduction.
+      await refreshFundState();
       const applied = Math.min(shortfall, surplusCents);
       const toFund = surplusCents - applied;
       const won = await claimRelease(ws, toFund);
@@ -431,6 +620,7 @@ Deno.serve(async (req) => {
     const pendingLateAfterRun = absorbingWeek ? 0 : unpostedLate;
 
     let weeksClosed = 0, releasesDone = 0, heldLegacy = 0;
+    const unlinkedExcessByWeek: { week_start: string; unlinked_excess_cents: number }[] = [];
     const handledReleaseWeeks = new Set<string>();
     for (let ws = earliest; ws < currentWeekStart; ws = addDays(ws, 7)) {
       const locked = isWeekLocked(ws, currentWeekStart);
@@ -451,24 +641,96 @@ Deno.serve(async (req) => {
         + (lockedNow ? 0 : linkedPostedToWeek(ws))
         + unlinkedPostedInWeek(ws)
         + lateWs;
-      const Dws = Math.max(0, Dchain - (cutsByWeek.get(ws) ?? 0));
-      const result = computeWeek({ B, T, D: Dws, C: Math.max(0, Cnet) });
+      const Dws = Math.max(0, Dchain - (cutsByWeek.get(ws) ?? 0) - (debtPaymentsByWeek.get(ws) ?? 0) + (debtAdjustmentsByWeek.get(ws) ?? 0));
+      // Debt payment for this week (Carried Debt fund, build 29):
+      // the rule in effect now, from the base only. No rule (the
+      // SQL not applied yet) means the old behaviour — P = Dws, the
+      // base absorbs the whole debt — and the surplus-to-debt step
+      // below is skipped entirely, so the walk is the old walk.
+      const P = debtRuleMissing ? Dws : debtRulePayment(debtRule, B);
+      const result = computeWeek({ B, T, D: Dws, C: Math.max(0, Cnet), P });
+
+      // Surplus pays the debt down FIRST (same shortfall-first
+      // logic as the Extra Fund top-up rule, Nov 3, 2026): only the
+      // remainder becomes surplus for the fund. The close stores
+      // the outgoing debt NET of this payment, and the
+      // surplus_releases row stores only the fund-bound remainder —
+      // so the payment is never counted twice: a 'surplus'
+      // debt_payments row is not subtracted again from D (see
+      // engine.mjs debtPaymentsAfterClose).
+      const surplusToDebt = debtRuleMissing ? 0 : Math.min(result.earnedSurplus, result.outgoingDebt);
+      const outgoingStored = result.outgoingDebt - surplusToDebt;
+      const fundBoundSurplus = result.earnedSurplus - surplusToDebt;
 
       await upsertClose({
         household_id: householdId, week_start: ws,
-        surplus_cents: result.earnedSurplus,
-        outgoing_debt_cents: result.outgoingDebt,
+        surplus_cents: fundBoundSurplus,
+        outgoing_debt_cents: outgoingStored,
         base_allowance_cents: B,
         temp_increase_cents: T,
         late_adjustment_cents: lateWs,
+        debt_payment_cents: P,
       });
       closeByWeek.set(ws, {
-        week_start: ws, surplus_cents: result.earnedSurplus,
-        outgoing_debt_cents: result.outgoingDebt, late_adjustment_cents: lateWs,
+        week_start: ws, surplus_cents: fundBoundSurplus,
+        outgoing_debt_cents: outgoingStored, late_adjustment_cents: lateWs,
         base_allowance_cents: B, temp_increase_cents: T,
+        debt_payment_cents: P,
         created_at: existingClose?.created_at ?? new Date().toISOString(),
       });
+      // Surplus-to-debt payment ledger (build 29): one 'surplus'
+      // row per week. A partial unique index on (household_id,
+      // week_start) WHERE source = 'surplus' keeps re-runs
+      // idempotent — the row is selected first, then inserted or
+      // updated (a plain upsert cannot target a partial index), and
+      // deleted when a recompute yields zero, so a payment that no
+      // longer happens leaves no trace.
+      if (!debtRuleMissing) {
+        if (surplusToDebt > 0) {
+          const existing = await supabaseAdmin.from('debt_payments')
+            .select('id, amount_cents').eq('household_id', householdId)
+            .eq('week_start', ws).eq('source', 'surplus').maybeSingle();
+          check(existing, 'debt_payments surplus read');
+          if (existing.data) {
+            if (existing.data.amount_cents !== surplusToDebt) {
+              check(await supabaseAdmin.from('debt_payments').update({ amount_cents: surplusToDebt }).eq('id', existing.data.id), 'debt_payments surplus update');
+            }
+          } else {
+            const ins = await supabaseAdmin.from('debt_payments').insert({
+              household_id: householdId, amount_cents: surplusToDebt, source: 'surplus', week_start: ws, note: '', created_by: null,
+            });
+            if (ins.error) {
+              if (ins.error.code === '23505') {
+                // A concurrent run inserted the same row; align it.
+                const again = await supabaseAdmin.from('debt_payments')
+                  .select('id, amount_cents').eq('household_id', householdId)
+                  .eq('week_start', ws).eq('source', 'surplus').maybeSingle();
+                if (again.data && again.data.amount_cents !== surplusToDebt) {
+                  check(await supabaseAdmin.from('debt_payments').update({ amount_cents: surplusToDebt }).eq('id', again.data.id), 'debt_payments surplus update');
+                }
+              } else {
+                check(ins, 'debt_payments surplus insert');
+              }
+            }
+          }
+          check(await supabaseAdmin.from('audit_log').insert({
+            household_id: householdId, actor: user.id, actor_name: 'admin',
+            action: 'Surplus paid toward debt',
+            detail: `Surplus ${surplusToDebt} cents for week ${ws} paid toward the carried debt before the remainder became surplus.`,
+          }), 'audit_log insert');
+        } else {
+          check(await supabaseAdmin.from('debt_payments').delete()
+            .eq('household_id', householdId).eq('week_start', ws).eq('source', 'surplus'),
+            'debt_payments surplus delete');
+        }
+      }
       weeksClosed += 1;
+      // Defence in depth (Nov 5, 2026): record any unlinked-refund
+      // excess for this week so it is visible in the response instead
+      // of silently floored away.
+      if (unlinkedExcessInWeek(ws) > 0) {
+        unlinkedExcessByWeek.push({ week_start: ws, unlinked_excess_cents: unlinkedExcessInWeek(ws) });
+      }
 
       const existingRelease = releaseByWeek.get(ws);
       if (existingRelease) {
@@ -478,35 +740,46 @@ Deno.serve(async (req) => {
           heldLegacy += 1;
         } else if (existingRelease.status === 'released') {
           const oldSurplus = existingRelease.surplus_cents ?? 0;
-          if (result.earnedSurplus < oldSurplus) {
+          if (fundBoundSurplus < oldSurplus) {
             // Reduction after release (A4): fund to at most zero,
-            // remainder becomes shortfall.
-            const reduction = oldSurplus - result.earnedSurplus;
+            // remainder becomes shortfall. Re-read the fund first
+            // (design-questions, owner, Nov 5): a concurrent top-up
+            // is visible to this reduction, not just to the persist.
+            await refreshFundState();
+            const reduction = oldSurplus - fundBoundSurplus;
             const applied = Math.min(reduction, fundAvailable);
             if (applied > 0) {
               check(await supabaseAdmin.from('fund_ledger').insert({
                 household_id: householdId, kind: 'adjustment', amount_cents: -applied,
-                week_start: ws, note: `Late reduction for week ${ws}`, created_by: user.id,
+                week_start: ws, note: `Surplus correction for week ${ws}`, created_by: user.id,
               }), 'fund_ledger adjustment insert');
               fundAvailable -= applied;
             }
             shortfall += reduction - applied;
+            // P2-M4 (Nov 8, 2026): the fund was debited by `applied`
+            // above, so the released total must fall by the same
+            // amount — keeping the old released_cents overstated
+            // what the fund received from this week.
+            const newReleasedCents = Math.max(0, (existingRelease.released_cents ?? 0) - applied);
             await upsertRelease({
               household_id: householdId, week_start: ws,
-              surplus_cents: result.earnedSurplus,
+              surplus_cents: fundBoundSurplus,
               release_date: existingRelease.release_date,
               status: 'released',
-              released_cents: existingRelease.released_cents ?? 0,
+              released_cents: newReleasedCents,
             });
-            releaseByWeek.set(ws, { ...existingRelease, surplus_cents: result.earnedSurplus });
-          } else if (result.earnedSurplus > oldSurplus) {
+            releaseByWeek.set(ws, { ...existingRelease, surplus_cents: fundBoundSurplus, released_cents: newReleasedCents });
+          } else if (fundBoundSurplus > oldSurplus) {
             // Increase after release (P1-7): release the delta net
-            // of shortfall. Claim first (optimistic on old surplus)
+            // of shortfall. Re-read the fund first (design-questions,
+            // owner, Nov 5): the claim below and the offset after it
+            // must see a concurrent top-up. Claim first (optimistic on old surplus)
             // so a concurrent run cannot double-release the delta.
-            const delta = result.earnedSurplus - oldSurplus;
+            await refreshFundState();
+            const delta = fundBoundSurplus - oldSurplus;
             const claim = await supabaseAdmin.from('surplus_releases')
               .update({
-                surplus_cents: result.earnedSurplus,
+                surplus_cents: fundBoundSurplus,
                 released_cents: (existingRelease.released_cents ?? 0) + Math.max(0, delta - shortfall),
               })
               .eq('household_id', householdId)
@@ -536,7 +809,7 @@ Deno.serve(async (req) => {
                 throw e;
               }
               releaseByWeek.set(ws, {
-                ...existingRelease, surplus_cents: result.earnedSurplus,
+                ...existingRelease, surplus_cents: fundBoundSurplus,
                 released_cents: (existingRelease.released_cents ?? 0) + toFund,
               });
               releasesDone += 1;
@@ -560,14 +833,14 @@ Deno.serve(async (req) => {
           }
           await upsertRelease({
             household_id: householdId, week_start: ws,
-            surplus_cents: result.earnedSurplus,
+            surplus_cents: fundBoundSurplus,
             release_date: releaseDate,
             status: 'pending',
             released_cents: existingRelease.released_cents ?? 0,
             closed_at: closedAt,
           });
           releaseByWeek.set(ws, {
-            ...existingRelease, surplus_cents: result.earnedSurplus,
+            ...existingRelease, surplus_cents: fundBoundSurplus,
             release_date: releaseDate, closed_at: closedAt,
           });
         }
@@ -575,7 +848,7 @@ Deno.serve(async (req) => {
         // New release: pending 7 days from the ACTUAL close (today).
         const rel = {
           household_id: householdId, week_start: ws,
-          surplus_cents: result.earnedSurplus,
+          surplus_cents: fundBoundSurplus,
           release_date: addDays(today, 7),
           status: 'pending',
           released_cents: 0,
@@ -591,7 +864,7 @@ Deno.serve(async (req) => {
       if (rel && rel.status === 'pending' && rel.release_date <= today) {
         if (await releaseDue(ws, rel.surplus_cents ?? 0)) releasesDone += 1;
       }
-      Dchain = result.outgoingDebt;
+      Dchain = outgoingStored;
     }
 
     // Second pass: due releases for weeks not walked (locked +
@@ -607,10 +880,7 @@ Deno.serve(async (req) => {
 
     // Persist release-driven shortfall before restoration, so a
     // restoration failure never loses the release shortfall.
-    if (shortfall !== shortfallAtStart) {
-      const rpc = await supabase.rpc('update_fund_shortfall', { household_id: householdId, shortfall_cents: shortfall });
-      check(rpc, 'update_fund_shortfall RPC');
-    }
+    await persistShortfall();
 
     // ---- Restoration phase (post-walk; see header on failure) ----
     let restorations = 0, heldCreated = 0;
@@ -637,6 +907,17 @@ Deno.serve(async (req) => {
           const purchase: any = txnById.get(purchaseId);
           if (!purchase) {
             restorationsSkipped.push({ purchase_transaction_id: purchaseId, reason: 'purchase row not found' });
+            continue;
+          }
+          // P2-N10 (Nov 8, 2026): auto-link accepts provisional
+          // purchases, so a linked refund can point at a purchase
+          // that is now excluded, reversed, or not a charge at all
+          // (e.g. reclassified to payment). Restoration re-checks
+          // the purchase's CURRENT state/kind before restoring
+          // against it; the linker itself is left alone.
+          if (purchase.excluded === true || purchase.state === 'excluded' || purchase.state === 'reversed'
+            || (purchase.kind !== 'charge' && purchase.kind !== 'fund_charge')) {
+            restorationsSkipped.push({ purchase_transaction_id: purchaseId, reason: 'purchase not restorable (excluded, reversed, or not a charge)' });
             continue;
           }
           const purchaseWeek = weekStartOf(purchase.date);
@@ -674,24 +955,75 @@ Deno.serve(async (req) => {
             // Remove them: baseline must carry the FULL purchase
             // charge, with refunds modeled only by the reduction.
             if (!isWeekLocked(ws, currentWeekStart) && ws === purchaseWeek) {
-              // linkedPostedToWeek(purchaseWeek) includes this
-              // purchase's posted refunds; they must not be in the
-              // baseline charges. (Other purchases' refunds linked
-              // to this week stay, as booked.)
-              const thisPurchaseLinked = txns
-                .filter((r: any) => postedRefund(r) && r.original_purchase_id === purchaseId)
-                .reduce((s: number, r: any) => s + (r.amount_cents ?? 0), 0);
-              charges -= thisPurchaseLinked; // amounts are negative, so this ADDS them back
+              // N1: weekCharges netted only the NORMAL portion of
+              // this purchase's refunds (linkedPostedToWeek), so
+              // exactly that portion is added back here — adding
+              // back the full refund sum would put the fund portion
+              // into the baseline charges too and overstate the
+              // restoration. (Other purchases' refunds linked to
+              // this week stay, as booked.)
+              charges += linkedNormalPortionByPurchase(purchaseWeek).get(purchaseId) ?? 0;
             }
-            simWeeks.push({ week_start: ws, B, T, charges_cents: Math.max(0, charges) });
+            simWeeks.push({
+              week_start: ws, B, T, charges_cents: Math.max(0, charges),
+              // Debt payment for this simulated week (Carried Debt
+              // fund, build 29): a closed week's STORED payment wins
+              // (same snapshot rule as weekPolicy's B/T); otherwise
+              // the rule in effect now, from the base only. No rule
+              // (the SQL not applied yet) means the field is absent
+              // and the simulation is exactly the old one.
+              ...(debtRuleMissing ? {} : {
+                debtPaymentCents: closeByWeek.get(ws)?.debt_payment_cents ?? debtRulePayment(debtRule, B),
+              }),
+            });
           }
           // Initial debt into the purchase week: latest close
           // before it (steady state: the immediately preceding
           // week). See S2_NOTES.md for the backfill approximation.
+          // Merged-audit B8: subtract debt cuts already posted by
+          // earlier runs, so a debt already relieved by a prior
+          // restoration is not relieved a second time. Floored at 0.
+          // Merged-audit B7: this simulation uses the same shared
+          // computeWeek + restoration math as compute-week (snapshot
+          // policy via weekPolicy, charges via weekCharges, debt via
+          // computeWeek) — the walk calls that shared logic per week
+          // rather than keeping a second copy of the week math.
           const priorClose = [...closeByWeek.values()]
             .filter((c: any) => c.week_start < purchaseWeek)
             .sort((a: any, b: any) => (a.week_start < b.week_start ? 1 : -1))[0];
-          const initialDebt = priorClose ? (priorClose.outgoing_debt_cents ?? 0) : 0;
+          // N2 Option A — adopt compute-week's definition of
+          // incoming debt (Nov 5, 2026): subtract only cuts posted
+          // AFTER the prior close's week and UP TO the purchase
+          // week (shared helper in engine.mjs, same window
+          // compute-week uses). The old window (every cut before
+          // today) subtracted cuts already inside the stored close
+          // a second time, and cuts from weeks after the purchase
+          // week — time-travelling debt relief backwards — so a
+          // later refund posted phantom surplus instead of a debt
+          // cut (e.g. $75 surplus + $25 debt cut instead of $0
+          // surplus + $100 debt cut).
+          const priorCuts = priorClose
+            ? restorationDebtCutsAfterClose(restorationEntries, priorClose.week_start, purchaseWeek)
+            : 0;
+          // Carried Debt fund (build 29): debt payments posted after
+          // the prior close reduce the incoming debt in the same
+          // window as the cuts ('surplus' rows are already inside
+          // the close that recorded them — see
+          // engine.mjs debtPaymentsAfterClose).
+          const priorPayments = priorClose
+            ? debtPaymentsAfterClose(debtPaymentRows, priorClose.week_start, purchaseWeek)
+            : 0;
+          // Manual debt adjustments (Add / Set Carried Debt, build
+          // 41): adjustments posted after the prior close increase
+          // (or, for a Set below the balance, decrease) the
+          // incoming debt in the same window as the cuts and
+          // payments.
+          const priorAdjustments = priorClose
+            ? debtAdjustmentsAfterClose(debtAdjustmentRows, priorClose.week_start, purchaseWeek)
+            : 0;
+          const initialDebt = priorClose
+            ? Math.max(0, (priorClose.outgoing_debt_cents ?? 0) - priorCuts - priorPayments + priorAdjustments)
+            : 0;
 
           const sortedRefunds = [...refundList].sort((a: any, b: any) =>
             (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.id < b.id ? -1 : 1)));
@@ -700,6 +1032,7 @@ Deno.serve(async (req) => {
             weeks: simWeeks, purchaseWeekStart: purchaseWeek,
             purchaseAmountCents: purchaseAmount, fundAllocationCents: fundAllocation,
             totalRefundedCents: n, initialDebtCents: initialDebt,
+            debtRule: debtRuleMissing ? null : debtRule,
           });
           for (const refund of sortedRefunds) {
             const refundAmount = Math.abs(refund.amount_cents ?? 0);
@@ -724,13 +1057,48 @@ Deno.serve(async (req) => {
             const toFundSurplus = postedSurplus - surplusOffset;
             const toFundFund = postedFund - fundOffset;
             shortfall -= offset;
-            check(await supabaseAdmin.from('restoration_entries').insert({
+            // Merged-audit B10: the held row is queued BEFORE the
+            // restoration entry, and a unique violation on either
+            // insert means a concurrent run already posted it — that
+            // is swallowed as idempotent, not a failure. Any other
+            // held-insert failure throws BEFORE the entry exists, so
+            // the next run retries this refund instead of silently
+            // losing its held amount behind a completed entry.
+            const isUniqueViolation = (e: any) => e?.code === '23505';
+            if (inc.heldCents > 0) {
+              // Nov 9, 2026 (live defect 2): the releasable state is
+              // 'held' — the live held_refunds CHECK allows only
+              // ('held','written_off','resolved'). Inserting
+              // 'pending' made the row unreleasable (the RPC and the
+              // UI both keyed on a value no live row could hold).
+              const heldRes = await supabaseAdmin.from('held_refunds').insert({
+                household_id: householdId, refund_transaction_id: refund.id,
+                purchase_transaction_id: purchaseId, held_cents: inc.heldCents, status: 'held',
+              });
+              if (heldRes.error && !isUniqueViolation(heldRes.error)) {
+                check(heldRes, 'held_refunds insert');
+              } else if (!heldRes.error) {
+                heldCreated += 1;
+              }
+            }
+            const entryRes = await supabaseAdmin.from('restoration_entries').insert({
               household_id: householdId, week_start: currentWeekStart,
               purchase_transaction_id: purchaseId, refund_transaction_id: refund.id,
               restored_surplus_cents: postedSurplus,
               debt_reduction_cents: postedDebt,
               fund_credit_cents: postedFund,
-            }), 'restoration_entries insert');
+            });
+            if (entryRes.error && !isUniqueViolation(entryRes.error)) {
+              check(entryRes, 'restoration_entries insert');
+            }
+            if (entryRes.error) {
+              // Concurrent run already posted this refund: undo this
+              // run's in-memory shortfall offset and skip the fund
+              // credits, so money is never credited twice.
+              shortfall += offset;
+              existingEntryByRefund.set(refund.id, true);
+              continue;
+            }
             if (toFundSurplus > 0) {
               check(await supabaseAdmin.from('fund_ledger').insert({
                 household_id: householdId, kind: 'restoration', amount_cents: toFundSurplus,
@@ -749,13 +1117,7 @@ Deno.serve(async (req) => {
               }), 'fund_ledger restoration fund insert');
               fundAvailable += toFundFund;
             }
-            if (inc.heldCents > 0) {
-              check(await supabaseAdmin.from('held_refunds').insert({
-                household_id: householdId, refund_transaction_id: refund.id,
-                purchase_transaction_id: purchaseId, held_cents: inc.heldCents, status: 'pending',
-              }), 'held_refunds insert');
-              heldCreated += 1;
-            }
+            // (Held row already queued above, before the entry.)
             check(await supabaseAdmin.from('audit_log').insert({
               household_id: householdId, actor: user.id, actor_name: 'admin',
               action: 'Refund restoration',
@@ -772,10 +1134,7 @@ Deno.serve(async (req) => {
         if (unlinkedCount > 0) {
           restorationsSkipped.push({ reason: `${unlinkedCount} unlinked posted refund(s) noted (S3 linking gap; they net by date in open weeks only)` });
         }
-        if (shortfall !== shortfallAtStart) {
-          const rpc = await supabase.rpc('update_fund_shortfall', { household_id: householdId, shortfall_cents: shortfall });
-          check(rpc, 'update_fund_shortfall RPC');
-        }
+        await persistShortfall();
       } catch (e) {
         restorationError = String((e as any)?.message ?? e);
       }
@@ -800,6 +1159,7 @@ Deno.serve(async (req) => {
       restorations, held_refunds_created: heldCreated,
       fund_available_cents: fundAvailable, shortfall_cents: shortfall,
       pending_late_adjustment_cents: pendingLateAfterRun,
+      unlinked_excess_by_week: unlinkedExcessByWeek,
       restorations_skipped: restorationsSkipped,
     };
     if (restorationError) {
@@ -807,7 +1167,8 @@ Deno.serve(async (req) => {
       // Loud partial failure: closes/releases above ARE persisted;
       // restoration stopped at the error and is re-runnable (entries
       // are unique per refund). Never report this as success.
-      return json({ ...payload, error: `restoration failed partway: ${restorationError}` }, 500);
+      console.error('week-close restoration failed partway:', restorationError);
+      return json({ ...payload, error: 'restoration failed partway' }, 500);
     }
     return json(payload);
   } catch (e) {
@@ -816,7 +1177,7 @@ Deno.serve(async (req) => {
     // 7 unexplained 500s). The message below is what the next
     // failure investigation reads first.
     console.error('week-close failed:', (e as any)?.message ?? e);
-    return json({ error: String((e as any)?.message ?? e) }, 500);
+    return json({ error: 'could not close week' }, 500);
   }
 });
 

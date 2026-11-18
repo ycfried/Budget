@@ -1,5 +1,14 @@
--- R13 gift idempotency — PREPARED ONLY, DO NOT APPLY without
--- the owner's explicit approval ("fix everything", Nov 3).
+-- R13 gift idempotency — APPLIED LIVE Nov 3, 2026 (Round 3, bug 8
+-- fix; verified: transactions.client_key column, partial unique
+-- index transactions_household_client_key_idx, 8-arg
+-- record_charity_gift). The "PREPARED ONLY" header this file
+-- carried before is stale (R4-BE-2, Nov 9, 2026). Do NOT re-apply
+-- blindly: the DROP line below removes the 7-arg overload, which is
+-- exactly what a later whole-file re-apply of supabase/r13-charity.sql
+-- resurrected live on Nov 9 (R4-BE-1) — that file now carries the
+-- same 8-arg copy, so the two files agree and neither can resurrect
+-- the 7-arg. Re-apply only if a live probe shows the live body has
+-- drifted from this file, and reconcile first.
 --
 -- WHY (Round 3, bug 8): a double-click on Record gift recorded the
 -- same $25 gift twice and inflated Given $25 to $50, because the

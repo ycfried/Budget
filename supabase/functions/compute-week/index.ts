@@ -21,6 +21,10 @@
 //   weekly_allowance_overrides row exists for the requested week,
 //   B is that override and T is 0 (debt still comes off the top).
 //   A stored close snapshot still wins over a later override.
+//   The override is also surfaced as override_cents in the
+//   response (null when a stored close snapshot wins), so the UI
+//   can show the temporary increase/decrease: temp_cents is 0 for
+//   override weeks and cannot carry it (Nov 11, 2026).
 // - Week math counts: charges (including provisional charges) net of
 //   fund allocations; posted refunds linked to a purchase in this week
 //   (open weeks only — a locked week's refunds go through restoration,
@@ -39,12 +43,18 @@
 //   beyond the original purchase is captured by week-close's held
 //   queue, not by this function.
 //
-// RESPONSE SHAPE (exact — the UI workstream codes against these 8
+// RESPONSE SHAPE (exact — the UI workstream codes against these
 // fields and no others; do not add fields without coordinating):
 // {
-//   week_start: "YYYY-MM-DD" (Sunday, normalized from the request),
+//   week_start: "YYYY-MM-DD" (Sunday; a supplied week_start must
+//     already be a Sunday, else 400 — P2-B13; omitted → current week),
 //   base_available_cents: base capacity left after incoming debt,
 //   temp_cents: active temporary increment for the week,
+//   override_cents: the weekly_allowance_overrides value for the
+//     week, or null when no override drives B for this week (no
+//     override row, or a stored close snapshot wins). The UI
+//     derives the temporary increase/decrease as override_cents
+//     minus the stored base allowance.
 //   carried_debt_cents: incoming debt D carried INTO the week
 //     (NOT the engine's carriedDebt output, which is max(0, D - B);
 //     the UI asked for "carried debt" and the dashboard's "incoming
@@ -55,6 +65,10 @@
 //   week_locked: boolean (28-day open window, FINAL A4),
 //   pending_refund_excluded_cents: absolute total of provisional
 //     refunds excluded from this week's math (display only)
+//   debt_payment_cents: the base allowance paid toward the incoming
+//     debt this week (Carried Debt fund, build 29) — the effective
+//     payment, capped at the debt and at the base. Under the old
+//     model (no rule) it is min(D, B): the base the debt consumed.
 // }
 // Pre-migration fallbacks: if the restoration-snapshots migration has
 // not been applied yet (no snapshot columns, no restoration_entries
@@ -67,13 +81,57 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
-  isExcludedFromMath, pendingRefundExcludedCents, chargeContribution,
+  chargeContribution,
+  linkedRefundNormalPortionCents, restorationDebtCutsAfterClose,
+  debtRulePayment, debtPaymentsAfterClose, debtAdjustmentsAfterClose,
 } from './engine.mjs';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// P2-B13: strict Sunday-date check. The regex + round-trip reject
+// malformed dates (weekStartOf normalises them instead of failing —
+// e.g. 2026-13-45 rolls over to a real date in 2027), and the
+// weekStartOf equality rejects non-Sundays.
+function isValidWeekStart(s: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return false;
+  return weekStartOf(s) === s;
+}
+
+
+// B6 (Nov 9, 2026): the old .limit(10000) silently dropped rows past
+// 10,000 — and a single PostgREST response is capped at 1000 rows by
+// default, so the cap could bite far earlier, on whichever rows the
+// unordered query happened to return. Page through the whole
+// household history in 1000-row pages, ordered so pages are stable;
+// behaviour is identical below the old cap. withLinkage=false is the
+// pre-migration fallback (no original_purchase_id column yet).
+async function fetchHouseholdTxns(
+  client: any, householdId: string, withLinkage: boolean,
+): Promise<{ rows: any[]; error: any }> {
+  const cols = withLinkage
+    ? 'id, date, amount_cents, kind, state, excluded, fund_allocation_cents, original_purchase_id, created_at'
+    : 'id, date, amount_cents, kind, state, excluded, fund_allocation_cents, created_at';
+  const rows: any[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client.from('transactions')
+      .select(cols)
+      .eq('household_id', householdId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) return { rows, error };
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < PAGE) return { rows, error: null };
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -98,6 +156,13 @@ Deno.serve(async (req) => {
     const rawWeek = String(body.week_start ?? '');
     const today = nyTodayString();
     const currentWeekStart = weekStartOf(today);
+    // P2-B13 (Nov 8, 2026): a supplied week_start must be a real
+    // Sunday date — anything else is a 400, not figures for a week
+    // nobody asked for. (Omitted week_start still defaults to the
+    // current week.)
+    if (rawWeek && !isValidWeekStart(rawWeek)) {
+      return json({ error: 'week_start must be a Sunday date (YYYY-MM-DD)' }, 400);
+    }
     const weekStart = rawWeek ? weekStartOf(rawWeek) : currentWeekStart;
     // NOTE: body.D, body.T, and any legacy credit fields are
     // deliberately never read here. Server-side derivation only.
@@ -117,13 +182,34 @@ Deno.serve(async (req) => {
       .single();
     if (hhErr || !household) return json({ error: 'household not found' }, 404);
 
+    // Debt repayment rule (Carried Debt fund, build 29): one row per
+    // household in debt_settings. A missing table (the SQL not
+    // applied yet) means the OLD behaviour — no rule, P defaults to
+    // D in the engine. A missing ROW means the default: 25% of the
+    // base allowance (the migration backfills existing households;
+    // new households get the same default here).
+    let debtRule: { mode: string; percentBp?: number; fixedCents?: number } | null = null;
+    let debtRuleMissing = false;
+    const ruleRes = await supabase
+      .from('debt_settings')
+      .select('mode, percent_bp, fixed_cents')
+      .eq('household_id', householdId)
+      .maybeSingle();
+    if (ruleRes.error) {
+      debtRuleMissing = true;
+    } else if (ruleRes.data) {
+      debtRule = { mode: ruleRes.data.mode, percentBp: ruleRes.data.percent_bp, fixedCents: ruleRes.data.fixed_cents };
+    } else {
+      debtRule = { mode: 'percent', percentBp: 2500 };
+    }
+
     // Week closes, with snapshot columns when the migration exists.
     // FALLBACK: without the migration, snapshot fields are null and
     // the live allowance / temp sums below are used instead.
     let closes: any[] = [];
     const closesRes = await supabase
       .from('week_closes')
-      .select('week_start, surplus_cents, outgoing_debt_cents, late_adjustment_cents, base_allowance_cents, temp_increase_cents, created_at')
+      .select('week_start, surplus_cents, outgoing_debt_cents, late_adjustment_cents, base_allowance_cents, temp_increase_cents, debt_payment_cents, created_at')
       .eq('household_id', householdId);
     if (closesRes.error) {
       const retry = await supabase
@@ -131,7 +217,7 @@ Deno.serve(async (req) => {
         .select('week_start, surplus_cents, outgoing_debt_cents, created_at')
         .eq('household_id', householdId);
       if (retry.error) return json({ error: 'week close read failed' }, 500);
-      closes = (retry.data ?? []).map((c: any) => ({ ...c, late_adjustment_cents: 0, base_allowance_cents: null, temp_increase_cents: null }));
+      closes = (retry.data ?? []).map((c: any) => ({ ...c, late_adjustment_cents: 0, base_allowance_cents: null, temp_increase_cents: null, debt_payment_cents: null }));
     } else {
       closes = closesRes.data ?? [];
     }
@@ -178,34 +264,73 @@ Deno.serve(async (req) => {
         .select('week_start, debt_reduction_cents')
         .eq('household_id', householdId);
       if (!restRes.error) {
-        restorationCuts = (restRes.data ?? [])
-          .filter((r: any) => r.week_start > latestCloseBefore.week_start && r.week_start <= weekStart)
-          .reduce((s: number, r: any) => s + (r.debt_reduction_cents ?? 0), 0);
+        // N2 Option A: same shared window as week-close (see engine.mjs
+        // restorationDebtCutsAfterClose) — only cuts after the latest
+        // close and up to this week; cuts already inside the close
+        // are never subtracted twice.
+        restorationCuts = restorationDebtCutsAfterClose(restRes.data ?? [], latestCloseBefore.week_start, weekStart);
       }
     }
 
-    // Transactions for the household (household-scale; see S2_NOTES.md
-    // for the pagination note). FALLBACK: without the migration's
+    // Debt payments posted after the latest close (Carried Debt
+    // fund, build 29): Pay from Extra Fund and Clear rows reduce
+    // the incoming debt in the same window as the restoration
+    // cuts. 'surplus' payments are NOT subtracted — they are
+    // already inside the close that recorded them (see
+    // engine.mjs debtPaymentsAfterClose). A missing table (the SQL
+    // not applied yet) means no payments.
+    let debtPaymentsAfter = 0;
+    if (latestCloseBefore) {
+      const payRes = await supabase
+        .from('debt_payments')
+        .select('week_start, amount_cents, source')
+        .eq('household_id', householdId);
+      if (!payRes.error) {
+        debtPaymentsAfter = debtPaymentsAfterClose(payRes.data ?? [], latestCloseBefore.week_start, weekStart);
+      }
+    }
+
+    // Manual debt adjustments (Add / Set Carried Debt, build 41):
+    // adjustments dated after the latest close increase (or, for a
+    // Set below the balance, decrease) the incoming debt, in the
+    // same window as the payments. With no close yet, every
+    // adjustment up to this week counts — a household with no
+    // closed week can still carry manually added debt. A missing
+    // table (the SQL not applied yet) means no adjustments. Unlike
+    // the payments block above, this fetch is NOT gated on a close
+    // existing — the no-close case needs the rows too.
+    let debtAdjustmentsAfter = 0;
+    {
+      const adjRes = await supabase
+        .from('debt_adjustments')
+        .select('week_start, amount_cents')
+        .eq('household_id', householdId);
+      if (!adjRes.error) {
+        debtAdjustmentsAfter = debtAdjustmentsAfterClose(
+          adjRes.data ?? [],
+          latestCloseBefore ? latestCloseBefore.week_start : null,
+          weekStart,
+        );
+      }
+    }
+
+    // Transactions for the household, paged whole-history
+    // (fetchHouseholdTxns, B6). FALLBACK: without the migration's
     // linkage column, refunds net by date in their own week.
     let txns: any[] = [];
     let hasLinkage = true;
-    const txRes = await supabase
-      .from('transactions')
-      .select('id, date, amount_cents, kind, state, excluded, fund_allocation_cents, original_purchase_id, created_at')
-      .eq('household_id', householdId)
-      .limit(10000);
+    const txRes = await fetchHouseholdTxns(supabase, householdId, true);
     if (txRes.error) {
-      const retry = await supabase
-        .from('transactions')
-        .select('id, date, amount_cents, kind, state, excluded, fund_allocation_cents, created_at')
-        .eq('household_id', householdId)
-        .limit(10000);
+      const retry = await fetchHouseholdTxns(supabase, householdId, false);
       if (retry.error) return json({ error: 'transaction read failed' }, 500);
-      txns = (retry.data ?? []).map((t: any) => ({ ...t, original_purchase_id: null }));
+      txns = retry.rows.map((t: any) => ({ ...t, original_purchase_id: null }));
       hasLinkage = false;
     } else {
-      txns = txRes.data ?? [];
+      txns = txRes.rows;
     }
+    // Merged-audit B6 floor (same rule as week-close): pre-November
+    // rows never enter this week's math, even after a cursor reset.
+    txns = txns.filter((t: any) => (t.date ?? '') >= '2026-11-01');
 
     const weekEnd = addDays(weekStart, 7);
     const inWindow = (t: any) => t.date >= weekStart && t.date < weekEnd;
@@ -225,23 +350,55 @@ Deno.serve(async (req) => {
     const postedRefund = (t: any) =>
       t.kind === 'refund' && t.state === 'verified' && t.excluded !== true && t.state !== 'reversed';
     if (!weekLocked) {
+      // N1 Option A — fund-first, counted once (Nov 5, 2026): a linked
+      // refund nets only its NORMAL portion against this week's
+      // charges. The fund portion is credited to the fund by refund
+      // restoration, never by this walk — netting the full refund
+      // here paid a split purchase's refund twice ($90 of benefit
+      // from a $50 refund on a $60 fund / $40 normal purchase).
+      // Aggregated per purchase from the cumulative refund total, so
+      // partial refunds are order-independent; capped at the
+      // purchase's normal portion (excess over the charge is HELD).
+      // Unlinked refunds (below) still net in full — they have no
+      // purchase to split against.
+      const purchaseById = new Map(
+        windowRows.filter((t: any) => t.kind === 'charge' || t.kind === 'fund_charge').map((t: any) => [t.id, t]),
+      );
+      const refundTotalByPurchase = new Map<string, number>();
       for (const t of txns) {
         if (postedRefund(t) && t.original_purchase_id && purchaseIdsInWindow.has(t.original_purchase_id)) {
-          chargesNet += t.amount_cents ?? 0; // negative: reduces C
+          refundTotalByPurchase.set(
+            t.original_purchase_id,
+            (refundTotalByPurchase.get(t.original_purchase_id) ?? 0) + Math.abs(t.amount_cents ?? 0),
+          );
         }
       }
-    }
-    for (const t of windowRows) {
-      if (postedRefund(t) && (!hasLinkage || !t.original_purchase_id)) {
-        // Unlinked (or pre-migration) posted refund dated in this week.
-        // Pre-migration fallback: every posted refund in the window
-        // nets here, since linkage cannot be checked.
-        // Locked-week reconstruction guard: a refund that arrived
-        // AFTER this week's close was recorded does not rewrite it.
-        if (thisClose && t.created_at && thisClose.created_at && t.created_at > thisClose.created_at) continue;
-        chargesNet += t.amount_cents ?? 0;
+      for (const [purchaseId, totalRefunded] of refundTotalByPurchase) {
+        const purchase: any = purchaseById.get(purchaseId);
+        chargesNet -= linkedRefundNormalPortionCents(
+          purchase.amount_cents, purchase.fund_allocation_cents, totalRefunded,
+        );
       }
     }
+    // Defence in depth (Nov 5, 2026): unlinked posted refunds net only
+    // up to the week's charges. A refund bigger than the week's spending
+    // (e.g. a misclassified $7,000 check deposit) used to floor spent to
+    // $0 silently. The excess is exposed as unlinked_excess_cents
+    // instead of being dropped. The cap is a visibility guard, not the
+    // fix for a misclassification — the classifier is what must label
+    // the row right. P1-M1 (Nov 8, 2026): the LOCK rule replaces the
+    // old created_at guard — an open week recomputes (so a refund
+    // arriving after the close DOES count on the next recompute, which
+    // is how the Nov 1–7 week corrected itself to $396.67 surplus),
+    // while a locked week never nets unlinked refunds (restoration
+    // handles locked-week refunds instead). The excess stays exposed
+    // in both cases, so a late locked-week refund is visible, not lost.
+    const unlinkedRefundAbs = windowRows
+      .filter((t: any) => postedRefund(t) && (!hasLinkage || !t.original_purchase_id))
+      .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
+    const unlinkedNetted = weekLocked ? 0 : Math.min(unlinkedRefundAbs, Math.max(0, chargesNet));
+    chargesNet -= unlinkedNetted;
+    const unlinkedExcessCents = unlinkedRefundAbs - unlinkedNetted;
 
     // Late charges (P0-9): for the CURRENT week, add locked-week
     // charges not yet frozen into any close snapshot. For a week
@@ -283,14 +440,17 @@ Deno.serve(async (req) => {
     }
     const pendingExcluded = [...pendingById.values()]
       .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
-    void pendingRefundExcludedCents;
-    void isExcludedFromMath;
 
     // Snapshot precedence: a closed week's stored B/T win over any
     // later override (a later change never rewrites a closed week).
     // An override set after a week closed therefore does not change
     // that week; it applies to open and future weeks, and week-close
     // stores the override as the snapshot when it closes the week.
+    // override_cents surfaces the override for the UI, and only
+    // when the override actually drives B for this week: when a
+    // stored snapshot wins, it is null, so a closed week is never
+    // re-explained from a later override.
+    const overrideForUi = (thisClose && thisClose.base_allowance_cents != null) ? null : overrideCents;
     const B = thisClose && thisClose.base_allowance_cents != null
       ? thisClose.base_allowance_cents
       : overrideCents != null
@@ -302,25 +462,46 @@ Deno.serve(async (req) => {
       ? 0
       : tempSum;
     const D = latestCloseBefore
-      ? Math.max(0, (latestCloseBefore.outgoing_debt_cents ?? 0) - restorationCuts)
-      : 0;
+      ? Math.max(0, (latestCloseBefore.outgoing_debt_cents ?? 0) - restorationCuts - debtPaymentsAfter + debtAdjustmentsAfter)
+      : Math.max(0, debtAdjustmentsAfter);
     const C = Math.max(0, chargesNet);
 
-    const result = computeWeek({ B, T, D, C });
+    // Debt payment for this week (Carried Debt fund, build 29). A
+    // closed week's STORED payment wins — a later rule change never
+    // rewrites a closed week, same as the B/T snapshot rule.
+    // Otherwise the rule in effect now, from the base only. No rule
+    // (the debt_settings table not migrated) means the old
+    // behaviour: P = D, the base absorbs the whole debt.
+    const storedP = thisClose?.debt_payment_cents;
+    const P = storedP != null
+      ? storedP
+      : debtRuleMissing
+      ? D
+      : debtRulePayment(debtRule, B);
+    const result = computeWeek({ B, T, D, C, P });
 
-    // EXACT response shape — no extra fields.
+    // Response shape: the fields above plus unlinked_excess_cents
+    // (Nov 5, 2026) — the part of unlinked refunds that exceeded the
+    // week's charges and was NOT netted, so a future misclassification
+    // is visible instead of silent.
     return json({
       week_start: weekStart,
       base_available_cents: result.baseAvailable,
       temp_cents: result.T,
+      override_cents: overrideForUi,
       carried_debt_cents: result.D,
+      debt_payment_cents: result.debtPayment,
       charges_cents: result.C,
       available_cents: result.available,
       week_locked: weekLocked,
       pending_refund_excluded_cents: pendingExcluded,
+      unlinked_excess_cents: unlinkedExcessCents,
     });
   } catch (e) {
-    return json({ error: String((e as any)?.message ?? e) }, 500);
+    // P1-B3 (Nov 8, 2026): never leak a raw DB/server error to the
+    // client — log the detail server-side, return a generic string.
+    console.error('compute-week failed:', (e as any)?.message ?? e);
+    return json({ error: 'could not compute week' }, 500);
   }
 });
 

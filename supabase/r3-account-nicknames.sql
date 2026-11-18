@@ -1,4 +1,8 @@
--- R3 account nicknames — PREPARED ONLY, DO NOT APPLY without owner approval.
+-- R3 account nicknames — APPLIED LIVE Nov 3, 2026 (same R12/R13
+-- chain as r12-add-money.sql. R4-BE-2, Nov 9, 2026 — the "PREPARED
+-- ONLY" header this file carried before is stale). Do NOT re-apply
+-- blindly: re-apply only if a live probe shows the live body has
+-- drifted from this file, and reconcile first.
 -- Nicknames are bound to stable Plaid ids (plaid_item_id + plaid_account_id),
 -- never to a card suffix alone. card_suffix is stored only as a display hint
 -- so the Transactions filter can show "••1005 · Everyday" — the key is the

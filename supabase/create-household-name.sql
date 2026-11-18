@@ -1,7 +1,14 @@
--- Household Budget — create_household(p_name) — NOT YET APPLIED.
--- FOR OWNER REVIEW ONLY. Do not run this against the live database
--- until the owner approves the exact change shown here, per the
--- standing rule that live database changes come to the owner first.
+-- Household Budget — create_household(p_name) — SUPERSEDED, NEVER
+-- APPLY (P2-B19, Nov 8, 2026). The "NOT YET APPLIED" note this
+-- header carried before is stale as a live-state claim: a
+-- create_household(text) IS live — the version in
+-- supabase/signup-display-name.sql, applied live Nov 8, 2026,
+-- which is this file's body PLUS storing the caller's display name
+-- on the admin member row. Applying THIS file would DROP that
+-- version and silently remove display-name handling from every
+-- new household. Keep this file only as the pre-display-name
+-- record; any future create_household change starts from
+-- signup-display-name.sql.
 --
 -- WHAT CHANGES vs the live function (supabase/01-invite-codes.sql §4):
 -- exactly one thing: the household name comes from the new p_name

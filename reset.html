@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
-<title>Household Budget — Reset password</title>
+<title>OnBudget — Reset Your Password</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <style>
   body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; background: #fff; color: #0f172a; }
@@ -20,19 +20,18 @@
   a { color: #2f6bff; }
   #msg { margin-top: 16px; padding: 12px; border-radius: 12px; background: #eef4ff; }
   #msg:empty { display: none; }
-  #msg.error { background: #fef2f2; color: #dc2626; }
+  #msg.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Choose a new password</h1>
-  <p>Step 3 of the reset: you asked for a link, checked your inbox, and opened it here. Now choose a new password, then return to sign-in with it. If this link has expired, go back to sign-in and use Forgot password? again for a fresh link.</p>
-  <label>New password <span class="password-row"><input id="newPassword" type="password" autocomplete="new-password"><button id="toggleNewPasswordBtn" type="button" aria-label="Show password" aria-pressed="false">Show</button></span></label>
-  <p>Password requirements: at least 8 characters. Both fields must match.</p>
-  <label>Confirm new password <span class="password-row"><input id="confirmPassword" type="password" autocomplete="new-password"><button id="toggleConfirmPasswordBtn" type="button" aria-label="Show password" aria-pressed="false">Show</button></span></label>
-  <button id="saveBtn" type="button">Save new password</button>
+  <h1>Reset Your Password</h1>
+  <p>Password requirements: at least 8 characters.</p>
+  <label>New Password <span class="password-row"><input id="newPassword" type="password" autocomplete="new-password"><button id="toggleNewPasswordBtn" type="button" aria-label="Show password" aria-pressed="false">Show</button></span></label>
+  <label>Confirm New Password <span class="password-row"><input id="confirmPassword" type="password" autocomplete="new-password"><button id="toggleConfirmPasswordBtn" type="button" aria-label="Show password" aria-pressed="false">Show</button></span></label>
+  <button id="saveBtn" type="button">Save New Password</button>
   <p id="msg"></p>
-  <p><a href="live.html">Back to sign in</a></p>
+  <p><a href="live.html">Back to Sign In</a></p>
 </main>
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -68,7 +67,11 @@ $('saveBtn').addEventListener('click', async () => {
   const { error } = await supabase.auth.updateUser({ password: pw });
   if (error) { console.warn('password reset failed:', error.message); msg.textContent = 'Could not save the new password. The link may have expired — request a new one from the sign-in screen.'; msg.classList.add('error'); return; }
   msg.classList.remove('error');
-  msg.textContent = 'Password saved. You can now sign in with it.';
+  msg.textContent = 'Password saved. You can now sign in with it. Taking you back to sign in…';
+  // P2-F12 (Nov 8, 2026): a saved password used to leave the user
+  // on this dead page. Redirect to the app after 2s; the "Back to
+  // Sign In" link below stays as the fallback.
+  setTimeout(() => { window.location.href = 'live.html'; }, 2000);
 });
 </script>
 </body>

@@ -8,11 +8,28 @@
 //   1. Per-household HMAC-SHA256 signature (header 'x-budget-signature')
 //      over the canonical string defined in INGEST_CONTRACT.md, using
 //      that household's secret from household_ingest_secrets. Anything
-//      unverified is rejected (401). Constant-time compare (no
-//      early-exit .every()).
+//      unverified is rejected with ONE generic 401 — the response
+//      never distinguishes "unknown household" from "bad signature"
+//      from "stale timestamp" from "reused nonce" (P2-B8, Nov 8, 2026:
+//      distinct 401 messages were a household-existence oracle).
+//      Constant-time compare (no early-exit .every()).
 //   2. Replay protection: timestamp within 10 minutes + one-time nonce
-//      recorded in ingest_nonces (unique(household_id, nonce)), claimed
-//      BEFORE the transaction insert. A reused nonce is rejected (401).
+//      recorded in ingest_nonces (unique(household_id, nonce)). The
+//      nonce is claimed AFTER the quarantine checks (step 3/4), AFTER
+//      the messageId dedupe check (step 5), and BEFORE the transaction
+//      insert (P2-B8, Nov 8, 2026: claiming it first burned the nonce
+//      of every quarantined delivery, so a legitimate retry of the
+//      same alert then failed as a replay). A reused nonce is
+//      rejected with the same generic 401.
+//      NEW-R4-C4 (Nov 9, 2026): the dedupe check precedes the nonce
+//      claim, so a legitimate re-delivery of an already-stored alert
+//      returns stored:true + duplicate:true instead of a 401. This
+//      cannot let a replayed nonce be reused for a DIFFERENT message:
+//      the HMAC canonical string binds nonce + messageId + amount +
+//      merchant + date, so the same signed nonce cannot be presented
+//      with another messageId without invalidating the signature —
+//      and a replay of the exact same delivery only ever returns
+//      duplicate:true, never a second row.
 //   3. Require the verbatim Authentication-Results header to show a
 //      pass for americanexpress.com (see INGEST_CONTRACT.md for the
 //      exact rule). Anything else is quarantined (202, stored:false),
@@ -49,10 +66,13 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
+  applyMerchantRuleToMerchant,
   canonicalHash,
   classifyMerchantOnly,
+  findCoveringBankRow,
   flagLookalikes,
   hmacSha256Hex,
+  loadMerchantRules,
   normalizeMerchant,
   timingSafeEqualHex,
 } from './canonical.ts';
@@ -63,6 +83,22 @@ const corsHeaders = {
 };
 
 const REPLAY_WINDOW_SECONDS = 600; // 10 minutes
+
+// P2-B8 (Nov 8, 2026): every auth failure returns this one generic
+// message — unknown household, bad signature, stale timestamp, and
+// reused nonce are indistinguishable from outside.
+const AUTH_FAILED = 'authentication failed';
+
+// P2-N11 (Nov 8, 2026): refund linking is best-effort and must never
+// fail ingest — but a missing-SQL deploy used to be swallowed
+// silently (supabase-js returns { error }, it does not throw, so the
+// old bare catch never even saw it). The rpc invocations stay inline
+// at the call sites (the P0-1 test pins that shape); this helper only
+// centralises the server-side log line, so a missed apply is
+// observable in function logs.
+function logLinkError(error: unknown): void {
+  if (error) console.error('ingest-amex-alert: refund linking failed (best-effort):', (error as { message?: unknown })?.message ?? error);
+}
 
 // Canonical string (exact — see INGEST_CONTRACT.md):
 //   timestamp + '.' + nonce + '.' + household_id + '.' + messageId
@@ -117,7 +153,7 @@ Deno.serve(async (req) => {
     if (!Number.isInteger(timestamp)) return json({ error: 'timestamp must be epoch seconds' }, 400);
     const nowSeconds = Math.floor(Date.now() / 1000);
     if (Math.abs(nowSeconds - timestamp) > REPLAY_WINDOW_SECONDS) {
-      return json({ error: 'timestamp outside replay window' }, 401);
+      return json({ error: AUTH_FAILED }, 401);
     }
 
     // Service key with the documented fallback order. No legacy-key
@@ -134,19 +170,12 @@ Deno.serve(async (req) => {
       .select('secret')
       .eq('household_id', householdId)
       .maybeSingle();
-    if (!secretRow?.secret) return json({ error: 'unknown household or ingest not configured' }, 401);
+    if (!secretRow?.secret) return json({ error: AUTH_FAILED }, 401);
 
     // 1. Signature verify (constant-time).
     const sig = (req.headers.get('x-budget-signature') ?? '').toLowerCase();
     const expected = await hmacSha256Hex(String(secretRow.secret), canonicalString(body));
-    if (!timingSafeEqualHex(sig, expected)) return json({ error: 'bad signature' }, 401);
-
-    // 2. Replay: claim the nonce before any insert. A unique-violation
-    //    here means this exact signed delivery was already processed.
-    const { error: nonceError } = await supabase.from('ingest_nonces').insert({
-      household_id: householdId, nonce,
-    });
-    if (nonceError) return json({ error: 'nonce already used' }, 401);
+    if (!timingSafeEqualHex(sig, expected)) return json({ error: AUTH_FAILED }, 401);
 
     // 3. Authentication-Results (verbatim header value, as sent).
     const authResults = String(body.auth_results ?? '');
@@ -162,20 +191,36 @@ Deno.serve(async (req) => {
     if (amountCents === null || !merchantRaw || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return json({ quarantined: true, stored: false, reason: 'unparseable alert' }, 202);
     }
-    const merchant = normalizeMerchant(merchantRaw).slice(0, 80);
+    // Build 30 (merchant rules): the rule's display name is what is
+    // stored AND hashed, so this alert hashes like its bank row.
+    const merchantRules = await loadMerchantRules(supabase, householdId);
+    const ruled = applyMerchantRuleToMerchant(
+      merchantRules, normalizeMerchant(merchantRaw).slice(0, 80), amountCents);
+    const merchant = ruled.merchant;
     const dedupeHash = await canonicalHash(merchant, date, amountCents, cardSuffix);
+    // A rule's fixed kind overrides the classifier (sign-guarded
+    // inside); otherwise classify on the ORIGINAL merchant text.
+    const kind = ruled.kindOverride ?? classifyMerchantOnly(merchantRaw, amountCents);
 
-    // 5. Dedupe by message identity, NOT by hash alone. Two deliveries
-    //    of the same Gmail message share messageId, so a row with
-    //    external_id = messageId means this alert is already stored
-    //    (stored:true + duplicate:true — the purchase IS in
-    //    transactions from the earlier delivery — so the script can
-    //    safely label the message processed). Two REAL identical
-    //    purchases have different messageIds and MUST both insert
-    //    (spec test 20); the canonical hash is stored on the row so
-    //    plaid-sync can later MATCH the Plaid version to this row
-    //    (its step-3 hash match) instead of double-counting. The hash
-    //    is never, on its own, a reason to drop a Gmail alert.
+    // 5. Dedupe by message identity, NOT by hash alone — checked
+    //    BEFORE the nonce claim (NEW-R4-C4, Nov 9, 2026): a
+    //    re-delivery of an already-stored alert returns stored:true
+    //    + duplicate:true here instead of hitting the nonce
+    //    unique-violation below and getting a generic 401. Two
+    //    deliveries of the same Gmail message share messageId, so a
+    //    row with external_id = messageId means this alert is
+    //    already stored (the purchase IS in transactions from the
+    //    earlier delivery — so the script can safely label the
+    //    message processed). Two REAL identical purchases have
+    //    different messageIds and MUST both insert (spec test 20);
+    //    the canonical hash is stored on the row so plaid-sync can
+    //    later MATCH the Plaid version to this row (its step-3 hash
+    //    match) instead of double-counting. The hash is never, on
+    //    its own, a reason to drop a Gmail alert. Skipping the nonce
+    //    claim on this path is safe: the nonce is bound to this
+    //    messageId by the signed canonical string, so it cannot be
+    //    replayed for a different message, and replaying this exact
+    //    delivery only returns duplicate:true again.
     const messageId = String(body.messageId ?? '');
     if (messageId) {
       const { data: existing } = await supabase.from('transactions')
@@ -184,7 +229,51 @@ Deno.serve(async (req) => {
       if (existing) return json({ stored: true, duplicate: true, state: 'provisional' });
     }
 
-    const kind = classifyMerchantOnly(merchantRaw, amountCents);
+    // 5b. Bank-first guard (Nov 12, 2026 — provisional-merge miss,
+    //     owner-reported doubles; widened build 30): when the Plaid
+    //     row arrived BEFORE the alert, inserting here creates a
+    //     second row for the same purchase and nothing later merges
+    //     them (plaid-sync only claims alert rows at bank-ingest
+    //     time). So before inserting, skip when a Plaid row covers
+    //     this purchase — same amount + same card (or unknown
+    //     suffix) + date within 2 days + merchant-related (same
+    //     kind, same household). The bank row IS the purchase; the
+    //     alert adds nothing. Plaid rows only, never an amex_alert
+    //     row: two real identical purchases with no bank row must
+    //     both insert (spec test 20), and two real identical
+    //     purchases with bank rows still yield two rows (each alert
+    //     is dropped against its own bank row; a bank row arriving
+    //     later inserts its own row). The exact-hash case is the
+    //     special case where all of those are equalities. A
+    //     TOIREMORG alert is never swallowed here: the eligibility
+    //     check refuses TOIREMORG pairs, so the alert inserts and
+    //     the pair stays two real gifts (owner ruling Nov 3).
+    let aliasPairs: Array<{ name_a: string; name_b: string }> = [];
+    try {
+      const { data: aliasData } = await supabase.from('merchant_aliases')
+        .select('name_a, name_b').eq('household_id', householdId);
+      aliasPairs = aliasData ?? [];
+    } catch {
+      aliasPairs = [];
+    }
+    const coveringBankRow = await findCoveringBankRow(supabase, householdId, {
+      merchant, date, amount_cents: amountCents, card_suffix: cardSuffix, kind,
+    }, { aliases: aliasPairs, rules: merchantRules });
+    const bankCovered = !!coveringBankRow;
+    if (bankCovered) return json({ stored: true, duplicate: true, state: 'provisional' });
+
+    // 2. Replay: claim the nonce AFTER the quarantine checks and
+    // the dedupe check above, and BEFORE the insert. A
+    // unique-violation here means this exact signed delivery was
+    // already processed and its message is NOT already stored (an
+    // already-stored message returned duplicate:true above, before
+    // any nonce was claimed). (P2-B8: claiming before quarantine
+    // burned the nonce of quarantined deliveries.)
+    const { error: nonceError } = await supabase.from('ingest_nonces').insert({
+      household_id: householdId, nonce,
+    });
+    if (nonceError) return json({ error: AUTH_FAILED }, 401);
+
     const { data: inserted, error } = await supabase.from('transactions').insert({
       household_id: householdId,
       date,
@@ -205,12 +294,29 @@ Deno.serve(async (req) => {
         id: inserted.id, merchant, date, amount_cents: amountCents,
         card_suffix: cardSuffix, source: 'amex_alert', created_at: inserted.created_at,
       });
+      // P0-1 (Nov 8, 2026): link this row to its purchase/refund so
+      // restoration can reach it (supabase/refund-linking.sql).
+      // Best-effort: never fails ingest (P2-N11: the rpc result is
+      // checked and logged via logLinkError, so a missed SQL apply
+      // is observable instead of silent).
+      try {
+        if (kind === 'refund') {
+          const { error: linkErr } = await supabase.rpc('auto_link_refund', { p_refund_id: inserted.id });
+          logLinkError(linkErr);
+        } else if (kind === 'charge' || kind === 'fund_charge') {
+          const { error: linkErr } = await supabase.rpc('link_refunds_to_purchase', { p_purchase_id: inserted.id });
+          logLinkError(linkErr);
+        }
+      } catch (e) {
+        logLinkError(e);
+      }
     }
     // stored:true ONLY after a successful insert (or a proven
     // duplicate above). Never on 401/202/500.
     return json({ stored: true, duplicate: false, state: 'provisional' });
   } catch (e) {
-    return json({ error: String((e as Error)?.message ?? e) }, 500);
+    console.error('ingest-amex-alert failed:', (e as Error)?.message ?? e);
+    return json({ error: 'could not save email alert' }, 500);
   }
 });
 

@@ -47,32 +47,31 @@ test('number row is vertically centered and kicker row is full width', () => {
 });
 
 test('sync button keeps its identity, treatment hook, and the number keeps its target', () => {
-  assert.match(hero, /id="homeSyncBtn"[^>]*aria-label="Sync bank"/);
+  assert.match(hero, /id="homeSyncBtn"[^>]*aria-label="Sync Bank"/);
   assert.match(hero, /id="weeklyAvailable"[^>]*role="button"[^>]*tabindex="0"/);
-  assert.match(hero, /id="weeklyAvailable"[^>]*aria-label="Show Weekly Budget breakdown"/);
+  assert.match(hero, /id="weeklyAvailable"[^>]*aria-label="Show Weekly Budget Breakdown"/);
   assert.match(css, /\.hero-number-row \.hero-sync-btn \{[^}]*width: 44px; height: 44px/);
 });
 
 test('Home stat kickers are one line each: Charity and Extra Fund', () => {
-  const charity = html.match(/data-home-card="charity"[^>]*><div class="kicker">([^<]*)<\/div>/);
+  const charity = html.match(/data-home-card="charity"[^>]*><span class="pot-chevron"[^>]*>⌄<\/span><div class="kicker">([^<]*)<\/div>/);
   assert.ok(charity, 'Home charity card found');
   assert.equal(charity[1], 'Charity', 'Home charity kicker is exactly "Charity"');
-  const fund = html.match(/data-home-card="fund"[^>]*><div class="kicker">([^<]*)<\/div>/);
+  const fund = html.match(/data-home-card="fund"[^>]*><span class="pot-chevron"[^>]*>⌄<\/span><div class="kicker">([^<]*)<\/div>/);
   assert.ok(fund, 'Home fund card found');
   assert.equal(fund[1], 'Extra Fund', 'Home fund kicker is exactly "Extra Fund"');
   assert.equal(html.includes('data-home-card="charity"'), true);
 });
 
-test('period is not lost: Charity sheet title still carries it (Period row removed by fund-sheet-button-rule)', () => {
-  assert.match(js, /title: 'Charity · November 2026 onward'/);
-  assert.doesNotMatch(js, /\['Period', 'November 2026 onward'\]/);
+test('period is not lost: expanded Charity card still carries it (Period row removed by fund-sheet-button-rule)', () => {
+  assert.match(js, /fund-expand-period">November 2026 onward/);
+  assert.doesNotMatch(js, /\['Period', 'November 2026 Onward'\]/);
 });
 
 test('Funds Charity panel heading is untouched (already just Charity)', () => {
   assert.match(html, /data-fund-card="charity"[^>]*>\s*<div class="fund-balance-head"><h2>Charity<\/h2><\/div>/);
 });
 
-test('version pins: styles v35, live.js v45 after the PR #32 merge', () => {
-  assert.match(html, /styles\.css\?v=35/);
-  assert.match(html, /live\.js\?v=45/);
-});
+test('version pins: styles v53, live.js v69 after the PR #32 merge', () => {
+  assert.match(html, /styles\.css\?v=53/);
+  assert.match(html, /live\.js\?v=69/);});

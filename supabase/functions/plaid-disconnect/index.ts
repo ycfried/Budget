@@ -10,9 +10,13 @@
 //     (decrypted in memory only, same pattern as plaid-sync; never
 //     logged, never returned), then marks the plaid_items row
 //     status='disconnected' + disconnected_at=now().
-//   The row and its plaid_accounts rows are KEPT, so the app can show
-//   a "Previously connected" list. No row is deleted. No transaction
-//   row is touched: past transactions stay in history.
+//   The row and its plaid_accounts rows are KEPT, so a whole-item
+//   disconnect can be audited and the item can be reconnected later.
+//   No row is deleted. No transaction row is touched: past
+//   transactions stay in history. (The "Previously connected" list
+//   that used to render these rows was removed from the UI in the
+//   connected-accounts-rework, Nov 4, 2026 — the rows are kept, just
+//   not listed anymore.)
 //   Response: { disconnected: true, plaid_item_id }.
 //   Failure semantics: if the Plaid /item/remove call fails for a
 //   reason OTHER than ITEM_NOT_FOUND, the row is NOT marked
@@ -135,7 +139,8 @@ Deno.serve(async (req) => {
     if (markError) return json({ error: 'could not mark disconnected' }, 500);
     return json({ disconnected: true, plaid_item_id: plaidItemId });
   } catch (e) {
-    return json({ error: String((e as Error)?.message ?? e) }, 500);
+    console.error('plaid-disconnect failed:', (e as Error)?.message ?? e);
+    return json({ error: 'could not disconnect bank' }, 500);
   }
 });
 

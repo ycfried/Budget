@@ -40,10 +40,20 @@ export function computeWeek(input) {
   // sends) are deliberately IGNORED, never read into the math. A stale
   // caller therefore cannot reintroduce refund credit through this function.
 
-  // 1. Debt not absorbed by this week's base becomes carried debt.
-  const carriedDebt = Math.max(0, D - B);
+  // Debt payment P (Carried Debt fund, build 29, Nov 15, 2026): the
+  // base allowance pays at most P toward the incoming debt; the rest
+  // of the debt carries on. P defaults to D — the pre-build-29
+  // behaviour, where the base absorbs the whole debt — so callers
+  // that do not pass P (and every existing test) see exactly the old
+  // numbers. The effective payment is capped at D (no overpaying)
+  // and at B (the base is the only money the payment comes from;
+  // a fixed-$ rule larger than the base pays at most the base).
+  const Praw = input.P == null ? D : int(input.P);
+  const debtPayment = Math.min(D, Praw, B);
+  // 1. Debt remaining after this week's payment (before new debt).
+  const carriedDebt = D - debtPayment;
   // 2. Base capacity left after paying debt.
-  const baseAvailable = Math.max(0, B - D);
+  const baseAvailable = B - debtPayment;
   // 3. Charges covered by base.
   const coveredBase = Math.min(C, baseAvailable);
   // 4. Charges above base.
@@ -61,6 +71,7 @@ export function computeWeek(input) {
 
   return {
     B, T, D, C,
+    debtPayment,
     carriedDebt,
     baseAvailable,
     coveredBase,
@@ -71,6 +82,87 @@ export function computeWeek(input) {
     earnedSurplus,
     available,
   };
+}
+
+// Debt repayment rule (Carried Debt fund, build 29, Nov 15, 2026):
+// the weekly payment toward the incoming debt, from the base
+// allowance ONLY — temporary increases never feed it (owner's
+// numbers are all base-only). mode: 'percent' — percentBp basis
+// points of B; 'fixed' — fixedCents per week; 'off' — no payment.
+// Returns the RULE amount (uncapped); callers cap it at D and B via
+// computeWeek's P input. A null rule (the debt_settings table not
+// yet migrated) means the OLD behaviour — the caller passes no P at
+// all, it does not call this.
+export function debtRulePayment(rule, baseCents) {
+  if (rule == null || rule.mode === 'off') return 0;
+  const B = int(baseCents);
+  if (rule.mode === 'percent') {
+    const bp = int(rule.percentBp);
+    if (bp < 0 || bp > 10000) throw new Error('engine: percentBp must be between 0 and 10000');
+    return Math.floor((B * bp) / 10000);
+  }
+  if (rule.mode === 'fixed') return int(rule.fixedCents);
+  throw new Error(`engine: unknown debt rule mode ${String(rule.mode)}`);
+}
+
+// Debt payments after a close (Carried Debt fund, build 29): the
+// same window as restorationDebtCutsAfterClose — payments posted
+// after the latest close's week and up to the requested week. Only
+// 'extra_fund' and 'clear' payments reduce the incoming debt;
+// 'surplus' payments are already inside the close that recorded
+// them (the close stores outgoing net of the surplus payment), so
+// they are never subtracted here — subtracting them would count the
+// same payment twice.
+export function debtPaymentsAfterClose(payments, latestCloseWeekStart, weekStart) {
+  return (payments ?? [])
+    .filter((p) => (p.source === 'extra_fund' || p.source === 'clear')
+      && (latestCloseWeekStart == null || p.week_start > latestCloseWeekStart)
+      && (weekStart == null || p.week_start <= weekStart))
+    .reduce((s, p) => s + (p.amount_cents ?? 0), 0);
+}
+
+// Partial debt clear (build 30, task K): how much of the current
+// balance a clear_debt call writes off. Mirrors the SQL in
+// supabase/partial-debt-clear.sql exactly — same refusals, same
+// floor. opts: exactly one of { amountCents } or { percentBp };
+// neither means clear all. A partial clear WRITES OFF that part
+// of the debt (a 'clear' debt_payments row, same audit trail as a
+// full clear); it is NOT a payment from the Extra Fund. The balance
+// after the clear is balance - cleared, never below zero; an amount
+// larger than the balance is refused (never silently partial).
+// Percent is basis points of the CURRENT balance at call time,
+// floored like debtRulePayment above. Throws on any refusal.
+export function computePartialClear(balanceCents, opts = {}) {
+  const balance = int(balanceCents);
+  if (balance <= 0) throw new Error('engine: there is no debt to clear');
+  const hasAmount = opts.amountCents !== null && opts.amountCents !== undefined;
+  const hasPercent = opts.percentBp !== null && opts.percentBp !== undefined;
+  if (hasAmount && hasPercent) {
+    throw new Error('engine: specify an amount or a percentage, not both');
+  }
+  let cleared;
+  if (hasAmount) {
+    // Validate the raw value first, so a negative or fractional
+    // amount gets the specific refusal (not int()'s generic one) —
+    // same order as the SQL, which checks <= 0 before anything else.
+    if (!Number.isInteger(opts.amountCents) || opts.amountCents <= 0) {
+      throw new Error('engine: amount must be positive');
+    }
+    cleared = int(opts.amountCents);
+    if (cleared > balance) {
+      throw new Error(`engine: amount exceeds remaining debt: ${balance} cents`);
+    }
+  } else if (hasPercent) {
+    if (!Number.isInteger(opts.percentBp) || opts.percentBp < 1 || opts.percentBp > 10000) {
+      throw new Error('engine: percent must be between 1 and 10000 basis points');
+    }
+    const bp = int(opts.percentBp);
+    cleared = Math.floor((balance * bp) / 10000);
+    if (cleared <= 0) throw new Error('engine: percentage clears nothing at this balance');
+  } else {
+    cleared = balance;
+  }
+  return { clearedCents: cleared, remainingCents: Math.max(0, balance - cleared) };
 }
 
 function int(v) {
@@ -101,6 +193,11 @@ export function isExcludedFromMath(t) {
   // delta3: transfers between the household's own accounts never count
   // toward weekly spending, refunds, or restoration, either direction.
   if (t.kind === 'transfer') return true;
+  // Refund-classification fix (Nov 5, 2026): income is money received,
+  // never week spending — explicit here so a future walk cannot
+  // accidentally count it (chargeContribution already returns 0 for
+  // non-charge kinds, but the exclusion is the stated rule).
+  if (t.kind === 'income') return true;
   // Pending/provisional REFUNDS restore nothing and are excluded from
   // week math until they post (state 'verified'). Provisional CHARGES
   // still count — the distinction is by kind + state, not state alone.
@@ -139,6 +236,82 @@ export function chargeContribution(t) {
     return (t.amount_cents ?? 0) - (t.fund_allocation_cents ?? 0);
   }
   return 0;
+}
+
+// ---------------------------------------------------------------------------
+// N1 + N2 shared helpers (Nov 5, 2026, owner-approved math fixes).
+// Both live in this engine file — the single shared math source both
+// compute-week and week-close import — so the two functions cannot
+// drift apart again. CANONICAL DIRECTION: this root file is the
+// canonical copy; the three deployed copies (supabase/functions/
+// compute-week/engine.mjs, week-close/engine.mjs, _shared/engine.mjs)
+// are synced FROM root, never the other way. test/p2-engine.test.mjs
+// asserts all four files are byte-identical, so any drift fails the
+// suite (P2-M1).
+// ---------------------------------------------------------------------------
+
+// N1 Option A — fund-first, counted once. The NORMAL portion of a
+// linked refund total for one purchase: the refund pays the fund
+// portion back first (same arithmetic as restoration.mjs
+// fundCreditCents = min(refundable, fundAllocation)), and only the
+// remainder nets against the week's normal charges. Capped at the
+// purchase's normal portion (amount - fundAllocation): a refund
+// beyond the original charge is HELD, never netted here.
+//   $100 purchase ($60 fund / $40 normal), $50 refund -> 0
+//   ($50 fund-first, nothing left for the normal portion).
+//   $100 purchase ($60 fund / $40 normal), $70 refund -> 10.
+//   $100 normal purchase, $50 refund -> 50. Fully-fund -> 0.
+// Callers net this amount (as a positive cents value) once per
+// purchase, from the CUMULATIVE refund total for that purchase, so
+// partial refunds ($30 + $30) are order-independent by construction.
+// Unlinked refunds have no purchase to split against and keep
+// netting in full, unchanged.
+export function linkedRefundNormalPortionCents(purchaseAmountCents, fundAllocationCents, totalRefundedCents) {
+  const amount = Math.max(0, Math.floor(purchaseAmountCents ?? 0));
+  const fund = Math.min(Math.max(0, Math.floor(fundAllocationCents ?? 0)), amount);
+  const refunded = Math.max(0, Math.floor(totalRefundedCents ?? 0));
+  const fundCredit = Math.min(refunded, fund);
+  return Math.min(refunded - fundCredit, amount - fund);
+}
+
+// N2 Option A — debt entering a week. Sum of restoration debt cuts
+// posted AFTER the latest close before the week and UP TO AND
+// INCLUDING that week: cuts posted in or before the close's week are
+// already inside its stored outgoing debt (subtracting them again
+// double-counts), and cuts posted after the week belong to later
+// weeks, never to this week's entering debt. This is the definition
+// compute-week already used; week-close's restoration now uses the
+// same window. Pass null/undefined latestCloseWeekStart when there
+// is no prior close (cuts are then 0 — the caller floors debt at 0
+// anyway when there is no prior close).
+export function restorationDebtCutsAfterClose(entries, latestCloseWeekStart, weekStart) {
+  return (entries ?? [])
+    .filter((r) => (latestCloseWeekStart == null || r.week_start > latestCloseWeekStart)
+      && (weekStart == null || r.week_start <= weekStart))
+    .reduce((s, r) => s + (r.debt_reduction_cents ?? 0), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Unlinked-refund cap (P2-M5, Nov 8, 2026).
+// An unlinked posted refund nets against the week's charges only up to
+// the charges, and nets nothing in a locked week (the excess is exposed
+// as unlinked_excess_cents, never silently dropped). This is a pure
+// extraction of the inline formula in compute-week/index.ts:280-282 —
+// same arithmetic, no behaviour change. The Deno functions still inline
+// it (they cannot import the root file); this helper is the executable
+// pin the tests assert, and the TS text is regex-pinned to the same
+// formula (see test/p2-engine.test.mjs). Inputs are floored at 0, as
+// the callers only ever pass absolute refund totals and floored
+// charges, so for every reachable input this matches the TS exactly.
+export function applyUnlinkedRefundCap(unlinkedRefundAbsCents, chargesNetCents, weekLocked) {
+  const abs = Math.max(0, Math.floor(unlinkedRefundAbsCents ?? 0));
+  const charges = Math.max(0, Math.floor(chargesNetCents ?? 0));
+  const nettedCents = weekLocked ? 0 : Math.min(abs, charges);
+  return {
+    nettedCents,
+    excessCents: abs - nettedCents,
+    chargesAfterCents: charges - nettedCents,
+  };
 }
 
 // ---------------------------------------------------------------------------

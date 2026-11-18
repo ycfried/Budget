@@ -1,8 +1,18 @@
-// Household Budget — plaid-webhook-register (new, Nov 1, 2026).
+// Household Budget — plaid-webhook-register (new, Nov 1, 2026;
+// toggle, Nov 4, 2026).
 // Registers the webhook URL on each of the household's connected bank
 // items via Plaid /item/webhook/update. Plaid's dashboard does NOT
 // offer Transactions webhooks, so this per-item API call is the only
 // way to turn them on for an existing connection.
+// Toggle (Nov 4): the client sends { enabled: true | false }. Enabling
+// registers WEBHOOK_URL; disabling clears the webhook by passing an
+// empty string — Plaid's item webhook is an empty string when no
+// webhook is set. After a fully successful run the function stores the
+// result in households.auto_sync_enabled (see
+// supabase/auto-sync-toggle.sql), which the client reads back as the
+// switch state. A partial failure stores nothing, so the stored state
+// never claims a state Plaid does not have. With no connected items
+// there is nothing to register, so nothing is stored.
 // Security: admin-only (checked via household membership + role).
 // The bank access token is fetched as ciphertext via the
 // get_plaid_ciphertext RPC, decrypted IN MEMORY with PLAID_TOKEN_KEY,
@@ -43,6 +53,9 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const householdId = String(body.household_id ?? '');
     if (!householdId) return json({ error: 'household_id required' }, 400);
+    // Toggle: enabled defaults to true, so older clients that call
+    // without it still enable, exactly as before.
+    const enabled = body.enabled !== false;
     const { data: membership } = await supabase
       .from('household_members')
       .select('role')
@@ -65,27 +78,62 @@ Deno.serve(async (req) => {
     const env = Deno.env.get('PLAID_ENV') ?? 'sandbox';
     if (!clientId || !secret || !tokenKey) return json({ error: 'plaid not configured' }, 503);
 
-    const { data: items } = await supabaseAdmin.from('plaid_items')
-      .select('plaid_item_id, institution_name')
+    const { data: allItems } = await supabaseAdmin.from('plaid_items')
+      .select('plaid_item_id, institution_name, status')
       .eq('household_id', householdId);
+    // Deep audit Nov 5: disconnected items still carry ciphertext, so
+    // /item/webhook/update fails for them and results.every(ok) is
+    // false forever — auto_sync_enabled is never stored and the
+    // switch stays OFF even though active items were registered.
+    // plaid-sync already filters status !== 'disconnected'; do the same.
+    const items = (allItems ?? []).filter((i) => (i.status ?? 'active') !== 'disconnected');
+    const webhook = enabled ? WEBHOOK_URL : '';
     const results = [];
     for (const item of items ?? []) {
-      const { data: ct } = await supabaseAdmin.rpc('get_plaid_ciphertext', {
-        p_household_id: householdId, p_item_id: item.plaid_item_id,
-      });
-      if (!ct) { results.push({ item: item.plaid_item_id, ok: false, error: 'no token' }); continue; }
-      const accessToken = await decryptToken(tokenKey, ct);
-      const res = await fetch(`https://${env === 'production' ? 'production' : env}.plaid.com/item/webhook/update`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken, webhook: WEBHOOK_URL }),
-      });
-      const data = await res.json();
-      results.push({ item: item.plaid_item_id, ok: res.ok, error: res.ok ? null : (data?.error_message ?? 'unknown') });
+      // P0-4 (Nov 8, 2026): one bad item must not 500 the whole toggle.
+      // Each item is isolated — a decrypt/fetch failure yields ok:false
+      // for that item only, with the institution named so the client
+      // toast can say which connection failed and why.
+      try {
+        const { data: ct } = await supabaseAdmin.rpc('get_plaid_ciphertext', {
+          p_household_id: householdId, p_item_id: item.plaid_item_id,
+        });
+        if (!ct) { results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: false, error: 'no token' }); continue; }
+        const accessToken = await decryptToken(tokenKey, ct);
+        const res = await fetch(`https://${env === 'production' ? 'production' : env}.plaid.com/item/webhook/update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ client_id: clientId, secret, access_token: accessToken, webhook }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          // P2-NEW5 / P2-N12 (Nov 8, 2026): the per-item error reaches
+          // the client (the toggle toast displays first.error), so it
+          // must be generic; Plaid's error_message goes to the server
+          // log only. (The catch branch below was already generic.)
+          console.error('plaid-webhook-register: item failed:', item.plaid_item_id, data?.error_code ?? data?.error_message ?? 'unknown');
+        }
+        results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: res.ok, error: res.ok ? null : 'request failed' });
+      } catch (e) {
+        // P1-B3 (Nov 8, 2026) + P2-NEW5/P2-N12: the per-item error is
+        // shown in the auto-sync toast, so it must be generic — the
+        // institution is named separately and the vendor detail goes
+        // to the server log only (same rule as the non-ok response
+        // path above). Log the detail here.
+        console.error('plaid-webhook-register: item failed:', item.plaid_item_id, (e as Error)?.message ?? e);
+        results.push({ item: item.plaid_item_id, institution: item.institution_name ?? null, ok: false, error: 'request failed' });
+      }
     }
-    return json({ webhook_url: WEBHOOK_URL, results });
+    // Store the switch state only on a fully successful run with at
+    // least one item — a partial failure stores nothing, and with no
+    // items there is nothing to store.
+    if ((items ?? []).length && results.every((r) => r.ok)) {
+      await supabaseAdmin.from('households').update({ auto_sync_enabled: enabled }).eq('id', householdId);
+    }
+    return json({ webhook_url: WEBHOOK_URL, enabled, results });
   } catch (e) {
-    return json({ error: String(e?.message ?? e) }, 500);
+    console.error('plaid-webhook-register failed:', e?.message ?? e);
+    return json({ error: 'could not update automatic sync' }, 500);
   }
 });
 

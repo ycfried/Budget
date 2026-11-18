@@ -1,5 +1,16 @@
 -- =====================================================================
 -- S1 migration 05 — Transaction mutation RPCs (admin-only, audited)
+-- SUPERSEDED — DO NOT APPLY IN FULL (P1-B9, Nov 8, 2026). The three
+-- RPCs here are all stale: exclude_transaction has no pre-exclusion
+-- snapshot and no locked-week guard (canonical:
+-- supabase/n4-pre-exclusion-state.sql); restore_transaction is the
+-- date-guess version that restores pending rows as posted after
+-- midnight, accepts 'excluded' only, and has no refund checks
+-- (canonical: the merged version in the same n4 file, P1-M3);
+-- reclassify_transaction has a 7-kind allow-list with no 'income'
+-- or 'charity' and no locked-week guard (canonical:
+-- supabase/refund-classification-income-kind.sql, P1-NEW1 + P1-M2).
+-- Applying this file reintroduces all three bugs at once.
 -- Deploy order: FIFTH of the five S1 files (01..05).
 -- Depends on: schema.sql (transactions, household_members,
 --   audit_log) and 02-rls-hardening.sql (which revoked direct member
@@ -138,7 +149,9 @@ grant execute on function public.restore_transaction(uuid) to authenticated;
 -- reclassify_transaction(txn_id uuid, new_kind text, reason text)
 -- returns void
 --   Changes kind (charge / refund / fund_charge / payment / cashback /
---   transfer — delta3 adds transfer so a non-internal transfer to
+--   transfer / income — Nov 5, 2026 adds income so a check deposit
+--   confirmed as income can be reclassified instead of netting as a
+--   refund; delta3 adds transfer so a non-internal transfer to
 --   another person can be moved out of week math one row at a time;
 --   INTERNAL TRANSFER rows are classified as transfer on ingest)
 --   transactions CHECK constraint already allows; anything else
@@ -160,8 +173,8 @@ declare
   v_row transactions%rowtype;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
-  if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'transfer') then
-    raise exception 'invalid kind: must be charge, refund, fund_charge, payment, cashback, or transfer';
+  if new_kind is null or new_kind not in ('charge', 'refund', 'fund_charge', 'payment', 'cashback', 'transfer', 'income') then
+    raise exception 'invalid kind: must be charge, refund, fund_charge, payment, cashback, transfer, or income';
   end if;
   select * into v_row from transactions where id = txn_id;
   if not found then raise exception 'transaction not found'; end if;

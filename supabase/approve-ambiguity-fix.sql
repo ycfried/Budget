@@ -1,4 +1,16 @@
--- approve-ambiguity-fix.sql — Audit-merge fix, Nov 3, 2026 (NOT APPLIED BY THE BUILDER)
+-- approve-ambiguity-fix.sql — Audit-merge fix, Nov 3, 2026.
+-- CANONICAL DEFINITION of approve_and_allocate (P1-B1, Nov 8, 2026):
+-- the strong body (household-row lock, over-approval check,
+-- linked-transaction household check, decided_by/decided_at/
+-- remainder_cents, accumulating fund_allocation_cents) WITH p_-
+-- prefixed parameters, so no parameter collides with a column.
+-- supabase/04-admin-rpcs.sql §1 holds the same strong body with
+-- ambiguous parameter names — DO NOT APPLY it (every Approve would
+-- fail with "column reference amount_cents is ambiguous").
+-- supabase/fund-ledger.sql §1 holds a WEAK p_-prefixed version —
+-- DO NOT APPLY it either. Apply THIS file if the live body is weak
+-- (probe: pg_get_functiondef must show 'for update', 'amount
+-- exceeds requested' and 'remainder_cents'; see the P1 batch report).
 -- Audit A finding 1: Extra Fund Approve always failed with Postgres
 -- "column reference amount_cents is ambiguous". Root cause: the live
 -- approve_and_allocate parameters were named request_id / amount_cents /

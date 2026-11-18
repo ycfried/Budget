@@ -61,13 +61,13 @@ test('Weekly sheet rows and buttons are otherwise unchanged', () => {
   assert.match(sheetFn, /\['Allowance', formatCents\(weeklyAllowanceCents\)\]/);
   assert.match(sheetFn, /\['Spent', formatCents\(w\.chargesCents\)\]/);
   assert.match(sheetFn, /\['Balance', formatCents\(w\.availableCents\)\]/);
-  assert.match(sheetFn, /extraAction: \{ label: 'Show transactions', result: 'show-transactions' \}/);
+  assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
 });
 
-test('sheet button row is centered', () => {
-  const rule = css.match(/#sheetOverlay \.sheet-btns \{[^}]*\}/);
-  assert.ok(rule, '.sheet-btns rule found');
-  assert.match(rule[0], /justify-content: center/);
-  assert.doesNotMatch(rule[0], /justify-content: flex-end/);
+test('sheet button row is a bottom-sheet row: primary stretches, not centered', () => {
+  // Native-style-live: bottom sheets put the primary action full-width
+  // at the bottom; the old centered row is superseded.
+  assert.match(css, /#sheetOverlay \.sheet-btns \{[^}]*justify-content: stretch/);
+  assert.match(css, /#sheetOverlay \.sheet-btns \.btn \{[^}]*flex: 1 1 auto/);
 });

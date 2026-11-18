@@ -20,19 +20,21 @@ const sheetFn = js.slice(js.indexOf('async function openWeeklySheet()'), js.inde
 const tempFn = js.slice(js.indexOf("$('addTempBtn')"), js.indexOf("$('saveAllowanceBtn')"));
 const actionsFn = js.slice(js.indexOf('async function openTxActionsSheet'), js.indexOf('async function doTxCharity'));
 
-test('version pins: styles v35, live.js v45', () => {
-  assert.match(html, /styles\.css\?v=35/);
-  assert.match(html, /live\.js\?v=45/);
-});
-
-test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
-  const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = ['), sheetFn.indexOf('];', sheetFn.indexOf('const weeklyRows = [')));
-  assert.deepEqual([...visible.matchAll(/\['([^']+)'/g)].map((m) => m[1]), ['Allowance', 'Spent', 'Balance']);
+test('version pins: styles v53, live.js v69', () => {
+  assert.match(html, /styles\.css\?v=53/);
+  assert.match(html, /live\.js\?v=69/);});test('1. Weekly popup rows are Allowance, Spent, Balance in order, and the equation holds', () => {
+  // R6-NEW-P1-1: Base allowance / Temporary increases / Carried
+  // debt lines appear above the three base rows exactly when debt
+  // or temp changes the number, so a $0 allowance explains itself.
+  // Temp-override reconciliation (Nov 11, 2026): a lower override
+  // shows a Temporary decrease row in the same position.
+  const visible = sheetFn.slice(sheetFn.indexOf('const weeklyRows = [];'), sheetFn.indexOf("if (unlinkedExcess > 0) weeklyRows.push"));
+  assert.deepEqual([...visible.matchAll(/weeklyRows\.push\(\['([^']+)'/g)].map((m) => m[1]), ['Base allowance', 'Temporary increases', 'Temporary decrease', 'Carried debt', 'Allowance', 'Spent', 'Balance']);
   assert.match(sheetFn, /weeklyAllowanceCents = \(w\.baseAvailableCents \?\? w\.baseRoomCents \?\? 0\) \+ \(w\.tempCents \?\? 0\)/);
-  assert.match(sheetFn, /\['Allowance', formatCents\(weeklyAllowanceCents\)\]/);
-  assert.match(sheetFn, /\['Spent', formatCents\(w\.chargesCents\)\]/);
-  assert.match(sheetFn, /\['Balance', formatCents\(w\.availableCents\)\]/);
-  assert.match(sheetFn, /extraAction: \{ label: 'Show transactions', result: 'show-transactions' \}/);
+  assert.match(sheetFn, /weeklyRows\.push\(\['Allowance', formatCents\(weeklyAllowanceCents\)\]\)/);
+  assert.match(sheetFn, /weeklyRows\.push\(\['Spent', formatCents\(w\.chargesCents\)\]\)/);
+  assert.match(sheetFn, /weeklyRows\.push\(\['Balance', formatCents\(w\.availableCents\)\]\)/);
+  assert.match(sheetFn, /extraAction: \{ label: 'Show Transactions', result: 'show-transactions' \}/);
   assert.match(sheetFn, /confirmLabel: 'Close'/);
   // Equation, via the engine: Allowance (base room + temp) - Spent = Balance.
   const r = computeWeek({ B: 42500, T: 0, D: 10000, C: 5000 });
@@ -47,23 +49,28 @@ test('2. Pale option B: fill stays #bfdbfe, wording is ink #0f172a', () => {
   assert.match(css, /body\.live #view-app \.btn-tertiary, body\.live \.btn-tertiary \{ background: #e5e7eb; color: #0f172a; border: 1px solid #e5e7eb; \}/);
   assert.match(css, /body\.live #view-app \.btn-mid, body\.live \.btn-mid \{ background: #0f172a; color: #fff; border: 1px solid #0f172a; \}/);
   // Three-button middles are still plain .btn (pale): Funds Use
-  // (now in the Extra Fund sheet, Task 7), Filters Reset, Bank Sync.
-  assert.match(js, /label: 'Use fund money', result: 'use', btnClass: 'btn'/);
+  // (now in the expanded Extra Fund card, Task 7) and Filters Reset. Bank
+  // Sync is no longer a pale middle (settings-bank-buttons, Nov 4):
+  // the bank row is two buttons, Connect primary + Sync tertiary.
+  assert.match(js, /label: 'Spend from Fund', result: 'use', btnClass: 'btn'/);
   assert.ok(html.includes('<button class="btn" id="txFiltersResetBtn"'));
-  assert.ok(html.includes('<button id="syncBankBtn" class="btn"'));
+  assert.ok(html.includes('<button id="syncBankBtn" class="btn btn-tertiary"'));
 });
 
-test('3. History row for now: no separate card, See all is a quiet link, History is one tappable row', () => {
-  assert.equal(html.includes('id="section-history-link"'), false);
+test('3. History row REMOVED (native-style-live): Past weeks live inside Transactions, no Home row', () => {
+  assert.equal(html.includes('id="section-history-row"'), false);
   assert.equal(html.includes('View history'), false);
-  assert.ok(html.includes('id="section-history-row"'));
   assert.match(html, /<a class="quiet-link" data-view="purchases"[^>]*>See all<\/a>/);
-  assert.match(html, /<div class="history-row" data-view="activity"[^>]*><strong>History<\/strong><span[^>]*>›<\/span><\/div>/);
-  assert.ok(js.includes("section-history-row"), 'Home view lists the history row section');
+  // Merged-audit B3: history sections moved to the prevweeks view; Transactions stays the current list only.
+  assert.match(js, /prevweeks: \[[^\]]*section-history-filter[^\]]*section-week-history/);
+  assert.equal(js.includes('section-history-row'), false);
 });
 
-test('4. Card colour subtle: hero faint blue wash + soft shadow, other cards white + soft shadow', () => {
-  assert.match(css, /body\.live \.hero \{ background: linear-gradient\(#ffffff, #eef4ff\); box-shadow: 0 8px 24px rgba\(47, 107, 255, \.12\); \}/);
+test('4. Hero card: white like other cards, with a brand-blue outline — wash removed (home-hero-fix)', () => {
+  // Home-hero-fix (owner, Nov 4): the blue wash did not match the
+  // rest of the page. White background, 1.5px brand-blue outline,
+  // no blue shadow — life from the outline, not a coloured fill.
+  assert.match(css, /body\.live \.hero \{ background: #fff; border: 1\.5px solid #2f6bff; box-shadow: none; \}/);
   assert.match(css, /body\.live \.card \{[^}]*box-shadow: 0 4px 16px rgba\(15, 23, 42, \.06\); \}/);
 });
 
@@ -91,13 +98,16 @@ test('6. Activity timeline: dots, plain titles, Admin/Member, jargon translated 
   assert.match(js, /Number\(n\) \/ 100/);
 });
 
-test('7. Back header: one line, Settings left, small Back text right, no subtitle, form Backs untouched', () => {
-  assert.match(html, /<div class="settings-head-line"><h2>Settings<\/h2><button class="settings-back-link" id="settingsBackBtn"[^>]*>← Back<\/button><\/div>/);
+test('7. Back header: one line, Settings left, light-blue Back text right, no subtitle, form Backs are back-links too', () => {
+  // Merged-audit A9: Settings heading is focusable (focus moves to it when Settings opens).
+  assert.match(html, /<div class=\"settings-head-line\"><h2 tabindex=\"-1\">Settings<\/h2><button class=\"settings-back-link\" id=\"settingsBackBtn\"[^>]*>← Back<\/button><\/div>/);
   assert.equal(html.includes('id="settingsIntro"'), false);
   assert.equal(html.includes('Connections, Budget, and Account &amp; household.'), false);
-  assert.match(css, /\.settings-back-link \{ background: none; border: 0; color: #475569;/);
-  // Form-level Backs stay in-row buttons (manual form, name step).
+  // Header-back-swipe (owner, Nov 4): Back is ALWAYS light blue #3b82f6, bold — the old grey #475569 looked dead.
+  assert.match(css, /\.back-link, body\.live \.settings-back-link \{ background: none; border: 0; color: #3b82f6; font-weight: 700;/);
+  // Form-level Backs are the same shared back-link now (owner: Back should ALWAYS be light blue).
   assert.ok(html.includes('id="manualBackBtn"'));
+  assert.match(html, /<button class="back-link" id="manualBackBtn"/);
 });
 
 test('8. Unified sentence on Bank and Email; Email heading Title Case, long paragraph deleted', () => {
@@ -110,8 +120,12 @@ test('8. Unified sentence on Bank and Email; Email heading Title Case, long para
   for (const gone of ['never your whole mailbox', 'stay provisional until the bank confirms them', 'does not change any existing email setup', 'The app can see transactions.', 'Email alerts (read-only)']) {
     assert.equal(html.includes(gone), false, `removed sentence/fragment still present: ${gone}`);
   }
-  // Status lines are not headings and are untouched.
-  assert.ok(js.includes("Connected (read-only)"));
+  // Email status (owner Nov 6, 2026): no standalone "Connected"
+  // line at all — under a "Connected Email" heading it repeats the
+  // heading. The "Needs reconnect" error text is unchanged.
+  assert.equal(js.includes('Connected (read-only)'), false);
+  assert.equal(js.includes(": 'Connected';"), false, 'no standalone Connected status is rendered');
+  assert.ok(js.includes('Needs reconnect — access was revoked or expired.'));
 });
 
 test('9. Budget card: heading Budget with Admin pill, sentence kept', () => {
@@ -124,7 +138,8 @@ test('9. Budget card: heading Budget with Admin pill, sentence kept', () => {
 test('10. Temporary increase layout + Weeks selector + override logic (lower totals work)', () => {
   const card = html.slice(html.indexOf('id="settingsCard"'), html.indexOf('id="section-settings-account"'));
   assert.ok(card.includes('<h3>Weekly Allowance</h3>'));
-  assert.ok(card.includes('<h3 class="temp-increase-heading">Temporary Increase</h3>'));
+  // Merged-audit B1: form renamed Temporary Allowance (no 'Increase', so lower totals fit).
+  assert.ok(card.includes('<h3 class="temp-increase-heading">Temporary Allowance</h3>'));
   assert.equal(card.includes('Amount ($)'), false);
   assert.equal(card.includes('Amount for this week ($)'), false);
   assert.ok(card.includes('<span class="money-prefix" aria-hidden="true">$</span><input id="baseAllowanceInput"'));
@@ -150,8 +165,14 @@ test('10b. Override math: debt still comes off the top, T = 0', () => {
   assert.equal(high.available, 27500);
 });
 
-test('10c. Override SQL (review only): table, unique, RLS, RPC upsert + temp delete + audit', () => {
-  assert.match(sql, /NOT YET APPLIED/);
+test('10c. Override SQL: table, unique, RLS, RPC upsert + temp delete + audit', () => {
+  // P2-B19 (Nov 8, 2026): the old test pinned "NOT YET APPLIED" on
+  // this file, but the table is live — delete-account-fk-migration.sql
+  // does an UNGUARDED `alter table weekly_allowance_overrides ...`
+  // inside a transaction and was applied live Nov 8 with no errors
+  // and a 9-row FK verification (R3 §2), impossible if the table did
+  // not exist. The pin is removed; the SQL file's own stale header
+  // belongs to the SQL workstream (supabase/ untouched here).
   assert.match(sql, /create table if not exists weekly_allowance_overrides/);
   assert.match(sql, /unique \(household_id, week_start\)/);
   assert.match(sql, /allowance_cents integer not null check \(allowance_cents >= 0\)/);
@@ -183,25 +204,29 @@ test('11. Detail Actions sheet: exactly Charity, Extra Fund, Other, Delete; char
   assert.equal(js.includes('data-reclassify='), false);
   assert.equal(js.includes('data-remove-tx='), false);
   assert.equal(js.includes('data-delete-tx='), false);
-  assert.match(actionsFn, /id: 'charity', label: 'Charity'/);
-  assert.match(actionsFn, /id: 'extraFund', label: 'Extra Fund'/);
-  assert.match(actionsFn, /id: 'other', label: 'Other'/);
-  assert.match(actionsFn, /id: 'delete', label: 'Delete'/);
-  assert.match(actionsFn, /if \(isAdmin && row\.kind === 'charity'\)/);
+  // Merged-audit B11: actions now come from the shared
+  // actionsForTxKind helper (kind-restricted); the exact sets are
+  // asserted in merged-audit-push.test.mjs.
+  assert.match(js, /actionsForTxKind\(row\.kind, isAdmin, row\.state === 'verified'\)/);
+  assert.match(actionsFn, /label: 'Charity'/);
+  assert.match(actionsFn, /label: 'Extra Fund'/);
+  assert.match(actionsFn, /label: 'Other'/);
+  assert.match(actionsFn, /label: 'Delete'/);
   assert.match(js, /Charity gifts cannot be covered by the Extra Fund/);
   assert.match(js, /Moved to trash bin\./);
   assert.match(js, /delete_transaction/);
   assert.match(js, /exclude_transaction/);
 });
 
-test('11b. Trash: admin-only bin button at Transactions bottom, excluded rows only, Restore there, main list hides excluded', () => {
+test('11b. Trash (native-style-live): quiet text link above the list, only when non-empty, admin only', () => {
   assert.ok(html.includes('id="txTrashBtn"'));
+  assert.match(html, /class="quiet-link trash-link"/);
+  assert.equal(html.includes('🗑'), false, 'no emoji pill trash button');
   assert.ok(html.includes('id="trashList"'));
-  assert.match(html, /🗑 <span>Trash<\/span>/);
-  assert.match(js, /trashBtn\.style\.display = \(household && household\.role === 'admin'\) \? '' : 'none'/);
+  assert.match(js, /trashRowCount > 0\) \? '' : 'none'/);
   assert.match(js, /data-trash-restore=/);
   assert.match(js, /restore_transaction/);
   assert.equal(html.includes('<option value="excluded">Excluded</option>'), false);
   assert.match(js, /!isExcludedRow\(t\)/);
-  assert.match(js, /deleted bank rows live in the Trash below/);
+  assert.match(js, /deleted bank rows live in the Trash link above the list/);
 });

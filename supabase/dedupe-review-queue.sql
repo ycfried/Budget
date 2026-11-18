@@ -20,7 +20,10 @@
 --     approved rule. Until then, aliases are evidence for review.
 --   * resolve_duplicate_candidate RPC (admin-only, SECURITY
 --     DEFINER): 'merge' keeps the canonical row and marks the
---     duplicate row excluded (never deleted) with an audit record;
+--     duplicate row excluded (never deleted) with an audit record,
+--     and records the duplicate's pre-exclusion state so Trash
+--     restore can bring it back (Nov 9, 2026 — live defect 1:
+--     without the snapshot the merge was unrestorable);
 --     'separate' keeps both rows and marks the pair reviewed.
 --     Optionally records the merchant alias when merging.
 --
@@ -106,7 +109,15 @@ declare
   v_nb text;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
-  select * into v_cand from duplicate_candidates where id = p_candidate_id;
+  -- P2-B9 (Nov 8, 2026): lock the candidate row for the whole RPC
+  -- transaction. The status check below ('pending') followed by the
+  -- merge/separate update is a check-then-write: without the lock,
+  -- two concurrent resolutions could both pass the check and both
+  -- write audit rows (and both exclude the duplicate). The lock
+  -- serializes resolutions of the same candidate; a second caller
+  -- blocks until the first commits, then sees status <> 'pending'
+  -- and raises.
+  select * into v_cand from duplicate_candidates where id = p_candidate_id for update;
   if not found then raise exception 'duplicate candidate not found'; end if;
   if v_cand.status <> 'pending' then raise exception 'duplicate candidate is not pending'; end if;
   if not exists (select 1 from household_members
@@ -122,7 +133,28 @@ begin
   end if;
   v_note := nullif(btrim(coalesce(p_note, '')), '');
   if p_action = 'merge' then
-    update transactions set excluded = true where id = v_cand.duplicate_transaction_id;
+    -- Deep audit Nov 5: must also set state='excluded' (as
+    -- exclude_transaction does) — restore_transaction refuses any
+    -- row whose state is not 'excluded', so a merge-only flag made
+    -- a merged row unrestorable from Trash.
+    -- Nov 9, 2026 (live defect 1): must ALSO record
+    -- pre_exclusion_state, mirroring exclude_transaction in
+    -- n4-pre-exclusion-state.sql. Without the snapshot,
+    -- restore_transaction raises 'cannot restore: no prior state
+    -- recorded' and a merged duplicate can never come back from
+    -- Trash — although the Resolved Duplicates row promises it
+    -- can ("the duplicate can be restored from Trash"). The case
+    -- preserves an existing snapshot when the duplicate is
+    -- already excluded, exactly like exclude_transaction; a
+    -- NULL snapshot stays NULL and restore still refuses it
+    -- (the deliberate N4 rule — no invented state).
+    update transactions set excluded = true, state = 'excluded',
+      pre_exclusion_state = case
+        when v_dup.state <> 'excluded' then v_dup.state
+        else v_dup.pre_exclusion_state
+      end
+      where id = v_cand.duplicate_transaction_id;
+
     if v_note is null then v_note := 'merge'; end if;
     update duplicate_candidates
       set status = 'merged', resolved_at = now(), resolved_by = auth.uid(), resolution_note = v_note

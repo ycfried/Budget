@@ -1,7 +1,13 @@
--- Household Budget — weekly allowance overrides — NOT YET APPLIED.
--- FOR OWNER REVIEW ONLY. Do not run this against the live database
--- until the owner approves the exact change shown here, per the
--- standing rule that live database changes come to the owner first.
+-- Household Budget — weekly allowance overrides — APPLIED LIVE
+-- (live since before Nov 9, 2026 — proven by the ERROR 42710
+-- "policy already exists" on the Nov 9 step-6 first attempt, which
+-- showed the table/policies were already live; the RPC bodies were
+-- then repaired by an RPC-definitions-only apply on Nov 9 and
+-- verified to contain 'week_start must be a Sunday'. R4-BE-2,
+-- Nov 9, 2026 — the "NOT YET APPLIED" header this file carried
+-- before is stale.) Do NOT re-apply this file blindly: re-apply
+-- only if a live probe shows the live bodies have drifted from it,
+-- and reconcile first.
 --
 -- WHY: the Temporary Increase box now means a NEW TOTAL weekly
 -- allowance for that week (owner, Nov 4), repeating for 1-4 weeks.
@@ -59,6 +65,12 @@ alter table weekly_allowance_overrides enable row level security;
 -- with "permission denied for table" before RLS is even consulted).
 grant select on weekly_allowance_overrides to authenticated;
 
+-- R4 (Nov 9, 2026): drop-before-create, so re-applying this file
+-- is idempotent — the Nov 9 step-6 first attempt failed with
+-- ERROR 42710 (policy already exists) because this create had no
+-- drop. Dropping and recreating the identical policy changes
+-- nothing about the applied-live effect.
+drop policy if exists "members read own weekly allowance overrides" on weekly_allowance_overrides;
 create policy "members read own weekly allowance overrides"
   on weekly_allowance_overrides for select
   using (household_id in (select household_id from household_members
@@ -73,6 +85,17 @@ as $$
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   if p_allowance_cents is null or p_allowance_cents < 0 then raise exception 'allowance must be zero or positive'; end if;
+  -- P2-B4 (Nov 8, 2026): week_start must be a Sunday. compute-week
+  -- and week-close look overrides up by exact Sunday (weekStartOf),
+  -- so a non-Sunday row would silently never match — a no-op the
+  -- admin would never notice. The DB CHECK in
+  -- supabase/p2-sunday-week-start-checks.sql enforces the same rule
+  -- at the table level; this raise gives the admin a readable error
+  -- instead of a constraint violation. The client already sends
+  -- Sundays (live.js builds the week from the NY Sunday).
+  if p_week_start is null or extract(dow from p_week_start) <> 0 then
+    raise exception 'week_start must be a Sunday';
+  end if;
   if not exists (select 1 from household_members
                  where household_id = p_household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';

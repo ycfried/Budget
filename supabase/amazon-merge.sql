@@ -1,6 +1,12 @@
--- Amazon $10.59 confirmed merge — PREPARED ONLY, DO NOT APPLY
--- without the owner's explicit approval AND the timing decision
--- (merge now vs wait until the charge posts on Amex).
+-- Amazon $10.59 confirmed merge — APPLIED LIVE Nov 3, 2026
+-- (owner screenshot-confirmed merge; Step 3 verified: the Plaid
+-- AMAZON row counts and the email AMAZON MARKEPLACE NA PA row is
+-- excluded, kept as evidence, not deleted. R4-BE-2, Nov 9, 2026 —
+-- the "PREPARED ONLY" header this file carried before is stale).
+-- Do NOT re-apply: the merge is done; re-running it would find no
+-- second $10.59 pair and change nothing — and it must not be
+-- re-run as a template for a different merge without a fresh
+-- owner decision.
 --
 -- WHY: the owner's Nov 3 Amex screenshot proves the app's two
 -- Pending $10.59 rows are ONE purchase ingested twice, not two:

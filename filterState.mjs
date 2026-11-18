@@ -35,6 +35,46 @@ export function formatShortDate(iso) {
   if (year === new Date().getFullYear()) return `${monthName} ${day}`;
   return `${monthName} ${day}, ${year}`;
 }
+// Native-style-live (owner, Nov 4): display-only merchant/date
+// wording. Stored values are never changed: bank names arrive in
+// ALL CAPS, dates as YYYY-MM-DD; the screen shows Title Case and
+// Today/Yesterday for today/yesterday (NY date, via the caller's
+// today string). Words that are already mixed-case are left alone
+// except for an all-caps run, so "McDonald's" style names are not
+// mangled by a blind title-caser.
+export function titleCaseMerchant(name) {
+  const s = String(name ?? '');
+  if (!s) return s;
+  return s.split(/(\s+|[-/])/).map((part) => {
+    if (/^\s+$/.test(part) || part === '-' || part === '/') return part;
+    if (part !== part.toUpperCase() || part.length <= 1) return part;
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  }).join('');
+}
+// P2-N2 (Nov 8, 2026): merchant stem for the refund-link picker —
+// the first word of the merchant with punctuation stripped and case
+// folded, so "AMAZON MARKEPLACE NA PA" and "Amazon Marketplace"
+// share the stem AMAZON. The stem holds letters/digits only, so it
+// is safe inside an ilike %…% pattern. The server's auto-linker
+// instead requires normalized equality (see
+// _same_normalized_merchant in refund-linking.sql); the picker is
+// the admin's judgment call, so a contains match plus the server's
+// fit check in link_refund is the guard here.
+export function merchantStem(name) {
+  const words = String(name ?? '').toUpperCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  return words.length ? words[0] : '';
+}
+export function relativeDayLabel(iso, todayIso) {
+  const d = String(iso ?? '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !todayIso) return null;
+  const t = String(todayIso).slice(0, 10);
+  if (d === t) return 'Today';
+  const dt = new Date(`${t}T12:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  const y = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  if (d === y) return 'Yesterday';
+  return null;
+}
 export function activeFilterLabels(f) {
   const labels = [];
   if (f.status && f.status !== 'all') {
@@ -262,7 +302,7 @@ export function simplifyActivityDetail(detail) {
 // pass the underlying page, never the popup. Trash is a sub-view of
 // Transactions and is admin-only: a member restoring it falls back
 // to the Transactions list, not the Trash.
-export const MAIN_VIEWS = ['week', 'purchases', 'money', 'activity', 'settings'];
+export const MAIN_VIEWS = ['week', 'purchases', 'money', 'activity', 'settings', 'prevweeks']; // Merged-audit B3: Previous Weeks is a restorable page, like Activity.
 export const VIEW_STORAGE_KEY = 'hb-view';
 export const PREV_VIEW_STORAGE_KEY = 'hb-prev-view';
 export function scrollStorageKey(view) {
@@ -332,7 +372,148 @@ export function isWeekCloseCheckDue({ lastCheckedWeekStart = null, currentWeekSt
 // TRANSFER row in a CSV file imports as kind='transfer' (excluded
 // from week math), never as a charge or a refund by sign. Every other
 // row keeps the old sign rule.
+// Merged-audit B11: detail actions restricted by transaction kind.
+// Charge: Charity (admin + verified only), Extra Fund (any role),
+// Other (admin), Delete (admin). Transfer/payment/cashback/
+// fund_charge: Other + Delete (admin only) — these rows never count
+// toward weekly spending, so there is no Charity or Extra Fund
+// action for them. Charity: Delete only (as before). Members get
+// Extra Fund on charges only; every other action is admin-only.
+export function actionsForTxKind(kind, isAdmin, isVerified) {
+  if (kind === 'charity') return isAdmin ? ['delete'] : [];
+  if (kind === 'charge') {
+    // P1-NEW1 (Nov 8, 2026), relaxed Nov 8, 2026 (pending charity
+    // marking): Charity is offered on any charge, regardless of
+    // posted status — the sheet renders it disabled only for members
+    // (ask the admin). The guarded mark_transaction_charity RPC
+    // accepts pending or posted charges in an unlocked week.
+    const out = ['charity'];
+    out.push('extraFund');
+    if (isAdmin) out.push('other', 'delete');
+    return out;
+  }
+  if (kind === 'transfer' || kind === 'payment' || kind === 'cashback' || kind === 'fund_charge') {
+    return isAdmin ? ['other', 'delete'] : [];
+  }
+  // P0-1 (Nov 8, 2026): a refund gets Link to purchase first (admin
+  // only) — linking is what makes restoration reachable. Members get
+  // no actions on a refund, as before.
+  if (kind === 'refund') {
+    return isAdmin ? ['linkRefund', 'other', 'delete'] : [];
+  }
+  return isAdmin ? ['other', 'delete'] : [];
+}
+// P1-R2 (Nov 8, 2026): Gmail Testing-mode tokens expire ~7 days
+// after the grant, with no pre-expiry warning anywhere. Returns the
+// warning keys for one email_connections_public row: 'expiring' when
+// the grant (connected_at, falling back to created_at) is more than
+// 5 days old, 'stale' when last_poll_at is more than 24h old. The
+// card already shows "Needs reconnect" for status='error', so that
+// case returns nothing here.
+export function emailConnectionWarnings(c, nowMs = Date.now()) {
+  if (!c || c.status === 'error') return [];
+  const out = [];
+  const grantRaw = c.connected_at ?? c.created_at;
+  const grantMs = grantRaw ? Date.parse(grantRaw) : NaN;
+  if (!Number.isNaN(grantMs) && nowMs - grantMs > 5 * 24 * 3600 * 1000) out.push('expiring');
+  const lastMs = c.last_poll_at ? Date.parse(c.last_poll_at) : NaN;
+  if (!Number.isNaN(lastMs) && nowMs - lastMs > 24 * 3600 * 1000) out.push('stale');
+  return out;
+}
+
+// NEW-R4-C1 (Nov 9, 2026): the API staleness/skip fields are read by
+// the client now, not dead data. plaid-sync returns stale +
+// minutes_since_previous_sync + skipped_by_reason; gmail-poll returns
+// stale + minutes_since_previous_poll. These pure builders turn a
+// response into the toast/result text live.js shows, using the API
+// fields where present and falling back to the counts alone when they
+// are absent (an older deployed function). The footer warning keeps
+// its local computation from last_sync_at as the fallback — refresh()
+// has no API response in hand — but it now uses the STALEST active
+// item's stamp (NEW-R4-C3 semantics), not the freshest, so one
+// healthy item no longer hides a dead one.
+export function skipReasonsText(skippedByReason) {
+  if (!skippedByReason || typeof skippedByReason !== 'object') return '';
+  return Object.entries(skippedByReason)
+    .filter(([, n]) => Number(n) > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, n]) => `${String(reason).replace(/-/g, ' ')} ×${n}`)
+    .join(', ');
+}
+
+// Bank-sync toast from a plaid-sync response. The success text is
+// unchanged when the API fields are absent; with them, a stale flag
+// adds one honest sentence (the gap is measured BEFORE this sync ran,
+// so after a successful sync the footer correctly clears) and a
+// non-empty skipped_by_reason adds the per-reason breakdown.
+export function bankSyncToast(out) {
+  const failedNames = Array.isArray(out.failed_institutions) ? out.failed_institutions.filter(Boolean) : [];
+  if (out.error) {
+    return { text: `Sync failed: ${out.error}${failedNames.length ? ` — ${failedNames.join(', ')}` : ''}`, isError: true };
+  }
+  let text = `Sync done: ${out.added ?? 0} added, ${out.updated ?? 0} updated, ${out.skipped ?? 0} skipped across ${out.items ?? 0} connected account(s).`;
+  if ((out.duplicate_removed ?? []).length) text += ' A duplicate bank connection was removed because those accounts are already connected on another connection. Past transactions stay.';
+  if (out.stale === true) {
+    const mins = Number.isFinite(out.minutes_since_previous_sync) ? out.minutes_since_previous_sync : null;
+    text += ` Scheduled sync hadn't run in a while before this sync${mins !== null ? ` (${mins} minutes since the last one)` : ''}.`;
+  }
+  const reasons = skipReasonsText(out.skipped_by_reason);
+  if (reasons) text += ` Skipped: ${reasons}.`;
+  return { text, isError: false };
+}
+
+// Email-check result message from a gmail-poll response. The failure
+// text is unchanged (incl. the reauthorization wording); a stale flag
+// adds one sentence with the pre-check gap where the API reports it.
+export function emailCheckMessage(out) {
+  const firstErr = Array.isArray(out.errors) && out.errors.length ? out.errors[0] : null;
+  const failed = out.error || firstErr;
+  if (failed) {
+    const failText = firstErr && /reauthorization/i.test(firstErr.error || '')
+      ? 'access expired — reconnect your email.'
+      : (firstErr?.error ?? out.error);
+    return { text: `Email check failed: ${failText}`, isError: true };
+  }
+  let text = `Email checked: ${out.stored ?? 0} added, ${out.duplicates ?? 0} already known, ${out.quarantined ?? 0} quarantined, ${out.unparseable ?? 0} could not be read.`;
+  if (out.stale === true) {
+    const mins = Number.isFinite(out.minutes_since_previous_poll) ? out.minutes_since_previous_poll : null;
+    text += ` Email hadn't been checked in a while before this check${mins !== null ? ` (${mins} minutes since the last one)` : ''}.`;
+  }
+  return { text, isError: false };
+}
+
+// NEW-R4-C2 (Nov 9, 2026): household-picker options for a
+// multi-household admin. Pure so it is unit-testable; live.js does
+// the reads (own admin memberships + household names) and the retry.
+// The current household comes first; a household with no stored name
+// reads 'Household'. Duplicate membership rows collapse to one option.
+export function adminHouseholdOptions(memberships, households, currentHouseholdId) {
+  const ids = [...new Set((memberships ?? []).map((m) => m.household_id).filter(Boolean))];
+  const nameById = new Map((households ?? []).map((h) => [h.id, h.name]));
+  const ordered = [...ids];
+  if (currentHouseholdId) {
+    const at = ordered.indexOf(currentHouseholdId);
+    if (at > 0) { ordered.splice(at, 1); ordered.unshift(currentHouseholdId); }
+  }
+  return ordered.map((id) => ({ value: id, label: (nameById.get(id) ?? '').trim() || 'Household' }));
+}
+
 export function classifyCsvKind(merchant, amountCents) {
-  if (/INTERNAL TRANSFER/i.test(String(merchant ?? ''))) return 'transfer';
+  // Deep audit Nov 5: was transfer-or-sign only, so a CSV
+  // "PAYMENT - THANK YOU" or "CASH BACK" row imported as kind='refund'.
+  // Mirrors supabase/functions/_shared/canonical.ts classifyKind
+  // (same patterns, same order); Plaid category is unavailable for
+  // CSV rows, so only the name patterns are checked here.
+  const name = String(merchant ?? '');
+  if (/INTERNAL TRANSFER/i.test(name)) return 'transfer';
+  // Refund-classification fix (Nov 5, 2026): mirrors canonical.ts —
+  // a check deposit is income, a payment credit is a payment; CSV
+  // rows carry no account type, so only the name patterns apply here.
+  if (amountCents < 0 && /CHECK DEPOSIT|MOBILE DEPOSIT|\bDEPOSIT\b/i.test(name)) return 'income';
+  if (/MOBILE PAYMENT|PAYMENT - THANK YOU|CARD PAYMENT|PAYMENT\s*:\s*CREDIT|PAYMENT CREDIT|\/ ?PAYMENT|EPAYMENT|E-PAYMENT|ACH PAYMENT/i.test(name)) return 'payment';
+  if (/CASH BACK|CASHBACK|REWARD/i.test(name)) return 'cashback';
+  // P1-NEW1 (Nov 8, 2026): charity auto-detect, money-out only —
+  // same conservative list as canonical.ts CHARITY_PATTERN.
+  if (amountCents > 0 && /\b(CHARITY|DONATION|DONATE|TZEDAKA|TZEDAKAH|KEREN|CHABAD|TOIREMORG|COLEL)\b/i.test(name)) return 'charity';
   return amountCents < 0 ? 'refund' : 'charge';
 }

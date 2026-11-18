@@ -82,8 +82,10 @@ test('C: charity negative remaining stays a signed number and still adds up', ()
   assert.doesNotMatch(rows.map(([label]) => label).join(','), /Ahead by/);
 });
 
-test('C: charity sheet title keeps the period; Record income action stays; rate card stays', () => {
-  assert.match(js, /title: 'Charity · November 2026 onward', rows: charityBreakdownRows\(c\), extraAction: isAdmin \? \{ label: 'Record income', result: 'record-income' \} : null/);
+test('C: charity expansion keeps the period; Record income action stays; rate card stays', () => {
+  assert.match(js, /fund-expand-period">November 2026 onward/);
+  assert.match(js, /label: 'Record Income', result: 'record-income', btnClass: 'btn btn-primary'/);
+  assert.match(js, /label: 'Close', result: 'close', btnClass: 'btn btn-tertiary'/);
   assert.ok(html.includes('id="charityRateCurrent"'), 'Funds Charity income & rate card keeps the default rate line');
 });
 
@@ -92,13 +94,15 @@ test('C: charity sheet title keeps the period; Record income action stays; rate 
 test('B: every audited two-button row uses grey tertiary for its non-primary button', () => {
   const pairs = [
     ['sign-in Create account', /id="signUpBtn" class="btn btn-tertiary"/],
-    ['sign-up Back', /id="authNameBackBtn" class="btn btn-tertiary"/],
+    // Header-back-swipe (owner, Nov 4): Back is ALWAYS the shared light-blue
+    // back-link now, so the two sign-up Back buttons are NOT in this list
+    // any more — the primary+tertiary pair rule is superseded for Back
+    // buttons only. See header-back-swipe.test.mjs for their assertions.
     ['household choice Join', /id="joinHouseholdBtn" class="btn btn-tertiary btn-block"/],
-    ['household naming Back', /id="householdNameBackBtn" class="btn btn-tertiary"/],
     ['manual Cancel', /class="btn btn-tertiary" id="manualCancelBtn"/],
     ['Transactions Filters', /id="txFiltersToggle" class="btn btn-tertiary"/],
     ['email Check now', /id="pollEmailBtn" class="btn btn-tertiary"/],
-    ['charity income Cancel correction', /class="btn btn-tertiary" id="charityIncomeCancelBtn"/],
+    ['charity income Cancel Correction', /class="btn btn-tertiary" id="charityIncomeCancelBtn"/],
     ['history Clear filter', /class="btn btn-tertiary" id="historyFilterClearBtn"/],
     ['dedupe Separate', /sepBtn\.className = 'btn btn-small btn-tertiary'/],
   ];
@@ -113,32 +117,36 @@ test('B: sheet buttons follow the two-button rule; single-button sheets keep pri
   // (Weekly / Charity sheets: primary action + grey Close); the
   // no-extra path keeps the primary confirm, so single-button
   // sheets (alerts, fund sheet) still close on a primary button.
-  assert.match(js, /<button class="btn\$\{actions \? ' btn-quiet' : extraAction \? ' btn-tertiary' : ' btn-primary'\}" type="button" id="sheetConfirm">/);
-  // Cancel is tertiary exactly when there is no extra action
-  // (confirm dialogs and form sheets: primary + grey Cancel).
-  assert.match(js, /<button class="btn\$\{extraAction \? '' : ' btn-tertiary'\}" type="button" id="sheetCancel">/);
+  assert.match(js, /<button class="btn\$\{extraAction \? ' btn-tertiary' : ' btn-primary'\}" type="button" id="sheetConfirm">/);
+  // Cancel moved to the sheet top (native-style-live bottom sheet):
+  // a quiet top-left Cancel, not a bottom button, same semantics.
+  assert.match(js, /<button class="sheet-top-cancel" type="button" id="sheetCancelTop">/);
 });
 
 test('B: three-button middles still pale; pale definition untouched', () => {
-  // Task 7: Funds actions (Add primary, Use plain pale middle, Ask
-  // tertiary) live in the Extra Fund sheet, not a card.
-  assert.match(js, /label: 'Add money', result: 'add', btnClass: 'btn btn-primary'/);
-  assert.match(js, /label: 'Use fund money', result: 'use', btnClass: 'btn'/);
-  assert.match(js, /label: 'Ask for fund money', result: 'ask', btnClass: 'btn btn-tertiary'/);
+  // Funds expand-in-place (owner, Nov 6): Funds actions (Add primary,
+  // Spend plain pale middle, Request tertiary) live in the expanded
+  // Extra Fund card, not a sheet and not a card.
+  assert.match(js, /label: 'Add Money', result: 'add', btnClass: 'btn btn-primary'/);
+  assert.match(js, /label: 'Spend from Fund', result: 'use', btnClass: 'btn'/);
+  assert.match(js, /label: 'Request Money', result: 'ask', btnClass: 'btn btn-tertiary'/);
   // Filters: Apply primary, Reset plain (pale middle), Cancel tertiary.
   assert.match(html, /class="btn btn-primary" id="txFiltersApplyBtn"/);
   assert.match(html, /class="btn" id="txFiltersResetBtn"/);
   assert.match(html, /class="btn btn-tertiary" id="txFiltersCancelBtn"/);
-  // Connect bank: Connect primary, Sync plain (pale middle), Enable tertiary.
+  // Bank card (settings-bank-buttons, owner Nov 4): two shortened
+  // buttons in one row — Connect primary, Sync tertiary-grey — and
+  // Automatic Sync is a switch, not a third button.
   assert.match(html, /id="connectBankBtn" class="btn btn-primary"/);
-  assert.match(html, /id="syncBankBtn" class="btn"/);
-  assert.match(html, /id="registerWebhookBtn" class="btn btn-tertiary"/);
+  assert.match(html, /id="syncBankBtn" class="btn btn-tertiary"/);
+  assert.match(html, /id="autoSyncSwitch" class="auto-sync-switch"[^>]*role="switch"/);
+  assert.equal(html.includes('id="registerWebhookBtn"'), false, 'enable button gone, replaced by the switch');
   // The pale fill itself is not redefined by this branch.
   assert.ok(css.includes('#bfdbfe'), 'pale secondary fill must still exist for three-button middles');
 });
 
 test('B: deliberately untouched rows — hero sync, detail rows, quiet Decline, + popup', () => {
-  assert.match(html, /class="btn hero-sync-btn" id="homeSyncBtn"/);
+  assert.match(html, /class="hero-sync-btn" id="homeSyncBtn"/);
   // Send-live-bundle: detail rows are one Actions line now; the
   // old Exclude/Use Fund buttons are gone (see send-live-bundle).
   assert.ok(js.includes('data-tx-actions='), 'detail Actions line present');
