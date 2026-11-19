@@ -450,20 +450,32 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- Home (scenes 1, 2, 7): Spending hero + Tzedaka card +
         //    Savings / Overspent quiet rows ---------------------------
+        // NOTE: the hero/quiet-row container identifiers (home.heroAmount,
+        // home.quietSavings, home.quietDebt) are shadowed in the AX tree
+        // by their containers (home.weeklyBudget / home.quietCard), so
+        // wait on the elements' LABELS instead — the hero amount reads
+        // "... left this week", the cards read by their fund names.
+        // Simcha House! still uses the DEFAULT fund names (Extra Fund,
+        // Carried Debt, Charity) — the live household's renames
+        // (Savings, Overspent (Past), Tzedaka) were never applied here.
         XCTAssertTrue(
-            app.staticTexts.matching(identifier: "home.heroAmount").firstMatch
-                .waitForExistence(timeout: 90),
+            app.staticTexts["Simcha House!"].waitForExistence(timeout: 90),
+            "Home did not render after joining the household (no household title)"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
+                .waitForExistence(timeout: 30),
             "Home hero amount did not appear after joining the household"
         )
         XCTAssertTrue(
-            app.otherElements.matching(identifier: "home.tzedakaCard").firstMatch
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Charity'")).firstMatch
                 .waitForExistence(timeout: 15),
-            "Home Tzedaka card did not appear"
+            "Home Charity/Tzedaka card did not appear"
         )
         XCTAssertTrue(
-            app.buttons.matching(identifier: "home.quietSavings").firstMatch
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Extra Fund'")).firstMatch
                 .waitForExistence(timeout: 15),
-            "Home quiet Savings row did not appear"
+            "Home quiet Extra Fund row did not appear"
         )
         // Let the amounts settle (no skeleton, no toast) before the shot.
         Thread.sleep(forTimeInterval: 3)
@@ -503,12 +515,14 @@ final class OnBudgetUITests: XCTestCase {
         // -- Funds (scenes 4, 5) --------------------------------------
         tapTab(identifier: "tab.funds", label: "Funds")
         XCTAssertTrue(
-            app.descendants(matching: .any)["funds.charity"].waitForExistence(timeout: 90),
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Charity'")).firstMatch
+                .waitForExistence(timeout: 90),
             "Funds did not render (no Charity/Tzedaka card)"
         )
         XCTAssertTrue(
-            app.descendants(matching: .any)["funds.extraFund"].waitForExistence(timeout: 15),
-            "Funds did not render (no Savings card)"
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Extra Fund'")).firstMatch
+                .waitForExistence(timeout: 15),
+            "Funds did not render (no Extra Fund/Savings card)"
         )
         Thread.sleep(forTimeInterval: 3)
         attachScreenshot(named: "video-04-funds")
@@ -516,7 +530,7 @@ final class OnBudgetUITests: XCTestCase {
         // -- Home again (scene 7 closing) -----------------------------
         tapTab(identifier: "tab.home", label: "Home")
         XCTAssertTrue(
-            app.staticTexts.matching(identifier: "home.heroAmount").firstMatch
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
                 .waitForExistence(timeout: 30),
             "Home hero amount did not reappear"
         )
