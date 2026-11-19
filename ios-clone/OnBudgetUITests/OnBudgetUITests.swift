@@ -485,6 +485,17 @@ final class OnBudgetUITests: XCTestCase {
         // -- Transactions (scene 3) -----------------------------------
         tapTab(identifier: "tab.transactions", label: "Transactions")
         let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
+        // The list can hit a transient server error ("Could not load
+        // transactions — the server did not answer", run 44585656267:
+        // Home and sign-in worked in the same run, so the server was
+        // up and this one fetch blipped). If the error state appears,
+        // tap Try Again and wait again instead of failing outright.
+        if !firstRow.waitForExistence(timeout: 60) {
+            let tryAgain = app.buttons["Try Again"]
+            if tryAgain.waitForExistence(timeout: 5) {
+                tryAgain.tap()
+            }
+        }
         XCTAssertTrue(
             firstRow.waitForExistence(timeout: 120),
             "Transactions did not load any rows within 120s"
@@ -1168,12 +1179,16 @@ final class OnBudgetUITests: XCTestCase {
     /// asks for notification permission the first time Home loads,
     /// and the system alert ("STAGE Would Like to Send You
     /// Notifications") covers the middle of the screen — it ruined
-    /// the video-01-home still in run 44574566697. Dismiss it with
-    /// "Don't Allow" (a test install never needs pushes) whenever
-    /// it is present, before any screenshot. The alert appears once
-    /// per install, so after the first dismissal it stays gone.
+    /// the video-01-home still in runs 44574566697 and 44585656267.
+    /// Dismiss it with "Don't Allow" (a test install never needs
+    /// pushes) whenever it is present, before any screenshot.
+    /// NOTE: system permission alerts live in SPRINGBOARD, not in
+    /// app.alerts — app.alerts only holds the app's own alerts, so
+    /// the first version of this helper (app.alerts) never found
+    /// the dialog and the alert stayed on screen. Query SpringBoard.
     private func dismissNotificationAlertIfPresent() {
-        let alert = app.alerts.firstMatch
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alert = springboard.alerts.firstMatch
         guard alert.waitForExistence(timeout: 5) else { return }
         let dontAllow = alert.buttons["Don't Allow"]
         if dontAllow.waitForExistence(timeout: 5) {
