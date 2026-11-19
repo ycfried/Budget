@@ -230,17 +230,42 @@ if [[ -z "$onbudget_ipad_id" ]]; then
 else
   # Same DerivedData as the iPhone build-for-testing (the products
   # are simulator-generic arm64), own result bundle. Unit tests
-  # only — see the header comment.
+  # only — see the header comment. The run retries ONCE when the
+  # device itself goes missing mid-run: run 44466334293 booted the
+  # M4 iPad fine, then xcodebuild (two minutes later) reported
+  # "Unable to find a device" with NO simulators listed at all — a
+  # transient CoreSimulator lookup failure, not a test failure (the
+  # iPhone simulator worked again minutes later in the Gmail
+  # check). The retry re-boots the device first, so a real test
+  # failure still fails the leg (it fails the same way twice); a
+  # device that is really gone fails the retry the same way.
+  ipad_test_log="ios-clone/CloudResults/ipad-test.log"
   set +e
   xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -configuration Debug \
     -destination "platform=iOS Simulator,id=$onbudget_ipad_id" \
     -derivedDataPath ios-clone/CloudResults/DerivedData -resultBundlePath ios-clone/CloudResults/tests-ipad.xcresult \
     -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 \
     -only-testing:OnBudgetTests \
-    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= test-without-building
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= test-without-building 2>&1 | tee "$ipad_test_log"
   onbudget_ipad_status=$?
   set -e
   echo "xcodebuild iPad test exit status: $onbudget_ipad_status"
+  if [[ "$onbudget_ipad_status" != 0 ]] && grep -q "Unable to find a device" "$ipad_test_log"; then
+    echo "iPad device vanished mid-run (transient CoreSimulator lookup failure) — re-booting once and retrying." >&2
+    xcrun simctl boot "$onbudget_ipad_id" >/dev/null 2>&1 || true
+    xcrun simctl bootstatus "$onbudget_ipad_id" -b >/dev/null 2>&1 || true
+    rm -rf ios-clone/CloudResults/tests-ipad.xcresult
+    set +e
+    xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -configuration Debug \
+      -destination "platform=iOS Simulator,id=$onbudget_ipad_id" \
+      -derivedDataPath ios-clone/CloudResults/DerivedData -resultBundlePath ios-clone/CloudResults/tests-ipad.xcresult \
+      -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 \
+      -only-testing:OnBudgetTests \
+      CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= test-without-building 2>&1 | tee "$ipad_test_log"
+    onbudget_ipad_status=$?
+    set -e
+    echo "xcodebuild iPad test retry exit status: $onbudget_ipad_status"
+  fi
   xcrun simctl shutdown "$onbudget_ipad_id" >/dev/null 2>&1 || true
   xcrun simctl delete "$onbudget_ipad_id" >/dev/null 2>&1 || true
   if [[ -e ios-clone/CloudResults/tests-ipad.xcresult ]]; then
