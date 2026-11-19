@@ -4,41 +4,107 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light">
 <title>STAGE</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <style>
-  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; background: #fff; color: #0f172a; line-height: 1.6; }
-  main { max-width: 640px; margin: 0 auto; padding: 56px 20px 48px; }
-  .mark { width: 44px; height: 44px; border-radius: 50%; background: #2f6bff; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; }
-  h1 { font-size: 34px; letter-spacing: -0.02em; line-height: 1.15; margin: 20px 0 8px; }
-  h2 { font-size: 20px; letter-spacing: -0.01em; margin: 32px 0 4px; }
-  p { color: #475569; }
-  .btn { display: inline-block; margin-top: 24px; padding: 14px 22px; border-radius: 14px; background: #2f6bff; color: #fff; font-weight: 700; text-decoration: none; }
-  .card { border: 1px solid #ececf1; border-radius: 20px; padding: 20px; margin-top: 16px; }
-  .card p { margin: 4px 0; }
-  .foot { margin-top: 40px; font-size: 13px; color: #6b7280; }
+  :root {
+    --brand: #2f6bff;
+    --logo-blue: #0288dd;
+    --ink: #0f172a;
+    --body: #475569;
+    --hero-bg: #eaf2ff;
+    --hero-border: #d3e2ff;
+    --card-border: #e3e8f2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; background: #fff; color: var(--ink); line-height: 1.6; }
+  main { max-width: 660px; margin: 0 auto; padding: 40px 20px 56px; }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    background: var(--hero-bg);
+    border: 1px solid var(--hero-border);
+    border-radius: 28px;
+    padding: 44px 36px 40px;
+    box-shadow: 0 18px 40px rgba(47, 107, 255, 0.10), 0 3px 10px rgba(47, 107, 255, 0.06);
+  }
+  .wordmark {
+    display: flex; align-items: center; flex-wrap: nowrap;
+    font-size: 52px; letter-spacing: -0.03em; line-height: 1;
+    margin: 0 0 18px; font-weight: 800; color: var(--logo-blue);
+  }
+  .wordmark-logo { width: 1.6em; height: 1.6em; flex: 0 0 auto; display: block; }
+  .wordmark .letters { display: inline-flex; align-items: center; white-space: nowrap; }
+  .wordmark .dot { color: var(--logo-blue); font-weight: 800; padding: 0 0.06em; }
+  .hero p { font-size: 19px; line-height: 1.55; color: #334155; margin: 0; max-width: 30em; }
+  .btn { display: inline-block; margin-top: 28px; padding: 14px 22px; border-radius: 14px; background: #2f6bff; color: #fff; font-weight: 700; text-decoration: none; min-height: 44px; box-sizing: border-box; }
+
+  /* ---------- Divider ---------- */
+  .rule { height: 3px; border-radius: 3px; background: var(--brand); margin: 36px 0 0; }
+
+  /* ---------- How it works ---------- */
+  h2 { font-size: 26px; letter-spacing: -0.02em; line-height: 1.25; margin: 28px 0 6px; font-weight: 800; }
+  .card {
+    display: flex; gap: 18px; align-items: flex-start;
+    border: 1px solid var(--card-border); border-radius: 20px;
+    padding: 26px 26px 24px; margin-top: 18px; background: #fff;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.05);
+  }
+  .card .num {
+    flex: 0 0 auto; width: 38px; height: 38px; border-radius: 12px;
+    background: var(--brand); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px; font-weight: 800; line-height: 1; margin-top: 2px;
+    box-shadow: 0 4px 10px rgba(47, 107, 255, 0.35);
+  }
+  .card p { margin: 0; color: var(--body); font-size: 16.5px; line-height: 1.65; }
+  .card strong { color: var(--ink); font-size: 17.5px; }
+
+  .foot { margin-top: 44px; font-size: 13px; color: #6b7280; }
+  .foot a { color: #2f6bff; text-decoration: underline; display: inline-block; min-height: 32px; line-height: 32px; padding: 0 2px; }
+
+  @media (max-width: 480px) {
+    main { padding: 24px 16px 48px; }
+    .hero { padding: 34px 24px 32px; border-radius: 24px; }
+    .wordmark { font-size: 42px; }
+    .hero p { font-size: 17.5px; }
+    .card { padding: 22px 20px 20px; gap: 14px; }
+    .card .num { width: 34px; height: 34px; font-size: 17px; border-radius: 10px; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <div class="mark" aria-hidden="true">S</div>
-  <h1>STAGE</h1>
-  <p>A tracking tool for guided spending, saving, and giving — shared by two people, with no surprises.</p>
-  <a class="btn" href="live.html">Sign in</a>
+  <section class="hero">
+    <h1 class="wordmark" aria-label="STAGE"><img class="wordmark-logo" src="icon-192.png" alt="" aria-hidden="true"><span class="dot" aria-hidden="true">·</span><span class="letters">T<span class="dot" aria-hidden="true">·</span>A<span class="dot" aria-hidden="true">·</span>G<span class="dot" aria-hidden="true">·</span>E</span></h1>
+    <p>A simple way to keep track of your money — spending, saving, and giving — all in one place.</p>
+    <a class="btn" href="live.html">Sign in</a>
+  </section>
+  <div class="rule" aria-hidden="true"></div>
   <h2>How it works</h2>
   <div class="card">
-    <p><strong>Guided spending.</strong> Set a weekly spending amount together. What you spend is tracked against the week, so you always know where you stand.</p>
+    <span class="num" aria-hidden="true">1</span>
+    <p><strong>One number to watch.</strong> STAGE shows you one number: what you can spend this week. You set the amount together. It goes down as you spend, and starts fresh every week.</p>
   </div>
   <div class="card">
-    <p><strong>Saving, built in.</strong> Money you do not spend in a week becomes savings after a short holding period. Either person can ask to use it; the admin approves each use.</p>
+    <span class="num" aria-hidden="true">2</span>
+    <p><strong>Giving, automatic.</strong> When money comes in, ten percent is set aside for giving, automatically. STAGE works out how much you owe and how much you&rsquo;ve already given, so you always know where you stand. You can change the amount, or turn it off entirely.</p>
   </div>
   <div class="card">
-    <p><strong>Giving, automatic.</strong> A share of what comes in is set aside for giving. You choose the share; STAGE does the counting.</p>
+    <span class="num" aria-hidden="true">3</span>
+    <p><strong>Saving, your cushion.</strong> Put a little aside when you have extra, and dip into it when something comes up — a big bill, a slow month, whatever it is. It&rsquo;s always there, quiet in the background.</p>
   </div>
   <div class="card">
-    <p><strong>Bank purchases, read-only.</strong> Connect a bank account and purchases appear automatically. The app can see purchases — it never moves money.</p>
+    <span class="num" aria-hidden="true">4</span>
+    <p><strong>Every account in one place.</strong> Connect your bank and purchases appear on their own, as they happen. If you have more than one account, they all land here together — no more opening one bank app after another to find a transaction. The app can see purchases — it never moves money.</p>
   </div>
   <div class="card">
+    <span class="num" aria-hidden="true">5</span>
+    <p><strong>No adding things up, no categories.</strong> No categories to create and manage — nobody has the time or the head space for that. Paid cash, or something hasn&rsquo;t shown up yet? One tap on the plus, an amount, and a few words, and you&rsquo;re done.</p>
+  </div>
+  <div class="card">
+    <span class="num" aria-hidden="true">6</span>
     <p><strong>A shared history.</strong> Every change is recorded in an audit log both people can read, so the numbers are never a mystery.</p>
   </div>
   <p class="foot">Private app — two members only. No public sign-up. This app never moves money and never shows full card numbers. <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
