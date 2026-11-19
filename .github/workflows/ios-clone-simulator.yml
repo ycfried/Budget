@@ -26,11 +26,16 @@ jobs:
       github.event.repository.private == false &&
       startsWith(github.event.head_commit.message, 'ci(ios-clone): approved cloud build')
     runs-on: macos-15-intel
-    # 60 min, not 40: run 43369401698 was cancelled by the 40-min
-    # timeout while still building for testing (slow runner) — the
-    # test phase never started. Same raise the uitest-email-gate
-    # branch made.
-    timeout-minutes: 60
+    # 90 min, not 60: run 44472931175 was cancelled by the 60-min
+    # timeout at 07:32:57 while the iPad leg was still running —
+    # the iPhone leg had already finished at the bar (kit 346/346,
+    # smoke 10/10, UI failures gate-only) and the iPad bundle had
+    # started, but the summary never got written. The run now takes
+    # ~65 min with the iPad leg (first-boot data migration ~3.5 min,
+    # plus a retry when the device vanishes mid-run): 60 no longer
+    # fits, and the timeout exists to catch hangs, not to cut a
+    # healthy run short. Same raise as run 43369401698 made (40→60).
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
