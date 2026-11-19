@@ -522,6 +522,15 @@ public struct TransactionsView: View {
             .accessibilityIdentifier("transactions.countLine")
     }
 
+    /// Skeleton rows while the list loads (build 47 — owner, Nov
+    /// 19, 2026: three rows left a large empty white area below
+    /// while loading). A FULL page: ten fills the viewport on
+    /// iPhone, sixteen on iPad — the same fix as Home's Recent
+    /// list (owner, Nov 15, 2026 — ten rows there).
+    private var loadingSkeletonCount: Int {
+        horizontalSizeClass == .regular ? 16 : 10
+    }
+
     // MARK: - List
 
     @ViewBuilder
@@ -529,13 +538,13 @@ public struct TransactionsView: View {
         switch viewModel.loadState {
         case .idle, .loading:
             // Shimmer skeletons shaped like the loaded list — one
-            // white card with three skeleton rows and dividers, no
+            // white card with skeleton rows and dividers, no
             // spinner (owner loading language, Nov 12, 2026).
             VStack(spacing: 0) {
-                ForEach(0..<3, id: \.self) { index in
+                ForEach(0..<loadingSkeletonCount, id: \.self) { index in
                     TransactionRowSkeleton()
                         .padding(14)
-                    if index < 2 {
+                    if index < loadingSkeletonCount - 1 {
                         Divider()
                             .padding(.leading, 64)
                     }

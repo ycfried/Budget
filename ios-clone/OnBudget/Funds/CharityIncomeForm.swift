@@ -43,6 +43,12 @@ public struct CharityIncomeForm: View {
     /// for the default-rate note and the correction note.
     @State private var showingRateInfo = false
     @State private var showingCorrectionInfo = false
+    /// Build 47 (owner, Nov 19, 2026 — page cleanup): the Note
+    /// field stays collapsed until the owner taps to add one —
+    /// an empty note took a full row for nothing. True when a
+    /// note is prefilled (correcting an entry that has one) or
+    /// the owner opened it.
+    @State private var showNoteField = false
 
     public init(viewModel: FundsViewModel, fundName: String, correcting: Binding<CharityIncome?>, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
@@ -118,7 +124,7 @@ public struct CharityIncomeForm: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    FieldLabel("Source (for example, Paycheck)", required: true)
+                    FieldLabel("Source", required: true)
                     TextField("", text: $sourceText)
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: sourceText) { _, newValue in
@@ -137,10 +143,23 @@ public struct CharityIncomeForm: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 120)
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    FieldLabel("Note")
-                    TextField("", text: $note)
-                        .textFieldStyle(.roundedBorder)
+                // Build 47 (owner, Nov 19, 2026 — page cleanup):
+                // the Note field stays collapsed until the owner
+                // taps to add one — an empty note took a full row
+                // for nothing. The capability stays: tap "Add a
+                // Note" and the field appears; a prefilled note
+                // (correcting an entry that has one) shows the
+                // field with the note.
+                if showNoteField {
+                    VStack(alignment: .leading, spacing: 4) {
+                        FieldLabel("Note")
+                        TextField("", text: $note)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                } else {
+                    FundsQuietButton("Add a Note") {
+                        showNoteField = true
+                    }
                 }
                 Text(previewText)
                     .font(.system(size: 14))
@@ -155,10 +174,8 @@ public struct CharityIncomeForm: View {
                     if correcting != nil {
                         // Build 47 (owner, Nov 19, 2026): just
                         // "Cancel" — "Correction" struck through.
-                        // It reverts to add mode; the quiet Cancel
-                        // below closes the form outright. Both now
-                        // read "Cancel" — the row one stays on the
-                        // form, the quiet one leaves it.
+                        // It reverts to add mode; the back button
+                        // above the form closes it.
                         FundsTertiaryButton("Cancel") {
                             correcting = nil
                             clearIncomeFields()
@@ -211,16 +228,13 @@ public struct CharityIncomeForm: View {
                         }
                         .accessibilityIdentifier("funds.deleteIncome")
                     }
-                    // While correcting, the row Cancel above reverts
-                    // to add mode; this quiet Cancel closes the
-                    // form outright (kept off the button row so the
-                    // two cancels never sit next to each other in
-                    // the same treatment).
-                    FundsQuietButton("Cancel") {
-                        correcting = nil
-                        clearIncomeFields()
-                        onClose()
-                    }
+                    // Build 47 (owner, Nov 19, 2026 — page
+                    // cleanup): the page ends cleanly after the
+                    // Delete button. The quiet Cancel that sat
+                    // below it read as a stray partial "Cancel"
+                    // line with dead space around it — it is gone.
+                    // Closing the form is the back button above
+                    // it; the row Cancel reverts to add mode.
                 }
             }
         }
@@ -250,6 +264,7 @@ public struct CharityIncomeForm: View {
         incomeDate = MoneyFormat.date(from: income.incomeDate) ?? Date()
         rateOverrideText = MoneyFormat.formatRateBp(income.rateBp)
         note = income.note
+        showNoteField = !income.note.isEmpty
     }
 
     private func clearIncomeFields() {
@@ -260,6 +275,7 @@ public struct CharityIncomeForm: View {
         note = ""
         fieldError = nil
         showDeleteConfirm = false
+        showNoteField = false
     }
 
     private func saveIncome() {
