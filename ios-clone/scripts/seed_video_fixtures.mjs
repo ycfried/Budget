@@ -30,6 +30,12 @@
 //     available money. If Savings Available is still $0 afterwards
 //     (no pending top-ups and no ledger rows at all), insert one
 //     confirmed $740 top-up + ledger row as the demo cushion.
+//   * Pending surplus releases: the v2 $740 Pending turned out to
+//     be two unreleased surplus rows (weeks Nov 1: $365, Nov 8:
+//     $375), not top-ups. Release them, mirroring week-close's
+//     releaseDue (ledger 'release' row + audit row), so Savings
+//     Pending reads $0. Final Savings: Available $1,480 ($740
+//     top-up + $740 released surplus), Pending $0.
 //
 // What it seeds:
 //   * 10 spending transactions (charge, verified, source manual) with
@@ -264,7 +270,51 @@ async function main() {
     console.log(`  confirmed top-up ${money(topup.amount_cents)} (covered ${money(covered)}, added ${money(added)}) note=${JSON.stringify(topup.note)}`);
   }
 
-  // 7. Fallback cushion: if Savings Available is still $0 after the
+  // 7. Release pending surplus from closed weeks, mirroring
+  // week-close's releaseDue exactly: with shortfall $0 the whole
+  // surplus goes to the fund (ledger 'release' row + audit row).
+  // The v2 Savings Pending ($740) was NOT pending top-ups — there
+  // were none — it was two unreleased surplus rows (weeks Nov 1:
+  // $365, Nov 8: $375) from earlier test week-closes. Until these
+  // release, the Savings card still shows $740 Pending beside the
+  // available money. Releasing them is what the app does when a
+  // release comes due; both weeks are well past due.
+  const pendingReleases = await rest('GET', 'surplus_releases', `household_id=eq.${HOUSEHOLD_ID}&status=eq.pending&select=week_start,surplus_cents,released_cents&order=week_start`);
+  console.log(`  pending surplus releases: ${pendingReleases.length}`);
+  for (const rel of pendingReleases) {
+    const surplus = rel.surplus_cents ?? 0;
+    const applied = Math.min(shortfall, surplus);
+    const toFund = surplus - applied;
+    const claimed = await rest('PATCH', 'surplus_releases', `household_id=eq.${HOUSEHOLD_ID}&week_start=eq.${rel.week_start}&status=eq.pending`, { status: 'released', released_cents: toFund });
+    if (!claimed || claimed.length === 0) {
+      console.log(`  release week ${rel.week_start} already claimed; skipping`);
+      continue;
+    }
+    if (toFund > 0) {
+      await rest('POST', 'fund_ledger', null, {
+        household_id: HOUSEHOLD_ID,
+        kind: 'release',
+        amount_cents: toFund,
+        week_start: rel.week_start,
+        note: `Surplus released for week ${rel.week_start}`,
+        created_by: ownerId,
+      });
+    }
+    if (applied > 0) {
+      shortfall -= applied;
+      await rest('PATCH', 'households', `id=eq.${HOUSEHOLD_ID}`, { fund_shortfall_cents: shortfall });
+    }
+    await rest('POST', 'audit_log', null, {
+      household_id: HOUSEHOLD_ID,
+      actor: ownerId,
+      actor_name: 'admin',
+      action: 'Surplus released',
+      detail: `Surplus ${surplus} cents for week ${rel.week_start} released to the Extra Fund.`,
+    });
+    console.log(`  released surplus ${money(surplus)} for week ${rel.week_start} (to fund ${money(toFund)})`);
+  }
+
+  // 8. Fallback cushion: if Savings Available is still $0 after the
   // confirms (no pending top-ups and no ledger rows at all), insert
   // one confirmed $740 top-up + ledger row so the Savings card shows
   // real available money, not $0 Available / $740 Pending.
@@ -308,7 +358,7 @@ async function main() {
     }
   }
 
-  // 8. Verify: fixture counts + current-week charges + the
+  // 9. Verify: fixture counts + current-week charges + the
   // authoritative compute-week hero numbers + charity + savings.
   const txs = await rest('GET', 'transactions', `household_id=eq.${HOUSEHOLD_ID}&external_id=like.${MARKER}-%&select=merchant,amount_cents,date`);
   const currentWeekCharges = txs
@@ -339,11 +389,14 @@ async function main() {
   console.log(`VERIFY charity: committed=${money(committed)} given=${money(given)} available=${money(committed - given)} (expected $120.00 / $40.00 / $80.00).`);
 
   const stillPending = await rest('GET', 'fund_topups', `household_id=eq.${HOUSEHOLD_ID}&status=eq.pending&select=id,amount_cents`);
+  const pendingReleasesNow = await rest('GET', 'surplus_releases', `household_id=eq.${HOUSEHOLD_ID}&status=eq.pending&select=week_start,surplus_cents`);
+  const pendingReleaseCents = pendingReleasesNow.reduce((s, r) => s + (r.surplus_cents ?? 0), 0);
   const ledgerNow = await rest('GET', 'fund_ledger', `household_id=eq.${HOUSEHOLD_ID}&select=amount_cents`);
   const savingsAvailable = ledgerNow.reduce((s, r) => s + r.amount_cents, 0);
-  console.log(`VERIFY savings: Available=${money(savingsAvailable)} Pending top-ups=${money(stillPending.reduce((s, r) => s + r.amount_cents, 0))} (expected Available > $0, Pending $0.00).`);
+  console.log(`VERIFY savings: Available=${money(savingsAvailable)} Pending top-ups=${money(stillPending.reduce((s, r) => s + r.amount_cents, 0))} Pending releases=${money(pendingReleaseCents)} (expected Available $1,480.00 — $740 top-up + $740 released surplus — Pending $0.00).`);
   if (stillPending.length !== 0) throw new Error(`Still ${stillPending.length} pending top-up(s)`);
-  if (savingsAvailable <= 0) throw new Error('Savings Available is still $0 after confirms + fallback');
+  if (pendingReleasesNow.length !== 0) throw new Error(`Still ${pendingReleasesNow.length} pending surplus release(s)`);
+  if (savingsAvailable <= 0) throw new Error('Savings Available is still $0 after confirms + releases + fallback');
   console.log('SEED OK.');
 }
 
