@@ -2,9 +2,13 @@ name: OnBudget iOS clone video recordings (testflight branch)
 # Records the how-to video v2 in an iOS simulator: runs ONLY
 # OnBudgetUITests.testVideoRecordings while `xcrun simctl io
 # recordVideo` captures the screen, and uploads the recording.
-# Manual trigger only (workflow_dispatch) — it never runs on push,
-# so it can never cancel or be cancelled by the simulator proof
-# workflow (separate concurrency group). The test creates a
+# Triggered by PUSH to ios-clone-testflight, but ONLY for commits
+# whose message starts "ci(ios-clone): approved cloud video" —
+# that prefix is what keeps the simulator proof workflow (which
+# fires on "ci(ios-clone): approved cloud build") from running on
+# video commits, and vice versa. The workflow file itself is not
+# on the default branch, so workflow_dispatch cannot find it — the
+# push trigger is the only way to run it. The test creates a
 # pre-confirmed account via the Admin API (no public sign-up, so
 # the 429 sign-up gate cannot block it), signs in, joins the TEST
 # household "Simcha House!" and performs the tap sequence the
@@ -14,7 +18,13 @@ name: OnBudget iOS clone video recordings (testflight branch)
 # transactions, paycheck, charity accrual + cash gift) into the
 # TEST household only — never the live household.
 on:
-  workflow_dispatch:
+  push:
+    branches: [ios-clone-testflight]
+    paths:
+      - 'ios-clone/scripts/seed_video_fixtures.mjs'
+      - 'ios-clone/scripts/macos_video_recordings.sh'
+      - 'ios-clone/OnBudgetUITests/OnBudgetUITests.swift'
+      - '.github/workflows/ios-clone-video-recordings.yml'
 permissions:
   contents: read
 concurrency:
@@ -22,6 +32,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   video-recordings:
+    if: >-
+      startsWith(github.event.head_commit.message, 'ci(ios-clone): approved cloud video')
     runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
