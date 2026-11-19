@@ -1,0 +1,73 @@
+name: OnBudget iOS clone video recordings (testflight branch)
+# Records the how-to video v2 in an iOS simulator: runs ONLY
+# OnBudgetUITests.testVideoRecordings while `xcrun simctl io
+# recordVideo` captures the screen, and uploads the recording.
+# Manual trigger only (workflow_dispatch) — it never runs on push,
+# so it can never cancel or be cancelled by the simulator proof
+# workflow (separate concurrency group). The test creates a
+# pre-confirmed account via the Admin API (no public sign-up, so
+# the 429 sign-up gate cannot block it), signs in, joins the TEST
+# household "Simcha House!" and performs the tap sequence the
+# narration describes (Spending expand, Transactions scroll,
+# Charity card expand, Savings expand, Add a transaction, Home).
+# A seed step first inserts the realistic v2 fixtures (10
+# transactions, paycheck, charity accrual + cash gift) into the
+# TEST household only — never the live household.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: onbudget-ios-clone-video-recordings
+  cancel-in-progress: true
+jobs:
+  video-recordings:
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Write UI-test service key source
+        # Same mechanism as the simulator proof workflow: the UI test
+        # runner cannot inherit the step environment, so the key
+        # travels inside the test bundle. Never printed; the checkout
+        # is runner-ephemeral and never committed.
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            escaped_key="${SUPABASE_SERVICE_ROLE_KEY//\\/\\\\}"
+            escaped_key="${escaped_key//\"/\\\"}"
+            {
+              printf '%s\n' '// OnBudget - UITestSecrets.swift (generated in CI; never commit a real key here)'
+              printf '%s\n' '// Service-role key for the UI tests Admin API confirm path,'
+              printf '%s\n' '// written by the video-recordings workflow from the SUPABASE_SERVICE_ROLE_KEY secret.'
+              printf '%s\n' 'enum UITestSecrets {'
+              printf '%s\n' "    static let serviceRoleKey = \"$escaped_key\""
+              printf '%s\n' '}'
+            } > ios-clone/OnBudgetUITests/UITestSecrets.swift
+          fi
+      - name: Seed video v2 fixtures (test household only)
+        env:
+          SUPABASE_URL: https://tnkhvdkmwmwiogiienee.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node ios-clone/scripts/seed_video_fixtures.mjs
+      - name: Capture video recording
+        env:
+          ONBUDGET_APPROVED_WORKFLOW: '1'
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: bash ios-clone/scripts/macos_video_recordings.sh
+      - name: Upload video recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onbudget-video-recording
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ios-clone/CloudResults/video-recording.mp4
+            ios-clone/CloudResults/record-start-epoch.txt
+            ios-clone/CloudResults/Attachments
+            ios-clone/CloudResults/video-recordings.xcresult

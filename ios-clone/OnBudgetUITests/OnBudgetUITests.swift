@@ -560,6 +560,179 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "video-05-home-close")
     }
 
+    /// How-to video v2 (Nov 19, 2026): records the app being USED —
+    /// a real screen recording with taps and animations, not stills.
+    /// Same preamble as testVideoScreens (Admin-API account, sign in,
+    /// join "Simcha House!" via XPKVGJ). Then performs the tap
+    /// sequence the narration describes, paced to the narration
+    /// timings, while the CI script records the simulator screen with
+    /// `xcrun simctl io recordVideo`. Each scene prints a VIDEO-MARK
+    /// timestamp so assemble-v2 can cut the continuous recording
+    /// into scenes. Holds are narration+gap plus a small buffer, so
+    /// every scene's video is longer than its narration and the cut
+    /// is clean. The test asserts only the gates that must hold for
+    /// the video to be usable (Home loaded, Transactions rows exist,
+    /// Funds rendered, Add form opened); the expand taps are
+    /// best-effort — a missed expand shows in the frames, it must
+    /// not fail the whole capture.
+    ///
+    /// Scene map (narration durations from the v1 clips):
+    ///   S1 Home hold (8.76s + gap) — just Home, no taps.
+    ///   S2 Spending (10.87s + gap) — tap the Spending hero to expand.
+    ///   S3 Transactions (17.59s + gap) — tab + slow scroll of the
+    ///       ~10 realistic fixture rows.
+    ///   S4 Charity (22.39s + gap) — Funds tab, tap Charity card to
+    ///       expand so Available/Given/owed are visible. The scene
+    ///       v1 got wrong: the card must be OPEN.
+    ///   S5 Savings (11.95s + gap) — tap the Extra Fund card to expand.
+    ///   S6 Add (6.07s + gap) — tap + Add, Purchase, type merchant
+    ///       "Coffee" + amount 4.50, tap Add Transaction.
+    ///   S7 Home close (5.64s) — back to Home, hold.
+    func testVideoRecordings() throws {
+        guard let account = createConfirmedTestAccount() else { return }
+        signInWithAccount(email: account.email, password: account.password)
+
+        // Join Simcha House! as a member (same as testVideoScreens).
+        let inviteField = app.textFields["household.inviteCode"]
+        XCTAssertTrue(
+            inviteField.waitForExistence(timeout: 90),
+            "Household screen did not appear after sign-in"
+        )
+        tapAndTypeText(inviteField, "XPKVGJ", fieldName: "household.inviteCode")
+        dismissKeyboardIfPresent(focusedField: inviteField)
+        app.buttons["household.joinAsMember"].tap()
+
+        // -- Home ready: scene 1 starts here ------------------------
+        XCTAssertTrue(
+            app.staticTexts["Simcha House!"].waitForExistence(timeout: 90),
+            "Home did not render after joining the household (no household title)"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
+                .waitForExistence(timeout: 30),
+            "Home hero amount did not appear after joining the household"
+        )
+        // The notification permission alert can appear just after Home
+        // loads (it ruined the v1 Home still twice). Dismiss it twice
+        // with a pause — once it is decided it never comes back.
+        dismissNotificationAlertIfPresent()
+        Thread.sleep(forTimeInterval: 2)
+        dismissNotificationAlertIfPresent()
+        Thread.sleep(forTimeInterval: 2)
+        videoMark("HOME-READY")
+
+        // -- Scene 1: Home, hold (narration 8.76 + 1.5 gap = 10.26) --
+        videoMark("SCENE-1")
+        Thread.sleep(forTimeInterval: 12)
+
+        // -- Scene 2: tap the Spending hero to expand it ------------
+        // (narration 10.87 + 1.5 gap = 12.37). The hero amount reads
+        // "... left this week"; tapping it expands the card in place
+        // to show the Available / Pending / Total breakdown.
+        videoMark("SCENE-2")
+        let heroAmount = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
+        if heroAmount.waitForExistence(timeout: 10) {
+            heroAmount.tap()
+        }
+        Thread.sleep(forTimeInterval: 13)
+
+        // -- Scene 3: Transactions, slow scroll (17.59 + 1.5 = 19.09)
+        videoMark("SCENE-3")
+        tapTab(identifier: "tab.transactions", label: "Transactions")
+        let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
+        if !firstRow.waitForExistence(timeout: 60) {
+            let tryAgain = app.buttons["Try Again"]
+            if tryAgain.waitForExistence(timeout: 5) {
+                tryAgain.tap()
+            }
+        }
+        XCTAssertTrue(
+            firstRow.waitForExistence(timeout: 120),
+            "Transactions did not load any rows within 120s"
+        )
+        Thread.sleep(forTimeInterval: 5)
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 5)
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 5)
+        Thread.sleep(forTimeInterval: 4)
+
+        // -- Scene 4: Funds, expand the Charity card ----------------
+        // (narration 22.39 + 1.5 gap = 23.89). This is the scene v1
+        // got wrong: the card must be OPEN so Available / Given /
+        // owed are visible while the narration talks about them.
+        videoMark("SCENE-4")
+        tapTab(identifier: "tab.funds", label: "Funds")
+        XCTAssertTrue(
+            app.buttons.matching(identifier: "funds.charity").firstMatch
+                .waitForExistence(timeout: 90),
+            "Funds did not render (no Charity/Tzedaka card)"
+        )
+        let charityCard = app.buttons.matching(identifier: "funds.charity").firstMatch
+        charityCard.tap()
+        Thread.sleep(forTimeInterval: 24)
+
+        // -- Scene 5: expand the Savings (Extra Fund) card ----------
+        // (narration 11.95 + 1.5 gap = 13.45). One-open-at-a-time:
+        // this collapses Charity and opens Savings.
+        videoMark("SCENE-5")
+        let savingsCard = app.buttons.matching(identifier: "funds.extraFund").firstMatch
+        if savingsCard.waitForExistence(timeout: 10) {
+            savingsCard.tap()
+        }
+        Thread.sleep(forTimeInterval: 13)
+
+        // -- Scene 6: add a transaction by hand (6.07 + 1.5 = 7.57) -
+        // Tap +, Purchase, type merchant + amount, Add. The new
+        // "Coffee" row lands in the Transactions list (test household
+        // only). The form sheet dismisses the decimal-pad keyboard
+        // interactively on scroll, so swipe before tapping Add.
+        videoMark("SCENE-6")
+        app.buttons["+ Add"].tap()
+        let purchaseButton = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Purchase'")).firstMatch
+        XCTAssertTrue(
+            purchaseButton.waitForExistence(timeout: 15),
+            "Add options did not appear after tapping + Add"
+        )
+        purchaseButton.tap()
+        XCTAssertTrue(
+            app.textFields["Merchant"].waitForExistence(timeout: 15),
+            "Add Purchase form did not open (no Merchant field)"
+        )
+        tapAndTypeText(app.textFields["Merchant"], "Coffee", fieldName: "Merchant")
+        let amountField = app.textFields["0.00"]
+        if amountField.waitForExistence(timeout: 10) {
+            tapAndTypeText(amountField, "4.50", fieldName: "Amount")
+        }
+        // Dismiss the keyboard, then tap Add Transaction.
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 1)
+        let addButton = app.buttons["Add Transaction"]
+        if addButton.waitForExistence(timeout: 10) {
+            addButton.tap()
+        }
+        Thread.sleep(forTimeInterval: 3)
+        Thread.sleep(forTimeInterval: 3)
+
+        // -- Scene 7: back Home, hold to close (narration 5.64) ----
+        videoMark("SCENE-7")
+        tapTab(identifier: "tab.home", label: "Home")
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
+                .waitForExistence(timeout: 30),
+            "Home hero amount did not reappear"
+        )
+        Thread.sleep(forTimeInterval: 6)
+        videoMark("DONE")
+    }
+
+    /// Prints a timestamped marker the assembler uses to cut the
+    /// continuous screen recording into scenes. Markers go to the
+    /// test log (stdout) as `VIDEO-MARK <name> <epoch seconds>`.
+    private func videoMark(_ name: String) {
+        print("VIDEO-MARK \(name) \(Date().timeIntervalSince1970)")
+    }
+
     /// Build 46 (owner, Nov 18, 2026 — "you can't delete it once it
     /// was added"): record a $1 cash gift from the Charity card,
     /// then delete it from the Activity feed — the row must go and
