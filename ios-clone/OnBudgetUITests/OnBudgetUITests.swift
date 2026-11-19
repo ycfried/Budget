@@ -424,6 +424,105 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "13-simple-home-layout")
     }
 
+    /// How-to video v1 (Nov 19, 2026): captures the clean STAGE
+    /// screens the video is built from — Home, Transactions, the
+    /// empty Add Transaction form, Funds, Home again. Uses the
+    /// Admin API to create a PRE-CONFIRMED account (no public
+    /// sign-up, so the 429 sign-up gate cannot block it), signs in
+    /// via the app UI, and joins the TEST household "Simcha House!"
+    /// via invite code XPKVGJ as a member. Never the live household.
+    /// Screenshots are attached with lifetime .keepAlways and
+    /// exported by the video-screens workflow.
+    func testVideoScreens() throws {
+        guard let account = createConfirmedTestAccount() else { return }
+        signInWithAccount(email: account.email, password: account.password)
+
+        // Join Simcha House! as a member.
+        let inviteField = app.textFields["household.inviteCode"]
+        XCTAssertTrue(
+            inviteField.waitForExistence(timeout: 90),
+            "Household screen did not appear after sign-in"
+        )
+        tapAndTypeText(inviteField, "XPKVGJ", fieldName: "household.inviteCode")
+        dismissKeyboardIfPresent(focusedField: inviteField)
+        app.buttons["household.joinAsMember"].tap()
+
+        // -- Home (scenes 1, 2, 7): Spending hero + Tzedaka card +
+        //    Savings / Overspent quiet rows ---------------------------
+        XCTAssertTrue(
+            app.staticTexts.matching(identifier: "home.heroAmount").firstMatch
+                .waitForExistence(timeout: 90),
+            "Home hero amount did not appear after joining the household"
+        )
+        XCTAssertTrue(
+            app.otherElements.matching(identifier: "home.tzedakaCard").firstMatch
+                .waitForExistence(timeout: 15),
+            "Home Tzedaka card did not appear"
+        )
+        XCTAssertTrue(
+            app.buttons.matching(identifier: "home.quietSavings").firstMatch
+                .waitForExistence(timeout: 15),
+            "Home quiet Savings row did not appear"
+        )
+        // Let the amounts settle (no skeleton, no toast) before the shot.
+        Thread.sleep(forTimeInterval: 3)
+        attachScreenshot(named: "video-01-home")
+
+        // -- Transactions (scene 3) -----------------------------------
+        tapTab(identifier: "tab.transactions", label: "Transactions")
+        let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
+        XCTAssertTrue(
+            firstRow.waitForExistence(timeout: 120),
+            "Transactions did not load any rows within 120s"
+        )
+        Thread.sleep(forTimeInterval: 3)
+        attachScreenshot(named: "video-02-transactions")
+
+        // -- Add Transaction, empty Purchase form (scene 6) -----------
+        app.buttons["+ Add"].tap()
+        let purchaseButton = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Purchase'")).firstMatch
+        XCTAssertTrue(
+            purchaseButton.waitForExistence(timeout: 15),
+            "Add options did not appear after tapping + Add"
+        )
+        purchaseButton.tap()
+        XCTAssertTrue(
+            app.textFields["Merchant"].waitForExistence(timeout: 15),
+            "Add Purchase form did not open (no Merchant field)"
+        )
+        XCTAssertTrue(
+            app.buttons["Add Transaction"].waitForExistence(timeout: 15),
+            "Add Purchase form did not render (no Add Transaction button)"
+        )
+        Thread.sleep(forTimeInterval: 2)
+        attachScreenshot(named: "video-03-add")
+        // Cancel clears the (empty) draft and closes the form.
+        app.buttons["Cancel"].tap()
+
+        // -- Funds (scenes 4, 5) --------------------------------------
+        tapTab(identifier: "tab.funds", label: "Funds")
+        XCTAssertTrue(
+            app.descendants(matching: .any)["funds.charity"].waitForExistence(timeout: 90),
+            "Funds did not render (no Charity/Tzedaka card)"
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["funds.extraFund"].waitForExistence(timeout: 15),
+            "Funds did not render (no Savings card)"
+        )
+        Thread.sleep(forTimeInterval: 3)
+        attachScreenshot(named: "video-04-funds")
+
+        // -- Home again (scene 7 closing) -----------------------------
+        tapTab(identifier: "tab.home", label: "Home")
+        XCTAssertTrue(
+            app.staticTexts.matching(identifier: "home.heroAmount").firstMatch
+                .waitForExistence(timeout: 30),
+            "Home hero amount did not reappear"
+        )
+        Thread.sleep(forTimeInterval: 2)
+        attachScreenshot(named: "video-05-home-close")
+    }
+
     /// Build 46 (owner, Nov 18, 2026 — "you can't delete it once it
     /// was added"): record a $1 cash gift from the Charity card,
     /// then delete it from the Activity feed — the row must go and
@@ -602,6 +701,58 @@ final class OnBudgetUITests: XCTestCase {
             "Tab bar missing on Home"
         )
         attachScreenshot(named: "04-home")
+    }
+
+    /// Creates a fresh PRE-CONFIRMED account via the Supabase Auth
+    /// Admin API (bypasses the public sign-up endpoint, so the 429
+    /// sign-up gate cannot block it) and returns its credentials.
+    /// The account is a throwaway video-capture account: it joins
+    /// the test household as a member and is never used again.
+    private func createConfirmedTestAccount() -> (email: String, password: String)? {
+        guard let serviceKey = Self.uiTestServiceKey(), !serviceKey.isEmpty else {
+            XCTFail("No service-role key reached the UI test runner — cannot create the video account")
+            return nil
+        }
+        let runId = UUID().uuidString.lowercased().prefix(8)
+        let email = "ios-clone-video-\(runId)@example.com"
+        let password = "Video-\(runId)-2026!"
+        var request = URLRequest(url: URL(string: "\(Self.supabaseAuthAdminBase)/users")!)
+        request.httpMethod = "POST"
+        request.setValue(serviceKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(serviceKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "email": email,
+            "password": password,
+            "email_confirm": true,
+            "user_metadata": ["display_name": "Video Test"],
+        ])
+        let (status, _) = performAdminRequest(request)
+        guard status == 200 || status == 201 else {
+            XCTFail("Admin API create user failed for \(email) (HTTP \(status))")
+            return nil
+        }
+        return (email, password)
+    }
+
+    /// Signs in via the app UI with the given credentials. The
+    /// account is already confirmed, so there is no "Check Your
+    /// Email" step.
+    private func signInWithAccount(email: String, password: String) {
+        let emailField = app.textFields["auth.email"]
+        XCTAssertTrue(
+            emailField.waitForExistence(timeout: 60),
+            "Auth screen did not appear: no email field within 60s of launch"
+        )
+        tapAndTypeText(emailField, email, fieldName: "auth.email")
+        let passwordField = app.secureTextFields["auth.password"]
+        XCTAssertTrue(
+            passwordField.waitForExistence(timeout: 10),
+            "Password field missing on the auth screen"
+        )
+        tapAndTypeText(passwordField, password, fieldName: "auth.password")
+        dismissKeyboardIfPresent(focusedField: passwordField)
+        app.buttons["auth.signIn"].tap()
     }
 
     func testPlaidSandboxConnect() throws {

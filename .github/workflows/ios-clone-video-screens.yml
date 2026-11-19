@@ -1,0 +1,61 @@
+name: OnBudget iOS clone video screens (testflight branch)
+# Captures the clean STAGE stills for the how-to video (v1): runs ONLY
+# OnBudgetUITests.testVideoScreens in an iOS simulator and uploads its
+# screenshots as an artifact. Manual trigger only (workflow_dispatch)
+# — it never runs on push, so it can never cancel or be cancelled by
+# the simulator proof workflow (separate concurrency group). The test
+# creates a pre-confirmed account via the Admin API (no public
+# sign-up, so the 429 sign-up gate cannot block it), signs in, joins
+# the TEST household "Simcha House!" and screenshots Home,
+# Transactions, the empty Add Transaction form, Funds, and Home again.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: onbudget-ios-clone-video-screens
+  cancel-in-progress: true
+jobs:
+  video-screens:
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Write UI-test service key source
+        # Same mechanism as the simulator proof workflow: the UI test
+        # runner cannot inherit the step environment, so the key
+        # travels inside the test bundle. Never printed; the checkout
+        # is runner-ephemeral and never committed.
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            escaped_key="${SUPABASE_SERVICE_ROLE_KEY//\\/\\\\}"
+            escaped_key="${escaped_key//\"/\\\"}"
+            {
+              printf '%s\n' '// OnBudget - UITestSecrets.swift (generated in CI; never commit a real key here)'
+              printf '%s\n' '// Service-role key for the UI tests Admin API confirm path,'
+              printf '%s\n' '// written by the video-screens workflow from the SUPABASE_SERVICE_ROLE_KEY secret.'
+              printf '%s\n' 'enum UITestSecrets {'
+              printf '%s\n' "    static let serviceRoleKey = \"$escaped_key\""
+              printf '%s\n' '}'
+            } > ios-clone/OnBudgetUITests/UITestSecrets.swift
+          fi
+      - name: Capture video screens
+        env:
+          ONBUDGET_APPROVED_WORKFLOW: '1'
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: bash ios-clone/scripts/macos_video_screens.sh
+      - name: Upload video screens
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onbudget-video-screens
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ios-clone/CloudResults/Attachments
+            ios-clone/CloudResults/video-tests.xcresult
