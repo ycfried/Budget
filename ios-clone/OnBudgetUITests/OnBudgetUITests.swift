@@ -613,17 +613,21 @@ final class OnBudgetUITests: XCTestCase {
             "Home hero amount did not appear after joining the household"
         )
         // Settle the notification alert BEFORE scene 1. The alert
-        // can appear several seconds AFTER Home loads — run
-        // 44620606851: it was on screen ~7s after HOME-READY,
-        // inside scene 1's video cut. Dismiss it whenever it shows,
-        // for up to 30s after Home loads; once dismissed (Don't
-        // Allow) it never returns for this install. Scene 1 only
-        // starts after the settle, so the opening shot is clean.
-        // This is all before the SCENE-1 marker, so it never shows
-        // in the video — it only lengthens the recording preamble.
-        let settleUntil = Date().addingTimeInterval(30)
-        while Date() < settleUntil {
-            dismissNotificationAlertIfPresent()
+        // is requested ASYNCHRONOUSLY after Home loads — run
+        // 44620606851: ~11-21 s after Home; run 44627761001: ~35 s
+        // after Home, AFTER a fixed 30 s settle, so it sat in the
+        // middle of scene 1's opening shot. A fixed wait cannot
+        // catch it. So wait until the alert ACTUALLY shows (up to
+        // 75 s), dismiss it, and only then start scene 1. Once
+        // dismissed (Don't Allow) it never returns for this
+        // install. If it never shows, the deadline still lets the
+        // test proceed. This is all before the SCENE-1 marker, so
+        // it never shows in the video — it only lengthens the
+        // recording preamble.
+        let alertDeadline = Date().addingTimeInterval(75)
+        var alertDismissed = false
+        while Date() < alertDeadline && !alertDismissed {
+            alertDismissed = dismissNotificationAlertIfPresent()
         }
         videoMark("HOME-READY")
 
@@ -712,13 +716,18 @@ final class OnBudgetUITests: XCTestCase {
         // -- Scene 6: add a transaction by hand (6.07 + 1.5 = 7.57) -
         // The "+ Add" button lives ONLY in the Transactions header
         // (TransactionsView.swift:276) — run 44624214523 proved it
-        // does not exist on Funds ("No matches found"). So go to
-        // Transactions first, then tap + Add, Purchase, type
-        // merchant + amount, Add. The new "Coffee" row lands in the
-        // Transactions list (test household only). The form sheet
-        // dismisses the decimal-pad keyboard interactively on
-        // scroll, so swipe before tapping Add.
-        videoMark("SCENE-6")
+        // does not exist on Funds ("No matches found"). And the Add
+        // flow is SLOW (run 44627761001: 53 s — the keyboard takes
+        // seconds to appear and typeText is ~0.5 s/char), so the
+        // typing lands far outside the 7.57 s cut if the navigation
+        // is inside it. So do the slow navigation BEFORE the marker
+        // (Transactions tab, + Add, Purchase — the form opens), and
+        // put ONLY the typing + Add inside the cut. Short values
+        // ("Tea", "5") keep the typing to ~3 s so it and the Add
+        // tap both fit. The new "Tea" row lands in the Transactions
+        // list (test household only). The form sheet dismisses the
+        // decimal-pad keyboard interactively on scroll, so swipe
+        // before tapping Add.
         tapTab(identifier: "tab.transactions", label: "Transactions")
         app.buttons["+ Add"].tap()
         let purchaseButton = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Purchase'")).firstMatch
@@ -731,10 +740,11 @@ final class OnBudgetUITests: XCTestCase {
             app.textFields["Merchant"].waitForExistence(timeout: 15),
             "Add Purchase form did not open (no Merchant field)"
         )
-        tapAndTypeText(app.textFields["Merchant"], "Coffee", fieldName: "Merchant")
+        videoMark("SCENE-6")
+        tapAndTypeText(app.textFields["Merchant"], "Tea", fieldName: "Merchant")
         let amountField = app.textFields["0.00"]
         if amountField.waitForExistence(timeout: 10) {
-            tapAndTypeText(amountField, "4.50", fieldName: "Amount")
+            tapAndTypeText(amountField, "5", fieldName: "Amount")
         }
         // Dismiss the keyboard, then tap Add Transaction.
         app.swipeUp()
@@ -1391,15 +1401,19 @@ final class OnBudgetUITests: XCTestCase {
     /// app.alerts — app.alerts only holds the app's own alerts, so
     /// the first version of this helper (app.alerts) never found
     /// the dialog and the alert stayed on screen. Query SpringBoard.
-    private func dismissNotificationAlertIfPresent() {
+    /// Returns true when it dismissed an alert.
+    @discardableResult
+    private func dismissNotificationAlertIfPresent() -> Bool {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let alert = springboard.alerts.firstMatch
-        guard alert.waitForExistence(timeout: 5) else { return }
+        guard alert.waitForExistence(timeout: 5) else { return false }
         let dontAllow = alert.buttons["Don't Allow"]
         if dontAllow.waitForExistence(timeout: 5) {
             dontAllow.tap()
             Thread.sleep(forTimeInterval: 1)
+            return true
         }
+        return false
     }
 
     private func attachScreenshot(named name: String) {
