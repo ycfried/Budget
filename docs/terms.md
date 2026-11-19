@@ -1,8 +1,8 @@
-# STAG — Terms of Use
+# STAGE — Terms of Use
 
-## What STAG is
+## What STAGE is
 
-STAG is a tracking tool for guided spending, saving, and
+STAGE is a tracking tool for guided spending, saving, and
 giving. It tracks a weekly spending amount, purchases, an Extra
 Fund for leftovers, and savings. It is a tracking tool, not a
 bank, not a financial advisor, and not a tax service. Nothing
@@ -61,7 +61,7 @@ members keep their data.
 
 ## Liability
 
-To the fullest extent allowed by law, STAG is not liable for
+To the fullest extent allowed by law, STAGE is not liable for
 indirect or consequential losses, including losses from delayed
 or incorrect bank or email data, or from decisions you make
 based on the figures. Your total liability and ours under
