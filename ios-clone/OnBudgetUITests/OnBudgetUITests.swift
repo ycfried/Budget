@@ -612,39 +612,46 @@ final class OnBudgetUITests: XCTestCase {
                 .waitForExistence(timeout: 30),
             "Home hero amount did not appear after joining the household"
         )
-        // The notification permission alert can appear just after Home
-        // loads (it ruined the v1 Home still twice). Dismiss it twice
-        // with a pause — once it is decided it never comes back.
-        dismissNotificationAlertIfPresent()
-        Thread.sleep(forTimeInterval: 2)
-        dismissNotificationAlertIfPresent()
-        Thread.sleep(forTimeInterval: 2)
+        // Settle the notification alert BEFORE scene 1. The alert
+        // can appear several seconds AFTER Home loads — run
+        // 44620606851: it was on screen ~7s after HOME-READY,
+        // inside scene 1's video cut. Dismiss it whenever it shows,
+        // for up to 30s after Home loads; once dismissed (Don't
+        // Allow) it never returns for this install. Scene 1 only
+        // starts after the settle, so the opening shot is clean.
+        // This is all before the SCENE-1 marker, so it never shows
+        // in the video — it only lengthens the recording preamble.
+        let settleUntil = Date().addingTimeInterval(30)
+        while Date() < settleUntil {
+            dismissNotificationAlertIfPresent()
+        }
         videoMark("HOME-READY")
 
         // -- Scene 1: Home, hold (narration 8.76 + 1.5 gap = 10.26) --
         videoMark("SCENE-1")
         Thread.sleep(forTimeInterval: 12)
 
-        // -- Scene 2: tap the Spending hero to expand it ------------
+        // -- Scene 2: tap the Spending hero -------------------------
         // (narration 10.87 + 1.5 gap = 12.37). The hero amount reads
-        // "... left this week"; tapping it expands the card in place
-        // to show the Available / Pending / Total breakdown.
-        // Collapse it again before leaving Home: run 44620606851
-        // proved an EXPANDED card breaks the tab-bar tap — the
-        // Transactions tab computed hit point (-1,-1) and
-        // "Failed to scroll to visible", failing the test at the
-        // scene-3 tap. With the card collapsed, Home is back to
-        // the state v1 proved tappable. The collapse tap lands
-        // after the scene-2 video cut (12.37s), so it never shows.
+        // "... left this week"; tapping it opens the "Weekly Budget"
+        // SHEET (full-screen modal: Spent / Balance / Purchases,
+        // Show Transactions / Close) — NOT an inline expand. The
+        // sheet covers the tab bar, which is why run 44620606851
+        // failed the scene-3 tab tap (hit point -1,-1). So close
+        // the sheet to return to Home instead of tapping the hero
+        // again. The Close tap lands after the scene-2 video cut
+        // (12.37s), so it never shows.
         videoMark("SCENE-2")
         let heroAmount = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
         if heroAmount.waitForExistence(timeout: 10) {
             heroAmount.tap()
         }
         Thread.sleep(forTimeInterval: 13)
-        if heroAmount.waitForExistence(timeout: 10) {
-            heroAmount.tap()
+        let weeklyClose = app.buttons["Close"]
+        if weeklyClose.waitForExistence(timeout: 10) {
+            weeklyClose.tap()
         }
+        Thread.sleep(forTimeInterval: 1)
 
         // -- Scene 3: Transactions, slow scroll (17.59 + 1.5 = 19.09)
         videoMark("SCENE-3")
