@@ -954,6 +954,11 @@ public struct RenameFundSheet: View {
     /// The fund's current Home prominence (build 46 — the simpler
     /// Home, owner Nov 18, 2026). Pre-fills the picker selection.
     public let currentProminence: FundProminence
+    /// Whether the fund is hidden from Home (build 47 — owner Nov
+    /// 19, 2026). Only Savings and Overspent (Past) can be hidden;
+    /// Spending and Tzedaka are built in and always false here.
+    /// Pre-fills the Show on Home toggle.
+    public let currentHidden: Bool
     @ObservedObject public var viewModel: FundsViewModel
     /// Called with the household's updated fund_names map on a
     /// successful save, so the caller refreshes the shared source.
@@ -966,12 +971,20 @@ public struct RenameFundSheet: View {
     /// a successful prominence save, so the caller refreshes the
     /// shared source (build 46).
     public var onProminenceSaved: ([String: String]) -> Void
+    /// Called with the household's updated fund_hidden map on a
+    /// successful hide/show save, so the caller refreshes the
+    /// shared source (build 47).
+    public var onHiddenSaved: ([String: Bool]) -> Void
     public var onClose: () -> Void
     @State private var nameText: String
     /// The picked icon ("" = the default icon for this fund).
     @State private var selectedIcon: String
     /// The picked Home prominence (build 46).
     @State private var selectedProminence: FundProminence
+    /// Show this fund on Home (build 47 — only Savings and
+    /// Overspent (Past) get the toggle; Spending and Tzedaka are
+    /// built in and this stays on).
+    @State private var showOnHome: Bool
     @State private var fieldError: String?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -980,24 +993,29 @@ public struct RenameFundSheet: View {
         currentName: String,
         currentIcon: String = "",
         currentProminence: FundProminence,
+        currentHidden: Bool = false,
         viewModel: FundsViewModel,
         onSaved: @escaping ([String: String]) -> Void,
         onIconsSaved: @escaping ([String: String]) -> Void = { _ in },
         onProminenceSaved: @escaping ([String: String]) -> Void = { _ in },
+        onHiddenSaved: @escaping ([String: Bool]) -> Void = { _ in },
         onClose: @escaping () -> Void = {}
     ) {
         self.section = section
         self.currentName = currentName
         self.currentIcon = currentIcon
         self.currentProminence = currentProminence
+        self.currentHidden = currentHidden
         self.viewModel = viewModel
         self.onSaved = onSaved
         self.onIconsSaved = onIconsSaved
         self.onProminenceSaved = onProminenceSaved
+        self.onHiddenSaved = onHiddenSaved
         self.onClose = onClose
         self._nameText = State(initialValue: currentName)
         self._selectedIcon = State(initialValue: currentIcon)
         self._selectedProminence = State(initialValue: currentProminence)
+        self._showOnHome = State(initialValue: !currentHidden)
     }
 
     /// The icon the grid highlights: the pick, or the fund's
@@ -1052,28 +1070,46 @@ public struct RenameFundSheet: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.primary)
             }
+            // Show on Home (build 47 — owner, Nov 19, 2026:
+            // "The only ones that stay and are built in are
+            // spending & Charity"). Only Savings and Overspent
+            // (Past) can be taken off Home and put back; Spending
+            // and Tzedaka always stay, so they get no toggle.
+            // Hiding never touches the prominence below — showing
+            // the fund again puts it back where it was.
+            if section.canHideFromHome {
+                Toggle("Show on Home", isOn: $showOnHome)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                    .accessibilityIdentifier("funds.showOnHomeToggle")
+            }
             // Home prominence (build 46 — the simpler Home, owner
             // Nov 18, 2026): the owner sets how THIS card shows on
             // Home — the star hero, a full card, or a quiet row.
             // The same edit sheet already holds the name and the
             // icon, so the prominence lives here too, not on a
             // separate screen. The pick saves with the name and
-            // icon below.
-            Text("Show on Home")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
-            Picker("Show on Home", selection: $selectedProminence) {
-                Text("Hero").tag(FundProminence.hero)
-                Text("Card").tag(FundProminence.card)
-                Text("Quiet Row").tag(FundProminence.quiet)
+            // icon below. Build 47: the picker is "Size on Home"
+            // now — "Show on Home" is the toggle above — and it
+            // only shows while the fund shows on Home (no point
+            // picking a size for a hidden fund).
+            if showOnHome {
+                Text("Size on Home")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Picker("Size on Home", selection: $selectedProminence) {
+                    Text("Hero").tag(FundProminence.hero)
+                    Text("Card").tag(FundProminence.card)
+                    Text("Quiet Row").tag(FundProminence.quiet)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("funds.prominencePicker")
             }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("funds.prominencePicker")
             if let fieldError {
                 FundsErrorBox(fieldError)
             }
             HStack(spacing: 12) {
-                FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename" || viewModel.busyAction == "fund-icon" || viewModel.busyAction == "fund-prominence") {
+                FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename" || viewModel.busyAction == "fund-icon" || viewModel.busyAction == "fund-prominence" || viewModel.busyAction == "fund-hidden") {
                     saveTapped()
                 }
                 FundsTertiaryButton("Cancel") { onClose() }
@@ -1100,7 +1136,12 @@ public struct RenameFundSheet: View {
         let nameChanged = trimmed != currentName.trimmingCharacters(in: .whitespacesAndNewlines)
         let iconChanged = selectedIcon != currentIcon
         let prominenceChanged = selectedProminence != currentProminence
-        guard nameChanged || iconChanged || prominenceChanged else {
+        // Build 47: hiding is a change too — the toggle flips
+        // `hidden`; a built-in fund never changes here (no toggle,
+        // showOnHome stays on).
+        let newHidden = section.canHideFromHome ? !showOnHome : false
+        let hiddenChanged = newHidden != currentHidden
+        guard nameChanged || iconChanged || prominenceChanged || hiddenChanged else {
             fieldError = "Nothing to change."
             return
         }
@@ -1126,6 +1167,13 @@ public struct RenameFundSheet: View {
             if ok, prominenceChanged {
                 if let map = await viewModel.setFundProminence(section: section, prominence: selectedProminence) {
                     onProminenceSaved(map)
+                } else {
+                    ok = false
+                }
+            }
+            if ok, hiddenChanged {
+                if let map = await viewModel.setFundHidden(section: section, hidden: newHidden) {
+                    onHiddenSaved(map)
                 } else {
                     ok = false
                 }

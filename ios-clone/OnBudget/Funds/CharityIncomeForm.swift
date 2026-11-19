@@ -36,8 +36,13 @@ public struct CharityIncomeForm: View {
     /// Build 46 (owner, Nov 18, 2026 — "even when you go to
     /// correct it.. you can't delete it"): the delete confirm for
     /// the income being corrected — reversing it with no
-    /// replacement, beside Cancel Correction.
+    /// replacement, beside Cancel.
     @State private var showDeleteConfirm = false
+    /// Build 47 (owner, Nov 19, 2026 — page cleanup): the long
+    /// explanations live behind ⓘ, not inline — one alert each
+    /// for the default-rate note and the correction note.
+    @State private var showingRateInfo = false
+    @State private var showingCorrectionInfo = false
 
     public init(viewModel: FundsViewModel, fundName: String, correcting: Binding<CharityIncome?>, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
@@ -62,33 +67,56 @@ public struct CharityIncomeForm: View {
         // 5000 (e.g. $10.05 at 10% commits $1.01, not $1.00).
         let committed = Int((Int64(cents) * Int64(effectiveRateBp) + 5000) / 10_000)
         if overrideBp != nil {
-            return "This commits \(MoneyFormat.formatCents(committed)) at \(MoneyFormat.formatRateBp(effectiveRateBp))% — this entry only (the default rate for future incomes is unchanged)."
+            return "This commits \(MoneyFormat.formatCents(committed)) at \(MoneyFormat.formatRateBp(effectiveRateBp))% — this entry only."
         }
-        return "This commits \(MoneyFormat.formatCents(committed)) at \(MoneyFormat.formatRateBp(effectiveRateBp))% — the default rate, applied to this entry."
-    }
-
-    private var modeText: String {
-        correcting == nil
-            ? "Adding new income."
-            : "Correcting an earlier entry — saving reverses it and adds a replacement. The old entry stays, marked reversed."
+        return "This commits \(MoneyFormat.formatCents(committed)) at \(MoneyFormat.formatRateBp(effectiveRateBp))% — the default rate."
     }
 
     public var body: some View {
         FundsCard {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 FundsHeading("\(fundName) Income & Rate")
-                FundsMuted("Admin only. Nothing is pulled in automatically.")
-                Text("Current default rate: \(MoneyFormat.formatRateBp(defaultRateBp))%.")
-                    .font(.system(size: 15))
-                FundsMuted("Change the default rate in Default \(fundName) Rate under \(fundName) on the Funds page. A change affects future incomes only.")
+                // Build 47 (owner, Nov 19, 2026 — page cleanup):
+                // the "Admin only" line is gone (the form is
+                // admin-only by construction) and the
+                // change-the-default-rate note lives behind the ⓘ
+                // — the current default rate is the fact the owner
+                // needs, since the Rate field reads "blank =
+                // default".
+                HStack(spacing: 6) {
+                    Text("Current default rate: \(MoneyFormat.formatRateBp(defaultRateBp))%.")
+                        .font(.system(size: 15))
+                    Button(action: { showingRateInfo = true }) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("About the default rate")
+                }
 
                 Divider()
 
                 Text("Record Income")
                     .font(.system(size: 17, weight: .bold))
-                Text(modeText)
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                // Build 47: adding needs no mode line — the
+                // "Record Income" heading and the empty fields
+                // already say it. Correcting shows one short line;
+                // the reversal detail lives behind the ⓘ.
+                if correcting != nil {
+                    HStack(spacing: 6) {
+                        Text("Correcting an earlier entry.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                        Button(action: { showingCorrectionInfo = true }) {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("About correcting an entry")
+                    }
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     FieldLabel("Source (for example, Paycheck)", required: true)
                     TextField("", text: $sourceText)
@@ -125,7 +153,13 @@ public struct CharityIncomeForm: View {
                         saveIncome()
                     }
                     if correcting != nil {
-                        FundsTertiaryButton("Cancel Correction") {
+                        // Build 47 (owner, Nov 19, 2026): just
+                        // "Cancel" — "Correction" struck through.
+                        // It reverts to add mode; the quiet Cancel
+                        // below closes the form outright. Both now
+                        // read "Cancel" — the row one stays on the
+                        // form, the quiet one leaves it.
+                        FundsTertiaryButton("Cancel") {
                             correcting = nil
                             clearIncomeFields()
                         }
@@ -136,32 +170,26 @@ public struct CharityIncomeForm: View {
                         }
                     }
                 }
-                // While correcting, Cancel Correction reverts to add
-                // mode; this quiet Cancel closes the form outright
-                // (kept off the button row so the two cancels never
-                // sit next to each other in the same treatment).
                 if correcting != nil {
-                    FundsQuietButton("Cancel") {
-                        correcting = nil
-                        clearIncomeFields()
-                        onClose()
-                    }
-                    // Build 46 (owner, Nov 18, 2026 — "even when
-                    // you go to correct it.. you can't delete it"):
-                    // Delete this income — reverse it with NO
-                    // replacement, so a mistaken income can simply
-                    // be removed instead of corrected. The entry
-                    // stays, marked reversed; its committed figure
-                    // drops out of Total. Quiet button on its own
-                    // line (like the quiet Cancel above), with a
-                    // two-step confirm.
+                    // Build 47 (owner, Nov 19, 2026 — "even when
+                    // you go to correct it.. you can't delete it",
+                    // build 46): Delete this income — reverse it
+                    // with NO replacement, so a mistaken income
+                    // can simply be removed instead of corrected.
+                    // The entry stays, marked reversed; its
+                    // committed figure drops out of Total. A proper
+                    // RED button (FundsDangerButton — the app's
+                    // error red #dc2626 on #fef2f2), full-width,
+                    // right below the Save/Cancel row — not a quiet
+                    // link at the bottom. Two-step confirm, as
+                    // before.
                     if showDeleteConfirm {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("This reverses the income — the \(MoneyFormat.formatCents(correcting?.committedCents ?? 0)) it committed no longer counts toward \(fundName). The entry stays, marked reversed.")
                                 .font(.system(size: 14))
                                 .foregroundStyle(DesignTokens.ink)
                             HStack(spacing: 12) {
-                                FundsPrimaryButton("Delete Income", isBusy: viewModel.busyAction == "delete-income") {
+                                FundsDangerButton("Delete Income", isBusy: viewModel.busyAction == "delete-income") {
                                     Task {
                                         guard let income = correcting else { return }
                                         if await viewModel.reverseCharityIncome(income) {
@@ -178,10 +206,20 @@ public struct CharityIncomeForm: View {
                             }
                         }
                     } else {
-                        FundsQuietButton("Delete This Income") {
+                        FundsDangerButton("Delete This Income") {
                             showDeleteConfirm = true
                         }
                         .accessibilityIdentifier("funds.deleteIncome")
+                    }
+                    // While correcting, the row Cancel above reverts
+                    // to add mode; this quiet Cancel closes the
+                    // form outright (kept off the button row so the
+                    // two cancels never sit next to each other in
+                    // the same treatment).
+                    FundsQuietButton("Cancel") {
+                        correcting = nil
+                        clearIncomeFields()
+                        onClose()
                     }
                 }
             }
@@ -191,6 +229,18 @@ public struct CharityIncomeForm: View {
         }
         .onChange(of: correcting) { _, newValue in
             if let newValue { prefill(newValue) } else { clearIncomeFields() }
+        }
+        // Build 47: the long explanations live behind ⓘ, not
+        // inline — the default-rate note and the correction note.
+        .alert(TitleCase.apply(to: "Default \(fundName) Rate"), isPresented: $showingRateInfo) {
+            Button("OK") {}
+        } message: {
+            Text("Change the default rate in Default \(fundName) Rate under \(fundName) on the Funds page. A change affects future incomes only.")
+        }
+        .alert("Correcting an Entry", isPresented: $showingCorrectionInfo) {
+            Button("OK") {}
+        } message: {
+            Text("Saving reverses it and adds a replacement. The old entry stays, marked reversed.")
         }
     }
 

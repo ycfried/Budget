@@ -1,4 +1,4 @@
-// STAG — CSV import (Add Upload, live web v66, §8.3).
+// STAGE — CSV import (Add Upload, live web v66, §8.3).
 //
 // File picker (UIDocumentPickerViewController for .csv), preview
 // with per-row New/Duplicate marking, confirm imports only the new

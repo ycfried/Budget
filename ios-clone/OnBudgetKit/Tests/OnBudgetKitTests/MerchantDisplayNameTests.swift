@@ -97,4 +97,41 @@ final class MerchantDisplayNameTests: XCTestCase {
             "Tenyad Kallah Gemach"
         )
     }
+
+    // MARK: matchingRule (build 47 — rename popup pre-fill)
+
+    func testMatchingRuleReturnsTheRuleDisplayNameUses() {
+        let exact = rule(pattern: "TOIREMORG", matchType: "exact", display: "Toiremorg")
+        let rules = [exact]
+        XCTAssertEqual(MerchantDisplayName.matchingRule(for: "TOIREMORG", rules: rules), exact)
+        XCTAssertEqual(MerchantDisplayName.matchingRule(for: "toiremorg", rules: rules), exact)
+    }
+
+    func testMatchingRuleReturnsNilWhenNothingMatches() {
+        let rules = [rule(pattern: "TOIREMORG", matchType: "exact", display: "Toiremorg")]
+        XCTAssertNil(MerchantDisplayName.matchingRule(for: "WALMART", rules: rules))
+        XCTAssertNil(MerchantDisplayName.matchingRule(for: "", rules: rules))
+        XCTAssertNil(MerchantDisplayName.matchingRule(for: "WALMART", rules: []))
+    }
+
+    func testMatchingRulePicksTheSameWinnerAsDisplayName() {
+        // Exact beats Includes, longest pattern wins within a tier
+        // — matchingRule and displayName must agree, since the
+        // popup pre-fills from the rule the list already renders.
+        let rules = [
+            rule(pattern: "TOIREM", matchType: "includes", display: "Includes Name"),
+            rule(pattern: "TOIREMORG", matchType: "exact", display: "Exact Name"),
+        ]
+        let matched = MerchantDisplayName.matchingRule(for: "TOIREMORG", rules: rules)
+        XCTAssertEqual(matched?.displayName, "Exact Name")
+        XCTAssertEqual(matched?.matchType, "exact")
+        XCTAssertEqual(MerchantDisplayName.displayName(for: "TOIREMORG", rules: rules), "Exact Name")
+    }
+
+    func testMatchingRuleKeepsTheIncludesMatchType() {
+        let rules = [rule(pattern: "TENYAD", matchType: "includes", display: "Tenyad Kallah Gemach")]
+        let matched = MerchantDisplayName.matchingRule(for: "=TENYADKALLAHGEMACH", rules: rules)
+        XCTAssertEqual(matched?.displayName, "Tenyad Kallah Gemach")
+        XCTAssertEqual(matched?.matchType, "includes")
+    }
 }

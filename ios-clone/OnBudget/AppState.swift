@@ -1,4 +1,4 @@
-// STAG — AppState.swift
+// STAGE — AppState.swift
 //
 // App shell state: boot flow, session, household membership, tab
 // selection, toasts, and the handoffs between screens (recent-row
@@ -158,6 +158,17 @@ public final class AppViewModel: ObservableObject {
     /// yet (the mockup defaults show). Updated in place by a
     /// prominence change.
     @Published public var fundProminence: [String: String] = [:]
+
+    /// Which funds are hidden from Home (build 47 — owner, Nov
+    /// 19, 2026): `households.fund_hidden`, a map from fund key
+    /// to true. Only Savings and Overspent (Past) can be hidden;
+    /// Spending and Tzedaka are built in and always show. The ONE
+    /// source Home reads from, loaded at boot alongside the fund
+    /// prominence; [:] until then, and [:] when the migration is
+    /// not applied yet (every fund shows). Updated in place by a
+    /// hide/show change. Hiding never touches the fund's
+    /// prominence, so showing it again puts it back where it was.
+    @Published public var fundHidden: [String: Bool] = [:]
 
     /// Which Home layout shows (build 46 — owner Nov 18, 2026):
     /// the simpler mockup layout is the default; the previous
@@ -350,6 +361,7 @@ public final class AppViewModel: ObservableObject {
             fundNames = (try? await client.postgrest.householdFundNames(householdId: membership.householdId)) ?? [:]
             fundIcons = (try? await client.postgrest.householdFundIcons(householdId: membership.householdId)) ?? [:]
             fundProminence = (try? await client.postgrest.householdFundProminence(householdId: membership.householdId)) ?? [:]
+            fundHidden = (try? await client.postgrest.householdFundHidden(householdId: membership.householdId)) ?? [:]
             ownerId = try? await client.postgrest.householdOwnerId(householdId: membership.householdId)
             // Preload the dashboard behind the loading screen
             // (owner, Nov 15, 2026): start the Home load now and
@@ -398,6 +410,7 @@ public final class AppViewModel: ObservableObject {
         fundNames = (try? await client.postgrest.householdFundNames(householdId: id)) ?? [:]
         fundIcons = (try? await client.postgrest.householdFundIcons(householdId: id)) ?? [:]
         fundProminence = (try? await client.postgrest.householdFundProminence(householdId: id)) ?? [:]
+        fundHidden = (try? await client.postgrest.householdFundHidden(householdId: id)) ?? [:]
         // A freshly created household is owned by its creator; a
         // freshly joined one learns its owner on the next boot.
         if role == .admin {

@@ -15,6 +15,17 @@ public enum DesignTokens {
     public static let lightHex = "#60a5fa"
     public static let paleHex = "#bfdbfe"
 
+    // MARK: - STAGE wordmark (owner, Nov 18, 2026 — build 47:
+    // STAG → STAGE). The S logo IS the S of STAGE, so the
+    // wordmark text is only "T · A · G · E": the letters in brand
+    // dark green #20392f, the centered-dot separators in brand
+    // gold #b08d57, the same size/height as the logo beside them.
+    // Never the S logo next to the full word "STAGE" (no second
+    // S). StageWordmarkText (StageWordmark.swift) renders this.
+
+    public static let brandGreenHex = "#20392f"
+    public static let brandGoldHex = "#b08d57"
+
     // MARK: - Neutrals
 
     public static let backgroundHex = "#ffffff"
@@ -140,6 +151,8 @@ public enum DesignTokens {
     public static var mid: Color { Color(hex: midHex) }
     public static var light: Color { Color(hex: lightHex) }
     public static var pale: Color { Color(hex: paleHex) }
+    public static var brandGreen: Color { Color(hex: brandGreenHex) }
+    public static var brandGold: Color { Color(hex: brandGoldHex) }
     public static var background: Color { Color(hex: backgroundHex) }
     public static var ink: Color { Color(hex: inkHex) }
     public static var muted: Color { Color(hex: mutedHex) }

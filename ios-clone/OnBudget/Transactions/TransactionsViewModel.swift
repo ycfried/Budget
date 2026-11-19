@@ -591,7 +591,7 @@ public final class TransactionsViewModel {
     /// `fixedKind` is a `TransactionKind` raw value (charge /
     /// refund / fund_charge / payment / cashback / charity /
     /// transfer / income) or nil for name-only.
-    public func renameMerchant(_ transaction: Transaction, to displayName: String, fixedKind: String?) async -> Bool {
+    public func renameMerchant(_ transaction: Transaction, to displayName: String, fixedKind: String?, matchType: String = "exact") async -> Bool {
         guard isAdmin else {
             showAlert(title: "Admin Only", message: "Only the admin can rename merchants.")
             return false
@@ -600,7 +600,8 @@ public final class TransactionsViewModel {
             let renamed = try await client.rpcs.renameTransactionAndApplyRule(
                 pTransactionId: transaction.id,
                 pDisplayName: displayName,
-                pFixedKind: fixedKind
+                pFixedKind: fixedKind,
+                pMatchType: matchType
             )
             toastManager.show(
                 renamed == 1
@@ -617,6 +618,19 @@ public final class TransactionsViewModel {
             showAlert(title: "Could Not Rename", message: OnBudgetError.displayMessage(for: error))
             return false
         }
+    }
+
+    /// The merchant rule already matching this transaction's bank
+    /// name, if any (build 47 — the rename popup pre-fills from
+    /// it: the stored display name, match type and bank name). A
+    /// failed rules read is not an error here — the popup just
+    /// opens with the defaults (no rule, Exact, the row's own
+    /// bank name).
+    public func existingMerchantRule(for transaction: Transaction) async -> MerchantRule? {
+        guard let rules = try? await client.postgrest.merchantRules(householdId: householdId) else {
+            return nil
+        }
+        return MerchantDisplayName.matchingRule(for: transaction.merchant, rules: rules)
     }
 
     /// Extra Fund request for a charge (live.js:3834-3861). Refuses

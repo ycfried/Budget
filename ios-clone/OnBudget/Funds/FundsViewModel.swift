@@ -1309,7 +1309,7 @@ public final class FundsViewModel: ObservableObject {
     /// it.. you can't delete it"): the Correct flow reverses + REPLACES,
     /// so a mistaken income could never simply be removed. This is
     /// the delete half of that flow — the Correct form offers it
-    /// beside Cancel Correction. `reverse_charity_income` flips the
+    /// beside Cancel. `reverse_charity_income` flips the
     /// row to 'reversed' (append-only); the committed figure it
     /// carried drops out of Total. NOTE: until
     /// `supabase/reverse-charity-cash-gift.sql` is applied live the
@@ -1628,6 +1628,31 @@ public final class FundsViewModel: ObservableObject {
             // custom names, and the sheet it was changed from is
             // titled with the current name already.
             succeed("Now shows on Home as \(prominence.rawValue).")
+            return map
+        } catch {
+            fail(title: "Could Not Change Home Layout", error: error)
+            return nil
+        }
+    }
+
+    /// Hide a fund from Home, or show it again (build 47 —
+    /// owner, Nov 19, 2026). Only Savings and Overspent (Past)
+    /// may be hidden — Spending and Tzedaka are built in and the
+    /// server refuses them. Mirrors setFundProminence: admin
+    /// only, server-side. Returns the household's updated
+    /// fund_hidden map on success, so the caller (FundsView) can
+    /// update the shared `appState.fundHidden` — the ONE source
+    /// Home reads from. Hiding never touches the fund's
+    /// prominence, so showing it again puts it back where it was.
+    public func setFundHidden(section: FundSectionID, hidden: Bool) async -> [String: Bool]? {
+        guard busyAction == nil else { return nil }
+        busyAction = "fund-hidden"
+        defer { busyAction = nil }
+        do {
+            let map = try await context.client.rpcs.setFundHidden(
+                pHouseholdId: context.householdId, pFundKey: section.rawValue, pHidden: hidden
+            )
+            succeed(hidden ? "Hidden from Home." : "Back on Home.")
             return map
         } catch {
             fail(title: "Could Not Change Home Layout", error: error)

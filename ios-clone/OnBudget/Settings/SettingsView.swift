@@ -1,4 +1,4 @@
-// STAG — Settings screen (live web v66, §10).
+// STAGE — Settings screen (live web v66, §10).
 //
 // Entry: profile menu → Settings. Heading "Settings" + "← Back"
 // (returns to `previousView`, or Home after a reload — the

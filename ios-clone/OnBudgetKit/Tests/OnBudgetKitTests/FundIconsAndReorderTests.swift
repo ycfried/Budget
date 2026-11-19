@@ -91,4 +91,32 @@ final class FundIconsAndReorderTests: XCTestCase {
         XCTAssertEqual(FundProminence.quiet.rawValue, "quiet")
         XCTAssertEqual(FundProminence.allCases.count, 3)
     }
+
+    // MARK: Fund Home visibility (build 47 — remove/add funds)
+
+    func testOnlySavingsAndOverspentCanHide() {
+        // Owner, Nov 19, 2026: "The only ones that stay and are
+        // built in are spending & Charity."
+        XCTAssertFalse(FundHomeVisibility.canHide(fundKey: "spending"))
+        XCTAssertFalse(FundHomeVisibility.canHide(fundKey: "charity"))
+        XCTAssertTrue(FundHomeVisibility.canHide(fundKey: "fund"))
+        XCTAssertTrue(FundHomeVisibility.canHide(fundKey: "debt"))
+        XCTAssertFalse(FundHomeVisibility.canHide(fundKey: "other"))
+    }
+
+    func testHiddenMapHidesOnlyHideableFunds() {
+        let hidden: [String: Bool] = ["fund": true, "debt": true, "spending": true, "charity": true]
+        XCTAssertTrue(FundHomeVisibility.isHidden(fundKey: "fund", hiddenMap: hidden))
+        XCTAssertTrue(FundHomeVisibility.isHidden(fundKey: "debt", hiddenMap: hidden))
+        // A stored value for a built-in fund never hides it — the
+        // server refuses those keys too, so this is belt and braces.
+        XCTAssertFalse(FundHomeVisibility.isHidden(fundKey: "spending", hiddenMap: hidden))
+        XCTAssertFalse(FundHomeVisibility.isHidden(fundKey: "charity", hiddenMap: hidden))
+    }
+
+    func testMissingOrFalseMapEntryShowsTheFund() {
+        XCTAssertFalse(FundHomeVisibility.isHidden(fundKey: "fund", hiddenMap: [:]))
+        XCTAssertFalse(FundHomeVisibility.isHidden(fundKey: "fund", hiddenMap: ["fund": false]))
+        XCTAssertFalse(FundHomeVisibility.isHidden(fundKey: "debt", hiddenMap: ["fund": true]))
+    }
 }

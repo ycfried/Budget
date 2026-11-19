@@ -1,4 +1,4 @@
-// STAG — Settings: Email Alerts card (live web v66, §10.3).
+// STAGE — Settings: Email Alerts card (live web v66, §10.3).
 //
 // Gmail connect via `gmail-oauth-start` presented with
 // `ASWebAuthenticationSession` (callback handled in-app; the OAuth

@@ -1,4 +1,4 @@
-// STAG — HomeView.swift
+// STAGE — HomeView.swift
 //
 // Home screen (CLONE_SPEC §6, live.html:103-141,
 // live.js:594-730, 1040-1110, 3457-3650) + Weekly sheet (§14).
@@ -620,8 +620,13 @@ public struct HomeView: View {
             HStack(alignment: .top, spacing: 14) {
                 charityCard
                     .frame(maxWidth: .infinity, alignment: .leading)
-                fundCard
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // Build 47: Savings leaves the classic Home too
+                // when hidden — the Tzedaka card then takes the
+                // full row width.
+                if !isHiddenFromHome(.fund) {
+                    fundCard
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
@@ -642,6 +647,13 @@ public struct HomeView: View {
         section.prominence(customProminence: appState.fundProminence)
     }
 
+    /// Whether a fund is hidden from Home (build 47 — owner, Nov
+    /// 19, 2026). Only Savings and Overspent (Past) can be hidden;
+    /// Spending and Tzedaka are built in and always read false.
+    private func isHiddenFromHome(_ section: FundSectionID) -> Bool {
+        section.isHidden(customHidden: appState.fundHidden)
+    }
+
     /// The simpler Home (build 46 — owner, Nov 18, 2026: the
     /// simpler-home-mockup layout IS the new Home): the hero fund
     /// (Spending by default) on top, then the card funds (Tzedaka
@@ -650,17 +662,19 @@ public struct HomeView: View {
     /// cards, like the mockup. Each fund's treatment is its stored
     /// prominence — the owner sets it from the fund's edit sheet on
     /// the Funds page — so any fund can be the hero, a card, or a
-    /// quiet row.
+    /// quiet row. Build 47: a hidden fund leaves Home entirely
+    /// (hero, card and quiet tiers all filter it out); hiding
+    /// both quiet funds removes the quiet card itself.
     private var simpleContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ForEach(mockupOrder.filter { prominence(of: $0) == .hero }, id: \.self) { section in
+            ForEach(mockupOrder.filter { prominence(of: $0) == .hero && !isHiddenFromHome($0) }, id: \.self) { section in
                 if section == .spending {
                     heroCard(simple: true)
                 } else {
                     simpleFundCard(section: section, hero: true)
                 }
             }
-            ForEach(mockupOrder.filter { prominence(of: $0) == .card }, id: \.self) { section in
+            ForEach(mockupOrder.filter { prominence(of: $0) == .card && !isHiddenFromHome($0) }, id: \.self) { section in
                 simpleFundCard(section: section, hero: false)
             }
             quietCard
@@ -768,17 +782,18 @@ public struct HomeView: View {
     }
 
     /// Banner colour: the Spending theme's banner (deep blue #1d4ed8
-    /// since build 46 — see StatCardTheme) when loaded; WHITE while
-    /// LOADING (owner, Nov 16, 2026 — build 40: the pale #dbeafe
-    /// tint was horrendous, the original white background with grey
-    /// skeleton shapes was nicest); muted grey #e5e7eb when FAILED
-    /// (a failed load stays distinct from loading). The theme is
-    /// the single source — the hero reads it, never a hard-coded
-    /// hex.
+    /// since build 46 — see StatCardTheme) when loaded AND while
+    /// LOADING (build 47, owner Nov 19, 2026 — "Only the tzedaka
+    /// colored bar loads in the beginning.. the spending one should
+    /// too": the header shows its colour from the first paint, the
+    /// grey skeleton blocks on top of it — this supersedes the
+    /// build-40 white loading banner for the header strip); muted
+    /// grey #e5e7eb when FAILED (a failed load stays distinct
+    /// from loading). The theme is the single source — the hero
+    /// reads it, never a hard-coded hex.
     private var heroBannerColor: Color {
         switch viewModel.week {
-        case .loaded: return StatCardTheme.spending.banner
-        case .loading: return DesignTokens.loadingBanner
+        case .loaded, .loading: return StatCardTheme.spending.banner
         case .failed: return Color(hex: "#e5e7eb")
         }
     }
@@ -815,8 +830,9 @@ public struct HomeView: View {
     // end. The amount is NOT here any more — it lives in the white
     // body below, at the biggest size the card allows (build 46,
     // owner Nov 18, 2026: it sat inline in the header in builds
-    // 40–45 and read too small). While loading the strip is WHITE
-    // with skeleton blocks (build 40 loading revert — no tint);
+    // 40–45 and read too small). While loading the strip is the
+    // SAME deep blue with skeleton blocks on it (build 47, owner
+    // Nov 19, 2026 — the coloured bar shows from the first paint);
     // the sync spot holds a skeleton block so the header never
     // jumps when the numbers arrive. While failed the strip is
     // muted grey.
@@ -1123,11 +1139,15 @@ public struct HomeView: View {
 
     // MARK: Simpler Home — fund card + quiet rows
 
-    /// The Tzedaka header colour in the simpler Home (build 46 —
-    /// the mockup): pale #d7e6fd with ink text. The shared
-    /// StatCardTheme.charity.banner stays #bfdbfe — the Funds page
-    /// keeps its existing pale — so this lives here, in Home only.
-    private var simpleCharityBanner: Color { Color(hex: "#d7e6fd") }
+    /// The Tzedaka header colour in the simpler Home (build 47 —
+    /// owner, Nov 19, 2026: "The blue of the tzedaka should be
+    /// the same blue as its header, no?"): the header is the
+    /// solid primary blue #2f6bff now — the same blue as the
+    /// number — with white text, like Spending's deep-blue header
+    /// and number. The pale #d7e6fd header from build 46 is gone;
+    /// pale on white was unreadable as a number, so the number
+    /// never goes pale — the header deepens to match the number.
+    private var simpleCharityBanner: Color { DesignTokens.primary }
 
     /// The loaded body data for a fund's simple card: the small
     /// label above the amount, the amount itself, and the sub-line
@@ -1199,10 +1219,14 @@ public struct HomeView: View {
     private func simpleFundCard(section: FundSectionID, hero: Bool) -> some View {
         let theme = section.theme
         let name = section.displayName(customNames: appState.fundNames)
-        // Tzedaka's header is the mockup's pale #d7e6fd (ink text);
-        // every other fund takes its theme banner.
+        // Tzedaka's header is the solid primary blue #2f6bff
+        // (build 47 — header and number the same blue, like
+        // Spending's); every other fund takes its theme banner.
+        // White text on the solid primary header (white on
+        // #2f6bff reads ~4.4:1); the icon stays the theme glyph
+        // on its white disc, which reads on white against it.
         let banner: Color = section == .charity ? simpleCharityBanner : theme.banner
-        let onBanner: Color = section == .charity ? DesignTokens.ink : theme.onBanner
+        let onBanner: Color = section == .charity ? .white : theme.onBanner
         let amountSize: CGFloat = hero ? heroAmountSize : (isIPad ? 64 : 42)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
@@ -1227,12 +1251,20 @@ public struct HomeView: View {
                     Text(data.label)
                         .font(.system(size: 14))
                         .foregroundStyle(DesignTokens.muted)
-                    Text(data.amountText)
-                        .font(.system(size: amountSize, weight: .heavy))
-                        .foregroundStyle(theme.number)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .accessibilityIdentifier(section == .charity ? "home.tzedakaAmount" : "home.simpleAmount.\(section.rawValue)")
+                    if section == .charity {
+                        // Tzedaka ring (build 47, owner Nov 19,
+                        // 2026): the amount + the Given ring side
+                        // by side, like the Spending hero's amount
+                        // + ring. The big number stays the
+                        // Available ("left to give").
+                        HStack(spacing: 16) {
+                            simpleAmountText(data.amountText, amountSize: amountSize, section: section, theme: theme)
+                            Spacer()
+                            charityDonut(fraction: charityGivenFraction(), size: charityRingSize(hero: hero))
+                        }
+                    } else {
+                        simpleAmountText(data.amountText, amountSize: amountSize, section: section, theme: theme)
+                    }
                     if let subText = data.subText {
                         Text(subText)
                             .font(.system(size: 13))
@@ -1252,7 +1284,18 @@ public struct HomeView: View {
                         .buttonStyle(TertiaryButtonStyle())
                 } else {
                     SkeletonBlock(width: 110, height: 14, cornerRadius: 6)
-                    SkeletonBlock(width: 180, height: amountSize + 8, cornerRadius: 6)
+                    if section == .charity {
+                        // Ring skeleton beside the amount skeleton,
+                        // so the layout holds its size when the
+                        // ring arrives.
+                        HStack(spacing: 16) {
+                            SkeletonBlock(width: 180, height: amountSize + 8, cornerRadius: 6)
+                            Spacer()
+                            SkeletonBlock(width: charityRingSize(hero: hero), height: charityRingSize(hero: hero), cornerRadius: charityRingSize(hero: hero) / 2)
+                        }
+                    } else {
+                        SkeletonBlock(width: 180, height: amountSize + 8, cornerRadius: 6)
+                    }
                     SkeletonBlock(width: 150, height: 13, cornerRadius: 6)
                 }
             }
@@ -1269,6 +1312,75 @@ public struct HomeView: View {
         .accessibilityLabel(
             simpleCardData(for: section).map { "\(name), \($0.amountText), show fund" } ?? "\(name), loading"
         )
+    }
+
+    /// The Tzedaka ring fraction (build 47, owner Nov 19, 2026):
+    /// Given / Committed, ALL TIME (cumulative since Nov 1,
+    /// 2026 — the card's figures are cumulative, so the ring is
+    /// too). 0 while loading or when Committed is $0 (no income
+    /// yet) — the ring shows empty, never a crash (the fraction
+    /// clamps 0...1 and returns 0 for a zero denominator).
+    private func charityGivenFraction() -> Double {
+        guard case .loaded(let summary) = viewModel.charity else { return 0 }
+        return SpendingProgress.fraction(chargesCents: summary.givenCents, capacityCents: summary.committedCents)
+    }
+
+    /// The Tzedaka ring size (build 47): the hero ring size when
+    /// the card is a hero, a smaller ring for a plain card — 64pt
+    /// on iPhone / 88pt on iPad, so the amount + ring fit side by
+    /// side on iPhone.
+    private func charityRingSize(hero: Bool) -> CGFloat {
+        if hero { return heroDonutSize }
+        return isIPad ? 88 : 64
+    }
+
+    /// Progress circle for the Tzedaka card (build 47, owner Nov
+    /// 19, 2026 — the Tzedaka card gets a ring like Spending's,
+    /// showing how much of the charity Committed has been Given):
+    /// the given slice in Tzedaka blue #2f6bff, the remaining
+    /// slice pale light blue #dbeafe (the same track as
+    /// Spending's ring), the given percentage in the centre with
+    /// "given" under it, like Spending's "used".
+    private func charityDonut(fraction: Double, size: CGFloat) -> some View {
+        let lineWidth: CGFloat = isIPad ? 14 : 12
+        let percent = Int((fraction * 100).rounded())
+        return ZStack {
+            Circle()
+                .stroke(Color(hex: "#dbeafe"), lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(
+                    DesignTokens.primary,
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: fraction >= 1 ? .butt : .round)
+                )
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 0) {
+                Text("\(percent)%")
+                    .font(.system(size: size * 0.22, weight: .bold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .foregroundStyle(DesignTokens.ink)
+                Text("given")
+                    .font(.system(size: size * 0.125))
+                    .foregroundStyle(DesignTokens.muted)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityIdentifier("home.tzedakaDonut")
+        .accessibilityLabel("\(percent) percent of charity given")
+    }
+
+    /// The big amount text for a simple card (build 47 — the
+    /// Tzedaka amount is shared by the plain and the ring
+    /// layouts, so it lives once here).
+    private func simpleAmountText(_ text: String, amountSize: CGFloat, section: FundSectionID, theme: StatCardTheme) -> some View {
+        Text(text)
+            .font(.system(size: amountSize, weight: .heavy))
+            .foregroundStyle(theme.number)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .accessibilityIdentifier(section == .charity ? "home.tzedakaAmount" : "home.simpleAmount.\(section.rawValue)")
     }
 
     /// The amount for a quiet row: the fund's headline figure
@@ -1301,7 +1413,7 @@ public struct HomeView: View {
     /// while the others already read.
     @ViewBuilder
     private var quietCard: some View {
-        let quiet = mockupOrder.filter { prominence(of: $0) == .quiet }
+        let quiet = mockupOrder.filter { prominence(of: $0) == .quiet && !isHiddenFromHome($0) }
         if !quiet.isEmpty {
             VStack(spacing: 0) {
                 ForEach(Array(quiet.enumerated()), id: \.element) { index, section in
@@ -1332,36 +1444,41 @@ public struct HomeView: View {
         let amount = quietAmountText(for: section)
         return Button { appState.openFund(section) } label: {
             HStack(spacing: 12) {
-                if amount == nil, !failed {
-                    SkeletonBlock(width: 30, height: 30, cornerRadius: 15)
-                    SkeletonBlock(width: 90, height: 15, cornerRadius: 6)
-                    Spacer()
-                    SkeletonBlock(width: 60, height: 15, cornerRadius: 6)
-                } else {
-                    Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
+                // The icon + name render in EVERY state — loaded,
+                // loading, and failed (build 47, owner Nov 19,
+                // 2026: "The other 2 funds should also have
+                // theirs colors, although they're collapsed" — the
+                // icon and name are local, so the row shows its
+                // colours from the first paint; only the amount
+                // waits on the numbers). The old all-skeleton row
+                // was uniform grey and read as no fund at all.
+                Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#7c8794"))
+                    .frame(width: 30, height: 30)
+                    .background(Color(hex: "#eef1f4"))
+                    .clipShape(Circle())
+                Text(name)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color(hex: "#3c4654"))
+                    .lineLimit(1)
+                Spacer()
+                if failed {
+                    Text("Couldn't load")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DesignTokens.errorText)
+                } else if let amount {
+                    Text(amount)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color(hex: "#7c8794"))
-                        .frame(width: 30, height: 30)
-                        .background(Color(hex: "#eef1f4"))
-                        .clipShape(Circle())
-                    Text(name)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Color(hex: "#3c4654"))
-                        .lineLimit(1)
-                    Spacer()
-                    if failed {
-                        Text("Couldn't load")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(DesignTokens.errorText)
-                    } else if let amount {
-                        Text(amount)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(DesignTokens.muted)
-                    }
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color(hex: "#c3cad2"))
+                        .foregroundStyle(DesignTokens.muted)
+                } else {
+                    // Loading: only the amount is a skeleton — the
+                    // icon + name above already show the fund.
+                    SkeletonBlock(width: 60, height: 15, cornerRadius: 6)
                 }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#c3cad2"))
             }
             .frame(minHeight: 48)
             .padding(.vertical, 12)
@@ -1600,19 +1717,16 @@ public struct HomeView: View {
         let titleSize: CGFloat = compact ? (isIPad ? 20 : 18) : 20
         let amountSize: CGFloat = compact ? (isIPad ? 64 : 34) : (isIPad ? 64 : 44)
         let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 72 : 40) : (isIPad ? 72 : 50)
-        let titleSkeletonWidth: CGFloat = compact ? (isIPad ? 150 : 90) : 90
         let amountSkeletonWidth: CGFloat = compact ? (isIPad ? 240 : 130) : (isIPad ? 240 : 170)
         let statusSize: CGFloat = compact ? (isIPad ? 14 : 13) : 14
         let chevronSize: CGFloat = compact ? (isIPad ? 15 : 14) : 15
         let pad: CGFloat = compact ? (isIPad ? 20 : 16) : 24
-        // Header colour: WHITE while LOADING (owner, Nov 16, 2026
-        // — build 40: the pale #dbeafe tint was horrendous, the
-        // original white background with grey skeleton shapes was
-        // nicest), muted grey #e5e7eb when FAILED (a failed load
-        // stays distinct from loading), the theme colour when
-        // loaded.
+        // Header colour: the theme colour when loaded AND while
+        // LOADING (build 47, owner Nov 19, 2026 — every fund shows
+        // its colour from the first paint; this supersedes the
+        // build-40 white loading banner), muted grey #e5e7eb when
+        // FAILED (a failed load stays distinct from loading).
         let bannerColor: Color = {
-            if isLoading { return DesignTokens.loadingBanner }
             if statusIsError { return Color(hex: "#e5e7eb") }
             return theme.banner
         }()
@@ -1620,11 +1734,15 @@ public struct HomeView: View {
         // (build 41, updated build 43 — per theme: white on the
         // dark Debt banner only, ink on the light Spending /
         // Charity pale / Extra Fund tertiary banners), ink on the
-        // grey loading/failed header.
+        // grey failed header. While loading the header shows the
+        // real icon + name (build 47 — the name and icon are local,
+        // like the simpler Home's cards), so the text colour is
+        // the theme's too — the skeleton blocks are gone from the
+        // header, only the body amount is a skeleton.
         // The icon is always the theme's glyph colour — it sits on
         // a WHITE circle, so it reads on white in every state.
         let onBanner: Color = {
-            if isLoading || statusIsError { return DesignTokens.ink }
+            if statusIsError { return DesignTokens.ink }
             return theme.onBanner
         }()
         return VStack(alignment: .leading, spacing: 0) {
@@ -1635,41 +1753,36 @@ public struct HomeView: View {
             // below (build 42 item 22 had it here with the title
             // hidden; that is reversed).
             HStack(spacing: 8) {
-                if isLoading {
-                    SkeletonBlock(width: chip, height: chip, cornerRadius: chip / 2)
-                } else {
-                    // Icon in a white circle (owner, Nov 16, 2026 —
-                    // build 40 reference): the theme's glyph colour
-                    // on a white disc (build 41 — the banner colour
-                    // itself is unreadable on white for the light
-                    // banners).
-                    Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
-                        .font(.system(size: iconSize, weight: .semibold))
-                        .foregroundStyle(theme.glyph)
-                        .frame(width: chip, height: chip)
-                        .background(.white)
-                        .clipShape(Circle())
-                }
+                // The icon + name render in EVERY state — loaded,
+                // loading, and failed (build 47, owner Nov 19,
+                // 2026: the header shows its colour and name from
+                // the first paint, like the simpler Home's cards;
+                // the name and icon are local, only the amount
+                // waits). The old loading skeletons are gone from
+                // the header — a grey block on the light banners
+                // (Savings tertiary #e5e7eb) was nearly invisible,
+                // and the body amount skeleton is the loading sign.
+                // Icon in a white circle (owner, Nov 16, 2026 —
+                // build 40 reference): the theme's glyph colour
+                // on a white disc (build 41 — the banner colour
+                // itself is unreadable on white for the light
+                // banners).
+                Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
+                    .font(.system(size: iconSize, weight: .semibold))
+                    .foregroundStyle(theme.glyph)
+                    .frame(width: chip, height: chip)
+                    .background(.white)
+                    .clipShape(Circle())
                 // Build 43 (owner, Nov 17, 2026): the name is
                 // always in the header; the amount lives in the
                 // white body below, so the header is icon + name
                 // only — nothing here can truncate against an
                 // amount any more.
-                if isLoading {
-                    // Skeleton title while loading (owner, Nov 16,
-                    // 2026 — build 38): real dark-ink text on the
-                    // placeholder read as a finished card. The
-                    // failed state keeps the real title. Build 46
-                    // (owner, Nov 18, 2026): 150pt on iPad, so the
-                    // bar takes up the space in the wider card.
-                    SkeletonBlock(width: titleSkeletonWidth, height: 20, cornerRadius: 6)
-                } else {
-                    Text(title)
-                        .font(.system(size: titleSize, weight: .bold))
-                        .foregroundStyle(onBanner)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
+                Text(title)
+                    .font(.system(size: titleSize, weight: .bold))
+                    .foregroundStyle(onBanner)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                 Spacer()
             }
             .padding(.horizontal, pad)

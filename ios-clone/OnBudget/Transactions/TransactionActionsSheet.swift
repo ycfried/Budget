@@ -101,6 +101,16 @@ public struct TransactionActionsSheet: View {
     @State private var renameName: String = ""
     @State private var renameFixedKind: String?
     @State private var renameError: String?
+    /// Build 47 (owner, Nov 19, 2026): the rename popup shows
+    /// HOW the rule matches — "exact" (the current behaviour,
+    /// normalised for case/punctuation) or "includes" (any future
+    /// bank name containing the bank name). Pre-filled from the
+    /// existing rule when there is one, else Exact.
+    @State private var renameMatchType: String = "exact"
+    /// Build 47: the bank name as the bank sends it — the rule's
+    /// stored source merchant when there is one, else this row's
+    /// raw merchant. Shown raw, never Title-Cased.
+    @State private var renameBankName: String = ""
     @State private var linkCandidates: [Transaction]?
     @State private var linkedSummary: (merchant: String, amountCents: Int, date: String)?
     @State private var isWorking: Bool = false
@@ -381,8 +391,30 @@ public struct TransactionActionsSheet: View {
         case .rename:
             renameName = TitleCase.apply(to: transaction.merchant.lowercased())
             renameFixedKind = nil
+            renameMatchType = "exact"
+            renameBankName = transaction.merchant
             renameError = nil
             flow = .rename
+            // Build 47: when a rule already matches this bank name,
+            // pre-fill from it — the stored display name, match
+            // type and bank name — so editing a rule shows what it
+            // already says instead of the defaults. Only what the
+            // owner has not already edited while the rule loaded
+            // gets overwritten.
+            Task {
+                let initialName = renameName
+                let initialKind = renameFixedKind
+                let initialMatch = renameMatchType
+                if let rule = await viewModel.existingMerchantRule(for: transaction),
+                   renameName == initialName, renameFixedKind == initialKind, renameMatchType == initialMatch {
+                    renameName = rule.displayName
+                    renameFixedKind = rule.fixedKind
+                    renameMatchType = rule.matchType
+                    if let source = rule.sourceMerchant, !source.isEmpty {
+                        renameBankName = source
+                    }
+                }
+            }
         case .delete:
             flow = .deleteConfirm
         }
@@ -535,19 +567,40 @@ public struct TransactionActionsSheet: View {
         }
     }
 
-    // MARK: - Rename merchant (build 30, teachable rules)
+    // MARK: - Rename merchant (build 30, teachable rules; build
+    // 47, owner Nov 19, 2026: the popup shows three things
+    // plainly — From the Bank (what the bank sends, raw), Show as
+    // (the display name), Match (Exact name only vs Any name
+    // containing this). The old description paragraph is gone;
+    // the fields say it. "Always Count As" is unchanged.
 
     private var renameContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Rename “\(TransactionFormatting.displayMerchant(transaction.merchant))” everywhere — old rows and new ones. The name is remembered, so future rows with this name arrive renamed.")
-                .font(.system(size: 15))
-                .foregroundStyle(DesignTokens.ink)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Merchant Name")
+                Text("From the Bank")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Text(renameBankName)
+                    .font(.system(size: 15))
+                    .foregroundStyle(DesignTokens.ink)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Show as")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 TextField("", text: $renameName)
                     .textFieldStyle(.roundedBorder)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Match")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Picker("Match", selection: $renameMatchType) {
+                    Text("Exact Name Only").tag("exact")
+                    Text("Any Name Containing This").tag("includes")
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("rename.matchTypePicker")
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Always Count As")
@@ -573,7 +626,7 @@ public struct TransactionActionsSheet: View {
                             return
                         }
                         isWorking = true
-                        let ok = await viewModel.renameMerchant(transaction, to: name, fixedKind: renameFixedKind)
+                        let ok = await viewModel.renameMerchant(transaction, to: name, fixedKind: renameFixedKind, matchType: renameMatchType)
                         isWorking = false
                         if ok { onDismiss() }
                     }

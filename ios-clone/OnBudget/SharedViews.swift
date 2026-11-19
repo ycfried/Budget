@@ -1,4 +1,4 @@
-// STAG — SharedViews.swift
+// STAGE — SharedViews.swift
 //
 // Shared SwiftUI building blocks for the Auth + Home screens.
 // Colours come from OnBudgetKit DesignTokens only — never hard-coded
@@ -403,7 +403,7 @@ public struct SuccessBox: View {
 // MARK: - Loading screen
 
 /// Full-screen loading view (live.html:39-43): logo + blue ring,
-/// "STAG", "Loading Your Household". Shown on first paint and
+/// S logo + "T · A · G · E" wordmark, "Loading Your Household". Shown on first paint and
 /// kept until the first data load completes or fails — never a blank
 /// or half-built page, and never an endless spinner with no error.
 /// The logo wears the animated blue ring (BrandedLoader) — the
@@ -416,9 +416,10 @@ public struct LoadingView: View {
             // placeholder ring (owner, Nov 11, 2026), with the
             // animated brand-blue ring around it.
             BrandedLoader(size: 72)
-            Text("STAG")
-                .font(.system(size: 28, weight: .bold, design: .default))
-                .foregroundStyle(DesignTokens.ink)
+            // The S logo IS the S of STAGEE (owner, Nov 18, 2026 —
+            // build 47): the logo + "T · A · G · E", never the logo
+            // next to the full word "STAGEE" (no second S).
+            StageWordmarkText(font: .system(size: 28, weight: .bold))
             Text("Loading Your Household")
                 .font(.system(size: 15))
                 .foregroundStyle(Color(hex: "#6b7280"))

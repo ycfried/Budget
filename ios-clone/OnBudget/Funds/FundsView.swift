@@ -135,6 +135,22 @@ public enum FundSectionID: String, CaseIterable, Identifiable {
         FundProminence.resolved(customProminence[rawValue], default: defaultProminence)
     }
 
+    /// Whether this fund may be hidden from Home (build 47 —
+    /// owner, Nov 19, 2026: "The only ones that stay and are
+    /// built in are spending & Charity"). Only Savings and
+    /// Overspent (Past) can be removed from Home and added back;
+    /// Spending and Tzedaka always stay.
+    public var canHideFromHome: Bool {
+        FundHomeVisibility.canHide(fundKey: rawValue)
+    }
+
+    /// Whether this fund is hidden from Home under the stored
+    /// map (build 47). A built-in fund is never hidden, even if
+    /// a value were stored for it.
+    public func isHidden(customHidden: [String: Bool]) -> Bool {
+        FundHomeVisibility.isHidden(fundKey: rawValue, hiddenMap: customHidden)
+    }
+
     /// The one-line fund description (build 42 — owner, Nov 17,
     /// 2026: descriptions live behind an info icon in the card
     /// header, not as a text line in the expanded card). The debt
@@ -305,6 +321,7 @@ public struct FundsView: View {
                 currentName: section.displayName(customNames: appState.fundNames),
                 currentIcon: appState.fundIcons[section.rawValue] ?? "",
                 currentProminence: section.prominence(customProminence: appState.fundProminence),
+                currentHidden: section.isHidden(customHidden: appState.fundHidden),
                 viewModel: viewModel,
                 onSaved: { names in
                     appState.fundNames = names
@@ -328,6 +345,9 @@ public struct FundsView: View {
                 },
                 onProminenceSaved: { map in
                     appState.fundProminence = map
+                },
+                onHiddenSaved: { map in
+                    appState.fundHidden = map
                 },
                 onClose: { renamingFund = nil }
             )
@@ -1098,6 +1118,13 @@ public struct FundsView: View {
                 charityCard
             case .debt:
                 debtCard
+            }
+            // Build 47 (owner, Nov 19, 2026): a fund hidden from
+            // Home says so under its Funds card, so the owner can
+            // tell at a glance why it is missing from Home — the
+            // pencil opens the edit sheet to put it back.
+            if id.isHidden(customHidden: appState.fundHidden) {
+                FundsMuted("Hidden from Home.")
             }
         }
         // Build 44 (owner, Nov 18, 2026): the long-press entry into

@@ -960,6 +960,22 @@ extension RPCClient {
         ])
     }
 
+    /// `set_fund_hidden(p_household_id, p_fund_key, p_hidden)`
+    /// (`supabase/fund-hidden.sql`, build 47 — owner, Nov 19,
+    /// 2026): hides a fund from Home, or shows it again. Only
+    /// Savings ("fund") and Overspent (Past) ("debt") may be
+    /// hidden — Spending and Charity are built in and the server
+    /// refuses them. Returns the household's updated fund_hidden
+    /// map (fund key → true). Hiding never touches the fund's
+    /// prominence, so showing it again puts it back where it was.
+    public func setFundHidden(pHouseholdId: UUID, pFundKey: String, pHidden: Bool) async throws -> [String: Bool] {
+        try await call(name: "set_fund_hidden", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_fund_key": pFundKey,
+            "p_hidden": pHidden,
+        ])
+    }
+
     // MARK: - Display-name sync (build 43, item 9)
     //
     // `sync_my_display_name(p_display_name)`

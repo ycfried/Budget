@@ -1,4 +1,4 @@
-// STAG — Settings: Bank Connection card (live web v66, §10.2).
+// STAGE — Settings: Bank Connection card (live web v66, §10.2).
 //
 // One row per account (bank favicon + brand monogram fallback, name
 // bold, "Bank · plain type · ••mask", admin-only nickname + own

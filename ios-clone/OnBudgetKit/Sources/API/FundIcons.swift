@@ -96,3 +96,30 @@ public enum FundProminence: String, CaseIterable {
         return FundProminence(rawValue: raw) ?? defaultValue
     }
 }
+
+/// Which funds can be hidden from Home, and whether one is hidden
+/// (build 47 — owner, Nov 19, 2026: "The only ones that stay and
+/// are built in are spending & Charity"). Spending and Tzedaka
+/// ALWAYS stay on Home; ONLY Savings ("fund") and Overspent
+/// (Past) ("debt") can be removed from Home and added back. A
+/// hidden fund keeps its prominence stored, so re-adding puts it
+/// back at its prominence without re-picking it. Pure logic, so
+/// it lives in the kit where the tests can pin it. The stored map
+/// is `households.fund_hidden` (fund key → true); a missing key
+/// means shown, and a stored value for a built-in fund never
+/// hides it.
+public enum FundHomeVisibility {
+    /// The fund keys that may be hidden from Home.
+    public static let hideableKeys: Set<String> = ["fund", "debt"]
+
+    /// Whether this fund key may be hidden from Home.
+    public static func canHide(fundKey: String) -> Bool {
+        hideableKeys.contains(fundKey)
+    }
+
+    /// Whether the fund is hidden from Home under the stored map.
+    public static func isHidden(fundKey: String, hiddenMap: [String: Bool]) -> Bool {
+        guard canHide(fundKey: fundKey) else { return false }
+        return hiddenMap[fundKey] == true
+    }
+}

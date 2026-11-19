@@ -1,4 +1,4 @@
-// STAG — HouseholdViews.swift
+// STAGE — HouseholdViews.swift
 //
 // Household screen (CLONE_SPEC §5, live.html:76-101,
 // live.js:2622-2720). Same brand block and footer as Auth.

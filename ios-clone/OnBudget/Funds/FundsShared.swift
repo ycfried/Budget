@@ -94,6 +94,40 @@ public struct FundsTertiaryButton: View {
     }
 }
 
+/// Danger (build 47, owner Nov 19, 2026 — "Delete This Income"
+/// is a proper RED button, not a quiet link): the app's existing
+/// error colour — bg #fef2f2, text #dc2626 — the same soft-red
+/// treatment as the Settings danger buttons (DangerButtonStyle)
+/// and the error toasts/boxes. Never a solid red button.
+public struct FundsDangerButton: View {
+    public let label: String
+    public let isBusy: Bool
+    public let isLarge: Bool
+    public let action: () -> Void
+
+    public init(_ label: String, isBusy: Bool = false, isLarge: Bool = false, action: @escaping () -> Void) {
+        self.label = label
+        self.isBusy = isBusy
+        self.isLarge = isLarge
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(TitleCase.apply(to: label))
+                .font(.system(size: isLarge ? 17 : 15, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, isLarge ? 16 : 13)
+                .padding(.horizontal, 18)
+                .background(DesignTokens.errorBackground)
+                .foregroundStyle(DesignTokens.errorText)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.6 : 1.0)
+    }
+}
+
 /// Pale #bfdbfe — ONLY as the middle tier of a three-button row.
 public struct FundsPaleButton: View {
     public let label: String

@@ -1,4 +1,4 @@
-// STAG — Settings shared UI (Settings workstream, live web v66).
+// STAGE — Settings shared UI (Settings workstream, live web v66).
 //
 // Shared context, toast, button styles, cards, and the bank-logo view
 // used by every Settings / Past Weeks / Activity / CSV screen.

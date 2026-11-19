@@ -1,4 +1,4 @@
-// STAG — Settings: real Plaid Link launcher (official LinkKit SDK).
+// STAGE — Settings: real Plaid Link launcher (official LinkKit SDK).
 //
 // LinkKit 7.x, session-based API (Plaid docs, "Link - iOS", Nov 2026):
 // `LinkTokenConfiguration(token:onSuccess:onExit:onEvent:onLoad:)` ->

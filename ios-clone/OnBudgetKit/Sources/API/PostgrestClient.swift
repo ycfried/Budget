@@ -399,6 +399,22 @@ public struct PostgrestClient {
         return row?.fundProminence ?? [:]
     }
 
+    /// Which funds are hidden from Home (build 47 — owner, Nov
+    /// 19, 2026): `households.fund_hidden`, a map from fund key
+    /// to true. Only Savings ("fund") and Overspent (Past)
+    /// ("debt") can be hidden; Spending and Tzedaka are built in
+    /// and always show. [:] when the migration is not applied
+    /// yet (every fund shows).
+    public func householdFundHidden(householdId: UUID) async throws -> [String: Bool] {
+        struct Row: Decodable { let fundHidden: [String: Bool]?; enum CodingKeys: String, CodingKey { case fundHidden = "fund_hidden" } }
+        let row: Row? = try await fetchOne(PostgrestQuery(
+            table: "households",
+            columns: "fund_hidden",
+            filters: [.householdRow(householdId)]
+        ))
+        return row?.fundHidden ?? [:]
+    }
+
     /// Base allowance + whether it was ever explicitly set
     /// (live.js:566-583). `allowanceSetAt == nil` means the $375 is
     /// the schema default, not a choice.

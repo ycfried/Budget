@@ -309,7 +309,7 @@ public final class BiometricUnlock {
         guard authenticator.canEvaluate else {
             throw BiometricUnlockError.notEnrolled
         }
-        try await authenticator.evaluate(reason: "Turn on \(authenticator.biometryKind.displayName) unlock for STAG.")
+        try await authenticator.evaluate(reason: "Turn on \(authenticator.biometryKind.displayName) unlock for STAGE.")
         try store.saveThrowing(session)
         client.replaceSessionStore(store)
     }
@@ -343,7 +343,7 @@ public final class BiometricUnlock {
             dropStoredSession(client: client)
             throw BiometricUnlockError.notEnrolled
         }
-        try await authenticator.evaluate(reason: "Unlock STAG with \(authenticator.biometryKind.displayName).")
+        try await authenticator.evaluate(reason: "Unlock STAGE with \(authenticator.biometryKind.displayName).")
         let session: AuthSession
         do {
             guard let loaded = try store.loadAuthenticated(

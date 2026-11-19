@@ -1,4 +1,4 @@
-// STAG — OnBudgetUITests.swift
+// STAGE — OnBudgetUITests.swift
 //
 // Milestone (a) UI proof: the native clone RUNNING on the simulator
 // against the live TEST backend (Supabase project
@@ -90,14 +90,14 @@ final class OnBudgetUITests: XCTestCase {
         app = XCUIApplication()
         // The CI script opens onbudget://gmail-callback before the
         // tests (Gmail scheme check). iOS answers with a SpringBoard
-        // "Open in 'STAG'?" alert, and XCTest's default
+        // "Open in 'STAGE'?" alert, and XCTest's default
         // interruption handler taps Cancel — so the URL never
         // reaches the app (CI run 42746242404: the alert sat on the
         // auth screen and was cancelled at t=36s of the first
         // test). Answer Open instead, so the callback is delivered
         // and the app records it; testGmailCallbackDeepLink asserts
         // the record. The handler only claims that one alert.
-        addUIInterruptionMonitor(withDescription: "Open in STAG") { alert in
+        addUIInterruptionMonitor(withDescription: "Open in STAGE") { alert in
             if alert.buttons["Open"].exists {
                 alert.buttons["Open"].tap()
                 return true
@@ -250,7 +250,7 @@ final class OnBudgetUITests: XCTestCase {
     /// Gmail callback deep link (CI run 42746242404 finding): the
     /// script opens onbudget://gmail-callback?gmail=connected
     /// before the tests, which raises a SpringBoard "Open in
-    /// 'STAG'?" alert. setUp's interruption monitor taps Open,
+    /// 'STAGE'?" alert. setUp's interruption monitor taps Open,
     /// so the URL is delivered and AppViewModel records it
     /// (persisted across launches). This test runs first
     /// (alphabetical), signs up + joins the test household, opens

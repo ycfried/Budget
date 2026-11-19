@@ -252,7 +252,7 @@ public enum TransactionExportPDFRenderer {
 
     public static func data(statement: TransactionExportPDFStatement) -> Data {
         let format = UIGraphicsPDFRendererFormat()
-        format.documentInfo = [kCGPDFContextTitle as String: "STAG Transactions"]
+        format.documentInfo = [kCGPDFContextTitle as String: "STAGE Transactions"]
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
         return renderer.pdfData { context in
             var y = margin

@@ -44,8 +44,17 @@ public enum MerchantDisplayName {
     /// `TransactionFormatting.displayMerchant`, as the Transactions
     /// list does.
     public static func displayName(for merchant: String, rules: [MerchantRule]) -> String {
+        matchingRule(for: merchant, rules: rules)?.displayName ?? merchant
+    }
+
+    /// The rule that `displayName` would use for a merchant (build
+    /// 47 — the rename popup pre-fills from it: the stored display
+    /// name, match type and bank name). Nil when no rule matches.
+    /// Same tiers as `displayName` — it IS the `displayName`
+    /// matcher, factored out so both stay in step.
+    public static func matchingRule(for merchant: String, rules: [MerchantRule]) -> MerchantRule? {
         let merchantKey = key(merchant)
-        guard !merchantKey.isEmpty else { return merchant }
+        guard !merchantKey.isEmpty else { return nil }
         let merchantSquash = squash(merchant)
         var best: MerchantRule?
         var bestTier = 99
@@ -69,7 +78,7 @@ public enum MerchantDisplayName {
                 bestLen = patternKey.count
             }
         }
-        return best?.displayName ?? merchant
+        return best
     }
 
     /// ASCII alphanumerics only — the server's `[A-Z0-9]` class,
