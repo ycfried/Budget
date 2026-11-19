@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // seed_video_fixtures.mjs — STAGE how-to video v3 (Nov 19, 2026).
 //
-// Seeds realistic fixtures into the TEST household "Simcha House!"
+// Seeds realistic fixtures into the TEST household "Goldstein Household"
 // ONLY (id 95e1aff3-f664-41bb-be09-70e00f75a141). Never the live
 // household. Run on the CI runner with the service-role key; the
 // service key bypasses RLS, so this inserts directly via PostgREST.
@@ -76,7 +76,8 @@ import { createHash, randomBytes } from 'node:crypto';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const HOUSEHOLD_ID = '95e1aff3-f664-41bb-be09-70e00f75a141'; // Simcha House! (TEST ONLY)
+const HOUSEHOLD_ID = '95e1aff3-f664-41bb-be09-70e00f75a141'; // Goldstein Household (TEST ONLY)
+const HOUSEHOLD_NAME = 'Goldstein Household'; // owner, Nov 19: renamed from "Simcha House!" (realistic demo name for the public video)
 const MARKER = 'video-fixture';
 const WEEK_START = '2026-11-15'; // Sunday; current week Nov 15-21, 2026
 const EXPECTED_CURRENT_WEEK_CHARGES = 17589; // $175.89 -> $199.11 left of $375
@@ -143,11 +144,24 @@ const FALLBACK_TOPUP_CENTS = 74000;
 async function main() {
   // 0. Household row first: owner id (for created_by / actor on the
   // mirrored confirm writes) + current shortfall (for the split).
-  const [household] = await rest('GET', 'households', `id=eq.${HOUSEHOLD_ID}&select=id,owner_id,fund_shortfall_cents,base_allowance_cents`);
+  const [household] = await rest('GET', 'households', `id=eq.${HOUSEHOLD_ID}&select=id,name,invite_code,owner_id,fund_shortfall_cents,base_allowance_cents`);
   if (!household) throw new Error('Test household not found');
   const ownerId = household.owner_id;
   let shortfall = household.fund_shortfall_cents ?? 0;
   console.log(`Household base=${money(household.base_allowance_cents)} shortfall=${money(shortfall)} owner=${ownerId}`);
+
+  // 0a. Rename (owner, Nov 19): "Simcha House!" -> "Goldstein Household"
+  // (realistic demo name for the public video). Idempotent — the same
+  // value is written on every run. Invite code is a separate column
+  // and is never written here; verify it is still XPKVGJ afterwards.
+  if (household.name !== HOUSEHOLD_NAME) {
+    console.log(`Renaming household: ${JSON.stringify(household.name)} -> ${JSON.stringify(HOUSEHOLD_NAME)}`);
+    await rest('PATCH', 'households', `id=eq.${HOUSEHOLD_ID}`, { name: HOUSEHOLD_NAME });
+  }
+  const [renamed] = await rest('GET', 'households', `id=eq.${HOUSEHOLD_ID}&select=id,name,invite_code`);
+  console.log(`Renamed household: name=${JSON.stringify(renamed?.name)} invite_code=${renamed?.invite_code}`);
+  if (renamed?.name !== HOUSEHOLD_NAME) throw new Error(`Rename verification failed: name is ${JSON.stringify(renamed?.name)}`);
+  if (renamed?.invite_code !== 'XPKVGJ') throw new Error(`Invite code changed! expected XPKVGJ, got ${renamed?.invite_code}`);
 
   // 1. Clean up any previous run's fixtures (idempotency).
   console.log('Cleaning previous video fixtures...');

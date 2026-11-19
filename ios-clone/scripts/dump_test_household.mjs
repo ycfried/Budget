@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // dump_test_household.mjs — STAGE how-to video v3 (Nov 19, 2026).
 //
-// READ-ONLY state dump for the TEST household "Simcha House!" ONLY
+// READ-ONLY state dump for the TEST household "Goldstein Household" ONLY
 // (id 95e1aff3-f664-41bb-be09-70e00f75a141). Never the live household,
 // never writes anything. Run on the CI runner with the service-role
 // key; the service key bypasses RLS, so this reads directly via
@@ -34,7 +34,8 @@
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const HOUSEHOLD_ID = '95e1aff3-f664-41bb-be09-70e00f75a141'; // Simcha House! (TEST ONLY)
+const HOUSEHOLD_ID = '95e1aff3-f664-41bb-be09-70e00f75a141'; // Goldstein Household (TEST ONLY)
+const LIVE_HOUSEHOLD_ID = '647d1f23-606f-43af-92e5-1de2f1f34377'; // "Household" (LIVE — read-only check only, never written)
 const WEEK_START = '2026-11-15'; // Sunday; current week Nov 15-21, 2026
 const WEEK_END = '2026-11-21';
 
@@ -65,8 +66,12 @@ const money = (c) => `$${(c / 100).toFixed(2)}`;
 async function main() {
   console.log(`DUMP household=${HOUSEHOLD_ID} week=${WEEK_START}..${WEEK_END}`);
 
-  const [hh] = await get('households', `id=eq.${HOUSEHOLD_ID}&select=id,name,base_allowance_cents,fund_shortfall_cents,owner_id,fund_names`);
-  console.log(`DUMP household: name=${JSON.stringify(hh?.name)} base=${hh?.base_allowance_cents} shortfall=${hh?.fund_shortfall_cents} owner=${hh?.owner_id} fund_names=${JSON.stringify(hh?.fund_names)}`);
+  const [hh] = await get('households', `id=eq.${HOUSEHOLD_ID}&select=id,name,invite_code,base_allowance_cents,fund_shortfall_cents,owner_id,fund_names`);
+  console.log(`DUMP household: name=${JSON.stringify(hh?.name)} invite_code=${hh?.invite_code} base=${hh?.base_allowance_cents} shortfall=${hh?.fund_shortfall_cents} owner=${hh?.owner_id} fund_names=${JSON.stringify(hh?.fund_names)}`);
+
+  // Read-only proof the LIVE household is untouched (name + code only).
+  const [live] = await get('households', `id=eq.${LIVE_HOUSEHOLD_ID}&select=id,name,invite_code`);
+  console.log(`DUMP live household (untouched check): name=${JSON.stringify(live?.name)} invite_code=${live?.invite_code}`);
 
   const members = await get('household_members', `household_id=eq.${HOUSEHOLD_ID}&select=user_id,role,display_name&order=created_at`);
   for (const m of members) console.log(`DUMP member: user=${m.user_id} role=${m.role} name=${JSON.stringify(m.display_name)}`);
