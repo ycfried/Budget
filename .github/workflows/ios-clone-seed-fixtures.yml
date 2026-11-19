@@ -1,0 +1,52 @@
+name: OnBudget iOS clone seed video fixtures (testflight branch)
+# Seeds / fixes the how-to-video demo data in the TEST household
+# "Simcha House!" ONLY — never the live household — and dumps the
+# state before and after so the numbers the owner will record can
+# be verified from the same data the app reads.
+# Triggered by PUSH to ios-clone-testflight, but ONLY for commits
+# whose message starts "ci(ios-clone): approved cloud seed" — a
+# distinct prefix from the simulator proof workflow ("approved
+# cloud build") and the video-recordings workflow ("approved cloud
+# video"), so a seed commit runs no simulator job at all. The
+# workflow file itself is not on the default branch, so
+# workflow_dispatch cannot find it — the push trigger is the only
+# way to run it. Runs on ubuntu-latest (node only); no Xcode, no
+# simulator, ~1 minute.
+on:
+  push:
+    branches: [ios-clone-testflight]
+    paths:
+      - 'ios-clone/scripts/seed_video_fixtures.mjs'
+      - 'ios-clone/scripts/dump_test_household.mjs'
+      - '.github/workflows/ios-clone-seed-fixtures.yml'
+permissions:
+  contents: read
+concurrency:
+  group: onbudget-ios-clone-seed-fixtures
+  cancel-in-progress: true
+jobs:
+  seed-fixtures:
+    if: >-
+      startsWith(github.event.head_commit.message, 'ci(ios-clone): approved cloud seed')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Dump test household state (before)
+        env:
+          SUPABASE_URL: https://tnkhvdkmwmwiogiienee.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node ios-clone/scripts/dump_test_household.mjs
+      - name: Seed v3 video fixtures (test household only)
+        env:
+          SUPABASE_URL: https://tnkhvdkmwmwiogiienee.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node ios-clone/scripts/seed_video_fixtures.mjs
+      - name: Dump test household state (after)
+        env:
+          SUPABASE_URL: https://tnkhvdkmwmwiogiienee.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node ios-clone/scripts/dump_test_household.mjs
