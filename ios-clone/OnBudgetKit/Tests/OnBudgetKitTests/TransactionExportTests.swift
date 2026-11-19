@@ -194,6 +194,20 @@ final class TransactionExportTests: XCTestCase {
         XCTAssertEqual(totals.netCents, 0)
     }
 
+    func testBarePositiveChargeCountsAsOutNotIn() {
+        // Regression (run 44447736279): a charge displays as a
+        // bare "$12.34" — no minus — but it is money out. A
+        // sign-based split counted it as money in.
+        let totals = TransactionExport.totals(transactions: [txn(amount: 1234, kind: .charge)])
+        XCTAssertEqual(totals.totalInCents, 0)
+        XCTAssertEqual(totals.totalOutCents, 1234)
+        XCTAssertEqual(totals.netCents, -1234)
+        // And a payment is money out too, not money in.
+        let paid = TransactionExport.totals(transactions: [txn(amount: 5000, kind: .payment)])
+        XCTAssertEqual(paid.totalInCents, 0)
+        XCTAssertEqual(paid.totalOutCents, 5000)
+    }
+
     // MARK: - PDF statement model
 
     func testPDFStatementHeaderRowsAndTotals() {

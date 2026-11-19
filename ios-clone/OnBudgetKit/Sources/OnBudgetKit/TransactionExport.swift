@@ -64,9 +64,11 @@ public enum TransactionExportFormat: String, Equatable, CaseIterable {
     }
 }
 
-/// Totals for one exported set, in cents. "In" is the sum of the
-/// display-positive rows, "Out" the sum of the display-negative
-/// magnitudes, "Net" is In − Out.
+/// Totals for one exported set, in cents. "In" is the money-in
+/// kinds (income / refund / cashback) plus incoming transfers;
+/// "Out" is every other kind (charges, fund charges, charity,
+/// payments) plus outgoing transfers; "Net" is In − Out. The
+/// direction is kind-based, not sign-based — see `totals`.
 public struct TransactionExportTotals: Equatable {
     public let totalInCents: Int
     public let totalOutCents: Int
@@ -320,18 +322,31 @@ public enum TransactionExport {
 
     // MARK: - Totals
 
-    /// Total in / total out / net over the exported set, from the
-    /// display-signed amounts: a positive row counts toward In, a
-    /// negative row's magnitude toward Out.
+    /// Total in / total out / net over the exported set. The
+    /// direction is decided by KIND, not by the display sign: a
+    /// charge displays as a bare "$12.34" (no minus), but it is
+    /// still money out — a sign-based split would count every
+    /// charge as money in. Money-in kinds (income / refund /
+    /// cashback) count toward In at their display magnitude;
+    /// transfers split by their flipped display sign (money in
+    /// vs money out); every other kind (charge, fund charge,
+    /// charity, payment) counts toward Out at its display
+    /// magnitude. Zero rows count toward neither.
     public static func totals(transactions: [Transaction]) -> TransactionExportTotals {
         var totalIn = 0
         var totalOut = 0
         for transaction in transactions {
             let signed = displaySignedCents(for: transaction)
-            if signed > 0 {
-                totalIn += signed
-            } else if signed < 0 {
-                totalOut += -signed
+            if transaction.isInflow {
+                totalIn += abs(signed)
+            } else if transaction.kind == .transfer {
+                if signed > 0 {
+                    totalIn += signed
+                } else if signed < 0 {
+                    totalOut += -signed
+                }
+            } else if signed != 0 {
+                totalOut += abs(signed)
             }
         }
         return TransactionExportTotals(totalInCents: totalIn, totalOutCents: totalOut)
