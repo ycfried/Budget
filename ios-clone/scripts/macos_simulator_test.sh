@@ -180,6 +180,73 @@ else
   onbudget_summary_status=1
 fi
 
+# iPad leg (build 46, Nov 18, 2026): the Home cards + skeletons are
+# iPad-sized now (big amounts, 150/240pt skeleton bars, 120pt donut),
+# and the iPhone-only run cannot prove the iPad build at all. This
+# leg boots an iPad simulator and runs ONLY the unit-test bundle
+# there (OnBudgetTests — pure logic, no sign-up, no network): it
+# proves the app builds, installs, launches and its unit tests pass
+# on iPad. The UI tests are NOT re-run here — they hit the same
+# 429 sign-up gate on any device and would only double the run for
+# no new signal; the iPad VISUAL layout (cards filling the wider
+# screen) still needs the owner's device confirmation, like every
+# visual change before it. Own simulator + own result bundle, own
+# status — a failure here fails the run.
+echo "=== iPad leg: unit tests on an iPad simulator ==="
+onbudget_ipad_status=0
+onbudget_ipad_type="$(xcrun simctl list devicetypes --json | python3 -c '
+import json, sys
+types = json.load(sys.stdin)["devicetypes"]
+ipads = [t["identifier"] for t in types if t["identifier"].startswith("com.apple.CoreSimulator.SimDeviceType.iPad")]
+preferred = [i for i in ipads if "iPad-Pro-13-inch" in i]
+print(preferred[0] if preferred else (ipads[0] if ipads else ""))
+')"
+if [[ -z "$onbudget_ipad_type" ]]; then
+  echo "FAIL: no iPad device type on this runner — cannot run the iPad leg." >&2
+  onbudget_ipad_status=1
+else
+  echo "Using iPad device type: $onbudget_ipad_type"
+  onbudget_ipad_id="$(xcrun simctl create "OnBudget-ipad-${GITHUB_RUN_ID:-local}" "$onbudget_ipad_type" "$onbudget_runtime")"
+  xcrun simctl boot "$onbudget_ipad_id"
+  xcrun simctl bootstatus "$onbudget_ipad_id" -b
+  # Same DerivedData as the iPhone build-for-testing (the products
+  # are simulator-generic arm64), own result bundle. Unit tests
+  # only — see the header comment.
+  set +e
+  xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -configuration Debug \
+    -destination "platform=iOS Simulator,id=$onbudget_ipad_id" \
+    -derivedDataPath ios-clone/CloudResults/DerivedData -resultBundlePath ios-clone/CloudResults/tests-ipad.xcresult \
+    -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 \
+    -only-testing:OnBudgetTests \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= test-without-building
+  onbudget_ipad_status=$?
+  set -e
+  echo "xcodebuild iPad test exit status: $onbudget_ipad_status"
+  xcrun simctl shutdown "$onbudget_ipad_id" >/dev/null 2>&1 || true
+  xcrun simctl delete "$onbudget_ipad_id" >/dev/null 2>&1 || true
+  if [[ -e ios-clone/CloudResults/tests-ipad.xcresult ]]; then
+    xcrun xcresulttool get test-results summary --path ios-clone/CloudResults/tests-ipad.xcresult > ios-clone/CloudResults/test-summary-ipad.json || onbudget_ipad_status=1
+    python3 - <<'PY' || onbudget_ipad_status=1
+import json
+from pathlib import Path
+summary = json.loads(Path('ios-clone/CloudResults/test-summary-ipad.json').read_text())
+assert summary.get('totalTestCount', 0) >= 2, 'iPad tests did not execute'
+assert summary.get('failedTests') == 0, 'iPad test failures or unknown result schema'
+assert summary.get('skippedTests') == 0, 'iPad skipped tests or unknown result schema'
+assert summary.get('passedTests', 0) >= 2, 'iPad no positive pass count'
+print(json.dumps(summary, indent=2))
+PY
+  else
+    echo "FAIL: tests-ipad.xcresult is missing; cannot summarise the iPad run." >&2
+    onbudget_ipad_status=1
+  fi
+fi
+if [[ "$onbudget_ipad_status" == 0 ]]; then
+  echo "iPad leg: PASS."
+else
+  echo "iPad leg: FAIL (see above)." >&2
+fi
+
 # Gmail callback check, part 2 — the app recorded the outcome.
 # Runs ALWAYS, even when the tests failed (that is the point: a
 # failing UI run must not hide whether the deep link works). It
@@ -234,9 +301,9 @@ else
   echo "WARNING: xcresulttool export attachments failed; the full tests.xcresult is still uploaded as the artifact." >&2
 fi
 
-# Fail the run if any phase failed — tests, summary, or the Gmail
-# callback check (which already ran above even on test failure,
-# so a failing UI run no longer hides the deep-link result).
+# Fail the run if any phase failed — tests, summary, the iPad leg,
+# or the Gmail callback check (which already ran above even on test
+# failure, so a failing UI run no longer hides the deep-link result).
 onbudget_failed=0
 if [[ "$onbudget_test_status" != 0 ]]; then
   echo "FAIL: UI tests failed (xcodebuild exit $onbudget_test_status)." >&2
@@ -246,12 +313,16 @@ if [[ "$onbudget_summary_status" != 0 ]]; then
   echo "FAIL: test-summary assertions failed." >&2
   onbudget_failed=1
 fi
+if [[ "$onbudget_ipad_status" != 0 ]]; then
+  echo "FAIL: iPad leg failed." >&2
+  onbudget_failed=1
+fi
 if [[ "$onbudget_gmail_status" != 0 ]]; then
   echo "FAIL: Gmail callback check failed." >&2
   onbudget_failed=1
 fi
 if [[ "$onbudget_failed" == 0 ]]; then
-  echo "ALL CHECKS PASSED (tests + Gmail callback record)."
+  echo "ALL CHECKS PASSED (tests + iPad leg + Gmail callback record)."
 else
   echo "RUN FAILED (see failures above)." >&2
 fi

@@ -88,7 +88,7 @@ final class SmokeTests: XCTestCase {
 
     func testHeroOverBudgetIsMutedRed() {
         // Owner, Nov 14 2026 ("too much colors"): the Spending
-        // hero's over-budget figure + progress bar use a quieter,
+        // hero's over-budget figure + progress circle use a quieter,
         // deeper muted red — NOT the bright error red, which stays
         // for error text, toasts, and failed loads.
         XCTAssertEqual(DesignTokens.heroOverBudgetHex, "#991b1b")

@@ -661,13 +661,16 @@ public enum StatCardTheme {
     /// Carried Debt (build 29): black ink banner.
     case debt
     /// Spending (build 30): the weekly budget fund — the base
-    /// allowance lives here. LIGHT blue banner #60a5fa with INK
-    /// text since build 43 (owner, Nov 17, 2026 — the hero header
-    /// text is black for consistency with the other cards, so the
-    /// banner lightened from primary #2f6bff; ink on #60a5fa reads
-    /// ~7:1. Light — not pale #bfdbfe — so Spending stays distinct
-    /// from Charity's pale banner on both the Home hero and the
-    /// Funds page).
+    /// allowance lives here. DEEP blue banner #1d4ed8 with WHITE
+    /// text since build 46 (owner, Nov 18, 2026 — the light blue
+    /// #60a5fa banner from build 43 was "a new/medium blue, not
+    /// the dark blue from the branding": the header goes back to
+    /// the brand dark blue — DesignTokens.deep, the Income colour
+    /// and the build-39 Spending banner — with white text on it,
+    /// as Mockup C originally had it. White on #1d4ed8 reads
+    /// ~5.9:1. Deep — not primary #2f6bff — so Spending stays the
+    /// darkest fund header on both the Home hero and the Funds
+    /// page).
     case spending
 
     /// Banner colour of the fund section — the 3-BUTTON SCHEME
@@ -675,18 +678,21 @@ public enum StatCardTheme {
     /// should be the same color as the 3 buttons schem we have").
     /// The three visible fund headers use the three button
     /// colours, one system — as build 41 set them, except Spending
-    /// (build 43, owner Nov 17, 2026: the header text is black now,
-    /// so Spending leaves PRIMARY blue #2f6bff for LIGHT blue
-    /// #60a5fa; Charity stays PALE #bfdbfe, Extra Fund TERTIARY
-    /// grey #e5e7eb). Carried Debt keeps black ink #0f172a (the
-    /// owner said three bars — the debt card is not one of them).
+    /// (build 46, owner Nov 18, 2026: the build-43 light blue
+    /// #60a5fa was the wrong blue, so Spending leaves it for DEEP
+    /// blue #1d4ed8, the Income colour; Charity stays PALE #bfdbfe,
+    /// Extra Fund TERTIARY grey #e5e7eb). Carried Debt keeps black
+    /// ink #0f172a (the owner said three bars — the debt card is
+    /// not one of them).
     /// History: build 38 corrected the Mockup C assignment, build
     /// 39 refined it ("Coloring still doesn't look great") to
     /// Spending deep blue #1d4ed8, Charity MID blue #3b82f6, Extra
     /// Fund MUTED grey #6b7280 with white text on all four — the
     /// owner then said the Savings grey was "way too dark.. not our
     /// brand" and asked for the button scheme instead, so build 41
-    /// replaces those three banner colours. The green (#16a34a) /
+    /// replaces those three banner colours. Build 43 lightened
+    /// Spending to #60a5fa for black header text; build 46 returns
+    /// it to deep #1d4ed8 with white text. The green (#16a34a) /
     /// amber (#d97706) / muted-red (#991b1b) outlines are gone from
     /// the fund cards.
     public var banner: Color {
@@ -694,23 +700,23 @@ public enum StatCardTheme {
         case .charity: return DesignTokens.pale
         case .fund: return DesignTokens.tertiary
         case .debt: return DesignTokens.ink
-        case .spending: return DesignTokens.light
+        case .spending: return DesignTokens.deep
         }
     }
 
     /// Text colour on the banner — per theme now (owner, Nov 16,
-    /// 2026 — build 41, updated build 43): WHITE on the dark
-    /// banner only (Debt ink), INK on the light banners (Spending
-    /// light #60a5fa, ~7:1; Charity pale #bfdbfe and Extra Fund
-    /// tertiary #e5e7eb — white text is unreadable on both, ~1.6:1
-    /// and ~1.2:1; ink reads ~12:1 and ~13:1). The title and amount
-    /// are large bold text. (Build 39 had white on all four — the
-    /// build-39 banners were all dark enough for it; the build-41
-    /// light banners are not.)
+    /// 2026 — build 41, updated build 43, updated build 46): WHITE
+    /// on the dark banners (Debt ink, Spending deep #1d4ed8 — white
+    /// on deep reads ~5.9:1), INK on the light banners (Charity
+    /// pale #bfdbfe and Extra Fund tertiary #e5e7eb — white text is
+    /// unreadable on both, ~1.6:1 and ~1.2:1; ink reads ~12:1 and
+    /// ~13:1). The title and amount are large bold text. (Build 39
+    /// had white on all four — the build-39 banners were all dark
+    /// enough for it; the build-41 light banners are not.)
     public var onBanner: Color {
         switch self {
-        case .charity, .fund, .spending: return DesignTokens.ink
-        case .debt: return .white
+        case .charity, .fund: return DesignTokens.ink
+        case .debt, .spending: return .white
         }
     }
 
@@ -718,11 +724,12 @@ public enum StatCardTheme {
     /// cannot be the banner colour on the light banners — pale
     /// #bfdbfe and tertiary #e5e7eb on white are invisible — so
     /// each fund keeps a readable glyph: Spending PRIMARY #2f6bff
-    /// (the strong brand blue — it still reads on the white disc
-    /// even though the banner itself lightened in build 43),
-    /// Charity MID blue #3b82f6 (its build-39 banner — the charity
-    /// blue identity, 3.7:1 on white), Extra Fund MUTED grey
-    /// #6b7280 (4.8:1 on white), Debt ink.
+    /// (the strong brand blue — it still reads on the white disc;
+    /// the banner is deep #1d4ed8 again since build 46, and the
+    /// primary glyph reads on white against it), Charity MID blue
+    /// #3b82f6 (its build-39 banner — the charity blue identity,
+    /// 3.7:1 on white), Extra Fund MUTED grey #6b7280 (4.8:1 on
+    /// white), Debt ink.
     public var glyph: Color {
         switch self {
         case .charity: return DesignTokens.mid

@@ -1280,6 +1280,83 @@ public final class FundsViewModel: ObservableObject {
         return succeeded
     }
 
+    /// Reverse (delete) a cash gift given off-card (build 46, owner
+    /// Nov 18, 2026 — "you can't delete it once it was added"):
+    /// the gift had NO delete path at all — it lives in
+    /// charity_cash_gifts, not the transactions table, so the
+    /// Transactions list's Delete never applied to it and the feed
+    /// row showed no Delete either. `reverse_charity_cash_gift`
+    /// flips the gift to 'reversed' (append-only — the row stays in
+    /// the audit trail); the client fetch already filters status =
+    /// 'active', so the gift drops out of the feed AND out of Given
+    /// (Available rises back) with no other change. NOTE: until
+    /// `supabase/reverse-charity-cash-gift.sql` is applied live the
+    /// RPC does not exist and this fails with a plain-language
+    /// error; nothing is changed.
+    public func deleteCharityCashGift(_ gift: CharityCashGift) async -> Bool {
+        var succeeded = false
+        await guarded("delete-cash-gift", title: "Could Not Delete Gift") {
+            let result = try await context.client.rpcs.reverseCharityCashGift(pGiftId: gift.id)
+            succeed("Gift removed. \(MoneyFormat.formatCents(result.remainingCents)) left to give.")
+            succeeded = true
+            await refresh()
+        }
+        return succeeded
+    }
+
+    /// Reverse (delete) a charity income row, with no replacement
+    /// (build 46, owner Nov 18, 2026 — "even when you go to correct
+    /// it.. you can't delete it"): the Correct flow reverses + REPLACES,
+    /// so a mistaken income could never simply be removed. This is
+    /// the delete half of that flow — the Correct form offers it
+    /// beside Cancel Correction. `reverse_charity_income` flips the
+    /// row to 'reversed' (append-only); the committed figure it
+    /// carried drops out of Total. NOTE: until
+    /// `supabase/reverse-charity-cash-gift.sql` is applied live the
+    /// RPC does not exist and this fails with a plain-language
+    /// error; nothing is changed.
+    public func reverseCharityIncome(_ income: CharityIncome) async -> Bool {
+        var succeeded = false
+        await guarded("delete-income", title: "Could Not Delete Income") {
+            let result = try await context.client.rpcs.reverseCharityIncome(pIncomeId: income.id)
+            succeed("Income removed — \(MoneyFormat.formatCents(result.committedCents)) no longer commits to \(charityName).")
+            succeeded = true
+            await refresh()
+        }
+        return succeeded
+    }
+
+    /// Delete a transaction row from a Funds feed (build 46, owner
+    /// Nov 18, 2026): the charity / Savings Activity feeds showed
+    /// transaction rows with NO Actions button, so Delete was only
+    /// reachable from the Transactions list — the owner never found
+    /// it from the fund where he added the row. Same rules as the
+    /// Transactions list's Delete (TransactionsViewModel.delete):
+    /// hand-written rows delete permanently; bank/email/file rows
+    /// move to Trash (never a true erase — the bank would re-sync
+    /// them), with the reason the Trash flow requires. The Funds
+    /// view model owns the feedback (its own toast/alert), so the
+    /// call goes to the RPCs directly instead of through a
+    /// throwaway TransactionsViewModel whose toast would go nowhere.
+    public func deleteFundTransaction(_ transaction: Transaction, reason: String) async -> Bool {
+        var succeeded = false
+        await guarded("delete-fund-tx", title: "Could Not Delete") {
+            guard context.isAdmin else {
+                throw OnBudgetError.forbidden("Only the admin can delete transactions.")
+            }
+            if transaction.source == .manual {
+                try await context.client.rpcs.deleteTransaction(pTransactionId: transaction.id)
+                succeed("Transaction deleted.")
+            } else {
+                try await context.client.rpcs.excludeTransaction(txnId: transaction.id, reason: reason)
+                succeed("Moved to trash bin.")
+            }
+            succeeded = true
+            await refresh()
+        }
+        return succeeded
+    }
+
     /// Remove the weekly allowance override(s) for the current week
     /// onward (up to 4 weeks — the Temporary Allowance range) via
     /// `remove_weekly_allowance_override`, so the base allowance

@@ -359,6 +359,106 @@ final class OnBudgetUITests: XCTestCase {
         )
     }
 
+    /// Build 46 (owner, Nov 18, 2026): the Home hero shows the big
+    /// amount in the white body (not the header) beside the progress
+    /// circle (not the bar). NOTE: blocked by the known 429 sign-up
+    /// gate in CI like the other UI tests — it fails in the sign-up
+    /// preamble until the gate clears, and proves the layout then.
+    func testHomeHeroAmountAndDonut() throws {
+        signUpAndJoinTestHousehold()
+
+        XCTAssertTrue(
+            app.staticTexts["Spending"].waitForExistence(timeout: 60),
+            "Home hero did not render (no Spending title)"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(identifier: "home.heroAmount").firstMatch
+                .waitForExistence(timeout: 60),
+            "Home hero amount did not appear in the card body (home.heroAmount)"
+        )
+        XCTAssertTrue(
+            app.otherElements.matching(identifier: "home.heroDonut").firstMatch
+                .waitForExistence(timeout: 15),
+            "Home hero progress circle did not appear beside the amount (home.heroDonut)"
+        )
+        attachScreenshot(named: "12-home-hero-amount-donut")
+    }
+
+    /// Build 46 (owner, Nov 18, 2026 — "you can't delete it once it
+    /// was added"): record a $1 cash gift from the Charity card,
+    /// then delete it from the Activity feed — the row must go and
+    /// the figures must move back. PRECONDITION: the test household
+    /// needs $1+ of charity Available, or the record step refuses
+    /// with a plain-language error (seed an income first if it
+    /// does). NOTE: blocked by the known 429 sign-up gate in CI
+    /// like the other UI tests — it fails in the sign-up preamble
+    /// until the gate clears, and proves the delete flow then.
+    /// The reverse RPC (`supabase/reverse-charity-cash-gift.sql`)
+    /// must be applied live first, or the delete step fails with a
+    /// plain-language error and nothing is changed.
+    func testDeleteCashGiftFromFundsFeed() throws {
+        signUpAndJoinTestHousehold()
+
+        tapTab(identifier: "tab.funds", label: "Funds")
+        XCTAssertTrue(
+            app.staticTexts["Charity"].waitForExistence(timeout: 90),
+            "Funds did not render (no Charity card)"
+        )
+        // Expand the Charity card: the Record a Transaction button
+        // lives in the expanded card.
+        app.staticTexts["Charity"].tap()
+        let recordButton = app.buttons["funds.recordCashGift"]
+        XCTAssertTrue(
+            recordButton.waitForExistence(timeout: 30),
+            "Charity card did not offer Record a Transaction after expanding"
+        )
+        recordButton.tap()
+        XCTAssertTrue(
+            app.staticTexts["Record a Transaction to Charity"].waitForExistence(timeout: 15),
+            "Record a Transaction popup did not open"
+        )
+        let amountField = app.textFields["0.00"]
+        XCTAssertTrue(
+            amountField.waitForExistence(timeout: 15),
+            "Record popup did not show an amount field"
+        )
+        amountField.tap()
+        amountField.typeText("1.00")
+        app.buttons["Record"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Cash gift"].waitForExistence(timeout: 30),
+            "Cash gift did not appear in the Charity Activity feed after recording"
+        )
+
+        // -- Delete it from the feed --------------------------------
+        let cashGiftRows = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Cash gift'"))
+        let countBefore = cashGiftRows.count
+        XCTAssertGreaterThan(countBefore, 0, "No Cash gift row to delete")
+        cashGiftRows.firstMatch.tap()
+        let deleteButton = app.buttons["funds.deleteCashGift"]
+        XCTAssertTrue(
+            deleteButton.waitForExistence(timeout: 15),
+            "Cash gift detail did not offer Delete"
+        )
+        deleteButton.tap()
+        let confirmButton = app.buttons["funds.confirmDeleteCashGift"]
+        XCTAssertTrue(
+            confirmButton.waitForExistence(timeout: 15),
+            "Delete confirm did not appear for the cash gift"
+        )
+        confirmButton.tap()
+        // The row leaves the feed once the reversal lands.
+        let gone = NSPredicate(format: "exists == false")
+        expectation(for: gone, evaluatedWith: cashGiftRows.firstMatch, handler: nil)
+        waitForExpectations(timeout: 30, handler: nil)
+        XCTAssertEqual(
+            app.buttons.matching(NSPredicate(format: "label CONTAINS 'Cash gift'")).count,
+            countBefore - 1,
+            "Cash gift row is still in the feed after Delete"
+        )
+        attachScreenshot(named: "13-cash-gift-deleted")
+    }
+
     /// Taps the hittable Cancel button. The export popup and the
     /// share sheet both have one, so the first match may be the
     /// covered popup button, which is not hittable while the sheet

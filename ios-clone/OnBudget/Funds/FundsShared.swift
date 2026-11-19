@@ -396,11 +396,31 @@ public struct FundTransactionRow: View {
     /// renamed fund never shows the stale default. Nil falls back
     /// to the generic "the fund".
     public let fundName: String?
+    /// Build 46 (owner, Nov 18, 2026 — "you can't delete it once
+    /// it was added"): the Funds feeds showed transaction rows with
+    /// NO Actions button, so Delete was only reachable from the
+    /// Transactions list. When `onDelete` is set (admin only) the
+    /// expanded detail offers Delete here too — same rules as the
+    /// list: hand-written rows delete permanently, bank/email/file
+    /// rows move to Trash with a reason. Nil (the default) keeps
+    /// the row delete-free.
+    public let isAdmin: Bool
+    public let isDeleting: Bool
+    public let onDelete: ((Transaction, String) async -> Void)?
 
-    public init(_ transaction: Transaction, merchantRules: [MerchantRule] = [], fundName: String? = nil) {
+    /// Inline delete confirm (build 46): the detail holds its own
+    /// two-step confirm, so no sheet is needed from a feed row.
+    @State private var confirmingDelete = false
+    @State private var deleteReason = ""
+    @State private var deleteReasonError: String?
+
+    public init(_ transaction: Transaction, merchantRules: [MerchantRule] = [], fundName: String? = nil, isAdmin: Bool = false, isDeleting: Bool = false, onDelete: ((Transaction, String) async -> Void)? = nil) {
         self.transaction = transaction
         self.merchantRules = merchantRules
         self.fundName = fundName
+        self.isAdmin = isAdmin
+        self.isDeleting = isDeleting
+        self.onDelete = onDelete
     }
 
     public var body: some View {
@@ -422,20 +442,84 @@ public struct FundTransactionRow: View {
                     .fixedSize(horizontal: true, vertical: false)
             }
         } detail: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(MoneyFormat.fmtLong(transaction.date))
-                Text("\(sourceLabel(transaction.source))\(transaction.cardSuffix == "0000" ? "" : " · Card ••\(transaction.cardSuffix)")")
-                if transaction.state == .provisional {
-                    Text("Pending — not posted yet.")
-                } else if transaction.state == .reversed {
-                    Text("Reversed.")
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(MoneyFormat.fmtLong(transaction.date))
+                    Text("\(sourceLabel(transaction.source))\(transaction.cardSuffix == "0000" ? "" : " · Card ••\(transaction.cardSuffix)")")
+                    if transaction.state == .provisional {
+                        Text("Pending — not posted yet.")
+                    } else if transaction.state == .reversed {
+                        Text("Reversed.")
+                    }
+                    if transaction.fundAllocationCents > 0 {
+                        Text("\(MoneyFormat.formatCents(transaction.fundAllocationCents)) covered by \(fundName ?? "the fund").")
+                    }
                 }
-                if transaction.fundAllocationCents > 0 {
-                    Text("\(MoneyFormat.formatCents(transaction.fundAllocationCents)) covered by \(fundName ?? "the fund").")
+                .font(.system(size: 14))
+                .foregroundStyle(Color(hex: "#6b7280"))
+                // Build 46 (owner, Nov 18, 2026): Delete from the
+                // feed itself — admin only, two-step, with a reason
+                // for bank-synced rows (the Trash flow requires one),
+                // exactly like the Transactions list's Actions sheet.
+                if isAdmin, let onDelete {
+                    if confirmingDelete {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(transaction.source == .manual
+                                 ? "This removes the hand-entered transaction and cannot be undone."
+                                 : "This moves it to the Trash. The admin can bring it back from the Trash. Give a reason to continue.")
+                                .font(.system(size: 14))
+                                .foregroundStyle(DesignTokens.ink)
+                            if transaction.source != .manual {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Reason (Required)")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.ink)
+                                    TextField("Reason", text: $deleteReason, axis: .vertical)
+                                        .textFieldStyle(.roundedBorder)
+                                }
+                                if let deleteReasonError {
+                                    FundsErrorBox(deleteReasonError)
+                                }
+                            }
+                            HStack(spacing: 12) {
+                                FundsPrimaryButton(
+                                    transaction.source == .manual ? "Delete" : "Move to Trash",
+                                    isBusy: isDeleting
+                                ) {
+                                    Task {
+                                        if transaction.source != .manual {
+                                            let reason = deleteReason.trimmingCharacters(in: .whitespaces)
+                                            guard !reason.isEmpty else {
+                                                deleteReasonError = "Reason required"
+                                                return
+                                            }
+                                            deleteReasonError = nil
+                                            await onDelete(transaction, reason)
+                                        } else {
+                                            await onDelete(transaction, "")
+                                        }
+                                        confirmingDelete = false
+                                        deleteReason = ""
+                                    }
+                                }
+                                .accessibilityIdentifier("funds.confirmDeleteTransaction")
+                                FundsTertiaryButton("Keep It") {
+                                    confirmingDelete = false
+                                    deleteReason = ""
+                                    deleteReasonError = nil
+                                }
+                            }
+                        }
+                    } else {
+                        FundsSmallTertiaryButton("Delete") {
+                            deleteReason = ""
+                            deleteReasonError = nil
+                            confirmingDelete = true
+                        }
+                        .accessibilityIdentifier("funds.deleteTransaction")
+                    }
                 }
             }
-            .font(.system(size: 14))
-            .foregroundStyle(Color(hex: "#6b7280"))
         }
     }
 }
@@ -710,10 +794,11 @@ public struct FundsExpandableCard<Expanded: View>: View {
     /// The header strip (owner, Nov 16, 2026 — build 40): ONE ROW
     /// — icon in a white circle + title + (admin-only) pencil +
     /// amount + chevron, on the theme colour. The text colour is
-    /// the theme's onBanner colour — white on the dark Debt banner,
-    /// ink on the light Spending / Charity pale / Extra Fund
-    /// tertiary banners (build 41, 3-button scheme; build 43 —
-    /// Spending's banner lightened to #60a5fa with ink text). The icon sits
+    /// the theme's onBanner colour — white on the dark Debt and
+    /// Spending banners, ink on the light Charity pale / Extra
+    /// Fund tertiary banners (build 41, 3-button scheme; build 46
+    /// — Spending's banner is deep #1d4ed8 with white text again).
+    /// The icon sits
     /// on a WHITE circle in the theme's glyph colour (the
     /// reference's "$ in a white circle"). Loading / failed
     /// show the same strip shape in WHITE / muted grey with grey

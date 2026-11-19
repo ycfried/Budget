@@ -33,6 +33,11 @@ public struct CharityIncomeForm: View {
     @State private var rateOverrideText = ""
     @State private var note = ""
     @State private var fieldError: String?
+    /// Build 46 (owner, Nov 18, 2026 — "even when you go to
+    /// correct it.. you can't delete it"): the delete confirm for
+    /// the income being corrected — reversing it with no
+    /// replacement, beside Cancel Correction.
+    @State private var showDeleteConfirm = false
 
     public init(viewModel: FundsViewModel, fundName: String, correcting: Binding<CharityIncome?>, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
@@ -141,6 +146,43 @@ public struct CharityIncomeForm: View {
                         clearIncomeFields()
                         onClose()
                     }
+                    // Build 46 (owner, Nov 18, 2026 — "even when
+                    // you go to correct it.. you can't delete it"):
+                    // Delete this income — reverse it with NO
+                    // replacement, so a mistaken income can simply
+                    // be removed instead of corrected. The entry
+                    // stays, marked reversed; its committed figure
+                    // drops out of Total. Quiet button on its own
+                    // line (like the quiet Cancel above), with a
+                    // two-step confirm.
+                    if showDeleteConfirm {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("This reverses the income — the \(MoneyFormat.formatCents(correcting?.committedCents ?? 0)) it committed no longer counts toward \(fundName). The entry stays, marked reversed.")
+                                .font(.system(size: 14))
+                                .foregroundStyle(DesignTokens.ink)
+                            HStack(spacing: 12) {
+                                FundsPrimaryButton("Delete Income", isBusy: viewModel.busyAction == "delete-income") {
+                                    Task {
+                                        guard let income = correcting else { return }
+                                        if await viewModel.reverseCharityIncome(income) {
+                                            correcting = nil
+                                            clearIncomeFields()
+                                            onClose()
+                                        }
+                                    }
+                                }
+                                .accessibilityIdentifier("funds.confirmDeleteIncome")
+                                FundsTertiaryButton("Keep It") {
+                                    showDeleteConfirm = false
+                                }
+                            }
+                        }
+                    } else {
+                        FundsQuietButton("Delete This Income") {
+                            showDeleteConfirm = true
+                        }
+                        .accessibilityIdentifier("funds.deleteIncome")
+                    }
                 }
             }
         }
@@ -167,6 +209,7 @@ public struct CharityIncomeForm: View {
         rateOverrideText = ""
         note = ""
         fieldError = nil
+        showDeleteConfirm = false
     }
 
     private func saveIncome() {
@@ -474,6 +517,10 @@ public struct CharityIncomeHistory: View {
     @ObservedObject public var viewModel: FundsViewModel
     @Binding public var correcting: CharityIncome?
     @Binding public var openIncomeForm: Bool
+    /// Build 46 (owner, Nov 18, 2026): the cash gift whose delete
+    /// confirm is open in the feed — one at a time, like the
+    /// fund-transaction confirm inside FundTransactionRow.
+    @State private var confirmingCashGiftId: UUID?
 
     public init(viewModel: FundsViewModel, correcting: Binding<CharityIncome?>, openIncomeForm: Binding<Bool>) {
         self.viewModel = viewModel
@@ -547,7 +594,20 @@ public struct CharityIncomeHistory: View {
                     case .income(let row):
                         incomeRow(row)
                     case .gift(let tx):
-                        FundTransactionRow(tx, merchantRules: viewModel.merchantRules, fundName: viewModel.fundName)
+                        // Build 46 (owner, Nov 18, 2026): Delete
+                        // from the feed itself — the gift rows had
+                        // no Actions button, so Delete was only
+                        // reachable from the Transactions list.
+                        FundTransactionRow(
+                            tx,
+                            merchantRules: viewModel.merchantRules,
+                            fundName: viewModel.fundName,
+                            isAdmin: viewModel.context.isAdmin,
+                            isDeleting: viewModel.busyAction == "delete-fund-tx",
+                            onDelete: { tx, reason in
+                                await viewModel.deleteFundTransaction(tx, reason: reason)
+                            }
+                        )
                     case .cashGift(let gift):
                         cashGiftRow(gift)
                     }
@@ -617,7 +677,12 @@ public struct CharityIncomeHistory: View {
     /// given, so it shows in charity BLUE by kind — the same
     /// treatment as a gift transaction. Minimal overview (label +
     /// amount); the full detail — date, note, "cash, no transaction
-    /// row" — expands on tap.
+    /// row" — expands on tap. Build 46 (owner, Nov 18, 2026 —
+    /// "you can't delete it once it was added"): the detail offers
+    /// Delete (admin only, two-step) — this row had NO delete path
+    /// at all before, which is what the owner hit. Reversing the
+    /// gift takes it out of Given and puts the money back in
+    /// Available; the row stays in the audit trail, marked reversed.
     private func cashGiftRow(_ gift: CharityCashGift) -> some View {
         FundsActivityRow {
             HStack(spacing: 4) {
@@ -634,14 +699,43 @@ public struct CharityIncomeHistory: View {
                     .fixedSize(horizontal: true, vertical: false)
             }
         } detail: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Given in cash on \(MoneyFormat.fmtLong(gift.giftDate)). No transaction row — cash is not traceable as a bank/email transaction.")
-                if !gift.note.isEmpty {
-                    Text(gift.note)
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Given in cash on \(MoneyFormat.fmtLong(gift.giftDate)). No transaction row — cash is not traceable as a bank/email transaction.")
+                    if !gift.note.isEmpty {
+                        Text(gift.note)
+                    }
+                }
+                .font(.system(size: 14))
+                .foregroundStyle(Color(hex: "#6b7280"))
+                if viewModel.context.isAdmin, gift.status == "active" {
+                    if confirmingCashGiftId == gift.id {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("This removes the cash gift — the money goes back to \(viewModel.charityName) Available. The gift stays in the record, marked reversed.")
+                                .font(.system(size: 14))
+                                .foregroundStyle(DesignTokens.ink)
+                            HStack(spacing: 12) {
+                                FundsPrimaryButton("Delete", isBusy: viewModel.busyAction == "delete-cash-gift") {
+                                    Task {
+                                        if await viewModel.deleteCharityCashGift(gift) {
+                                            confirmingCashGiftId = nil
+                                        }
+                                    }
+                                }
+                                .accessibilityIdentifier("funds.confirmDeleteCashGift")
+                                FundsTertiaryButton("Keep It") {
+                                    confirmingCashGiftId = nil
+                                }
+                            }
+                        }
+                    } else {
+                        FundsSmallTertiaryButton("Delete") {
+                            confirmingCashGiftId = gift.id
+                        }
+                        .accessibilityIdentifier("funds.deleteCashGift")
+                    }
                 }
             }
-            .font(.system(size: 14))
-            .foregroundStyle(Color(hex: "#6b7280"))
         }
     }
 }
@@ -738,7 +832,19 @@ public struct FundTopupsHistory: View {
                     case .topup(let row):
                         topupRow(row)
                     case .transaction(let tx):
-                        FundTransactionRow(tx, merchantRules: viewModel.merchantRules, fundName: viewModel.fundName)
+                        // Build 46 (owner, Nov 18, 2026): Delete
+                        // from the feed itself, like the charity
+                        // feed — these rows had no Actions button.
+                        FundTransactionRow(
+                            tx,
+                            merchantRules: viewModel.merchantRules,
+                            fundName: viewModel.fundName,
+                            isAdmin: viewModel.context.isAdmin,
+                            isDeleting: viewModel.busyAction == "delete-fund-tx",
+                            onDelete: { tx, reason in
+                                await viewModel.deleteFundTransaction(tx, reason: reason)
+                            }
+                        )
                     case .allocation(let entry):
                         allocationRow(entry)
                     }

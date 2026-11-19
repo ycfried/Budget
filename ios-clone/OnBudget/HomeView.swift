@@ -613,25 +613,28 @@ public struct HomeView: View {
     // other cards (owner, Nov 11, 2026: it is the most important
     // number on the page). Owner, Nov 16, 2026 (build 40): ONE
     // UNIFIED CARD — a SHORT colored header strip on top (a "$"
-    // icon in a white circle + "Spending" + the amount in one row,
-    // all white on primary blue) and a WHITE body below (the MAJORITY
-    // of the card) holding the progress bar + spent line + chevron,
-    // then the debt math line / allowance states. The color is a
-    // header accent, not half the card — "the majority should be
-    // white, not half half." The Spending bar + spent line moved
-    // DOWN into the white body (they were inside the blue in build
-    // 39). The sync button stays at the trailing end of the header
-    // strip. The loading state renders at the same full hero size
-    // (shimmer skeleton blocks on WHITE, no tint, no spinner), so
-    // the layout never jumps when the number arrives.
+    // icon in a white circle + "Spending", all white on deep blue)
+    // and a WHITE body below (the MAJORITY of the card) holding
+    // the big amount + the progress circle side by side, with the
+    // spent line below. The color is a header accent, not half
+    // the card — "the majority should be white, not half half."
+    // Build 46 (owner, Nov 18, 2026): the amount moved OUT of the
+    // header strip DOWN into the white body (it sat in the blue
+    // in builds 40–45), sized as big as the card allows, and the
+    // horizontal progress bar became the widget's progress CIRCLE
+    // alongside it. The sync button stays at the trailing end of
+    // the header strip. The loading state renders at the same full
+    // hero size (shimmer skeleton blocks on WHITE, no tint, no
+    // spinner), so the layout never jumps when the number arrives.
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header strip (colored, short): ONE ROW — icon + name
-            // + amount + sync button. While loading or failed the
-            // strip is white / muted grey, not blue.
+            // + sync button. While loading or failed the strip is
+            // white / muted grey, not blue.
             heroHeaderStrip
-            // White body (majority): progress bar + spent line +
-            // chevron, then the debt math line / allowance states.
+            // White body (majority): big amount + progress circle
+            // side by side, spent line below, then the debt math
+            // line / allowance states.
             heroWhiteBody
         }
         .background(Color.white)
@@ -656,28 +659,37 @@ public struct HomeView: View {
         .accessibilityIdentifier("home.weeklyBudget")
     }
 
-    /// White body of the hero (the majority of the card): progress
-    /// bar + spent line + chevron, then the debt math line /
-    /// allowance states when present. While loading the bar + spent
-    /// line + debt math skeletons sit here (same sizes as the loaded
-    /// content, so the body holds its size); while failed the error
-    /// box + Try Again sit here. Build 41 (owner, Nov 16, 2026 —
-    /// "much bigger"): the body breathes more — 20pt sides, 16pt
-    /// top, 18pt bottom, 16pt between rows. Build 42 (owner,
-    /// Nov 17, 2026 — "the white body should be double the header"):
-    /// the body dominates — roughly 1/3 header, 2/3 white body —
-    /// so the top/bottom padding steps up to 36pt and the rows sit
+    /// White body of the hero (the majority of the card): the big
+    /// amount + the progress circle side by side, the spent line
+    /// below, then the debt math line / allowance states when
+    /// present. While loading the amount + circle + spent-line
+    /// skeletons sit here (same sizes as the loaded content, so
+    /// the body holds its size); while failed the error box + Try
+    /// Again sit here. Build 41 (owner, Nov 16, 2026 — "much
+    /// bigger"): the body breathes more — 20pt sides, 16pt top,
+    /// 18pt bottom, 16pt between rows. Build 42 (owner, Nov 17,
+    /// 2026 — "the white body should be double the header"): the
+    /// body dominates — roughly 1/3 header, 2/3 white body — so
+    /// the top/bottom padding steps up to 36pt and the rows sit
     /// 18pt apart. The header is untouched; the card gets taller.
+    /// Build 46 (owner, Nov 18, 2026): the amount lives here now
+    /// (it was inline in the header strip in builds 40–45), at
+    /// the biggest size the card allows, with the progress circle
+    /// alongside it — the horizontal progress bar is gone.
     private var heroWhiteBody: some View {
         VStack(alignment: .leading, spacing: 18) {
             switch viewModel.week {
             case .loading:
-                // Build 42 (owner, Nov 17, 2026 — progress bar
-                // thicker): the bar skeleton matches the loaded
-                // bar — 12pt, not 10pt.
-                SkeletonBlock(height: 12, cornerRadius: 6)
-                SkeletonBlock(height: 14)
-                SkeletonBlock(height: 14)
+                // Build 46 (owner, Nov 18, 2026): the skeletons
+                // match the loaded body — a big amount-sized block
+                // + a circle + the spent line — so the body holds
+                // its size while loading.
+                HStack(spacing: 16) {
+                    SkeletonBlock(width: isIPad ? 320 : 200, height: heroAmountSkeletonHeight, cornerRadius: 6)
+                    Spacer()
+                    SkeletonBlock(width: heroDonutSize, height: heroDonutSize, cornerRadius: heroDonutSize / 2)
+                }
+                SkeletonBlock(width: 180, height: 14, cornerRadius: 6)
             case .failed(let error):
                 // One failure message only: the ErrorBox. The grey
                 // "Could not load…" line above it said the same
@@ -686,7 +698,7 @@ public struct HomeView: View {
                 Button("Try Again") { Task { await viewModel.refresh() } }
                     .buttonStyle(TertiaryButtonStyle())
             case .loaded(let result):
-                heroBodyProgress(result)
+                heroBodyAmountDonut(result)
                 heroLoadedContent(result)
             }
         }
@@ -695,8 +707,8 @@ public struct HomeView: View {
         .padding(.bottom, 36)
     }
 
-    /// Banner colour: the Spending theme's banner (light blue
-    /// #60a5fa since build 43 — see below) when loaded; WHITE while
+    /// Banner colour: the Spending theme's banner (deep blue #1d4ed8
+    /// since build 46 — see StatCardTheme) when loaded; WHITE while
     /// LOADING (owner, Nov 16, 2026 — build 40: the pale #dbeafe
     /// tint was horrendous, the original white background with grey
     /// skeleton shapes was nicest); muted grey #e5e7eb when FAILED
@@ -711,37 +723,47 @@ public struct HomeView: View {
         }
     }
 
-    /// Text/icon colour on the hero banner: INK on the loaded light
-    /// blue banner (build 43, owner Nov 17, 2026 — the header text
-    /// is black for consistency with the other cards, so the banner
-    /// lightened from primary #2f6bff to light #60a5fa and the text
-    /// follows the theme's onBanner colour), ink on the grey
-    /// loading/failed banner.
+    /// Text/icon colour on the hero banner: WHITE on the loaded
+    /// deep blue banner (build 46, owner Nov 18, 2026 — the header
+    /// is brand dark blue again; white on #1d4ed8 reads ~5.9:1),
+    /// ink on the grey loading/failed banner.
     private var heroBannerTextColor: Color {
         if case .loaded = viewModel.week { return StatCardTheme.spending.onBanner }
         return DesignTokens.ink
     }
+
+    /// The hero amount + donut sizes (build 46, owner Nov 18,
+    /// 2026 — "numbers as big as they can be"): the amount is the
+    /// biggest size that still fits beside the circle — 52pt on
+    /// iPhone (body interior ~321pt: "$163.58" at 52pt is ~200pt,
+    /// the 88pt circle + 16pt gap take the rest; longer amounts
+    /// shrink via minimumScaleFactor), 96pt on iPad (body interior
+    /// ~828pt: the same figure at 96pt is ~370pt beside the 120pt
+    /// circle). The loading skeleton height matches the amount's
+    /// line height, so the body holds its size while loading.
+    private var heroAmountSize: CGFloat { isIPad ? 96 : 52 }
+    private var heroAmountSkeletonHeight: CGFloat { isIPad ? 108 : 60 }
+    private var heroDonutSize: CGFloat { isIPad ? 120 : 88 }
 
     // Hero header — icon + title in ONE row, with the sync button
     // at the trailing end (the top-right corner of the banner).
     // The title is "Spending" and there is NO date anywhere on the
     // card (owner, Nov 14, 2026 — this supersedes the inline-date
     // Header strip (owner, Nov 16, 2026 — build 40): ONE ROW —
-    // a "$" icon in a white circle + "Spending" + the amount, all
-    // ink on the light blue banner (build 43), with the sync button
-    // at the trailing end.
-    // The amount is INLINE in the header (24pt heavy iPhone / 30pt
-    // iPad), not a big standalone figure — the strip is short, the
-    // white body below is the majority. While loading the strip is
-    // WHITE with skeleton blocks (build 40 loading revert — no
-    // tint); the sync spot holds a skeleton block so the header
-    // never jumps when the numbers arrive. While failed the strip
-    // is muted grey.
-    // Build 41 (owner, Nov 16, 2026 — "much bigger"): the amount
-    // is 30pt heavy on iPhone (36pt iPad), the title 20pt, the
-    // icon disc 36pt, the sync circle 40pt, and the strip carries
-    // 14pt vertical padding — the header reads as a big card
-    // header now, not a slim bar. Skeleton blocks match.
+    // a "$" icon in a white circle + "Spending", white on the deep
+    // blue banner (build 46), with the sync button at the trailing
+    // end. The amount is NOT here any more — it lives in the white
+    // body below, at the biggest size the card allows (build 46,
+    // owner Nov 18, 2026: it sat inline in the header in builds
+    // 40–45 and read too small). While loading the strip is WHITE
+    // with skeleton blocks (build 40 loading revert — no tint);
+    // the sync spot holds a skeleton block so the header never
+    // jumps when the numbers arrive. While failed the strip is
+    // muted grey.
+    // Build 41 (owner, Nov 16, 2026 — "much bigger"): the title
+    // is 20pt, the icon disc 36pt, the sync circle 40pt, and the
+    // strip carries 14pt vertical padding — the header reads as a
+    // big card header now, not a slim bar. Skeleton blocks match.
     private var heroHeaderStrip: some View {
         HStack(spacing: 8) {
             if case .loading = viewModel.week {
@@ -767,27 +789,6 @@ public struct HomeView: View {
                     .lineLimit(1)
             }
             Spacer()
-            // Amount, inline in the header. Ink on the light blue
-            // strip even when over budget (the over-budget state
-            // shows in the red progress fill + "Over budget" spent
-            // line, as in build 39 — red text on blue does not read).
-            switch viewModel.week {
-            case .loading:
-                SkeletonBlock(width: 84, height: 30, cornerRadius: 6)
-            case .failed:
-                EmptyView()
-            case .loaded(let result):
-                Text(MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false))
-                    .font(.system(size: isIPad ? 36 : 30, weight: .heavy))
-                    .foregroundStyle(heroBannerTextColor)
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
-                    .accessibilityLabel(
-                        result.availableCents < 0
-                            ? "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
-                            : "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
-                    )
-            }
             if viewModel.isAdmin {
                 switch viewModel.week {
                 case .loading:
@@ -806,13 +807,13 @@ public struct HomeView: View {
 
     /// Sync button: admin-only; grey tertiary while no allowance
     /// is set, so "Set Your Weekly Allowance" is the hero's only
-    /// primary control. On the light blue banner (build 43) it is a
-    /// WHITE circle so it reads against the banner (the old mid-blue
-    /// fill vanished on blue): the arrow is primary blue when an
-    /// allowance is set, ink when not set — the two states still
-    /// tell apart, and both read on white. Moved here from the
-    /// figure row (owner, Nov 14, 2026: the top-right corner of the
-    /// card, not mid-right over the progress bar).
+    /// primary control. On the deep blue banner (build 46) it is a
+    /// WHITE circle so it reads against the banner: the arrow is
+    /// primary blue when an allowance is set, ink when not set —
+    /// the two states still tell apart, and both read on white.
+    /// Moved here from the figure row (owner, Nov 14, 2026: the
+    /// top-right corner of the card, not mid-right over the
+    /// progress bar).
     private var syncButton: some View {
         Button { Task { await viewModel.syncBank() } } label: {
             Image(systemName: "arrow.clockwise")
@@ -850,14 +851,14 @@ public struct HomeView: View {
         }
     }
 
-    /// The hero content in the WHITE body below the progress bar
-    /// (debt math, allowance states): the amount lives in the
-    /// header strip now (owner, Nov 16, 2026 — build 40), and the
-    /// progress bar + spent line moved DOWN into the white body
-    /// (they were inside the blue in build 39), so this starts at
-    /// the debt math line. The date is gone from the card entirely,
-    /// and the Weekly Allowance + Purchases stats moved into the
-    /// Weekly sheet (owner, Nov 14, 2026).
+    /// The hero content in the WHITE body below the amount + donut
+    /// (debt math, allowance states): the amount lives in the white
+    /// body now (build 46, owner Nov 18, 2026 — it was inline in
+    /// the header strip in builds 40–45), and the progress bar is
+    /// gone — the circle beside the amount carries the progress —
+    /// so this starts at the debt math line. The date is gone from
+    /// the card entirely, and the Weekly Allowance + Purchases
+    /// stats moved into the Weekly sheet (owner, Nov 14, 2026).
     @ViewBuilder
     private func heroLoadedContent(_ result: WeekResult) -> some View {
         // Carried Debt fund (build 29): the week explains itself —
@@ -905,51 +906,46 @@ public struct HomeView: View {
         }
     }
 
-    /// Progress bar + spent line, in the hero's WHITE body (owner,
-    /// Nov 16, 2026 — build 40: they were inside the blue in build
-    /// 39; the white body is the majority now, so the bar + line
-    /// moved DOWN into it). Same math as the build-39 banner
-    /// version; only the COLOURS changed — the track is light grey
-    /// and the fill is the strong primary blue #2f6bff on white —
-    /// NOT the theme banner, which is light since build 43 and
-    /// would vanish against the light grey track — over budget
-    /// the fill is the brighter red #dc2626 (the dark red #991b1b
-    /// did not read on dark blue in build 39, and it still reads
-    /// on white). The chevron at the right end of
-    /// the spent line is the hint that the card opens the Weekly
-    /// sheet. Build 42 (owner, Nov 17, 2026 — progress bar
-    /// thicker): the bar is 12pt, not 10pt.
-    private func heroBodyProgress(_ result: WeekResult) -> some View {
-        // Charges / capacity, capped at 100%; over budget the fill
-        // is full-width. A zero/negative capacity used to force
-        // the fraction to 0, so the bar was an empty track exactly
-        // when over budget (audit H-P2-6).
+    /// Big amount + progress circle, in the hero's WHITE body
+    /// (build 46, owner Nov 18, 2026): the amount moved DOWN out
+    /// of the header strip into the body, at the biggest size the
+    /// card allows (52pt iPhone / 96pt iPad — see heroAmountSize),
+    /// with the widget's progress CIRCLE alongside it — the
+    /// horizontal progress bar is gone. The spent line sits below
+    /// the pair, with the chevron at its right end (the hint that
+    /// the card opens the Weekly sheet). Same math as the old bar:
+    /// charges / capacity, capped at 100%; over budget the ring is
+    /// full and red, and the amount reads in the over-budget red
+    /// (it sits on WHITE now, so the red reads — unlike on the old
+    /// blue header, where it did not). While no allowance is set
+    /// the spent line reads "Not set" — a genuinely unset value,
+    /// never a bare dash (owner loading/empty language, Nov 12,
+    /// 2026). A failed allowance read (nil) still shows
+    /// compute-week's numbers — only an explicit never-set hides
+    /// them (audit H-P1-4).
+    private func heroBodyAmountDonut(_ result: WeekResult) -> some View {
         let capacity = result.baseAvailableCents + result.tempCents
-        let overBudget = result.chargesCents > capacity
-        let fraction: CGFloat = overBudget ? 1 : (capacity > 0 ? CGFloat(result.chargesCents) / CGFloat(capacity) : 0)
+        let overBudget = SpendingProgress.isOverBudget(chargesCents: result.chargesCents, capacityCents: capacity)
+        let fraction = SpendingProgress.fraction(chargesCents: result.chargesCents, capacityCents: capacity)
         return VStack(alignment: .leading, spacing: 10) {
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(hex: "#e5e7eb"))
-                        .frame(height: 12)
-                    RoundedRectangle(cornerRadius: 6)
-                        // Build 43 (owner, Nov 17, 2026): the fill
-                        // stays the strong primary blue — the theme
-                        // banner is light now and would vanish
-                        // against the light grey track.
-                        .fill(overBudget ? Color(hex: "#dc2626") : DesignTokens.primary)
-                        .frame(width: geometry.size.width * fraction, height: 12)
-                }
+            HStack(spacing: 16) {
+                Text(MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false))
+                    .font(.system(size: heroAmountSize, weight: .heavy))
+                    .foregroundStyle(overBudget ? DesignTokens.heroOverBudget : DesignTokens.ink)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .accessibilityIdentifier("home.heroAmount")
+                    .accessibilityLabel(
+                        result.availableCents < 0
+                            ? "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
+                            : "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
+                    )
+                Spacer()
+                spendingDonut(fraction: fraction, overBudget: overBudget, size: heroDonutSize)
             }
-            .frame(height: 12)
 
             // Spent line + % used + chevron. While no allowance is
-            // set the line reads "Not set" — a genuinely unset
-            // value, never a bare dash (owner loading/empty
-            // language, Nov 12, 2026). A failed allowance read
-            // (nil) still shows compute-week's numbers — only an
-            // explicit never-set hides them (audit H-P1-4).
+            // set the line reads "Not set".
             HStack(spacing: 8) {
                 if viewModel.allowanceSet != false {
                     Text("\(MoneyFormat.string(cents: result.chargesCents)) spent")
@@ -966,6 +962,37 @@ public struct HomeView: View {
             .font(.system(size: 15))
             .foregroundStyle(DesignTokens.ink)
         }
+    }
+
+    /// Progress circle, like the widget's donut (build 46, owner
+    /// Nov 18, 2026): the spent slice in brand blue, over budget
+    /// the muted red #991b1b (full ring), the remaining slice pale
+    /// light blue #dbeafe, the spent percentage in the centre. Same
+    /// colours as OnBudgetWidget.donut, so the card and the widget
+    /// can never drift apart. The ring is 12pt on iPhone (88pt
+    /// circle) and 14pt on iPad (120pt circle).
+    private func spendingDonut(fraction: Double, overBudget: Bool, size: CGFloat) -> some View {
+        let lineWidth: CGFloat = isIPad ? 14 : 12
+        return ZStack {
+            Circle()
+                .stroke(Color(hex: "#dbeafe"), lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(
+                    overBudget ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: fraction >= 1 ? .butt : .round)
+                )
+                .rotationEffect(.degrees(-90))
+            Text("\(Int((fraction * 100).rounded()))%")
+                .font(.system(size: size * 0.22, weight: .bold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .foregroundStyle(DesignTokens.ink)
+        }
+        .frame(width: size, height: size)
+        .accessibilityIdentifier("home.heroDonut")
+        .accessibilityLabel("\(Int((fraction * 100).rounded())) percent of the weekly budget used")
     }
 
     private func usedPercentText(result: WeekResult, capacity: Int) -> String {
@@ -1185,11 +1212,25 @@ public struct HomeView: View {
         // against the ~173pt card width. The build-42 overflow
         // fix (item 23) still holds — nothing in the header is
         // wider than before.
+        // Build 46 (owner, Nov 18, 2026 — "numbers as big as they
+        // can be"): the amounts step up again — 34pt on a compact
+        // iPhone (the half-width card interior is ~141pt; "$945.32"
+        // at 34pt is ~138pt, so it just fits, and the 0.7 shrink
+        // covers longer amounts), 64pt on iPad (interior ~387pt;
+        // the same figure is ~260pt, so it fills the card without
+        // crowding the edges), 44pt / 64pt non-compact. The
+        // skeleton heights match the amounts' line heights, and
+        // the skeleton WIDTHS match the amounts' widths, so the
+        // body holds its size while loading. The iPad title
+        // skeleton widens to 150pt (FIX 2, same owner report — the
+        // 90pt bar was lost in the 387pt card interior).
         let chip: CGFloat = compact ? (isIPad ? 40 : 34) : 40
         let iconSize: CGFloat = compact ? (isIPad ? 18 : 16) : 20
         let titleSize: CGFloat = compact ? (isIPad ? 20 : 18) : 20
-        let amountSize: CGFloat = compact ? (isIPad ? 28 : 24) : 30
-        let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 34 : 30) : 38
+        let amountSize: CGFloat = compact ? (isIPad ? 64 : 34) : (isIPad ? 64 : 44)
+        let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 72 : 40) : (isIPad ? 72 : 50)
+        let titleSkeletonWidth: CGFloat = compact ? (isIPad ? 150 : 90) : 90
+        let amountSkeletonWidth: CGFloat = compact ? (isIPad ? 240 : 130) : (isIPad ? 240 : 170)
         let statusSize: CGFloat = compact ? (isIPad ? 14 : 13) : 14
         let chevronSize: CGFloat = compact ? (isIPad ? 15 : 14) : 15
         let pad: CGFloat = compact ? (isIPad ? 20 : 16) : 24
@@ -1247,8 +1288,10 @@ public struct HomeView: View {
                     // Skeleton title while loading (owner, Nov 16,
                     // 2026 — build 38): real dark-ink text on the
                     // placeholder read as a finished card. The
-                    // failed state keeps the real title.
-                    SkeletonBlock(width: 90, height: 20, cornerRadius: 6)
+                    // failed state keeps the real title. Build 46
+                    // (owner, Nov 18, 2026): 150pt on iPad, so the
+                    // bar takes up the space in the wider card.
+                    SkeletonBlock(width: titleSkeletonWidth, height: 20, cornerRadius: 6)
                 } else {
                     Text(title)
                         .font(.system(size: titleSize, weight: .bold))
@@ -1275,9 +1318,12 @@ public struct HomeView: View {
                 if isLoading {
                     // Amount-sized skeleton, CENTRED like the
                     // loaded amount below (build 43) — same height
-                    // as the amount, so the body holds its size
-                    // while loading.
-                    SkeletonBlock(width: 96, height: amountSkeletonHeight, cornerRadius: 6)
+                    // and near the same width as the amount, so the
+                    // body holds its size while loading. Build 46
+                    // (owner, Nov 18, 2026): 240pt on iPad, so the
+                    // bar fills the wider card instead of sitting
+                    // lost in the space.
+                    SkeletonBlock(width: amountSkeletonWidth, height: amountSkeletonHeight, cornerRadius: 6)
                         .frame(maxWidth: .infinity, alignment: .center)
                 } else if isExpanded {
                     rows()

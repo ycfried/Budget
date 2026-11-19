@@ -89,4 +89,6 @@ jobs:
             ios-clone/CloudResults/Attachments
             ios-clone/CloudResults/tests.xcresult
             ios-clone/CloudResults/test-summary.json
+            ios-clone/CloudResults/tests-ipad.xcresult
+            ios-clone/CloudResults/test-summary-ipad.json
             ios-clone/CloudResults/runtimes.json

@@ -670,6 +670,23 @@ extension RPCClient {
         ])
     }
 
+    /// `reverse_charity_cash_gift(p_gift_id)`
+    /// (`supabase/reverse-charity-cash-gift.sql`, build 46, Nov 18,
+    /// 2026). Admin only; the gift must still be active. Flips the
+    /// gift's status to 'reversed' (append-only — the row stays in
+    /// the audit trail) and returns the gift id + the new Given /
+    /// Available, the same shape as `record_charity_cash_gift`, so
+    /// the client reuses `CharityCashGiftResult`. Until the SQL is
+    /// applied live this RPC does not exist and the call fails with
+    /// a plain-language error; nothing is changed.
+    public func reverseCharityCashGift(
+        pGiftId: UUID
+    ) async throws -> CharityCashGiftResult {
+        try await call(name: "reverse_charity_cash_gift", params: [
+            "p_gift_id": pGiftId.uuidString,
+        ])
+    }
+
     /// `correct_charity_income(p_income_id, p_amount_cents,
     /// p_income_date, p_source_label, p_rate_bp, p_note)`
     /// (`r13-charity.sql:194-239`). Admin only; the old income must
@@ -692,6 +709,25 @@ extension RPCClient {
         ]
         params["p_rate_bp"] = pRateBp ?? NSNull()
         return try await call(name: "correct_charity_income", params: params)
+    }
+
+    /// `reverse_charity_income(p_income_id)`
+    /// (`supabase/reverse-charity-cash-gift.sql`, build 46, Nov 18,
+    /// 2026). Admin only; the income must still be active. Flips
+    /// the income's status to 'reversed' with NO replacement
+    /// (append-only — the row stays in the audit trail) and returns
+    /// the reversed row's id + rate + committed cents, the same
+    /// shape as `correct_charity_income`, so the client reuses
+    /// `CharityIncomeResult` — the committed figure is what the
+    /// reversal removes from Total. Until the SQL is applied live
+    /// this RPC does not exist and the call fails with a
+    /// plain-language error; nothing is changed.
+    public func reverseCharityIncome(
+        pIncomeId: UUID
+    ) async throws -> CharityIncomeResult {
+        try await call(name: "reverse_charity_income", params: [
+            "p_income_id": pIncomeId.uuidString,
+        ])
     }
 
     /// `record_charity_gift(p_household_id, p_merchant, p_amount_cents,
