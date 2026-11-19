@@ -1,6 +1,6 @@
-# STAG — Privacy Policy
+# STAGE — Privacy Policy
 
-STAG is a tracking tool for guided spending, saving, and
+STAGE is a tracking tool for guided spending, saving, and
 giving. Two people — you and the person you invite — share one
 record. This policy explains what we collect, what we do with
 it, and how you can remove it.
@@ -17,7 +17,7 @@ it, and how you can remove it.
   or connect.
 - **Bank connections (optional):** if you connect a bank, we use
   Plaid, a bank-linking service. You type your bank username and
-  password into Plaid's own window — STAG never sees them.
+  password into Plaid's own window — STAGE never sees them.
   What we store is an encrypted, read-only token that can only
   pull transactions. It cannot move money, and it cannot change
   anything at your bank.
