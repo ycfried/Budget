@@ -236,7 +236,7 @@ final class TransactionExportTests: XCTestCase {
     }
 
     func testPDFStatementHasNoRawEnumValuesOrIds() {
-        let rows = [txn(kind: .fundCharge, source: .amexAlert, amount: 500)]
+        let rows = [txn(amount: 500, source: .amexAlert, kind: .fundCharge)]
         let statement = TransactionExport.pdfStatement(
             transactions: rows, householdName: "Simcha House!", generatedDate: "2026-11-18"
         )
