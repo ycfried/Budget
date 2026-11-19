@@ -194,21 +194,40 @@ fi
 # status — a failure here fails the run.
 echo "=== iPad leg: unit tests on an iPad simulator ==="
 onbudget_ipad_status=0
-onbudget_ipad_type="$(xcrun simctl list devicetypes --json | python3 -c '
+# Candidates in preference order: the 13-inch Pro first (the wide
+# card layout this leg exists to prove), then the 11-inch Pro, then
+# the Airs, then any other iPad type the runner lists. A listed
+# type is NOT trusted until it actually boots on this runtime:
+# run 44461429340 picked the listed iPad-Pro-13-inch-M5 type and
+# `simctl boot` refused it ("Incompatible device", code 403) —
+# the M5 type needs a newer runtime than this runner's iOS 18.5 —
+# so each candidate is created and booted in turn, the ones that
+# will not boot are deleted, and only a booted simulator runs the
+# tests. Fail loudly when none boots.
+onbudget_ipad_candidates="$(xcrun simctl list devicetypes --json | python3 -c '
 import json, sys
 types = json.load(sys.stdin)["devicetypes"]
 ipads = [t["identifier"] for t in types if t["identifier"].startswith("com.apple.CoreSimulator.SimDeviceType.iPad")]
-preferred = [i for i in ipads if "iPad-Pro-13-inch" in i]
-print(preferred[0] if preferred else (ipads[0] if ipads else ""))
+order = ["iPad-Pro-13-inch-M4", "iPad-Pro-11-inch-M4", "iPad-Air-13-inch-M2", "iPad-Air-11-inch-M2"]
+ranked = sorted(ipads, key=lambda i: next((n for n, o in enumerate(order) if o in i), len(order)))
+print("\n".join(ranked))
 ')"
-if [[ -z "$onbudget_ipad_type" ]]; then
-  echo "FAIL: no iPad device type on this runner — cannot run the iPad leg." >&2
+onbudget_ipad_id=""
+for onbudget_ipad_type in $onbudget_ipad_candidates; do
+  echo "Trying iPad device type: $onbudget_ipad_type"
+  onbudget_ipad_id="$(xcrun simctl create "OnBudget-ipad-${GITHUB_RUN_ID:-local}" "$onbudget_ipad_type" "$onbudget_runtime" 2>/dev/null)" || continue
+  if xcrun simctl boot "$onbudget_ipad_id" 2>/dev/null && xcrun simctl bootstatus "$onbudget_ipad_id" -b 2>/dev/null; then
+    echo "Using iPad device type: $onbudget_ipad_type"
+    break
+  fi
+  echo "iPad type $onbudget_ipad_type will not boot on this runtime; trying the next." >&2
+  xcrun simctl delete "$onbudget_ipad_id" >/dev/null 2>&1 || true
+  onbudget_ipad_id=""
+done
+if [[ -z "$onbudget_ipad_id" ]]; then
+  echo "FAIL: no iPad device type boots on this runner — cannot run the iPad leg." >&2
   onbudget_ipad_status=1
 else
-  echo "Using iPad device type: $onbudget_ipad_type"
-  onbudget_ipad_id="$(xcrun simctl create "OnBudget-ipad-${GITHUB_RUN_ID:-local}" "$onbudget_ipad_type" "$onbudget_runtime")"
-  xcrun simctl boot "$onbudget_ipad_id"
-  xcrun simctl bootstatus "$onbudget_ipad_id" -b
   # Same DerivedData as the iPhone build-for-testing (the products
   # are simulator-generic arm64), own result bundle. Unit tests
   # only — see the header comment.
