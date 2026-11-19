@@ -9,8 +9,9 @@
 <style>
   body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; background: #fff; color: #0f172a; line-height: 1.6; }
   main { max-width: 640px; margin: 0 auto; padding: 56px 20px 48px; }
-  .mark { width: 44px; height: 44px; border-radius: 50%; background: #2f6bff; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; }
-  h1 { font-size: 34px; letter-spacing: -0.02em; line-height: 1.15; margin: 20px 0 8px; }
+  .wordmark { display: flex; align-items: center; font-size: 34px; letter-spacing: -0.02em; line-height: 1.15; margin: 20px 0 8px; }
+  .wordmark-logo { width: 1em; height: 1em; flex: 0 0 auto; }
+  .wordmark .dot { color: #2f6bff; }
   h2 { font-size: 20px; letter-spacing: -0.01em; margin: 32px 0 4px; }
   p { color: #475569; }
   .btn { display: inline-block; margin-top: 24px; padding: 14px 22px; border-radius: 14px; background: #2f6bff; color: #fff; font-weight: 700; text-decoration: none; }
@@ -21,22 +22,24 @@
 </head>
 <body>
 <main>
-  <div class="mark" aria-hidden="true">S</div>
-  <h1>STAGE</h1>
-  <p>A tracking tool for guided spending, saving, and giving — shared by two people, with no surprises.</p>
+  <h1 class="wordmark" aria-label="STAGE"><img class="wordmark-logo" src="icon-192.png" alt="" aria-hidden="true">T<span class="dot">·</span>A<span class="dot">·</span>G<span class="dot">·</span>E</h1>
+  <p>A simple way to keep track of your money — spending, saving, and giving — all in one place.</p>
   <a class="btn" href="live.html">Sign in</a>
   <h2>How it works</h2>
   <div class="card">
-    <p><strong>Guided spending.</strong> Set a weekly spending amount together. What you spend is tracked against the week, so you always know where you stand.</p>
+    <p><strong>One number to watch.</strong> STAGE shows you one number: what you can spend this week. You set the amount together. It goes down as you spend, and starts fresh every week.</p>
   </div>
   <div class="card">
-    <p><strong>Saving, built in.</strong> Money you do not spend in a week becomes savings after a short holding period. Either person can ask to use it; the admin approves each use.</p>
+    <p><strong>Giving, automatic.</strong> When money comes in, ten percent is set aside for giving, automatically. STAGE works out how much you owe and how much you&rsquo;ve already given, so you always know where you stand. You can change the amount, or turn it off entirely.</p>
   </div>
   <div class="card">
-    <p><strong>Giving, automatic.</strong> A share of what comes in is set aside for giving. You choose the share; STAGE does the counting.</p>
+    <p><strong>Saving, your cushion.</strong> Put a little aside when you have extra, and dip into it when something comes up — a big bill, a slow month, whatever it is. It&rsquo;s always there, quiet in the background.</p>
   </div>
   <div class="card">
-    <p><strong>Bank purchases, read-only.</strong> Connect a bank account and purchases appear automatically. The app can see purchases — it never moves money.</p>
+    <p><strong>Every account in one place.</strong> Connect your bank and purchases appear on their own, as they happen. If you have more than one account, they all land here together — no more opening one bank app after another to find a transaction. The app can see purchases — it never moves money.</p>
+  </div>
+  <div class="card">
+    <p><strong>No adding things up, no categories.</strong> No categories to create and manage — nobody has the time or the head space for that. Paid cash, or something hasn&rsquo;t shown up yet? One tap on the plus, an amount, and a few words, and you&rsquo;re done.</p>
   </div>
   <div class="card">
     <p><strong>A shared history.</strong> Every change is recorded in an audit log both people can read, so the numbers are never a mystery.</p>
