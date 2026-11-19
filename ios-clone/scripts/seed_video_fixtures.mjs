@@ -163,6 +163,45 @@ async function main() {
   if (renamed?.name !== HOUSEHOLD_NAME) throw new Error(`Rename verification failed: name is ${JSON.stringify(renamed?.name)}`);
   if (renamed?.invite_code !== 'XPKVGJ') throw new Error(`Invite code changed! expected XPKVGJ, got ${renamed?.invite_code}`);
 
+  // 0b. Promote the owner-recording account to admin (owner, Nov 19):
+  // ycfried1+test@gmail.com signed up fresh and joined as a member;
+  // he needs admin to fix whatever he wants before recording (rename
+  // funds, Donation option, household settings). The test household
+  // owner is ryc.friedman@gmail.com (password lost), so this cannot
+  // be done from inside the app — it is done here at the data level.
+  // Role model: household_members.role is 'member' or 'admin'; the
+  // owner is households.owner_id, NOT a role value (see
+  // household-roles-owner.sql), so promoting to 'admin' leaves the
+  // owner row untouched. Idempotent — no-op if already admin.
+  const PROMOTE_EMAIL = 'ycfried1+test@gmail.com';
+  const LIVE_HOUSEHOLD_ID = '647d1f23-606f-43af-92e5-1de2f1f34377';
+  const liveBefore = await rest('GET', 'household_members', `household_id=eq.${LIVE_HOUSEHOLD_ID}&select=user_id,role&order=user_id`);
+  const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=1000`, { headers });
+  const usersText = await usersRes.text();
+  if (!usersRes.ok) throw new Error(`Auth Admin list users -> HTTP ${usersRes.status}: ${usersText.slice(0, 300)}`);
+  const usersJson = JSON.parse(usersText);
+  const usersList = Array.isArray(usersJson) ? usersJson : usersJson.users;
+  const targetUser = (usersList || []).find((u) => String(u.email || '').toLowerCase() === PROMOTE_EMAIL);
+  if (!targetUser) throw new Error(`No auth user found for ${PROMOTE_EMAIL} — has he signed up yet?`);
+  const targetUserId = targetUser.id;
+  console.log(`Promote target: email=${targetUser.email} user_id=${targetUserId}`);
+  const [memberRow] = await rest('GET', 'household_members', `household_id=eq.${HOUSEHOLD_ID}&user_id=eq.${targetUserId}&select=user_id,role,display_name`);
+  if (!memberRow) throw new Error(`No membership row for ${targetUserId} in the test household — has he joined via XPKVGJ yet?`);
+  console.log(`Role before: ${memberRow.role} (display_name=${JSON.stringify(memberRow.display_name)})`);
+  if (memberRow.role !== 'admin') {
+    await rest('PATCH', 'household_members', `household_id=eq.${HOUSEHOLD_ID}&user_id=eq.${targetUserId}`, { role: 'admin' });
+    console.log('Promoted to admin.');
+  } else {
+    console.log('Already admin — no-op.');
+  }
+  const [afterRow] = await rest('GET', 'household_members', `household_id=eq.${HOUSEHOLD_ID}&user_id=eq.${targetUserId}&select=user_id,role`);
+  if (!afterRow || afterRow.role !== 'admin') throw new Error(`Promotion verification failed: role is ${JSON.stringify(afterRow?.role)}`);
+  const liveAfter = await rest('GET', 'household_members', `household_id=eq.${LIVE_HOUSEHOLD_ID}&select=user_id,role&order=user_id`);
+  if (JSON.stringify(liveBefore) !== JSON.stringify(liveAfter)) throw new Error('Live household members changed!');
+  const [hhAfter] = await rest('GET', 'households', `id=eq.${HOUSEHOLD_ID}&select=owner_id`);
+  if (hhAfter.owner_id !== ownerId) throw new Error('Test household owner changed!');
+  console.log(`VERIFY promote: user_id=${targetUserId} role=${afterRow.role} (was ${memberRow.role}); not in live household; live members unchanged; owner unchanged.`);
+
   // 1. Clean up any previous run's fixtures (idempotency).
   console.log('Cleaning previous video fixtures...');
   await rest('DELETE', 'charity_cash_gifts', `household_id=eq.${HOUSEHOLD_ID}&note=eq.${encodeURIComponent(MARKER + ' cash gift')}`);
