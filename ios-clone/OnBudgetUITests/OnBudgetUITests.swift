@@ -710,11 +710,16 @@ final class OnBudgetUITests: XCTestCase {
         }
 
         // -- Scene 6: add a transaction by hand (6.07 + 1.5 = 7.57) -
-        // Tap +, Purchase, type merchant + amount, Add. The new
-        // "Coffee" row lands in the Transactions list (test household
-        // only). The form sheet dismisses the decimal-pad keyboard
-        // interactively on scroll, so swipe before tapping Add.
+        // The "+ Add" button lives ONLY in the Transactions header
+        // (TransactionsView.swift:276) — run 44624214523 proved it
+        // does not exist on Funds ("No matches found"). So go to
+        // Transactions first, then tap + Add, Purchase, type
+        // merchant + amount, Add. The new "Coffee" row lands in the
+        // Transactions list (test household only). The form sheet
+        // dismisses the decimal-pad keyboard interactively on
+        // scroll, so swipe before tapping Add.
         videoMark("SCENE-6")
+        tapTab(identifier: "tab.transactions", label: "Transactions")
         app.buttons["+ Add"].tap()
         let purchaseButton = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Purchase'")).firstMatch
         XCTAssertTrue(
