@@ -479,6 +479,7 @@ final class OnBudgetUITests: XCTestCase {
         )
         // Let the amounts settle (no skeleton, no toast) before the shot.
         Thread.sleep(forTimeInterval: 3)
+        dismissNotificationAlertIfPresent()
         attachScreenshot(named: "video-01-home")
 
         // -- Transactions (scene 3) -----------------------------------
@@ -489,6 +490,7 @@ final class OnBudgetUITests: XCTestCase {
             "Transactions did not load any rows within 120s"
         )
         Thread.sleep(forTimeInterval: 3)
+        dismissNotificationAlertIfPresent()
         attachScreenshot(named: "video-02-transactions")
 
         // -- Add Transaction, empty Purchase form (scene 6) -----------
@@ -508,23 +510,31 @@ final class OnBudgetUITests: XCTestCase {
             "Add Purchase form did not render (no Add Transaction button)"
         )
         Thread.sleep(forTimeInterval: 2)
+        dismissNotificationAlertIfPresent()
         attachScreenshot(named: "video-03-add")
         // Cancel clears the (empty) draft and closes the form.
         app.buttons["Cancel"].tap()
 
         // -- Funds (scenes 4, 5) --------------------------------------
+        // NOTE: the Funds cards are BUTTONS (tappable cards), not
+        // static texts — the fund names live in the buttons' labels
+        // (e.g. "Charity, no charity tracked yet, show breakdown"),
+        // so wait on the button identifiers funds.charity /
+        // funds.extraFund, which the failure-time hierarchy in run
+        // 44574566697 proves are present and queryable.
         tapTab(identifier: "tab.funds", label: "Funds")
         XCTAssertTrue(
-            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Charity'")).firstMatch
+            app.buttons.matching(identifier: "funds.charity").firstMatch
                 .waitForExistence(timeout: 90),
             "Funds did not render (no Charity/Tzedaka card)"
         )
         XCTAssertTrue(
-            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Extra Fund'")).firstMatch
+            app.buttons.matching(identifier: "funds.extraFund").firstMatch
                 .waitForExistence(timeout: 15),
             "Funds did not render (no Extra Fund/Savings card)"
         )
         Thread.sleep(forTimeInterval: 3)
+        dismissNotificationAlertIfPresent()
         attachScreenshot(named: "video-04-funds")
 
         // -- Home again (scene 7 closing) -----------------------------
@@ -535,6 +545,7 @@ final class OnBudgetUITests: XCTestCase {
             "Home hero amount did not reappear"
         )
         Thread.sleep(forTimeInterval: 2)
+        dismissNotificationAlertIfPresent()
         attachScreenshot(named: "video-05-home-close")
     }
 
@@ -1153,6 +1164,24 @@ final class OnBudgetUITests: XCTestCase {
     /// diagnostic outcome. The screen capture does not need the
     /// AX tree, so a stuck webview can no longer fail the test
     /// from a screenshot.
+    /// How-to video v1 (Nov 19, 2026): on a fresh install the app
+    /// asks for notification permission the first time Home loads,
+    /// and the system alert ("STAGE Would Like to Send You
+    /// Notifications") covers the middle of the screen — it ruined
+    /// the video-01-home still in run 44574566697. Dismiss it with
+    /// "Don't Allow" (a test install never needs pushes) whenever
+    /// it is present, before any screenshot. The alert appears once
+    /// per install, so after the first dismissal it stays gone.
+    private func dismissNotificationAlertIfPresent() {
+        let alert = app.alerts.firstMatch
+        guard alert.waitForExistence(timeout: 5) else { return }
+        let dontAllow = alert.buttons["Don't Allow"]
+        if dontAllow.waitForExistence(timeout: 5) {
+            dontAllow.tap()
+            Thread.sleep(forTimeInterval: 1)
+        }
+    }
+
     private func attachScreenshot(named name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
