@@ -432,7 +432,8 @@ final class OnBudgetUITests: XCTestCase {
     /// via the app UI, and joins the TEST household "Simcha House!"
     /// via invite code XPKVGJ as a member. Never the live household.
     /// Screenshots are attached with lifetime .keepAlways and
-    /// exported by the video-screens workflow.
+    /// exported by the simulator workflow (and the video-screens
+    /// workflow) as visible proof.
     func testVideoScreens() throws {
         guard let account = createConfirmedTestAccount() else { return }
         signInWithAccount(email: account.email, password: account.password)
