@@ -534,36 +534,20 @@ public struct HomeView: View {
 
     public var body: some View {
         ScrollView {
-            // Fund cards sit as ONE COMPACT UNIT (owner, Nov 16,
-            // 2026 — build 40: the white gap between the Spending
-            // hero and the Charity/Extra Fund row was "extra" and
-            // had to be removed). The stack gap is 10pt (was 16pt)
-            // and the hero's white body carries no bottom padding
-            // when it is empty (debt is $0), so the three cards read
-            // as one unit, not three blocks floating on white. The
-            // sections still breathe — 10pt, not zero.
-            // Build 41 (owner, Nov 16, 2026 — "much bigger and
-            // look like cards.. a small shadow below each card"):
-            // the cards are bigger and each carries its own shadow,
-            // so the gap grows to 12pt — just enough air for the
-            // shadow to read without the cards touching. They are
-            // distinct cards now, not one fused unit.
+            // Build 46 (owner, Nov 18, 2026 — the simpler-Home
+            // mockup IS the new Home): the default layout is the
+            // mockup — a Spending hero, Tzedaka as the clear second
+            // card, Savings and Overspent (Past) as quiet rows —
+            // and the previous layout stays as `.classic`, behind
+            // the Home Layout switch in Settings, so it can be
+            // restored if the owner changes his mind. Recent
+            // Transactions is shared by both layouts.
             VStack(alignment: .leading, spacing: 12) {
-                heroCard
-                // Charity + Extra Fund share one row, half-width
-                // each (owner, Nov 14, 2026 — supersedes the Nov 12
-                // bigger full-width stacked cards). Each card is ONE
-                // unified card (owner, Nov 16, 2026 — build 40):
-                // the expanded detail lives INSIDE its own card's
-                // white body, under that card only — never a
-                // separate block below the row (build 39 put the
-                // values under the NEIGHBOURING card). One card open
-                // at a time (accordion rule unchanged).
-                HStack(alignment: .top, spacing: 14) {
-                    charityCard
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    fundCard
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                switch appState.homeLayout {
+                case .simple:
+                    simpleContent
+                case .classic:
+                    classicContent
                 }
                 // Recent Transactions sits on the same 10pt stack
                 // gap as the cards above it (owner, Nov 16, 2026 —
@@ -607,6 +591,82 @@ public struct HomeView: View {
         }
     }
 
+    // MARK: Home layouts (build 46)
+
+    /// The previous Home layout (builds 40–45), preserved verbatim
+    /// as the backup (owner, Nov 18, 2026 — "keep the current Home
+    /// as a backup"): the Spending hero on top, Charity + Extra
+    /// Fund half-width in one row below it. Restorable from the
+    /// Home Layout switch in Settings. The fund cards sit as ONE
+    /// COMPACT UNIT (owner, Nov 16, 2026 — build 40: the white gap
+    /// between the Spending hero and the Charity/Extra Fund row was
+    /// "extra" and had to be removed). Build 41 (owner, Nov 16,
+    /// 2026 — "much bigger and look like cards.. a small shadow
+    /// below each card"): the cards are bigger and each carries its
+    /// own shadow, so the gap grows to 12pt — just enough air for
+    /// the shadow to read without the cards touching.
+    private var classicContent: some View {
+        Group {
+            heroCard()
+            // Charity + Extra Fund share one row, half-width each
+            // (owner, Nov 14, 2026 — supersedes the Nov 12 bigger
+            // full-width stacked cards). Each card is ONE unified
+            // card (owner, Nov 16, 2026 — build 40): the expanded
+            // detail lives INSIDE its own card's white body, under
+            // that card only — never a separate block below the row
+            // (build 39 put the values under the NEIGHBOURING
+            // card). One card open at a time (accordion rule
+            // unchanged).
+            HStack(alignment: .top, spacing: 14) {
+                charityCard
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                fundCard
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    /// The mockup's fund order on Home (build 46 — owner, Nov 18,
+    /// 2026): Spending, Tzedaka, Savings, Overspent (Past). The
+    /// layout order is FIXED in this order — the Funds page's
+    /// reorderable `fundOrder` does not move Home — and prominence
+    /// controls only the TREATMENT (hero / card / quiet row), never
+    /// the order: heroes first, then cards, then the quiet card,
+    /// each tier in this order.
+    private var mockupOrder: [FundSectionID] { [.spending, .charity, .fund, .debt] }
+
+    /// How a fund shows on the simpler Home: its stored
+    /// prominence, or the mockup default (Spending hero, Tzedaka
+    /// card, Savings and Overspent quiet).
+    private func prominence(of section: FundSectionID) -> FundProminence {
+        section.prominence(customProminence: appState.fundProminence)
+    }
+
+    /// The simpler Home (build 46 — owner, Nov 18, 2026: the
+    /// simpler-home-mockup layout IS the new Home): the hero fund
+    /// (Spending by default) on top, then the card funds (Tzedaka
+    /// by default), then ONE quiet card holding every quiet fund
+    /// (Savings and Overspent (Past) by default). 14pt between the
+    /// cards, like the mockup. Each fund's treatment is its stored
+    /// prominence — the owner sets it from the fund's edit sheet on
+    /// the Funds page — so any fund can be the hero, a card, or a
+    /// quiet row.
+    private var simpleContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(mockupOrder.filter { prominence(of: $0) == .hero }, id: \.self) { section in
+                if section == .spending {
+                    heroCard(simple: true)
+                } else {
+                    simpleFundCard(section: section, hero: true)
+                }
+            }
+            ForEach(mockupOrder.filter { prominence(of: $0) == .card }, id: \.self) { section in
+                simpleFundCard(section: section, hero: false)
+            }
+            quietCard
+        }
+    }
+
     // MARK: Hero — Weekly Budget
 
     // Hero — Weekly Budget. Bigger and more prominent than the
@@ -626,16 +686,16 @@ public struct HomeView: View {
     // the header strip. The loading state renders at the same full
     // hero size (shimmer skeleton blocks on WHITE, no tint, no
     // spinner), so the layout never jumps when the number arrives.
-    private var heroCard: some View {
+    private func heroCard(simple: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header strip (colored, short): ONE ROW — icon + name
             // + sync button. While loading or failed the strip is
             // white / muted grey, not blue.
-            heroHeaderStrip
+            heroHeaderStrip(simple: simple)
             // White body (majority): big amount + progress circle
             // side by side, spent line below, then the debt math
             // line / allowance states.
-            heroWhiteBody
+            heroWhiteBody(simple: simple)
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -676,7 +736,7 @@ public struct HomeView: View {
     /// (it was inline in the header strip in builds 40–45), at
     /// the biggest size the card allows, with the progress circle
     /// alongside it — the horizontal progress bar is gone.
-    private var heroWhiteBody: some View {
+    private func heroWhiteBody(simple: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             switch viewModel.week {
             case .loading:
@@ -698,7 +758,7 @@ public struct HomeView: View {
                 Button("Try Again") { Task { await viewModel.refresh() } }
                     .buttonStyle(TertiaryButtonStyle())
             case .loaded(let result):
-                heroBodyAmountDonut(result)
+                heroBodyAmountDonut(result, simple: simple)
                 heroLoadedContent(result)
             }
         }
@@ -764,7 +824,7 @@ public struct HomeView: View {
     // is 20pt, the icon disc 36pt, the sync circle 40pt, and the
     // strip carries 14pt vertical padding — the header reads as a
     // big card header now, not a slim bar. Skeleton blocks match.
-    private var heroHeaderStrip: some View {
+    private func heroHeaderStrip(simple: Bool = false) -> some View {
         HStack(spacing: 8) {
             if case .loading = viewModel.week {
                 // Skeleton icon + title while loading (owner, Nov 16,
@@ -789,6 +849,15 @@ public struct HomeView: View {
                     .lineLimit(1)
             }
             Spacer()
+            // The simpler Home (build 46 — the mockup): "This week"
+            // at the right of the header, white at 85%. Only when
+            // loaded — on the white loading strip white text would
+            // be invisible, and a failed strip is grey.
+            if simple, case .loaded = viewModel.week {
+                Text("This week")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
             if viewModel.isAdmin {
                 switch viewModel.week {
                 case .loading:
@@ -923,7 +992,7 @@ public struct HomeView: View {
     /// 2026). A failed allowance read (nil) still shows
     /// compute-week's numbers — only an explicit never-set hides
     /// them (audit H-P1-4).
-    private func heroBodyAmountDonut(_ result: WeekResult) -> some View {
+    private func heroBodyAmountDonut(_ result: WeekResult, simple: Bool = false) -> some View {
         let capacity = result.baseAvailableCents + result.tempCents
         let overBudget = SpendingProgress.isOverBudget(chargesCents: result.chargesCents, capacityCents: capacity)
         let fraction = SpendingProgress.fraction(chargesCents: result.chargesCents, capacityCents: capacity)
@@ -931,7 +1000,15 @@ public struct HomeView: View {
             HStack(spacing: 16) {
                 Text(MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false))
                     .font(.system(size: heroAmountSize, weight: .heavy))
-                    .foregroundStyle(overBudget ? DesignTokens.heroOverBudget : DesignTokens.ink)
+                    // Build 46 (owner, Nov 18, 2026 — the simpler
+                    // Home: "number colour = header colour"): in
+                    // the simple layout the amount is the brand
+                    // dark blue #1d4ed8 (the header colour, 5.9:1
+                    // on white). The classic layout keeps its ink
+                    // amount. Over budget the amount is red in
+                    // both layouts — the over-budget signal is
+                    // never lost.
+                    .foregroundStyle(overBudget ? DesignTokens.heroOverBudget : (simple ? StatCardTheme.spending.number : DesignTokens.ink))
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                     .accessibilityIdentifier("home.heroAmount")
@@ -941,26 +1018,51 @@ public struct HomeView: View {
                             : "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
                     )
                 Spacer()
-                spendingDonut(fraction: fraction, overBudget: overBudget, size: heroDonutSize)
+                spendingDonut(fraction: fraction, overBudget: overBudget, size: heroDonutSize, showUsedLabel: simple)
             }
 
-            // Spent line + % used + chevron. While no allowance is
-            // set the line reads "Not set".
-            HStack(spacing: 8) {
-                if viewModel.allowanceSet != false {
-                    Text("\(MoneyFormat.string(cents: result.chargesCents)) spent")
-                    Text("·")
-                    Text(usedPercentText(result: result, capacity: capacity))
-                } else {
-                    Text("Not set")
+            if simple {
+                // The simpler Home (build 46 — the mockup): the
+                // spent line reads "$236.42 spent so far" — the
+                // spent figure in bold ink, "spent so far" muted —
+                // and NO "· 59% used", because the ring beside the
+                // amount already shows the percentage, and NO
+                // chevron, because the mockup's hero has none.
+                // While no allowance is set the line reads "Not
+                // set".
+                HStack(spacing: 0) {
+                    if viewModel.allowanceSet != false {
+                        Text(MoneyFormat.string(cents: result.chargesCents))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Text(" spent so far")
+                            .font(.system(size: 14))
+                            .foregroundStyle(DesignTokens.muted)
+                    } else {
+                        Text("Not set")
+                            .font(.system(size: 14))
+                            .foregroundStyle(DesignTokens.muted)
+                    }
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color(hex: "#6b7280"))
+            } else {
+                // Spent line + % used + chevron. While no allowance is
+                // set the line reads "Not set".
+                HStack(spacing: 8) {
+                    if viewModel.allowanceSet != false {
+                        Text("\(MoneyFormat.string(cents: result.chargesCents)) spent")
+                        Text("·")
+                        Text(usedPercentText(result: result, capacity: capacity))
+                    } else {
+                        Text("Not set")
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+                .font(.system(size: 15))
+                .foregroundStyle(DesignTokens.ink)
             }
-            .font(.system(size: 15))
-            .foregroundStyle(DesignTokens.ink)
         }
     }
 
@@ -970,9 +1072,12 @@ public struct HomeView: View {
     /// light blue #dbeafe, the spent percentage in the centre. Same
     /// colours as OnBudgetWidget.donut, so the card and the widget
     /// can never drift apart. The ring is 12pt on iPhone (88pt
-    /// circle) and 14pt on iPad (120pt circle).
-    private func spendingDonut(fraction: Double, overBudget: Bool, size: CGFloat) -> some View {
+    /// circle) and 14pt on iPad (120pt circle). In the simpler Home
+    /// the centre also carries "used" under the percentage, like
+    /// the mockup's ring (59% over "used").
+    private func spendingDonut(fraction: Double, overBudget: Bool, size: CGFloat, showUsedLabel: Bool = false) -> some View {
         let lineWidth: CGFloat = isIPad ? 14 : 12
+        let percent = Int((fraction * 100).rounded())
         return ZStack {
             Circle()
                 .stroke(Color(hex: "#dbeafe"), lineWidth: lineWidth)
@@ -983,16 +1088,30 @@ public struct HomeView: View {
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: fraction >= 1 ? .butt : .round)
                 )
                 .rotationEffect(.degrees(-90))
-            Text("\(Int((fraction * 100).rounded()))%")
-                .font(.system(size: size * 0.22, weight: .bold))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .foregroundStyle(DesignTokens.ink)
+            if showUsedLabel {
+                VStack(spacing: 0) {
+                    Text("\(percent)%")
+                        .font(.system(size: size * 0.22, weight: .bold))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(DesignTokens.ink)
+                    Text("used")
+                        .font(.system(size: size * 0.125))
+                        .foregroundStyle(DesignTokens.muted)
+                }
+            } else {
+                Text("\(percent)%")
+                    .font(.system(size: size * 0.22, weight: .bold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .foregroundStyle(DesignTokens.ink)
+            }
         }
         .frame(width: size, height: size)
         .accessibilityIdentifier("home.heroDonut")
-        .accessibilityLabel("\(Int((fraction * 100).rounded())) percent of the weekly budget used")
+        .accessibilityLabel("\(percent) percent of the weekly budget used")
     }
 
     private func usedPercentText(result: WeekResult, capacity: Int) -> String {
@@ -1000,6 +1119,258 @@ public struct HomeView: View {
         if capacity <= 0 { return "Over budget" }
         let percent = Int((Double(result.chargesCents) / Double(capacity) * 100).rounded())
         return percent > 100 ? "Over budget" : "\(percent)% used"
+    }
+
+    // MARK: Simpler Home — fund card + quiet rows
+
+    /// The Tzedaka header colour in the simpler Home (build 46 —
+    /// the mockup): pale #d7e6fd with ink text. The shared
+    /// StatCardTheme.charity.banner stays #bfdbfe — the Funds page
+    /// keeps its existing pale — so this lives here, in Home only.
+    private var simpleCharityBanner: Color { Color(hex: "#d7e6fd") }
+
+    /// The loaded body data for a fund's simple card: the small
+    /// label above the amount, the amount itself, and the sub-line
+    /// below it (nil when the fund has no sub-line). Nil while the
+    /// fund's numbers are still loading (the caller shows
+    /// skeletons); a failed load is `simpleCardFailed`, not nil.
+    private func simpleCardData(for section: FundSectionID) -> (label: String, amountText: String, subText: String?)? {
+        switch section {
+        case .spending:
+            guard case .loaded(let result) = viewModel.week else { return nil }
+            let capacity = result.baseAvailableCents + result.tempCents
+            return (
+                label: "Left to spend",
+                amountText: MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false),
+                subText: "\(MoneyFormat.string(cents: result.chargesCents)) spent · \(usedPercentText(result: result, capacity: capacity))"
+            )
+        case .charity:
+            guard case .loaded(let summary) = viewModel.charity else { return nil }
+            let rate = summary.defaultRateBp / 100
+            return (
+                label: "Ready to give",
+                amountText: MoneyFormat.signedString(cents: summary.remainingCents),
+                subText: rate > 0 ? "Set aside for you — \(rate)% of income" : "Set aside for you"
+            )
+        case .fund:
+            guard case .loaded(let summary) = viewModel.fund else { return nil }
+            let pending = summary.pendingIncludingHeldCents + viewModel.pendingTopupsCents
+            return (
+                label: "Available",
+                amountText: MoneyFormat.signedString(cents: summary.availableCents),
+                subText: pending > 0 ? "\(MoneyFormat.string(cents: pending)) pending" : nil
+            )
+        case .debt:
+            guard case .loaded(let result) = viewModel.week else { return nil }
+            return (
+                label: "Still Owed",
+                amountText: MoneyFormat.signedString(cents: result.carriedDebtCents),
+                subText: nil
+            )
+        }
+    }
+
+    /// Whether a fund's simple card is in the FAILED state (the
+    /// caller shows the ErrorBox + Try Again).
+    private func simpleCardFailed(for section: FundSectionID) -> Bool {
+        switch section {
+        case .spending, .debt:
+            if case .failed = viewModel.week { return true }
+            return false
+        case .charity:
+            if case .failed = viewModel.charity { return true }
+            return false
+        case .fund:
+            if case .failed = viewModel.fund { return true }
+            return false
+        }
+    }
+
+    /// A full-width fund card in the simpler Home (build 46 — the
+    /// mockup): a SHORT coloured header (icon in a white circle +
+    /// the fund name) and a WHITE body holding the label, the big
+    /// amount in the header's colour, the sub-line, and a faint
+    /// chevron at the bottom-right. `hero: true` is the same card
+    /// with the hero-sized amount (a non-Spending fund set to hero
+    /// — the ring stays Spending-only, so a hero card has no ring
+    /// and no chevron). Tapping a card opens its fund on the Funds
+    /// tab. The header renders immediately — the name and icon are
+    /// local — only the body waits on the numbers.
+    private func simpleFundCard(section: FundSectionID, hero: Bool) -> some View {
+        let theme = section.theme
+        let name = section.displayName(customNames: appState.fundNames)
+        // Tzedaka's header is the mockup's pale #d7e6fd (ink text);
+        // every other fund takes its theme banner.
+        let banner: Color = section == .charity ? simpleCharityBanner : theme.banner
+        let onBanner: Color = section == .charity ? DesignTokens.ink : theme.onBanner
+        let amountSize: CGFloat = hero ? heroAmountSize : (isIPad ? 64 : 42)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(theme.glyph)
+                    .frame(width: 36, height: 36)
+                    .background(.white)
+                    .clipShape(Circle())
+                Text(name)
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(onBanner)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(banner)
+            VStack(alignment: .leading, spacing: 6) {
+                if let data = simpleCardData(for: section) {
+                    Text(data.label)
+                        .font(.system(size: 14))
+                        .foregroundStyle(DesignTokens.muted)
+                    Text(data.amountText)
+                        .font(.system(size: amountSize, weight: .heavy))
+                        .foregroundStyle(theme.number)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .accessibilityIdentifier(section == .charity ? "home.tzedakaAmount" : "home.simpleAmount.\(section.rawValue)")
+                    if let subText = data.subText {
+                        Text(subText)
+                            .font(.system(size: 13))
+                            .foregroundStyle(DesignTokens.muted)
+                    }
+                    if !hero {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(hex: "#9aa3af"))
+                        }
+                    }
+                } else if simpleCardFailed(for: section) {
+                    ErrorBox("Could not load \(name).")
+                    Button("Try Again") { Task { await viewModel.refresh() } }
+                        .buttonStyle(TertiaryButtonStyle())
+                } else {
+                    SkeletonBlock(width: 110, height: 14, cornerRadius: 6)
+                    SkeletonBlock(width: 180, height: amountSize + 8, cornerRadius: 6)
+                    SkeletonBlock(width: 150, height: 13, cornerRadius: 6)
+                }
+            }
+            .padding(.horizontal, hero ? 16 : 18)
+            .padding(.top, hero ? 24 : 18)
+            .padding(.bottom, hero ? 22 : 20)
+        }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .fundCardShadow()
+        .contentShape(Rectangle())
+        .onTapGesture { appState.openFund(section) }
+        .accessibilityIdentifier(section == .charity ? "home.tzedakaCard" : "home.simpleCard.\(section.rawValue)")
+        .accessibilityLabel(
+            simpleCardData(for: section).map { "\(name), \($0.amountText), show fund" } ?? "\(name), loading"
+        )
+    }
+
+    /// The amount for a quiet row: the fund's headline figure
+    /// (Savings = Available, Overspent = the carried debt, Tzedaka
+    /// = Ready to give, Spending = Left to spend). Nil while its
+    /// source is still loading (the caller shows a skeleton row).
+    private func quietAmountText(for section: FundSectionID) -> String? {
+        switch section {
+        case .spending:
+            guard case .loaded(let result) = viewModel.week else { return nil }
+            return MoneyFormat.signedString(cents: result.availableCents)
+        case .charity:
+            guard case .loaded(let summary) = viewModel.charity else { return nil }
+            return MoneyFormat.signedString(cents: summary.remainingCents)
+        case .fund:
+            guard case .loaded(let summary) = viewModel.fund else { return nil }
+            return MoneyFormat.signedString(cents: summary.availableCents)
+        case .debt:
+            guard case .loaded(let result) = viewModel.week else { return nil }
+            return MoneyFormat.signedString(cents: result.carriedDebtCents)
+        }
+    }
+
+    /// ONE white card holding every quiet fund (build 46 — the
+    /// mockup's Savings + Overspent (Past) rows): a hairline
+    /// divider between rows, each row a small icon circle, the
+    /// name, the amount in muted grey, and a faint chevron.
+    /// Renders only when at least one fund is quiet. Each row
+    /// loads independently — a slow fund shows a skeleton row
+    /// while the others already read.
+    @ViewBuilder
+    private var quietCard: some View {
+        let quiet = mockupOrder.filter { prominence(of: $0) == .quiet }
+        if !quiet.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(Array(quiet.enumerated()), id: \.element) { index, section in
+                    quietRow(section)
+                    if index < quiet.count - 1 {
+                        Rectangle()
+                            .fill(Color(hex: "#e7eaee"))
+                            .frame(height: 0.5)
+                            .padding(.horizontal, 16)
+                    }
+                }
+            }
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .fundCardShadow()
+            .accessibilityIdentifier("home.quietCard")
+        }
+    }
+
+    /// One quiet row (build 46 — the mockup): a 30pt icon circle
+    /// on #eef1f4, the fund name, the amount in muted grey, and a
+    /// faint chevron. Tapping the row opens its fund on the Funds
+    /// tab. A failed row reads "Couldn't load" in error red (its
+    /// fund's ErrorBox + Try Again live on the Funds page).
+    private func quietRow(_ section: FundSectionID) -> some View {
+        let name = section.displayName(customNames: appState.fundNames)
+        let failed = simpleCardFailed(for: section)
+        let amount = quietAmountText(for: section)
+        return Button { appState.openFund(section) } label: {
+            HStack(spacing: 12) {
+                if amount == nil, !failed {
+                    SkeletonBlock(width: 30, height: 30, cornerRadius: 15)
+                    SkeletonBlock(width: 90, height: 15, cornerRadius: 6)
+                    Spacer()
+                    SkeletonBlock(width: 60, height: 15, cornerRadius: 6)
+                } else {
+                    Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#7c8794"))
+                        .frame(width: 30, height: 30)
+                        .background(Color(hex: "#eef1f4"))
+                        .clipShape(Circle())
+                    Text(name)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Color(hex: "#3c4654"))
+                        .lineLimit(1)
+                    Spacer()
+                    if failed {
+                        Text("Couldn't load")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(DesignTokens.errorText)
+                    } else if let amount {
+                        Text(amount)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.muted)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#c3cad2"))
+                }
+            }
+            .frame(minHeight: 48)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(section == .fund ? "home.quietSavings" : (section == .debt ? "home.quietDebt" : "home.quietRow.\(section.rawValue)"))
+        .accessibilityLabel(amount.map { "\(name), \(amount), show fund" } ?? "\(name), loading")
     }
 
     // MARK: Stat cards — Charity + Extra Fund, half-size side by side

@@ -67,3 +67,32 @@ public enum FundOrderMove {
         return copy
     }
 }
+
+/// How a fund shows on the simpler Home (build 46 — owner, Nov 18,
+/// 2026): the mockup layout is Spending as the hero, Tzedaka as a
+/// full card, Savings and Overspent (Past) as quiet rows — but the
+/// owner can set any fund to any prominence from its edit sheet.
+/// Pure logic, so it lives in the kit where the tests can pin it.
+/// A stored value that is missing, blank, or unknown falls back to
+/// the fund's default, so a reset is just a missing key and a bad
+/// value can never strand a fund off Home.
+public enum FundProminence: String, CaseIterable {
+    /// The star: big coloured header + the biggest number + (for
+    /// Spending) the progress ring beside it.
+    case hero
+    /// A full-width card: coloured header + a big number in the
+    /// body, like the mockup's Tzedaka.
+    case card
+    /// One small row inside the shared quiet card, like the
+    /// mockup's Savings / Overspent (Past).
+    case quiet
+
+    /// The stored prominence for a fund, or its default when
+    /// nothing valid is stored.
+    public static func resolved(_ stored: String?, default defaultValue: FundProminence) -> FundProminence {
+        guard let raw = stored?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return defaultValue
+        }
+        return FundProminence(rawValue: raw) ?? defaultValue
+    }
+}

@@ -150,6 +150,34 @@ public final class AppViewModel: ObservableObject {
     /// (The widget renders no fund icons, so it reads no icons.)
     @Published public var fundIcons: [String: String] = [:]
 
+    /// How each fund shows on the simpler Home (build 46 — owner
+    /// Nov 18, 2026): `households.fund_prominence`, a map from fund
+    /// key to "hero" / "card" / "quiet". The ONE source Home reads
+    /// from, loaded at boot alongside the fund names and icons;
+    /// [:] until then, and [:] when the migration is not applied
+    /// yet (the mockup defaults show). Updated in place by a
+    /// prominence change.
+    @Published public var fundProminence: [String: String] = [:]
+
+    /// Which Home layout shows (build 46 — owner Nov 18, 2026):
+    /// the simpler mockup layout is the default; the previous
+    /// layout stays available as `.classic` so it can be restored
+    /// if the owner changes his mind. A per-device preference
+    /// (UserDefaults, not household data — each member picks their
+    /// own layout). The Settings screen offers the switch.
+    public enum HomeLayout: String {
+        case simple
+        case classic
+    }
+    @Published public var homeLayout: HomeLayout = {
+        let raw = UserDefaults.standard.string(forKey: "hb-home-layout") ?? ""
+        return HomeLayout(rawValue: raw) ?? .simple
+    }() {
+        didSet {
+            UserDefaults.standard.set(homeLayout.rawValue, forKey: "hb-home-layout")
+        }
+    }
+
     /// The Home dashboard's view model, owned here (not by HomeView)
     /// so boot can preload it behind the loading screen (owner,
     /// Nov 15, 2026). Created once the household is known
@@ -321,6 +349,7 @@ public final class AppViewModel: ObservableObject {
             householdName = try? await client.postgrest.householdName(householdId: membership.householdId)
             fundNames = (try? await client.postgrest.householdFundNames(householdId: membership.householdId)) ?? [:]
             fundIcons = (try? await client.postgrest.householdFundIcons(householdId: membership.householdId)) ?? [:]
+            fundProminence = (try? await client.postgrest.householdFundProminence(householdId: membership.householdId)) ?? [:]
             ownerId = try? await client.postgrest.householdOwnerId(householdId: membership.householdId)
             // Preload the dashboard behind the loading screen
             // (owner, Nov 15, 2026): start the Home load now and
@@ -368,6 +397,7 @@ public final class AppViewModel: ObservableObject {
         householdName = try? await client.postgrest.householdName(householdId: id)
         fundNames = (try? await client.postgrest.householdFundNames(householdId: id)) ?? [:]
         fundIcons = (try? await client.postgrest.householdFundIcons(householdId: id)) ?? [:]
+        fundProminence = (try? await client.postgrest.householdFundProminence(householdId: id)) ?? [:]
         // A freshly created household is owned by its creator; a
         // freshly joined one learns its owner on the next boot.
         if role == .admin {
@@ -486,7 +516,15 @@ public final class AppViewModel: ObservableObject {
     /// Weekly Allowance" (never-set state) lands here instead of
     /// on a Settings Budget card (owner decision #27, re-pointed).
     public func openSpendingFund() {
-        expandedCard = .spending
+        openFund(.spending)
+    }
+
+    /// Open the Funds tab on a fund (build 46 — the simpler Home's
+    /// cards and quiet rows navigate to their fund, like the
+    /// Spending hero's "Set Your Weekly Allowance" lands on
+    /// Spending): expands that fund's card and selects Funds.
+    public func openFund(_ section: FundSectionID) {
+        expandedCard = section.expandedCard
         suppressNextTabReset = true
         selectedTab = .funds
     }

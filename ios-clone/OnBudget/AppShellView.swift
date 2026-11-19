@@ -165,6 +165,7 @@ public struct AppShellView: View {
             if let context = settingsContext() {
                 SettingsView(
                     context: context,
+                    appState: appState,
                     onBack: {
                         appState.dismissSettings()
                     },

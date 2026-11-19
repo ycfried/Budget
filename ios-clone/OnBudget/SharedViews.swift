@@ -748,6 +748,27 @@ public enum StatCardTheme {
     // in DesignTokens (the widget still uses charityDeep; a smoke
     // test pins fundDeepHex).
 
+    /// The card's number colour on the white card BODY (build 46 —
+    /// the simpler Home, owner Nov 18, 2026: "number colour =
+    /// header colour"). The number is the same colour family as
+    /// the header, at a depth that reads well on white: Spending
+    /// the brand dark blue #1d4ed8 (its banner, 5.9:1 on white),
+    /// Tzedaka the primary blue #2f6bff (4.4:1), Savings the
+    /// muted grey #6b7280 (4.8:1), Overspent (Past) ink #0f172a.
+    /// The CLASSIC Home keeps its all-ink numbers — this colour
+    /// applies ONLY in the simple layout (and the Funds page keeps
+    /// its own ink amounts). An over-budget Spending amount is
+    /// NOT this colour: it stays `heroOverBudget` red #991b1b, so
+    /// the over-budget signal is never lost.
+    public var number: Color {
+        switch self {
+        case .charity: return DesignTokens.primary
+        case .fund: return DesignTokens.muted
+        case .debt: return DesignTokens.ink
+        case .spending: return DesignTokens.deep
+        }
+    }
+
     /// SF Symbol for the card. There is no piggy-bank symbol, so
     /// Extra Fund uses a banknote; Charity uses a giving glyph.
     /// NOTE (build 17): the owner asked for a giving hand, but

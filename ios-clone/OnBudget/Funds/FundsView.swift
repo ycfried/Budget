@@ -101,6 +101,40 @@ public enum FundSectionID: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The Funds page's expansion slot for this fund (build 46 —
+    /// the simpler Home's cards and quiet rows open their fund on
+    /// the Funds tab via `AppState.openFund`).
+    public var expandedCard: ExpandedCard {
+        switch self {
+        case .spending: return .spending
+        case .fund: return .fund
+        case .charity: return .charity
+        case .debt: return .debt
+        }
+    }
+
+    /// The fund's DEFAULT Home prominence (build 46 — the simpler
+    /// Home mockup, owner Nov 18, 2026): Spending is the hero,
+    /// Tzedaka the clear second card, Savings and Overspent (Past)
+    /// quiet rows. The stored `fund_prominence` map overrides this
+    /// per fund; a missing/blank/unknown stored value falls back
+    /// here, so the mockup layout is what shows until the owner
+    /// changes a card.
+    public var defaultProminence: FundProminence {
+        switch self {
+        case .spending: return .hero
+        case .charity: return .card
+        case .fund, .debt: return .quiet
+        }
+    }
+
+    /// How this fund shows on Home (build 46): the stored
+    /// prominence when one is stored and valid, else the mockup
+    /// default above.
+    public func prominence(customProminence: [String: String]) -> FundProminence {
+        FundProminence.resolved(customProminence[rawValue], default: defaultProminence)
+    }
+
     /// The one-line fund description (build 42 — owner, Nov 17,
     /// 2026: descriptions live behind an info icon in the card
     /// header, not as a text line in the expanded card). The debt
@@ -270,6 +304,7 @@ public struct FundsView: View {
                 section: section,
                 currentName: section.displayName(customNames: appState.fundNames),
                 currentIcon: appState.fundIcons[section.rawValue] ?? "",
+                currentProminence: section.prominence(customProminence: appState.fundProminence),
                 viewModel: viewModel,
                 onSaved: { names in
                     appState.fundNames = names
@@ -290,6 +325,9 @@ public struct FundsView: View {
                 },
                 onIconsSaved: { icons in
                     appState.fundIcons = icons
+                },
+                onProminenceSaved: { map in
+                    appState.fundProminence = map
                 },
                 onClose: { renamingFund = nil }
             )

@@ -951,6 +951,9 @@ public struct RenameFundSheet: View {
     /// The stored custom icon ("" when none — the default icon
     /// shows). Pre-fills the picker selection.
     public let currentIcon: String
+    /// The fund's current Home prominence (build 46 — the simpler
+    /// Home, owner Nov 18, 2026). Pre-fills the picker selection.
+    public let currentProminence: FundProminence
     @ObservedObject public var viewModel: FundsViewModel
     /// Called with the household's updated fund_names map on a
     /// successful save, so the caller refreshes the shared source.
@@ -959,10 +962,16 @@ public struct RenameFundSheet: View {
     /// successful icon save, so the caller refreshes the shared
     /// source.
     public var onIconsSaved: ([String: String]) -> Void
+    /// Called with the household's updated fund_prominence map on
+    /// a successful prominence save, so the caller refreshes the
+    /// shared source (build 46).
+    public var onProminenceSaved: ([String: String]) -> Void
     public var onClose: () -> Void
     @State private var nameText: String
     /// The picked icon ("" = the default icon for this fund).
     @State private var selectedIcon: String
+    /// The picked Home prominence (build 46).
+    @State private var selectedProminence: FundProminence
     @State private var fieldError: String?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -970,20 +979,25 @@ public struct RenameFundSheet: View {
         section: FundSectionID,
         currentName: String,
         currentIcon: String = "",
+        currentProminence: FundProminence,
         viewModel: FundsViewModel,
         onSaved: @escaping ([String: String]) -> Void,
         onIconsSaved: @escaping ([String: String]) -> Void = { _ in },
+        onProminenceSaved: @escaping ([String: String]) -> Void = { _ in },
         onClose: @escaping () -> Void = {}
     ) {
         self.section = section
         self.currentName = currentName
         self.currentIcon = currentIcon
+        self.currentProminence = currentProminence
         self.viewModel = viewModel
         self.onSaved = onSaved
         self.onIconsSaved = onIconsSaved
+        self.onProminenceSaved = onProminenceSaved
         self.onClose = onClose
         self._nameText = State(initialValue: currentName)
         self._selectedIcon = State(initialValue: currentIcon)
+        self._selectedProminence = State(initialValue: currentProminence)
     }
 
     /// The icon the grid highlights: the pick, or the fund's
@@ -1038,11 +1052,28 @@ public struct RenameFundSheet: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.primary)
             }
+            // Home prominence (build 46 — the simpler Home, owner
+            // Nov 18, 2026): the owner sets how THIS card shows on
+            // Home — the star hero, a full card, or a quiet row.
+            // The same edit sheet already holds the name and the
+            // icon, so the prominence lives here too, not on a
+            // separate screen. The pick saves with the name and
+            // icon below.
+            Text("Show on Home")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            Picker("Show on Home", selection: $selectedProminence) {
+                Text("Hero").tag(FundProminence.hero)
+                Text("Card").tag(FundProminence.card)
+                Text("Quiet Row").tag(FundProminence.quiet)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("funds.prominencePicker")
             if let fieldError {
                 FundsErrorBox(fieldError)
             }
             HStack(spacing: 12) {
-                FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename" || viewModel.busyAction == "fund-icon") {
+                FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename" || viewModel.busyAction == "fund-icon" || viewModel.busyAction == "fund-prominence") {
                     saveTapped()
                 }
                 FundsTertiaryButton("Cancel") { onClose() }
@@ -1068,7 +1099,8 @@ public struct RenameFundSheet: View {
         }
         let nameChanged = trimmed != currentName.trimmingCharacters(in: .whitespacesAndNewlines)
         let iconChanged = selectedIcon != currentIcon
-        guard nameChanged || iconChanged else {
+        let prominenceChanged = selectedProminence != currentProminence
+        guard nameChanged || iconChanged || prominenceChanged else {
             fieldError = "Nothing to change."
             return
         }
@@ -1087,6 +1119,13 @@ public struct RenameFundSheet: View {
             if ok, iconChanged {
                 if let icons = await viewModel.setFundIcon(section: section, icon: selectedIcon) {
                     onIconsSaved(icons)
+                } else {
+                    ok = false
+                }
+            }
+            if ok, prominenceChanged {
+                if let map = await viewModel.setFundProminence(section: section, prominence: selectedProminence) {
+                    onProminenceSaved(map)
                 } else {
                     ok = false
                 }

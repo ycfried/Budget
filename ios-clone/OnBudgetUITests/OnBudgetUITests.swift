@@ -384,6 +384,46 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "12-home-hero-amount-donut")
     }
 
+    /// Build 46 (owner, Nov 18, 2026 — "the mockup layout is the
+    /// new Home"): the simpler Home shows the Spending hero, the
+    /// Tzedaka card second, and Savings + Overspent (Past) as
+    /// quiet rows in one card. NOTE: blocked by the known 429
+    /// sign-up gate in CI like the other UI tests — it fails in
+    /// the sign-up preamble until the gate clears, and proves the
+    /// layout then. The default layout is Simple, so no Settings
+    /// flip is needed; the fund_prominence migration need not be
+    /// applied for the defaults to show.
+    func testSimpleHomeLayout() throws {
+        signUpAndJoinTestHousehold()
+
+        XCTAssertTrue(
+            app.staticTexts.matching(identifier: "home.heroAmount").firstMatch
+                .waitForExistence(timeout: 60),
+            "Simple Home hero amount did not appear (home.heroAmount)"
+        )
+        XCTAssertTrue(
+            app.otherElements.matching(identifier: "home.tzedakaCard").firstMatch
+                .waitForExistence(timeout: 15),
+            "Simple Home Tzedaka card did not appear second (home.tzedakaCard)"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(identifier: "home.tzedakaAmount").firstMatch
+                .waitForExistence(timeout: 15),
+            "Simple Home Tzedaka amount did not appear (home.tzedakaAmount)"
+        )
+        XCTAssertTrue(
+            app.buttons.matching(identifier: "home.quietSavings").firstMatch
+                .waitForExistence(timeout: 15),
+            "Simple Home quiet Savings row did not appear (home.quietSavings)"
+        )
+        XCTAssertTrue(
+            app.buttons.matching(identifier: "home.quietDebt").firstMatch
+                .waitForExistence(timeout: 15),
+            "Simple Home quiet Overspent row did not appear (home.quietDebt)"
+        )
+        attachScreenshot(named: "13-simple-home-layout")
+    }
+
     /// Build 46 (owner, Nov 18, 2026 — "you can't delete it once it
     /// was added"): record a $1 cash gift from the Charity card,
     /// then delete it from the Activity feed — the row must go and

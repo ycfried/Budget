@@ -945,6 +945,21 @@ extension RPCClient {
         ])
     }
 
+    // `set_fund_prominence(p_household_id, p_fund_key, p_prominence)`
+    // (`supabase/fund-prominence.sql`, build 46 — mirrors
+    // set_fund_icon). Admin only. `pFundKey` is one of spending /
+    // fund / charity / debt. `pProminence` is one of hero / card /
+    // quiet; an empty prominence resets that fund to its default
+    // Home prominence. Returns the household's updated
+    // fund_prominence map.
+    public func setFundProminence(pHouseholdId: UUID, pFundKey: String, pProminence: String) async throws -> [String: String] {
+        try await call(name: "set_fund_prominence", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_fund_key": pFundKey,
+            "p_prominence": pProminence,
+        ])
+    }
+
     // MARK: - Display-name sync (build 43, item 9)
     //
     // `sync_my_display_name(p_display_name)`

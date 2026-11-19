@@ -36,8 +36,13 @@ final class SpendingProgressTests: XCTestCase {
         XCTAssertTrue(SpendingProgress.isOverBudget(chargesCents: 1000, capacityCents: 0))
     }
 
-    func testNegativeCapacityNeverGoesNegative() {
-        XCTAssertEqual(SpendingProgress.fraction(chargesCents: 0, capacityCents: -5000), 0)
+    func testNegativeCapacityIsOverBudgetFullRing() {
+        // A negative capacity means the week started over budget
+        // (debt ate the whole base): the ring is full, never a
+        // negative arc — even with zero charges, 0 > a negative
+        // capacity is over budget (the old bar's H-P2-6 rule).
+        XCTAssertEqual(SpendingProgress.fraction(chargesCents: 0, capacityCents: -5000), 1)
+        XCTAssertTrue(SpendingProgress.isOverBudget(chargesCents: 0, capacityCents: -5000))
         XCTAssertEqual(SpendingProgress.fraction(chargesCents: 1000, capacityCents: -5000), 1)
     }
 }

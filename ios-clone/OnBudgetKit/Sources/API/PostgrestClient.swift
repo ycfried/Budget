@@ -384,6 +384,21 @@ public struct PostgrestClient {
         return row?.fundIcons ?? [:]
     }
 
+    /// Home prominences (build 46 — mirrors householdFundIcons):
+    /// the household's `fund_prominence` map (fund key → "hero" /
+    /// "card" / "quiet"). Missing/empty means the default
+    /// prominence for that fund (the simpler-Home mockup layout).
+    /// Degrades to [:] when the column is not applied yet.
+    public func householdFundProminence(householdId: UUID) async throws -> [String: String] {
+        struct Row: Decodable { let fundProminence: [String: String]?; enum CodingKeys: String, CodingKey { case fundProminence = "fund_prominence" } }
+        let row: Row? = try await fetchOne(PostgrestQuery(
+            table: "households",
+            columns: "fund_prominence",
+            filters: [.householdRow(householdId)]
+        ))
+        return row?.fundProminence ?? [:]
+    }
+
     /// Base allowance + whether it was ever explicitly set
     /// (live.js:566-583). `allowanceSetAt == nil` means the $375 is
     /// the schema default, not a choice.

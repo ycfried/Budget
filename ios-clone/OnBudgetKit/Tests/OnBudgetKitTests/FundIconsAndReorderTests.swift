@@ -64,4 +64,31 @@ final class FundIconsAndReorderTests: XCTestCase {
         XCTAssertEqual(FundOrderMove.moved(["A", "B", "C", "D"], from: 0, to: 9), ["A", "B", "C", "D"])
         XCTAssertEqual(FundOrderMove.moved(["A", "B", "C", "D"], from: 9, to: 0), ["A", "B", "C", "D"])
     }
+
+    // MARK: Fund prominence (build 46 — the simpler Home)
+
+    func testProminenceStoredValueWins() {
+        XCTAssertEqual(FundProminence.resolved("hero", default: .quiet), .hero)
+        XCTAssertEqual(FundProminence.resolved("card", default: .hero), .card)
+        XCTAssertEqual(FundProminence.resolved("quiet", default: .card), .quiet)
+    }
+
+    func testProminenceMissingBlankOrUnknownFallsBackToDefault() {
+        XCTAssertEqual(FundProminence.resolved(nil, default: .hero), .hero)
+        XCTAssertEqual(FundProminence.resolved("", default: .card), .card)
+        XCTAssertEqual(FundProminence.resolved("   ", default: .quiet), .quiet)
+        XCTAssertEqual(FundProminence.resolved("big", default: .card), .card)
+        XCTAssertEqual(FundProminence.resolved("HERO", default: .quiet), .quiet)
+    }
+
+    func testProminenceTrimsWhitespace() {
+        XCTAssertEqual(FundProminence.resolved("  card  ", default: .hero), .card)
+    }
+
+    func testProminenceRawValuesAreTheStoredStrings() {
+        XCTAssertEqual(FundProminence.hero.rawValue, "hero")
+        XCTAssertEqual(FundProminence.card.rawValue, "card")
+        XCTAssertEqual(FundProminence.quiet.rawValue, "quiet")
+        XCTAssertEqual(FundProminence.allCases.count, 3)
+    }
 }

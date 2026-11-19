@@ -20,6 +20,11 @@ import OnBudgetKit
 
 struct SettingsView: View {
     let context: SettingsContext
+    /// The shared app state (build 46 — the Home Layout switch
+    /// below reads and writes `appState.homeLayout`, the per-device
+    /// Home layout preference, so flipping it changes Home as soon
+    /// as Settings closes).
+    let appState: AppViewModel
     let onBack: () -> Void
     let plaidLauncher: PlaidLinkLauncher
 
@@ -27,10 +32,12 @@ struct SettingsView: View {
 
     init(
         context: SettingsContext,
+        appState: AppViewModel,
         onBack: @escaping () -> Void = {},
         plaidLauncher: PlaidLinkLauncher = PlaidLinkNotLinkedLauncher()
     ) {
         self.context = context
+        self.appState = appState
         self.onBack = onBack
         self.plaidLauncher = plaidLauncher
     }
@@ -52,6 +59,7 @@ struct SettingsView: View {
                 ConnectedAccountsView(context: context, toast: toast, plaidLauncher: plaidLauncher)
                 EmailAlertsView(context: context, toast: toast)
                 MembersSettingsView(context: context, toast: toast)
+                HomeLayoutSettingsCard(appState: appState)
                 PrivacyTermsSettingsCard()
                 // Merchant Names is NOT here anymore (owner, Nov 15,
                 // 2026 — build 34): it moved to the Transactions
@@ -61,6 +69,26 @@ struct SettingsView: View {
             .padding()
         }
         .toastOverlay(toast) // Centered mid-screen popup (owner, Nov 16, 2026 — build 38).
+    }
+}
+
+/// Build 46 (owner, Nov 18, 2026): the Home Layout switch — the
+/// simpler mockup layout is the default, and the previous layout
+/// stays available as "Classic" so it can be restored if the owner
+/// changes his mind. A per-device preference (each member picks
+/// their own layout on their own device), not an admin setting.
+private struct HomeLayoutSettingsCard: View {
+    @ObservedObject var appState: AppViewModel
+
+    var body: some View {
+        SettingsCard(title: "Home Layout") {
+            Picker("Home Layout", selection: $appState.homeLayout) {
+                Text("Simple").tag(AppViewModel.HomeLayout.simple)
+                Text("Classic").tag(AppViewModel.HomeLayout.classic)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("settings.homeLayoutPicker")
+        }
     }
 }
 

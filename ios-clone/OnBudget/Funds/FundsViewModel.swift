@@ -1609,6 +1609,32 @@ public final class FundsViewModel: ObservableObject {
         }
     }
 
+    /// Set a fund's Home prominence (build 46 — the simpler Home,
+    /// owner Nov 18, 2026). Mirrors setFundIcon exactly: admin
+    /// only, server-side. Returns the household's updated
+    /// fund_prominence map on success, so the caller (FundsView)
+    /// can update the shared `appState.fundProminence` — the ONE
+    /// source Home reads from. On failure the plain-language error
+    /// is set on `alertTitle` / `alertMessage` and nil is returned.
+    public func setFundProminence(section: FundSectionID, prominence: FundProminence) async -> [String: String]? {
+        guard busyAction == nil else { return nil }
+        busyAction = "fund-prominence"
+        defer { busyAction = nil }
+        do {
+            let map = try await context.client.rpcs.setFundProminence(
+                pHouseholdId: context.householdId, pFundKey: section.rawValue, pProminence: prominence.rawValue
+            )
+            // No fund name in the toast: the view model holds no
+            // custom names, and the sheet it was changed from is
+            // titled with the current name already.
+            succeed("Now shows on Home as \(prominence.rawValue).")
+            return map
+        } catch {
+            fail(title: "Could Not Change Home Layout", error: error)
+            return nil
+        }
+    }
+
     // MARK: - Review: held refunds
 
     /// Release a held refund via `resolve_held_refund`
