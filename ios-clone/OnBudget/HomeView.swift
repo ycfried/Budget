@@ -1370,7 +1370,7 @@ public struct HomeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(section == .fund ? "home.quietSavings" : (section == .debt ? "home.quietDebt" : "home.quietRow.\(section.rawValue)"))
-        .accessibilityLabel(amount.map { "\(name), \(amount), show fund" } ?? "\(name), loading")
+        .accessibilityLabel(amount.map { "\(name), \($0), show fund" } ?? "\(name), loading")
     }
 
     // MARK: Stat cards — Charity + Extra Fund, half-size side by side
