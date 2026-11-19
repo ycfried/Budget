@@ -20,8 +20,10 @@ import OnBudgetKit
 ///   ActivityView as subpages on the Transactions NavigationStack — the
 ///   native equivalent of the web's full pages. The links are hidden
 ///   until a handler is supplied, so they never lead nowhere. Trash is
-///   admin-only, only when trashed rows exist. The manual sync icon
-///   (admin only, 44pt circle, lighter blue) sits right-aligned at
+///   admin-only, only when trashed rows exist. "Export" (build 45) is
+///   last in the row: it opens the full-screen export popup (PDF /
+///   CSV, filtered scope or all). The manual sync icon (admin only,
+///   44pt circle, lighter blue) sits right-aligned at
 ///   the end of this row.
 /// - Search box (owner, Nov 12, 2026): standard iOS search look —
 ///   system-grey filled field, magnifier inside on the left, short
@@ -82,6 +84,9 @@ public struct TransactionsView: View {
     @State private var showingFilters: Bool = false
     @State private var showingAdd: Bool = false
     @State private var showingTrash: Bool = false
+    /// Build 45: the export popup (full-screen cover, like the
+    /// other popups on this page).
+    @State private var showingExport: Bool = false
     @State private var actionsTransaction: Transaction?
     /// iPad content width (build 36): the tab reads as a centered
     /// 900pt column on the regular size class.
@@ -181,6 +186,17 @@ public struct TransactionsView: View {
         // screen and starts at the top; Back dismisses it.
         .fullScreenCover(isPresented: $showingTrash) {
             TrashView(viewModel: viewModel, onBack: { showingTrash = false })
+        }
+        // Build 45 (Nov 18, 2026): full-screen cover, not a detent
+        // sheet — popups are always full size. The export popup
+        // fetches the whole history on open and opens the system
+        // share sheet on top of itself after generating.
+        .fullScreenCover(isPresented: $showingExport) {
+            TransactionExportView(
+                viewModel: viewModel,
+                householdName: appState.householdName,
+                onDismiss: { showingExport = false }
+            )
         }
         // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
         // cover, not a detent sheet. iPad width stays 600pt
@@ -362,6 +378,17 @@ public struct TransactionsView: View {
                         Button("Merchants", action: onShowMerchantNames)
                             .buttonStyle(SmallOutlineButtonStyle())
                     }
+                    // Export (build 45, Nov 18, 2026): the
+                    // page-links row is the established home for
+                    // page-level actions, and the header must not
+                    // gain a third button next to "+ Add" and
+                    // "Filters". Last in the row — export is
+                    // read-only and non-urgent, and the row scrolls
+                    // with a cut-off chip hinting at more. Opens
+                    // the full-screen export popup.
+                    Button("Export") { showingExport = true }
+                        .buttonStyle(SmallOutlineButtonStyle())
+                        .accessibilityIdentifier("export.open")
                 }
             }
             if viewModel.isAdmin {

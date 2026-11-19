@@ -443,6 +443,34 @@ public final class TransactionsViewModel {
         }
     }
 
+    // MARK: - Export (build 45, Nov 18, 2026)
+
+    /// The rows an export covers, fetched whole first: the list
+    /// page only ever holds the rows loaded so far (25 at a time),
+    /// so an export of the loaded page alone would silently miss
+    /// the rows the user never tapped Load More for. The full
+    /// history (~90 rows) is fetched in the background, then the
+    /// active filters apply for the filtered scope, or nothing
+    /// applies for Export all. Read-only — it never changes
+    /// transactions. A failed fetch throws: a partial export must
+    /// never present itself as the whole history.
+    public func fetchExportRows(scope: TransactionExportScope) async throws -> [Transaction] {
+        let all = try await client.postgrest.allTransactions(householdId: householdId)
+        switch scope {
+        case .all:
+            return all
+        case .filtered:
+            return filters.apply(to: all)
+        }
+    }
+
+    /// The household name for the PDF header (`appState.
+    /// householdName` is the first source — the view passes it
+    /// when it has it; this is the fallback when it is nil).
+    public func fetchHouseholdName() async -> String? {
+        try? await client.postgrest.householdName(householdId: householdId)
+    }
+
     // MARK: - Manual sync (admin only)
 
     /// `runBankSync` (live.js:2842-2874): one sync at a time; a repeat

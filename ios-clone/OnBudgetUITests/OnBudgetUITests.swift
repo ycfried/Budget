@@ -286,6 +286,95 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "gmail-callback")
     }
 
+    /// Export (build 45, Nov 18, 2026): the Transactions page's
+    /// "Export" chip opens the full-screen export popup; Generate
+    /// builds the file for the chosen scope + format and opens the
+    /// system share sheet. The test joins Proof Household 2 as a
+    /// MEMBER, so the chip row holds Activity / Past Weeks / Export
+    /// only (Review / Merchants / Trash are admin-only) and the
+    /// chip is visible without scrolling. The popup fetches the
+    /// whole history (~1000 rows) before it shows a count, so the
+    /// count wait is generous. The share sheet's AirDrop section
+    /// is the proof it presented (the popup's own Cancel button
+    /// shares the "Cancel" label, so that label cannot prove the
+    /// sheet). The second half re-proves the other scope + format:
+    /// All + CSV.
+    func testExportTransactions() throws {
+        signUpAndJoinTestHousehold()
+
+        tapTab(identifier: "tab.transactions", label: "Transactions")
+        let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
+        XCTAssertTrue(
+            firstRow.waitForExistence(timeout: 120),
+            "Transactions did not load any rows within 120s"
+        )
+
+        // -- Export popup opens, history fetch shows a count --------
+        let exportChip = app.buttons["export.open"]
+        XCTAssertTrue(
+            exportChip.waitForExistence(timeout: 15),
+            "Export chip missing on Transactions"
+        )
+        exportChip.tap()
+        XCTAssertTrue(
+            app.staticTexts["Export Transactions"].waitForExistence(timeout: 15),
+            "Export popup did not open after tapping Export"
+        )
+        XCTAssertTrue(
+            app.staticTexts["export.count"].waitForExistence(timeout: 60),
+            "Export popup did not show a transaction count after fetching the history"
+        )
+        attachScreenshot(named: "09-export-popup")
+
+        // -- Generate (PDF, filtered) opens the share sheet ---------
+        app.buttons["export.generate"].tap()
+        XCTAssertTrue(
+            app.staticTexts["AirDrop"].waitForExistence(timeout: 30),
+            "Share sheet did not appear after Generate (no AirDrop section)"
+        )
+        attachScreenshot(named: "10-export-share-sheet")
+        tapHittableCancel()
+
+        // -- Export all + CSV ---------------------------------------
+        app.segmentedControls["export.scope"].buttons["All"].tap()
+        app.segmentedControls["export.format"].buttons["CSV"].tap()
+        XCTAssertTrue(
+            app.staticTexts["export.count"].waitForExistence(timeout: 30),
+            "Export popup lost its count after switching to All + CSV"
+        )
+        app.buttons["export.generate"].tap()
+        XCTAssertTrue(
+            app.staticTexts["AirDrop"].waitForExistence(timeout: 30),
+            "Share sheet did not appear after Generate for All + CSV"
+        )
+        attachScreenshot(named: "11-export-all-csv")
+        tapHittableCancel()
+
+        // -- Close returns to the Transactions list ------------------
+        app.buttons["Close"].tap()
+        XCTAssertTrue(
+            app.buttons.matching(identifier: "transaction.row").firstMatch
+                .waitForExistence(timeout: 30),
+            "Closing the export popup did not return to the Transactions list"
+        )
+    }
+
+    /// Taps the hittable Cancel button. The export popup and the
+    /// share sheet both have one, so the first match may be the
+    /// covered popup button, which is not hittable while the sheet
+    /// is up — the sheet's Cancel is the hittable one.
+    private func tapHittableCancel() {
+        let cancels = app.buttons.matching(NSPredicate(format: "label == 'Cancel'"))
+        for index in 0..<cancels.count {
+            let button = cancels.element(boundBy: index)
+            if button.isHittable {
+                button.tap()
+                return
+            }
+        }
+        XCTFail("No hittable Cancel button found")
+    }
+
     /// Past Weeks / Activity (Nov 9, 2026): the Transactions page
     /// links push PastWeeksView / ActivityView as subpages in the
     /// Transactions NavigationStack — the native equivalent of the

@@ -570,3 +570,34 @@ struct ShareSheet: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
+
+/// File variant of the share sheet (build 45 — transaction export):
+/// shares a generated file URL so the user can save, AirDrop, email,
+/// or print it. Nothing is auto-emailed or auto-saved — the sheet
+/// is the choice. iPad popover: a UIActivityViewController presented
+/// without a source view crashes on iPad, so the popover is anchored
+/// to the centre of the key window's root view (no bar button owns
+/// this sheet — it comes from a full-screen popup).
+struct FileShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        if let popover = controller.popoverPresentationController {
+            let keyWindow = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows)
+                .first(where: \.isKeyWindow)
+            if let rootView = keyWindow?.rootViewController?.view {
+                popover.sourceView = rootView
+                popover.sourceRect = CGRect(
+                    x: rootView.bounds.midX, y: rootView.bounds.midY, width: 0, height: 0
+                )
+                popover.permittedArrowDirections = []
+            }
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}

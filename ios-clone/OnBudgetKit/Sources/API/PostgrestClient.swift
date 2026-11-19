@@ -532,6 +532,25 @@ public struct PostgrestClient {
         )
     }
 
+    /// Whole-history transactions for export (build 45, Nov 18,
+    /// 2026): every row for the household, date desc with the `id
+    /// desc` tiebreaker (same Nov 18 ordering fix as
+    /// `transactionsPage`), via `fetchAllPages` — the list page
+    /// only ever holds the rows loaded so far (25 at a time), and
+    /// an export of the loaded page alone would silently miss the
+    /// rows the user never tapped Load More for. The caller filters
+    /// client-side afterwards (filtered scope) or not at all
+    /// (Export all). A failed page throws — a partial export must
+    /// never present itself as the whole history.
+    public func allTransactions(householdId: UUID) async throws -> [Transaction] {
+        try await fetchAllPages(PostgrestQuery(
+            table: "transactions",
+            columns: "*",
+            filters: [.householdId(householdId), .onOrAfterNov1()],
+            orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("id", ascending: false)]
+        ))
+    }
+
     /// Whole-history dedupe rows for CSV import (live.js:2468-2470):
     /// merchant, amount, date, suffix, ordered by created_at asc.
     /// `id asc` tiebreaker: `fetchAllPages` walks by offset, so the

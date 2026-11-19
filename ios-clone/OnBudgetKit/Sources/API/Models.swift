@@ -113,7 +113,7 @@ public enum TransactionKind: Equatable, Codable, Sendable {
 /// `provisional` (pending) / `verified` (posted) / `excluded` (trash) /
 /// `reversed`. A row is in Trash when `excluded == true` OR
 /// `state == .excluded` (live.js:819-820).
-public enum TransactionState: String, Equatable, Codable {
+public enum TransactionState: String, Equatable, Codable, Sendable {
     case provisional
     case verified
     case excluded
@@ -125,7 +125,7 @@ public enum TransactionState: String, Equatable, Codable {
 /// `restored` (build 44, change 2): a bank-dropped row the admin
 /// restored from Trash with no prior state recorded — it came back
 /// verified, and it is neither bank, email, file, nor hand-entered.
-public enum TransactionSource: String, Equatable, Codable {
+public enum TransactionSource: String, Equatable, Codable, Sendable {
     case csv
     case amexAlert = "amex_alert"
     case plaid
@@ -176,7 +176,7 @@ public enum HouseholdRole: String, Equatable, Codable {
 /// One row of `transactions` (live.js:751-756 selects `*` with
 /// `date >= 2026-11-01`, ordered by date desc — the app never shows
 /// pre-November rows; the server floors week math at Nov 1 too).
-public struct Transaction: Equatable, Codable, Identifiable {
+public struct Transaction: Equatable, Codable, Identifiable, Sendable {
     public let id: UUID
     public let householdId: UUID
     /// `YYYY-MM-DD`.
