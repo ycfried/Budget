@@ -629,12 +629,22 @@ final class OnBudgetUITests: XCTestCase {
         // (narration 10.87 + 1.5 gap = 12.37). The hero amount reads
         // "... left this week"; tapping it expands the card in place
         // to show the Available / Pending / Total breakdown.
+        // Collapse it again before leaving Home: run 44620606851
+        // proved an EXPANDED card breaks the tab-bar tap — the
+        // Transactions tab computed hit point (-1,-1) and
+        // "Failed to scroll to visible", failing the test at the
+        // scene-3 tap. With the card collapsed, Home is back to
+        // the state v1 proved tappable. The collapse tap lands
+        // after the scene-2 video cut (12.37s), so it never shows.
         videoMark("SCENE-2")
         let heroAmount = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
         if heroAmount.waitForExistence(timeout: 10) {
             heroAmount.tap()
         }
         Thread.sleep(forTimeInterval: 13)
+        if heroAmount.waitForExistence(timeout: 10) {
+            heroAmount.tap()
+        }
 
         // -- Scene 3: Transactions, slow scroll (17.59 + 1.5 = 19.09)
         videoMark("SCENE-3")
@@ -670,17 +680,27 @@ final class OnBudgetUITests: XCTestCase {
         )
         let charityCard = app.buttons.matching(identifier: "funds.charity").firstMatch
         charityCard.tap()
-        Thread.sleep(forTimeInterval: 24)
+        Thread.sleep(forTimeInterval: 25)
+        // Collapse Charity before moving on (same tab-bar lesson as
+        // scene 2 — an expanded card can make the next tap fail).
+        // The collapse lands after the scene-4 video cut (23.89s).
+        charityCard.tap()
 
         // -- Scene 5: expand the Savings (Extra Fund) card ----------
         // (narration 11.95 + 1.5 gap = 13.45). One-open-at-a-time:
-        // this collapses Charity and opens Savings.
+        // this collapses Charity and opens Savings. Collapse it
+        // again before scene 6 — the "+ Add" button is a tab-bar
+        // button and would hit the same expanded-card failure.
+        // Hold is 14s so the collapse lands after the 13.45s cut.
         videoMark("SCENE-5")
         let savingsCard = app.buttons.matching(identifier: "funds.extraFund").firstMatch
         if savingsCard.waitForExistence(timeout: 10) {
             savingsCard.tap()
         }
-        Thread.sleep(forTimeInterval: 13)
+        Thread.sleep(forTimeInterval: 14)
+        if savingsCard.waitForExistence(timeout: 10) {
+            savingsCard.tap()
+        }
 
         // -- Scene 6: add a transaction by hand (6.07 + 1.5 = 7.57) -
         // Tap +, Purchase, type merchant + amount, Add. The new
