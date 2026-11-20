@@ -637,11 +637,14 @@ public struct CharityIncomeHistory: View {
         // audit trail, so they appear here with the "Cash gift"
         // label.
         items += viewModel.charityCashGifts.map { .cashGift($0) }
-        return Array(items.sorted { $0.sortDate > $1.sortDate }.prefix(20))
-    }
-
-    private var totalCount: Int {
-        viewModel.charityIncome.count + giftTransactions.count + viewModel.charityCashGifts.count
+        // Build 52 (owner, Nov 20, 2026 — the same pattern as the
+        // Transactions week list): the full feed shows at once,
+        // no 20-cap and no "Showing the latest 20" note. The rows
+        // are already fully loaded in memory (charity income,
+        // gifts, cash gifts), so nothing is fetched to show them
+        // all — and a header that only reflects the first 20
+        // would repeat the week-list mistake.
+        return items.sorted { $0.sortDate > $1.sortDate }
     }
 
     public var body: some View {
@@ -680,9 +683,6 @@ public struct CharityIncomeHistory: View {
                     if index < feed.count - 1 {
                         Divider()
                     }
-                }
-                if totalCount > 20 {
-                    FundsMuted("Showing the latest 20 entries.")
                 }
             }
         }
@@ -901,11 +901,13 @@ public struct FundTopupsHistory: View {
         // are NOT transaction rows, so this feed is their audit
         // trail.
         items += fundAllocations.map { .allocation($0) }
-        return Array(items.sorted { $0.sortDate > $1.sortDate }.prefix(20))
-    }
-
-    private var totalCount: Int {
-        viewModel.topups.count + fundTransactions.count + fundAllocations.count
+        // Build 52 (owner, Nov 20, 2026 — the same pattern as the
+        // Transactions week list): the full feed shows at once,
+        // no 20-cap and no "Showing the latest 20" note. The rows
+        // are already fully loaded in memory (top-ups, fund
+        // transactions, ledger allocations), so nothing is fetched
+        // to show them all.
+        return items.sorted { $0.sortDate > $1.sortDate }
     }
 
     public var body: some View {
@@ -939,9 +941,6 @@ public struct FundTopupsHistory: View {
                     if index < feed.count - 1 {
                         Divider()
                     }
-                }
-                if totalCount > 20 {
-                    FundsMuted("Showing the latest 20 entries.")
                 }
             }
         }

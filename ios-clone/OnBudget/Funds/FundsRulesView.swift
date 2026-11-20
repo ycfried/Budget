@@ -819,17 +819,15 @@ public struct SpendingAllowanceSection: View {
                 FundsMuted("This week's total is \(MoneyFormat.formatCents(temp)) instead of \(MoneyFormat.formatCents(base)).")
             }
             if isAdmin {
-                // Add to Budget (Nov 16, 2026): a one-time top-up to
-                // this week's budget. PRIMARY BLUE, full-width large
-                // (17pt, 16pt vertical padding) — the SAME SIZE as
-                // the Temporary Allowance button below it, a
-                // DIFFERENT color (standing no-adjacent-same-color
-                // rule; the owner reinforced it Nov 16, 2026). The
-                // Temporary Allowance button moves from the editor
-                // size (16pt, 12pt padding) to the same large size so
-                // the two match — the Charity fund's stacked-button
-                // pattern.
-                FundsPrimaryButton("Top Up Budget", isBusy: viewModel.busyAction == "add-budget", isLarge: true) {
+                // Top Up Budget (Nov 16, 2026): a one-time top-up to
+                // this week's budget. PALE #bfdbfe, full-width large
+                // (17pt, 16pt vertical padding) — build 52 (owner,
+                // Nov 20, 2026): solid blue here sat as a second
+                // stark blue button below "Calculate" in the same
+                // Spending card. The Temporary Allowance button
+                // below stays grey tertiary, so no two adjacent
+                // buttons share a colour.
+                FundsPaleButton("Top Up Budget", isBusy: viewModel.busyAction == "add-budget", isLarge: true) {
                     showAddToBudget = true
                 }
                 FundsTertiaryButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance", isLarge: true) {

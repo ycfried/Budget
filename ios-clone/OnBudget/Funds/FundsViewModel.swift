@@ -1750,6 +1750,21 @@ public final class FundsViewModel: ObservableObject {
         }
     }
 
+    /// Restore a MERGED duplicate from Trash (build 52 — Review
+    /// redesign): the merged row was excluded; restoring returns
+    /// it to its stored prior state so it counts again. The
+    /// resolved list doesn't load the full Transaction rows, so
+    /// this restores by the candidate's duplicateTransactionId
+    /// directly. The candidate stays resolved — only the
+    /// transaction comes back.
+    public func restoreResolvedDuplicate(_ candidate: DuplicateCandidate) async {
+        await guarded("restore-\(candidate.duplicateTransactionId.uuidString)", title: "Could Not Restore") {
+            try await context.client.rpcs.restoreTransaction(txnId: candidate.duplicateTransactionId)
+            succeed("Transaction restored.")
+            await refresh()
+        }
+    }
+
     // MARK: - Temporary Allowance (admin only)
 
     /// The amount is a NEW TOTAL weekly allowance, REPEATING each week

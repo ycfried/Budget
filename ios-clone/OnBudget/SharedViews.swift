@@ -3,12 +3,15 @@
 // Shared SwiftUI building blocks for the Auth + Home screens.
 // Colours come from OnBudgetKit DesignTokens only — never hard-coded
 // hex in a screen. Button rules (owner, Nov 3–4): two-button rows are
-// primary blue first + grey tertiary second; pale #bfdbfe is ONLY the
-// middle tier of a three-button row; no two adjacent buttons share a
-// colour/treatment. Back buttons are light blue #3b82f6, bold 700,
-// 15px. Errors are soft red (bg #fef2f2, text #dc2626, border
-// #fecaca). Toasts are a top popup (owner Nov 20, 2026), auto-dismiss 4s.
-// Clone basis: live web v66.
+// primary blue first + grey tertiary second; pale #bfdbfe is the
+// middle tier of a three-button row — and, since build 52 (owner,
+// Nov 20, 2026), the full-width treatment for exactly two buttons
+// that sit below a solid blue one (Top Up Budget under Calculate;
+// Activity & Transactions under Add to Tzedaka); no two adjacent
+// buttons share a colour/treatment. Back buttons are light blue
+// #3b82f6, bold 700, 15px. Errors are soft red (bg #fef2f2, text
+// #dc2626, border #fecaca). Toasts are a top popup (owner Nov 20,
+// 2026), auto-dismiss 4s. Clone basis: live web v66.
 
 import SwiftUI
 import OnBudgetKit
@@ -48,8 +51,13 @@ public struct TertiaryButtonStyle: ButtonStyle {
     }
 }
 
-/// Pale middle tier: #bfdbfe fill, ink text. ONLY as the middle tier
-/// of a three-button row — never beside another pale button.
+/// Pale middle tier: #bfdbfe fill, ink text. As the middle tier
+/// of a three-button row — never beside another pale button — and,
+/// since build 52 (owner, Nov 20, 2026), as the full-width
+/// treatment for exactly two buttons that sit below a solid blue
+/// one (Top Up Budget under Calculate; Activity & Transactions
+/// under Add to Tzedaka). See `FundsPaleButton` (FundsShared) for
+/// the Funds full-width version.
 public struct PaleButtonStyle: ButtonStyle {
     public init() {}
     public func makeBody(configuration: ButtonStyle.Configuration) -> some View {

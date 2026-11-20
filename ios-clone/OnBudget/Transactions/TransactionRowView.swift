@@ -41,6 +41,10 @@ public struct TransactionRowView: View {
     /// highlighted, so the user can see why the row matched.
     /// Empty when no search is active — the row renders unchanged.
     let searchQuery: String
+    /// Build 52 (week mode): this charge has a linked refund —
+    /// the row shows a "Refunded" mark and its amount nets to $0
+    /// in the header total. The row keeps its original amount.
+    let isRefunded: Bool
     let onToggle: () -> Void
     let onActions: () -> Void
 
@@ -50,6 +54,7 @@ public struct TransactionRowView: View {
         isExpanded: Bool,
         hasActions: Bool,
         searchQuery: String = "",
+        isRefunded: Bool = false,
         onToggle: @escaping () -> Void,
         onActions: @escaping () -> Void
     ) {
@@ -58,6 +63,7 @@ public struct TransactionRowView: View {
         self.isExpanded = isExpanded
         self.hasActions = hasActions
         self.searchQuery = searchQuery
+        self.isRefunded = isRefunded
         self.onToggle = onToggle
         self.onActions = onActions
     }
@@ -132,6 +138,16 @@ public struct TransactionRowView: View {
                                 // place of the merchant name.
                                 if transaction.kind == .transfer {
                                     Text("Transfer")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.muted)
+                                }
+                                // Build 52 (week mode): a refunded
+                                // purchase — plain grey text, no
+                                // pill, like the other badges. The
+                                // row keeps its original amount;
+                                // the header total nets it to $0.
+                                if isRefunded {
+                                    Text("Refunded")
                                         .font(.system(size: 12, weight: .semibold))
                                         .foregroundStyle(DesignTokens.muted)
                                 }
@@ -240,14 +256,14 @@ public struct TransactionDetailView: View {
                 }
             }
 
-            // Bottom-centre, in the brand-blue outline treatment
-            // (owner, Nov 14, 2026): the small grey pill at the
-            // bottom-left got lost — it now spans the detail width
-            // in white with a #2f6bff border and text, clearly a
-            // button.
+            // Build 52 (owner, Nov 20, 2026): a SOLID BLUE button,
+            // not an outline — the outline "looks ugly". A single
+            // full-width button in its row, so this does not
+            // conflict with the no-two-adjacent-buttons-same-colour
+            // rule.
             if hasActions {
                 Button("Actions", action: onActions)
-                    .buttonStyle(OutlineButtonStyle())
+                    .buttonStyle(PrimaryButtonStyle())
             }
         }
     }

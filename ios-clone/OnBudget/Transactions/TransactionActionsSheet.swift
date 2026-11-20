@@ -3,26 +3,45 @@ import OnBudgetKit
 
 /// Transaction Actions sheet (CLONE_SPEC §7.4, live.js:3763-3970).
 ///
+/// ONE sheet, no "Other" bucket (build 52, owner Nov 20, 2026 —
+/// the flow was "too hard to navigate": row → Actions → Other →
+/// Reclassify page, with the same action in two places). The
+/// reclassify kinds sit directly in this sheet: the most-used
+/// actions at the top, the rest of the kinds below under one quiet
+/// "Change How It Counts" label, Rename Merchant and Delete as
+/// their own rows at the bottom. Duplicates are merged into one
+/// action each — "Mark as Tzedaka" IS the Tzedaka reclassify
+/// (there is no second Tzedaka row), and "Use Extra Fund" (ask the
+/// fund to cover this charge) and "Designate as Savings" (count
+/// this amount toward the fund) are different functions, so each
+/// appears exactly once, clearly labelled, not literally merged.
+///
+/// Which actions appear is decided by the `actionGroups` table —
+/// the clone uses this exact table (relaxed Nov 8, 2026: Charity
+/// is offered on ANY charge; members do not see it at all — owner
+/// rule, Nov 13, 2026: the sheet never renders a disabled row,
+/// only actions that work):
+///
+/// | kind | Admin | Member |
+/// | charge | TOP: Tzedaka, Exclude, Transfer, Income, Use Extra Fund; MORE: Refund, Fund Charge, Payment, Cashback, Designate as Savings; Rename, Delete | Use Extra Fund |
+/// | refund | TOP: Link to Purchase, Exclude, Transfer, Income; MORE: Charge, Fund Charge, Payment, Cashback, Designate as Savings; Rename, Delete | — (no actions) |
+/// | transfer, payment, fund_charge | TOP: Exclude, Transfer, Income; MORE: the other kinds, Designate as Savings (cashback only); Rename, Delete | — |
+/// | cashback | TOP: Exclude, Transfer, Income; MORE: Charge, Refund, Fund Charge, Payment, Designate as Savings; Rename, Delete | — |
+/// | charity | Rename, Delete | — |
+/// | income | TOP: Exclude, Transfer, Charge; MORE: Refund, Fund Charge, Payment, Cashback, Designate as Savings; Rename, Delete | — |
+/// | other | TOP: Exclude, Transfer, Income, Charge; MORE: Refund, Fund Charge, Payment, Cashback; Rename, Delete | — |
+///
+/// A top or more-kinds row is hidden when it IS the row's current
+/// kind (reclassifying to what it already is is not an action).
+/// "Designate as Savings" only appears when `canDesignateAsSavings`
+/// (admin, non-zero, live row, charge/income/refund/cashback).
+///
 /// Sheet header: X close (top-left symbol) on the list flow, back
 /// chevron on a sub-flow, title centred (owner, Nov 14, 2026 — the
 /// toolbar "Cancel" text truncated to "Ca…" and the NavigationStack
 /// root broke fitted sizing, so the sheet rendered tall and mostly
 /// empty). Subtitle "Merchant — $X". Rows are tappable list rows (label bold
-/// + muted sub-line + ›). Which actions appear is decided by the
-/// `actionsForTxKind` table — the clone uses this exact table
-/// (relaxed Nov 8, 2026: Charity is offered on ANY charge;
-/// members do not see it at all — owner rule, Nov 13, 2026:
-/// the sheet never renders a disabled row, only actions that
-/// work):
-///
-/// | kind | Admin | Member |
-/// | charge | Charity, Extra Fund, Designate as Savings, Other, Delete | Extra Fund |
-/// | refund | Link to Purchase, Designate as Savings, Other, Delete | — (no actions) |
-/// | cashback | Designate as Savings, Other, Delete | — |
-/// | transfer, payment, fund_charge | Other, Delete | — |
-/// | charity | Delete | — |
-/// | income | Designate as Savings, Other, Delete | — |
-/// | other kinds | Other, Delete | — |
+/// + muted sub-line + ›).
 ///
 /// Owner rule (Nov 13, 2026): the sheet never renders a disabled
 /// row — only actions that work. A member simply does not see
@@ -39,7 +58,6 @@ public struct TransactionActionsSheet: View {
         case extraFund
         case linkCandidates
         case unlinkConfirm
-        case reclassifyKind
         case reclassifyReason(TransactionKind)
         case deleteConfirm
         /// Build 50 (owner, Nov 20, 2026): exclude this row from
@@ -63,7 +81,17 @@ public struct TransactionActionsSheet: View {
         case charity
         case extraFund
         case linkRefund
-        case reclassify
+        /// Reclassify directly to a kind — the reclassify kinds
+        /// sit in this sheet (build 52), so there is no
+        /// "Other" bucket and no separate reclassify page.
+        case reclassifyTo(TransactionKind)
+        /// Build 42: count this amount toward the fund. A
+        /// different function from "Use Extra Fund" (a coverage
+        /// request), so it is its own action, not a merge.
+        case designateSavings
+        /// Build 50: take the row out of the spending math
+        /// without reclassifying it.
+        case exclude
         case delete
         case rename
     }
@@ -143,18 +171,27 @@ public struct TransactionActionsSheet: View {
     private var charityName: String { FundSectionID.charity.displayName(customNames: fundNames) }
     private var extraFundName: String { FundSectionID.fund.displayName(customNames: fundNames) }
 
-    // MARK: - Action table
+    // MARK: - Action table (build 52 — one sheet, no "Other")
+
+    /// One group in the single Actions sheet: the most-used
+    /// actions at the top (no label), the rest of the kinds below
+    /// under one quiet label, Rename + Delete last.
+    private struct ActionGroup {
+        let label: String?
+        let actions: [SheetAction]
+    }
 
     /// Whether "Designate as <Extra Fund>" is offered for this row
     /// (build 42, owner Nov 17, 2026): admin only, a charge or a
     /// money-in kind (income / refund / cashback), a non-zero
     /// amount, and a live row — never a reversed or trashed one.
     /// Members never see it (owner rule, Nov 13, 2026: the sheet
-    /// never renders a row that cannot work). Build 43 (owner, Nov
-    /// 17, 2026 — item 19): it is no longer a standalone top-level
-    /// row — it lives inside the reclassify list ("Other → Change
-    /// how this transaction counts"), next to the other
-    /// reclassification options, and routes to .savingsConfirm.
+    /// never renders a row that cannot work). Build 52 (owner, Nov
+    /// 20, 2026): it lives in the "Change How It Counts" group of
+    /// this sheet, next to the other reclassify options, and routes
+    /// to .savingsConfirm. It is a DIFFERENT function from "Use
+    /// Extra Fund" (a coverage request), so each appears exactly
+    /// once, clearly labelled.
     private var canDesignateAsSavings: Bool {
         guard isAdmin else { return false }
         guard transaction.amountCents != 0 else { return false }
@@ -165,7 +202,37 @@ public struct TransactionActionsSheet: View {
         }
     }
 
-    var actions: [SheetAction] {
+    /// The plain label for a reclassify kind.
+    private func kindLabel(_ kind: TransactionKind) -> String {
+        switch kind {
+        case .charge: return "Charge"
+        case .refund: return "Refund"
+        case .fundCharge: return "Fund Charge"
+        case .transfer: return "Transfer"
+        case .payment: return "Payment"
+        case .cashback: return "Cashback"
+        case .income: return "Income"
+        case .charity: return charityName
+        case .other: return "Other"
+        }
+    }
+
+    /// The one-line plain-English subline for a reclassify kind.
+    private func kindSubline(_ kind: TransactionKind) -> String {
+        switch kind {
+        case .charge: return "Count it as spending"
+        case .refund: return "Count it as a refund"
+        case .fundCharge: return "Count it as a fund charge"
+        case .transfer: return "Move money between accounts, not spending"
+        case .payment: return "Count it as a card payment"
+        case .cashback: return "Count it as cash back"
+        case .income: return "Count it as money in"
+        case .charity: return "Count it as a charity gift"
+        case .other: return "Count it as something else"
+        }
+    }
+
+    private var actionGroups: [ActionGroup] {
         let isVerified = transaction.state == .verified
         let charitySubline = isVerified
             ? "Counts it as a charity gift, out of weekly spending"
@@ -173,67 +240,82 @@ public struct TransactionActionsSheet: View {
         let deleteSubline = transaction.source == .manual
             ? "Permanently deletes this hand-entered row"
             : "Moves this row to the Trash"
+        let rename = SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it")
+        let delete = SheetAction(id: .delete, label: "Delete", subline: deleteSubline)
+        let exclude = SheetAction(id: .exclude, label: "Exclude", subline: "Takes it out of the spending math")
+        let extraFund = SheetAction(id: .extraFund, label: "Use \(extraFundName)", subline: "Ask for this charge to be covered from the fund")
+        let charity = SheetAction(id: .charity, label: "Mark as \(charityName)", subline: charitySubline)
+        let designate = SheetAction(id: .designateSavings, label: "Designate as \(extraFundName)", subline: "Counts this amount toward the fund")
+
+        /// A reclassify row for a kind — nil when it IS the row's
+        /// current kind (reclassifying to what it already is is
+        /// not an action). Tzedaka is never a reclassify row here:
+        /// it is the top "Mark as Tzedaka" action.
+        func reclassify(_ kind: TransactionKind) -> SheetAction? {
+            guard kind != transaction.kind else { return nil }
+            return SheetAction(id: .reclassifyTo(kind), label: kindLabel(kind), subline: kindSubline(kind))
+        }
+
         switch transaction.kind {
         case .charge:
             if isAdmin {
-                var list = [
-                    SheetAction(id: .charity, label: "Mark as \(charityName)", subline: charitySubline),
-                    SheetAction(id: .extraFund, label: "Use \(extraFundName)", subline: "Ask for this charge to be covered from the fund"),
+                var top = [charity, exclude]
+                top += [reclassify(.transfer), reclassify(.income)].compactMap { $0 }
+                top.append(extraFund)
+                var more: [SheetAction] = [reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
+                if canDesignateAsSavings { more.append(designate) }
+                return [
+                    ActionGroup(label: nil, actions: top),
+                    ActionGroup(label: "Change How It Counts", actions: more),
+                    ActionGroup(label: nil, actions: [rename, delete]),
                 ]
-                list += [
-                    SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
-                    SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
-                    SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
-                ]
-                return list
             }
             // Owner rule (Nov 13, 2026): no disabled rows — a
             // member simply does not see "Mark as Charity".
-            return [
-                SheetAction(id: .extraFund, label: "Use \(extraFundName)", subline: "Ask for this charge to be covered from the fund"),
-            ]
+            return [ActionGroup(label: nil, actions: [extraFund])]
         case .refund:
             guard isAdmin else { return [] }
             let linkSubline = transaction.originalPurchaseId != nil
                 ? "Change or remove the purchase this refund is linked to"
                 : "Link this refund to the purchase it came from"
-            var list = [
-                SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline),
+            let link = SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline)
+            var top = [link, exclude]
+            top += [reclassify(.transfer), reclassify(.income)].compactMap { $0 }
+            var more: [SheetAction] = [reclassify(.charge), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
+            if canDesignateAsSavings { more.append(designate) }
+            return [
+                ActionGroup(label: nil, actions: top),
+                ActionGroup(label: "Change How It Counts", actions: more),
+                ActionGroup(label: nil, actions: [rename, delete]),
             ]
-            list += [
-                SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
-                SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
-                SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
-            ]
-            return list
         case .transfer, .payment, .cashback, .fundCharge:
             guard isAdmin else { return [] }
-            var list: [SheetAction] = []
-            // Only cashback is money-in here: a transfer, a card
-            // payment and a fund charge cannot be designated.
-            list += [
-                SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
-                SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
-                SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
+            var top = [exclude]
+            top += [reclassify(.transfer), reclassify(.income)].compactMap { $0 }
+            var more: [SheetAction] = [reclassify(.charge), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
+            if canDesignateAsSavings { more.append(designate) }
+            return [
+                ActionGroup(label: nil, actions: top),
+                ActionGroup(label: "Change How It Counts", actions: more),
+                ActionGroup(label: nil, actions: [rename, delete]),
             ]
-            return list
         case .charity:
             guard isAdmin else { return [] }
-            return [
-                SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
-                SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
-            ]
+            return [ActionGroup(label: nil, actions: [rename, delete])]
         case .income, .other:
             guard isAdmin else { return [] }
-            var list: [SheetAction] = []
-            // Only income is money-in here: "other" has no
-            // direction to designate.
-            list += [
-                SheetAction(id: .reclassify, label: "Other", subline: "Change how this transaction counts"),
-                SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it"),
-                SheetAction(id: .delete, label: "Delete", subline: deleteSubline),
+            var top = [exclude]
+            top += [reclassify(.transfer), reclassify(.charge)].compactMap { $0 }
+            if transaction.kind == .other {
+                top += [reclassify(.income)].compactMap { $0 }
+            }
+            var more: [SheetAction] = [reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
+            if canDesignateAsSavings { more.append(designate) }
+            return [
+                ActionGroup(label: nil, actions: top),
+                ActionGroup(label: "Change How It Counts", actions: more),
+                ActionGroup(label: nil, actions: [rename, delete]),
             ]
-            return list
         }
     }
 
@@ -270,7 +352,6 @@ public struct TransactionActionsSheet: View {
             case .extraFund: extraFundContent
             case .linkCandidates: linkCandidatesContent
             case .unlinkConfirm: unlinkConfirmContent
-            case .reclassifyKind: reclassifyKindContent
             case .reclassifyReason(let kind): reclassifyReasonContent(kind: kind)
             case .deleteConfirm: deleteConfirmContent
             case .excludeConfirm: excludeConfirmContent
@@ -319,7 +400,6 @@ public struct TransactionActionsSheet: View {
         case .extraFund: return "Use \(extraFundName)"
         case .linkCandidates: return "Link Refund to Purchase"
         case .unlinkConfirm: return "Unlink Refund"
-        case .reclassifyKind: return "Reclassify Transaction"
         case .reclassifyReason: return "Reclassify Transaction"
         case .excludeConfirm: return "Exclude Transaction"
         case .rename: return "Rename Merchant"
@@ -340,36 +420,49 @@ public struct TransactionActionsSheet: View {
             Text(subtitle)
                 .font(.system(size: 15))
                 .foregroundStyle(Color(hex: "#6b7280"))
-            VStack(spacing: 0) {
-                ForEach(actions) { action in
-                    // Whole-row tap target (owner, Nov 15, 2026
-                    // app-wide pass): `.contentShape(Rectangle())`
-                    // makes the empty space between the text and the
-                    // chevron respond too — the same treatment as
-                    // the link-candidate and reclassify rows below.
-                    Button {
-                        select(action.id)
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(action.label)
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(DesignTokens.ink)
-                                Text(action.subline)
-                                    .font(.system(size: 14))
+            // Build 52: the groups render in order — most-used at
+            // the top, the rest of the kinds under one quiet label,
+            // Rename + Delete last. The 16pt outer spacing is the
+            // separation between groups; the quiet label is a muted
+            // inline line, never a bold sub-header.
+            ForEach(actionGroups.indices, id: \.self) { groupIndex in
+                let group = actionGroups[groupIndex]
+                if let label = group.label {
+                    Text(label)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+                VStack(spacing: 0) {
+                    ForEach(group.actions) { action in
+                        // Whole-row tap target (owner, Nov 15, 2026
+                        // app-wide pass): `.contentShape(Rectangle())`
+                        // makes the empty space between the text and the
+                        // chevron respond too — the same treatment as
+                        // the link-candidate rows below.
+                        Button {
+                            select(action.id)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(action.label)
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundStyle(DesignTokens.ink)
+                                    Text(action.subline)
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(Color(hex: "#6b7280"))
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(Color(hex: "#6b7280"))
                             }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color(hex: "#6b7280"))
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.vertical, 12)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if action.id != actions.last?.id {
-                        Divider()
+                        .buttonStyle(.plain)
+                        if action.id != group.actions.last?.id {
+                            Divider()
+                        }
                     }
                 }
             }
@@ -397,8 +490,19 @@ public struct TransactionActionsSheet: View {
                     linkCandidates = await viewModel.linkCandidates(for: transaction)
                 }
             }
-        case .reclassify:
-            flow = .reclassifyKind
+        case .reclassifyTo(let kind):
+            // Tzedaka is never a reclassify row (it is the top
+            // "Mark as Tzedaka" action), but the guard keeps the
+            // charity path honest if one is ever constructed.
+            if kind == .charity {
+                flow = .charityConfirm
+            } else {
+                flow = .reclassifyReason(kind)
+            }
+        case .designateSavings:
+            flow = .savingsConfirm
+        case .exclude:
+            flow = .excludeConfirm
         case .rename:
             renameName = TitleCase.apply(to: transaction.merchant.lowercased())
             renameFixedKind = nil
@@ -746,94 +850,12 @@ public struct TransactionActionsSheet: View {
         return "This refund is linked to a purchase. Unlink it? It will count as an unlinked refund again."
     }
 
-    // MARK: - Reclassify ("Other")
-
-    private var reclassifyKindContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Change how this transaction counts. Pick the new type, then give a reason.")
-                .font(.system(size: 15))
-                .foregroundStyle(DesignTokens.ink)
-            VStack(spacing: 0) {
-                ForEach(reclassifyOptions, id: \.label) { option in
-                    Button {
-                        if option.kind == .charity {
-                            flow = .charityConfirm
-                        } else {
-                            flow = .reclassifyReason(option.kind)
-                        }
-                    } label: {
-                        HStack {
-                            Text(option.label)
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(DesignTokens.ink)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color(hex: "#6b7280"))
-                        }
-                        .padding(.vertical, 12)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if option.kind != reclassifyOptions.last?.kind {
-                        Divider()
-                    }
-                }
-                // Build 43 (owner, Nov 17, 2026 — item 19):
-                // "Designate as <Extra Fund>" is a reclassification
-                // (it changes how the transaction counts), so it
-                // lives here with the other reclassify options
-                // instead of as a standalone Actions row. Money-in
-                // adds to the fund, a charge pays out of it — the
-                // confirm screen explains the direction.
-                if canDesignateAsSavings {
-                    Divider()
-                    Button {
-                        flow = .savingsConfirm
-                    } label: {
-                        HStack {
-                            Text("Designate as \(extraFundName)")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(DesignTokens.ink)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color(hex: "#6b7280"))
-                        }
-                        .padding(.vertical, 12)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                // Build 50 (owner, Nov 20, 2026): "Exclude" — take
-                // this row out of the spending math WITHOUT
-                // reclassifying it. The owner had to misuse
-                // "Transfer" to get a row out of the math because
-                // there was no Exclude. Same server call as Delete
-                // → Trash (`exclude_transaction`, restorable from
-                // the Trash), but labelled for its intent, so the
-                // kind stays what it is and the merchant stays
-                // visible.
-                Divider()
-                Button {
-                    flow = .excludeConfirm
-                } label: {
-                    HStack {
-                        Text("Exclude")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(DesignTokens.ink)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                    }
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
+    // MARK: - Reclassify (build 52: the kinds sit directly in
+    // the Actions sheet — there is no "Other" bucket and no
+    // separate reclassify page. A kind tap lands here for its
+    // reason; Cancel returns to the list, not to a reclassify
+    // page. `charity` is never a reason here: it routes to the
+    // guarded mark-as-charity path from the top action.)
 
     /// Exclude confirm (build 50, owner Nov 20, 2026): takes the
     /// row out of the spending math without changing its kind. It
@@ -878,22 +900,6 @@ public struct TransactionActionsSheet: View {
         }
     }
 
-    /// Reclassify options (live.js:3923-3930). `charity` is listed
-    /// but routes to the guarded mark-as-charity path, never the raw
-    /// RPC (`TransactionKind.reclassifiable` excludes it for the call).
-    private var reclassifyOptions: [(kind: TransactionKind, label: String)] {
-        [
-            (.charge, "Charge"),
-            (.refund, "Refund"),
-            (.fundCharge, "Fund Charge"),
-            (.transfer, "Transfer"),
-            (.payment, "Payment"),
-            (.cashback, "Cashback"),
-            (.income, "Income"),
-            (.charity, charityName),
-        ]
-    }
-
     private func reclassifyReasonContent(kind: TransactionKind) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Give a reason for reclassifying this transaction.")
@@ -926,7 +932,7 @@ public struct TransactionActionsSheet: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(isWorking)
             } secondary: {
-                Button("Cancel") { flow = .reclassifyKind }
+                Button("Cancel") { flow = .list }
                     .buttonStyle(TertiaryButtonStyle())
             }
         }

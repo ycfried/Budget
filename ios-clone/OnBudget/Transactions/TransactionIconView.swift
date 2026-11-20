@@ -136,21 +136,58 @@ public struct TransactionIconView: View {
                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
         )
         .accessibilityHidden(true)
+        // Build 52 (owner, Nov 20, 2026 — the smart plan's
+        // catch-up loop): when this row appears, a merchant with
+        // no curated domain and no remembered guess is recorded
+        // (idempotent) so the Merchants screen can list it for a
+        // later build. A merchant drops off that list as soon as
+        // it gets a curated domain or its guess is confirmed.
+        .task(id: merchant) { TransactionIconLookup.recordNeedsIcon(merchant) }
+        // Build 52 — the auto-guess is remembered ONLY once its
+        // favicon actually loads: a guessed domain that serves a
+        // real image is worth keeping; a guess that 404s is not
+        // (the monogram stays and the merchant stays on the
+        // catch-up list).
+        .onChange(of: guessedImageLoaded) { _, loaded in
+            if loaded, let domain = guessedDomain {
+                TransactionIconLookup.rememberGuessedDomain(domain, for: merchant)
+            }
+        }
     }
 
     /// Merchant favicon first; the bank favicon only when the
     /// merchant has no domain in the map (owner, Nov 14, 2026 —
-    /// bank-first made every row wear the Amex logo). The
-    /// institution name is still passed in: it is the fallback,
-    /// and the Settings bank tiles are untouched.
+    /// bank-first made every row wear the Amex logo). Build 52:
+    /// the merchant domain is the RESOLVED one — curated, then a
+    /// remembered guess, then the auto-guess — so a new merchant
+    /// gets its logo the first time it appears instead of waiting
+    /// for a build. The institution name is still passed in: it
+    /// is the fallback, and the Settings bank tiles are untouched.
     private var faviconURL: URL? {
-        if let domain = TransactionIconLookup.merchantDomain(for: merchant) {
+        if let domain = TransactionIconLookup.resolvedDomain(for: merchant) {
             return TransactionIconLookup.faviconURL(forDomain: domain)
         }
         guard let domain = TransactionIconLookup.bankDomain(for: institutionName) else {
             return nil
         }
         return TransactionIconLookup.faviconURL(forDomain: domain)
+    }
+
+    /// The domain this row is fetching a favicon for, when it is a
+    /// GUESS (not curated, not remembered). Nil otherwise — a
+    /// curated or remembered domain is never "remembered" again.
+    private var guessedDomain: String? {
+        TransactionIconLookup.isGuessedDomain(for: merchant)
+            ? TransactionIconLookup.resolvedDomain(for: merchant)
+            : nil
+    }
+
+    /// True once the guessed favicon has loaded — the signal to
+    /// remember the guess (see onChange above).
+    private var guessedImageLoaded: Bool {
+        guard let domain = guessedDomain,
+              let url = TransactionIconLookup.faviconURL(forDomain: domain) else { return false }
+        return faviconLoader.image(for: url) != nil
     }
 
     private var monogram: some View {

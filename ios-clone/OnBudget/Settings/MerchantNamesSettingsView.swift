@@ -166,6 +166,11 @@ struct MerchantNamesSettingsView: View {
     @State private var matchType = "exact"
     @State private var fixedKind: String?
 
+    /// Build 52 — the catch-up list: merchants with no icon yet,
+    /// collected as transaction rows render. Loaded when the card
+    /// appears; hidden when empty.
+    @State private var needsIcon: [String] = []
+
     /// Fixed-kind options: the server's kind values with plain
     /// labels (same list as the transaction Actions sheet).
     private static let fixedKindOptions: [(raw: String, label: String)] = [
@@ -187,115 +192,144 @@ struct MerchantNamesSettingsView: View {
     var body: some View {
         // Admin-only: members never see the card.
         if context.isAdmin {
-            SettingsCard(title: "Merchant Names") {
-                MutedLine(text: "Names you taught the app. A renamed merchant stays renamed on old and new rows.")
-                if let loadError = viewModel.loadError {
-                    DismissableErrorBox(loadError) {
-                        viewModel.loadError = nil
-                    }
-                    Button("Try Again") {
-                        Task { await viewModel.load() }
-                    }
-                    .buttonStyle(TertiaryButtonStyle())
-                } else if viewModel.isLoading && viewModel.rules.isEmpty {
-                    HStack {
-                        Spacer()
-                        BrandedLoader()
-                        Spacer()
-                    }
-                    .padding(.top, 8)
-                } else if viewModel.rules.isEmpty {
-                    MutedLine(text: "No merchant names taught yet. Rename a merchant from any transaction to teach the app.")
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(viewModel.rules) { rule in
-                            Button {
-                                startEditing(rule)
-                            } label: {
-                                HStack(alignment: .top, spacing: 8) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(TitleCase.apply(to: rule.displayName.lowercased()))
-                                            .font(.system(size: 16, weight: .bold))
-                                            .foregroundStyle(DesignTokens.ink)
-                                        Text(ruleDetailLine(rule))
-                                            .font(.system(size: 14))
+            VStack(alignment: .leading, spacing: 16) {
+                SettingsCard(title: "Merchant Names") {
+                    MutedLine(text: "Names you taught the app. A renamed merchant stays renamed on old and new rows.")
+                    if let loadError = viewModel.loadError {
+                        DismissableErrorBox(loadError) {
+                            viewModel.loadError = nil
+                        }
+                        Button("Try Again") {
+                            Task { await viewModel.load() }
+                        }
+                        .buttonStyle(TertiaryButtonStyle())
+                    } else if viewModel.isLoading && viewModel.rules.isEmpty {
+                        HStack {
+                            Spacer()
+                            BrandedLoader()
+                            Spacer()
+                        }
+                        .padding(.top, 8)
+                    } else if viewModel.rules.isEmpty {
+                        MutedLine(text: "No merchant names taught yet. Rename a merchant from any transaction to teach the app.")
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(viewModel.rules) { rule in
+                                Button {
+                                    startEditing(rule)
+                                } label: {
+                                    HStack(alignment: .top, spacing: 8) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(TitleCase.apply(to: rule.displayName.lowercased()))
+                                                .font(.system(size: 16, weight: .bold))
+                                                .foregroundStyle(DesignTokens.ink)
+                                            Text(ruleDetailLine(rule))
+                                                .font(.system(size: 14))
+                                                .foregroundStyle(Color(hex: "#6b7280"))
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 13, weight: .semibold))
                                             .foregroundStyle(Color(hex: "#6b7280"))
                                     }
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Color(hex: "#6b7280"))
+                                    .padding(.vertical, 10)
+                                    .contentShape(Rectangle())
                                 }
-                                .padding(.vertical, 10)
-                                .contentShape(Rectangle())
+                                .buttonStyle(.plain)
+                                if rule.id != viewModel.rules.last?.id {
+                                    Divider()
+                                }
                             }
-                            .buttonStyle(.plain)
-                            if rule.id != viewModel.rules.last?.id {
-                                Divider()
+                        }
+                    }
+                    Button("Add a Name") {
+                        editingRule = nil
+                        patternText = ""
+                        editablePatternText = ""
+                        displayNameText = ""
+                        matchType = "exact"
+                        fixedKind = nil
+                        showingForm = true
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+                // The editor is a proper popup, not inline below the
+                // list (owner, Nov 15, 2026 — build 33: the inline
+                // editor was hard to use and not properly clickable,
+                // though the idea and the fields were right). Same
+                // fields, same behaviour — just presented full-screen
+                // (build 43, item 17) with a header, like the other
+                // editors.
+                .fullScreenCover(isPresented: $showingForm) {
+                    // iPad width (owner, Nov 15, 2026 — build 34): same
+                    // treatment as the Weekly Budget sheet — 600pt width
+                    // in the regular size class, in a full-screen cover
+                    // (build 43, item 17). The content is a short fixed
+                    // form in a plain VStack (no ScrollView root); the
+                    // trailing Spacer below keeps it at the top of the
+                    // full screen (build 43, item 18).
+                    VStack(alignment: .leading, spacing: 16) {
+                        SheetHeader(title: editingRule == nil ? "Add a Name" : "Edit Name") {
+                            showingForm = false
+                            editingRule = nil
+                        }
+                        ruleForm
+                        Spacer()
+                    }
+                    .padding()
+                    .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+                    // The alert lives on the popup (delete confirm +
+                    // save failures both come from this form).
+                    .alert(item: $viewModel.alert) { alert in
+                        switch alert {
+                        case .deleteRule(let rule):
+                            return Alert(
+                                title: Text("Remove This Name?"),
+                                message: Text("“\(TitleCase.apply(to: rule.displayName.lowercased()))” will stop renaming “\(rule.patternText)” — old rows keep their current names."),
+                                primaryButton: .destructive(Text("Remove")) {
+                                    Task { await viewModel.deleteRule(rule) }
+                                },
+                                secondaryButton: .cancel()
+                            )
+                        case .failed(let title, let message):
+                            return Alert(
+                                title: Text(title),
+                                message: Text(message),
+                                dismissButton: .cancel(Text("Close"))
+                            )
+                        }
+                    }
+                }
+                .task {
+                    await viewModel.load()
+                    needsIcon = TransactionIconLookup.needsIconMerchants()
+                }
+                // Build 52 (owner, Nov 20, 2026 — the smart plan's
+                // catch-up loop): merchants that still have no icon
+                // — they show their first letter instead. The list
+                // is collected as transaction rows render; a
+                // merchant drops off it as soon as a later build
+                // maps it or its auto-guessed logo loads. Hidden
+                // entirely when empty — nothing to catch up on.
+                if !needsIcon.isEmpty {
+                    SettingsCard(title: "Merchants Without an Icon") {
+                        MutedLine(text: "These merchants don't have an icon yet. They'll be added in a future update.")
+                        VStack(spacing: 0) {
+                            ForEach(needsIcon, id: \.self) { name in
+                                HStack {
+                                    Text(TitleCase.apply(to: name.lowercased()))
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.ink)
+                                    Spacer()
+                                }
+                                .padding(.vertical, 6)
+                                if name != needsIcon.last {
+                                    Divider()
+                                }
                             }
                         }
                     }
                 }
-                Button("Add a Name") {
-                    editingRule = nil
-                    patternText = ""
-                    editablePatternText = ""
-                    displayNameText = ""
-                    matchType = "exact"
-                    fixedKind = nil
-                    showingForm = true
-                }
-                .buttonStyle(PrimaryButtonStyle())
-            }
-            // The editor is a proper popup, not inline below the
-            // list (owner, Nov 15, 2026 — build 33: the inline
-            // editor was hard to use and not properly clickable,
-            // though the idea and the fields were right). Same
-            // fields, same behaviour — just presented full-screen
-            // (build 43, item 17) with a header, like the other
-            // editors.
-            .fullScreenCover(isPresented: $showingForm) {
-                // iPad width (owner, Nov 15, 2026 — build 34): same
-                // treatment as the Weekly Budget sheet — 600pt width
-                // in the regular size class, in a full-screen cover
-                // (build 43, item 17). The content is a short fixed
-                // form in a plain VStack (no ScrollView root); the
-                // trailing Spacer below keeps it at the top of the
-                // full screen (build 43, item 18).
-                VStack(alignment: .leading, spacing: 16) {
-                    SheetHeader(title: editingRule == nil ? "Add a Name" : "Edit Name") {
-                        showingForm = false
-                        editingRule = nil
-                    }
-                    ruleForm
-                    Spacer()
-                }
-                .padding()
-                .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-                // The alert lives on the popup (delete confirm +
-                // save failures both come from this form).
-                .alert(item: $viewModel.alert) { alert in
-                    switch alert {
-                    case .deleteRule(let rule):
-                        return Alert(
-                            title: Text("Remove This Name?"),
-                            message: Text("“\(TitleCase.apply(to: rule.displayName.lowercased()))” will stop renaming “\(rule.patternText)” — old rows keep their current names."),
-                            primaryButton: .destructive(Text("Remove")) {
-                                Task { await viewModel.deleteRule(rule) }
-                            },
-                            secondaryButton: .cancel()
-                        )
-                    case .failed(let title, let message):
-                        return Alert(
-                            title: Text(title),
-                            message: Text(message),
-                            dismissButton: .cancel(Text("Close"))
-                        )
-                    }
-                }
-            }
-            .task {
-                await viewModel.load()
             }
         }
     }

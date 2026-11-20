@@ -27,17 +27,111 @@ public struct ReviewView: View {
     @State private var dedupeShownCount = 20
     @State private var resolvedShownCount = 20
     @State private var refundLinkShownCount = 20
+    /// Resolved Duplicates starts COLLAPSED (build 52): the list
+    /// dominated the page and every row repeated the same line.
+    @State private var resolvedExpanded = false
 
     public init(viewModel: FundsViewModel) {
         self.viewModel = viewModel
     }
 
+    /// Nothing to review at all — no restorations, no held refunds,
+    /// no possible duplicates, no unlinked refunds — and no load
+    /// error hiding one of them. (Resolved duplicates are already
+    /// dealt with, so they don't count.)
+    private var allClear: Bool {
+        viewModel.restorations.isEmpty && viewModel.heldRefunds.isEmpty
+            && viewModel.pendingDuplicates.isEmpty && !viewModel.hasUnlinkedRefunds
+            && viewModel.restorationsError == nil && viewModel.heldError == nil
+            && viewModel.duplicatesError == nil && viewModel.refundLinksError == nil
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            if allClear {
+                allClearCard
+            }
             restorationsSection
             duplicatesSection
             resolvedSection
             refundLinksSection
+        }
+    }
+
+    /// One "All clear" card at the top when nothing needs review
+    /// (build 52, owner Nov 20, 2026 — the page was "an ocean of
+    /// text… especially when there's nothing to review"): a green
+    /// checkmark and one line, not three empty sections.
+    private var allClearCard: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(Color(hex: "#16a34a"))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Nothing Needs Your Review")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+                Text("You're all caught up.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(Color(hex: "#f0fdf4"))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(hex: "#bbf7d0"), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Section card chrome (build 52)
+
+    /// One Review section as a card (build 52, owner Nov 20, 2026
+    /// — the page had "no visual language — no icons, cards,
+    /// color"): white card, SF Symbol icon + Title Case title in
+    /// the header, a plain count when the section has items
+    /// waiting. An empty section is a single compact muted line
+    /// inside the card, not a heading plus a sentence.
+    private struct ReviewSectionCard<Content: View>: View {
+        let icon: String
+        let title: String
+        let count: Int?
+        let content: Content
+
+        init(icon: String, title: String, count: Int? = nil, @ViewBuilder content: () -> Content) {
+            self.icon = icon
+            self.title = title
+            self.count = count
+            self.content = content()
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                    Text(TitleCase.apply(to: title))
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(DesignTokens.ink)
+                    Spacer()
+                    if let count, count > 0 {
+                        Text("\(count)")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(DesignTokens.primary)
+                    }
+                }
+                content
+            }
+            .padding(14)
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
         }
     }
 
@@ -57,29 +151,29 @@ public struct ReviewView: View {
     }
 
     private var restorationsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Refund Restorations & Held Refunds")
-                .font(.system(size: 17, weight: .bold))
-            Text("Restorations")
-                .font(.system(size: 15, weight: .semibold))
+        // The two groups keep quiet muted labels (the Funds
+        // pattern: a quiet muted inline label, never a bold
+        // sub-header) and a load error in one group no longer hides
+        // the other. Both empty is one compact line.
+        ReviewSectionCard(
+            icon: "arrow.uturn.backward",
+            title: "Refund Restorations & Held Refunds",
+            count: viewModel.restorations.count + viewModel.heldRefunds.count
+        ) {
             if let error = viewModel.restorationsError {
                 FundsErrorBox(error)
-            } else if viewModel.restorations.isEmpty {
-                FundsMuted("No restorations yet.")
-            } else {
+            } else if !viewModel.restorations.isEmpty {
+                FundsMuted("Restorations")
                 ForEach(Array(viewModel.restorations.enumerated()), id: \.offset) { _, entry in
                     Text("Week of \(MoneyFormat.fmtLong(entry.weekStart)) · Restored \(MoneyFormat.formatCents(entry.restoredSurplusCents)) · Debt cut \(MoneyFormat.formatCents(entry.debtReductionCents))\(entry.fundCreditCents != 0 ? " · Fund +\(MoneyFormat.formatCents(entry.fundCreditCents))" : "")")
                         .font(.system(size: 14))
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }
             }
-            Text("Held for Review")
-                .font(.system(size: 15, weight: .semibold))
             if let error = viewModel.heldError {
                 FundsErrorBox(error)
-            } else if viewModel.heldRefunds.isEmpty {
-                FundsMuted("Nothing held for review.")
-            } else {
+            } else if !viewModel.heldRefunds.isEmpty {
+                FundsMuted("Held for Review")
                 ForEach(viewModel.heldRefunds) { held in
                     HeldRefundRow(
                         held: held,
@@ -92,15 +186,21 @@ public struct ReviewView: View {
                     }
                 }
             }
+            if viewModel.restorationsError == nil && viewModel.heldError == nil
+                && viewModel.restorations.isEmpty && viewModel.heldRefunds.isEmpty {
+                FundsMuted("No restorations or held refunds.")
+            }
         }
     }
 
     // MARK: 2 — Possible Duplicates
 
     private var duplicatesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Possible Duplicates")
-                .font(.system(size: 17, weight: .bold))
+        ReviewSectionCard(
+            icon: "doc.on.doc",
+            title: "Possible Duplicates",
+            count: viewModel.pendingDuplicates.count
+        ) {
             if let error = viewModel.duplicatesError {
                 FundsErrorBox(error)
             } else if viewModel.pendingDuplicates.isEmpty {
@@ -135,12 +235,14 @@ public struct ReviewView: View {
 
     /// Resolved row, second line (build 30 redesign — shorter,
     /// clearer): merchant names Title Cased above, then one short
-    /// line — status + date + a brief restore note for merges.
+    /// line — status + date. Build 52 drops the "— Restore from
+    /// Trash." tail: Restore is now a real button on the row, not
+    /// a repeated label.
     private func resolvedStatusLine(for row: DuplicateCandidate) -> String {
         let when = row.resolvedAt.map { MoneyFormat.displayDay($0) } ?? ""
         let datePart = when.isEmpty ? "" : " · \(when)"
         if row.status == "merged" {
-            return "Merged\(datePart) — Restore from Trash."
+            return "Merged\(datePart)."
         }
         return "Kept separate\(datePart)."
     }
@@ -148,47 +250,85 @@ public struct ReviewView: View {
     // MARK: 3 — Resolved Duplicates
 
     private var resolvedSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Resolved Duplicates")
-                .font(.system(size: 17, weight: .bold))
-            if let error = viewModel.resolvedError {
-                FundsErrorBox(error)
-            } else if viewModel.resolvedDuplicates.isEmpty {
-                FundsMuted("No resolved duplicates.")
-            } else {
-                // Newest first (the fetch orders by resolved_at
-                // desc); first 20 + Show More, same pattern as
-                // Possible Duplicates (F-P2-6).
-                let shown = Array(viewModel.resolvedDuplicates.prefix(resolvedShownCount))
-                if viewModel.resolvedDuplicates.count > shown.count {
-                    FundsMuted("Showing the first \(shown.count) of \(viewModel.resolvedDuplicates.count) resolved duplicates.")
+        // Collapsed behind its count by default (build 52): the
+        // resolved list dominated the page. Tap the header to
+        // expand — INSTANT, no animation (standing rule). The
+        // count reads "N resolved" so the header says what is
+        // behind it without opening it.
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                resolvedExpanded.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                    Text("Resolved Duplicates")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(DesignTokens.ink)
+                    Spacer()
+                    Text("\(viewModel.resolvedDuplicates.count) resolved")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .rotationEffect(.degrees(resolvedExpanded ? 180 : 0))
                 }
-                ForEach(shown) { row in
-                    ResolvedDuplicateRow(
-                        row: row,
-                        statusLine: resolvedStatusLine(for: row),
-                        isBusy: viewModel.busyAction == "reopen-\(row.id.uuidString)",
-                        onReopen: { Task { await viewModel.reopenDuplicate(row) } }
-                    )
-                    if row.id != shown.last?.id {
-                        Divider()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if resolvedExpanded {
+                if let error = viewModel.resolvedError {
+                    FundsErrorBox(error)
+                } else if viewModel.resolvedDuplicates.isEmpty {
+                    FundsMuted("No resolved duplicates.")
+                } else {
+                    // Newest first (the fetch orders by resolved_at
+                    // desc); first 20 + Show More, same pattern as
+                    // Possible Duplicates (F-P2-6).
+                    let shown = Array(viewModel.resolvedDuplicates.prefix(resolvedShownCount))
+                    if viewModel.resolvedDuplicates.count > shown.count {
+                        FundsMuted("Showing the first \(shown.count) of \(viewModel.resolvedDuplicates.count) resolved duplicates.")
                     }
-                }
-                if viewModel.resolvedDuplicates.count > shown.count {
-                    FundsSmallTertiaryButton("Show More") {
-                        resolvedShownCount += 20
+                    ForEach(shown) { row in
+                        ResolvedDuplicateRow(
+                            row: row,
+                            statusLine: resolvedStatusLine(for: row),
+                            isBusy: viewModel.busyAction == "reopen-\(row.id.uuidString)",
+                            isRestoreBusy: viewModel.busyAction == "restore-\(row.duplicateTransactionId.uuidString)",
+                            onReopen: { Task { await viewModel.reopenDuplicate(row) } },
+                            onRestore: { Task { await viewModel.restoreResolvedDuplicate(row) } }
+                        )
+                        if row.id != shown.last?.id {
+                            Divider()
+                        }
+                    }
+                    if viewModel.resolvedDuplicates.count > shown.count {
+                        FundsSmallTertiaryButton("Show More") {
+                            resolvedShownCount += 20
+                        }
                     }
                 }
             }
         }
+        .padding(14)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
     }
 
     // MARK: 4 — Refund Links
 
     private var refundLinksSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Refund Links")
-                .font(.system(size: 17, weight: .bold))
+        ReviewSectionCard(
+            icon: "link",
+            title: "Refund Links",
+            count: viewModel.refundSuggestions.count
+        ) {
             if let error = viewModel.refundLinksError {
                 FundsErrorBox(error)
             } else if !viewModel.hasUnlinkedRefunds {
@@ -262,14 +402,21 @@ private struct HeldRefundRow: View {
 }
 
 /// One resolved-duplicate row (build 30 redesign: Title-Cased
-/// names, one short status line). Its Reopen confirm hangs off
-/// the row's own button.
+/// names, one short status line). Build 52: a MERGED row now has
+/// a real Restore button — one action per row — instead of the
+/// repeated "Restore from Trash." label; restoring returns the
+/// merged transaction to its stored prior state so it counts
+/// again. A SEPARATE row keeps its Reopen button. Each confirm
+/// hangs off its own button (build 30 anchoring fix).
 private struct ResolvedDuplicateRow: View {
     let row: DuplicateCandidate
     let statusLine: String
     let isBusy: Bool
+    let isRestoreBusy: Bool
     let onReopen: () -> Void
+    let onRestore: () -> Void
     @State private var showReopenConfirm = false
+    @State private var showRestoreConfirm = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -294,6 +441,20 @@ private struct ResolvedDuplicateRow: View {
                     Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
                 } message: {
                     Text("Show this pair in Possible Duplicates again?")
+                }
+            } else if row.status == "merged" {
+                FundsSmallTertiaryButton("Restore", isBusy: isRestoreBusy) {
+                    showRestoreConfirm = true
+                }
+                .confirmationDialog(
+                    "Restore This Transaction",
+                    isPresented: $showRestoreConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button(TitleCase.apply(to: "Restore")) { onRestore() }
+                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+                } message: {
+                    Text("Restore this transaction so it counts again? The pair stays resolved.")
                 }
             }
         }

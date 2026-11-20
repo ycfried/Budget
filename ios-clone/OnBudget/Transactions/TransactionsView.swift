@@ -148,7 +148,12 @@ public struct TransactionsView: View {
             // source as the views — synced here and on every rename
             // below.
             viewModel.fundNames = appState.fundNames
-            if case .idle = viewModel.loadState {
+            // Build 52: when a week filter is pending (Spending
+            // card / Weekly sheet), skip the page-1 load — the
+            // week handoff below fetches the whole history
+            // instead. Loading page 1 first would flash the
+            // paged list, then replace it with the week list.
+            if case .idle = viewModel.loadState, appState.pendingWeekFilter == nil {
                 await viewModel.load()
             }
             // Build 30: the Review badge count loads with the tab.
@@ -237,7 +242,9 @@ public struct TransactionsView: View {
     private func consumeHandoffs() {
         if let week = appState.pendingWeekFilter {
             appState.pendingWeekFilter = nil
-            viewModel.applyWeekFilter(weekStart: week)
+            // Build 52: the week filter fetches the whole history,
+            // so it is async — the list fills in when it lands.
+            Task { await viewModel.applyWeekFilter(weekStart: week) }
         }
         if let jump = appState.pendingTransactionJump {
             appState.pendingTransactionJump = nil
@@ -603,6 +610,14 @@ public struct TransactionsView: View {
                             isExpanded: viewModel.expandedTransactionId == transaction.id,
                             hasActions: viewModel.hasActions(for: transaction),
                             searchQuery: viewModel.filters.search,
+                            // Build 52 (week mode): a charge with a
+                            // linked refund shows a "Refunded" mark
+                            // — its amount nets to $0 in the header
+                            // total, and the row keeps its original
+                            // amount. Only in week mode, where the
+                            // whole history is loaded and the mark
+                            // is exact.
+                            isRefunded: viewModel.isWeekMode && viewModel.refundedChargeIds.contains(transaction.id),
                             onToggle: {
                                 if viewModel.expandedTransactionId == transaction.id {
                                     viewModel.expandedTransactionId = nil

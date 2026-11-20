@@ -814,7 +814,20 @@ public struct TransactionFilters: Equatable {
     /// + fund charges − refunds (refunds as −|amount|); payments,
     /// cashback, transfers, income, charity never count. On the
     /// Charity filter the total is the gifts total.
-    public static func shownTotal(for shown: [Transaction], status: TransactionStatusFilter) -> Int {
+    ///
+    /// `linkedRefundAmounts` (build 52 — week mode): refund amounts
+    /// linked to the shown charges, for refunds that are NOT
+    /// themselves in `shown` — the week list is spending-only, so
+    /// a linked refund is not a row, but the week's total must
+    /// still net it out (a fully-refunded purchase nets to $0).
+    /// Refunds that ARE in `shown` are already subtracted by the
+    /// refund arm below — the caller only ever passes refunds not
+    /// in `shown`, so nothing is subtracted twice.
+    public static func shownTotal(
+        for shown: [Transaction],
+        status: TransactionStatusFilter,
+        linkedRefundAmounts: [UUID: Int] = [:]
+    ) -> Int {
         if status == .charity {
             return shown.filter { !$0.isInTrash && $0.kind == .charity }
                 .reduce(0) { $0 + $1.amountCents }
@@ -823,7 +836,8 @@ public struct TransactionFilters: Equatable {
             !$0.isInTrash && $0.state != .reversed
                 && ($0.kind == .charge || $0.kind == .fundCharge || $0.kind == .refund)
         }.reduce(0) { sum, tx in
-            sum + (tx.kind == .refund ? -abs(tx.amountCents) : tx.amountCents)
+            let base = tx.kind == .refund ? -abs(tx.amountCents) : tx.amountCents
+            return sum + base - (linkedRefundAmounts[tx.id] ?? 0)
         }
     }
 

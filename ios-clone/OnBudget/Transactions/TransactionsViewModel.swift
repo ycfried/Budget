@@ -84,6 +84,14 @@ public final class TransactionsViewModel {
     /// True exactly when the probe row came back on the latest fetch
     /// (older rows exist on the server).
     public private(set) var hasMore: Bool = false
+    /// Week mode (build 52, owner Nov 20, 2026): the list arrived
+    /// from the Spending card / Weekly sheet for ONE week, so the
+    /// whole week is loaded at once (no Load More), pre-filtered
+    /// to spending, and the header count/total reflect the full
+    /// week — the same whole-history principle as the Tzedaka $37
+    /// fix. Cleared by "Clear Search and Filters" (back to the
+    /// normal paged list).
+    public private(set) var isWeekMode: Bool = false
     /// A Load More fetch is in flight: the button disables while
     /// appending so a double-tap cannot fire two appends. The
     /// existing rows stay visible — Load More never blanks the list.
@@ -249,7 +257,11 @@ public final class TransactionsViewModel {
         if shown.isEmpty, filters.isSearchOrFilterActive {
             return "No matching transactions — try a different search, or clear the search and filters."
         }
-        let total = TransactionFilters.shownTotal(for: shown, status: filters.status)
+        let total = TransactionFilters.shownTotal(
+            for: shown,
+            status: filters.status,
+            linkedRefundAmounts: isWeekMode ? hiddenLinkedRefundAmounts : [:]
+        )
         // A negative net total is money in overall, so it reads
         // "+$X" (MoneyFormat.netTotalText); the line stays muted —
         // the total is a summary, not a row. Owner, Nov 16, 2026
@@ -258,6 +270,41 @@ public final class TransactionsViewModel {
         // just the count and the total, centered (see
         // TransactionsView.countLine).
         return "\(shown.count) transactions · Total \(MoneyFormat.netTotalText(cents: total))"
+    }
+
+    /// The shown charges that have a linked refund (build 52 —
+    /// week mode): the row shows a "Refunded" mark and the total
+    /// nets the refund out. Computed from the loaded rows — the
+    /// whole history in week mode, so a refund from a later week
+    /// still marks its charge. Only the shown charges are
+    /// returned; a refund pointing at a row that is not shown
+    /// marks nothing.
+    public var refundedChargeIds: Set<UUID> {
+        let refunded = Set(loadedPage.compactMap { tx -> UUID? in
+            guard tx.kind == .refund, !tx.isInTrash, tx.state != .reversed else { return nil }
+            return tx.originalPurchaseId
+        })
+        return Set(shownTransactions.map(\.id)).intersection(refunded)
+    }
+
+    /// Refund amounts linked to the shown charges, for refunds
+    /// that are NOT themselves in the shown list (build 52 — week
+    /// mode): the list is spending-only, so a linked refund is
+    /// not a row, but the week's total must still net it out.
+    /// Keyed by the charge's id. Only refunds not in `shown` are
+    /// included — a refund that IS shown is already subtracted by
+    /// `shownTotal`'s refund arm, so nothing is subtracted twice.
+    /// Empty outside week mode: the normal list total is a display
+    /// sum over the shown rows only (existing rule).
+    private var hiddenLinkedRefundAmounts: [UUID: Int] {
+        guard isWeekMode else { return [:] }
+        let shownIds = Set(shownTransactions.map(\.id))
+        var byPurchase: [UUID: Int] = [:]
+        for tx in loadedPage where tx.kind == .refund && !tx.isInTrash && tx.state != .reversed {
+            guard !shownIds.contains(tx.id), let purchaseId = tx.originalPurchaseId else { continue }
+            byPurchase[purchaseId, default: 0] += abs(tx.amountCents)
+        }
+        return byPurchase.filter { shownIds.contains($0.key) }
     }
 
     /// Whether the viewer has any action on a row (live.js:982):
@@ -273,6 +320,9 @@ public final class TransactionsViewModel {
     /// First load / pull-to-refresh / retry / after a mutation.
     /// Fetches the first page (offset 0, `pageSize` rows) and
     /// REPLACES the loaded set — a refresh starts from the top.
+    /// In WEEK mode (build 52) it fetches the WHOLE history
+    /// instead (`allTransactions`, the export's whole-history
+    /// pattern) — the week list is the full week, not a page.
     /// A failed read is an error state, never a silent empty list
     /// or an endless spinner (the web app has a live "Loading…"
     /// hang; the clone must not copy it). Requests time out at 30s
@@ -283,15 +333,25 @@ public final class TransactionsViewModel {
             guard let self else { return }
             self.loadState = .loading
             do {
-                let (rows, hasMore) = try await self.client.postgrest.transactionsPage(
-                    householdId: self.householdId,
-                    pageSize: self.pageSize,
-                    offset: 0
-                )
-                guard !Task.isCancelled else { return }
-                self.loadedPage = rows
-                self.hasMore = hasMore
-                self.loadState = .loaded(rows)
+                if self.isWeekMode {
+                    let rows = try await self.client.postgrest.allTransactions(
+                        householdId: self.householdId
+                    )
+                    guard !Task.isCancelled else { return }
+                    self.loadedPage = rows
+                    self.hasMore = false
+                    self.loadState = .loaded(rows)
+                } else {
+                    let (rows, hasMore) = try await self.client.postgrest.transactionsPage(
+                        householdId: self.householdId,
+                        pageSize: self.pageSize,
+                        offset: 0
+                    )
+                    guard !Task.isCancelled else { return }
+                    self.loadedPage = rows
+                    self.hasMore = hasMore
+                    self.loadState = .loaded(rows)
+                }
                 // Best-effort extras (allowance flag for the sync
                 // button, institution map for bank icons) run
                 // DETACHED, not awaited here (owner, Nov 16, 2026 —
@@ -368,21 +428,48 @@ public final class TransactionsViewModel {
     /// so the visible search box clears with the filters (T-P1-1) —
     /// the Past Weeks and Home-row jumps call this first, so they
     /// clear the box too. Filtering is client-side over the rows
-    /// already loaded, so clearing needs no refetch.
+    /// already loaded, so clearing needs no refetch — EXCEPT when
+    /// leaving WEEK mode (build 52): the whole history is in
+    /// `loadedPage`, so the list goes back to the normal paged
+    /// shape by keeping the first page (same date-desc order as
+    /// `transactionsPage`) and restoring `hasMore` — no refetch.
     public func clearSearchAndFilters() {
+        let wasWeekMode = isWeekMode
+        isWeekMode = false
         filters = TransactionFilters()
         persistFilters()
         searchResetNonce += 1
+        if wasWeekMode {
+            let all = loadedPage
+            loadedPage = Array(all.prefix(pageSize))
+            hasMore = all.count > pageSize
+            loadState = .loaded(loadedPage)
+        }
     }
 
-    /// Past Weeks / Weekly-sheet jump (live.js:3457-3500): clear
-    /// search/filters first, then show only the Sun–Sat week starting
-    /// `weekStart`. The shell clears `pendingWeekFilter` once consumed.
-    public func applyWeekFilter(weekStart: String) {
-        clearSearchAndFilters()
+    /// Past Weeks / Weekly-sheet jump (live.js:3457-3500): show only
+    /// the Sun–Sat week starting `weekStart`, pre-filtered to
+    /// SPENDING, with the FULL week loaded at once (build 52,
+    /// owner Nov 20, 2026 — the Spending card's "Show
+    /// Transactions" only loaded a page, so the header count/total
+    /// changed on every Load More). The shell clears
+    /// `pendingWeekFilter` once consumed. Async: it fetches the
+    /// whole history (`allTransactions`, the export's pattern) so
+    /// the header count/total reflect the full week from the
+    /// start — the same whole-history principle as the Tzedaka $37
+    /// fix. The filter reset is inlined here (not via
+    /// `clearSearchAndFilters`) so leaving week mode does not
+    /// fight entering it.
+    public func applyWeekFilter(weekStart: String) async {
+        filters = TransactionFilters()
+        persistFilters()
+        searchResetNonce += 1
         filters.fromDate = weekStart
         filters.toDate = MoneyFormat.weekEndString(weekStart: weekStart) ?? weekStart
+        filters.status = .spending
         filterChanged()
+        isWeekMode = true
+        await load()
     }
 
     /// Recent-row jump (live.js:1040-1110): clear search/filters

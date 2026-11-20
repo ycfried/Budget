@@ -6,7 +6,11 @@ import OnBudgetKit
 ///
 /// Button rules (owner, Nov 3–4):
 /// - Two-button rows: primary blue FIRST + grey tertiary SECOND.
-/// - Pale #bfdbfe is ONLY the middle tier of a three-button row.
+/// - Pale #bfdbfe is the middle tier of a three-button row — and,
+///   since build 52 (owner, Nov 20, 2026), the full-width
+///   treatment for exactly two buttons that sit below a solid blue
+///   one (Top Up Budget under Calculate; Activity & Transactions
+///   under Add to Tzedaka). No other pale full-width buttons.
 /// - No two adjacent buttons may share the same colour/treatment.
 /// - Back buttons: light blue #3b82f6, bold 700, 15px, no bg/border.
 /// - Title Case on every button label (minor words lower unless

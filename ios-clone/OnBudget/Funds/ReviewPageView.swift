@@ -29,10 +29,12 @@ public struct ReviewPageView: View {
                 Text("Review")
                     .font(.largeTitle)
                     .fontWeight(.bold)
-                Text("Held refunds, possible duplicates and refund links. Nothing here deletes a transaction.")
-                    .font(.subheadline)
-                    .foregroundStyle(DesignTokens.muted)
+                // Build 52 (owner, Nov 20, 2026): the explainer
+                // paragraph at the top is gone — it was a wall of
+                // text above an already long page. What it said
+                // lives as one short muted line at the bottom.
                 ReviewView(viewModel: viewModel)
+                FundsMuted("Nothing here deletes a transaction.")
             }
             .padding()
         }

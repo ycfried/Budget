@@ -1363,10 +1363,14 @@ public struct FundsView: View {
                 // Build 48 (owner, Nov 19, 2026 — the Activity
                 // control "looks like a Word document"): a proper
                 // BUTTON, not a bare text row with a "⌄" text glyph.
-                // White background, a 1.5pt brand-blue border,
-                // squarish rounded edges (cornerRadius 10, the
-                // no-pills rule), full width — it reads as something
-                // to tap. The chevron is a real SF Symbol
+                // Build 52 (owner, Nov 20, 2026): PALE #bfdbfe
+                // fill — a coloured button, not white — because the
+                // Tzedaka card already has a solid blue "Add to
+                // Tzedaka" above it and a second stark blue would
+                // repeat the two-blues problem. A 1.5pt brand-blue
+                // border, squarish rounded edges (cornerRadius 10,
+                // the no-pills rule), full width — it reads as
+                // something to tap. The chevron is a real SF Symbol
                 // (`chevron.down`, primary blue), rotating 180° when
                 // open; the "⌄" text character is gone. Press
                 // feedback via DimOnPress (opacity dip while held).
@@ -1386,7 +1390,7 @@ public struct FundsView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity)
-                    .background(.white)
+                    .background(DesignTokens.pale)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(DesignTokens.primary, lineWidth: 1.5)
