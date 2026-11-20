@@ -199,11 +199,15 @@ public enum WidgetSnapshotStore {
 /// the button flips to a spinner), then writes .succeeded or
 /// .failed when the fetch lands (and reloads again, so the button
 /// flips to a checkmark — or a red refresh icon on failure). The
-/// view reads this state live at render time and only shows the
-/// success / failure mark while it is recent (15 seconds); after
-/// that it is back to the plain refresh icon. The Provider adds a
-/// short timeline entry 20 seconds out while a transient state is
-/// live, so WidgetKit re-renders and the mark clears promptly
+/// view reads this state live at render time. The success mark is
+/// transient (15 seconds); the failure mark PERSISTS until the next
+/// sync writes a new state (build 51, owner Nov 20, 2026) — the
+/// old 15-second expiry made a failed tap look like nothing
+/// happened, so the owner read it as "no button / no way to
+/// refresh". A fresh snapshot written by the app (Home refresh)
+/// clears the stored state. The Provider adds a short timeline
+/// entry 20 seconds out while a transient state is live, so
+/// WidgetKit re-renders and the success mark clears promptly
 /// instead of lingering until the next hourly entry. The snapshot
 /// itself is untouched — this is a separate App Group key, and a
 /// failed sync leaves the last snapshot (and its numbers) in place.
@@ -217,11 +221,30 @@ public enum WidgetSyncState: String, Equatable, Sendable {
 public enum WidgetSyncStateStore {
     public static let key = "widgetSyncState"
     public static let dateKey = "widgetSyncStateAt"
-    /// How long the success / failure mark stays on the button.
+    /// How long the success mark stays on the button. The failure
+    /// mark has no window — it stays until the next sync writes a
+    /// new state (see `isMarkVisible`).
     public static let transientWindow: TimeInterval = 15
     /// The short timeline entry the Provider adds while a transient
     /// state is live, so the mark clears promptly.
     public static let clearAfter: TimeInterval = 20
+
+    /// Whether the button mark for the stored (state, date) is
+    /// still visible at `now`. Success is transient (15 seconds);
+    /// failure persists until the next sync writes a new state
+    /// (build 51) — a failed tap must stay legible instead of
+    /// expiring into the plain icon. Syncing shows until the intent
+    /// writes its landed state.
+    public static func isMarkVisible(state: WidgetSyncState, at date: Date?, now: Date = Date()) -> Bool {
+        switch state {
+        case .idle: return false
+        case .syncing: return true
+        case .succeeded:
+            guard let date else { return false }
+            return now.timeIntervalSince(date) < transientWindow
+        case .failed: return true
+        }
+    }
 
     public static func write(_ state: WidgetSyncState, at date: Date = Date(), to defaults: UserDefaults? = nil) {
         let store = defaults ?? UserDefaults(suiteName: WidgetSnapshotStore.groupID)

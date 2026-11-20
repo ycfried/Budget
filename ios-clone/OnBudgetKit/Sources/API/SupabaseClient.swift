@@ -379,6 +379,23 @@ public final class SupabaseClient: @unchecked Sendable {
     public private(set) var store: SessionStore
     private let transport: HTTPTransport
 
+    /// Whether a refused token refresh clears the persisted session
+    /// (build 51, widget refresh, owner Nov 20, 2026). The app's
+    /// main client keeps the default `true`: a dead refresh token
+    /// means the session is dead, so clearing it forces re-sign-in
+    /// instead of retrying a dead token forever. A throwaway /
+    /// extension client (the widget refresher) must pass `false`:
+    /// it shares the App Group session mirror with the app, and
+    /// clearing on a refused refresh would DELETE the mirror —
+    /// permanently sticking the widget until the user opens the app
+    /// again. With `false`, a refused refresh still throws
+    /// `.sessionExpired` (the fetch fails), but the persisted
+    /// session survives for a later tap / background run, once the
+    /// app has re-saved a valid one. Sign-out and delete-account
+    /// clear unconditionally — this flag only gates the refused-
+    /// refresh path.
+    public let clearsSessionOnRefusedRefresh: Bool
+
     private let lock = NSLock()
     private var _session: AuthSession?
     private var refreshBox: RefreshTaskBox?
@@ -413,11 +430,13 @@ public final class SupabaseClient: @unchecked Sendable {
     public init(
         configuration: SupabaseConfiguration = .live,
         store: SessionStore? = nil,
-        transport: HTTPTransport? = nil
+        transport: HTTPTransport? = nil,
+        clearsSessionOnRefusedRefresh: Bool = true
     ) {
         self.configuration = configuration
         self.store = store ?? UserDefaultsSessionStore()
         self.transport = transport ?? URLSessionTransport()
+        self.clearsSessionOnRefusedRefresh = clearsSessionOnRefusedRefresh
         self._session = self.store.load()
     }
 
@@ -852,10 +871,18 @@ public final class SupabaseClient: @unchecked Sendable {
         )
         let (data, response) = try await transport.send(request)
         guard (200...299).contains(response.statusCode) else {
-            // A refused refresh means the session is dead: clear it so
-            // the app does not keep retrying a dead token.
+            // A refused refresh means the session is dead: clear it
+            // so the app does not keep retrying a dead token —
+            // unless this is a throwaway / extension client
+            // (clearsSessionOnRefusedRefresh == false, build 51):
+            // the widget extension shares the App Group mirror
+            // with the app, and clearing here would DELETE the
+            // mirror and stick the widget until the app is opened
+            // again. The throw still reports `.sessionExpired`,
+            // so the caller fails the same way — only the
+            // persisted session survives.
             if response.statusCode == 401 || response.statusCode == 400 {
-                setSession(nil)
+                if clearsSessionOnRefusedRefresh { setSession(nil) }
                 throw OnBudgetError.sessionExpired
             }
             throw OnBudgetError.fromAuthResponse(status: response.statusCode, data: data)

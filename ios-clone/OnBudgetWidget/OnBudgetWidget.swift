@@ -127,7 +127,10 @@ struct WidgetEntry: TimelineEntry {
 /// visible result is the NEW numbers appearing — plus the button's
 /// own state (build 42): a spinner while the fetch runs, a green
 /// checkmark for ~15 seconds when fresh numbers land, a red refresh
-/// icon for ~15 seconds when the fetch fails. WidgetKit renders
+/// icon when the fetch fails — and the red icon STAYS until the
+/// next sync succeeds (build 51, owner Nov 20, 2026: the old
+/// 15-second expiry made a failed tap look like nothing happened).
+/// WidgetKit renders
 /// widget views statically, so there is no press animation to add:
 /// the intent writes the state into the App Group and reloads the
 /// timeline, and the button re-renders in its new state. A very fast
@@ -222,20 +225,22 @@ struct Provider: TimelineProvider {
         var entries = WidgetTimeline.entries(from: now, snapshot: WidgetSnapshotStore.read())
             .map { WidgetEntry(date: $0.date, snapshot: $0.snapshot, isRealData: $0.snapshot != nil) }
         // Build 42: while a transient sync state is live (syncing,
-        // or a recent success / failure mark), add one short entry
-        // 20 seconds out, so WidgetKit re-renders then and the
-        // success / failure mark clears promptly instead of
-        // lingering on the rendered entry until the next hourly
-        // one. The view itself also expires the mark by time, so
-        // this entry is only the prompt re-render.
+        // or a recent success mark), add one short entry 20 seconds
+        // out, so WidgetKit re-renders then and the success mark
+        // clears promptly instead of lingering on the rendered entry
+        // until the next hourly one. The view itself also expires
+        // the mark by time, so this entry is only the prompt
+        // re-render. Build 51: a FAILED mark is NOT transient — it
+        // persists until the next sync — so it gets no short entry;
+        // there is nothing to clear.
         let (syncState, syncDate) = WidgetSyncStateStore.read()
         let syncTransient: Bool = {
             switch syncState {
             case .syncing: return true
-            case .succeeded, .failed:
+            case .succeeded:
                 guard let at = syncDate else { return false }
                 return now.timeIntervalSince(at) < WidgetSyncStateStore.clearAfter
-            case .idle: return false
+            case .failed, .idle: return false
             }
         }()
         if syncTransient {
@@ -381,21 +386,24 @@ struct WidgetView: View {
     /// the server (build 40) and reloads the timeline; it does not
     /// open the app. The button shows its state (build 42): a
     /// circular spinner while the fetch runs, a green checkmark for
-    /// ~15 seconds when fresh numbers land, a red refresh icon for
-    /// ~15 seconds when the fetch fails (last snapshot stays). It is
-    /// one Button in every state, so it stays tappable throughout
-    /// (tapping the checkmark just syncs again). WidgetKit renders
-    /// widget views statically — there is no custom press animation
-    /// to add, and no @State that survives a tap; the system's tap
-    /// highlight plus the state flip (spinner / checkmark) is the
-    /// press response. The state is read live from the App Group
+    /// ~15 seconds when fresh numbers land, a red refresh icon when
+    /// the fetch fails — and the red icon STAYS until the next sync
+    /// succeeds (build 51, owner Nov 20, 2026). It is one Button in
+    /// every state, so it stays tappable throughout (tapping the
+    /// checkmark just syncs again). WidgetKit renders widget views
+    /// statically — there is no custom press animation to add, and
+    /// no @State that survives a tap; the system's tap highlight
+    /// plus the state flip (spinner / checkmark) is the press
+    /// response. The state is read live from the App Group
     /// (WidgetSyncStateStore, written by the intent), not from the
     /// timeline entry, so a reload re-renders it immediately.
     ///
-    /// The success / failure mark expires by time (15 seconds
-    /// from when the intent wrote it) and the Provider adds a short
-    /// timeline entry so the mark clears promptly. The spinner has
-    /// no expiry — it shows until the intent writes its landed
+    /// The success mark expires by time (15 seconds from when the
+    /// intent wrote it) and the Provider adds a short timeline
+    /// entry so the mark clears promptly. The failure mark has no
+    /// expiry (build 51) — it shows until the next sync writes a
+    /// new state, or the app writes a fresh snapshot. The spinner
+    /// has no expiry — it shows until the intent writes its landed
     /// state and reloads; if the extension is killed mid-fetch the
     /// next reload (app refresh, hourly entry) re-reads the state
     /// as written and the button returns to the refresh icon.
@@ -403,13 +411,15 @@ struct WidgetView: View {
         WidgetSyncStateStore.read()
     }
 
-    /// True while the success / failure mark is still within its
-    /// ~15-second window (measured at render time against when the
-    /// intent wrote the state).
-    private func isRecentTransient(_ state: WidgetSyncState) -> Bool {
-        guard state == .succeeded || state == .failed else { return false }
-        guard let at = syncState.date else { return false }
-        return Date().timeIntervalSince(at) < WidgetSyncStateStore.transientWindow
+    /// True while the mark for `state` should still show on the
+    /// button. Success is transient (~15 seconds); failure PERSISTS
+    /// until the next sync writes a new state (build 51, owner Nov
+    /// 20, 2026) — the old 15-second expiry made a failed tap look
+    /// like nothing happened. The stored state must match `state`:
+    /// a stale date from a different state must not light the mark.
+    private func isMarkVisible(_ state: WidgetSyncState) -> Bool {
+        guard syncState.state == state else { return false }
+        return WidgetSyncStateStore.isMarkVisible(state: state, at: syncState.date)
     }
 
     private var refreshButton: some View {
@@ -419,11 +429,11 @@ struct WidgetView: View {
                     ProgressView()
                         .progressViewStyle(.circular)
                         .tint(DesignTokens.muted)
-                } else if isRecentTransient(.succeeded) {
+                } else if isMarkVisible(.succeeded) {
                     Image(systemName: "checkmark")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(DesignTokens.success)
-                } else if isRecentTransient(.failed) {
+                } else if isMarkVisible(.failed) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(DesignTokens.errorText)
@@ -438,7 +448,7 @@ struct WidgetView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(syncState.state == .syncing ? "Syncing" : isRecentTransient(.succeeded) ? "Synced" : isRecentTransient(.failed) ? "Sync failed, tap to retry" : "Refresh widget")
+        .accessibilityLabel(syncState.state == .syncing ? "Syncing" : isMarkVisible(.succeeded) ? "Synced" : isMarkVisible(.failed) ? "Sync failed, tap to retry" : "Refresh widget")
     }
 
     /// Week-range dates for the header (build 35): the compact

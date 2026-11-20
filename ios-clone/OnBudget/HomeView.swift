@@ -497,18 +497,28 @@ public final class HomeViewModel: ObservableObject {
 
         // Widget snapshot (build 17): the two numbers the Home-screen
         // widget shows — the same figures as the hero and Charity
-        // cards. Written only when BOTH loads succeeded; a failed load
-        // writes nothing, so the previous snapshot goes stale instead
-        // of being overwritten with a partial one. The widget reloads
-        // its timeline from this write; a bank sync refreshes Home
-        // too, so a sync updates the widget as well.
+        // cards. The SNAPSHOT is written only when BOTH loads
+        // succeeded; a failed load writes nothing, so the previous
+        // snapshot goes stale instead of being overwritten with a
+        // partial one. The widget reloads its timeline from this
+        // write; a bank sync refreshes Home too, so a sync updates
+        // the widget as well.
+        //
+        // Build 51 (widget refresh, owner Nov 20, 2026): the
+        // household id is written whenever it is known — it used to
+        // sit inside the both-loads-succeeded block below, so a
+        // failed charity (or week) load meant the id was never
+        // stored on that device and the widget button / background
+        // task could never fetch. The id is stable (it only changes
+        // on household switch / sign-out, both of which rewrite
+        // it), so writing it unconditionally is safe.
+        WidgetSnapshotStore.writeHouseholdId(householdId)
         if case .loaded(let result) = week,
            case .loaded(let summary) = charity {
             // Build 40 (widget sync): the household id rides along
             // in the App Group (separate key — the snapshot itself
             // carries no household identifier), so the widget
             // extension knows which household to fetch on a sync tap.
-            WidgetSnapshotStore.writeHouseholdId(householdId)
             WidgetSnapshotStore.write(WidgetSnapshot(
                 weekStart: result.weekStart,
                 availableCents: result.availableCents,
@@ -521,6 +531,11 @@ public final class HomeViewModel: ObservableObject {
                 // renamed fund's name too.
                 fundNames: appState.fundNames,
                 computedAt: Date()))
+            // Build 51: a fresh snapshot means the widget numbers
+            // are current, so a lingering failed-sync mark from an
+            // earlier tap no longer applies — clear it, or the
+            // button would stay red after the app itself refreshed.
+            WidgetSyncStateStore.clear()
             WidgetCenter.shared.reloadAllTimelines()
         }
     }

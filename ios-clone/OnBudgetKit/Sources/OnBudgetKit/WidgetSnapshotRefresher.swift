@@ -72,7 +72,13 @@ public enum WidgetSnapshotRefresher {
         guard let groupDefaults = UserDefaults(suiteName: WidgetSnapshotStore.groupID) else { return false }
         let store = UserDefaultsSessionStore(defaults: groupDefaults)
         guard store.load() != nil else { return false }
-        let client = SupabaseClient(store: store)
+        // Build 51 (widget refresh): this client must NOT clear the
+        // persisted session on a refused refresh. It shares the App
+        // Group mirror with the app — clearing here would delete
+        // the mirror and stick the widget until the app is opened
+        // again. A refused refresh still fails this fetch (false),
+        // but the mirror survives for a later tap / background run.
+        let client = SupabaseClient(store: store, clearsSessionOnRefusedRefresh: false)
         do {
             let week = try await client.functions.computeWeek(householdId: householdId)
             async let income = client.postgrest.activeCharityIncome(householdId: householdId)
