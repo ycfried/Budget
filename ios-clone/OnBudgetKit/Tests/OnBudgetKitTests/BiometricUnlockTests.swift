@@ -130,6 +130,19 @@ func testClient(
     )
 }
 
+/// The real storage behind a client's active store (build 48:
+/// `replaceSessionStore` always wraps a persistent store in a
+/// MirroredSessionStore, so `client.store` is the mirror, not the
+/// store itself — assertions about WHERE the client persists must
+/// look through it).
+func storeBehind(_ store: SessionStore) -> SessionStore {
+    var current = store
+    while let mirrored = current as? MirroredSessionStore {
+        current = mirrored.wrappedStore
+    }
+    return current
+}
+
 func testUnlock(
     keychain: MockBiometricKeychain,
     authenticator: MockBiometricAuthenticator
@@ -199,7 +212,7 @@ final class BiometricToggleTests: XCTestCase {
         XCTAssertTrue(authenticator.evaluateCalled, "opt-in must prove Face ID first")
         XCTAssertNotNil(keychain.stored, "session must be in the Keychain")
         XCTAssertTrue(unlock.isEnabled)
-        XCTAssertTrue(client.store is BiometricSessionStore, "client must persist to the Keychain store now")
+        XCTAssertTrue(storeBehind(client.store) is BiometricSessionStore, "client must persist to the Keychain store now")
         XCTAssertNil(plainStore.load(), "the plaintext copy must be cleared on opt-in")
         XCTAssertEqual(client.currentSession, session, "the live session is untouched by the move")
     }
@@ -215,7 +228,7 @@ final class BiometricToggleTests: XCTestCase {
 
         XCTAssertTrue(unlock.isEnabled)
         XCTAssertNotNil(keychain.stored)
-        XCTAssertTrue(client.store is BiometricSessionStore)
+        XCTAssertTrue(storeBehind(client.store) is BiometricSessionStore)
         XCTAssertNotNil(client.currentSession)
     }
 
@@ -232,7 +245,7 @@ final class BiometricToggleTests: XCTestCase {
 
         XCTAssertFalse(unlock.isEnabled)
         XCTAssertNil(keychain.stored, "opt-out must delete the Keychain item")
-        XCTAssertTrue(client.store is UserDefaultsSessionStore, "client must persist to UserDefaults again")
+        XCTAssertTrue(storeBehind(client.store) is UserDefaultsSessionStore, "client must persist to UserDefaults again")
         XCTAssertEqual(client.currentSession, session, "the live session survives opt-out")
     }
 
@@ -387,7 +400,7 @@ final class BiometricUnlockFlowTests: XCTestCase {
         }
         XCTAssertNil(keychain.stored, "the invalidated item must be deleted")
         XCTAssertFalse(unlock.isEnabled)
-        XCTAssertTrue(client.store is UserDefaultsSessionStore, "the client must fall back to the plain store")
+        XCTAssertTrue(storeBehind(client.store) is UserDefaultsSessionStore, "the client must fall back to the plain store")
         XCTAssertNil(client.currentSession, "no session may survive a failed unlock")
     }
 
@@ -418,7 +431,7 @@ final class BiometricUnlockFlowTests: XCTestCase {
         }
         XCTAssertNil(keychain.stored, "the dead session must be dropped from the Keychain")
         XCTAssertFalse(unlock.isEnabled)
-        XCTAssertTrue(client.store is UserDefaultsSessionStore, "the client must fall back to the plain store")
+        XCTAssertTrue(storeBehind(client.store) is UserDefaultsSessionStore, "the client must fall back to the plain store")
         XCTAssertNil(client.currentSession)
     }
 
@@ -440,7 +453,7 @@ final class BiometricUnlockFlowTests: XCTestCase {
         }
         XCTAssertFalse(authenticator.evaluateCalled, "must not prompt when biometrics cannot evaluate")
         XCTAssertNil(keychain.stored, "the now-unreadable item must be deleted")
-        XCTAssertTrue(client.store is UserDefaultsSessionStore)
+        XCTAssertTrue(storeBehind(client.store) is UserDefaultsSessionStore)
     }
 
     func testUnlockCancelledKeepsItemForRetry() async {

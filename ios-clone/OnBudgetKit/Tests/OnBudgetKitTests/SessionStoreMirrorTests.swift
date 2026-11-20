@@ -101,4 +101,32 @@ final class SessionStoreMirrorTests: XCTestCase {
         mirror.clearInner()
         XCTAssertNil(inner.load())
     }
+
+    func testReplaceSessionStoreWithSameUnderlyingStoreDoesNotClearIt() {
+        // Re-enabling Face ID wraps the SAME Keychain store in a
+        // fresh mirror: the old mirror's inner store must not be
+        // cleared, or the session the new mirror just wrote is
+        // deleted again. (Build 48 fix — the first cloud run caught
+        // re-enable deleting the Keychain item; the InMemory store
+        // here stands in for the Keychain store — the identity
+        // logic is what is pinned.)
+        let inner = InMemorySessionStore()
+        let session = makeSession()
+        inner.save(session)
+        let client = SupabaseClient(
+            configuration: testConfiguration(),
+            store: MirroredSessionStore(inner: inner),
+            transport: StubTransport(handler: { _ in StubTransport.raw("") })
+        )
+        XCTAssertEqual(client.currentSession?.accessToken, "test-access")
+
+        // Swap to a FRESH mirror around the SAME inner store.
+        client.replaceSessionStore(MirroredSessionStore(inner: inner))
+
+        XCTAssertEqual(
+            inner.load()?.accessToken, "test-access",
+            "re-swapping to the same underlying store must not clear it"
+        )
+        XCTAssertEqual(client.currentSession?.accessToken, "test-access")
+    }
 }

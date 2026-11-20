@@ -534,15 +534,37 @@ public final class SupabaseClient: @unchecked Sendable {
             // Sign-out / delete-account: nothing to keep — clear
             // everything, mirror included.
             oldStore.save(nil)
-        } else {
-            // The session is only MOVING: clear the old store's own
-            // storage, but not the shared App Group mirror — the
-            // new store just wrote the session to that same mirror
-            // key, and the old store's save(nil) would remove it
-            // again. A bare old store is cleared as-is; a mirrored
-            // one is unwrapped to its inner store first.
+        } else if unwrappedStore(oldStore) !== unwrappedStore(wrapped) {
+            // The session is only MOVING to a DIFFERENT store: clear
+            // the old store's own storage, but not the shared App
+            // Group mirror — the new store just wrote the session to
+            // that same mirror key, and the old store's save(nil)
+            // would remove it again. A bare old store is cleared
+            // as-is; a mirrored one is unwrapped to its inner store
+            // first.
+            //
+            // When the old and new stores share the SAME underlying
+            // store (e.g. re-enabling Face ID wraps the same
+            // Keychain store in a fresh mirror), there is nothing to
+            // clear — the new store just wrote the session to that
+            // very store, and clearing the old one would delete it
+            // again. (Build 48 fix: the first cloud run caught
+            // re-enable deleting the Keychain item.)
             clearStoreKeepingMirror(oldStore)
         }
+    }
+
+    /// The real storage behind a store — a MirroredSessionStore
+    /// unwrapped to the store it wraps, anything else as-is. Two
+    /// stores that share the same underlying storage are the same
+    /// store for clearing purposes, even when wrapped in different
+    /// mirrors.
+    private func unwrappedStore(_ store: SessionStore) -> SessionStore {
+        var current = store
+        while let mirrored = current as? MirroredSessionStore {
+            current = mirrored.wrappedStore
+        }
+        return current
     }
 
     /// Clears a store's own storage without touching the shared App
