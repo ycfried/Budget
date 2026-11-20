@@ -382,11 +382,17 @@ final class PostgrestQueryTests: XCTestCase {
         XCTAssertEqual(limit, "101")
     }
 
-    func testTransactionsPageOrdersByDateDescThenIdDesc() async throws {
+    func testTransactionsPageOrdersByDateDescThenCreatedAtDesc() async throws {
         // Nov 18, 2026 — second "Load More" failure: `date desc`
         // alone is nondeterministic (many rows share a date), so
-        // offset pages shifted rows between fetches. The `id desc`
-        // tiebreaker makes the order total and pages stable.
+        // offset pages shifted rows between fetches. A tiebreaker
+        // makes the order total and pages stable. Build 48 (owner,
+        // Nov 19, 2026 — newest first, a just-added transaction
+        // must pop up at the top): the tiebreaker is `created_at`,
+        // not `id` — `id` is a random UUID, so same-date rows
+        // arrived in random order and a just-added row landed
+        // anywhere inside its date group; `created_at desc` puts
+        // the newest row first, matching the client sort.
         // The failing page was pageSize 25 at offset 50.
         let transport = StubTransport(handler: { _ in StubTransport.json([]) })
         let client = PostgrestClient(
@@ -402,7 +408,7 @@ final class PostgrestQueryTests: XCTestCase {
         XCTAssertEqual(transport.requests.count, 1)
         let items = URLComponents(url: transport.requests[0].url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let value = { (name: String) in items.first(where: { $0.name == name })?.value }
-        XCTAssertEqual(value("order"), "date.desc,id.desc")
+        XCTAssertEqual(value("order"), "date.desc,created_at.desc")
         XCTAssertEqual(value("limit"), "26")
         XCTAssertEqual(value("offset"), "50")
     }

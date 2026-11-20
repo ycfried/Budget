@@ -133,6 +133,31 @@ public final class HomeViewModel: ObservableObject {
 
     public var isAdmin: Bool { appState.isAdmin }
 
+    /// Hide a fund from Home (build 48, owner Nov 19, 2026 — the
+    /// extra funds must be removable from Home right on the card,
+    /// not only from the buried edit-sheet toggle on the Funds
+    /// page). Admin only, server-enforced (`set_fund_hidden`
+    /// refuses Spending and Tzedaka, and refuses non-admins).
+    /// Updates the shared `appState.fundHidden`, so Home drops the
+    /// fund at once; the Funds page keeps the fund and shows
+    /// "Hidden from Home" with a Show on Home button to put it
+    /// back. Hiding never touches the fund's prominence, so
+    /// showing it again puts it back where it was. Returns true
+    /// on success; the caller shows the toast (Home's toasts go
+    /// through `appState.showToast`).
+    public func hideFundFromHome(section: FundSectionID) async -> Bool {
+        guard section.canHideFromHome else { return false }
+        do {
+            let map = try await client.rpcs.setFundHidden(
+                pHouseholdId: householdId, pFundKey: section.rawValue, pHidden: true
+            )
+            appState.fundHidden = map
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Force a refresh (pull-to-refresh, retry, sync,
     /// Settings-close, boot preload). Coalesces: if a refresh is
     /// already running, awaits it instead of starting a second one.
@@ -572,6 +597,19 @@ public struct HomeView: View {
         .onChange(of: appState.showSettings) { _, isShowing in
             if !isShowing { Task { await viewModel.refresh() } }
         }
+        // The walkthrough trigger (build 48, owner Nov 19, 2026):
+        // first entry to Home after the household is set — the week
+        // has loaded, the tour has never been seen for this user +
+        // household, and it is not already running. A short delay
+        // lets the user see Home first. Skipping or finishing marks
+        // it seen, so it shows once; re-playable from Settings
+        // ("Take the Tour"). The onAppear covers an already-loaded
+        // week (returning to Home); the onChange covers the load
+        // finishing while Home is showing.
+        .onAppear { maybeStartTour() }
+        .onChange(of: viewModel.week.isLoaded) { _, isLoaded in
+            if isLoaded { maybeStartTour() }
+        }
         // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
         // cover, not a detent sheet — popups are always full size.
         .fullScreenCover(isPresented: $showWeeklySheet) {
@@ -654,6 +692,26 @@ public struct HomeView: View {
         section.isHidden(customHidden: appState.fundHidden)
     }
 
+    /// Start the first-run walkthrough if it is due (build 48):
+    /// the week has loaded, the tour has never been seen for this
+    /// user + household, it is not already running, and the user is
+    /// on the Home tab with a household set. A short delay lets the
+    /// user see Home first; the guards re-run after the delay, so
+    /// navigating away in that window cancels the start.
+    private func maybeStartTour() {
+        let tour = appState.tour
+        guard viewModel.week.isLoaded else { return }
+        guard !tour.isActive, !tour.hasSeen(key: appState.tourKey) else { return }
+        guard appState.selectedTab == .home, appState.householdId != nil else { return }
+        Task {
+            try? await Task.sleep(for: .milliseconds(800))
+            guard viewModel.week.isLoaded else { return }
+            guard !tour.isActive, !tour.hasSeen(key: appState.tourKey) else { return }
+            guard appState.selectedTab == .home else { return }
+            tour.start()
+        }
+    }
+
     /// The simpler Home (build 46 — owner, Nov 18, 2026: the
     /// simpler-home-mockup layout IS the new Home): the hero fund
     /// (Spending by default) on top, then the card funds (Tzedaka
@@ -670,6 +728,7 @@ public struct HomeView: View {
             ForEach(mockupOrder.filter { prominence(of: $0) == .hero && !isHiddenFromHome($0) }, id: \.self) { section in
                 if section == .spending {
                     heroCard(simple: true)
+                        .tourAnchor(.spendingHero, tour: appState.tour)
                 } else {
                     simpleFundCard(section: section, hero: true)
                 }
@@ -801,10 +860,13 @@ public struct HomeView: View {
     /// Text/icon colour on the hero banner: WHITE on the loaded
     /// deep blue banner (build 46, owner Nov 18, 2026 — the header
     /// is brand dark blue again; white on #1d4ed8 reads ~5.9:1),
-    /// ink on the grey loading/failed banner.
+    /// and WHITE while LOADING too (build 48 — the banner is deep
+    /// blue from the first paint, so the real name shows in white
+    /// on it; ink would be unreadable on the blue). Ink only on
+    /// the grey FAILED banner.
     private var heroBannerTextColor: Color {
-        if case .loaded = viewModel.week { return StatCardTheme.spending.onBanner }
-        return DesignTokens.ink
+        if case .failed = viewModel.week { return DesignTokens.ink }
+        return StatCardTheme.spending.onBanner
     }
 
     /// The hero amount + donut sizes (build 46, owner Nov 18,
@@ -831,39 +893,30 @@ public struct HomeView: View {
     // body below, at the biggest size the card allows (build 46,
     // owner Nov 18, 2026: it sat inline in the header in builds
     // 40–45 and read too small). While loading the strip is the
-    // SAME deep blue with skeleton blocks on it (build 47, owner
-    // Nov 19, 2026 — the coloured bar shows from the first paint);
-    // the sync spot holds a skeleton block so the header never
-    // jumps when the numbers arrive. While failed the strip is
-    // muted grey.
+    // SAME deep blue with the REAL icon + name on it (build 48,
+    // owner Nov 19, 2026 — the Spending name and button icon show
+    // from the first paint, like the Tzedaka card below, which
+    // renders its header unconditionally; only the NUMBER in the
+    // body skeletons). While failed the strip is muted grey.
     // Build 41 (owner, Nov 16, 2026 — "much bigger"): the title
     // is 20pt, the icon disc 36pt, the sync circle 40pt, and the
     // strip carries 14pt vertical padding — the header reads as a
     // big card header now, not a slim bar. Skeleton blocks match.
     private func heroHeaderStrip(simple: Bool = false) -> some View {
         HStack(spacing: 8) {
-            if case .loading = viewModel.week {
-                // Skeleton icon + title while loading (owner, Nov 16,
-                // 2026 — build 38): real dark-ink text on the
-                // placeholder read as a finished card.
-                SkeletonBlock(width: 36, height: 36, cornerRadius: 18)
-                SkeletonBlock(width: 110, height: 20, cornerRadius: 6)
-            } else {
-                // "$" icon in a white circle (owner, Nov 16, 2026 —
-                // build 40 reference): the theme's glyph colour on
-                // a white disc (build 41 — the banner colour itself
-                // is unreadable on white for the light banners).
-                Image(systemName: FundSectionID.spending.resolvedIconName(customIcons: appState.fundIcons))
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(StatCardTheme.spending.glyph)
-                    .frame(width: 36, height: 36)
-                    .background(.white)
-                    .clipShape(Circle())
-                Text(FundSectionID.spending.displayName(customNames: appState.fundNames))
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(heroBannerTextColor)
-                    .lineLimit(1)
-            }
+            // The icon + name are LOCAL — they render in every
+            // state (loading, loaded, failed), never as skeletons.
+            // Only the number in the body below waits on the data.
+            Image(systemName: FundSectionID.spending.resolvedIconName(customIcons: appState.fundIcons))
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(StatCardTheme.spending.glyph)
+                .frame(width: 36, height: 36)
+                .background(.white)
+                .clipShape(Circle())
+            Text(FundSectionID.spending.displayName(customNames: appState.fundNames))
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(heroBannerTextColor)
+                .lineLimit(1)
             Spacer()
             // The simpler Home (build 46 — the mockup): "This week"
             // at the right of the header, white at 85%. Only when
@@ -876,9 +929,13 @@ public struct HomeView: View {
             }
             if viewModel.isAdmin {
                 switch viewModel.week {
-                case .loading:
-                    SkeletonBlock(width: 40, height: 40, cornerRadius: 20)
-                case .loaded:
+                case .loading, .loaded:
+                    // The real sync button from the first paint
+                    // (build 48): syncBank() guards isAdmin and
+                    // !isSyncing and refresh() coalesces with the
+                    // in-flight load, so showing it while loading
+                    // is safe — and the header never jumps when the
+                    // numbers arrive.
                     syncButton
                 case .failed:
                     EmptyView()
@@ -1242,6 +1299,35 @@ public struct HomeView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                 Spacer()
+                // Build 48 (owner, Nov 19, 2026): the remove
+                // control lives ON the card — an eye-off button in
+                // the header, admin-only, only for the funds that
+                // can leave Home (Savings, Overspent). Spending and
+                // Tzedaka always stay, so they get no button. A
+                // child Button wins over the card's tap gesture, so
+                // tapping the eye hides while tapping the card still
+                // opens the fund. The fund is put back from its
+                // Funds card ("Show on Home").
+                if section.canHideFromHome, viewModel.isAdmin {
+                    Button {
+                        Task {
+                            if await viewModel.hideFundFromHome(section: section) {
+                                appState.showToast("Hidden from Home. Find it on the Funds tab to put it back.", kind: .success)
+                            } else {
+                                appState.showToast("Could not hide \(name).", kind: .error)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "eye.slash")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(onBanner)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Hide \(name) from Home")
+                    .accessibilityIdentifier("home.hideFund.\(section.rawValue)")
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -1311,6 +1397,15 @@ public struct HomeView: View {
         .accessibilityIdentifier(section == .charity ? "home.tzedakaCard" : "home.simpleCard.\(section.rawValue)")
         .accessibilityLabel(
             simpleCardData(for: section).map { "\(name), \($0.amountText), show fund" } ?? "\(name), loading"
+        )
+        // Walkthrough anchors (build 48): the Tzedaka card for the
+        // charity step, and the Spending card for the one-number
+        // step when Spending is a card rather than the hero (the
+        // hero itself carries the anchor in simpleContent).
+        .tourAnchor(
+            section == .charity ? .charityCard
+                : (section == .spending ? .spendingHero : nil),
+            tour: appState.tour
         )
     }
 
@@ -1433,11 +1528,28 @@ public struct HomeView: View {
         }
     }
 
+    /// The quiet row's icon-disc colour (build 48, owner Nov 19,
+    /// 2026): the fund's own banner — Tzedaka's solid Home blue
+    /// #2f6bff (its `simpleFundCard` banner), every other fund its
+    /// theme banner (Savings amber, Overspent ink, Spending deep
+    /// blue). The row is quiet, not colourless.
+    private func quietRowBanner(_ section: FundSectionID) -> Color {
+        section == .charity ? simpleCharityBanner : section.theme.banner
+    }
+
+    /// The glyph colour on the quiet row's disc: the banner's text
+    /// colour — white on the dark Savings amber / Overspent ink /
+    /// Spending deep banners, white on Tzedaka's solid #2f6bff.
+    private func quietRowOnBanner(_ section: FundSectionID) -> Color {
+        section == .charity ? .white : section.theme.onBanner
+    }
+
     /// One quiet row (build 46 — the mockup): a 30pt icon circle
-    /// on #eef1f4, the fund name, the amount in muted grey, and a
-    /// faint chevron. Tapping the row opens its fund on the Funds
-    /// tab. A failed row reads "Couldn't load" in error red (its
-    /// fund's ErrorBox + Try Again live on the Funds page).
+    /// in the fund's own colour, the fund name, the amount in
+    /// muted grey, and a faint chevron. Tapping the row opens its
+    /// fund on the Funds tab. A failed row reads "Couldn't load"
+    /// in error red (its fund's ErrorBox + Try Again live on the
+    /// Funds page).
     private func quietRow(_ section: FundSectionID) -> some View {
         let name = section.displayName(customNames: appState.fundNames)
         let failed = simpleCardFailed(for: section)
@@ -1450,13 +1562,15 @@ public struct HomeView: View {
                 // theirs colors, although they're collapsed" — the
                 // icon and name are local, so the row shows its
                 // colours from the first paint; only the amount
-                // waits on the numbers). The old all-skeleton row
-                // was uniform grey and read as no fund at all.
+                // waits on the numbers). Build 48: the disc carries
+                // the fund's own colour (Savings amber, Overspent
+                // ink, Tzedaka solid blue) — the old grey disc +
+                // grey glyph read as no fund at all.
                 Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color(hex: "#7c8794"))
+                    .foregroundStyle(quietRowOnBanner(section))
                     .frame(width: 30, height: 30)
-                    .background(Color(hex: "#eef1f4"))
+                    .background(quietRowBanner(section))
                     .clipShape(Circle())
                 Text(name)
                     .font(.system(size: 15, weight: .medium))
@@ -1475,6 +1589,33 @@ public struct HomeView: View {
                     // Loading: only the amount is a skeleton — the
                     // icon + name above already show the fund.
                     SkeletonBlock(width: 60, height: 15, cornerRadius: 6)
+                }
+                // Build 48 (owner, Nov 19, 2026): the remove control
+                // lives ON the row — an eye-off button, admin-only,
+                // only for the funds that can leave Home (Savings,
+                // Overspent). A child Button wins over the row's
+                // tap, so tapping the eye hides while tapping the
+                // row still opens the fund. The fund is put back
+                // from its Funds card ("Show on Home").
+                if section.canHideFromHome, viewModel.isAdmin {
+                    Button {
+                        Task {
+                            if await viewModel.hideFundFromHome(section: section) {
+                                appState.showToast("Hidden from Home. Find it on the Funds tab to put it back.", kind: .success)
+                            } else {
+                                appState.showToast("Could not hide \(name).", kind: .error)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "eye.slash")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.muted)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Hide \(name) from Home")
+                    .accessibilityIdentifier("home.hideFund.\(section.rawValue)")
                 }
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))

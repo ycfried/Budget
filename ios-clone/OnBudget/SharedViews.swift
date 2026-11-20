@@ -696,45 +696,54 @@ public enum StatCardTheme {
     /// it to deep #1d4ed8 with white text. The green (#16a34a) /
     /// amber (#d97706) / muted-red (#991b1b) outlines are gone from
     /// the fund cards.
+    /// Build 48 (owner, Nov 19, 2026 — "the Savings card on Home
+    /// is still grey"): Savings leaves the tertiary grey for its
+    /// own colour, the fund amber #b45309 (`fundDeep` — the Extra
+    /// Fund's historical deep colour, kept in DesignTokens and
+    /// pinned by a smoke test). Grey is not a fund colour; the
+    /// Savings header is now amber on Home AND on the Funds page
+    /// (both read this one theme), with white text on it (~5:1).
     public var banner: Color {
         switch self {
         case .charity: return DesignTokens.pale
-        case .fund: return DesignTokens.tertiary
+        case .fund: return DesignTokens.fundDeep
         case .debt: return DesignTokens.ink
         case .spending: return DesignTokens.deep
         }
     }
 
     /// Text colour on the banner — per theme now (owner, Nov 16,
-    /// 2026 — build 41, updated build 43, updated build 46): WHITE
-    /// on the dark banners (Debt ink, Spending deep #1d4ed8 — white
-    /// on deep reads ~5.9:1), INK on the light banners (Charity
-    /// pale #bfdbfe and Extra Fund tertiary #e5e7eb — white text is
-    /// unreadable on both, ~1.6:1 and ~1.2:1; ink reads ~12:1 and
-    /// ~13:1). The title and amount are large bold text. (Build 39
-    /// had white on all four — the build-39 banners were all dark
-    /// enough for it; the build-41 light banners are not.)
+    /// 2026 — build 41, updated build 43, updated build 46, updated
+    /// build 48): WHITE on the dark banners (Debt ink, Spending
+    /// deep #1d4ed8 — white on deep reads ~5.9:1 — and Savings
+    /// amber #b45309, white on amber reads ~5:1), INK on the light
+    /// Charity pale #bfdbfe banner (white text is unreadable on it,
+    /// ~1.6:1; ink reads ~12:1). The title and amount are large
+    /// bold text. (Build 39 had white on all four — the build-39
+    /// banners were all dark enough for it; the build-41 light
+    /// banners are not. Build 48 moves Savings off the light
+    /// tertiary grey onto amber, so it takes white text too.)
     public var onBanner: Color {
         switch self {
-        case .charity, .fund: return DesignTokens.ink
-        case .debt, .spending: return .white
+        case .charity: return DesignTokens.ink
+        case .fund, .debt, .spending: return .white
         }
     }
 
     /// Icon colour on the WHITE disc in the header. The icon
     /// cannot be the banner colour on the light banners — pale
-    /// #bfdbfe and tertiary #e5e7eb on white are invisible — so
-    /// each fund keeps a readable glyph: Spending PRIMARY #2f6bff
-    /// (the strong brand blue — it still reads on the white disc;
-    /// the banner is deep #1d4ed8 again since build 46, and the
-    /// primary glyph reads on white against it), Charity MID blue
-    /// #3b82f6 (its build-39 banner — the charity blue identity,
-    /// 3.7:1 on white), Extra Fund MUTED grey #6b7280 (4.8:1 on
-    /// white), Debt ink.
+    /// #bfdbfe on white is invisible — so each fund keeps a
+    /// readable glyph: Spending PRIMARY #2f6bff (the strong brand
+    /// blue — it still reads on the white disc; the banner is deep
+    /// #1d4ed8 again since build 46, and the primary glyph reads
+    /// on white against it), Charity MID blue #3b82f6 (its
+    /// build-39 banner — the charity blue identity, 3.7:1 on
+    /// white), Extra Fund AMBER #b45309 (its build-48 banner —
+    /// ~5:1 on white), Debt ink.
     public var glyph: Color {
         switch self {
         case .charity: return DesignTokens.mid
-        case .fund: return DesignTokens.muted
+        case .fund: return DesignTokens.fundDeep
         case .debt: return DesignTokens.ink
         case .spending: return DesignTokens.primary
         }
@@ -754,8 +763,10 @@ public enum StatCardTheme {
     /// header colour"). The number is the same colour family as
     /// the header, at a depth that reads well on white: Spending
     /// the brand dark blue #1d4ed8 (its banner, 5.9:1 on white),
-    /// Tzedaka the primary blue #2f6bff (4.4:1), Savings the
-    /// muted grey #6b7280 (4.8:1), Overspent (Past) ink #0f172a.
+    /// Tzedaka the primary blue #2f6bff (4.4:1), Savings the fund
+    /// amber #b45309 (its build-48 banner, ~5:1 — build 46 had it
+    /// muted grey #6b7280, which read as no colour at all),
+    /// Overspent (Past) ink #0f172a.
     /// The CLASSIC Home keeps its all-ink numbers — this colour
     /// applies ONLY in the simple layout (and the Funds page keeps
     /// its own ink amounts). An over-budget Spending amount is
@@ -764,7 +775,7 @@ public enum StatCardTheme {
     public var number: Color {
         switch self {
         case .charity: return DesignTokens.primary
-        case .fund: return DesignTokens.muted
+        case .fund: return DesignTokens.fundDeep
         case .debt: return DesignTokens.ink
         case .spending: return DesignTokens.deep
         }

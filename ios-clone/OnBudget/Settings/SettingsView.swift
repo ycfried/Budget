@@ -60,6 +60,7 @@ struct SettingsView: View {
                 EmailAlertsView(context: context, toast: toast)
                 MembersSettingsView(context: context, toast: toast)
                 HomeLayoutSettingsCard(appState: appState)
+                TakeTheTourSettingsCard(appState: appState, onBack: onBack)
                 PrivacyTermsSettingsCard()
                 // Merchant Names is NOT here anymore (owner, Nov 15,
                 // 2026 — build 34): it moved to the Transactions
@@ -88,6 +89,34 @@ private struct HomeLayoutSettingsCard: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("settings.homeLayoutPicker")
+        }
+    }
+}
+
+/// Build 48 (owner, Nov 19, 2026): re-play the first-run
+/// walkthrough from Settings ("Take the Tour"). The tour shows once
+/// on its own (first entry to Home); this row starts it again any
+/// time, from the beginning. Dismisses Settings, lands on Home, and
+/// starts the tour after a short delay so the cover is gone first.
+private struct TakeTheTourSettingsCard: View {
+    @ObservedObject var appState: AppViewModel
+    let onBack: () -> Void
+
+    var body: some View {
+        SettingsCard(title: "Take the Tour") {
+            Text("A quick walk through the app — your spending number, charity, adding, transactions, and funds.")
+                .font(.system(size: 15))
+                .foregroundStyle(DesignTokens.muted)
+            Button("Take the Tour") {
+                onBack()
+                appState.selectedTab = .home
+                Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    appState.tour.start()
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .accessibilityIdentifier("settings.takeTheTour")
         }
     }
 }

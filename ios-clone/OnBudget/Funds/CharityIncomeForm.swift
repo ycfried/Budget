@@ -730,11 +730,33 @@ public struct CharityIncomeHistory: View {
             .font(.system(size: 14))
             .foregroundStyle(Color(hex: "#6b7280"))
             if row.status == "active" {
-                FundsSmallTertiaryButton("Correct") {
+                // Build 48 (owner, Nov 19, 2026 — the Correct
+                // button is "tiny pill-shaped"): a proper-size
+                // button, not the small in-row style — 15pt
+                // semibold, 12pt vertical / 16pt horizontal
+                // padding, squarish rounded edges (cornerRadius 10,
+                // the no-pills rule). Same grey tertiary fill as
+                // the small style, so it introduces no new colour;
+                // it is simply big enough to read and tap as a
+                // button. This is the app's only Correct button
+                // (charity income correction); the other small
+                // in-row buttons (Delete, Show More, …) keep the
+                // small style.
+                Button {
                     correcting = row
                     openIncomeForm = true
+                } label: {
+                    Text("Correct")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color(hex: "#e5e7eb"))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .padding(.top, 4)
+                .buttonStyle(.plain)
+                .padding(.top, 8)
+                .accessibilityIdentifier("charity.correctIncomeButton")
             }
         }
     }

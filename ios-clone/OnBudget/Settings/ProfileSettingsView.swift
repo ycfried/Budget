@@ -31,6 +31,14 @@ final class ProfileSettingsViewModel: ObservableObject {
     /// it — the user must never mistake it for the current one
     /// (audit S-P2-5). Clears on the next open (fresh view model).
     @Published var pendingEmailConfirmation: String?
+    /// The new address awaiting the user's IN-APP confirmation
+    /// (build 48, owner Nov 19, 2026 — "you should NOT be able to
+    /// change your email typing in the Profile without confirming").
+    /// Save Email validates the typed address and sets this; the
+    /// alert shows it back and only "Send Confirmation" calls
+    /// `confirmSaveEmail()`, which sends the Supabase confirmation
+    /// to the new address. A mistype never goes straight through.
+    @Published var emailConfirm: String?
     @Published var isSavingName = false
     @Published var isSavingEmail = false
     @Published var isSigningOut = false
@@ -178,7 +186,13 @@ final class ProfileSettingsViewModel: ObservableObject {
 
     // MARK: - Save Email
 
-    func saveEmail() async {
+    /// Save Email, step 1 (build 48, owner Nov 19, 2026): validate
+    /// the typed address, then ASK — set `emailConfirm` so the
+    /// view shows the confirmation dialog with the address read
+    /// back. Nothing is sent until the user taps Send Confirmation
+    /// in that dialog. A mistype is caught here, by the user, not
+    /// by a bounced confirmation.
+    func requestSaveEmail() {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard OnBudgetKit.MoneyFormat.isValidEmail(trimmed) else {
             toast.showError("Enter a valid email address.")
@@ -188,12 +202,24 @@ final class ProfileSettingsViewModel: ObservableObject {
             toast.show("That is already your sign-in email.")
             return
         }
+        emailConfirm = trimmed
+    }
+
+    /// Save Email, step 2 — the dialog's Send Confirmation button.
+    /// Sends the Supabase email-change confirmation to the
+    /// confirmed address (`updateEmail` = GoTrue `PUT /auth/v1/user`
+    /// with the new email; the sign-in email does NOT change until
+    /// the new address is confirmed). The pending note under the
+    /// field then says so until the user confirms from their inbox.
+    func confirmSaveEmail() async {
+        guard let trimmed = emailConfirm else { return }
         guard !isSavingEmail else { return }
         saveError = nil
         isSavingEmail = true
         defer { isSavingEmail = false }
         do {
             _ = try await context.client.updateEmail(trimmed)
+            emailConfirm = nil
             pendingEmailConfirmation = trimmed
             toast.show("Confirmation sent to \(trimmed) — your sign-in email stays as it is until you confirm it.", kind: .success)
         } catch {
@@ -270,7 +296,10 @@ struct ProfileSettingsView: View {
 
             LabeledField(label: "Email", text: $viewModel.email, placeholder: "you@example.com", keyboardType: .emailAddress, autocapitalization: .never, focused: $emailFocused)
             Button(viewModel.isSavingEmail ? "Saving…" : "Save Email") {
-                Task { await viewModel.saveEmail() }
+                // Build 48: Save Email only ASKS (validates + shows
+                // the confirmation dialog); the send happens from
+                // the dialog's Send Confirmation button.
+                viewModel.requestSaveEmail()
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(viewModel.isSavingEmail)
@@ -361,6 +390,28 @@ struct ProfileSettingsView: View {
                     dismissButton: .default(Text("Close"))
                 )
             }
+        }
+        // Email change confirmation (build 48, owner Nov 19, 2026):
+        // the typed address is read back before anything is sent —
+        // "Send Confirmation" sends the Supabase confirmation to
+        // that address; Cancel sends nothing. The sign-in email
+        // stays as it is until the new address is confirmed.
+        .alert(
+            "Change Your Email?",
+            isPresented: Binding(
+                get: { viewModel.emailConfirm != nil },
+                set: { if !$0 { viewModel.emailConfirm = nil } }
+            ),
+            presenting: viewModel.emailConfirm
+        ) { _ in
+            Button("Send Confirmation") {
+                Task { await viewModel.confirmSaveEmail() }
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.emailConfirm = nil
+            }
+        } message: { address in
+            Text("We'll send a confirmation to \(address). Your sign-in email stays as it is until you confirm it.")
         }
         .toolbar {
             // Keyboard Done (owner, Nov 13, 2026): no other way

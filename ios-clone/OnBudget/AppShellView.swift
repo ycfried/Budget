@@ -102,6 +102,20 @@ public struct AppShellView: View {
             }
             .tint(DesignTokens.primary)
         }
+        // The walkthrough's coordinate space (build 48): every tour
+        // anchor reports its frame in "tourSpace", and the overlay
+        // below draws in the same space, so the cutout and the
+        // tooltip land on the real element.
+        .coordinateSpace(name: "tourSpace")
+        .overlay {
+            if appState.tour.isActive {
+                TourOverlayView(
+                    tour: appState.tour,
+                    appState: appState,
+                    transactionsViewModel: transactionsViewModel
+                )
+            }
+        }
         .fullScreenCover(isPresented: $appState.showSettings) {
             settingsCover
         }

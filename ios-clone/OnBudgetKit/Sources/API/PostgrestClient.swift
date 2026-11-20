@@ -556,7 +556,15 @@ public struct PostgrestClient {
                 table: "transactions",
                 columns: "*",
                 filters: [.householdId(householdId), .onOrAfterNov1()],
-                orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("id", ascending: false)],
+                // Build 48 (owner, Nov 19, 2026 — newest first):
+                // the tie-break is created_at, not id. `id` is a
+                // random UUID, so same-date rows arrived in random
+                // order and a just-added row landed anywhere inside
+                // its date group; created_at desc puts the newest
+                // row first, matching the client sort — and it keeps
+                // pagination honest (page 1 really is the newest
+                // rows, so a just-added row is in it, at the top).
+                orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("created_at", ascending: false)],
                 offset: offset
             ),
             pageSize: pageSize
@@ -564,8 +572,8 @@ public struct PostgrestClient {
     }
 
     /// Whole-history transactions for export (build 45, Nov 18,
-    /// 2026): every row for the household, date desc with the `id
-    /// desc` tiebreaker (same Nov 18 ordering fix as
+    /// 2026): every row for the household, date desc with the
+    /// `created_at` desc tiebreaker (same Nov 19 ordering fix as
     /// `transactionsPage`), via `fetchAllPages` — the list page
     /// only ever holds the rows loaded so far (25 at a time), and
     /// an export of the loaded page alone would silently miss the
@@ -578,7 +586,7 @@ public struct PostgrestClient {
             table: "transactions",
             columns: "*",
             filters: [.householdId(householdId), .onOrAfterNov1()],
-            orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("id", ascending: false)]
+            orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("created_at", ascending: false)]
         ))
     }
 

@@ -34,6 +34,7 @@
 		D204D204D204D204D204D204 /* PushNotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D203D203D203D203D203D203 /* PushNotificationCoordinator.swift */; };
 		D206D206D206D206D206D206 /* NotificationsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D205D205D205D205D205D205 /* NotificationsSettingsView.swift */; };
 		D208D208D208D208D208D208 /* WidgetBackgroundRefreshTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = D207D207D207D207D207D207 /* WidgetBackgroundRefreshTask.swift */; };
+		T20000000000000000000001 /* WalkthroughTour.swift in Sources */ = {isa = PBXBuildFile; fileRef = T10000000000000000000001 /* WalkthroughTour.swift */; };
 		B3B3B3B3B3B3B3B3B3B3B3B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */; };
 		B4B4B4B4B4B4B4B4B4B4B4B4 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = E2E2E2E2E2E2E2E2E2E2E2E2 /* OnBudgetKit */; };
 		3B3B3B3B3B3B3B3B3B3B3B3B /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A3A3A3A3A3A3A3A3A3A3A3A /* AuthenticationServices.framework */; };
@@ -137,6 +138,7 @@
 		D203D203D203D203D203D203 /* PushNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationCoordinator.swift; sourceTree = "<group>"; };
 		D205D205D205D205D205D205 /* NotificationsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsSettingsView.swift; sourceTree = "<group>"; };
 		D207D207D207D207D207D207 /* WidgetBackgroundRefreshTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetBackgroundRefreshTask.swift; sourceTree = "<group>"; };
+		T10000000000000000000001 /* WalkthroughTour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughTour.swift; sourceTree = "<group>"; };
 		A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A4A4A4A4A4A4A4A4A4A4A4A4 /* OnBudget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OnBudget.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
@@ -240,7 +242,8 @@
 				D207D207D207D207D207D207 /* WidgetBackgroundRefreshTask.swift */,
 				D203D203D203D203D203D203 /* PushNotificationCoordinator.swift */,
 				F30000000000000000000001 /* Funds */,
-				555555555555555555555556 /* Transactions */, 
+				555555555555555555555556 /* Transactions */,
+				T30000000000000000000001 /* Tour */,
 			);
 			path = OnBudget;
 			sourceTree = "<group>";
@@ -278,6 +281,14 @@
 				A70B0B0B0B0B0B0B0B0B0B0B /* TransactionExportView.swift */,
 			);
 			path = Transactions;
+			sourceTree = "<group>";
+		};
+		T30000000000000000000001 /* Tour */ = {
+			isa = PBXGroup;
+			children = (
+				T10000000000000000000001 /* WalkthroughTour.swift */,
+			);
+			path = Tour;
 			sourceTree = "<group>";
 		};
 		C100C100C100C100C100C100 /* Settings */ = {
@@ -537,6 +548,7 @@
 				D204D204D204D204D204D204 /* PushNotificationCoordinator.swift in Sources */,
 				D206D206D206D206D206D206 /* NotificationsSettingsView.swift in Sources */,
 				D208D208D208D208D208D208 /* WidgetBackgroundRefreshTask.swift in Sources */,
+				T20000000000000000000001 /* WalkthroughTour.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

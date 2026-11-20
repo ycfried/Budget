@@ -817,20 +817,43 @@ public struct TransactionFilters: Equatable {
     public func sortTransactions(_ transactions: [Transaction]) -> [Transaction] {
         switch sort {
         case .dateDesc:
-            return transactions.sorted { $0.date > $1.date }
+            // Build 48 (owner, Nov 19, 2026 — "very important"):
+            // newest first is the base/default, and a newly added
+            // transaction must pop up at the top. Date alone is NOT
+            // a total order: rows sharing a date kept the server's
+            // `id DESC` order (a random UUID), so a just-added row
+            // landed at a random spot inside its date group and the
+            // list read as scrambled / alphabetical by merchant.
+            // Tie-break on createdAt, newest created first — a
+            // just-added row has the newest createdAt, so it lands
+            // at the top of its date group (and, for today, the top
+            // of the list). createdAt is an ISO timestamp string;
+            // lexicographic comparison is the codebase's existing
+            // pattern for it (Funds activity feed, pending top-ups).
+            return transactions.sorted {
+                if $0.date != $1.date { return $0.date > $1.date }
+                return $0.createdAt > $1.createdAt
+            }
         case .dateAsc:
-            return transactions.sorted { $0.date < $1.date }
+            return transactions.sorted {
+                if $0.date != $1.date { return $0.date < $1.date }
+                return $0.createdAt < $1.createdAt
+            }
         case .amountDesc:
             return transactions.sorted {
-                abs($0.amountCents) != abs($1.amountCents)
-                    ? abs($0.amountCents) > abs($1.amountCents)
-                    : $0.date > $1.date
+                if abs($0.amountCents) != abs($1.amountCents) {
+                    return abs($0.amountCents) > abs($1.amountCents)
+                }
+                if $0.date != $1.date { return $0.date > $1.date }
+                return $0.createdAt > $1.createdAt
             }
         case .amountAsc:
             return transactions.sorted {
-                abs($0.amountCents) != abs($1.amountCents)
-                    ? abs($0.amountCents) < abs($1.amountCents)
-                    : $0.date > $1.date
+                if abs($0.amountCents) != abs($1.amountCents) {
+                    return abs($0.amountCents) < abs($1.amountCents)
+                }
+                if $0.date != $1.date { return $0.date > $1.date }
+                return $0.createdAt > $1.createdAt
             }
         }
     }

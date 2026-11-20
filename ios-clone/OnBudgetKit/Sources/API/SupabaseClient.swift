@@ -258,6 +258,12 @@ public final class MirroredSessionStore: SessionStore {
         self.key = key
     }
 
+    /// The store this mirror wraps, so callers that need to know
+    /// the real storage (e.g. "is the session in the Keychain?")
+    /// can look through the mirror instead of seeing only the
+    /// wrapper.
+    public var wrappedStore: SessionStore { inner }
+
     public func load() -> AuthSession? {
         inner.load()
     }
@@ -270,6 +276,18 @@ public final class MirroredSessionStore: SessionStore {
         } else {
             mirrorDefaults?.removeObject(forKey: key)
         }
+    }
+
+    /// Clears only the inner store (e.g. the Keychain item or the
+    /// UserDefaults copy) without touching the shared App Group
+    /// mirror. Used when the session is MOVING to a new store, not
+    /// being removed: the new store just wrote the session to the
+    /// mirror, and a plain save(nil) here would remove that same
+    /// mirror key. When the session is being removed outright
+    /// (sign-out / delete-account), save(nil) is the right call —
+    /// it clears the mirror too.
+    public func clearInner() {
+        inner.save(nil)
     }
 }
 
@@ -479,19 +497,65 @@ public final class SupabaseClient: @unchecked Sendable {
     /// re-save. The swap itself is under the session lock so a
     /// concurrent refresh cannot write to a store that has just
     /// been cleared.
+    ///
+    /// Build 48 (widget sync, owner Nov 19, 2026): the App Group
+    /// session mirror must survive every store swap. Sign-in, Face
+    /// ID opt-in/out, sign-out and delete-account all replace the
+    /// store, and each bare replacement silently dropped the
+    /// mirror — the widget extension's mirrored session went stale
+    /// and the sync button did nothing (no session to fetch with).
+    /// The active store is now always mirrored: the incoming store
+    /// is wrapped in a MirroredSessionStore, so every later save
+    /// (sign-in, token refresh, sign-out) reaches the App Group.
+    /// The one exception is InMemorySessionStore (remember-me off,
+    /// and tests): a session the user chose not to persist must
+    /// not be persisted into the App Group either.
     public func replaceSessionStore(_ newStore: SessionStore) {
+        let wrapped: SessionStore
+        if newStore is InMemorySessionStore {
+            wrapped = newStore
+        } else if let mirrored = newStore as? MirroredSessionStore {
+            wrapped = mirrored
+        } else {
+            wrapped = MirroredSessionStore(inner: newStore)
+        }
         let session = currentSession
         let oldStore: SessionStore = lock.synchronized {
             let old = store
-            store = newStore
+            store = wrapped
             return old
         }
-        if oldStore === newStore {
-            newStore.save(session)
+        if oldStore === wrapped {
+            wrapped.save(session)
             return
         }
-        newStore.save(session)
-        oldStore.save(nil)
+        wrapped.save(session)
+        if session == nil {
+            // Sign-out / delete-account: nothing to keep — clear
+            // everything, mirror included.
+            oldStore.save(nil)
+        } else {
+            // The session is only MOVING: clear the old store's own
+            // storage, but not the shared App Group mirror — the
+            // new store just wrote the session to that same mirror
+            // key, and the old store's save(nil) would remove it
+            // again. A bare old store is cleared as-is; a mirrored
+            // one is unwrapped to its inner store first.
+            clearStoreKeepingMirror(oldStore)
+        }
+    }
+
+    /// Clears a store's own storage without touching the shared App
+    /// Group mirror: a MirroredSessionStore is unwrapped to its
+    /// inner store first (its save(nil) would also remove the
+    /// mirror key the new store just wrote). A bare store is
+    /// cleared as-is.
+    private func clearStoreKeepingMirror(_ store: SessionStore) {
+        if let mirrored = store as? MirroredSessionStore {
+            mirrored.clearInner()
+        } else {
+            store.save(nil)
+        }
     }
 
     // MARK: - Auth flows

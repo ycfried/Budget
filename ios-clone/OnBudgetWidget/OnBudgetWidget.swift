@@ -69,6 +69,21 @@ import OnBudgetKit
 struct WidgetEntry: TimelineEntry {
     let date: Date
     let snapshot: WidgetSnapshot?
+    /// True when `snapshot` is a REAL last-known snapshot, not the
+    /// hardcoded sample. Build 48 (owner, Nov 19, 2026 — the
+    /// medium iPad widget shows only placeholders): WidgetKit shows
+    /// the placeholder entry with `.placeholder` redaction, and the
+    /// view rendered skeleton bars for it even though the data was
+    /// real. A real-data placeholder renders its real numbers
+    /// (it opts out of the placeholder redaction); only the sample
+    /// — the widget never loaded a snapshot — still skeletons.
+    let isRealData: Bool
+
+    init(date: Date, snapshot: WidgetSnapshot?, isRealData: Bool = false) {
+        self.date = date
+        self.snapshot = snapshot
+        self.isRealData = isRealData
+    }
 }
 
 /// Refresh the widget in place (build 36, owner Nov 16, 2026): the
@@ -153,17 +168,25 @@ struct Provider: TimelineProvider {
         // the placeholder redaction applies to the entry, not the
         // data. The sample is pinned by
         // WidgetSnapshotTests.testPlaceholderSnapshotSpentFractionIsSeventyPercent.
-        WidgetEntry(date: Date(), snapshot: WidgetSnapshotStore.read() ?? WidgetSnapshot(
+        // Build 48: the entry says whether its snapshot is REAL —
+        // the view renders real numbers for a real-data placeholder
+        // (opting out of the redaction) and skeletons only for the
+        // sample. Without the flag, the medium iPad widget showed
+        // grey bars and an empty ring even though real numbers were
+        // in hand (owner, Nov 19, 2026).
+        let stored = WidgetSnapshotStore.read()
+        return WidgetEntry(date: Date(), snapshot: stored ?? WidgetSnapshot(
             weekStart: "2026-11-08",
             availableCents: 17307,
             charityRemainingCents: 4200,
             spentCents: 40349,
             computedAt: Date()
-        ))
+        ), isRealData: stored != nil)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WidgetEntry) -> Void) {
-        completion(WidgetEntry(date: Date(), snapshot: WidgetSnapshotStore.read()))
+        let snapshot = WidgetSnapshotStore.read()
+        completion(WidgetEntry(date: Date(), snapshot: snapshot, isRealData: snapshot != nil))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetEntry>) -> Void) {
@@ -197,7 +220,7 @@ struct Provider: TimelineProvider {
         // (pure, unit-tested); this Provider just maps it.
         let now = Date()
         var entries = WidgetTimeline.entries(from: now, snapshot: WidgetSnapshotStore.read())
-            .map { WidgetEntry(date: $0.date, snapshot: $0.snapshot) }
+            .map { WidgetEntry(date: $0.date, snapshot: $0.snapshot, isRealData: $0.snapshot != nil) }
         // Build 42: while a transient sync state is live (syncing,
         // or a recent success / failure mark), add one short entry
         // 20 seconds out, so WidgetKit re-renders then and the
@@ -263,7 +286,15 @@ struct WidgetView: View {
     /// The loading state renders explicit skeleton bars sized to
     /// the loaded content (owner, Nov 15, 2026 — WidgetKit's own
     /// redacted text bars came out too small on the XL widget).
-    private var isPlaceholder: Bool { redactionReasons.contains(.placeholder) }
+    /// Build 48 (owner, Nov 19, 2026): a placeholder entry that
+    /// carries REAL data (the last-known snapshot) is NOT a loading
+    /// state — it renders its real numbers. Only the sample
+    /// placeholder (the widget never loaded a snapshot) skeletons.
+    /// Without this, the medium iPad widget showed grey bars and
+    /// an empty ring even though real numbers were in hand.
+    private var isPlaceholder: Bool {
+        redactionReasons.contains(.placeholder) && !entry.isRealData
+    }
 
     /// A loading bar shaped exactly like the text it stands for:
     /// same height as the loaded figure/label, same skeleton grey
@@ -284,6 +315,23 @@ struct WidgetView: View {
     private var background: Color { Color(hex: "#f2f7ff") }
 
     var body: some View {
+        // Build 48: a placeholder entry carrying REAL data opts out
+        // of the system's automatic placeholder redaction, so its
+        // real numbers render instead of redacted bars. (The
+        // `isPlaceholder` flag above already swaps the custom
+        // skeleton bars for real text; without this opt-out the
+        // system's redaction would still blank the real text.)
+        // The sample placeholder (no snapshot ever loaded) keeps
+        // the redaction and the skeletons.
+        if entry.isRealData {
+            content.unredacted()
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if let snapshot = entry.snapshot {
             let stale = snapshot.isStale(at: entry.date)
             switch family {

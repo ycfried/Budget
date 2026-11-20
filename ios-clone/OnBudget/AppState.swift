@@ -103,6 +103,21 @@ public final class AppViewModel: ObservableObject {
 
     @Published public var phase: AppPhase = .loading
     @Published public var selectedTab: AppTab = .home
+    /// The in-app walkthrough's live state (build 48, owner Nov 19,
+    /// 2026): the first-run tour, ~11 steps, one element at a time.
+    /// Owned here so Home, Transactions, Funds, the shell and
+    /// Settings all read the same tour. The overlay lives on the
+    /// shell; the trigger lives on Home; the replay row lives in
+    /// Settings.
+    @Published public var tour = TourState()
+    /// The walkthrough's "seen" key: per user per household, so a
+    /// new family member on their own device gets the tour once,
+    /// and a new household gets it once too.
+    public var tourKey: String {
+        let user = client.currentSession?.user.id.uuidString ?? "signed-out"
+        let household = householdId?.uuidString ?? "no-household"
+        return "\(user)-\(household)"
+    }
     /// Tab-reset suppression (owner, Nov 16, 2026 — build 40): a
     /// USER tab tap resets that tab to its top-level main page
     /// (Transactions pops its NavigationStack path, Funds collapses

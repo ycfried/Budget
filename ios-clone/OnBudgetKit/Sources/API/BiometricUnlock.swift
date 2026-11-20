@@ -387,9 +387,21 @@ public final class BiometricUnlock {
     /// swap runs only when the client is actually on the biometric
     /// store — swapping UserDefaults for a fresh UserDefaults store
     /// would clear the session key the new store just wrote.
+    /// Build 48 (widget sync): the active store is now always a
+    /// MirroredSessionStore (see SupabaseClient.replaceSessionStore),
+    /// so this check looks THROUGH the wrapper at the real storage
+    /// — `client.store is BiometricSessionStore` is never true
+    /// on its own any more.
     private func dropStoredSession(client: SupabaseClient) {
         keychain.delete()
-        if client.store is BiometricSessionStore {
+        let usesBiometricStore: Bool = {
+            if client.store is BiometricSessionStore { return true }
+            if let mirrored = client.store as? MirroredSessionStore {
+                return mirrored.wrappedStore is BiometricSessionStore
+            }
+            return false
+        }()
+        if usesBiometricStore {
             client.replaceSessionStore(UserDefaultsSessionStore())
         }
     }

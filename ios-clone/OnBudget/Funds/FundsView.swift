@@ -49,6 +49,14 @@ public enum FundsMoreSection: Equatable {
     case fundActivity
     case charityActivity
     case debtActivity
+
+    var accessibilityID: String {
+        switch self {
+        case .fundActivity: return "funds.activityButton.fund"
+        case .charityActivity: return "funds.activityButton.charity"
+        case .debtActivity: return "funds.activityButton.debt"
+        }
+    }
 }
 
 /// The four reorderable funds on the Funds page (build 30).
@@ -905,6 +913,9 @@ public struct FundsView: View {
                     }
                     Divider()
                     CharityRateSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames)
+                        // Walkthrough anchor (build 48): the rate
+                        // editor — "change the rate, or turn it off".
+                        .tourAnchor(.charityRules, tour: appState.tour)
                     Divider()
                     charityActivitySection
                 }
@@ -1114,17 +1125,39 @@ public struct FundsView: View {
                 spendingCard
             case .fund:
                 fundCard
+                    // Walkthrough anchor (build 48): the Savings card.
+                    .tourAnchor(.savingsCard, tour: appState.tour)
             case .charity:
                 charityCard
             case .debt:
                 debtCard
+                    // Walkthrough anchor (build 48): the Overspent card.
+                    .tourAnchor(.debtCard, tour: appState.tour)
             }
             // Build 47 (owner, Nov 19, 2026): a fund hidden from
             // Home says so under its Funds card, so the owner can
-            // tell at a glance why it is missing from Home — the
-            // pencil opens the edit sheet to put it back.
+            // tell at a glance why it is missing from Home. Build
+            // 48: the way back is a button right here — "Show on
+            // Home" puts it straight back (no pencil, no edit
+            // sheet, no toggle to hunt for). Admin-only; the
+            // server refuses non-admins. The toast ("Back on
+            // Home.") comes from setFundHidden itself.
             if id.isHidden(customHidden: appState.fundHidden) {
-                FundsMuted("Hidden from Home.")
+                HStack(spacing: 12) {
+                    FundsMuted("Hidden from Home.")
+                    Spacer()
+                    if isAdmin {
+                        Button("Show on Home") {
+                            Task {
+                                if let map = await viewModel.setFundHidden(section: id, hidden: false) {
+                                    appState.fundHidden = map
+                                }
+                            }
+                        }
+                        .buttonStyle(SmallTertiaryButtonStyle())
+                        .accessibilityIdentifier("funds.showOnHomeButton.\(id.rawValue)")
+                    }
+                }
             }
         }
         // Build 44 (owner, Nov 18, 2026): the long-press entry into
@@ -1327,6 +1360,16 @@ public struct FundsView: View {
     ) -> some View {
         if !isAdminOnly || isAdmin {
             VStack(alignment: .leading, spacing: 0) {
+                // Build 48 (owner, Nov 19, 2026 — the Activity
+                // control "looks like a Word document"): a proper
+                // BUTTON, not a bare text row with a "⌄" text glyph.
+                // White background, a 1.5pt brand-blue border,
+                // squarish rounded edges (cornerRadius 10, the
+                // no-pills rule), full width — it reads as something
+                // to tap. The chevron is a real SF Symbol
+                // (`chevron.down`, primary blue), rotating 180° when
+                // open; the "⌄" text character is gone. Press
+                // feedback via DimOnPress (opacity dip while held).
                 Button {
                     openMore = openMore == section ? nil : section
                 } label: {
@@ -1335,16 +1378,24 @@ public struct FundsView: View {
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
                         Spacer()
-                        Text("⌄")
-                            .font(.system(size: 17, weight: .semibold))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(DesignTokens.primary)
                             .rotationEffect(.degrees(openMore == section ? 180 : 0))
                     }
-                    .padding(.horizontal, hPad)
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(DesignTokens.primary, lineWidth: 1.5)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(DimOnPressButtonStyle())
+                .accessibilityIdentifier(section.accessibilityID)
                 if openMore == section {
                     content()
                         .padding(.horizontal, hPad)

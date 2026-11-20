@@ -275,6 +275,8 @@ public struct TransactionsView: View {
             Spacer(minLength: 0)
             Button("+ Add") { showingAdd = true }
                 .buttonStyle(SmallPrimaryButtonStyle())
+                // Walkthrough anchor (build 48): the + Add button.
+                .tourAnchor(.addButton, tour: appState.tour)
             Button("Filters") { showingFilters = true }
                 .buttonStyle(SmallTertiaryButtonStyle())
         }
@@ -457,6 +459,8 @@ public struct TransactionsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .accessibilityLabel("Search")
         }
+        // Walkthrough anchor (build 48): the search field + button.
+        .tourAnchor(.searchBar, tour: appState.tour)
     }
 
     /// Applies the current search text and dismisses the keyboard
@@ -608,6 +612,13 @@ public struct TransactionsView: View {
                             },
                             onActions: { actionsTransaction = transaction }
                         )
+                        // Walkthrough anchor (build 48): the first
+                        // row — the tour points at it and expands it
+                        // for the "open a row" step.
+                        .tourAnchor(
+                            shown.first?.id == transaction.id ? .firstRow : nil,
+                            tour: appState.tour
+                        )
                         if transaction.id != shown.last?.id {
                             Divider()
                                 .padding(.leading, 64)
@@ -617,6 +628,8 @@ public struct TransactionsView: View {
                 .background(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+                // Walkthrough anchor (build 48): the list itself.
+                .tourAnchor(.transactionsList, tour: appState.tour)
             }
         }
     }
