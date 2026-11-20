@@ -182,6 +182,14 @@ final class EmailAlertsViewModel: ObservableObject {
 
     var isAdmin: Bool { context.isAdmin }
 
+    /// Build 49 (owner, Nov 19, 2026): the banner line when any
+    /// connection is in error state — email alerts have stopped and
+    /// the app must say so out loud with a reconnect action, not a
+    /// grey muted line and not silence. Nil when nothing is broken.
+    var errorBannerMessage: String? {
+        GmailErrorBanner.message(for: connections)
+    }
+
     func load() async {
         guard !isLoading else { return }
         isLoading = true
@@ -354,6 +362,14 @@ final class EmailAlertsViewModel: ObservableObject {
             resultMessage = text
             resultIsError = isError
             await load()
+            // Build 49 (owner, Nov 19, 2026): a connection in error
+            // state must never read as a successful check. The poll
+            // normally reports the failure itself, but if it did not,
+            // say so here — no more silent failure.
+            if !resultIsError, let banner = GmailErrorBanner.message(for: connections) {
+                resultMessage = banner
+                resultIsError = true
+            }
         } catch {
             resultMessage = "Email check failed: \(settingsErrorMessage(error))"
             resultIsError = true
@@ -408,6 +424,24 @@ struct EmailAlertsView: View {
 
     var body: some View {
         SettingsCard(title: "Email Alerts") {
+            // Build 49 (owner, Nov 19, 2026): when a connection is in
+            // error state, email alerts have stopped — say so out loud
+            // at the top of the card with a reconnect action, not a
+            // grey muted line buried in the row. The Reconnect button
+            // is admin-only; members see the error but cannot reconnect.
+            if let banner = viewModel.errorBannerMessage {
+                VStack(alignment: .leading, spacing: 8) {
+                    ErrorBox(banner)
+                    if viewModel.isAdmin {
+                        Button(viewModel.isConnecting ? "Connecting…" : "Reconnect Email") {
+                            Task { await viewModel.connectTapped() }
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(viewModel.isConnecting)
+                    }
+                }
+                .padding(.bottom, 4)
+            }
             Text("Connected Email")
                 .font(.headline)
                 .padding(.top, 4)

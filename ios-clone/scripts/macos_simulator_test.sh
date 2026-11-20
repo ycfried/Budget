@@ -115,6 +115,15 @@ if 'onbudget' not in schemes:
     print(f"Full built Info.plist: {info!r}", file=sys.stderr)
     raise SystemExit(1)
 print(f"Built Info.plist URL schemes: {schemes}")
+# Build 49 (owner, Nov 19, 2026): the iOS sign-in prompt shows the
+# bundle name, and it read "OnBudget" even after the display name
+# became STAGE — CFBundleName was still $(PRODUCT_NAME). The built
+# plist must carry STAGE as the bundle name.
+bundle_name = info.get('CFBundleName')
+if bundle_name != 'STAGE':
+    print(f"FAIL: built Info.plist CFBundleName is {bundle_name!r}, expected 'STAGE'", file=sys.stderr)
+    raise SystemExit(1)
+print(f"Built Info.plist CFBundleName: {bundle_name}")
 PY
 
 # Gmail callback check, part 1 — scheme + OS routing (LOUD, so the

@@ -203,3 +203,32 @@ public enum EmailCheckMessage {
         return (text, false)
     }
 }
+
+/// Gmail error banner (build 49, owner Nov 19, 2026): a connection
+/// in `status == "error"` means email alerts have stopped — the app
+/// must say so out loud with a reconnect action, not a grey muted
+/// line and not silence. The banner shows whenever ANY connection
+/// is in error state; a healthy connection (or none) shows nothing.
+/// The text is plain user words — the raw `last_error` never
+/// renders, same rule as `plainLastError` / `EmailCheckMessage`.
+public enum GmailErrorBanner {
+    /// The connections in error state. Empty means no banner.
+    public static func errorConnections(in connections: [EmailConnectionPublic]) -> [EmailConnectionPublic] {
+        connections.filter { $0.status == "error" }
+    }
+
+    /// The banner line, or nil when there is nothing to show.
+    public static func message(for connections: [EmailConnectionPublic]) -> String? {
+        let errors = errorConnections(in: connections)
+        guard !errors.isEmpty else { return nil }
+        let authExpired = errors.contains { connection in
+            let lower = (connection.lastError ?? "").lowercased()
+            return lower.contains("reauthorization") || lower.contains("invalid_grant")
+                || lower.contains("expired") || lower.contains("revoked")
+        }
+        if authExpired {
+            return "Email alerts aren't working — access expired. Reconnect to keep getting Amex alerts."
+        }
+        return "Email alerts aren't working — the last email check ran into a problem. Reconnect to keep getting Amex alerts."
+    }
+}

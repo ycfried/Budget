@@ -111,6 +111,12 @@ public final class HomeViewModel: ObservableObject {
     @Published public var isSyncing = false
     /// Card suffix → institution name (best-effort, for bank icons).
     @Published public var institutionBySuffix: [String: String] = [:]
+    /// Gmail error banner (build 49, owner Nov 19, 2026): the plain
+    /// line when a Gmail connection is in error state — email alerts
+    /// have stopped and Home must say so, not stay silent. Nil when
+    /// nothing is broken (or the fetch failed — a failed fetch leaves
+    /// no banner rather than failing Home).
+    @Published public var gmailErrorMessage: String?
 
     /// The in-flight refresh, if any — so a second caller (Home
     /// appearing while the boot preload is still running) awaits
@@ -282,6 +288,14 @@ public final class HomeViewModel: ObservableObject {
             }
             return map
         }
+        // Gmail connections (build 49, owner Nov 19, 2026): the Home
+        // banner needs the connection state — a connection in error
+        // state means email alerts have stopped. Best-effort, like
+        // the Plaid map: a failed fetch leaves no banner rather than
+        // failing Home.
+        let emailTask = Task<[EmailConnectionPublic], Error> {
+            try await client.postgrest.emailConnections(householdId: householdId)
+        }
 
         // Collect every result FIRST, then assign all sections
         // TOGETHER (owner, Nov 16, 2026 — build 38): the old code
@@ -390,6 +404,10 @@ public final class HomeViewModel: ObservableObject {
             institutionMap = nil
         }
 
+        // Gmail connections (build 49): best-effort — a failed fetch
+        // leaves no banner rather than failing Home.
+        let gmailConnections = try? await emailTask.value
+
         // ---- Reveal together: every section assignment happens
         // here, in one step, after all fetches have resolved. ----
         if let weekResult {
@@ -446,6 +464,10 @@ public final class HomeViewModel: ObservableObject {
         if let institutionMap {
             institutionBySuffix = institutionMap
         }
+        // Gmail error banner (build 49): nil when nothing is broken
+        // (or the fetch failed) — the banner only ever appears on a
+        // real error connection, never on a load failure.
+        gmailErrorMessage = GmailErrorBanner.message(for: gmailConnections ?? [])
 
         // Widget snapshot (build 17): the two numbers the Home-screen
         // widget shows — the same figures as the hero and Charity
@@ -568,6 +590,38 @@ public struct HomeView: View {
             // restored if the owner changes his mind. Recent
             // Transactions is shared by both layouts.
             VStack(alignment: .leading, spacing: 12) {
+                // Build 49 (owner, Nov 19, 2026): when a Gmail
+                // connection is in error state, email alerts have
+                // stopped — Home says so out loud at the top, with a
+                // tap that opens Settings where the Email Alerts card
+                // carries the Reconnect button. The banner only ever
+                // appears on a real error connection, never on a load
+                // failure, and it sits above both Home layouts.
+                if let gmailError = viewModel.gmailErrorMessage {
+                    Button {
+                        appState.showSettings = true
+                    } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(gmailError)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(DesignTokens.errorText)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text("Settings")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(DesignTokens.primary)
+                        }
+                        .padding(12)
+                        .background(DesignTokens.errorBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(DesignTokens.errorBorder, lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(gmailError) Open Settings to reconnect.")
+                }
                 switch appState.homeLayout {
                 case .simple:
                     simpleContent
