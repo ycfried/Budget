@@ -66,44 +66,6 @@ public struct FundsPrimaryButton: View {
     }
 }
 
-/// Pale (build 52, owner Nov 20, 2026): #bfdbfe fill, ink text —
-/// the same sizing as FundsPrimaryButton / FundsTertiaryButton.
-/// The owner picked pale for two full-width buttons that sit below
-/// a solid blue one (Top Up Budget under Calculate; Activity &
-/// Transactions under Add to Tzedaka), so no two stark blue
-/// buttons sit near each other. That is the standing exception to
-/// the old "pale is only the middle tier of a three-button row"
-/// rule — these two call sites are the only pale full-width
-/// buttons; do not add more without the owner's say-so.
-public struct FundsPaleButton: View {
-    public let label: String
-    public let isBusy: Bool
-    public let isLarge: Bool
-    public let action: () -> Void
-
-    public init(_ label: String, isBusy: Bool = false, isLarge: Bool = false, action: @escaping () -> Void) {
-        self.label = label
-        self.isBusy = isBusy
-        self.isLarge = isLarge
-        self.action = action
-    }
-
-    public var body: some View {
-        Button(action: action) {
-            Text(TitleCase.apply(to: label))
-                .font(.system(size: isLarge ? 17 : 15, weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, isLarge ? 16 : 13)
-                .padding(.horizontal, 18)
-                .background(DesignTokens.pale)
-                .foregroundStyle(DesignTokens.ink)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-        }
-        .disabled(isBusy)
-        .opacity(isBusy ? 0.6 : 1.0)
-    }
-}
-
 public struct FundsTertiaryButton: View {
     public let label: String
     public let isBusy: Bool
@@ -170,7 +132,12 @@ public struct FundsDangerButton: View {
     }
 }
 
-/// Pale #bfdbfe — ONLY as the middle tier of a three-button row.
+/// Pale #bfdbfe — the middle tier of a three-button row, and,
+/// since build 52 (owner, Nov 20, 2026), the full-width treatment
+/// for exactly two buttons that sit below a solid blue one (Top Up
+/// Budget under Calculate; Activity & Transactions under Add to
+/// Tzedaka). Those two call sites are the only pale full-width
+/// buttons; do not add more without the owner's say-so.
 public struct FundsPaleButton: View {
     public let label: String
     public let isBusy: Bool
