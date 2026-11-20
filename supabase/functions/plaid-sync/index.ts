@@ -816,7 +816,22 @@ Deno.serve(async (req) => {
         const { error } = await supabaseAdmin.from('transactions')
           .update({ state: 'reversed', excluded: true })
           .eq('id', row.id).eq('household_id', householdId);
-        if (error) logSkip(item.plaid_item_id, 'removed-update-failed'); else reversed++;
+        if (error) {
+          logSkip(item.plaid_item_id, 'removed-update-failed');
+        } else {
+          reversed++;
+          // Refund-link guard (Nov 20, 2026 — Walmart case): a
+          // genuine bank reversal strands any refund linked to this
+          // purchase. Unlink it (no surviving row here) so it can
+          // re-link or fall to the unlinked fallback instead of
+          // restoring nothing. Best-effort: never fails the sync.
+          try {
+            const { error: repointErr } = await supabaseAdmin.rpc('repoint_refund_links', { p_from_id: row.id, p_to_id: null });
+            if (repointErr) console.error('plaid-sync: refund unlink on reversal failed (best-effort):', repointErr.message ?? repointErr);
+          } catch (e) {
+            console.error('plaid-sync: refund unlink on reversal failed (best-effort):', (e as Error)?.message ?? e);
+          }
+        }
       }
 
       // A successful sync consumes pending webhook events for this item.
@@ -865,6 +880,18 @@ Deno.serve(async (req) => {
       } catch {
         console.error('plaid-sync: push-notify call failed');
       }
+    }
+    // Dedupe backstop (Nov 20, 2026 - Royal Farms): catch any
+    // Bank+Email pair the ingestion guards missed (stale deploy,
+    // transient error) and any refund link stranded on an excluded
+    // purchase. Runs once per successful hourly sync, so a missed
+    // pair surfaces within a day, not only when the owner spots it.
+    // Best-effort: a missing SQL apply must never fail the sync.
+    try {
+      const { error: backstopErr } = await supabaseAdmin.rpc('backstop_bank_email_pairs', { p_household_id: householdId });
+      if (backstopErr) console.error('plaid-sync: dedupe backstop failed (best-effort):', backstopErr.message ?? backstopErr);
+    } catch (e) {
+      console.error('plaid-sync: dedupe backstop failed (best-effort):', (e as Error)?.message ?? e);
     }
     await releaseLock?.();
     return json({

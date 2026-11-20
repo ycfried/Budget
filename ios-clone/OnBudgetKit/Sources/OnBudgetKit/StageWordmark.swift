@@ -5,12 +5,17 @@ import Foundation
 
 /// The STAGE wordmark text (owner, Nov 18, 2026 — build 47:
 /// STAG → STAGE). The S logo IS the S of STAGE, so this renders
-/// only "T · A · G · E": the letters in brand dark green
-/// (#20392f), the centered-dot separators in brand gold
-/// (#b08d57), at the font the caller passes — the same size and
+/// only "T · A · G · E" — the whole lockup in one uniform blue
+/// (#0288dd, owner Nov 19, 2026): letters AND the centered-dot
+/// separators, so it reads as one word S · T · A · G · E. The old
+/// spec colours (dark green letters #20392f, gold dots #b08d57)
+/// are retired. At the font the caller passes — the same size and
 /// weight as the logo beside it. Call sites compose it with their
-/// own S-logo image (OnBudgetKit has no asset access), never with
-/// the full word "STAGE" (no second S).
+/// own S-logo image (OnBudgetKit has no asset access), on ONE
+/// horizontal line with the logo — never stacked above/below it
+/// (owner, Nov 20, 2026 — build 50: the loading screen read
+/// "S" then "TAGE"), never with the full word "STAGE" (no second
+/// S).
 ///
 /// Call sites: AuthViews AuthBrandHeader, SharedViews
 /// LoadingView, OnBudgetWidget wordmark().
@@ -24,13 +29,13 @@ public struct StageWordmarkText: View {
 
     public var body: some View {
         (
-            Text("T").foregroundStyle(DesignTokens.brandGreen)
-            + Text(" · ").foregroundStyle(DesignTokens.brandGold)
-            + Text("A").foregroundStyle(DesignTokens.brandGreen)
-            + Text(" · ").foregroundStyle(DesignTokens.brandGold)
-            + Text("G").foregroundStyle(DesignTokens.brandGreen)
-            + Text(" · ").foregroundStyle(DesignTokens.brandGold)
-            + Text("E").foregroundStyle(DesignTokens.brandGreen)
+            Text("T").foregroundStyle(DesignTokens.stageBlue)
+            + Text(" · ").foregroundStyle(DesignTokens.stageBlue)
+            + Text("A").foregroundStyle(DesignTokens.stageBlue)
+            + Text(" · ").foregroundStyle(DesignTokens.stageBlue)
+            + Text("G").foregroundStyle(DesignTokens.stageBlue)
+            + Text(" · ").foregroundStyle(DesignTokens.stageBlue)
+            + Text("E").foregroundStyle(DesignTokens.stageBlue)
         )
         .font(font)
     }

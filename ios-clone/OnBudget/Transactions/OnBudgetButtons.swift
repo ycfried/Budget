@@ -169,7 +169,7 @@ public struct SoftErrorBox: View {
 
 // MARK: - Toast
 
-/// Toast manager: one toast at a time, bottom only, auto-dismiss 4s,
+/// Toast manager: one toast at a time, top popup only, auto-dismiss 4s,
 /// tap dismisses sooner. Info is brand blue, success GREEN (owner
 /// rule, Nov 11 2026 — native only); errors soft red.
 @MainActor

@@ -302,79 +302,35 @@ public enum TransactionFormatting {
 
     // MARK: - Transfer row titles (build 42, owner Nov 17, 2026)
     //
-    // For transfers between the user's own accounts the row title is
-    // derived from the DIRECTION and the OTHER account, never the
-    // bank's wording: the bank labelled a +$2,000 transfer "Transfer
-    // to Savings" when the money actually came FROM savings into
-    // checking — backwards. Direction comes from the signed amount
-    // (Plaid stores money-out positive, money-in negative): money IN
-    // to this account came "from" the other account, money OUT went
-    // "to" it. The other account's last 4 digits come from the bank
-    // description when it carries them (see `otherAccountLast4(for:)`);
-    // when no digits are determinable the title is direction-only
-    // ("Transfer from" / "Transfer to"), never a guess. Applies ONLY
-    // to kind == .transfer rows — every other kind keeps its
-    // Title-Cased merchant name.
+    // The pure title logic lives in OnBudgetKit `TransactionTitles`
+    // (build 50) so it is unit-tested — the wrappers below keep the
+    // existing call sites unchanged. For transfers the row title is
+    // ALWAYS the merchant name (build 50, owner Nov 20, 2026): the
+    // derived transfer title hid the merchant. The direction +
+    // other account live in the expanded detail panel only.
 
-    /// The row's title: the transfer title for transfers, the
-    /// Title-Cased merchant name for every other kind. The row and
-    /// its search highlight both render this string, so they agree.
+    /// The row's title: ALWAYS the merchant name. The row and its
+    /// search highlight both render this string, so they agree.
     public static func rowTitle(for transaction: Transaction) -> String {
-        guard transaction.kind == .transfer else { return displayMerchant(transaction.merchant) }
-        return transferTitle(for: transaction)
+        TransactionTitles.rowTitle(for: transaction)
     }
 
-    /// "Transfer from ••5939" / "Transfer to ••5939", or
-    /// direction-only when the other account's digits cannot be
-    /// derived, or bare "Transfer" for a zero amount (no direction
-    /// to read). Title Case per the app rule — "from" / "to" stay
-    /// lowercase as minor words, as in "Spend from Fund".
+    /// "Transfer from ••5939" / "Transfer to ••5939" (detail only).
     public static func transferTitle(for transaction: Transaction) -> String {
-        let direction: String?
-        if transaction.amountCents < 0 {
-            direction = "from"
-        } else if transaction.amountCents > 0 {
-            direction = "to"
-        } else {
-            direction = nil
-        }
-        guard let direction else { return "Transfer" }
-        if let last4 = otherAccountLast4(for: transaction) {
-            return TitleCase.apply(to: "Transfer \(direction) ••\(last4)")
-        }
-        return TitleCase.apply(to: "Transfer \(direction)")
+        TransactionTitles.transferTitle(for: transaction)
+    }
+
+    /// The transfer text for the expanded detail panel: the full
+    /// title when the other account's digits are derivable, else
+    /// bare "Transfer" — never a dangling "Transfer to".
+    public static func transferDetailText(for transaction: Transaction) -> String {
+        TransactionTitles.transferDetailText(for: transaction)
     }
 
     /// The OTHER account's last 4 digits, parsed from the bank's
-    /// merchant string — the model carries no other-account field:
-    /// `cardSuffix` is THIS row's account, and `merchant` is the
-    /// only text the bank supplies. A run of exactly 4 digits is a
-    /// last-4 candidate ("Internal Transfer Credit: Savings -5939"
-    /// → "5939"; "Transfer to Savings" carries none → nil). The
-    /// LAST such run wins (the suffix trails the description), and
-    /// a run equal to this row's own `cardSuffix` is skipped — it
-    /// names this account, not the other one — so a description
-    /// that only ever names this account falls back to
-    /// direction-only rather than mislabelling it as the other
-    /// account. Longer digit runs are not last-4s and are ignored.
+    /// merchant string (see `TransactionTitles`).
     public static func otherAccountLast4(for transaction: Transaction) -> String? {
-        var found: String? = nil
-        var run = ""
-        func flushRun() {
-            if run.count == 4, run != transaction.cardSuffix {
-                found = run
-            }
-            run = ""
-        }
-        for character in transaction.merchant {
-            if character.isNumber {
-                run.append(character)
-            } else {
-                flushRun()
-            }
-        }
-        flushRun()
-        return found
+        TransactionTitles.otherAccountLast4(for: transaction)
     }
 
     /// Search-match highlight (build 41, owner Nov 17, 2026): the
@@ -441,14 +397,10 @@ public enum TransactionFormatting {
     }
 
     /// Kind label in detail (live.js:990): Refund / Charity gift /
-    /// Transfer / Transaction.
+    /// Transfer / Transaction. (Thin wrapper over the kit
+    /// `TransactionTitles`, build 50.)
     public static func kindLabel(for transaction: Transaction) -> String {
-        switch transaction.kind {
-        case .refund: return "Refund"
-        case .charity: return "Charity gift"
-        case .transfer: return "Transfer"
-        default: return "Transaction"
-        }
+        TransactionTitles.kindLabel(for: transaction)
     }
 
     /// Source labels, display only (live.js:347): Bank / By hand /

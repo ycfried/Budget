@@ -110,13 +110,23 @@ public final class AppViewModel: ObservableObject {
     /// shell; the trigger lives on Home; the replay row lives in
     /// Settings.
     @Published public var tour = TourState()
-    /// The walkthrough's "seen" key: per user per household, so a
-    /// new family member on their own device gets the tour once,
-    /// and a new household gets it once too.
-    public var tourKey: String {
-        let user = client.currentSession?.user.id.uuidString ?? "signed-out"
-        let household = householdId?.uuidString ?? "no-household"
-        return "\(user)-\(household)"
+    /// Whether the walkthrough has been seen for this household
+    /// on this device (build 50, Nov 20, 2026 — tutorial
+    /// one-time fix): the STABLE per-household, per-device flag
+    /// (`TourSeen`, OnBudgetKit), plus the legacy composite key
+    /// for a flag written before build 50. The old `tourKey`
+    /// folded in the session user UUID, which can be nil during a
+    /// session-store swap — the flag was then read back under a
+    /// different key and the tour showed on every open.
+    public var tourSeen: Bool {
+        tour.hasSeen(householdId: householdId, userId: client.currentSession?.user.id)
+    }
+    /// Mark the walkthrough seen for this household on this
+    /// device (build 50): under the stable key AND the legacy
+    /// composite key. Called on ANY dismissal — Skip, Done, or
+    /// finishing the last step.
+    public func markTourSeen() {
+        tour.markSeen(householdId: householdId, userId: client.currentSession?.user.id)
     }
     /// Tab-reset suppression (owner, Nov 16, 2026 — build 40): a
     /// USER tab tap resets that tab to its top-level main page
@@ -393,6 +403,15 @@ public final class AppViewModel: ObservableObject {
             let home = HomeViewModel(client: client, appState: self, householdId: membership.householdId)
             homeViewModel = home
             Task { await home.refresh() }
+            // Plaid refresh on open (build 50, owner Nov 20, 2026):
+            // the app also pulls fresh bank transactions when it
+            // opens — throttled to once per 15 minutes, silent,
+            // best-effort (see syncBankOnOpenIfDue). Fired here so
+            // a fresh launch syncs even before Home appears; Home's
+            // own .task and the foreground hook are the other two
+            // triggers, and the throttle makes them cheap no-ops
+            // when one already ran.
+            Task { await home.syncBankOnOpenIfDue() }
             let preloadDeadline = Date().addingTimeInterval(1.5)
             while Date() < preloadDeadline {
                 if home.isLoaded { break }

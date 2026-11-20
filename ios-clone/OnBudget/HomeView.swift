@@ -254,6 +254,24 @@ public final class HomeViewModel: ObservableObject {
         let charityCashGiftsTask = Task<[CharityCashGift], Error> {
             try await client.postgrest.charityCashGifts(householdId: householdId)
         }
+        // Whole-history charity gift amounts (build 50, Nov 20,
+        // 2026 — Tzedaka $37 fix): Given and Pending MUST come
+        // from whole-history server queries, never from the
+        // 100-row transactionsPage. The page holds only the 100
+        // newest rows, so once history passed 100 rows the two
+        // Nov 3 verified gifts ($2.00 TOIREM.ORG CHARITY +
+        // $35.00 =TENYADKALLAHGEMACH) fell out of the page and
+        // Home's Given missed $37.00 — Available read $982.32
+        // instead of the correct $945.32, and the ring read 6%
+        // instead of ~10%. Funds already uses this pattern
+        // (verifiedCharityGiftAmounts); Home now does the same,
+        // plus the provisional mirror for Pending.
+        let charityGivenTask = Task<[Int], Error> {
+            try await client.postgrest.verifiedCharityGiftAmounts(householdId: householdId)
+        }
+        let charityPendingTask = Task<[Int], Error> {
+            try await client.postgrest.provisionalCharityGiftAmounts(householdId: householdId)
+        }
         let fundLedgerTask = Task<[FundLedgerEntry], Error> {
             try await client.postgrest.fundLedger(householdId: householdId)
         }
@@ -352,21 +370,29 @@ public final class HomeViewModel: ObservableObject {
 
         // Charity summary (only when the transactions load above
         // succeeded — a failed transactions load already failed the
-        // charity section with it, as before).
+        // charity section with it, as before). Given and Pending
+        // come from the whole-history server queries (build 50,
+        // Nov 20, 2026 — Tzedaka $37 fix), NOT from the 100-row
+        // page: the page drops older gifts once history passes
+        // 100 rows. The Funds pattern, verbatim: Given =
+        // verified whole-history gifts + cash gifts; Pending =
+        // provisional whole-history gifts; Total = active income
+        // at each row's own rate.
         var charitySummary: CharitySummary?
         var charityError: OnBudgetError?
         if txError == nil {
             do {
                 let income = try await charityIncomeTask.value
                 let settings = try await charitySettingsTask.value
-                let charityRows = txRows.filter { $0.kind == .charity }
+                let givenAmounts = try await charityGivenTask.value
+                let pendingAmounts = try await charityPendingTask.value
                 let cashGiftCents = (try? await charityCashGiftsTask.value)?
                     .reduce(0) { $0 + $1.amountCents } ?? 0
-                charitySummary = CharitySummary.compute(
-                    activeIncome: income,
-                    charityTransactions: charityRows,
-                    defaultRateBp: settings?.defaultRateBp ?? 1000,
-                    cashGiftCents: cashGiftCents)
+                charitySummary = CharitySummary(
+                    committedCents: income.filter { $0.status == "active" }.reduce(0) { $0 + $1.committedCents },
+                    givenCents: givenAmounts.reduce(0, +) + cashGiftCents,
+                    pendingGiftCents: pendingAmounts.reduce(0, +),
+                    defaultRateBp: settings?.defaultRateBp ?? 1000)
             } catch let error as OnBudgetError {
                 if error == .sessionExpired { appState.showSessionExpired(); return }
                 charityError = error
@@ -501,6 +527,39 @@ public final class HomeViewModel: ObservableObject {
 
 
     // MARK: - Bank sync
+
+    /// Plaid refresh on app open (build 50, owner Nov 20, 2026):
+    /// STAGE used to refresh Plaid only on the hourly cron and on
+    /// a manual sync tap — Copilot's background sync picked up new
+    /// transactions while STAGE's hourly/manual sync did not fetch
+    /// them (Plaid per-Item freshness). So opening the app now
+    /// also triggers a Plaid sync. Throttled to once per 15
+    /// minutes per household (UserDefaults) so it never hammers
+    /// Plaid on every Home appear or foreground; admin only
+    /// (members would get a 403 — handled silently); best-effort
+    /// and SILENT — no toast on success or failure, the data just
+    /// refreshes when it arrives. The hourly cron stays as the
+    /// backstop, and the manual sync button stays the visible
+    /// path (it surfaces errors; this one never does). Reuses
+    /// `isSyncing`, so a manual sync cannot overlap it (and the
+    /// button honestly spins while it runs).
+    public func syncBankOnOpenIfDue() async {
+        guard isAdmin, !isSyncing else { return }
+        let key = "plaid.openSyncAt.\(householdId.uuidString)"
+        let last = UserDefaults.standard.double(forKey: key)
+        if last > 0, Date().timeIntervalSince1970 - last < 900 { return }
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: key)
+        isSyncing = true
+        defer { isSyncing = false }
+        do {
+            _ = try await client.functions.plaidSyncAllowingPartialFailure(householdId: householdId)
+            await refresh()
+        } catch {
+            // Silent: the hourly cron is the backstop, and the
+            // manual sync button surfaces errors. A failed
+            // background refresh must never toast on open.
+        }
+    }
 
     /// Home sync button (live.js:2842-2876, runBankSync): admin
     /// only, one sync at a time, spins while syncing. The toast
@@ -642,7 +701,15 @@ public struct HomeView: View {
         // centered 900pt column on the regular size class (see
         // mainContentWidth), never stretched edge-to-edge.
         .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
-        .task { await viewModel.refreshIfNeeded() }
+        .task {
+            await viewModel.refreshIfNeeded()
+            // Plaid refresh on open (build 50, owner Nov 20, 2026):
+            // opening the app also pulls fresh bank transactions,
+            // throttled to once per 15 minutes (see
+            // syncBankOnOpenIfDue) — the hourly cron is only the
+            // backstop now.
+            await viewModel.syncBankOnOpenIfDue()
+        }
         .refreshable { await viewModel.refresh() }
         // Settings dismiss (audit H-P1-5): the Settings cover sits
         // over this tab and never re-ran the load, so a just-set
@@ -748,19 +815,23 @@ public struct HomeView: View {
 
     /// Start the first-run walkthrough if it is due (build 48):
     /// the week has loaded, the tour has never been seen for this
-    /// user + household, it is not already running, and the user is
-    /// on the Home tab with a household set. A short delay lets the
-    /// user see Home first; the guards re-run after the delay, so
-    /// navigating away in that window cancels the start.
+    /// household on this device (build 50: the STABLE
+    /// per-household flag — the old key folded in the session
+    /// user UUID and was read back under a different key, so the
+    /// tour showed on every open), it is not already running, and
+    /// the user is on the Home tab with a household set. A short
+    /// delay lets the user see Home first; the guards re-run after
+    /// the delay, so navigating away in that window cancels the
+    /// start.
     private func maybeStartTour() {
         let tour = appState.tour
         guard viewModel.week.isLoaded else { return }
-        guard !tour.isActive, !tour.hasSeen(key: appState.tourKey) else { return }
+        guard !tour.isActive, !appState.tourSeen else { return }
         guard appState.selectedTab == .home, appState.householdId != nil else { return }
         Task {
             try? await Task.sleep(for: .milliseconds(800))
             guard viewModel.week.isLoaded else { return }
-            guard !tour.isActive, !tour.hasSeen(key: appState.tourKey) else { return }
+            guard !tour.isActive, !appState.tourSeen else { return }
             guard appState.selectedTab == .home else { return }
             tour.start()
         }
@@ -1350,8 +1421,13 @@ public struct HomeView: View {
                 Text(name)
                     .font(.system(size: 19, weight: .bold))
                     .foregroundStyle(onBanner)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+                    // Build 50 (owner, Nov 20, 2026 — iPhone
+                    // readability): the name wraps to a second line
+                    // rather than shrinking — one uniform 19pt on
+                    // every card, nothing cut off. The old 0.85
+                    // minimumScaleFactor made long names render
+                    // smaller than short ones.
+                    .lineLimit(2)
                 Spacer()
                 // Build 48 (owner, Nov 19, 2026): the remove
                 // control lives ON the card — an eye-off button in
@@ -1972,12 +2048,16 @@ public struct HomeView: View {
                 // always in the header; the amount lives in the
                 // white body below, so the header is icon + name
                 // only — nothing here can truncate against an
-                // amount any more.
+                // amount any more. Build 50 (owner, Nov 20, 2026
+                // — iPhone readability): the name wraps to a
+                // second line rather than shrinking — one uniform
+                // size on every card, nothing cut off. The old
+                // 0.85 minimumScaleFactor made long names render
+                // smaller than short ones.
                 Text(title)
                     .font(.system(size: titleSize, weight: .bold))
                     .foregroundStyle(onBanner)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+                    .lineLimit(2)
                 Spacer()
             }
             .padding(.horizontal, pad)

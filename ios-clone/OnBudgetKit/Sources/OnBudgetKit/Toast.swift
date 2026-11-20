@@ -1,7 +1,11 @@
 import Foundation
 
-/// Toast style spec — owner rules: transient messages are bottom
-/// toasts floating clear of the tab bar, never inside cards.
+/// Toast style spec — owner rules: transient popup notifications
+/// (owner, Nov 20, 2026 — build 50: a nicer-looking popup, NOT a
+/// blocking modal, placed at the top where it looks best — never
+/// forced to the bottom, never centered). A green check leads
+/// success, a red X leads errors; auto-dismiss 4s, tap anywhere
+/// else or the top-corner X closes early.
 /// Information messages stay brand blue; SUCCESS messages are GREEN
 /// (owner rule, Nov 11 2026 — native only, supersedes the web app's
 /// brand-blue success toasts; the web app stays blue); errors use the
@@ -46,9 +50,10 @@ public enum ToastStyle {
         }
     }
 
-    /// Toasts sit at the bottom of the screen, floating clear of the
-    /// tab bar.
-    public static let placement = "bottom"
+    /// Toasts sit at the top of the screen as a popup (owner,
+    /// Nov 20, 2026 — build 50: top, where it looks best — never
+    /// forced to the bottom, never centered).
+    public static let placement = "top"
 
     /// Toasts are transient: they dismiss on their own after this long.
     /// 4s per CLONE_SPEC §2.3 — the single shared value; the SwiftUI

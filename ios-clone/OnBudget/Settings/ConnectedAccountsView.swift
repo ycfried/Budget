@@ -317,7 +317,29 @@ final class ConnectedAccountsViewModel: ObservableObject {
                     institutionName: institutionName
                 )
                 if exchanged.connected {
-                    toast.show("Connected. Tap \"Sync Transactions\" to pull transactions.", kind: .success)
+                    // Build 50 (owner, Nov 20, 2026): a new bank
+                    // connection enables automatic sync (Plaid
+                    // webhooks) right away — the owner decided
+                    // webhooks are worth it (Nov 17), and the
+                    // webhook used to need a manual toggle flip in
+                    // Settings. Best-effort: a failed register
+                    // never fails the connection itself, and the
+                    // toggle stays available in Settings. The
+                    // toast only claims auto-sync is on when the
+                    // register actually succeeded.
+                    var autoSyncEnabled = false
+                    do {
+                        let result = try await context.client.functions.plaidWebhookRegister(
+                            householdId: context.householdId, enabled: true)
+                        autoSyncEnabled = !result.results.isEmpty && result.results.allSatisfy(\.ok)
+                    } catch {
+                        autoSyncEnabled = false
+                    }
+                    if autoSyncEnabled {
+                        toast.show("Connected. Automatic sync is on — new transactions will be pulled in on your next refresh.", kind: .success)
+                    } else {
+                        toast.show("Connected. Tap \"Sync Transactions\" to pull transactions.", kind: .success)
+                    }
                     await load()
                 } else if exchanged.duplicate {
                     toast.show("This bank is already connected — the duplicate connection was removed. Past transactions stay.")

@@ -1073,6 +1073,32 @@ public struct PostgrestClient {
         return rows.map(\.amountCents)
     }
 
+    /// Provisional charity gift amounts, whole history (build 50,
+    /// Nov 20, 2026 — Tzedaka $37 fix). The mirror of
+    /// `verifiedCharityGiftAmounts` for pending gifts. Home used to
+    /// derive Pending from the 100-row `transactionsPage`, which
+    /// silently drops provisional gifts once they age out of the
+    /// page — the same staleness that made Home's Given miss the
+    /// two Nov 3 verified gifts ($37.00) and read Available
+    /// $982.32 instead of $945.32. Aggregates must come from
+    /// whole-history queries, never the capped page.
+    public func provisionalCharityGiftAmounts(householdId: UUID) async throws -> [Int] {
+        struct Row: Decodable { let amountCents: Int; enum CodingKeys: String, CodingKey { case amountCents = "amount_cents" } }
+        let rows: [Row] = try await fetchAllPages(PostgrestQuery(
+            table: "transactions",
+            columns: "amount_cents",
+            filters: [
+                .householdId(householdId),
+                .equal("kind", "charity"),
+                .equal("state", "provisional"),
+                .equal("excluded", "false"),
+                .onOrAfterNov1(),
+            ],
+            orders: [PostgrestOrder("created_at", ascending: true), PostgrestOrder("id", ascending: true)]
+        ))
+        return rows.map(\.amountCents)
+    }
+
     // MARK: Duplicates, restoration, history
 
     /// Pending duplicate candidates (live.js:1877-1878), newest

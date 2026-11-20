@@ -194,14 +194,19 @@ public final class TourState: ObservableObject {
         frames[anchor]
     }
 
-    private func seenKey(_ key: String) -> String { "tour.seen.\(key)" }
-
-    public func hasSeen(key: String) -> Bool {
-        UserDefaults.standard.bool(forKey: seenKey(key))
+    /// The walkthrough's "seen" flag (build 50, Nov 20, 2026 —
+    /// tutorial one-time fix): a STABLE per-household, per-device
+    /// key via `TourSeen` (OnBudgetKit). The old key folded in the
+    /// session user UUID, which can be nil during a session-store
+    /// swap, so the flag was read back under a different key and
+    /// the tour showed on every open. The household id is set
+    /// once at boot and never changes; UserDefaults is per device.
+    public func hasSeen(householdId: UUID?, userId: UUID? = nil) -> Bool {
+        TourSeen.hasSeen(householdId: householdId, userId: userId)
     }
 
-    public func markSeen(key: String) {
-        UserDefaults.standard.set(true, forKey: seenKey(key))
+    public func markSeen(householdId: UUID?, userId: UUID? = nil) {
+        TourSeen.markSeen(householdId: householdId, userId: userId)
     }
 }
 
@@ -485,7 +490,7 @@ public struct TourOverlayView: View {
     }
 
     private func finish() {
-        tour.markSeen(key: appState.tourKey)
+        appState.markTourSeen()
         transactionsViewModel?.expandedTransactionId = nil
         tour.end()
         if appState.selectedTab != .home {

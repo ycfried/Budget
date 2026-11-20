@@ -201,3 +201,16 @@ test('guard: a bank row 3 days away does not cover the alert', async () => {
   const db = fakeDb({ txRows: [bank({ date: '2026-11-10' })] });
   assert.equal(await findCoveringBankRow(db, HH, ALERT), null);
 });
+
+test('guard: Royal Farms — identical merchant, same amount/date/card, bank row covers the alert (Nov 20, 2026)', async () => {
+  // Pins the guard for the exact live shape: Plaid ROYAL FARMS $7.63
+  // Nov 19 ••1005 already in the table when the identical email alert
+  // arrives. The current guard code catches this — the live miss was
+  // not in this logic (stale deploy or transient error) — so this test
+  // locks the behaviour against future guard regressions.
+  const db = fakeDb({ txRows: [bank({ merchant: 'ROYAL FARMS', amount_cents: 763, date: '2026-11-19' })] });
+  const found = await findCoveringBankRow(db, HH, {
+    merchant: 'ROYAL FARMS', date: '2026-11-19', amount_cents: 763, card_suffix: '1005', kind: 'charge',
+  });
+  assert.equal(found?.id, 'bank-1');
+});

@@ -711,6 +711,33 @@ public final class TransactionsViewModel {
         }
     }
 
+    /// Exclude a row from the spending math WITHOUT reclassifying
+    /// it (build 50, owner Nov 20, 2026): the owner had to misuse
+    /// "Transfer" to get a row out of the math because there was
+    /// no Exclude. Same server call as Delete for a bank/email row
+    /// (`exclude_transaction` → Trash, restorable, admin only,
+    /// 35-day lock) — the kind stays what it is and the merchant
+    /// stays visible. A hand-entered row is excluded the same way
+    /// (to Trash, restorable), not permanently deleted.
+    public func exclude(_ transaction: Transaction, reason: String) async -> Bool {
+        guard isAdmin else {
+            showAlert(title: "Admin Only", message: "Only the admin can exclude transactions.")
+            return false
+        }
+        do {
+            try await client.rpcs.excludeTransaction(txnId: transaction.id, reason: reason)
+            toastManager.show("Transaction excluded.", kind: .success)
+            await reloadAfterMutation()
+            return true
+        } catch let error as OnBudgetError {
+            showAlert(title: "Could Not Exclude", message: error.displayMessage)
+            return false
+        } catch {
+            showAlert(title: "Could Not Exclude", message: OnBudgetError.displayMessage(for: error))
+            return false
+        }
+    }
+
     /// Restore a trashed row (live.js:1190). Restores the stored
     /// `pre_exclusion_state`; refuses with "cannot restore: no prior
     /// state recorded" when none was recorded — that text is carried

@@ -53,7 +53,7 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(ToastStyle.textHex(for: .success), DesignTokens.toastSuccessTextHex)
         XCTAssertEqual(ToastStyle.backgroundHex(for: .error), DesignTokens.errorBackgroundHex)
         XCTAssertEqual(ToastStyle.textHex(for: .error), DesignTokens.errorTextHex)
-        XCTAssertEqual(ToastStyle.placement, "bottom")
+        XCTAssertEqual(ToastStyle.placement, "top")
     }
 
     func testStatCardIconSymbolsResolve() {

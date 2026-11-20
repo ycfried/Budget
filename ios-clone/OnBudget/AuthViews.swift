@@ -60,9 +60,9 @@ public struct AuthBrandHeader: View {
                 .scaledToFit()
                 .frame(width: 72, height: 72)
                 .clipShape(Circle())
-            // The S logo IS the S of STAGEE (owner, Nov 18, 2026 —
+            // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
             // build 47): the logo + "T · A · G · E", never the logo
-            // next to the full word "STAGEE" (no second S).
+            // next to the full word "STAGE" (no second S).
             StageWordmarkText(font: .system(size: 30, weight: .bold))
         }
         // Centered as a unit (owner, Nov 11, 2026): the header was

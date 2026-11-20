@@ -291,8 +291,8 @@ public struct FundsView: View {
         // success messages ("Default charity rate saved…") rendered
         // INLINE inside the card, mid-screen, through the Funds-
         // local toast overlay — not at the bottom. They now go
-        // through the ONE root bottom toast (ContentView
-        // .toastOverlay, the standing rule: bottom only, auto-
+        // through the ONE root top toast (ContentView
+        // .toastOverlay, the standing rule: top popup only, auto-
         // dismiss ~4s, green badge treatment): when the view model
         // raises a success toast, forward it to appState and clear
         // the local one. Errors still use the alert below. The

@@ -694,7 +694,8 @@ public struct FundsExpandableCard<Expanded: View>: View {
     public let iconName: String?
     /// Reorder mode (build 41 — owner, Nov 16, 2026): when true
     /// the card collapses to JUST the color bar — the header strip
-    /// only (icon + name + amount), no white body, no detail, no
+    /// only (icon + name; the amount lives in the body since
+    /// build 50 and is hidden here), no white body, no detail, no
     /// progress bar, no buttons, no expanded content — so the
     /// cards are compact and easy to move. The chevron and pencil
     /// hide too (the card does not expand or rename while
@@ -786,9 +787,23 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 }
                 .accessibilityLabel(accessibilityLabel)
                 .accessibilityAddTraits(.isButton)
+            // Amount body (build 50, owner Nov 20, 2026): NAME in
+            // the header, AMOUNT in the box/card. The amount used
+            // to sit in the header beside the name, so the two
+            // fought for width — different text sizes per card
+            // (the amount's minimumScaleFactor shrank long amounts)
+            // and some words were cut off. The amount now lives
+            // here, always visible (collapsed or expanded), one
+            // uniform 28pt bold in the theme's number colour, on
+            // the full card width — nothing cut off, every card
+            // the same size. Hidden in reorder mode (the bar is
+            // just for dragging then).
+            if !isReorderMode {
+                amountBody(pad: pad)
+            }
             if isExpanded, !isReorderMode {
                 // White body (majority): the detail rows, editors
-                // and actions. Directly below the header, no gap —
+                // and actions. Directly below the amount, no gap —
                 // part of the same card, not a separate block. The
                 // expanded content keeps its own buttons (Add Money
                 // / Spend / Request), so it is not part of the
@@ -796,11 +811,13 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 // section underneath it. Build 42 (owner, Nov 17,
                 // 2026 — "the white body should be double the
                 // header"): same 1/3 header, 2/3 white body rule
-                // as Home, so the expanded body padding steps up
-                // to 28pt top and bottom.
+                // as Home. The top padding is 8pt now (build 50):
+                // the amount body above already separates the
+                // detail from the header, so the old 28pt top
+                // padding would leave a dead gap.
                 expanded
                     .padding(.horizontal, pad)
-                    .padding(.top, 28)
+                    .padding(.top, 8)
                     .padding(.bottom, 28)
             }
         }
@@ -827,22 +844,27 @@ public struct FundsExpandableCard<Expanded: View>: View {
 
     /// The header strip (owner, Nov 16, 2026 — build 40): ONE ROW
     /// — icon in a white circle + title + (admin-only) pencil +
-    /// amount + chevron, on the theme colour. The text colour is
-    /// the theme's onBanner colour — white on the dark Debt and
-    /// Spending banners, ink on the light Charity pale / Extra
-    /// Fund tertiary banners (build 41, 3-button scheme; build 46
-    /// — Spending's banner is deep #1d4ed8 with white text again).
-    /// The icon sits
-    /// on a WHITE circle in the theme's glyph colour (the
-    /// reference's "$ in a white circle"). Loading / failed
-    /// show the same strip shape in WHITE / muted grey with grey
-    /// skeleton faces — no colour until the numbers arrive, and
-    /// never a bare "—" in amount type. (Owner, Nov 16, 2026 —
-    /// build 38, "a bit too heavy": the amount is a touch smaller
-    /// and the strip a touch shorter than build 37. Build 41,
-    /// owner Nov 16, 2026 — "much bigger": the amount is 28pt,
-    /// the title 20pt, the icon disc 36pt, 14pt vertical
-    /// padding.)
+    /// chevron, on the theme colour. NAME ONLY (build 50, owner
+    /// Nov 20, 2026): the amount used to sit here too and fought
+    /// the name for width, so cards had different text sizes and
+    /// some words were cut off — the amount now lives in the body
+    /// (`amountBody`). The text colour is the theme's onBanner
+    /// colour — white on the dark Debt and Spending banners, ink
+    /// on the light Charity pale / Extra Fund tertiary banners
+    /// (build 41, 3-button scheme; build 46 — Spending's banner
+    /// is deep #1d4ed8 with white text again). The icon sits on a
+    /// WHITE circle in the theme's glyph colour (the reference's
+    /// "$ in a white circle"). Loading / failed show the same
+    /// strip shape in WHITE / muted grey with grey skeleton faces
+    /// — no colour until the numbers arrive, and never a bare "—"
+    /// in amount type. (Owner, Nov 16, 2026 — build 38, "a bit too
+    /// heavy": the strip is a touch shorter than build 37. Build
+    /// 41, owner Nov 16, 2026 — "much bigger": the title is 20pt,
+    /// the icon disc 36pt, 14pt vertical padding.) The title is
+    /// one uniform 20pt bold on every card, and wraps to a second
+    /// line rather than truncating (build 50 — layout change, not
+    /// shrinking: a long name on a narrow iPhone wraps instead of
+    /// being cut off).
     private func headerStrip(pad: CGFloat) -> some View {
         // Header colour: WHITE while LOADING (owner, Nov 16, 2026
         // — build 40: the pale #dbeafe tint was horrendous, the
@@ -905,9 +927,9 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 SkeletonBlock(width: 140, height: 22, cornerRadius: 6, animated: true)
             } else {
                 Text(TitleCase.apply(to: title))
-                    .font(.system(size: theme == nil ? 17 : 20, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(titleColor)
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
             // Pencil (admin-only): a small edit glyph right by the
             // fund name, in the header's text color — NOT a button
@@ -931,20 +953,6 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 .accessibilityLabel("Rename \(TitleCase.apply(to: title))")
             }
             Spacer()
-            if isLoading || amountIsStatus {
-                // Sized to the loaded 28pt amount (owner, Nov 14,
-                // 2026: the 150-wide block was too small and the
-                // card looked empty while loading). Static (not
-                // shimmering) when failed — a failed load is not a
-                // loading state.
-                SkeletonBlock(width: 150, height: 34, cornerRadius: 8, animated: isLoading)
-            } else {
-                Text(amountText)
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(theme == nil ? DesignTokens.ink : (theme?.onBanner ?? .white))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
             // Info icon (build 42 — owner, Nov 17, 2026: fund
             // descriptions live behind an info icon, not as a
             // text line in the expanded card). Sits on the right
@@ -981,12 +989,43 @@ public struct FundsExpandableCard<Expanded: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(bannerColor)
     }
+
+    /// The amount body (build 50, owner Nov 20, 2026): the fund's
+    /// amount on the white card body, always visible (collapsed or
+    /// expanded) — NAME in the header, AMOUNT in the body. One
+    /// uniform 28pt bold on every card, in the theme's number
+    /// colour (the build-46 "number colour = header colour" rule:
+    /// Spending deep #1d4ed8, Tzedaka primary #2f6bff, Savings
+    /// amber #b45309, Overspent ink — each reads on white), on the
+    /// full card width with NO minimumScaleFactor — a long amount
+    /// never shrinks to a different size per card, and the full
+    /// width means it never truncates on an iPhone. Loading shows
+    /// the same 150-wide skeleton block the header used to show
+    /// (sized to the 28pt amount); a failed load shows it static,
+    /// never a bare "—".
+    private func amountBody(pad: CGFloat) -> some View {
+        Group {
+            if isLoading || amountIsStatus {
+                SkeletonBlock(width: 150, height: 34, cornerRadius: 8, animated: isLoading)
+            } else {
+                Text(amountText)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(theme?.number ?? DesignTokens.ink)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, pad)
+        .padding(.top, 20)
+        .padding(.bottom, 20)
+    }
 }
 
 // MARK: - Toasts (spec §2.3)
 //
-// Bottom only, floating clear of the tab bar, auto-dismiss 4s, tap
-// dismisses sooner, tab switch clears it. Info: brand blue
+// Top popup (owner, Nov 20, 2026 — build 50), auto-dismiss 4s,
+// tap anywhere else or the top-corner X dismisses sooner, tab
+// switch clears it. Info: brand blue
 // #2f6bff, white text. Success: the Posted badge treatment — light
 // green bg #dcfce7, dark green text #166534 (owner, Nov 15, 2026;
 // the solid #22c55e bar was the wrong green). Error: soft
@@ -999,7 +1038,6 @@ public struct FundsExpandableCard<Expanded: View>: View {
 public struct FundsToastOverlay: ViewModifier {
     @Binding public var toast: Toast?
     @State private var dismissTask: Task<Void, Never>?
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(toast: Binding<Toast?>) {
         self._toast = toast
@@ -1007,34 +1045,28 @@ public struct FundsToastOverlay: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            // Centered mid-screen popup (owner, Nov 16, 2026 —
-            // build 38): the bottom banner kept missing the bottom.
-            .overlay(alignment: .center) {
+            // Top popup toast (owner, Nov 20, 2026 — build 50):
+            // the centered popup was "horrendous". The shared
+            // ToastBanner is the ONE banner — a tap anywhere else
+            // dismisses it, via the clear background below.
+            .overlay {
                 if let toast {
-                    Button {
-                        dismissTask?.cancel()
-                        self.toast = nil
-                    } label: {
-                        Text(toast.message)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color(hex: ToastStyle.textHex(for: toast.kind)))
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .padding(.horizontal, 20)
-                            .background(Color(hex: ToastStyle.backgroundHex(for: toast.kind)))
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(
-                                        toast.kind == .error ? DesignTokens.errorBorder : .clear,
-                                        lineWidth: 1
-                                    )
-                            )
+                    GeometryReader { proxy in
+                        ZStack(alignment: .top) {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    dismissTask?.cancel()
+                                    self.toast = nil
+                                }
+                            ToastBanner(toast: toast) {
+                                dismissTask?.cancel()
+                                self.toast = nil
+                            }
+                            .padding(.top, proxy.safeAreaInsets.top + 8)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: horizontalSizeClass == .regular ? 900 : .infinity)
-                    .padding(.horizontal, 16)
                 }
             }
             .onChange(of: toast) { _, newValue in

@@ -435,4 +435,15 @@ private extension Date {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.string(from: self)
     }
+
+    // MARK: - Wordmark
+
+    func testStageWordmarkIsUniformBlue() {
+        // Build 50 (owner, Nov 19–20, 2026): the whole STAGE
+        // lockup — S logo, letters AND dots — is one uniform blue
+        // #0288dd, so it reads as one word S · T · A · G · E. The
+        // old spec colours (dark green letters #20392f, gold dots
+        // #b08d57) are retired for the wordmark.
+        XCTAssertEqual(DesignTokens.stageBlueHex, "#0288dd")
+    }
 }

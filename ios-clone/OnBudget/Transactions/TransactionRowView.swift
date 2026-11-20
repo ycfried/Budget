@@ -7,9 +7,10 @@ import OnBudgetKit
 /// into two halves (owner, Nov 14, 2026): the merchant name sits
 /// centred on the icon's top half, the badges line centred on its
 /// bottom half. Row line 1: icon, Title-Cased merchant (bold) —
-/// transfers show the derived transfer title instead (build 42,
-/// owner Nov 17, 2026) — signed amount, chevron (rotates when
-/// open). Line 2 (collapsed only): plain grey state text +
+/// ALWAYS the merchant name, even for transfers (build 50, owner
+/// Nov 20, 2026: the transfer title hid the merchant) — signed
+/// amount, chevron (rotates when open). Line 2 (collapsed only):
+/// plain grey state text (+ a "Transfer" badge for transfers) +
 /// "`Today` · ••1005" meta — the source is NOT shown here (build
 /// 42, owner Nov 17, 2026: source shows only in the expanded
 /// detail); the badges hide while the card is open, because the
@@ -89,10 +90,12 @@ public struct TransactionRowView: View {
                     )
                     VStack(alignment: .leading, spacing: 0) {
                         // Top half: merchant + amount + chevron.
-                        // Transfers show the derived transfer title
-                        // (build 42, owner Nov 17, 2026), never the
-                        // bank's wording — the search highlight
-                        // renders this same string.
+                        // The title is ALWAYS the merchant name
+                        // (build 50, owner Nov 20, 2026) — a
+                        // transfer used to show "Transfer to" here
+                        // and hide the merchant. The kind is a
+                        // badge on the bottom line; the direction +
+                        // other account live in the detail panel.
                         HStack(spacing: 10) {
                             TransactionFormatting.highlightedSearchText(
                                 TransactionFormatting.rowTitle(for: transaction),
@@ -120,6 +123,18 @@ public struct TransactionRowView: View {
                         // only in the expanded detail view.
                         if !isExpanded {
                             HStack(spacing: 8) {
+                                // Transfer badge (build 50, owner
+                                // Nov 20, 2026): the merchant stays
+                                // on the top line, and the kind
+                                // reads here as plain grey text, no
+                                // pill (build 42, Version A) —
+                                // never a bare "Transfer to" in
+                                // place of the merchant name.
+                                if transaction.kind == .transfer {
+                                    Text("Transfer")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.muted)
+                                }
                                 Text(TransactionFormatting.stateWord(for: transaction))
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundStyle(DesignTokens.muted)
@@ -210,6 +225,17 @@ public struct TransactionDetailView: View {
                         value: transaction.originalPurchaseId != nil
                             ? "Linked to a purchase"
                             : "Not linked to a purchase yet"
+                    )
+                }
+                // Transfer direction + other account (build 50,
+                // owner Nov 20, 2026): the full title when the
+                // other account's digits are derivable, else bare
+                // "Transfer" — never a dangling "Transfer to"
+                // with no destination.
+                if transaction.kind == .transfer {
+                    detailRow(
+                        label: "Type",
+                        value: TransactionFormatting.transferDetailText(for: transaction)
                     )
                 }
             }

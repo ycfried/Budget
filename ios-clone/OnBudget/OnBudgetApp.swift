@@ -58,6 +58,14 @@ struct OnBudgetApp: App {
                     if newPhase == .active {
                         WidgetCenter.shared.reloadAllTimelines()
                         WidgetBackgroundRefreshTask.schedule()
+                        // Plaid refresh on open (build 50, owner
+                        // Nov 20, 2026): foregrounding the app also
+                        // pulls fresh bank transactions — throttled
+                        // to once per 15 minutes, silent,
+                        // best-effort (see HomeViewModel
+                        // syncBankOnOpenIfDue). The hourly cron
+                        // stays as the backstop.
+                        Task { await appState.homeViewModel?.syncBankOnOpenIfDue() }
                     }
                 }
                 .onOpenURL { url in

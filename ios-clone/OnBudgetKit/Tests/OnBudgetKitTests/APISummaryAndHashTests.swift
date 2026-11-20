@@ -119,6 +119,58 @@ final class APISummaryTests: XCTestCase {
         XCTAssertEqual(withoutCash.givenCents, 200)
     }
 
+    func testCharitySummaryWholeHistoryIncludesNov3Gifts() {
+        // Build 50 (owner Nov 20, 2026 — Tzedaka $37 fix): the live
+        // household's Home read Available $982.32 while Funds read
+        // the correct $945.32. The $37.00 gap was the two Nov 3
+        // verified gifts — TOIREM.ORG CHARITY $2.00 +
+        // =TENYADKALLAHGEMACH $35.00, the only verified
+        // non-excluded charity rows — which Home missed because it
+        // derived Given from the 100-row transactionsPage and the
+        // Nov 3 gifts had aged out of the page. The whole-history
+        // path (verifiedCharityGiftAmounts, as Funds uses) must
+        // include them: Given $104.68 ($37.00 gifts + $67.68 cash
+        // gift), Available $945.32 on $1,050.00 committed.
+        let householdId = UUID()
+        let income = [
+            CharityIncome(id: UUID(), householdId: householdId, sourceLabel: "Mobile Check Deposit",
+                          amountCents: 350000, incomeDate: "2026-11-17", rateBp: 1000,
+                          status: "active", replacesId: nil, note: "", createdBy: nil, createdAt: nil),
+            CharityIncome(id: UUID(), householdId: householdId, sourceLabel: "Mobile Check Deposit",
+                          amountCents: 700000, incomeDate: "2026-11-02", rateBp: 1000,
+                          status: "active", replacesId: nil, note: "", createdBy: nil, createdAt: nil),
+        ]
+        func txn(merchant: String, state: TransactionState, amount: Int, date: String) -> Transaction {
+            Transaction(id: UUID(), householdId: householdId, date: date, merchant: merchant,
+                        amountCents: amount, cardSuffix: "1005", source: .plaid, state: state,
+                        kind: .charity, fundAllocationCents: 0, excluded: false, excludeReason: "",
+                        late: false, externalId: nil, dedupeHash: "h", originalPurchaseId: nil,
+                        preExclusionState: nil, plaidPendingTransactionId: nil,
+                        plaidTransactionId: nil, createdAt: "\(date)T00:00:00Z")
+        }
+        // Whole history: both Nov 3 verified gifts present.
+        let wholeHistory = [
+            txn(merchant: "TOIREM.ORG CHARITY", state: .verified, amount: 200, date: "2026-11-03"),
+            txn(merchant: "=TENYADKALLAHGEMACH", state: .verified, amount: 3500, date: "2026-11-03"),
+            txn(merchant: "THE TIMEPIECE", state: .provisional, amount: 1800, date: "2026-11-18"),
+        ]
+        let summary = CharitySummary.compute(activeIncome: income, charityTransactions: wholeHistory,
+                                             defaultRateBp: 1000, cashGiftCents: 6768)
+        XCTAssertEqual(summary.committedCents, 105000)
+        XCTAssertEqual(summary.givenCents, 10468) // 200 + 3500 verified + 6768 cash gift
+        XCTAssertEqual(summary.pendingGiftCents, 1800)
+        XCTAssertEqual(summary.remainingCents, 94532) // Available — NOT 98232
+        // The page-capped input (Nov 3 gifts aged out of the first
+        // 100 newest rows) is the bug's signature: Given drops to
+        // the cash gift alone and Available reads $982.32. Home
+        // must never compute from that input again.
+        let pageCapped = wholeHistory.filter { $0.date != "2026-11-03" }
+        let stale = CharitySummary.compute(activeIncome: income, charityTransactions: pageCapped,
+                                           defaultRateBp: 1000, cashGiftCents: 6768)
+        XCTAssertEqual(stale.givenCents, 6768)
+        XCTAssertEqual(stale.remainingCents, 98232)
+    }
+
     func testFundRequestApprovedCents() {
         let householdId = UUID()
         let approved = FundRequest(id: UUID(), householdId: householdId, transactionId: nil,

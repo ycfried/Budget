@@ -589,7 +589,19 @@ export async function flagLookalikes(
     for (const r of rows ?? []) {
       if (flagged >= 5) break;
       if (r.excluded === true || r.state === 'excluded') continue;
-      if (!related(newRow.merchant, r.merchant)) continue;
+      // Royal Farms (Nov 20, 2026): identical merchant names are the
+      // strongest duplicate signal — but only across sources
+      // (Bank+Email). merchantsRelated() deliberately returns false
+      // for identical names (they are "not lookalikes"; the hash /
+      // guard is supposed to catch them), so without this check an
+      // identical-spelling Bank+Email pair the guard missed is
+      // invisible: no merge AND no candidate. Same-source identical
+      // rows are two real identical purchases and stay unflagged.
+      const identicalBankEmail =
+        merchantRuleSquash(newRow.merchant) === merchantRuleSquash(r.merchant) &&
+        ((newRow.source === 'plaid' && isEmailSource(r.source)) ||
+          (r.source === 'plaid' && isEmailSource(newRow.source)));
+      if (!identicalBankEmail && !related(newRow.merchant, r.merchant)) continue;
       const [canonical, duplicate] = pickCanonicalPair(
         { id: r.id, merchant: r.merchant, source: r.source, created_at: r.created_at },
         newRow,

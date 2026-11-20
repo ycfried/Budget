@@ -366,9 +366,9 @@ struct WidgetView: View {
             if isPlaceholder {
                 skeletonBar(width: 88, height: 16)
             } else {
-                // The S logo IS the S of STAGEE (owner, Nov 18,
+                // The S logo IS the S of STAGE (owner, Nov 18,
                 // 2026 — build 47): the logo + "T · A · G · E",
-                // never the logo next to the full word "STAGEE".
+                // never the logo next to the full word "STAGE".
                 StageWordmarkText(font: font)
             }
         }

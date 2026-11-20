@@ -139,30 +139,42 @@ final class ToastState: ObservableObject {
 }
 
 extension View {
-    /// Centered mid-screen toast popup (owner, Nov 16, 2026 —
-    /// build 38: the bottom banner kept missing the bottom). Uses
-    /// the shared `ToastBanner` (SharedViews) so there is one
-    /// banner. Overloads the shared `toastOverlay(Binding<Toast?>)`
-    /// — this one takes the shared Settings `ToastState` instead.
+    /// Top popup toast (owner, Nov 20, 2026 — build 50: the
+    /// centered popup was "horrendous"; the toast sits at the top
+    /// now, placed where it looks best). Uses the shared
+    /// `ToastBanner` (SharedViews) so there is one banner.
+    /// Overloads the shared `toastOverlay(Binding<Toast?>)` —
+    /// this one takes the shared Settings `ToastState` instead.
+    /// A tap anywhere else dismisses it: the clear background
+    /// below catches the tap.
     ///
-    /// Plain `.overlay(alignment: .center)` on the screen itself —
-    /// NOT a wrapping ZStack. A ZStack sizes to its content, and a
-    /// ScrollView inside one can size the stack to the scroll content
+    /// Plain `.overlay` on the screen itself — NOT a wrapping
+    /// ZStack. A ZStack sizes to its content, and a ScrollView
+    /// inside one can size the stack to the scroll content
     /// rather than the screen, which floated the banner mid-screen
-    /// (owner report, Nov 11 2026). An overlay is positioned inside
-    /// the screen's own bounds, so the popup is always centered on
-    /// the screen.
+    /// (owner report, Nov 11 2026). An overlay is positioned
+    /// inside the screen's own bounds, so the popup is always
+    /// placed on the screen.
     func toastOverlay(_ toastState: ToastState) -> some View {
-        overlay(alignment: .center) {
+        overlay {
             if let toast = toastState.current {
-                // Scale entrance (audit X-P2-9, Nov 12 2026): the
-                // toast used to fade in too (`.combined(with:
-                // .opacity)`), the app's only opacity fade. Toasts
-                // are not expand/collapse cards, so this is a
-                // consistency change, not a rule-violation fix — the
-                // 0.2s animation below is unchanged.
-                ToastBanner(toast: toast) { toastState.dismiss() }
-                    .transition(.scale)
+                GeometryReader { proxy in
+                    ZStack(alignment: .top) {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { toastState.dismiss() }
+                        // Scale entrance (audit X-P2-9, Nov 12 2026): the
+                        // toast used to fade in too (`.combined(with:
+                        // .opacity)`), the app's only opacity fade. Toasts
+                        // are not expand/collapse cards, so this is a
+                        // consistency change, not a rule-violation fix — the
+                        // 0.2s animation below is unchanged.
+                        ToastBanner(toast: toast) { toastState.dismiss() }
+                            .padding(.top, proxy.safeAreaInsets.top + 8)
+                            .transition(.scale)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: toastState.current?.id)

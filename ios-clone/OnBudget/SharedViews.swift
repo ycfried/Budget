@@ -7,7 +7,7 @@
 // middle tier of a three-button row; no two adjacent buttons share a
 // colour/treatment. Back buttons are light blue #3b82f6, bold 700,
 // 15px. Errors are soft red (bg #fef2f2, text #dc2626, border
-// #fecaca). Toasts are brand blue, bottom only, auto-dismiss 4s.
+// #fecaca). Toasts are a top popup (owner Nov 20, 2026), auto-dismiss 4s.
 // Clone basis: live web v66.
 
 import SwiftUI
@@ -412,14 +412,22 @@ public struct LoadingView: View {
     public init() {}
     public var body: some View {
         VStack(spacing: 12) {
-            // The real logo (Assets.xcassets/AppLogo), not the "S"
-            // placeholder ring (owner, Nov 11, 2026), with the
-            // animated brand-blue ring around it.
-            BrandedLoader(size: 72)
-            // The S logo IS the S of STAGEE (owner, Nov 18, 2026 —
-            // build 47): the logo + "T · A · G · E", never the logo
-            // next to the full word "STAGEE" (no second S).
-            StageWordmarkText(font: .system(size: 28, weight: .bold))
+            // ONE horizontal line (owner, Nov 20, 2026 — build 50):
+            // the S logo IS the S of STAGE — the logo (larger, the
+            // main part, with its animated brand-blue ring) + "T ·
+            // A · G · E" beside it, a blue dot between the S and
+            // the T, reading as one word S · T · A · G · E. The
+            // stacked layout read as "S" then "TAGE".
+            HStack(spacing: 8) {
+                // The real logo (Assets.xcassets/AppLogo), not the "S"
+                // placeholder ring (owner, Nov 11, 2026), with the
+                // animated brand-blue ring around it.
+                BrandedLoader(size: 72)
+                // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
+                // build 47): the logo + "T · A · G · E", never the logo
+                // next to the full word "STAGE" (no second S).
+                StageWordmarkText(font: .system(size: 28, weight: .bold))
+            }
             Text("Loading Your Household")
                 .font(.system(size: 15))
                 .foregroundStyle(Color(hex: "#6b7280"))
@@ -492,20 +500,17 @@ public struct BrandedLoader: View {
 
 // MARK: - Toast
 
-/// Centered mid-screen popup (owner, Nov 16, 2026 — build 38):
-/// the bottom toast kept missing the bottom and reading as a thin
-/// strip, so the toast is now a CENTERED popup instead — the
-/// owner's own suggestion, accepted. Info is brand blue, success
-/// is the Posted badge treatment (owner, Nov 15, 2026 — build 33:
-/// the solid #22c55e bar with white text was the wrong green),
-/// errors are soft red. Auto-dismiss 4s (ToastStyle
-/// .autoDismissSeconds, CLONE_SPEC §2.3); tap dismisses sooner.
-/// It spans a good portion of the screen width (up to the 900pt
-/// iPad column), never a thin strip, and only the popup itself
-/// intercepts taps — taps outside it reach the page below. The
-/// build-37 bottom positioning (80pt iPad / 95pt iPhone clearance
-/// above the tab bar) is GONE — there is no bottom anchoring any
-/// more, and no `clearTabBar` (there is no tab bar to clear).
+/// Transient popup notification (owner, Nov 20, 2026 — build 50):
+/// a nicer-looking popup, NOT a blocking modal and NOT a centered
+/// box (centered toasts were "horrendous"). A status icon leads —
+/// green check for success, red X for error, blue info for info —
+/// then the message, with an X in the top corner to close early.
+/// Success is the Posted badge treatment (light green #dcfce7 /
+/// dark green #166534), errors are soft red, info is brand blue.
+/// Auto-dismiss 4s (ToastStyle.autoDismissSeconds); tap dismisses
+/// sooner — the overlay's tap-anywhere background also dismisses
+/// it. It spans a good portion of the screen width (up to the
+/// 900pt iPad column), never a thin strip.
 public struct ToastBanner: View {
     public let toast: Toast
     public let onDismiss: () -> Void
@@ -525,51 +530,89 @@ public struct ToastBanner: View {
     private var bannerText: Color {
         Color(hex: ToastStyle.textHex(for: toast.kind))
     }
+    /// The leading status icon: a green check for success, a red X
+    /// for error, a blue info mark for info (owner, Nov 20, 2026).
+    private var iconName: String {
+        switch toast.kind {
+        case .success: return "checkmark.circle.fill"
+        case .error: return "xmark.circle.fill"
+        case .info: return "info.circle.fill"
+        }
+    }
     public var body: some View {
-        Button(action: onDismiss) {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: iconName)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(bannerText)
+                .padding(.top, 1)
+                .accessibilityHidden(true)
             Text(toast.message)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(bannerText)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .padding(.horizontal, 20)
-                .background(bannerBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(
-                            toast.kind == .error ? DesignTokens.errorBorder : Color.clear,
-                            lineWidth: 1
-                        )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .shadow(radius: 4)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(bannerText.opacity(0.7))
+                    .padding(6)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
-        // Centered popup width: a good portion of the screen, up
-        // to the 900pt iPad column — never a thin strip.
+        .padding(16)
+        .background(bannerBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(
+                    toast.kind == .error ? DesignTokens.errorBorder : Color.clear,
+                    lineWidth: 1
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
+        // A good portion of the screen width, up to the 900pt iPad
+        // column — never a thin strip.
         .frame(maxWidth: horizontalSizeClass == .regular ? 900 : .infinity)
         .padding(.horizontal, 16)
     }
 }
 
-/// Overlays the current toast CENTERED on any screen, with the
+/// Overlays the current toast at the TOP of any screen, with the
 /// 4-second auto-dismiss (ToastStyle.autoDismissSeconds — the one
-/// shared value, CLONE_SPEC §2.3). (Owner, Nov 16, 2026 — build 38:
-/// the toast was a bottom banner and kept missing the bottom; it
-/// is a centered popup now.)
+/// shared value, CLONE_SPEC §2.3). (Owner, Nov 20, 2026 — build 50:
+/// the centered popup was "horrendous"; the toast is a top popup
+/// now, placed where it looks best — never forced to the bottom,
+/// never centered.) A tap anywhere else on the page dismisses it:
+/// the clear background below catches the tap, so the page under
+/// it never receives a stray tap while the toast is up. The toast
+/// itself is a small popup, never a modal — it never blocks the
+/// page, it just sits on top of it for 4 seconds.
 public struct ToastOverlayModifier: ViewModifier {
     @Binding public var toast: Toast?
     public init(toast: Binding<Toast?>) {
         self._toast = toast
     }
     public func body(content: Content) -> some View {
-        content.overlay(alignment: .center) {
+        content.overlay {
             if let toast {
-                ToastBanner(toast: toast) { self.toast = nil }
-                    .task(id: toast.id) {
-                        try? await Task.sleep(for: .seconds(ToastStyle.autoDismissSeconds))
-                        if self.toast?.id == toast.id { self.toast = nil }
+                GeometryReader { proxy in
+                    ZStack(alignment: .top) {
+                        // Tap anywhere else dismisses (owner,
+                        // Nov 20, 2026). Clear, so the page shows
+                        // through — but it still catches the tap.
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { self.toast = nil }
+                        ToastBanner(toast: toast) { self.toast = nil }
+                            .padding(.top, proxy.safeAreaInsets.top + 8)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .task(id: toast.id) {
+                    try? await Task.sleep(for: .seconds(ToastStyle.autoDismissSeconds))
+                    if self.toast?.id == toast.id { self.toast = nil }
+                }
             }
         }
     }
@@ -768,8 +811,10 @@ public enum StatCardTheme {
     /// muted grey #6b7280, which read as no colour at all),
     /// Overspent (Past) ink #0f172a.
     /// The CLASSIC Home keeps its all-ink numbers — this colour
-    /// applies ONLY in the simple layout (and the Funds page keeps
-    /// its own ink amounts). An over-budget Spending amount is
+    /// applies in the simple layout AND on the Funds page body
+    /// (build 50: the Funds amount moved off the banner into the
+    /// white body, so it takes this colour there). An over-budget
+    /// Spending amount is
     /// NOT this colour: it stays `heroOverBudget` red #991b1b, so
     /// the over-budget signal is never lost.
     public var number: Color {

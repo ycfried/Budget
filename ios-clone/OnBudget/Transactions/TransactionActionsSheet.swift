@@ -42,6 +42,13 @@ public struct TransactionActionsSheet: View {
         case reclassifyKind
         case reclassifyReason(TransactionKind)
         case deleteConfirm
+        /// Build 50 (owner, Nov 20, 2026): exclude this row from
+        /// the spending math without reclassifying it — the owner
+        /// had to misuse "Transfer" to get a row out of the math
+        /// because there was no Exclude. Same server call as
+        /// Delete → Trash (`exclude_transaction`, restorable),
+        /// but labelled for its intent.
+        case excludeConfirm
         /// Build 30: teachable merchant rename (name + fixed kind, when set,
         /// fixed kind, remembered for all matching rows).
         case rename
@@ -98,6 +105,8 @@ public struct TransactionActionsSheet: View {
     @State private var reclassifyReasonError: String?
     @State private var deleteReason: String = ""
     @State private var deleteReasonError: String?
+    @State private var excludeReason: String = ""
+    @State private var excludeReasonError: String?
     @State private var renameName: String = ""
     @State private var renameFixedKind: String?
     @State private var renameError: String?
@@ -264,6 +273,7 @@ public struct TransactionActionsSheet: View {
             case .reclassifyKind: reclassifyKindContent
             case .reclassifyReason(let kind): reclassifyReasonContent(kind: kind)
             case .deleteConfirm: deleteConfirmContent
+            case .excludeConfirm: excludeConfirmContent
             case .rename: renameContent
             case .savingsConfirm: savingsConfirmContent
             }
@@ -311,6 +321,7 @@ public struct TransactionActionsSheet: View {
         case .unlinkConfirm: return "Unlink Refund"
         case .reclassifyKind: return "Reclassify Transaction"
         case .reclassifyReason: return "Reclassify Transaction"
+        case .excludeConfirm: return "Exclude Transaction"
         case .rename: return "Rename Merchant"
         case .savingsConfirm: return "Designate as \(extraFundName)"
         case .deleteConfirm:
@@ -794,6 +805,75 @@ public struct TransactionActionsSheet: View {
                     }
                     .buttonStyle(.plain)
                 }
+                // Build 50 (owner, Nov 20, 2026): "Exclude" — take
+                // this row out of the spending math WITHOUT
+                // reclassifying it. The owner had to misuse
+                // "Transfer" to get a row out of the math because
+                // there was no Exclude. Same server call as Delete
+                // → Trash (`exclude_transaction`, restorable from
+                // the Trash), but labelled for its intent, so the
+                // kind stays what it is and the merchant stays
+                // visible.
+                Divider()
+                Button {
+                    flow = .excludeConfirm
+                } label: {
+                    HStack {
+                        Text("Exclude")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                    }
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Exclude confirm (build 50, owner Nov 20, 2026): takes the
+    /// row out of the spending math without changing its kind. It
+    /// moves to the Trash — the admin can bring it back from the
+    /// Trash — and the reason is required (audited, like Delete
+    /// and Reclassify).
+    private var excludeConfirmContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("This takes it out of the spending math — it will not count toward weekly spending, and its kind stays as it is. It moves to the Trash. The admin can bring it back from the Trash. Give a reason to continue.")
+                .font(.system(size: 15))
+                .foregroundStyle(DesignTokens.ink)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Reason (Required)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                TextField("Reason", text: $excludeReason, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+            }
+            if let excludeReasonError {
+                SoftErrorBox(excludeReasonError)
+            }
+            TwoButtonRow {
+                Button("Exclude") {
+                    Task {
+                        let reason = excludeReason.trimmingCharacters(in: .whitespaces)
+                        guard !reason.isEmpty else {
+                            excludeReasonError = "Reason required"
+                            return
+                        }
+                        isWorking = true
+                        let ok = await viewModel.exclude(transaction, reason: reason)
+                        isWorking = false
+                        if ok { onDismiss() }
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(isWorking)
+            } secondary: {
+                Button("Keep It") { flow = .list }
+                    .buttonStyle(TertiaryButtonStyle())
             }
         }
     }

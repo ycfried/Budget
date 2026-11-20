@@ -31,8 +31,8 @@ struct ContentView: View {
         }
         // Toasts at the root so they also show on Auth / Household
         // (account-created confirmation, account-deleted notice) —
-        // not only inside the app shell. Centered mid-screen popup
-        // (owner, Nov 16, 2026 — build 38); no bottom anchoring, so
+        // not only inside the app shell. Top popup toast (owner,
+        // Nov 20, 2026 — build 50); no bottom anchoring, so
         // no tab-bar clearance any more.
         .toastOverlay($appState.toast)
     }

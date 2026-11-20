@@ -69,7 +69,7 @@ struct SettingsView: View {
             }
             .padding()
         }
-        .toastOverlay(toast) // Centered mid-screen popup (owner, Nov 16, 2026 — build 38).
+        .toastOverlay(toast) // Top popup toast (owner, Nov 20, 2026 — build 50).
     }
 }
 
