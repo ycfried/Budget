@@ -160,6 +160,52 @@ test('flag: identical merchant names do not flag (real identical purchases stay 
   assert.equal(inserted.length, 0);
 });
 
+test('flag: Royal Farms — identical Bank+Email merchants DO flag (Nov 20, 2026)', async () => {
+  // The live pair: Plaid row Nov 19 23:07 UTC, email row Nov 20
+  // 02:50 UTC, same dedupe_hash, neither merged nor flagged — the
+  // guard had missed the insert and merchantsRelated() returns false
+  // for identical names, so no candidate existed until the owner
+  // spotted the double-count. The flag must catch it: Plaid
+  // canonical, email duplicate, for admin review (never auto-merge).
+  const inserted = [];
+  const db = fakeDb({
+    txRows: [{
+      id: 'plaid-row', household_id: HH, date: '2026-11-19', merchant: 'ROYAL FARMS',
+      amount_cents: 763, card_suffix: '1005', source: 'plaid', created_at: '2026-11-19T23:07:17Z',
+    }],
+    inserted,
+  });
+  const n = await flagLookalikes(db, HH, {
+    id: 'email-row', merchant: 'ROYAL FARMS', date: '2026-11-19', amount_cents: 763,
+    card_suffix: '1005', source: 'amex_alert', created_at: '2026-11-20T02:50:54Z',
+  });
+  assert.equal(n, 1);
+  assert.equal(inserted.length, 1);
+  assert.equal(inserted[0].table, 'duplicate_candidates');
+  assert.equal(inserted[0].row.canonical_transaction_id, 'plaid-row');
+  assert.equal(inserted[0].row.duplicate_transaction_id, 'email-row');
+});
+
+test('flag: identical Email+Email merchants do not flag (same-source identical purchases stay separate)', async () => {
+  // Scope guard for the Royal Farms fix: only CROSS-source
+  // (Bank+Email) identical pairs flag. Two identical email rows are
+  // two alerts, not a Bank+Email pair, and stay out of Review.
+  const inserted = [];
+  const db = fakeDb({
+    txRows: [{
+      id: 'email-1', household_id: HH, date: '2026-11-16', merchant: 'WALMART',
+      amount_cents: 2416, card_suffix: '1005', source: 'amex_alert', created_at: '2026-11-16T23:20:00Z',
+    }],
+    inserted,
+  });
+  const n = await flagLookalikes(db, HH, {
+    id: 'email-2', merchant: 'WALMART', date: '2026-11-16', amount_cents: 2416,
+    card_suffix: '1005', source: 'amex_alert', created_at: '2026-11-20T02:50:55Z',
+  });
+  assert.equal(n, 0);
+  assert.equal(inserted.length, 0);
+});
+
 test('flag: excluded rows are never flagged', async () => {
   const inserted = [];
   const db = fakeDb({
