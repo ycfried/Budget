@@ -306,7 +306,9 @@ public struct TransactionActionsSheet: View {
             guard isAdmin else { return [] }
             var top = [exclude]
             top += [reclassify(.transfer), reclassify(.charge)].compactMap { $0 }
-            if transaction.kind == .other {
+            // `.other` carries its raw string, so it cannot be
+            // compared as a bare value — match it as a pattern.
+            if case .other = transaction.kind {
                 top += [reclassify(.income)].compactMap { $0 }
             }
             var more: [SheetAction] = [reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
