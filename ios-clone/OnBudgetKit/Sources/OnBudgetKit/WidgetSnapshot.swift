@@ -135,8 +135,9 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
     /// Share of the charity obligation fulfilled (build 35): given /
     /// committed, clamped 0...1; nil when the snapshot carries no
     /// charity figures (pre-build-35 snapshots) or when nothing is
-    /// committed yet. The widget uses a modest fixed accent fill in
-    /// that case — never an invented given figure.
+    /// committed yet. The widget shows an EMPTY track in that case
+    /// (build 53: the old `?? 0.25` faked a quarter fill when $0
+    /// was committed) — no fill is ever faked.
     public var charityGivenFraction: Double? {
         guard let given = charityGivenCents,
               let committed = charityCommittedCents,

@@ -304,11 +304,17 @@ public struct TransactionsView: View {
                 .font(.system(size: 17, weight: .semibold))
                 // White icon on the blue state; dark ink on the
                 // grey state — white-on-grey was ~1.1:1 and
-                // effectively invisible (audit H-P1-1).
-                .foregroundStyle(viewModel.allowanceSet ? .white : DesignTokens.ink)
+                // effectively invisible (audit H-P1-1). Build 53
+                // (owner, Nov 21, 2026 — the refresh-button
+                // flash): allowanceSet is nil while the state is
+                // unknown, and nil renders like set — the button
+                // is blue on first paint (the common case) and
+                // never flashes grey → blue. Only a KNOWN not-set
+                // state shows the grey.
+                .foregroundStyle(viewModel.allowanceSet != false ? .white : DesignTokens.ink)
                 .frame(width: 44, height: 44)
                 .background(
-                    viewModel.allowanceSet
+                    viewModel.allowanceSet != false
                         ? DesignTokens.mid : Color(hex: "#e5e7eb"))
                 .clipShape(Circle())
                 // Repeating linear spin while syncing: a plain
@@ -328,78 +334,72 @@ public struct TransactionsView: View {
 
     @ViewBuilder
     private var pageLinks: some View {
-        // Horizontally scrollable chip row (owner, Nov 15, 2026 —
-        // build 34): Activity, Review, Trash, Past Weeks and
-        // Merchants live in one row that swipes sideways — Activity
-        // and Review first, so they are visible without scrolling;
-        // swiping left reveals Trash, Past Weeks and Merchants. The
-        // chips keep their natural width inside the ScrollView, so
-        // no label wraps and none gets crushed (the old fixed HStack
-        // squeezed Review to "Revi" / "ew" and Past Weeks to two
-        // lines). A partially cut-off next chip at the right edge
-        // shows the row scrolls. The chips are small outline
-        // buttons (owner, Nov 11, 2026 — the quiet grey text read
-        // as labels, not as something tappable). The manual sync
-        // icon stays FIXED at the right end, outside the scrollable
-        // area (owner, Nov 12 ~10:29 PM — option 2, lighter blue).
+        // Build 53 (audit U2): the scrolling chip row hid pages
+        // inside pages — the owner's Nov 20 navigation complaint
+        // ("too many pages hiding in pages"). Review now stands
+        // OUTSIDE any scroll (it carries the count badge, so it
+        // must never hide), and the rest live behind a single
+        // "More" menu. No horizontal scroll, no cut-off chip
+        // hinting at more. Review is the pale #bfdbfe button
+        // (coloured, not an outline — the owner keeps flagging
+        // outline buttons as ugly); More is the one outline chip
+        // left, a secondary navigation affordance. The manual sync
+        // icon stays FIXED at the right end (owner, Nov 12 ~10:29
+        // PM — option 2, lighter blue).
         HStack(spacing: 12) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    if let onShowActivity {
-                        Button("Activity", action: onShowActivity)
-                            .buttonStyle(SmallOutlineButtonStyle())
-                    }
-                    // Build 30: Review moved off the Funds page — an
-                    // admin-only button here opens the dedicated Review
-                    // page, with a count badge while anything is waiting
-                    // (held refunds + possible duplicates + refund links).
-                    // The badge is a small squarish count chip, not a pill.
-                    if viewModel.isAdmin, let onShowReview {
-                        Button(action: onShowReview) {
-                            HStack(spacing: 6) {
-                                Text("Review")
-                                if reviewViewModel.reviewCount > 0 {
-                                    Text("\(reviewViewModel.reviewCount)")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(DesignTokens.primary)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                }
-                            }
+            // Build 30: Review moved off the Funds page — an
+            // admin-only button here opens the dedicated Review
+            // page, with a count badge while anything is waiting
+            // (held refunds + possible duplicates + refund links).
+            // The badge is a small squarish count chip, not a pill.
+            if viewModel.isAdmin, let onShowReview {
+                Button(action: onShowReview) {
+                    HStack(spacing: 6) {
+                        Text("Review")
+                        if reviewViewModel.reviewCount > 0 {
+                            Text("\(reviewViewModel.reviewCount)")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(DesignTokens.primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
                         }
-                        .buttonStyle(SmallOutlineButtonStyle())
                     }
-                    if viewModel.isAdmin, !viewModel.trashTransactions.isEmpty {
-                        Button("Trash") { showingTrash = true }
-                            .buttonStyle(SmallOutlineButtonStyle())
-                    }
-                    if let onShowPastWeeks {
-                        Button("Past Weeks", action: onShowPastWeeks)
-                            .buttonStyle(SmallOutlineButtonStyle())
-                    }
-                    // Merchants (owner, Nov 15, 2026 — build 34):
-                    // the Merchant Names editor moved out of
-                    // Settings — it lives here now, as the last chip
-                    // in this row. Admin-only, like Review.
-                    if viewModel.isAdmin, let onShowMerchantNames {
-                        Button("Merchants", action: onShowMerchantNames)
-                            .buttonStyle(SmallOutlineButtonStyle())
-                    }
-                    // Export (build 45, Nov 18, 2026): the
-                    // page-links row is the established home for
-                    // page-level actions, and the header must not
-                    // gain a third button next to "+ Add" and
-                    // "Filters". Last in the row — export is
-                    // read-only and non-urgent, and the row scrolls
-                    // with a cut-off chip hinting at more. Opens
-                    // the full-screen export popup.
-                    Button("Export") { showingExport = true }
-                        .buttonStyle(SmallOutlineButtonStyle())
-                        .accessibilityIdentifier("export.open")
+                }
+                .buttonStyle(SmallPaleButtonStyle())
+            }
+            Menu {
+                if let onShowActivity {
+                    Button("Activity", action: onShowActivity)
+                }
+                if viewModel.isAdmin, !viewModel.trashTransactions.isEmpty {
+                    Button("Trash") { showingTrash = true }
+                }
+                if let onShowPastWeeks {
+                    Button("Past Weeks", action: onShowPastWeeks)
+                }
+                // Merchants (owner, Nov 15, 2026 — build 34):
+                // the Merchant Names editor moved out of Settings
+                // — it lives here now, as a menu item. Admin-only,
+                // like Review.
+                if viewModel.isAdmin, let onShowMerchantNames {
+                    Button("Merchants", action: onShowMerchantNames)
+                }
+                // Export (build 45, Nov 18, 2026): read-only and
+                // non-urgent. Opens the full-screen export popup.
+                Button("Export") { showingExport = true }
+                    .accessibilityIdentifier("export.open")
+            } label: {
+                HStack(spacing: 4) {
+                    Text("More")
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
                 }
             }
+            .buttonStyle(SmallOutlineButtonStyle())
+            .accessibilityIdentifier("pageLinks.more")
+            Spacer(minLength: 0)
             if viewModel.isAdmin {
                 syncButton
             }
@@ -615,8 +615,10 @@ public struct TransactionsView: View {
                             // — its amount nets to $0 in the header
                             // total, and the row keeps its original
                             // amount. Only in week mode, where the
-                            // whole history is loaded and the mark
-                            // is exact.
+                            // week's rows plus the refunds from the
+                            // week start onward are loaded, so the
+                            // mark is exact (build 53: the fetch is
+                            // date-range filtered, not whole-history).
                             isRefunded: viewModel.isWeekMode && viewModel.refundedChargeIds.contains(transaction.id),
                             onToggle: {
                                 if viewModel.expandedTransactionId == transaction.id {
@@ -1035,11 +1037,13 @@ public struct TransactionsFilterSheet: View {
     }
 
     /// Cancel restores the snapshot taken on open and leaves the list
-    /// unchanged.
+    /// unchanged. Build 53 (audit C7): filterChanged() now exits
+    /// week mode, so Cancel must NOT call it — it restores the
+    /// snapshot and persists only, and the list (including week
+    /// mode) stays exactly as it was.
     private func cancel() {
         viewModel.filters = snapshot
         viewModel.persistFilters()
-        viewModel.filterChanged()
         onDismiss()
     }
 }

@@ -589,9 +589,19 @@ struct WidgetView: View {
         } else if compact {
             HStack(spacing: 5) {
                 Spacer(minLength: 0)
-                Circle()
-                    .fill(stale ? DesignTokens.fund : DesignTokens.success)
-                    .frame(width: 7, height: 7)
+                // Build 53 (audit WG3): a silently stale widget
+                // showed no warning beyond a dot and a timestamp.
+                // The word "Stale" is unmissable; the dot stays
+                // for the fresh case only.
+                if stale {
+                    Text("Stale")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(DesignTokens.fund)
+                } else {
+                    Circle()
+                        .fill(DesignTokens.success)
+                        .frame(width: 7, height: 7)
+                }
                 Text(asOfString(snapshot.computedAt))
                     .font(.caption2)
                     .foregroundStyle(DesignTokens.muted)
@@ -601,9 +611,15 @@ struct WidgetView: View {
         } else {
             HStack(spacing: 5) {
                 Spacer(minLength: 0)
-                Circle()
-                    .fill(stale ? DesignTokens.fund : DesignTokens.success)
-                    .frame(width: 7, height: 7)
+                if stale {
+                    Text("Stale")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(DesignTokens.fund)
+                } else {
+                    Circle()
+                        .fill(DesignTokens.success)
+                        .frame(width: 7, height: 7)
+                }
                 Text(asOfString(snapshot.computedAt))
                     .foregroundStyle(DesignTokens.muted)
             }
@@ -667,7 +683,7 @@ struct WidgetView: View {
                     skeletonBar(width: 90, height: 6)
                 } else {
                     progressBar(
-                        fraction: snapshot.charityGivenFraction ?? 0.25,
+                        fraction: snapshot.charityGivenFraction ?? 0,
                         fill: DesignTokens.charity,
                         track: DesignTokens.successBackground)
                 }
@@ -725,7 +741,7 @@ struct WidgetView: View {
                         skeletonBar(width: 90, height: 6)
                     } else {
                         progressBar(
-                            fraction: snapshot.charityGivenFraction ?? 0.25,
+                            fraction: snapshot.charityGivenFraction ?? 0,
                             fill: DesignTokens.charity,
                             track: DesignTokens.successBackground)
                     }
@@ -785,7 +801,7 @@ struct WidgetView: View {
                     skeletonBar(width: 170, height: 6)
                 } else {
                     progressBar(
-                        fraction: snapshot.charityGivenFraction ?? 0.25,
+                        fraction: snapshot.charityGivenFraction ?? 0,
                         fill: DesignTokens.charity,
                         track: DesignTokens.successBackground)
                 }
@@ -844,7 +860,7 @@ struct WidgetView: View {
                         skeletonBar(width: 170, height: 6)
                     } else {
                         progressBar(
-                            fraction: snapshot.charityGivenFraction ?? 0.25,
+                            fraction: snapshot.charityGivenFraction ?? 0,
                             fill: DesignTokens.charity,
                             track: DesignTokens.successBackground)
                     }
@@ -860,7 +876,17 @@ struct WidgetView: View {
 
     private var empty: some View {
         VStack(alignment: .leading, spacing: 6) {
-            wordmark()
+            // Build 53 (audit WG2): the empty state has a refresh
+            // button now — the old text ("Open the app to refresh")
+            // with no button left the user no way to try. The
+            // button attempts the fetch; when the app has never
+            // written a household id it fails and the failed mark
+            // shows, and the text still says to open the app.
+            HStack {
+                wordmark()
+                Spacer()
+                refreshButton
+            }
             Text("Open the app to refresh")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(DesignTokens.ink)

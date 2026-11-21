@@ -2325,7 +2325,12 @@ public struct HomeView: View {
                 TransactionIconView(
                     merchant: row.merchant,
                     institutionName: row.cardSuffix == "0000"
-                        ? nil : viewModel.institutionBySuffix[row.cardSuffix])
+                        ? nil : viewModel.institutionBySuffix[row.cardSuffix],
+                    // Build 53 (owner, Nov 21, 2026): only a bank
+                    // row (transfer / card payment) keeps the bank
+                    // logo — an unmapped merchant gets the monogram,
+                    // never the bank logo.
+                    isBankRow: row.kind == .transfer || row.kind == .payment)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(TitleCase.apply(to: row.merchant.lowercased()))
                         .font(.system(size: 15, weight: .bold))

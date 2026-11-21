@@ -90,6 +90,24 @@ public struct SmallOutlineButtonStyle: ButtonStyle {
     }
 }
 
+/// Small pale chip (build 53, audit U2): the same sizing as
+/// SmallOutlineButtonStyle, but the pale #bfdbfe fill with no
+/// border — a coloured chip, not an outline (the owner keeps
+/// flagging outline buttons as ugly). Used for the Review button
+/// that stands outside the page-links scroll.
+public struct SmallPaleButtonStyle: ButtonStyle {
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(DesignTokens.ink)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background(DesignTokens.pale)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
 /// Back link: light blue #3b82f6, bold 700, 15px, no bg, no border.
 /// (Kept only as the style `BackButton` — the one shared back
 /// implementation — is built on; call sites use `BackButton`.)

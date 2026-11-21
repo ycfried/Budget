@@ -243,9 +243,15 @@ public struct TransactionActionsSheet: View {
         let rename = SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it")
         let delete = SheetAction(id: .delete, label: "Delete", subline: deleteSubline)
         let exclude = SheetAction(id: .exclude, label: "Exclude", subline: "Takes it out of the spending math")
-        let extraFund = SheetAction(id: .extraFund, label: "Use \(extraFundName)", subline: "Ask for this charge to be covered from the fund")
+        // Build 53 (audit U1, owner Nov 21, 2026): the two Savings
+        // actions must say their DIRECTION in the label — "Use
+        // Savings" / "Designate as Savings" read as the same thing
+        // and kept the exact confusion the owner flagged. "Pay
+        // from Savings" spends from the fund for this purchase;
+        // "Add to Savings" moves this money into the fund.
+        let extraFund = SheetAction(id: .extraFund, label: "Pay from \(extraFundName)", subline: "Use the fund to cover this charge")
         let charity = SheetAction(id: .charity, label: "Mark as \(charityName)", subline: charitySubline)
-        let designate = SheetAction(id: .designateSavings, label: "Designate as \(extraFundName)", subline: "Counts this amount toward the fund")
+        let designate = SheetAction(id: .designateSavings, label: "Add to \(extraFundName)", subline: "Counts this amount toward the fund")
 
         /// A reclassify row for a kind — nil when it IS the row's
         /// current kind (reclassifying to what it already is is

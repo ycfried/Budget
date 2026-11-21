@@ -1,0 +1,52 @@
+name: OnBudget iOS clone compile check (testflight branch)
+# Build 53 (audit W3): a fast compile-only job that runs on EVERY
+# push touching the app — the simulator workflow only runs on
+# commits whose message starts "ci(ios-clone): approved cloud
+# build", so a compile error in a plain push used to surface only
+# when the trigger commit was made (build 52 needed two CI runs to
+# catch two compile errors). This fails in minutes on a compile
+# error, before the trigger commit and the ~65-min simulator run.
+# It builds the app + widget + UI tests for the simulator (no
+# device, no signing, no tests run here beyond the kit's own unit
+# tests) and runs the project validator. It never uploads anything.
+on:
+  push:
+    branches: [ios-clone-testflight]
+    paths:
+      - 'ios-clone/**'
+      - '.github/workflows/ios-clone-compile.yml'
+permissions:
+  contents: read
+concurrency:
+  group: onbudget-ios-clone-compile-testflight
+  cancel-in-progress: true
+jobs:
+  compile:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select Xcode 16.4 (matches the simulator workflow — this never uploads, so the iOS 26 SDK gate does not apply)
+        run: |
+          if [[ -d /Applications/Xcode_16.4.app/Contents/Developer ]]; then
+            echo "DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer" >> "$GITHUB_ENV"
+          else
+            echo "NOTE: Xcode 16.4 not installed; using default Xcode." >&2
+            echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+          fi
+          xcodebuild -version
+      - name: Validate project
+        run: python3 ios-clone/scripts/validate_project.py
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project ios-clone/OnBudget.xcodeproj
+      - name: Kit unit tests (compile + run — pure logic, fast)
+        run: xcrun swift test --package-path ios-clone/OnBudgetKit --scratch-path ios-clone/CloudResults/CoreBuild --jobs 4
+      - name: Build for testing (app + widget + UI tests — compile only, no device)
+        run: |
+          xcodebuild -project ios-clone/OnBudget.xcodeproj -scheme OnBudget -configuration Debug \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath ios-clone/CloudResults/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= build-for-testing

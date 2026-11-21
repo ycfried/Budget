@@ -7,16 +7,19 @@
 // Flow: launch; setUp signs out first if a previous test in this
 // run left a session behind (the Supabase session persists across
 // launches in the same run), so every test starts on the auth
-// screen; then sign up a FRESH account (random email per run,
-// generated password) — sign-ups are ON and email confirmation
-// is ON in the live project (owner, Nov 12, 2026), so sign-up
-// returns .needsConfirmation and the app shows "Check Your Email".
-// The helper then confirms the fresh account via the Supabase Auth
+// screen; then create a PRE-CONFIRMED account via the Supabase Auth
 // Admin API (service-role key baked into the test bundle at build
 // time — UITestSecrets.swift, generated in CI from the
 // SUPABASE_SERVICE_ROLE_KEY secret; never logged, never hard-coded)
-// and signs in with the same credentials; the @example.com address can never
-// receive the confirmation email, so there is no other path.
+// and sign in with it in the app UI. No email is ever sent, so the
+// Supabase sign-up rate limit cannot block the suite (build 53,
+// audit W1: 8 public sign-ups per run died at the 429 gate and
+// proved nothing past auth). Only testSignUpJoinAndBrowse still
+// exercises the public sign-up flow (one sign-up per run): sign-up
+// returns .needsConfirmation and the app shows "Check Your Email",
+// the helper then confirms the fresh account via the Admin API and
+// signs in with the same credentials; the @example.com address can
+// never receive the confirmation email, so there is no other path.
 //   Then join the TEST household "Proof Household 2" as a member via
 //      invite code Q6GFME. Never the real household, never the
 //      owner's account. (The test admin account's password is lost;
@@ -84,6 +87,14 @@ final class OnBudgetUITests: XCTestCase {
 
     // TEST BACKEND ONLY — Proof Household 2 invite code.
     private let testInviteCode = "Q6GFME"
+
+    // TEST BACKEND ONLY — the test household the video tests join
+    // ("Goldstein Household", invite XPKVGJ). Was "Simcha House!"
+    // until Nov 19, 2026 — the name is a shared constant now, so a
+    // rename can never silently break the video assertions again
+    // (build 53, audit W1).
+    private let videoHouseholdInviteCode = "XPKVGJ"
+    private let videoHouseholdName = "Goldstein Household"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -200,7 +211,7 @@ final class OnBudgetUITests: XCTestCase {
     /// iPhone and the tab switching; the iPad rendering itself can
     /// only be proven on a real iPad.
     func testTabBarIsAtBottom() throws {
-        signUpAndJoinTestHousehold()
+        signInAndJoinTestHousehold()
 
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(
@@ -259,7 +270,7 @@ final class OnBudgetUITests: XCTestCase {
     /// alert, the persisted record from the script-launched
     /// instance covers the same assertion.
     func testGmailCallbackDeepLink() throws {
-        signUpAndJoinTestHousehold()
+        signInAndJoinTestHousehold()
 
         app.buttons["Profile"].tap()
         let settingsItem = app.buttons["Settings"]
@@ -300,7 +311,7 @@ final class OnBudgetUITests: XCTestCase {
     /// sheet). The second half re-proves the other scope + format:
     /// All + CSV.
     func testExportTransactions() throws {
-        signUpAndJoinTestHousehold()
+        signInAndJoinTestHousehold()
 
         tapTab(identifier: "tab.transactions", label: "Transactions")
         let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
@@ -310,6 +321,8 @@ final class OnBudgetUITests: XCTestCase {
         )
 
         // -- Export popup opens, history fetch shows a count --------
+        // Build 53 (audit U2): Export lives in the "More" menu now.
+        app.buttons["pageLinks.more"].tap()
         let exportChip = app.buttons["export.open"]
         XCTAssertTrue(
             exportChip.waitForExistence(timeout: 15),
@@ -361,11 +374,11 @@ final class OnBudgetUITests: XCTestCase {
 
     /// Build 46 (owner, Nov 18, 2026): the Home hero shows the big
     /// amount in the white body (not the header) beside the progress
-    /// circle (not the bar). NOTE: blocked by the known 429 sign-up
-    /// gate in CI like the other UI tests — it fails in the sign-up
-    /// preamble until the gate clears, and proves the layout then.
+    /// circle (not the bar). Build 53 (audit W1): the preamble no
+    /// longer signs up (Admin-API account instead), so the old 429
+    /// sign-up gate cannot block it.
     func testHomeHeroAmountAndDonut() throws {
-        signUpAndJoinTestHousehold()
+        signInAndJoinTestHousehold()
 
         XCTAssertTrue(
             app.staticTexts["Spending"].waitForExistence(timeout: 60),
@@ -394,7 +407,7 @@ final class OnBudgetUITests: XCTestCase {
     /// flip is needed; the fund_prominence migration need not be
     /// applied for the defaults to show.
     func testSimpleHomeLayout() throws {
-        signUpAndJoinTestHousehold()
+        signInAndJoinTestHousehold()
 
         XCTAssertTrue(
             app.staticTexts.matching(identifier: "home.heroAmount").firstMatch
@@ -429,7 +442,7 @@ final class OnBudgetUITests: XCTestCase {
     /// empty Add Transaction form, Funds, Home again. Uses the
     /// Admin API to create a PRE-CONFIRMED account (no public
     /// sign-up, so the 429 sign-up gate cannot block it), signs in
-    /// via the app UI, and joins the TEST household "Simcha House!"
+    /// via the app UI, and joins the TEST household (videoHouseholdName)
     /// via invite code XPKVGJ as a member. Never the live household.
     /// Screenshots are attached with lifetime .keepAlways and
     /// exported by the simulator workflow (and the video-screens
@@ -438,13 +451,13 @@ final class OnBudgetUITests: XCTestCase {
         guard let account = createConfirmedTestAccount() else { return }
         signInWithAccount(email: account.email, password: account.password)
 
-        // Join Simcha House! as a member.
+        // Join the test household (videoHouseholdName) as a member.
         let inviteField = app.textFields["household.inviteCode"]
-        XCTAssertTrue(
-            inviteField.waitForExistence(timeout: 90),
-            "Household screen did not appear after sign-in"
+        waitForElement(
+            inviteField, timeout: 90, screenshotName: "video-household-missing",
+            message: "Household screen did not appear after sign-in (\(diagnosePostSignInState()))"
         )
-        tapAndTypeText(inviteField, "XPKVGJ", fieldName: "household.inviteCode")
+        tapAndTypeText(inviteField, videoHouseholdInviteCode, fieldName: "household.inviteCode")
         dismissKeyboardIfPresent(focusedField: inviteField)
         app.buttons["household.joinAsMember"].tap()
 
@@ -455,11 +468,11 @@ final class OnBudgetUITests: XCTestCase {
         // by their containers (home.weeklyBudget / home.quietCard), so
         // wait on the elements' LABELS instead — the hero amount reads
         // "... left this week", the cards read by their fund names.
-        // Simcha House! still uses the DEFAULT fund names (Extra Fund,
+        // Goldstein Household still uses the DEFAULT fund names (Extra Fund,
         // Carried Debt, Charity) — the live household's renames
         // (Savings, Overspent (Past), Tzedaka) were never applied here.
         XCTAssertTrue(
-            app.staticTexts["Simcha House!"].waitForExistence(timeout: 90),
+            app.staticTexts[videoHouseholdName].waitForExistence(timeout: 90),
             "Home did not render after joining the household (no household title)"
         )
         XCTAssertTrue(
@@ -563,7 +576,7 @@ final class OnBudgetUITests: XCTestCase {
     /// How-to video v2 (Nov 19, 2026): records the app being USED —
     /// a real screen recording with taps and animations, not stills.
     /// Same preamble as testVideoScreens (Admin-API account, sign in,
-    /// join "Simcha House!" via XPKVGJ). Then performs the tap
+    /// join the test household (videoHouseholdName) via XPKVGJ). Then performs the tap
     /// sequence the narration describes, paced to the narration
     /// timings, while the CI script records the simulator screen with
     /// `xcrun simctl io recordVideo`. Each scene prints a VIDEO-MARK
@@ -592,19 +605,19 @@ final class OnBudgetUITests: XCTestCase {
         guard let account = createConfirmedTestAccount() else { return }
         signInWithAccount(email: account.email, password: account.password)
 
-        // Join Simcha House! as a member (same as testVideoScreens).
+        // Join the test household (videoHouseholdName) as a member (same as testVideoScreens).
         let inviteField = app.textFields["household.inviteCode"]
-        XCTAssertTrue(
-            inviteField.waitForExistence(timeout: 90),
-            "Household screen did not appear after sign-in"
+        waitForElement(
+            inviteField, timeout: 90, screenshotName: "video-household-missing",
+            message: "Household screen did not appear after sign-in (\(diagnosePostSignInState()))"
         )
-        tapAndTypeText(inviteField, "XPKVGJ", fieldName: "household.inviteCode")
+        tapAndTypeText(inviteField, videoHouseholdInviteCode, fieldName: "household.inviteCode")
         dismissKeyboardIfPresent(focusedField: inviteField)
         app.buttons["household.joinAsMember"].tap()
 
         // -- Home ready: scene 1 starts here ------------------------
         XCTAssertTrue(
-            app.staticTexts["Simcha House!"].waitForExistence(timeout: 90),
+            app.staticTexts[videoHouseholdName].waitForExistence(timeout: 90),
             "Home did not render after joining the household (no household title)"
         )
         XCTAssertTrue(
@@ -788,7 +801,7 @@ final class OnBudgetUITests: XCTestCase {
     /// must be applied live first, or the delete step fails with a
     /// plain-language error and nothing is changed.
     func testDeleteCashGiftFromFundsFeed() throws {
-        signUpAndJoinTestHousehold()
+        signInAndJoinTestHousehold()
 
         tapTab(identifier: "tab.funds", label: "Funds")
         XCTAssertTrue(
@@ -873,7 +886,7 @@ final class OnBudgetUITests: XCTestCase {
     /// the assertion (it is unique to the subpage; the title text
     /// alone could also match the link's label).
     func testPastWeeksAndActivitySubpages() throws {
-        signUpAndJoinTestHousehold()
+        signInAndJoinTestHousehold()
 
         tapTab(identifier: "tab.transactions", label: "Transactions")
         let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
@@ -883,6 +896,8 @@ final class OnBudgetUITests: XCTestCase {
         )
 
         // -- Past Weeks pushes -------------------------------------------
+        // Build 53 (audit U2): Past Weeks lives in the "More" menu now.
+        app.buttons["pageLinks.more"].tap()
         let pastWeeksLink = app.buttons["Past Weeks"]
         XCTAssertTrue(
             pastWeeksLink.waitForExistence(timeout: 15),
@@ -905,6 +920,8 @@ final class OnBudgetUITests: XCTestCase {
         )
 
         // -- Activity pushes ---------------------------------------------
+        // Build 53 (audit U2): Activity lives in the "More" menu now.
+        app.buttons["pageLinks.more"].tap()
         let activityLink = app.buttons["Activity"]
         XCTAssertTrue(
             activityLink.waitForExistence(timeout: 15),
@@ -921,6 +938,100 @@ final class OnBudgetUITests: XCTestCase {
 
     // MARK: - Shared preamble
 
+    // MARK: - Failure diagnostics (build 53, audit W1)
+
+    /// Visible static texts, error-like ones first — the evidence
+    /// a failure message needs. The 429 gate was blamed for 8
+    /// failures with NO rate-limit string in the log, because no
+    /// failure ever captured the app's actual error text. A
+    /// failure that names the visible error text is evidence; one
+    /// that only says "did not appear" is a guess.
+    private func visibleErrorText() -> String {
+        let labels = app.staticTexts.allElementsBoundByIndex.map(\.label).filter { !$0.isEmpty }
+        let errorLike = labels.filter { label in
+            let lower = label.lowercased()
+            return lower.contains("invalid") || lower.contains("fail") || lower.contains("error")
+                || lower.contains("rate") || lower.contains("limit") || lower.contains("many")
+                || lower.contains("try again") || lower.contains("expired") || lower.contains("offline")
+        }
+        let shown = errorLike.isEmpty ? Array(labels.prefix(5)) : Array(errorLike.prefix(5))
+        return shown.isEmpty ? "(no visible text)" : shown.joined(separator: " | ")
+    }
+
+    /// What the app is actually showing when a post-sign-in step
+    /// stalls. The video-test hang ("Household screen did not
+    /// appear after sign-in") was undiagnosed because the failure
+    /// never said WHERE the app was stuck — still on the auth
+    /// screen with a sign-in error, on the boot-error panel
+    /// (membership read failed; the invite field is hidden by
+    /// design there), on the session-expired screen, or already on
+    /// Home. This names the visible state so the next failure is
+    /// self-diagnosing instead of another "did not appear".
+    private func diagnosePostSignInState() -> String {
+        if app.textFields["auth.email"].exists {
+            return "still on the auth screen (sign-in did not complete); visible text: \(visibleErrorText())"
+        }
+        if app.buttons["household.retryBoot"].exists || app.staticTexts["Could not load your household."].exists {
+            return "household boot-error panel is showing (membership read failed — the invite field is hidden by design; tap Try Again)"
+        }
+        if app.buttons["Sign In Again"].exists {
+            return "session-expired screen is showing"
+        }
+        if app.staticTexts["Weekly Budget"].exists {
+            return "Home already rendered (the account already has a household?)"
+        }
+        return "unknown state (not auth, not boot-error, not session-expired, not Home)"
+    }
+
+    /// Wait for an element, screenshotting on failure first:
+    /// XCTAssertTrue with continueAfterFailure=false aborts before
+    /// any screenshot, so the wait captures the stuck state and
+    /// the diagnosis names it.
+    private func waitForElement(_ element: XCUIElement, timeout: TimeInterval, screenshotName: String, message: String) {
+        if element.waitForExistence(timeout: timeout) { return }
+        attachScreenshot(named: screenshotName)
+        XCTFail(message)
+    }
+
+    /// Steps 1–4 of the milestone proof, WITHOUT the public
+    /// sign-up: create a PRE-CONFIRMED account via the Admin API
+    /// (no email is ever sent, so the Supabase sign-up rate limit
+    /// cannot block it) and sign in with it in the app UI, then
+    /// join Proof Household 2 as a member → Home renders. Shared
+    /// by the browse + subpage tests. Build 53 (audit W1): the old
+    /// preamble signed up a fresh account per test — 8 public
+    /// sign-ups per run — and the run died at the sign-up rate
+    /// limit, proving nothing past auth. Only
+    /// testSignUpJoinAndBrowse still exercises the public sign-up
+    /// flow (one sign-up per run).
+    private func signInAndJoinTestHousehold() {
+        guard let account = createConfirmedTestAccount() else { return }
+        signInWithAccount(email: account.email, password: account.password)
+
+        // Join Proof Household 2 as a member.
+        let inviteField = app.textFields["household.inviteCode"]
+        waitForElement(
+            inviteField, timeout: 90, screenshotName: "03-household-missing",
+            message: "Household screen did not appear after sign-in (\(diagnosePostSignInState()))"
+        )
+        attachScreenshot(named: "03-household-join")
+        tapAndTypeText(inviteField, testInviteCode, fieldName: "household.inviteCode")
+        dismissKeyboardIfPresent(focusedField: inviteField)
+        app.buttons["household.joinAsMember"].tap()
+
+        // Home renders.
+        XCTAssertTrue(
+            app.staticTexts["Weekly Budget"].waitForExistence(timeout: 90),
+            "Home did not render after joining the household (no Weekly Budget card)"
+        )
+        XCTAssertTrue(
+            app.tabBars.buttons["tab.home"].exists
+                || app.tabBars.buttons["Home"].exists,
+            "Tab bar missing on Home"
+        )
+        attachScreenshot(named: "04-home")
+    }
+
     /// Steps 1–5 of the milestone proof: launch → auth screen →
     /// sign up a fresh account → name step → join Proof Household 2
     /// as a member → Home renders. Shared by the browse + subpage
@@ -933,9 +1044,9 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- 4. Join Proof Household 2 as a member -----------------------
         let inviteField = app.textFields["household.inviteCode"]
-        XCTAssertTrue(
-            inviteField.waitForExistence(timeout: 90),
-            "Household screen did not appear after sign-up (account creation or boot failed)"
+        waitForElement(
+            inviteField, timeout: 90, screenshotName: "03-household-missing",
+            message: "Household screen did not appear after sign-up (\(diagnosePostSignInState()))"
         )
         attachScreenshot(named: "03-household-join")
         tapAndTypeText(inviteField, testInviteCode, fieldName: "household.inviteCode")
@@ -1139,10 +1250,14 @@ final class OnBudgetUITests: XCTestCase {
         // -- 4. Confirm via the Admin API, then sign in -----------------
         // Sign-up with confirmation ON lands on the persistent
         // "Check Your Email" state (NameStepView.confirmationSent).
-        XCTAssertTrue(
-            app.staticTexts["Check Your Email"].waitForExistence(timeout: 60),
-            "Check Your Email did not appear after Create Account (sign-up may have failed or confirmation may be off)"
-        )
+        // Build 53 (audit W1): when this fails, the message names
+        // the app's actual error text — the 429 gate was blamed for
+        // 8 failures with no rate-limit string in the log, because
+        // no failure ever captured it.
+        if !app.staticTexts["Check Your Email"].waitForExistence(timeout: 60) {
+            attachScreenshot(named: "02-signup-failed")
+            XCTFail("Check Your Email did not appear after Create Account (sign-up may have failed or confirmation may be off); visible text: \(visibleErrorText())")
+        }
         guard confirmTestAccount(email: email, serviceKey: serviceKey) else { return }
         app.buttons["auth.backToSignIn"].tap()
 

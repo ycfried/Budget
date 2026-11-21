@@ -98,7 +98,12 @@ public final class TransactionsViewModel {
     public private(set) var isLoadingMore: Bool = false
     /// Whether the $375 schema-default allowance was ever explicitly
     /// set — the sync button is primary blue only when it was set.
-    public private(set) var allowanceSet: Bool = false
+    /// Build 53 (owner, Nov 21, 2026 — the refresh-button flash):
+    /// nil while the state is UNKNOWN, so the button never shows
+    /// the "not set" grey on first paint for a household whose
+    /// allowance IS set. The view treats nil like set (Home does
+    /// the same, `allowanceSet != false`).
+    public private(set) var allowanceSet: Bool?
     /// Card suffix → institution name (best-effort, for bank icons —
     /// the same map Home builds in `refresh()`). Nil suffixes fall
     /// back to the merchant icon.
@@ -275,16 +280,15 @@ public final class TransactionsViewModel {
     /// The shown charges that have a linked refund (build 52 —
     /// week mode): the row shows a "Refunded" mark and the total
     /// nets the refund out. Computed from the loaded rows — the
-    /// whole history in week mode, so a refund from a later week
-    /// still marks its charge. Only the shown charges are
-    /// returned; a refund pointing at a row that is not shown
-    /// marks nothing.
+    /// week's rows plus the refunds from the week start onward in
+    /// week mode, so a refund from a later week still marks its
+    /// charge. Only the shown charges are returned; a refund
+    /// pointing at a row that is not shown marks nothing. Build
+    /// 53 (audit C6): the netting lives in OnBudgetKit
+    /// (WeekTransactionsNetting) so the week's total has unit
+    /// tests.
     public var refundedChargeIds: Set<UUID> {
-        let refunded = Set(loadedPage.compactMap { tx -> UUID? in
-            guard tx.kind == .refund, !tx.isInTrash, tx.state != .reversed else { return nil }
-            return tx.originalPurchaseId
-        })
-        return Set(shownTransactions.map(\.id)).intersection(refunded)
+        WeekTransactionsNetting.refundedChargeIds(loaded: loadedPage, shown: shownTransactions)
     }
 
     /// Refund amounts linked to the shown charges, for refunds
@@ -298,13 +302,10 @@ public final class TransactionsViewModel {
     /// sum over the shown rows only (existing rule).
     private var hiddenLinkedRefundAmounts: [UUID: Int] {
         guard isWeekMode else { return [:] }
-        let shownIds = Set(shownTransactions.map(\.id))
-        var byPurchase: [UUID: Int] = [:]
-        for tx in loadedPage where tx.kind == .refund && !tx.isInTrash && tx.state != .reversed {
-            guard !shownIds.contains(tx.id), let purchaseId = tx.originalPurchaseId else { continue }
-            byPurchase[purchaseId, default: 0] += abs(tx.amountCents)
-        }
-        return byPurchase.filter { shownIds.contains($0.key) }
+        // Build 53 (audit C6): the netting lives in OnBudgetKit
+        // (WeekTransactionsNetting) so the week's total has unit
+        // tests.
+        return WeekTransactionsNetting.hiddenLinkedRefundAmounts(loaded: loadedPage, shown: shownTransactions)
     }
 
     /// Whether the viewer has any action on a row (live.js:982):
@@ -320,9 +321,12 @@ public final class TransactionsViewModel {
     /// First load / pull-to-refresh / retry / after a mutation.
     /// Fetches the first page (offset 0, `pageSize` rows) and
     /// REPLACES the loaded set — a refresh starts from the top.
-    /// In WEEK mode (build 52) it fetches the WHOLE history
-    /// instead (`allTransactions`, the export's whole-history
-    /// pattern) — the week list is the full week, not a page.
+    /// In WEEK mode (build 52) it fetches the week's rows
+    /// server-side date-range filtered (build 53, audit C6 — the
+    /// old whole-history fetch is gone; the export path keeps
+    /// `allTransactions`, which genuinely needs it), plus the
+    /// refunds dated from the week start onward, so a refund that
+    /// posts in a later week still marks / nets its charge.
     /// A failed read is an error state, never a silent empty list
     /// or an endless spinner (the web app has a live "Loading…"
     /// hang; the clone must not copy it). Requests time out at 30s
@@ -334,13 +338,40 @@ public final class TransactionsViewModel {
             self.loadState = .loading
             do {
                 if self.isWeekMode {
-                    let rows = try await self.client.postgrest.allTransactions(
-                        householdId: self.householdId
-                    )
+                    let fromDate = self.filters.fromDate
+                    let toDate = self.filters.toDate
+                    let merged: [Transaction]
+                    if fromDate.isEmpty || toDate.isEmpty {
+                        // Defensive: week mode without bounds
+                        // (applyWeekFilter always sets them) falls
+                        // back to the old whole-history fetch
+                        // rather than failing on an empty filter.
+                        merged = try await self.client.postgrest.allTransactions(
+                            householdId: self.householdId
+                        )
+                    } else {
+                        let rows = try await self.client.postgrest.transactionsInDateRange(
+                            householdId: self.householdId, fromDate: fromDate, toDate: toDate
+                        )
+                        let refunds = try await self.client.postgrest.refundsFromDate(
+                            householdId: self.householdId, fromDate: fromDate
+                        )
+                        // A refund dated inside the week is already
+                        // in `rows` — only the out-of-week ones are
+                        // added. Merged in date-desc order (the same
+                        // order transactionsPage returns), so leaving
+                        // week mode keeps the normal paged shape by
+                        // taking the first page.
+                        let refundIds = Set(rows.map(\.id))
+                        let extraRefunds = refunds.filter { !refundIds.contains($0.id) }
+                        merged = (rows + extraRefunds).sorted {
+                            ($0.date, $0.createdAt) > ($1.date, $1.createdAt)
+                        }
+                    }
                     guard !Task.isCancelled else { return }
-                    self.loadedPage = rows
+                    self.loadedPage = merged
                     self.hasMore = false
-                    self.loadState = .loaded(rows)
+                    self.loadState = .loaded(merged)
                 } else {
                     let (rows, hasMore) = try await self.client.postgrest.transactionsPage(
                         householdId: self.householdId,
@@ -429,10 +460,11 @@ public final class TransactionsViewModel {
     /// the Past Weeks and Home-row jumps call this first, so they
     /// clear the box too. Filtering is client-side over the rows
     /// already loaded, so clearing needs no refetch — EXCEPT when
-    /// leaving WEEK mode (build 52): the whole history is in
-    /// `loadedPage`, so the list goes back to the normal paged
-    /// shape by keeping the first page (same date-desc order as
-    /// `transactionsPage`) and restoring `hasMore` — no refetch.
+    /// leaving WEEK mode (build 52): the week's rows (plus the
+    /// later refunds pulled in for the netting) are in `loadedPage`,
+    /// so the list goes back to the normal paged shape by keeping
+    /// the first page (same date-desc order as `transactionsPage`)
+    /// and restoring `hasMore` — no refetch.
     public func clearSearchAndFilters() {
         let wasWeekMode = isWeekMode
         isWeekMode = false
@@ -454,10 +486,11 @@ public final class TransactionsViewModel {
     /// Transactions" only loaded a page, so the header count/total
     /// changed on every Load More). The shell clears
     /// `pendingWeekFilter` once consumed. Async: it fetches the
-    /// whole history (`allTransactions`, the export's pattern) so
-    /// the header count/total reflect the full week from the
-    /// start — the same whole-history principle as the Tzedaka $37
-    /// fix. The filter reset is inlined here (not via
+    /// week's rows server-side date-range filtered (build 53,
+    /// audit C6 — the old whole-history fetch is gone), plus the
+    /// refunds from the week start onward for the netting, so the
+    /// header count/total reflect the full week from the start.
+    /// The filter reset is inlined here (not via
     /// `clearSearchAndFilters`) so leaving week mode does not
     /// fight entering it.
     public func applyWeekFilter(weekStart: String) async {
@@ -486,8 +519,25 @@ public final class TransactionsViewModel {
 
     /// Apply a filter change (status / month / card / week / dates /
     /// bounds / sort). Client-side only — no refetch; the list
-    /// re-filters from the rows already loaded.
+    /// re-filters from the rows already loaded. Build 53 (audit
+    /// C7): changing a filter LEAVES week mode — isWeekMode was
+    /// sticky (only clearSearchAndFilters cleared it), so a filter
+    /// change inside the week view kept the week list and the week
+    /// total. Leaving week mode restores the normal paged shape
+    /// (first page of the loaded rows), the same as
+    /// clearSearchAndFilters. applyWeekFilter calls this BEFORE
+    /// setting isWeekMode = true, so entering week mode is
+    /// unaffected; the Filters sheet's Cancel does NOT call this
+    /// (it restores the snapshot and persists only), so a Cancel
+    /// leaves the list — including week mode — unchanged.
     public func filterChanged() {
+        if isWeekMode {
+            isWeekMode = false
+            let all = loadedPage
+            loadedPage = Array(all.prefix(pageSize))
+            hasMore = all.count > pageSize
+            loadState = .loaded(loadedPage)
+        }
         persistFilters()
     }
 
@@ -503,8 +553,10 @@ public final class TransactionsViewModel {
             allowanceSet = allowance.allowanceExplicitlySet
         } catch {
             // Allowance state is presentation-only (sync-button
-            // treatment); a failed read leaves the button grey.
-            allowanceSet = false
+            // treatment); a failed read leaves it unknown (nil),
+            // which the view renders like set — the common case —
+            // instead of flashing the "not set" grey.
+            allowanceSet = nil
         }
     }
 

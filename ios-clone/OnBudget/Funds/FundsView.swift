@@ -1367,9 +1367,13 @@ public struct FundsView: View {
                 // fill — a coloured button, not white — because the
                 // Tzedaka card already has a solid blue "Add to
                 // Tzedaka" above it and a second stark blue would
-                // repeat the two-blues problem. A 1.5pt brand-blue
-                // border, squarish rounded edges (cornerRadius 10,
-                // the no-pills rule), full width — it reads as
+                // repeat the two-blues problem. Build 53 (audit
+                // U5): the 1.5pt brand-blue border is gone — this
+                // was the only pale button that also carried an
+                // outline, and the outline is what made it read
+                // as unfinished next to the other pale buttons.
+                // Squarish rounded edges (cornerRadius 10, the
+                // no-pills rule), full width — it reads as
                 // something to tap. The chevron is a real SF Symbol
                 // (`chevron.down`, primary blue), rotating 180° when
                 // open; the "⌄" text character is gone. Press
@@ -1391,10 +1395,6 @@ public struct FundsView: View {
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity)
                     .background(DesignTokens.pale)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(DesignTokens.primary, lineWidth: 1.5)
-                    )
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(Rectangle())
                 }

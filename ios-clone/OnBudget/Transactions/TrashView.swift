@@ -104,7 +104,12 @@ public struct TrashView: View {
                                         TransactionIconView(
                                             merchant: transaction.merchant,
                                             institutionName: transaction.cardSuffix == "0000"
-                                                ? nil : viewModel.institutionBySuffix[transaction.cardSuffix]
+                                                ? nil : viewModel.institutionBySuffix[transaction.cardSuffix],
+                                            // Build 53 (owner, Nov 21, 2026): only a
+                                            // bank row (transfer / card payment) keeps
+                                            // the bank logo — an unmapped merchant gets
+                                            // the monogram, never the bank logo.
+                                            isBankRow: transaction.kind == .transfer || transaction.kind == .payment
                                         )
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(TransactionFormatting.displayMerchant(transaction.merchant))

@@ -590,6 +590,46 @@ public struct PostgrestClient {
         ))
     }
 
+    /// One week's transactions, server-side date-range filtered
+    /// (build 53, audit C6): only the rows dated fromDate...toDate
+    /// are pulled. The Spending-card week view used to fetch the
+    /// WHOLE history (`allTransactions`) to show one week — the
+    /// same whole-history principle as the Tzedaka $37 fix, but
+    /// applied at the wrong layer: the server can filter by date,
+    /// so it should. The export path keeps `allTransactions` —
+    /// that one genuinely needs the whole history.
+    public func transactionsInDateRange(householdId: UUID, fromDate: String, toDate: String) async throws -> [Transaction] {
+        try await fetchAllPages(PostgrestQuery(
+            table: "transactions",
+            columns: "*",
+            filters: [
+                .householdId(householdId), .onOrAfterNov1(),
+                .greaterThanOrEqual("date", fromDate), .lessThanOrEqual("date", toDate),
+            ],
+            orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("created_at", ascending: false)]
+        ))
+    }
+
+    /// Refunds dated on/after `fromDate` (build 53, audit C6): a
+    /// refund posts in the week AFTER its purchase, so the week's
+    /// rows alone would miss it — and the week's total would stop
+    /// netting a charge its refund already covered. The week fetch
+    /// pulls these in alongside the week's rows; the netting
+    /// (WeekTransactionsNetting) only counts refunds linked to a
+    /// shown charge, so the extras are harmless. Refunds are rare,
+    /// so this is a small second read, not a second history.
+    public func refundsFromDate(householdId: UUID, fromDate: String) async throws -> [Transaction] {
+        try await fetchAllPages(PostgrestQuery(
+            table: "transactions",
+            columns: "*",
+            filters: [
+                .householdId(householdId), .equal("kind", "refund"),
+                .greaterThanOrEqual("date", fromDate),
+            ],
+            orders: [PostgrestOrder("date", ascending: false), PostgrestOrder("created_at", ascending: false)]
+        ))
+    }
+
     /// Whole-history dedupe rows for CSV import (live.js:2468-2470):
     /// merchant, amount, date, suffix, ordered by created_at asc.
     /// `id asc` tiebreaker: `fetchAllPages` walks by offset, so the

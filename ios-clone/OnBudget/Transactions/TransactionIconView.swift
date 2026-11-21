@@ -34,8 +34,22 @@ final class FaviconImageLoader: ObservableObject {
     private static func fetch(_ url: URL, retries: Int) async -> UIImage? {
         for attempt in 0...retries {
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let image = UIImage(data: data) { return image }
+                // Build 53 (audit C1): the HTTP status decides —
+                // Google s2 answers a 404 WITH a decodable 16×16
+                // globe PNG for a nonexistent domain, so decoding
+                // without checking the status treated the globe as
+                // a loaded favicon and a guessed domain got
+                // remembered as confirmed. Only a 2xx response
+                // carrying a decodable image is a real favicon.
+                let (data, response) = try await URLSession.shared.data(from: url)
+                if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                   let image = UIImage(data: data) {
+                    return image
+                }
+                // A non-2xx response, or a body that does not
+                // decode, is a miss — fall through to the retry
+                // below (a transient miss may succeed on retry; a
+                // 404 simply fails again and returns nil).
             } catch {
                 // Fall through to the retry below.
             }
@@ -50,32 +64,42 @@ final class FaviconImageLoader: ObservableObject {
 /// Transaction icon: the MERCHANT's Google favicon first — the
 /// row is about where the money went, not which card paid (owner,
 /// Nov 14, 2026: every row showed the Amex logo instead of the
-/// merchant's). The bank favicon is only the fallback, when the
-/// merchant has no domain in the map; a loaded logo FILLS the whole
-/// tile edge-to-edge (owner, Nov 12, 2026 — the Amex tiles in Recent
-/// Transactions showed a white margin inside the tile): aspect-fill
-/// + clip, cropping overflow, never stretched. No inner padding
-/// between the image and the tile edge; the 1pt border and corner
-/// radius stay. The source is Google's favicon service at sz=128,
-/// which returns each site's largest icon (measured Nov 11, 2026:
-/// Amex 32px, Walmart / Amazon 48px, Royal Farms 128px, Seven Mile
-/// Market 168×107) — small sources are upscaled with high
-/// interpolation, and sz=128 is already the max. The Amex source
-/// itself carries no built-in white padding (verified Nov 12, 2026
-/// from the served bytes: 32×32, mark touches all four edges), so
-/// the margin the owner saw came entirely from this view's old
-/// 14% inner padding + scaledToFit letterboxing, now removed. Any
-/// unmapped name, or a failed favicon load, falls back to a monogram
-/// tile: white initial on the real brand colour when the map knows
-/// one, else a soft neutral tile (light slate `#e2e8f0`, dark slate
-/// initial) — one designed system with the logo tiles (same size,
-/// same corner radius), never a fake brand colour, never a blank
-/// tile, and never Clearbit (dead Nov 4, 2026).
+/// merchant's). The bank favicon is ONLY for bank rows (a transfer
+/// / card payment — the descriptor IS the bank's); an unmapped
+/// merchant falls back to the monogram tile, never the bank logo
+/// (owner, Nov 21, 2026: "Avraham Friedman" and "THE Timepiece"
+/// wore the Amex logo, which said the bank was the merchant). A
+/// loaded logo FILLS the whole tile edge-to-edge (owner, Nov 12,
+/// 2026 — the Amex tiles in Recent Transactions showed a white
+/// margin inside the tile): aspect-fill + clip, cropping overflow,
+/// never stretched. No inner padding between the image and the tile
+/// edge; the 1pt border and corner radius stay. The source is
+/// Google's favicon service at sz=128, which returns each site's
+/// largest icon (measured Nov 11, 2026: Amex 32px, Walmart / Amazon
+/// 48px, Royal Farms 128px, Seven Mile Market 168×107) — small
+/// sources are upscaled with high interpolation, and sz=128 is
+/// already the max. The Amex source itself carries no built-in
+/// white padding (verified Nov 12, 2026 from the served bytes:
+/// 32×32, mark touches all four edges), so the margin the owner
+/// saw came entirely from this view's old 14% inner padding +
+/// scaledToFit letterboxing, now removed. Any unmapped name, or a
+/// failed favicon load, falls back to a monogram tile: white
+/// initial on the real brand colour when the map knows one, else a
+/// soft neutral tile (light slate `#e2e8f0`, dark slate initial) —
+/// one designed system with the logo tiles (same size, same corner
+/// radius), never a fake brand colour, never a blank tile, and
+/// never Clearbit (dead Nov 4, 2026).
 public struct TransactionIconView: View {
     /// Institution name for the card suffix, when known (from the
     /// Settings bank list). When nil, the merchant icon is used.
     let institutionName: String?
     let merchant: String
+    /// True when this row is a BANK row (a transfer / card
+    /// payment): the descriptor is the bank's, not a merchant's,
+    /// so the bank logo is the right icon. False for merchant rows
+    /// — an unmapped merchant gets the monogram, never the bank
+    /// logo (owner, Nov 21, 2026).
+    let isBankRow: Bool
     let size: CGFloat
 
     /// The shared favicon loader (build 34): cached images render
@@ -88,9 +112,10 @@ public struct TransactionIconView: View {
     /// and made a merchant-only call ambiguous — both inits matched
     /// it — so it was removed (CI run 42721951443); the one
     /// institutionName-first call site was reordered instead.
-    public init(merchant: String, institutionName: String? = nil, size: CGFloat = 40) {
+    public init(merchant: String, institutionName: String? = nil, isBankRow: Bool = false, size: CGFloat = 40) {
         self.institutionName = institutionName
         self.merchant = merchant
+        self.isBankRow = isBankRow
         self.size = size
     }
 
@@ -147,27 +172,34 @@ public struct TransactionIconView: View {
         // favicon actually loads: a guessed domain that serves a
         // real image is worth keeping; a guess that 404s is not
         // (the monogram stays and the merchant stays on the
-        // catch-up list).
-        .onChange(of: guessedImageLoaded) { _, loaded in
-            if loaded, let domain = guessedDomain {
+        // catch-up list). Build 53 (audit C5): onChange only fires
+        // when the value CHANGES — a favicon already cached when
+        // the row first appears leaves guessedImageLoaded true
+        // from the start, so onChange never fires and the guess
+        // is never remembered. The task runs on appear AND when
+        // the value changes, so the cached case is covered too.
+        .task(id: guessedImageLoaded) {
+            if guessedImageLoaded, let domain = guessedDomain {
                 TransactionIconLookup.rememberGuessedDomain(domain, for: merchant)
             }
         }
     }
 
-    /// Merchant favicon first; the bank favicon only when the
-    /// merchant has no domain in the map (owner, Nov 14, 2026 —
-    /// bank-first made every row wear the Amex logo). Build 52:
-    /// the merchant domain is the RESOLVED one — curated, then a
-    /// remembered guess, then the auto-guess — so a new merchant
-    /// gets its logo the first time it appears instead of waiting
-    /// for a build. The institution name is still passed in: it
-    /// is the fallback, and the Settings bank tiles are untouched.
+    /// Merchant favicon first; the bank favicon only for a BANK
+    /// row (owner, Nov 21, 2026 — the icon fallback rule: an
+    /// unmapped merchant gets the monogram, never the bank logo).
+    /// Build 52: the merchant domain is the RESOLVED one —
+    /// curated, then a remembered guess, then the auto-guess — so
+    /// a new merchant gets its logo the first time it appears
+    /// instead of waiting for a build. The institution name is
+    /// still passed in: it is the bank row's logo, and the
+    /// Settings bank tiles are untouched.
     private var faviconURL: URL? {
         if let domain = TransactionIconLookup.resolvedDomain(for: merchant) {
             return TransactionIconLookup.faviconURL(forDomain: domain)
         }
-        guard let domain = TransactionIconLookup.bankDomain(for: institutionName) else {
+        guard isBankRow,
+              let domain = TransactionIconLookup.bankDomain(for: institutionName) else {
             return nil
         }
         return TransactionIconLookup.faviconURL(forDomain: domain)
@@ -183,7 +215,7 @@ public struct TransactionIconView: View {
     }
 
     /// True once the guessed favicon has loaded — the signal to
-    /// remember the guess (see onChange above).
+    /// remember the guess (see the .task above).
     private var guessedImageLoaded: Bool {
         guard let domain = guessedDomain,
               let url = TransactionIconLookup.faviconURL(forDomain: domain) else { return false }
@@ -221,13 +253,14 @@ public struct TransactionIconView: View {
     }
 
     /// The brand colour for this row, when the map knows one —
-    /// merchant first, bank only as the fallback (owner, Nov 14,
-    /// 2026, same flip as the favicon above).
+    /// merchant only. Build 53 (owner, Nov 21, 2026): the bank's
+    /// brand colour is NOT a fallback — it made an unmapped
+    /// merchant's monogram look like a bank brand tile (an Amex-blue
+    /// "A" for "Avraham Friedman"). An unmapped merchant gets the
+    /// soft neutral tile; a bank row shows the bank logo, so its
+    /// tile colour never renders.
     private var brandHex: String? {
-        if let hex = TransactionIconLookup.merchantBrandHex(for: merchant) {
-            return hex
-        }
-        return TransactionIconLookup.bankBrandHex(for: institutionName)
+        TransactionIconLookup.merchantBrandHex(for: merchant)
     }
 }
 

@@ -832,13 +832,11 @@ public struct TransactionFilters: Equatable {
             return shown.filter { !$0.isInTrash && $0.kind == .charity }
                 .reduce(0) { $0 + $1.amountCents }
         }
-        return shown.filter {
-            !$0.isInTrash && $0.state != .reversed
-                && ($0.kind == .charge || $0.kind == .fundCharge || $0.kind == .refund)
-        }.reduce(0) { sum, tx in
-            let base = tx.kind == .refund ? -abs(tx.amountCents) : tx.amountCents
-            return sum + base - (linkedRefundAmounts[tx.id] ?? 0)
-        }
+        // Build 53 (audit C6): the spending total lives in
+        // OnBudgetKit (WeekTransactionsNetting.spendingTotal) so
+        // the week's total has unit tests — this stays the one
+        // call site, so the rule is defined once.
+        return WeekTransactionsNetting.spendingTotal(shown: shown, linkedRefundAmounts: linkedRefundAmounts)
     }
 
     /// Months present in the loaded page, newest first.

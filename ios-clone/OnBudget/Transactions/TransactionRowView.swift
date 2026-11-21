@@ -20,12 +20,13 @@ import OnBudgetKit
 ///
 /// Detail panel: labelled rows Date (long) / Account / Status
 /// (plain grey text) / Source (plain grey text) (+ Refund Link row
-/// for refunds); then the Actions button — one small tertiary
-/// button, only when the viewer has any action on that row. The
-/// bold merchant — amount header is gone (owner, Nov 13, 2026):
-/// the collapsed row already says both, so repeating them here
-/// said the merchant and the price twice. No explainer sentences:
-/// the facts already say it.
+/// for refunds; + Amount row for refunded purchases, whose
+/// collapsed amount is struck through). Then the Actions button —
+/// one small tertiary button, only when the viewer has any action
+/// on that row. The bold merchant — amount header is gone (owner,
+/// Nov 13, 2026): the collapsed row already says both, so
+/// repeating them here said the merchant and the price twice. No
+/// explainer sentences: the facts already say it.
 /// The whole row is the tap target — the chevron is only a visual
 /// hint. Expand/collapse is instant, no animation at all (owner
 /// decision, Nov 15, 2026 — build 34: the motion itself was ugly,
@@ -42,8 +43,11 @@ public struct TransactionRowView: View {
     /// Empty when no search is active — the row renders unchanged.
     let searchQuery: String
     /// Build 52 (week mode): this charge has a linked refund —
-    /// the row shows a "Refunded" mark and its amount nets to $0
-    /// in the header total. The row keeps its original amount.
+    /// its amount nets to $0 in the header total. Build 53 (owner,
+    /// Nov 21, 2026): the row shows the amount struck through and
+    /// the status reads just "Refunded" (replacing
+    /// "Pending"/"Posted"); the original amount stays visible in
+    /// the expanded detail.
     let isRefunded: Bool
     let onToggle: () -> Void
     let onActions: () -> Void
@@ -92,6 +96,11 @@ public struct TransactionRowView: View {
                     TransactionIconView(
                         merchant: transaction.merchant,
                         institutionName: institutionName,
+                        // Build 53 (owner, Nov 21, 2026): only a
+                        // bank row (transfer / card payment) keeps
+                        // the bank logo — an unmapped merchant gets
+                        // the monogram, never the bank logo.
+                        isBankRow: transaction.kind == .transfer || transaction.kind == .payment,
                         size: iconSize
                     )
                     VStack(alignment: .leading, spacing: 0) {
@@ -114,6 +123,13 @@ public struct TransactionRowView: View {
                             TransactionFormatting.highlightedSearchText(amount.text, query: searchQuery)
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(amount.color)
+                                // Build 53 (owner, Nov 21, 2026): a
+                                // refunded purchase shows its amount
+                                // struck through — the week's total
+                                // already nets it to $0, and the
+                                // struck-through amount still reads
+                                // as the original charge.
+                                .strikethrough(isRefunded)
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(Color(hex: "#6b7280"))
@@ -141,19 +157,22 @@ public struct TransactionRowView: View {
                                         .font(.system(size: 12, weight: .semibold))
                                         .foregroundStyle(DesignTokens.muted)
                                 }
-                                // Build 52 (week mode): a refunded
-                                // purchase — plain grey text, no
-                                // pill, like the other badges. The
-                                // row keeps its original amount;
-                                // the header total nets it to $0.
+                                // Build 53 (owner, Nov 21, 2026): the
+                                // status IS "Refunded" — it replaces
+                                // "Pending"/"Posted", it does not sit
+                                // next to it ("Refunded Pending" read
+                                // as neither one clearly). Visible
+                                // style: primary blue semibold, not
+                                // small grey text.
                                 if isRefunded {
                                     Text("Refunded")
                                         .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.primary)
+                                } else {
+                                    Text(TransactionFormatting.stateWord(for: transaction))
+                                        .font(.system(size: 12, weight: .semibold))
                                         .foregroundStyle(DesignTokens.muted)
                                 }
-                                Text(TransactionFormatting.stateWord(for: transaction))
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(DesignTokens.muted)
                                 Spacer()
                                 // Date + card sit at the row's trailing edge —
                                 // a fixed column that never moves with the
@@ -182,7 +201,7 @@ public struct TransactionRowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                "\(TransactionFormatting.rowTitle(for: transaction)) \(amount.text) \(TransactionFormatting.displayDay(transaction.date)) \(TransactionFormatting.stateWord(for: transaction)) — show detail"
+                "\(TransactionFormatting.rowTitle(for: transaction)) \(amount.text) \(TransactionFormatting.displayDay(transaction.date)) \(isRefunded ? "Refunded" : TransactionFormatting.stateWord(for: transaction)) — show detail"
             )
             .accessibilityIdentifier("transaction.row")
 
@@ -190,6 +209,7 @@ public struct TransactionRowView: View {
                 TransactionDetailView(
                     transaction: transaction,
                     hasActions: hasActions,
+                    isRefunded: isRefunded,
                     onActions: onActions
                 )
                 .padding(.top, 2)
@@ -206,11 +226,18 @@ public struct TransactionRowView: View {
 public struct TransactionDetailView: View {
     let transaction: Transaction
     let hasActions: Bool
+    /// Build 53 (week mode): this charge has a linked refund —
+    /// the Status row reads "Refunded" (replacing
+    /// "Pending"/"Posted") and the detail restores the plain
+    /// original amount, since the collapsed amount is struck
+    /// through.
+    let isRefunded: Bool
     let onActions: () -> Void
 
-    public init(transaction: Transaction, hasActions: Bool, onActions: @escaping () -> Void) {
+    public init(transaction: Transaction, hasActions: Bool, isRefunded: Bool = false, onActions: @escaping () -> Void) {
         self.transaction = transaction
         self.hasActions = hasActions
+        self.isRefunded = isRefunded
         self.onActions = onActions
     }
 
@@ -225,10 +252,30 @@ public struct TransactionDetailView: View {
                 // collapsed row.
                 detailRow(label: "Date", value: TransactionFormatting.fmtLong(transaction.date))
                 detailRow(label: "Account", value: TransactionFormatting.cardLabel(for: transaction))
+                // Build 53 (owner, Nov 21, 2026): the status IS
+                // "Refunded" here too — it replaces
+                // "Pending"/"Posted", in the same visible blue as
+                // the collapsed row.
                 detailRow(label: "Status") {
-                    Text(TransactionFormatting.stateWord(for: transaction))
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(DesignTokens.muted)
+                    if isRefunded {
+                        Text("Refunded")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                    } else {
+                        Text(TransactionFormatting.stateWord(for: transaction))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(DesignTokens.muted)
+                    }
+                }
+                // Build 53 (owner, Nov 21, 2026): the collapsed
+                // amount is struck through for a refunded purchase,
+                // so the expanded detail restores the plain original
+                // amount. The Nov 13 rule (no amount in the detail
+                // — the collapsed row already says it) does not
+                // apply here, because a struck-through amount is
+                // not a readable value.
+                if isRefunded {
+                    detailRow(label: "Amount", value: TransactionFormatting.amountDisplay(for: transaction).text)
                 }
                 detailRow(label: "Source") {
                     Text(TransactionFormatting.sourceLabel(for: transaction.source))

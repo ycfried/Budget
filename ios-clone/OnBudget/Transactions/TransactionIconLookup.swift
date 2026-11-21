@@ -262,9 +262,13 @@ public enum TransactionIconLookup {
 
     // MARK: - Lookups
 
+    /// Build 53 (audit C2): word-boundary, longest-first matching
+    /// (MerchantKeywordMatch) — a plain substring first-match made
+    /// "apple" win over "applebee", "sonic" match "PANASONIC",
+    /// "ups" match "CUPS". The same helper serves all four maps.
     public static func bankDomain(for institutionName: String?) -> String? {
         guard let name = institutionName?.lowercased(), !name.isEmpty else { return nil }
-        return bankDomains.first { name.contains($0.keyword) }?.domain
+        return MerchantKeywordMatch.bestMatch(in: name, from: bankDomains.map { (keyword: $0.keyword, value: $0.domain) })
     }
 
     /// The brand colour hex for an institution name, or nil when
@@ -272,20 +276,18 @@ public enum TransactionIconLookup {
     /// caller then uses the soft neutral fallback tile.
     public static func bankBrandHex(for institutionName: String?) -> String? {
         guard let name = institutionName?.lowercased(), !name.isEmpty else { return nil }
-        return bankBrandColors.first { name.contains($0.keyword) }?.hex
+        return MerchantKeywordMatch.bestMatch(in: name, from: bankBrandColors.map { (keyword: $0.keyword, value: $0.hex) })
     }
 
     public static func merchantDomain(for merchant: String) -> String? {
-        let name = merchant.lowercased()
-        return merchantDomains.first { name.contains($0.keyword) }?.domain
+        MerchantKeywordMatch.bestMatch(in: merchant, from: merchantDomains.map { (keyword: $0.keyword, value: $0.domain) })
     }
 
     /// The brand colour hex for a merchant, or nil when the merchant
     /// is unmapped or has no known brand colour — the caller then
     /// uses the soft neutral fallback tile.
     public static func merchantBrandHex(for merchant: String) -> String? {
-        let name = merchant.lowercased()
-        return merchantBrandColors.first { name.contains($0.keyword) }?.hex
+        MerchantKeywordMatch.bestMatch(in: merchant, from: merchantBrandColors.map { (keyword: $0.keyword, value: $0.hex) })
     }
 
     /// Google favicon URL for a domain (live.js uses
@@ -308,10 +310,15 @@ public enum TransactionIconLookup {
     /// in UserDefaults, per device); (3) the auto-guess
     /// (MerchantDomainGuess — name → .com). Nil when there is
     /// nothing sensible to try; the caller then falls back to the
-    /// bank logo, then the monogram.
+    /// monogram (build 53, owner Nov 21, 2026 — the bank logo is
+    /// NOT a fallback for merchant rows any more; only bank rows
+    /// show the bank logo, see TransactionIconView). A rejected
+    /// guess (cleared in the Merchants screen) suppresses the
+    /// auto-guess, so the wrong logo does not come straight back.
     public static func resolvedDomain(for merchant: String) -> String? {
         if let domain = merchantDomain(for: merchant) { return domain }
         if let domain = rememberedDomain(for: merchant) { return domain }
+        if isGuessRejected(for: merchant) { return nil }
         return MerchantDomainGuess.guessedDomain(for: merchant)
     }
 
@@ -321,6 +328,7 @@ public enum TransactionIconLookup {
     public static func isGuessedDomain(for merchant: String) -> Bool {
         merchantDomain(for: merchant) == nil
             && rememberedDomain(for: merchant) == nil
+            && !isGuessRejected(for: merchant)
             && MerchantDomainGuess.guessedDomain(for: merchant) != nil
     }
 
@@ -328,10 +336,45 @@ public enum TransactionIconLookup {
 
     private static let guessedDomainsKey = "hb-merchant-guessed-domains"
     private static let needsIconKey = "hb-merchants-needing-icon"
+    /// Guesses the user cleared in the Merchants screen (build 53,
+    /// audit C3): a cleared guess is never re-fetched or
+    /// re-remembered — the merchant stays on the monogram until a
+    /// curated entry maps it properly (the curated map is consulted
+    /// first, so it overrides a rejection).
+    private static let rejectedGuessesKey = "hb-merchant-rejected-guesses"
     private static let needsIconCap = 100
 
+    /// Strip a trailing store-number suffix (" #1234" / " 1234") —
+    /// the digits are a store number, not part of the brand. Case
+    /// is preserved; the caller lowercases for the key. A name
+    /// that IS a number, or digits glued to a word ("7-eleven"),
+    /// is left alone.
+    private static func stripStoreNumber(_ name: String) -> String {
+        var digitStart = name.endIndex
+        while digitStart > name.startIndex, name[name.index(before: digitStart)].isNumber {
+            digitStart = name.index(before: digitStart)
+        }
+        guard digitStart < name.endIndex, digitStart > name.startIndex else { return name }
+        let before = name[name.index(before: digitStart)]
+        guard before == " " || before == "#" else { return name }
+        var cut = digitStart
+        while cut > name.startIndex {
+            let ch = name[name.index(before: cut)]
+            guard ch == "#" || ch == " " else { break }
+            cut = name.index(before: cut)
+        }
+        return String(name[..<cut])
+    }
+
     private static func normalizedMerchant(_ merchant: String) -> String {
-        merchant.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // Build 53 (audit C4): the key is the brand, not the
+        // store — "WALMART #1234" and "WALMART #5678" are the same
+        // merchant, so their variants guess and remember together
+        // instead of each guessing separately. (Keys remembered
+        // before this change keep their old full-string form and
+        // simply re-guess once — a one-time re-remember, not a
+        // data loss.)
+        stripStoreNumber(merchant.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     /// A guess this device already confirmed (its favicon loaded).
@@ -341,12 +384,52 @@ public enum TransactionIconLookup {
     }
 
     /// Remember a guessed domain — ONLY after its favicon loaded,
-    /// and never for a merchant the curated map already covers.
+    /// and never for a merchant the curated map already covers or
+    /// whose guess was rejected (cleared in the Merchants screen).
     public static func rememberGuessedDomain(_ domain: String, for merchant: String) {
-        guard merchantDomain(for: merchant) == nil else { return }
+        guard merchantDomain(for: merchant) == nil, !isGuessRejected(for: merchant) else { return }
         var stored = UserDefaults.standard.dictionary(forKey: guessedDomainsKey) as? [String: String] ?? [:]
         stored[normalizedMerchant(merchant)] = domain
         UserDefaults.standard.set(stored, forKey: guessedDomainsKey)
+    }
+
+    // MARK: - Guessed domains, unverified (build 53, audit C3)
+
+    /// Merchants whose icon is a remembered GUESS, with the guessed
+    /// domain — unverified, for the Merchants screen to surface. A
+    /// remembered guess only means "its favicon loaded once"; it
+    /// can still be the WRONG company (erie.com loads a real
+    /// favicon for the wrong company — only the curated "erie"
+    /// entry shields it), so no guessed domain is ever treated as
+    /// confirmed. Sorted by merchant name; the stored keys are
+    /// normalized (lowercased), and the screen Title-Cases them
+    /// like the no-icon list.
+    public static func unverifiedGuessedMerchants() -> [(merchant: String, domain: String)] {
+        let stored = UserDefaults.standard.dictionary(forKey: guessedDomainsKey) as? [String: String] ?? [:]
+        return stored.map { (merchant: $0.key, domain: $0.value) }.sorted { $0.merchant < $1.merchant }
+    }
+
+    /// Whether this merchant's auto-guess was cleared (rejected) in
+    /// the Merchants screen: its favicon is not fetched and the
+    /// guess is not remembered again.
+    public static func isGuessRejected(for merchant: String) -> Bool {
+        let rejected = UserDefaults.standard.stringArray(forKey: rejectedGuessesKey) ?? []
+        return rejected.contains(normalizedMerchant(merchant))
+    }
+
+    /// Clear a guessed domain for a merchant AND suppress
+    /// re-guessing it: the merchant falls back to the monogram and
+    /// returns to the "without an icon" list, until a curated entry
+    /// (next build) maps it properly — the curated map is consulted
+    /// first, so it overrides the rejection.
+    public static func clearGuessedDomain(for merchant: String) {
+        let key = normalizedMerchant(merchant)
+        var stored = UserDefaults.standard.dictionary(forKey: guessedDomainsKey) as? [String: String] ?? [:]
+        stored.removeValue(forKey: key)
+        UserDefaults.standard.set(stored, forKey: guessedDomainsKey)
+        var rejected = UserDefaults.standard.stringArray(forKey: rejectedGuessesKey) ?? []
+        if !rejected.contains(key) { rejected.append(key) }
+        UserDefaults.standard.set(rejected, forKey: rejectedGuessesKey)
     }
 
     // MARK: Catch-up loop (merchants that still don't resolve)
@@ -355,13 +438,19 @@ public enum TransactionIconLookup {
     /// remembered guess, so it can be added to the list in a later
     /// build. Idempotent; capped at the 100 most recent. The
     /// Merchants screen reads this back via `needsIconMerchants`.
+    /// Build 53 (audit C4): a merchant already on the list is
+    /// left alone — the old code rewrote UserDefaults on EVERY row
+    /// appearance (moving the merchant to the front even when
+    /// already listed). The stored display drops the store number
+    /// ("WALMART #1234" → "WALMART"), so variants collapse to one
+    /// row instead of one per store.
     public static func recordNeedsIcon(_ merchant: String) {
         guard merchantDomain(for: merchant) == nil,
               rememberedDomain(for: merchant) == nil else { return }
-        let display = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let display = stripStoreNumber(merchant.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !display.isEmpty else { return }
         var stored = UserDefaults.standard.stringArray(forKey: needsIconKey) ?? []
-        stored.removeAll { normalizedMerchant($0) == normalizedMerchant(display) }
+        guard !stored.contains(where: { normalizedMerchant($0) == normalizedMerchant(display) }) else { return }
         stored.insert(display, at: 0)
         if stored.count > needsIconCap { stored = Array(stored.prefix(needsIconCap)) }
         UserDefaults.standard.set(stored, forKey: needsIconKey)
