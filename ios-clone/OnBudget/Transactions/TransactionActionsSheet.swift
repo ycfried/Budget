@@ -5,49 +5,70 @@ import OnBudgetKit
 ///
 /// ONE sheet, no "Other" bucket (build 52, owner Nov 20, 2026 —
 /// the flow was "too hard to navigate": row → Actions → Other →
-/// Reclassify page, with the same action in two places). The
-/// reclassify kinds sit directly in this sheet: the most-used
-/// actions at the top, the rest of the kinds below under one quiet
-/// "Change How It Counts" label, Rename Merchant and Delete as
-/// their own rows at the bottom. Duplicates are merged into one
-/// action each — "Mark as Tzedaka" IS the Tzedaka reclassify
-/// (there is no second Tzedaka row), and "Use Extra Fund" (ask the
-/// fund to cover this charge) and "Designate as Savings" (count
-/// this amount toward the fund) are different functions, so each
-/// appears exactly once, clearly labelled, not literally merged.
+/// Reclassify page, with the same action in two places). Build 54
+/// (owner, Nov 21, 2026) splits it into TWO groups, because the
+/// most-used actions were buried under the rest of the kinds:
+///
+/// - Group 1, "How It Counts", always visible: the row's CURRENT
+///   category first (marked with a checkmark, not a Button — it is
+///   the current state, not an action), then the actions that drive
+///   the math, in the brief's order — Spending, Income, Mark as
+///   Tzedaka, Cover with Savings, Add to Savings, Exclude, Delete
+///   (RED). Spending IS in the list now (it was not, even though
+///   the charge IS spending). For a kind that lives in Group 2
+///   (Transfer, Refund, Fund Charge, Payment, Cashback), the
+///   current category is prepended to Group 1 marked — the current
+///   category is always visible, never hidden in "More".
+/// - Group 2, "More", collapsed by default behind a "More"
+///   disclosure row that expands inline: Transfer, Refund, Fund
+///   Charge, Payment, Cashback, Rename Merchant. The sheet opens
+///   showing only Group 1 + the More row.
+///
+/// Subtitles STAY (owner, Nov 21, 2026 — they help many users).
+/// "Mark as Tzedaka" IS the Tzedaka reclassify (there is no second
+/// Tzedaka row), and "Cover with Savings" (ask the fund to cover
+/// this charge) and "Add to Savings" (count this amount toward the
+/// fund) are different functions, so each appears exactly once,
+/// clearly labelled, not literally merged. A refund row keeps
+/// "Link to Purchase" in Group 1 (it was a TOP action; dropping it
+/// would break refund linking).
 ///
 /// Which actions appear is decided by the `actionGroups` table —
 /// the clone uses this exact table (relaxed Nov 8, 2026: Charity
 /// is offered on ANY charge; members do not see it at all — owner
 /// rule, Nov 13, 2026: the sheet never renders a disabled row,
-/// only actions that work):
+/// only actions that work). Per-kind applicability follows the
+/// build-52 table, reorganised into the two groups (Transfer moves
+/// from TOP to "More" for every kind):
 ///
-/// | kind | Admin | Member |
-/// | charge | TOP: Tzedaka, Exclude, Transfer, Income, Use Extra Fund; MORE: Refund, Fund Charge, Payment, Cashback, Designate as Savings; Rename, Delete | Use Extra Fund |
-/// | refund | TOP: Link to Purchase, Exclude, Transfer, Income; MORE: Charge, Fund Charge, Payment, Cashback, Designate as Savings; Rename, Delete | — (no actions) |
-/// | transfer, payment, fund_charge | TOP: Exclude, Transfer, Income; MORE: the other kinds, Designate as Savings (cashback only); Rename, Delete | — |
-/// | cashback | TOP: Exclude, Transfer, Income; MORE: Charge, Refund, Fund Charge, Payment, Designate as Savings; Rename, Delete | — |
-/// | charity | Rename, Delete | — |
-/// | income | TOP: Exclude, Transfer, Charge; MORE: Refund, Fund Charge, Payment, Cashback, Designate as Savings; Rename, Delete | — |
-/// | other | TOP: Exclude, Transfer, Income, Charge; MORE: Refund, Fund Charge, Payment, Cashback; Rename, Delete | — |
+/// | kind | Admin — Group 1 | Admin — Group 2 (More) | Member |
+/// | charge | Spending (current), Income, Mark as Tzedaka, Cover with Savings, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | Spending (current), Cover with Savings |
+/// | refund | Refund (current), Link to Purchase, Spending, Income, Add to Savings, Exclude, Delete | Transfer, Fund Charge, Payment, Cashback, Rename Merchant | — (no actions) |
+/// | transfer, payment, fund_charge | current kind, Spending, Income, Exclude, Delete | the other kinds, Rename Merchant | — |
+/// | cashback | Cashback (current), Spending, Income, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Rename Merchant | — |
+/// | charity | Mark as Tzedaka (current), Delete | Rename Merchant | — |
+/// | income | Income (current), Spending, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | — |
+/// | other | Other (current), Spending, Income, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | — |
 ///
-/// A top or more-kinds row is hidden when it IS the row's current
-/// kind (reclassifying to what it already is is not an action).
-/// "Designate as Savings" only appears when `canDesignateAsSavings`
+/// "Add to Savings" only appears when `canDesignateAsSavings`
 /// (admin, non-zero, live row, charge/income/refund/cashback).
 ///
 /// Sheet header: X close (top-left symbol) on the list flow, back
 /// chevron on a sub-flow, title centred (owner, Nov 14, 2026 — the
 /// toolbar "Cancel" text truncated to "Ca…" and the NavigationStack
 /// root broke fitted sizing, so the sheet rendered tall and mostly
-/// empty). Subtitle "Merchant — $X". Rows are tappable list rows (label bold
-/// + muted sub-line + ›).
+/// empty). The merchant + amount line is bold, the amount in the
+/// transaction's colour, with a Divider below it — clearly
+/// separated from the action rows. Rows are tappable list rows
+/// (label bold + muted sub-line + ›).
 ///
 /// Owner rule (Nov 13, 2026): the sheet never renders a disabled
 /// row — only actions that work. A member simply does not see
 /// "Mark as Charity" (it used to render greyed-out with an
 /// "Only the admin can..." subline). The `disabled` flag is gone
-/// from SheetAction entirely so the pattern cannot come back.
+/// from SheetAction entirely so the pattern cannot come back. The
+/// current-category row is a non-Button indicator, not a disabled
+/// button, for the same reason.
 ///
 /// Plus the note under the sheet for transfer/payment/cashback/
 /// fund_charge: "This row does not count toward weekly spending."
@@ -113,6 +134,22 @@ public struct TransactionActionsSheet: View {
         let id: ActionKind
         let label: String
         let subline: String
+        /// Build 54: this row IS the transaction's current
+        /// category — rendered as a non-Button indicator with a
+        /// checkmark, never a tappable action and never a
+        /// greyed-out button (the standing rule forbids those).
+        let isCurrent: Bool
+        /// Build 54: Delete — the label renders in error red
+        /// (#dc2626), the subline and chevron stay muted.
+        let isDestructive: Bool
+
+        init(id: ActionKind, label: String, subline: String, isCurrent: Bool = false, isDestructive: Bool = false) {
+            self.id = id
+            self.label = label
+            self.subline = subline
+            self.isCurrent = isCurrent
+            self.isDestructive = isDestructive
+        }
     }
 
     let transaction: Transaction
@@ -151,6 +188,11 @@ public struct TransactionActionsSheet: View {
     @State private var linkCandidates: [Transaction]?
     @State private var linkedSummary: (merchant: String, amountCents: Int, date: String)?
     @State private var isWorking: Bool = false
+    /// Build 54: whether the "More" group is expanded. The sheet
+    /// opens collapsed (Group 1 + the More row only); the toggle
+    /// is instant, no animation (standing rule). Fresh per sheet
+    /// open — a new sheet instance always starts collapsed.
+    @State private var moreExpanded: Bool = false
 
     public init(
         transaction: Transaction,
@@ -171,26 +213,33 @@ public struct TransactionActionsSheet: View {
     private var charityName: String { FundSectionID.charity.displayName(customNames: fundNames) }
     private var extraFundName: String { FundSectionID.fund.displayName(customNames: fundNames) }
 
-    // MARK: - Action table (build 52 — one sheet, no "Other")
+    // MARK: - Action table (build 54 — two groups, no "Other")
 
-    /// One group in the single Actions sheet: the most-used
-    /// actions at the top (no label), the rest of the kinds below
-    /// under one quiet label, Rename + Delete last.
+    /// One group in the single Actions sheet: Group 1 ("How It
+    /// Counts", always visible) and Group 2 ("More", collapsed
+    /// behind a disclosure row by default, expands inline).
     private struct ActionGroup {
         let label: String?
+        let isMore: Bool
         let actions: [SheetAction]
+
+        init(label: String?, actions: [SheetAction], isMore: Bool = false) {
+            self.label = label
+            self.isMore = isMore
+            self.actions = actions
+        }
     }
 
-    /// Whether "Designate as <Extra Fund>" is offered for this row
+    /// Whether "Add to <Extra Fund>" is offered for this row
     /// (build 42, owner Nov 17, 2026): admin only, a charge or a
     /// money-in kind (income / refund / cashback), a non-zero
     /// amount, and a live row — never a reversed or trashed one.
     /// Members never see it (owner rule, Nov 13, 2026: the sheet
-    /// never renders a row that cannot work). Build 52 (owner, Nov
-    /// 20, 2026): it lives in the "Change How It Counts" group of
-    /// this sheet, next to the other reclassify options, and routes
-    /// to .savingsConfirm. It is a DIFFERENT function from "Use
-    /// Extra Fund" (a coverage request), so each appears exactly
+    /// never renders a row that cannot work). Build 54 (owner, Nov
+    /// 21, 2026): it lives in Group 1 ("How It Counts") of this
+    /// sheet, next to the other math-driving actions, and routes
+    /// to .savingsConfirm. It is a DIFFERENT function from "Cover
+    /// with Savings" (a coverage request), so each appears exactly
     /// once, clearly labelled.
     private var canDesignateAsSavings: Bool {
         guard isAdmin else { return false }
@@ -202,10 +251,13 @@ public struct TransactionActionsSheet: View {
         }
     }
 
-    /// The plain label for a reclassify kind.
+    /// The plain label for a reclassify kind. Build 54: a charge
+    /// is "Spending", not "Charge" — the owner wants the list to
+    /// say what the money IS, and the current category (a charge)
+    /// must read "Spending" in Group 1.
     private func kindLabel(_ kind: TransactionKind) -> String {
         switch kind {
-        case .charge: return "Charge"
+        case .charge: return "Spending"
         case .refund: return "Refund"
         case .fundCharge: return "Fund Charge"
         case .transfer: return "Transfer"
@@ -241,15 +293,16 @@ public struct TransactionActionsSheet: View {
             ? "Permanently deletes this hand-entered row"
             : "Moves this row to the Trash"
         let rename = SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it")
-        let delete = SheetAction(id: .delete, label: "Delete", subline: deleteSubline)
+        let delete = SheetAction(id: .delete, label: "Delete", subline: deleteSubline, isDestructive: true)
         let exclude = SheetAction(id: .exclude, label: "Exclude", subline: "Takes it out of the spending math")
-        // Build 53 (audit U1, owner Nov 21, 2026): the two Savings
-        // actions must say their DIRECTION in the label — "Use
-        // Savings" / "Designate as Savings" read as the same thing
-        // and kept the exact confusion the owner flagged. "Pay
-        // from Savings" spends from the fund for this purchase;
-        // "Add to Savings" moves this money into the fund.
-        let extraFund = SheetAction(id: .extraFund, label: "Pay from \(extraFundName)", subline: "Use the fund to cover this charge")
+        // Build 54 (owner, Nov 21, 2026): the owner renamed "Pay
+        // from Savings" to "Cover with Savings" (build 53 used
+        // "Pay from Savings" for audit item 8). "Cover with
+        // Savings" spends from the fund for this purchase; "Add
+        // to Savings" moves this money into the fund — the two
+        // labels say their direction, so they no longer read as
+        // the same thing.
+        let extraFund = SheetAction(id: .extraFund, label: "Cover with \(extraFundName)", subline: "Use the fund to cover this charge")
         let charity = SheetAction(id: .charity, label: "Mark as \(charityName)", subline: charitySubline)
         let designate = SheetAction(id: .designateSavings, label: "Add to \(extraFundName)", subline: "Counts this amount toward the fund")
 
@@ -262,67 +315,92 @@ public struct TransactionActionsSheet: View {
             return SheetAction(id: .reclassifyTo(kind), label: kindLabel(kind), subline: kindSubline(kind))
         }
 
+        /// The row's CURRENT category (build 54): always first in
+        /// Group 1, marked with a checkmark, not a Button — it is
+        /// the current state, not an action. Spending is in the
+        /// list now (it was not, even though the charge IS
+        /// spending). For a kind that lives in Group 2 (Transfer,
+        /// Refund, Fund Charge, Payment, Cashback), the current
+        /// category is prepended to Group 1 marked — the current
+        /// category is always visible, never hidden in "More".
+        func current() -> SheetAction {
+            switch transaction.kind {
+            case .charity:
+                return SheetAction(id: .charity, label: "Mark as \(charityName)", subline: "Current category", isCurrent: true)
+            case .charge:
+                return SheetAction(id: .reclassifyTo(.charge), label: "Spending", subline: "Current category", isCurrent: true)
+            default:
+                return SheetAction(id: .reclassifyTo(transaction.kind), label: kindLabel(transaction.kind), subline: "Current category", isCurrent: true)
+            }
+        }
+
         switch transaction.kind {
         case .charge:
             if isAdmin {
-                var top = [charity, exclude]
-                top += [reclassify(.transfer), reclassify(.income)].compactMap { $0 }
-                top.append(extraFund)
-                var more: [SheetAction] = [reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
-                if canDesignateAsSavings { more.append(designate) }
+                var group1 = [current()]
+                group1 += [reclassify(.income)].compactMap { $0 }
+                group1.append(charity)
+                group1.append(extraFund)
+                if canDesignateAsSavings { group1.append(designate) }
+                group1.append(exclude)
+                group1.append(delete)
+                let group2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 } + [rename]
                 return [
-                    ActionGroup(label: nil, actions: top),
-                    ActionGroup(label: "Change How It Counts", actions: more),
-                    ActionGroup(label: nil, actions: [rename, delete]),
+                    ActionGroup(label: "How It Counts", actions: group1),
+                    ActionGroup(label: nil, actions: group2, isMore: true),
                 ]
             }
             // Owner rule (Nov 13, 2026): no disabled rows — a
             // member simply does not see "Mark as Charity".
-            return [ActionGroup(label: nil, actions: [extraFund])]
+            return [ActionGroup(label: "How It Counts", actions: [current(), extraFund])]
         case .refund:
             guard isAdmin else { return [] }
             let linkSubline = transaction.originalPurchaseId != nil
                 ? "Change or remove the purchase this refund is linked to"
                 : "Link this refund to the purchase it came from"
             let link = SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline)
-            var top = [link, exclude]
-            top += [reclassify(.transfer), reclassify(.income)].compactMap { $0 }
-            var more: [SheetAction] = [reclassify(.charge), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
-            if canDesignateAsSavings { more.append(designate) }
+            var group1 = [current(), link]
+            group1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
+            if canDesignateAsSavings { group1.append(designate) }
+            group1.append(exclude)
+            group1.append(delete)
+            let group2 = [reclassify(.transfer), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 } + [rename]
             return [
-                ActionGroup(label: nil, actions: top),
-                ActionGroup(label: "Change How It Counts", actions: more),
-                ActionGroup(label: nil, actions: [rename, delete]),
+                ActionGroup(label: "How It Counts", actions: group1),
+                ActionGroup(label: nil, actions: group2, isMore: true),
             ]
         case .transfer, .payment, .cashback, .fundCharge:
             guard isAdmin else { return [] }
-            var top = [exclude]
-            top += [reclassify(.transfer), reclassify(.income)].compactMap { $0 }
-            var more: [SheetAction] = [reclassify(.charge), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
-            if canDesignateAsSavings { more.append(designate) }
+            var group1 = [current()]
+            group1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
+            if canDesignateAsSavings { group1.append(designate) }
+            group1.append(exclude)
+            group1.append(delete)
+            let group2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 } + [rename]
             return [
-                ActionGroup(label: nil, actions: top),
-                ActionGroup(label: "Change How It Counts", actions: more),
-                ActionGroup(label: nil, actions: [rename, delete]),
+                ActionGroup(label: "How It Counts", actions: group1),
+                ActionGroup(label: nil, actions: group2, isMore: true),
             ]
         case .charity:
             guard isAdmin else { return [] }
-            return [ActionGroup(label: nil, actions: [rename, delete])]
+            return [
+                ActionGroup(label: "How It Counts", actions: [current(), delete]),
+                ActionGroup(label: nil, actions: [rename], isMore: true),
+            ]
         case .income, .other:
             guard isAdmin else { return [] }
-            var top = [exclude]
-            top += [reclassify(.transfer), reclassify(.charge)].compactMap { $0 }
-            // `.other` carries its raw string, so it cannot be
-            // compared as a bare value — match it as a pattern.
-            if case .other = transaction.kind {
-                top += [reclassify(.income)].compactMap { $0 }
-            }
-            var more: [SheetAction] = [reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
-            if canDesignateAsSavings { more.append(designate) }
+            var group1 = [current()]
+            // For an income row reclassify(.income) is nil (it is
+            // the current kind); for an .other row it is the
+            // Income action — one list covers both.
+            group1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
+            if canDesignateAsSavings { group1.append(designate) }
+            group1.append(exclude)
+            group1.append(delete)
+            let group2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 } + [rename]
             return [
-                ActionGroup(label: nil, actions: top),
-                ActionGroup(label: "Change How It Counts", actions: more),
-                ActionGroup(label: nil, actions: [rename, delete]),
+                ActionGroup(label: "How It Counts", actions: group1),
+                ActionGroup(label: nil, actions: group2, isMore: true),
             ]
         }
     }
@@ -405,7 +483,7 @@ public struct TransactionActionsSheet: View {
         switch flow {
         case .list: return "Actions"
         case .charityConfirm: return "Mark as \(charityName) Gift"
-        case .extraFund: return "Use \(extraFundName)"
+        case .extraFund: return "Cover with \(extraFundName)"
         case .linkCandidates: return "Link Refund to Purchase"
         case .unlinkConfirm: return "Unlink Refund"
         case .reclassifyReason: return "Reclassify Transaction"
@@ -417,50 +495,44 @@ public struct TransactionActionsSheet: View {
         }
     }
 
-    private var subtitle: String {
-        "\(TransactionFormatting.displayMerchant(transaction.merchant)) — \(TransactionFormatting.amountDisplay(for: transaction).text)"
-    }
-
     // MARK: - List
 
     private var listContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(subtitle)
-                .font(.system(size: 15))
-                .foregroundStyle(Color(hex: "#6b7280"))
-            // Build 52: the groups render in order — most-used at
-            // the top, the rest of the kinds under one quiet label,
-            // Rename + Delete last. The 16pt outer spacing is the
-            // separation between groups; the quiet label is a muted
-            // inline line, never a bold sub-header.
+            // Build 54: the merchant + amount line is obvious —
+            // bold merchant, bold amount in the transaction's
+            // colour, with a Divider below it separating the
+            // header from the action rows (the old muted
+            // "Merchant — $X" subline read as a caption).
+            let amount = TransactionFormatting.amountDisplay(for: transaction)
+            HStack(alignment: .firstTextBaseline) {
+                Text(TransactionFormatting.displayMerchant(transaction.merchant))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+                Spacer()
+                Text(amount.text)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(amount.color)
+            }
+            Divider()
+            // Build 54: Group 1 ("How It Counts") renders always;
+            // Group 2 ("More") renders behind a disclosure row
+            // that expands inline. The sheet opens showing only
+            // Group 1 + the More row.
             ForEach(actionGroups.indices, id: \.self) { groupIndex in
                 let group = actionGroups[groupIndex]
-                if let label = group.label {
-                    Text(label)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color(hex: "#6b7280"))
-                }
-                VStack(spacing: 0) {
-                    ForEach(group.actions) { action in
-                        // Whole-row tap target (owner, Nov 15, 2026
-                        // app-wide pass): `.contentShape(Rectangle())`
-                        // makes the empty space between the text and the
-                        // chevron respond too — the same treatment as
-                        // the link-candidate rows below.
+                if group.isMore {
+                    VStack(spacing: 0) {
                         Button {
-                            select(action.id)
+                            // Instant, no animation (standing rule).
+                            moreExpanded.toggle()
                         } label: {
                             HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(action.label)
-                                        .font(.system(size: 16, weight: .bold))
-                                        .foregroundStyle(DesignTokens.ink)
-                                    Text(action.subline)
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(Color(hex: "#6b7280"))
-                                }
+                                Text("More")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.ink)
                                 Spacer()
-                                Image(systemName: "chevron.right")
+                                Image(systemName: moreExpanded ? "chevron.up" : "chevron.down")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(Color(hex: "#6b7280"))
                             }
@@ -468,8 +540,25 @@ public struct TransactionActionsSheet: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        if action.id != group.actions.last?.id {
-                            Divider()
+                        if moreExpanded {
+                            ForEach(group.actions) { action in
+                                Divider()
+                                actionRow(action)
+                            }
+                        }
+                    }
+                } else {
+                    if let label = group.label {
+                        Text(label)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                    }
+                    VStack(spacing: 0) {
+                        ForEach(group.actions) { action in
+                            actionRow(action)
+                            if action.id != group.actions.last?.id {
+                                Divider()
+                            }
                         }
                     }
                 }
@@ -479,6 +568,59 @@ public struct TransactionActionsSheet: View {
                     .font(.system(size: 14))
                     .foregroundStyle(Color(hex: "#6b7280"))
             }
+        }
+    }
+
+    /// One action row (build 54): a tappable Button, or — when
+    /// `isCurrent` — a non-Button indicator row with a checkmark.
+    /// A non-Button is honest: the current category is not an
+    /// action, and the standing rule forbids greyed-out buttons.
+    /// Delete renders its label in error red; every other label
+    /// stays ink, the subline and chevron stay muted.
+    private func actionRow(_ action: SheetAction) -> some View {
+        if action.isCurrent {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(action.label)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(DesignTokens.ink)
+                    Text(action.subline)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+                Spacer()
+                Image(systemName: "checkmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.primary)
+            }
+            .padding(.vertical, 12)
+        } else {
+            // Whole-row tap target (owner, Nov 15, 2026
+            // app-wide pass): `.contentShape(Rectangle())`
+            // makes the empty space between the text and the
+            // chevron respond too — the same treatment as
+            // the link-candidate rows below.
+            Button {
+                select(action.id)
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(action.label)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(action.isDestructive ? DesignTokens.errorText : DesignTokens.ink)
+                        Text(action.subline)
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
