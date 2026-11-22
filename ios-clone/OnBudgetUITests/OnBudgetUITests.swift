@@ -126,6 +126,26 @@ final class OnBudgetUITests: XCTestCase {
             }
             return false
         }
+        // The notifications-permission alert ("STAGE Would Like
+        // to Send You Notifications") is a SYSTEM alert: it
+        // blocks the app's whole accessibility tree while it is
+        // up, so every content wait behind it fails. It is
+        // requested asynchronously after first Home load and can
+        // appear 11 s to 75 s+ after Home renders, so no bounded
+        // poll can reliably catch it — run 44987157759 proved
+        // the SpringBoard query never dismissed it (the alert sat
+        // up for the whole 75 s settle). The interruption
+        // monitor is Apple's own mechanism for system alerts: it
+        // fires on the next UI interaction while the alert is
+        // present. dismissNotificationAlertIfPresent pokes the
+        // app to trigger it; the monitor taps "Don't Allow".
+        addUIInterruptionMonitor(withDescription: "Notifications permission") { alert in
+            if alert.buttons["Don't Allow"].exists {
+                alert.buttons["Don't Allow"].tap()
+                return true
+            }
+            return false
+        }
         app.launch()
         // A previous test in this run may have left a session behind:
         // XCTest runs tests alphabetically, so the first test signs
@@ -1685,23 +1705,25 @@ final class OnBudgetUITests: XCTestCase {
     /// the video-01-home still in runs 44574566697 and 44585656267.
     /// Dismiss it with "Don't Allow" (a test install never needs
     /// pushes) whenever it is present, before any screenshot.
-    /// NOTE: system permission alerts live in SPRINGBOARD, not in
-    /// app.alerts — app.alerts only holds the app's own alerts, so
-    /// the first version of this helper (app.alerts) never found
-    /// the dialog and the alert stayed on screen. Query SpringBoard.
-    /// Returns true when it dismissed an alert.
+    /// HOW IT WORKS (build 53 fix 7): the old version queried
+    /// SpringBoard directly (XCUIApplication(bundleIdentifier:
+    /// "com.apple.springboard")) — run 44987157759 proved that
+    /// never dismisses the alert (it sat up for the whole 75 s
+    /// settle while the query polled, and the alert then blocked
+    /// every content wait behind it). So this version pokes the
+    /// app (app.tap()) to TRIGGER the "Notifications permission"
+    /// interruption monitor registered in setUpWithError, which
+    /// taps "Don't Allow" when the alert is present. The poke
+    /// itself lands in the middle of Home — on a card, which may
+    /// expand it; that is harmless (cards still show their
+    /// content and navigation is unaffected). Returns true when
+    /// the app is responsive afterwards (a household title is
+    /// visible), i.e. the alert is gone or was never there.
     @discardableResult
     private func dismissNotificationAlertIfPresent() -> Bool {
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let alert = springboard.alerts.firstMatch
-        guard alert.waitForExistence(timeout: 5) else { return false }
-        let dontAllow = alert.buttons["Don't Allow"]
-        if dontAllow.waitForExistence(timeout: 5) {
-            dontAllow.tap()
-            Thread.sleep(forTimeInterval: 1)
-            return true
-        }
-        return false
+        app.tap()
+        Thread.sleep(forTimeInterval: 1)
+        return isHomeTitleVisible()
     }
 
     private func attachScreenshot(named name: String) {
@@ -1742,20 +1764,35 @@ final class OnBudgetUITests: XCTestCase {
     /// proceeds while the alert can still pop up and block its
     /// taps. Run 44970315808: test #1 reached Home fine, but the
     /// alert sat in the middle of the screen and the test could
-    /// not tap anything. Runs ONCE per test process (static flag):
-    /// the prompt is once per install, so if it did not appear
-    /// within 75 s of the first Home entry it will not appear
-    /// later in this run — re-polling in every test would burn
-    /// 75 s each for nothing. The video tests share this helper
+    /// not tap anything. Polls the FULL 75 s window (no early
+    /// return on a merely-responsive app): the alert can appear
+    /// at any point in the window, and an early return would
+    /// leave a later-appearing alert up to block every content
+    /// wait behind it (run 44987157759 — the alert was up for
+    /// the whole settle and every wait behind it failed). The
+    /// ONLY early exit is when an alert was actually observed
+    /// blocking Home and is now gone: the prompt is one-time,
+    /// so once dismissed it never returns. Runs ONCE per test
+    /// process (static flag). The video tests share this helper
     /// instead of their own inline loop for the same reason.
     private static var notificationAlertSettled = false
     private func settleNotificationAlertIfNeeded() {
         guard !Self.notificationAlertSettled else { return }
         let deadline = Date().addingTimeInterval(75)
-        var dismissed = false
-        while Date() < deadline && !dismissed {
-            dismissed = dismissNotificationAlertIfPresent()
+        while Date() < deadline {
+            let blockedBefore = !isHomeTitleVisible()
+            let responsive = dismissNotificationAlertIfPresent()
+            if blockedBefore && responsive { break }
+            Thread.sleep(forTimeInterval: 4)
         }
         Self.notificationAlertSettled = true
+    }
+
+    /// True when Home's title (either household the tests join)
+    /// is visible — i.e. no overlay (notifications alert,
+    /// walkthrough) is covering Home.
+    private func isHomeTitleVisible() -> Bool {
+        app.staticTexts[proofHouseholdName].exists
+            || app.staticTexts[videoHouseholdName].exists
     }
 }
