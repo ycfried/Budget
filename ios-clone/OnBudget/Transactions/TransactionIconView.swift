@@ -69,26 +69,32 @@ final class FaviconImageLoader: ObservableObject {
 /// merchant falls back to the monogram tile, never the bank logo
 /// (owner, Nov 21, 2026: "Avraham Friedman" and "THE Timepiece"
 /// wore the Amex logo, which said the bank was the merchant). A
-/// loaded logo FILLS the whole tile edge-to-edge (owner, Nov 12,
-/// 2026 — the Amex tiles in Recent Transactions showed a white
-/// margin inside the tile): aspect-fill + clip, cropping overflow,
-/// never stretched. No inner padding between the image and the tile
-/// edge; the 1pt border and corner radius stay. The source is
+/// loaded logo FITS the whole tile (owner, Nov 22, 2026 — this
+/// REVERSES the Nov 12 edge-to-edge fill rule: fill cropped wide
+/// logos, so Seven Mile Market showed "MIL" / "ARKE"): aspect-fit
+/// / contain, the full logo visible, never cropped, never
+/// stretched. A wide logo letterboxes on white; a square logo
+/// (Amex) fills the tile exactly, as before. Showing the whole
+/// logo matters more than filling the tile edge-to-edge. The 1pt
+/// border and corner radius stay. The source is
 /// Google's favicon service at sz=128, which returns each site's
 /// largest icon (measured Nov 11, 2026: Amex 32px, Walmart / Amazon
 /// 48px, Royal Farms 128px, Seven Mile Market 168×107) — small
 /// sources are upscaled with high interpolation, and sz=128 is
-/// already the max. The Amex source itself carries no built-in
-/// white padding (verified Nov 12, 2026 from the served bytes:
-/// 32×32, mark touches all four edges), so the margin the owner
-/// saw came entirely from this view's old 14% inner padding +
-/// scaledToFit letterboxing, now removed. Any unmapped name, or a
-/// failed favicon load, falls back to a monogram tile: white
-/// initial on the real brand colour when the map knows one, else a
-/// soft neutral tile (light slate `#e2e8f0`, dark slate initial) —
-/// one designed system with the logo tiles (same size, same corner
-/// radius), never a fake brand colour, never a blank tile, and
-/// never Clearbit (dead Nov 4, 2026).
+/// already the max. (HomeGoods' own favicon is only 48×48, so
+/// its icon comes from a curated higher-resolution override —
+/// see TransactionIconLookup.merchantIconOverrides, build 60.)
+/// The Amex source itself carries no built-in white padding
+/// (verified Nov 12, 2026 from the served bytes: 32×32, mark
+/// touches all four edges), so the margin the owner saw then
+/// came entirely from this view's old 14% inner padding. Any
+/// unmapped name, or a failed favicon load, falls back to a
+/// monogram tile: white initial on the real brand colour when
+/// the map knows one, else a soft neutral tile (light slate
+/// `#e2e8f0`, dark slate initial) — one designed system with
+/// the logo tiles (same size, same corner radius), never a fake
+/// brand colour, never a blank tile, and never Clearbit (dead
+/// Nov 4, 2026).
 public struct TransactionIconView: View {
     /// Institution name for the card suffix, when known (from the
     /// Settings bank list). When nil, the merchant icon is used.
@@ -121,37 +127,41 @@ public struct TransactionIconView: View {
 
     public var body: some View {
         ZStack {
-            monogram
             if let url = faviconURL {
                 if let uiImage = faviconLoader.image(for: url) {
-                    // Edge-to-edge fill (owner, Nov 12, 2026):
-                    // scaledToFill + clip crops overflow so the
-                    // logo reaches the tile edge on every side —
-                    // no inner padding, no letterbox. Fill by
-                    // cropping is not stretching: the aspect is
-                    // never distorted, wide logos lose their
-                    // sides, square logos (Amex) fill exactly.
-                    // High interpolation softens the upscale of
-                    // the small sources Google serves. The white
-                    // background sits behind the image only, so
-                    // a transparent source still reads on white
-                    // instead of the monogram underneath.
+                    // Aspect fit (owner, Nov 22, 2026 — reverses
+                    // the Nov 12 fill rule): the FULL logo is
+                    // visible, never cropped — for this logo and
+                    // for all current and future logos. A wide
+                    // logo (Seven Mile Market, 168×107)
+                    // letterboxes on white instead of losing its
+                    // sides ("MIL" / "ARKE"); a square logo
+                    // (Amex, Amazon) fills the tile exactly, as
+                    // before. The white tile behind the image
+                    // hides the monogram underneath, so the
+                    // letterbox reads clean, never as a letter
+                    // peeking out around the logo. The fitted
+                    // size is pure math (fittedSize below) so
+                    // the fit — not fill — is unit-tested. High
+                    // interpolation softens the upscale of the
+                    // small sources Google serves.
+                    Color.white
                     Image(uiImage: uiImage)
                         .resizable()
                         .interpolation(.high)
-                        .scaledToFill()
-                        .frame(width: size, height: size)
-                        .clipped()
-                        .background(Color.white)
+                        .frame(width: fitted.width, height: fitted.height)
                 } else {
-                    // Loading or failed: the monogram underneath
-                    // stays visible — never a blank tile. The task
-                    // triggers the (deduped, retried) load when the
-                    // row appears; a cached image replaces this on
-                    // the next render.
+                    // Loading or failed: the monogram stays
+                    // visible — never a blank tile. The task
+                    // triggers the (deduped, retried) load when
+                    // the row appears; a cached image replaces
+                    // this on the next render.
+                    monogram
                     Color.clear
                         .task(id: url) { faviconLoader.load(url) }
                 }
+            } else {
+                monogram
             }
         }
         .frame(width: size, height: size)
@@ -172,9 +182,12 @@ public struct TransactionIconView: View {
         .task(id: merchant) { TransactionIconLookup.recordNeedsIcon(merchant) }
     }
 
-    /// Merchant favicon first; the bank favicon only for a BANK
-    /// row (owner, Nov 21, 2026 — the icon fallback rule: an
-    /// unmapped merchant gets the monogram, never the bank logo).
+    /// Merchant icon first — a curated higher-resolution
+    /// override when one exists (HomeGoods, build 60), otherwise
+    /// the Google s2 favicon for the curated domain; the bank
+    /// favicon only for a BANK row (owner, Nov 21, 2026 — the
+    /// icon fallback rule: an unmapped merchant gets the
+    /// monogram, never the bank logo).
     /// Build 57: the merchant domain is the CURATED one only —
     /// the auto-guess and remembered guesses are removed, so a
     /// merchant with no curated entry shows the monogram instead
@@ -182,14 +195,40 @@ public struct TransactionIconView: View {
     /// in: it is the bank row's logo, and the Settings bank
     /// tiles are untouched.
     private var faviconURL: URL? {
-        if let domain = TransactionIconLookup.resolvedDomain(for: merchant) {
-            return TransactionIconLookup.faviconURL(forDomain: domain)
+        if let url = TransactionIconLookup.iconURL(for: merchant) {
+            return url
         }
         guard isBankRow,
               let domain = TransactionIconLookup.bankDomain(for: institutionName) else {
             return nil
         }
         return TransactionIconLookup.faviconURL(forDomain: domain)
+    }
+
+    /// The aspect-fit size of the loaded logo inside this tile —
+    /// the full logo is visible, never cropped (owner, Nov 22,
+    /// 2026). Falls back to the whole tile when no image is
+    /// loaded (the monogram branch does not use it).
+    private var fitted: CGSize {
+        guard let url = faviconURL,
+              let uiImage = faviconLoader.image(for: url) else {
+            return CGSize(width: size, height: size)
+        }
+        return Self.fittedSize(imageSize: uiImage.size, tileSize: size)
+    }
+
+    /// Aspect-fit size for a source image inside a square tile —
+    /// pure math, unit-tested in TransactionIconLookupTests.
+    /// A wide source (168×107 in a 40pt tile) becomes 40×25.5;
+    /// a square source fills the tile exactly; a tall source
+    /// becomes 25.5×40. A fill would return the whole tile for
+    /// a wide source — these tests pin fit, not fill.
+    static func fittedSize(imageSize: CGSize, tileSize: CGFloat) -> CGSize {
+        guard imageSize.width > 0, imageSize.height > 0, tileSize > 0 else {
+            return CGSize(width: tileSize, height: tileSize)
+        }
+        let scale = min(tileSize / imageSize.width, tileSize / imageSize.height)
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
     }
 
     private var monogram: some View {

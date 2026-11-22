@@ -299,6 +299,37 @@ public enum TransactionIconLookup {
         URL(string: "https://www.google.com/s2/favicons?sz=128&domain=\(domain)")
     }
 
+    /// Curated higher-resolution logo sources (build 60, owner
+    /// Nov 22, 2026). Google's favicon service caps at sz=128
+    /// but serves each site's own favicon — HomeGoods' is only
+    /// 48×48, so upscaling it to the ~40pt tile (80–120px at
+    /// 2x/3x) blurs it, and no larger sz exists. A curated
+    /// override points at a larger logo asset instead. Only
+    /// entries verified here belong in this map — no guessing,
+    /// no Clearbit (dead Nov 4, 2026).
+    public static let merchantIconOverrides: [(keyword: String, url: String)] = [
+        // HomeGoods: the site's own favicon is a 48×48 "HG"
+        // tile (Google s2, verified Nov 22, 2026). Wikimedia
+        // Commons hosts the real wordmark (280×94, public-domain
+        // text logo, source www.homegoods.com) — wide enough to
+        // render crisp at 3x in a 40pt tile. Verified Nov 22,
+        // 2026 (fetched, 200, 280×94, the dark-red "HomeGoods"
+        // wordmark with the roofline).
+        ("homegoods", "https://upload.wikimedia.org/wikipedia/commons/8/88/Homegoods_logo.png"),
+    ]
+
+    /// The icon URL for a merchant: a curated higher-resolution
+    /// override when one exists, otherwise the Google s2 favicon
+    /// for the curated domain. Nil when the merchant is unmapped
+    /// — the caller falls back to the monogram (build 57).
+    public static func iconURL(for merchant: String) -> URL? {
+        if let override = MerchantKeywordMatch.bestMatch(in: merchant, from: merchantIconOverrides.map { (keyword: $0.keyword, value: $0.url) }) {
+            return URL(string: override)
+        }
+        guard let domain = resolvedDomain(for: merchant) else { return nil }
+        return faviconURL(forDomain: domain)
+    }
+
     /// The monogram initial for a merchant name.
     public static func initial(for merchant: String) -> String {
         merchant.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } ?? "?"
