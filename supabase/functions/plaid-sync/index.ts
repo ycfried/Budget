@@ -47,11 +47,12 @@
 //   pending Plaid row  -> state='provisional'
 //   posted Plaid row   -> state='verified'
 //   removed Plaid row  -> state='reversed' AND excluded=true ONLY for a
-//                         VERIFIED row with no replacement in this sync
-//                         or in a recent window of household rows
-//                         (never deleted; append-only, audit P1-3).
+//                         row with no replacement in this sync or in a
+//                         recent window of household rows (never
+//                         deleted; append-only, audit P1-3).
 //                         Build 44 change 1 (Nov 18, 2026): a
 //                         PROVISIONAL row in removed[] is left untouched
+//                         when a replacement / re-issue signal exists
 //                         — a pending tx disappearing is normal, it
 //                         posted under a new id — and a verified row
 //                         with a same-merchant+amount+date+card_suffix
@@ -59,9 +60,15 @@
 //                         kept, duplicate arrival row excluded), not
 //                         trashed; a same-triple arrival on another
 //                         card is still a re-issue, left untouched.
-//                         The removed[] matcher uses ONLY the row's
-//                         live ids — never plaid_pending_transaction_id,
-//                         which still holds the old pending id after a
+//                         Build 58 (owner, Nov 22, 2026): a
+//                         PROVISIONAL row with NO replacement signal
+//                         anywhere is now excluded too (auto-reverse:
+//                         the pending transaction truly disappeared
+//                         and will never post). See decideRemovedRow
+//                         in canonical.ts. The removed[] matcher
+//                         uses ONLY the row's live ids — never
+//                         plaid_pending_transaction_id, which still
+//                         holds the old pending id after a
 //                         pending→posted link.
 //                         Removed rows are decided AFTER the whole
 //                         item's pages are read, so a replacement on a
@@ -702,7 +709,10 @@ Deno.serve(async (req) => {
       // above `continue`, so a partial sync never decides removals
       // on incomplete arrivals — the next run re-pulls and decides
       // with the full payload. Per row (decideRemovedRow):
-      //   * provisional -> left untouched (posted under a new id);
+      //   * provisional + a replacement / re-issue signal in this
+      //     sync -> left untouched (posted under a new id);
+      //     provisional + NO signal -> excluded (build 58: the
+      //     pending transaction truly disappeared, auto-reverse);
       //   * verified + a same-merchant+amount+date+card_suffix
       //     replacement in this sync -> LINKED to the new id
       //     (kind kept; the duplicate arrival row is excluded, so
@@ -787,7 +797,9 @@ Deno.serve(async (req) => {
         if (!row) { logSkip(item.plaid_item_id, 'removed-not-found'); continue; }
         const decision = decideRemovedRow(row, syncArrivals);
         if (decision.action === 'leave') {
-          if (decision.reason === 'provisional-removed-is-normal') removedLeftProvisional++;
+          // Build 58: a provisional row leaves only via a re-issue
+          // signal now (it posted); count it as provisional-left.
+          if (row.state === 'provisional') removedLeftProvisional++;
           else if (decision.reason.startsWith('reissue-')) removedLeftReissue++;
           else removedLeftOther++;
           console.log(`plaid-sync: removed ${removedId} left untouched (${decision.reason})`);

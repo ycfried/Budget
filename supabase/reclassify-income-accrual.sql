@@ -1,4 +1,18 @@
 -- reclassify-income-accrual.sql — Nov 20, 2026 (CHEDER credits gap).
+-- v4 (Nov 22, 2026 — build 58): pending/provisional income now
+-- ACCRUES immediately (owner rule, Nov 22 ~12:20: "pending
+-- transactions should count towards the totals.. people want the
+-- total to be as accurate as possible to the minute.. I notice
+-- charity doesn't count something pending"). The verified-only
+-- guard is gone: a provisional income row accrues at the moment it
+-- becomes income, and if it later disappears (excluded, or
+-- reclassified away) the existing reverse branches deduct it — the
+-- auto-reverse. A provisional row that posts needs no second
+-- accrual: the partial unique index (one ACTIVE accrual per
+-- household + transaction) plus ON CONFLICT DO NOTHING make a
+-- second accrual a no-op. The one-time repair below is unchanged
+-- (it only touches excluded rows' accruals).
+--
 -- v3 (Nov 22, 2026 — build 55): adds the EXCLUDE / RESTORE
 -- directions (owner report, Nov 22 ~7:39 AM) + a one-time repair.
 --
@@ -148,6 +162,16 @@
 -- re-applying this file is a plain CREATE OR REPLACE + DROP/CREATE
 -- TRIGGER. The v2 live application is replaced in place.
 --
+-- v3 → v4 NOTE: v4 keeps the same function and trigger names and
+-- only widens the state guard (verified → verified or provisional)
+-- in both the function and the trigger WHEN clause, so re-applying
+-- this file is again a plain CREATE OR REPLACE + DROP/CREATE
+-- TRIGGER. No backfill is included: provisional income rows that
+-- already exist (accrued nothing under v3) gain their accrual the
+-- next time they are reclassified, restored, or re-ingested — or
+-- via the missed-accrual detection query at the end, backfilled
+-- with accrue_charity_for_transaction.
+--
 -- FAIL-OPEN: the trigger function catches any unexpected error,
 -- raises a WARNING (visible in the Supabase Postgres logs), and
 -- returns NULL so the reclassification / exclusion / restoration
@@ -218,9 +242,10 @@ begin
 
   -- Accrue: TO income, or restored to income. The guards are
   -- re-checked here so a direct invocation cannot accrue wrongly.
-  -- Logic unchanged from v2.
+  -- Logic unchanged from v2 except v4: provisional income accrues
+  -- too (owner rule, Nov 22, 2026 — pending counts toward totals).
   if v_do_accrue then
-    if NEW.state <> 'verified' then return null; end if;
+    if NEW.state not in ('verified', 'provisional') then return null; end if;
     if coalesce(NEW.excluded, false) then return null; end if;
     if NEW.date < date '2026-11-01' then return null; end if;
     select default_rate_bp into v_rate from public.charity_settings where household_id = NEW.household_id;
@@ -330,13 +355,14 @@ create trigger trg_sync_charity_on_reclassify
   after update of kind, excluded on public.transactions
   for each row
   when (
-    -- TO income: kind changes to income (verified, not excluded,
-    -- dated on/after 2026-11-01). The guards are re-checked inside
+    -- TO income: kind changes to income (verified OR provisional,
+    -- not excluded, dated on/after 2026-11-01 — v4: provisional
+    -- income accrues immediately). The guards are re-checked inside
     -- the function; repeating them here keeps the trigger from firing
     -- at all for rows that can never accrue.
     (NEW.kind = 'income'
       and OLD.kind is distinct from 'income'
-      and NEW.state = 'verified'
+      and NEW.state in ('verified', 'provisional')
       and not coalesce(NEW.excluded, false)
       and NEW.date >= date '2026-11-01')
     -- FROM income: kind changes away from income. No state /
@@ -462,15 +488,32 @@ end $$;
 --
 -- 6. Reversing an income row that never accrued is a no-op (no error,
 --    no reversal audit row, no reversed row):
---   -- Reclassify a PROVISIONAL transfer to income, then back to
---   -- transfer. The TO-income step accrues nothing (verified-only
---   -- guard), so the away step has no active row to reverse:
+--   -- Reclassify a PRE-NOVEMBER transfer to income, then back to
+--   -- transfer. The TO-income step accrues nothing (pre-Nov guard),
+--   -- so the away step has no active row to reverse:
+--   select count(*) from charity_income
+--    where household_id = '<household>' and transaction_id = '<pre-nov-txn>'
+--      and status = 'active';  -- expect 0
+--   select count(*) from charity_income
+--    where household_id = '<household>' and transaction_id = '<pre-nov-txn>'
+--      and status = 'reversed';  -- expect 0
+--
+-- 6b. PROVISIONAL income accrues immediately (v4, owner rule Nov 22,
+--     2026 — pending counts toward totals):
+--   -- Reclassify a PROVISIONAL transfer to income. The TO-income
+--   -- step DOES accrue now (the v4 change — the verified-only guard
+--   -- is gone), and reclassifying it back to transfer reverses it:
+--   select reclassify_transaction('<provisional-txn>', 'income', 'trigger test 6b');
+--   select count(*) from charity_income
+--    where household_id = '<household>' and transaction_id = '<provisional-txn>'
+--      and status = 'active';  -- expect 1
+--   select reclassify_transaction('<provisional-txn>', 'transfer', 'trigger test 6b-away');
 --   select count(*) from charity_income
 --    where household_id = '<household>' and transaction_id = '<provisional-txn>'
 --      and status = 'active';  -- expect 0
 --   select count(*) from charity_income
 --    where household_id = '<household>' and transaction_id = '<provisional-txn>'
---      and status = 'reversed';  -- expect 0
+--      and status = 'reversed';  -- expect 1
 --
 -- EXCLUDE / RESTORE DIRECTIONS (v3, owner decision Nov 22, 2026)
 --
@@ -506,9 +549,9 @@ end $$;
 --   -- Expect 3 rows now: the step-1 row (reversed), the step-5 row
 --   -- (reversed by step 7), and a NEW row (different id) status
 --   -- 'active', amount_cents 10000, rate_bp 1000. The committed
---   -- total is restored by 1000 cents. (If the row restores as
---   -- provisional — dated today or later — no accrual appears until
---   -- it posts; that is the verified-only guard, not a failure.)
+--   -- total is restored by 1000 cents. (A provisional row restored
+--   -- to income accrues immediately under v4 — the verified-only
+--   -- guard is gone.)
 --   select action, detail from audit_log
 --    where household_id = '<household>' order by created_at desc limit 2;
 --   -- Expect 'Transaction restored' AND 'Charity income auto-accrued'.
@@ -547,14 +590,15 @@ end $$;
 --   detectable with:
 --   select t.id, t.merchant, t.amount_cents from transactions t
 --    where t.household_id = '<household>' and t.kind = 'income'
---      and t.state = 'verified' and not coalesce(t.excluded, false)
+--      and t.state in ('verified', 'provisional') and not coalesce(t.excluded, false)
 --      and t.date >= date '2026-11-01'
 --      and not exists (select 1 from charity_income c
 --                       where c.household_id = t.household_id
 --                         and c.transaction_id = t.id and c.status = 'active');
---   -- Expect 0 rows (every verified, non-excluded income dated
---   -- on/after Nov 1 has an active accrual). Any row returned is a
---   -- missed accrual to backfill via accrue_charity_for_transaction.
+--   -- Expect 0 rows (every verified or provisional, non-excluded
+--   -- income dated on/after Nov 1 has an active accrual). Any row
+--   -- returned is a missed accrual to backfill via
+--   -- accrue_charity_for_transaction.
 --   -- A missed REVERSAL (an income row that left income or was
 --   -- excluded but still has an active accrual) is detectable with:
 --   select c.id, c.source_label, c.amount_cents from charity_income c

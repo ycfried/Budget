@@ -454,14 +454,60 @@ export async function findCoveringBankRow(
   }
 }
 
+// --- Same-source duplicate guard (build 58, owner Nov 22, 2026) ---
+// The same alert ingested twice (two Gmail message ids, one
+// purchase — the $44.96 Nov 22 and $10.59 Nov 21 Amazon pairs, both
+// amex_alert, identical dedupe_hash, no bank row) used to insert a
+// second row, because the only ingestion guards were the message-id
+// dedupe (different message ids) and the bank-first guard (no bank
+// row). A live row with this dedupe_hash already exists, so the
+// alert adds nothing. Live = not excluded, not reversed. Fail-open:
+// any error returns null (the insert proceeds; the backstop /
+// cleanup catches it later) — a guard must never fail the poll.
+// NOTE (trade-off, owner-decided): two genuinely identical
+// purchases on the same day/card share a hash, so the second one's
+// alert is also suppressed here. Its Plaid row still arrives via
+// plaid-sync (bank rows are never blocked by this guard), so the
+// money is still counted — only the email's early visibility is
+// lost. TOIREMORG is unaffected: the bank and email gifts have
+// different merchants, hence different hashes.
+export async function findExistingSameHash(
+  supabaseAdmin: SupaAdmin,
+  householdId: string,
+  dedupeHash: string,
+): Promise<string | null> {
+  try {
+    const { data } = await supabaseAdmin.from('transactions')
+      .select('id')
+      .eq('household_id', householdId)
+      .eq('dedupe_hash', dedupeHash)
+      .eq('excluded', false)
+      .neq('state', 'reversed')
+      .neq('state', 'excluded')
+      .limit(1);
+    const rows = (data ?? []) as Array<{ id: string }>;
+    return rows.length > 0 ? rows[0].id : null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Charity auto-accrual (build 44, item 5) ---
 // Best-effort hook shared by plaid-sync, gmail-poll and
-// ingest-amex-alert: after an income row lands VERIFIED, accrue
-// charity at the household default rate via the service-role-only
+// ingest-amex-alert: after an income row lands, accrue charity at
+// the household default rate via the service-role-only
 // accrue_charity_for_transaction RPC
-// (supabase/charity-auto-accrue.sql). VERIFIED-only: a provisional
-// income row accrues nothing until the pending→posted transition
-// calls this again. Never fails the caller: a missing SQL apply, a
+// (supabase/charity-auto-accrue.sql). Build 58 (owner, Nov 22,
+// 2026): a provisional (pending) income row accrues IMMEDIATELY —
+// pending transactions count toward the totals, so the numbers are
+// accurate to the minute; charity no longer waits for the row to
+// post. The pre-check below makes this safe: an active accrual
+// already linked to this transaction returns early, so the
+// pending→posted transition (which calls this again) never
+// double-accrues. If the pending income later disappears (excluded
+// or reclassified away), the charity trigger
+// (supabase/reclassify-income-accrual.sql) reverses the accrual —
+// the auto-reverse. Never fails the caller: a missing SQL apply, a
 // race, or a non-income kind is logged, not thrown. The RPC itself
 // is idempotent (unique index on (household_id, transaction_id)
 // WHERE status='active'); the pre-check here just avoids the call
@@ -475,7 +521,7 @@ export async function accrueCharityForIncomeTx(
   kind: string | undefined,
   state: string,
 ): Promise<void> {
-  if (kind !== 'income' || state !== 'verified') return;
+  if (kind !== 'income' || (state !== 'verified' && state !== 'provisional')) return;
   try {
     const { data: already } = await supabaseAdmin.from('charity_income')
       .select('id').eq('household_id', householdId).eq('transaction_id', transactionId)
@@ -643,9 +689,20 @@ export async function flagLookalikes(
 // its own row, and the pending row was excluded instead. (A $75 Mobile
 // Check Deposit, Nov 12, is in the same state.) Rules, decided by
 // decideRemovedRow — the caller only ever UPDATEs on 'exclude':
-//   * provisional row in removed[] -> LEAVE it (state stays
-//     provisional, excluded stays false). Only a VERIFIED row is a
-//     genuine reversal.
+//   * provisional row in removed[] -> LEAVE it ONLY when a
+//     replacement / re-issue signal exists in this sync (it posted
+//     under a new id). Build 58 (owner, Nov 22, 2026): when NO
+//     signal exists — no replacement arrival, no pending link, and
+//     the caller finds no replacement in the recent window either —
+//     the pending transaction truly disappeared (it will never
+//     post), so the row is EXCLUDED (auto-reverse: its effect
+//     leaves the totals, and the charity trigger reverses any
+//     accrual from it). This keeps the Nov 17 safeguard — a
+//     provisional row is never excluded without first checking
+//     for a matching new arrival — while no longer leaving a
+//     cancelled pending transaction counted forever. Only a
+//     VERIFIED row with no replacement anywhere is a genuine
+//     reversal, same as before.
 //   * verified row + a same-merchant + same-amount + same-date
 //     arrival in the SAME sync -> LEAVE it: a re-issue, not a
 //     reversal; the new row is the live one.
@@ -723,13 +780,19 @@ export function decideRemovedRow(
   row: RemovedRowLike,
   arrivals: SyncArrivalLike[],
 ): RemovedDecision {
-  if (row.state === 'provisional') {
-    return { action: 'leave', reason: 'provisional-removed-is-normal' };
-  }
   if (row.excluded === true || row.state === 'excluded' || row.state === 'reversed') {
     return { action: 'leave', reason: 'already-excluded' };
   }
-  if (row.state !== 'verified') {
+  // Build 58 (owner, Nov 22, 2026): a provisional row is no longer
+  // left unconditionally. It goes through the same arrival checks
+  // as a verified row below: a replacement / re-issue signal means
+  // it posted under a new id (leave / link as before). Only when no
+  // signal exists does it fall through to 'exclude' — the pending
+  // transaction truly disappeared, so it auto-reverses. (The caller
+  // still checks the recent window for a replacement before
+  // excluding, so this only fires when no replacement exists
+  // anywhere — the Nov 17 safeguard, kept.)
+  if (row.state !== 'verified' && row.state !== 'provisional') {
     return { action: 'leave', reason: 'not-verified' };
   }
   // LIVE ids only. plaid_pending_transaction_id is deliberately NOT
@@ -785,6 +848,14 @@ export function decideRemovedRow(
     ) {
       return { action: 'leave', reason: 'reissue-pending-link' };
     }
+  }
+  // No replacement / re-issue signal in this sync. A verified row
+  // is a genuine reversal; a provisional row is a pending
+  // transaction that will never post — exclude it (auto-reverse).
+  // The caller checks the recent window first, so this only lands
+  // when no replacement exists anywhere.
+  if (row.state === 'provisional') {
+    return { action: 'exclude', reason: 'provisional-disappeared' };
   }
   return { action: 'exclude', reason: 'verified-reversal' };
 }

@@ -71,6 +71,7 @@ import {
   canonicalHash,
   classifyMerchantOnly,
   findCoveringBankRow,
+  findExistingSameHash,
   flagLookalikes,
   hmacSha256Hex,
   loadMerchantRules,
@@ -262,6 +263,15 @@ Deno.serve(async (req) => {
     }, { aliases: aliasPairs, rules: merchantRules });
     const bankCovered = !!coveringBankRow;
     if (bankCovered) return json({ stored: true, duplicate: true, state: 'provisional' });
+
+    // Build 58 (owner, Nov 22, 2026): same-source duplicate guard
+    // (see gmail-poll) — the same alert ingested twice (two Gmail
+    // message ids, one purchase) used to insert a second row with an
+    // identical dedupe_hash. A live row with this hash already
+    // exists, so this alert adds nothing. Checked before the nonce
+    // claim, so a duplicate never burns a nonce.
+    const existingSameHash = await findExistingSameHash(supabase, householdId, dedupeHash);
+    if (existingSameHash) return json({ stored: true, duplicate: true, state: 'provisional' });
 
     // 2. Replay: claim the nonce AFTER the quarantine checks and
     // the dedupe check above, and BEFORE the insert. A

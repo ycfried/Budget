@@ -436,7 +436,10 @@ struct WidgetView: View {
                 if syncState.state == .syncing {
                     ProgressView()
                         .progressViewStyle(.circular)
-                        .tint(DesignTokens.muted)
+                        // Build 58: brand blue, not muted — the
+                        // spinner is the in-flight mark and must be
+                        // visible at a glance next to "Updating…".
+                        .tint(DesignTokens.primary)
                 } else if isMarkVisible(.succeeded) {
                     Image(systemName: "checkmark")
                         .font(.system(size: 14, weight: .bold))
@@ -593,6 +596,24 @@ struct WidgetView: View {
             HStack {
                 Spacer(minLength: 0)
                 skeletonBar(width: 150, height: 12)
+            }
+        } else if syncState.state == .syncing {
+            // Build 58 (owner, Nov 22, 2026 — iPad): pressing the
+            // refresh button gave no feedback until the checkmark
+            // landed seconds later — the tiny static spinner was
+            // too easy to miss. WidgetKit renders views statically,
+            // so there is no spinning animation to add; instead the
+            // footer says so plainly while a sync runs — "Updating…"
+            // in brand blue — an unmissable static signal that the
+            // tap landed, until the new numbers arrive and the
+            // footer goes back to "As of …".
+            HStack(spacing: 5) {
+                Spacer(minLength: 0)
+                Text("Updating…")
+                    .font((compact ? Font.caption2 : Font.caption).weight(.semibold))
+                    .foregroundStyle(DesignTokens.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         } else if compact {
             HStack(spacing: 5) {

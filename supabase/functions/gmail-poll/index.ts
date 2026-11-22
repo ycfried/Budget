@@ -67,7 +67,7 @@ import {
   headerValue,
   parseAmexAlertText,
 } from './gmail-parse.ts';
-import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, findCoveringBankRow, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
+import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, findCoveringBankRow, findExistingSameHash, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -361,6 +361,19 @@ Deno.serve(async (req) => {
             }, { aliases: aliasPairs, rules: merchantRules });
             const bankCovered = !!coveringBankRow;
             if (bankCovered) {
+              await supabaseAdmin.from('processed_email_ids').insert({
+                connection_id: conn.id, message_id: messageId, disposition: 'duplicate',
+              });
+              totals.duplicates += 1;
+              continue;
+            }
+            // Build 58 (owner, Nov 22, 2026): same-source duplicate
+            // guard — the same alert ingested twice (two Gmail
+            // message ids, one purchase) used to insert a second
+            // row with an identical dedupe_hash. A live row with
+            // this hash already exists, so this alert adds nothing.
+            const existingSameHash = await findExistingSameHash(supabaseAdmin, householdId, dedupeHash);
+            if (existingSameHash) {
               await supabaseAdmin.from('processed_email_ids').insert({
                 connection_id: conn.id, message_id: messageId, disposition: 'duplicate',
               });

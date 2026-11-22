@@ -227,8 +227,14 @@ public final class TransactionsViewModel {
     /// The filtered, sorted rows actually shown (excluded rows never
     /// appear here). Filters apply client-side to everything loaded
     /// so far — the page is the loaded set, not a slice of it.
+    /// Build 58 (owner, Nov 22, 2026): the shown rows are also
+    /// collapsed by dedupe_hash (TransactionDedupe.byHash), so two
+    /// rows for one purchase — the same alert ingested twice, or a
+    /// bank+email pair the merge has not processed yet — never show
+    /// as two rows. The count line and the list total use these
+    /// rows, so a duplicate cannot double-count on screen either.
     public var shownTransactions: [Transaction] {
-        filters.apply(to: loadedPage)
+        TransactionDedupe.byHash(filters.apply(to: loadedPage))
     }
 
     /// Trashed rows, from the same load as Transactions (live.js §11).
