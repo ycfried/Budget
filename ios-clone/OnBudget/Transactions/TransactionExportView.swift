@@ -281,6 +281,10 @@ public struct TransactionExportPreviewSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: "Preview", onClose: { dismiss() })
             PDFKitView(url: url)
+                // Identifier for a UI test to find the rendered
+                // preview and prove the finished PDF shows before
+                // anything is shared.
+                .accessibilityIdentifier("export.preview.pdf")
             TwoButtonRow {
                 Button("Share") { shareURL = url }
                     .buttonStyle(PrimaryButtonStyle())
