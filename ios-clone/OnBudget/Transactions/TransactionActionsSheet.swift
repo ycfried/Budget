@@ -577,6 +577,7 @@ public struct TransactionActionsSheet: View {
     /// action, and the standing rule forbids greyed-out buttons.
     /// Delete renders its label in error red; every other label
     /// stays ink, the subline and chevron stay muted.
+    @ViewBuilder
     private func actionRow(_ action: SheetAction) -> some View {
         if action.isCurrent {
             HStack {
