@@ -222,7 +222,9 @@ public struct TransactionIconView: View {
     /// A wide source (168×107 in a 40pt tile) becomes 40×25.5;
     /// a square source fills the tile exactly; a tall source
     /// becomes 25.5×40. A fill would return the whole tile for
-    /// a wide source — these tests pin fit, not fill.
+    /// a wide source — these tests pin fit, not fill. Ships in
+    /// build 60 with the HomeGoods high-res override and the
+    /// pending-gifts-off-Available rule.
     static func fittedSize(imageSize: CGSize, tileSize: CGFloat) -> CGSize {
         guard imageSize.width > 0, imageSize.height > 0, tileSize > 0 else {
             return CGSize(width: tileSize, height: tileSize)
