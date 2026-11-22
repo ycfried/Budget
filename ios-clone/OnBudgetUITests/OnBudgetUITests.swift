@@ -501,6 +501,12 @@ final class OnBudgetUITests: XCTestCase {
             app.staticTexts[videoHouseholdName].waitForExistence(timeout: 90),
             "Home did not render after joining the household (no household title)"
         )
+        // The walkthrough starts on first Home entry and its dimmed
+        // overlay hides the background from the accessibility tree —
+        // dismiss it before waiting on the hero/cards (run
+        // 44975531594: the Funds Charity card was on screen behind
+        // the tour and its 90 s wait still failed).
+        dismissTourIfPresent()
         XCTAssertTrue(
             app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
                 .waitForExistence(timeout: 30),
@@ -646,6 +652,12 @@ final class OnBudgetUITests: XCTestCase {
             app.staticTexts[videoHouseholdName].waitForExistence(timeout: 90),
             "Home did not render after joining the household (no household title)"
         )
+        // The walkthrough starts on first Home entry and its dimmed
+        // overlay hides the background from the accessibility tree —
+        // dismiss it before waiting on the hero/cards (run
+        // 44975531594: the Funds Charity card was on screen behind
+        // the tour and its 90 s wait still failed).
+        dismissTourIfPresent()
         XCTAssertTrue(
             app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
                 .waitForExistence(timeout: 30),
@@ -664,6 +676,7 @@ final class OnBudgetUITests: XCTestCase {
         // it never shows in the video — it only lengthens the
         // recording preamble.
         settleNotificationAlertIfNeeded()
+        dismissTourIfPresent()
         videoMark("HOME-READY")
 
         // -- Scene 1: Home, hold (narration 8.76 + 1.5 gap = 10.26) --
@@ -1073,6 +1086,7 @@ final class OnBudgetUITests: XCTestCase {
             message: "Home did not render after joining the household (\(diagnosePostSignInState()))"
         )
         settleNotificationAlertIfNeeded()
+        dismissTourIfPresent()
         XCTAssertTrue(
             app.tabBars.buttons["tab.home"].exists
                 || app.tabBars.buttons["Home"].exists,
@@ -1112,6 +1126,7 @@ final class OnBudgetUITests: XCTestCase {
             message: "Home did not render after joining the household (\(diagnosePostSignInState()))"
         )
         settleNotificationAlertIfNeeded()
+        dismissTourIfPresent()
         XCTAssertTrue(
             app.tabBars.buttons["tab.home"].exists
                 || app.tabBars.buttons["Home"].exists,
@@ -1131,18 +1146,18 @@ final class OnBudgetUITests: XCTestCase {
             return nil
         }
         let runId = UUID().uuidString.lowercased().prefix(8)
-        // Letters + digits ONLY — no "-" or "!" anywhere. Run
-        // 44970315808 proved why: the old password
-        // "Video-<runId>-2026!" made the app show "Username or
-        // password is incorrect." for accounts that sign in fine
-        // via curl with the exact same credentials — XCTest
-        // typeText drops or substitutes characters that need a
-        // keyboard-plane switch ("-" and "!" live on the
-        // numbers/symbols planes), so the submitted password
-        // differed from the created one while looking right (20
-        // dots). The "@" and "." in the email are unavoidable for
-        // a valid address and typed fine; the hyphens are dropped
-        // anyway so the email needs no plane switch either.
+        // Letters + digits ONLY — no "-" or "!" anywhere. This is
+        // belt-and-braces: the real sign-in killer in run
+        // 44970315808 was NOT the password (it typed fine — 20
+        // dots, and the accounts sign in via curl) but the EMAIL
+        // field's clear (see clearField): the pre-filled email was
+        // only partly cleared, so the app submitted
+        // "<new>@example.com@example.com" and GoTrue quite rightly
+        // said "invalid credentials". A password with no
+        // keyboard-plane switches ("-" and "!" live on the
+        // numbers/symbols planes) removes one more way typeText
+        // can garble a credential. The "@" and "." in the email
+        // are unavoidable for a valid address and typed fine.
         let email = "iosclonevideo\(runId)@example.com"
         let password = "Video\(runId)2026"
         var request = URLRequest(url: URL(string: "\(Self.supabaseAuthAdminBase)/users")!)
@@ -1500,17 +1515,41 @@ final class OnBudgetUITests: XCTestCase {
         for _ in 1...3 {
             field.tap()
             if waitForKeyboardFocus(field, timeout: 5) {
-                // Clear first: Remember-me pre-fills the email field from the
-                // previous test's sign-in, so typing without clearing would
-                // append and produce an invalid email.
-                if let current = field.value as? String, !current.isEmpty {
-                    field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
-                }
+                clearField(field, fieldName: fieldName)
                 field.typeText(text)
                 return
             }
         }
         XCTFail("Field \(fieldName) never gained keyboard focus after 3 taps — cannot type")
+    }
+
+    /// Empties a text field and PROVES it is empty before the
+    /// caller types. The old approach typed `value.count` deletes
+    /// from wherever the tap put the cursor — but a tap lands
+    /// mid-field, so the deletes only cleared the text LEFT of
+    /// the cursor and a suffix survived: run 44975531594 proved
+    /// it — the email field held
+    /// "iosclonevideo<new>@example.com@example.com" (the new
+    /// address + the old "@example.com" tail), which GoTrue
+    /// rejected as invalid credentials for 8 straight tests while
+    /// the field LOOKED right (the tail scrolled out of view).
+    /// So: tap the field's far-right edge to put the cursor at
+    /// the END, delete `value.count` characters, then READ the
+    /// value back. If anything survives, fall back to
+    /// triple-tap select-all + delete, and fail loudly naming
+    /// the leftover instead of letting a corrupted value reach
+    /// a sign-in.
+    private func clearField(_ field: XCUIElement, fieldName: String) {
+        guard let current = field.value as? String, !current.isEmpty else { return }
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
+        if let remaining = field.value as? String, !remaining.isEmpty {
+            field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+            field.typeText(XCUIKeyboardKey.delete.rawValue)
+        }
+        if let remaining = field.value as? String, !remaining.isEmpty {
+            XCTFail("Field \(fieldName) could not be cleared — leftover: \(remaining)")
+        }
     }
 
     /// Polls for the software keyboard to appear until `timeout`
@@ -1621,6 +1660,26 @@ final class OnBudgetUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    /// Dismisses the in-app walkthrough (11 steps) when it is
+    /// showing, via its Skip button. It triggers on first Home
+    /// entry for a fresh account — and every test creates a fresh
+    /// account — so without this the overlay sits over every
+    /// screen the test then visits: run 44975531594's
+    /// testDeleteCashGiftFromFundsFeed reached the Funds page
+    /// fine, but the tutorial's dimmed overlay hid the background
+    /// from the accessibility tree and the 90 s wait for the
+    /// Charity card failed even though the card was on screen
+    /// behind it. Skip ends the tour in one tap (the TourSeen
+    /// flag is per-household per-device, so a fresh account sees
+    /// it again next test — the helper runs every preamble).
+    private func dismissTourIfPresent() {
+        let skip = app.buttons["Skip"]
+        if skip.waitForExistence(timeout: 10) {
+            skip.tap()
+            Thread.sleep(forTimeInterval: 1)
+        }
     }
 
     /// Polls for the one-time notifications-permission alert
