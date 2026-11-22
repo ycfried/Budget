@@ -353,7 +353,7 @@ final class TransactionExportTests: XCTestCase {
         XCTAssertEqual(TransactionExport.rowColorHex(for: txn(amount: 10_000, kind: .transfer)), "#6b7280")
         XCTAssertEqual(TransactionExport.rowColorHex(for: txn(amount: 0, kind: .charge)), "#0f172a")
         // An excluded row reads grey whatever its kind.
-        let excluded = txn(amount: -100_000, kind: .income, state: .excluded)
+        let excluded = txn(amount: -100_000, state: .excluded, kind: .income)
         XCTAssertEqual(TransactionExport.rowColorHex(for: excluded), "#6b7280")
         // The statement carries the colour on each row.
         let statement = TransactionExport.pdfStatement(
