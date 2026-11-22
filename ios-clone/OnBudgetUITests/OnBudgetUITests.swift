@@ -1050,9 +1050,9 @@ final class OnBudgetUITests: XCTestCase {
         app.buttons["household.joinAsMember"].tap()
 
         // Home renders.
-        XCTAssertTrue(
-            app.staticTexts["Weekly Budget"].waitForExistence(timeout: 90),
-            "Home did not render after joining the household (no Weekly Budget card)"
+        waitForElement(
+            app.staticTexts["Weekly Budget"], timeout: 90, screenshotName: "04-home-missing",
+            message: "Home did not render after joining the household (\(diagnosePostSignInState()))"
         )
         XCTAssertTrue(
             app.tabBars.buttons["tab.home"].exists
@@ -1084,9 +1084,9 @@ final class OnBudgetUITests: XCTestCase {
         app.buttons["household.joinAsMember"].tap()
 
         // -- 5. Home renders ---------------------------------------------
-        XCTAssertTrue(
-            app.staticTexts["Weekly Budget"].waitForExistence(timeout: 90),
-            "Home did not render after joining the household (no Weekly Budget card)"
+        waitForElement(
+            app.staticTexts["Weekly Budget"], timeout: 90, screenshotName: "04-home-missing",
+            message: "Home did not render after joining the household (\(diagnosePostSignInState()))"
         )
         XCTAssertTrue(
             app.tabBars.buttons["tab.home"].exists
