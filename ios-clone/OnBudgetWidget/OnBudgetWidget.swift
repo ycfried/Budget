@@ -459,6 +459,9 @@ struct WidgetView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // Identifier for a UI test to find the widget refresh button
+        // and prove the syncing state shows immediately on tap.
+        .accessibilityIdentifier("widget-refresh-button")
         .accessibilityLabel(syncState.state == .syncing ? "Syncing" : isMarkVisible(.succeeded) ? "Synced" : isMarkVisible(.failed) ? "Sync failed, tap to retry" : "Refresh widget")
     }
 
