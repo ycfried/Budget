@@ -5,7 +5,7 @@
 // — long enough that nobody is lost, short enough that nobody loses
 // patience. Shows once on first entry to Home after sign-up AND the
 // household is set (join-by-code or create-your-own, either path),
-// skippable at any point, re-playable from Settings ("Take the Tour").
+// skippable at any point, re-playable from Settings ("Replay Tutorial").
 //
 // The v2 plan (owner-delegated priorities, Nov 19, 2026 — the full
 // list is the general ideal, not a checklist):
@@ -324,6 +324,16 @@ public struct TourOverlayView: View {
             let step = tour.currentStep
             let target = targetFrame(for: step, containerSize: size, tabBarHeight: tabBarHeight(proxy: proxy))
             let cardTop = cardTopY(containerSize: size, target: target, tabBarHeight: tabBarHeight(proxy: proxy))
+            // Build 54 (owner, Nov 21, 2026): the tooltip card is
+            // capped at 600pt and centred — on iPad the uncapped
+            // `size.width - 32` made a ~788pt (portrait) / ~1148pt
+            // (landscape) banner, far wider than the content it
+            // points at and wider than the app's own iPad sheet
+            // convention (600pt). On iPhone the cap does not bite
+            // (358pt on a 390pt phone).
+            let cardWidth = min(size.width - 32, 600)
+            let cardMinX = size.width / 2 - cardWidth / 2
+            let cardMaxX = size.width / 2 + cardWidth / 2
             ZStack(alignment: .topLeading) {
                 if let target {
                     TourDimCutout(frame: target, containerSize: size)
@@ -337,7 +347,17 @@ public struct TourOverlayView: View {
                 // Arrow on the card's edge, pointing at the target.
                 if let target {
                     let pointsUp = cardTop > target.maxY
-                    let arrowX = min(max(target.midX, 36), size.width - 36)
+                    // Build 54: clamp the arrow to the CARD's span
+                    // as well as to the screen — with the card
+                    // capped at 600pt and centred, a target near
+                    // the edge of the 900pt content column can put
+                    // the arrow outside the card (e.g. iPad
+                    // landscape, target midX ~200, card spans
+                    // ~290–890). The 20pt margin keeps the 16pt
+                    // arrow off the card's edge. On iPhone the
+                    // card-span clamp equals the old screen clamp
+                    // ([36, size.width - 36]).
+                    let arrowX = min(max(target.midX, cardMinX + 20), cardMaxX - 20)
                     TourArrow(pointsUp: pointsUp)
                         .position(
                             x: arrowX,
@@ -345,7 +365,7 @@ public struct TourOverlayView: View {
                         )
                 }
                 tooltipCard(step: step)
-                    .frame(width: size.width - 32)
+                    .frame(width: cardWidth)
                     .position(x: size.width / 2, y: cardTop + cardHeight / 2)
             }
         }
@@ -418,6 +438,18 @@ public struct TourOverlayView: View {
                 Button("Skip") { skip() }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.primary)
+                // Build 54 (owner, Nov 21, 2026): "Skip this tip"
+                // passes on ONE step without ending the tour —
+                // "Next" means "got it, continue", "Skip this tip"
+                // means "I don't need this one, move on". It shares
+                // the advance path with "Next" (finishes on the
+                // last step); it does not mark the tour seen, and
+                // skipped steps are NOT persisted in build 54
+                // (in-the-moment affordance — a persisted per-step
+                // skip list is a possible follow-up, not build 54).
+                Button("Skip this tip") { next() }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.primary)
                 Spacer()
                 Button(step == .close ? "Done" : "Next") { next() }
                     .buttonStyle(PrimaryButtonStyle())
@@ -447,8 +479,24 @@ public struct TourOverlayView: View {
     /// action (open the Charity card, expand the first row), and
     /// collapse the first row again when leaving its step.
     private func goToStep(_ index: Int) {
-        tour.stepIndex = index
+        // Build 54: skip the open-row step when there are no
+        // transactions — a brand-new household with zero rows has
+        // no first row, so the anchor never reports and the step
+        // would point at nothing, telling the user to "Tap any
+        // row" when there is no row. Advance straight to the next
+        // step instead of inventing a fake row. Only .openRow is
+        // skippable, so this recurses at most once.
         let step = tour.steps[index]
+        if step == .openRow, transactionsViewModel?.shownTransactions.first == nil {
+            let nextIndex = index + 1
+            if nextIndex >= tour.steps.count {
+                finish()
+            } else {
+                goToStep(nextIndex)
+            }
+            return
+        }
+        tour.stepIndex = index
         if let tab = step.tab, appState.selectedTab != tab {
             if step == .charityRules {
                 // Keep the Charity card open across this switch —
@@ -484,7 +532,7 @@ public struct TourOverlayView: View {
     /// Skip and Done both end the tour and count as seen — the user
     /// chose not to take it (Skip) or finished it (Done); it must
     /// not auto-show again on the next Home entry. Re-playable from
-    /// Settings ("Take the Tour"). Returns to Home, clean.
+    /// Settings ("Replay Tutorial"). Returns to Home, clean.
     private func skip() {
         finish()
     }

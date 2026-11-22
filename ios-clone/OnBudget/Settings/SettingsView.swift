@@ -60,7 +60,7 @@ struct SettingsView: View {
                 EmailAlertsView(context: context, toast: toast)
                 MembersSettingsView(context: context, toast: toast)
                 HomeLayoutSettingsCard(appState: appState)
-                TakeTheTourSettingsCard(appState: appState, onBack: onBack)
+                ReplayTutorialSettingsCard(appState: appState, onBack: onBack)
                 PrivacyTermsSettingsCard()
                 // Merchant Names is NOT here anymore (owner, Nov 15,
                 // 2026 — build 34): it moved to the Transactions
@@ -94,20 +94,35 @@ private struct HomeLayoutSettingsCard: View {
 }
 
 /// Build 48 (owner, Nov 19, 2026): re-play the first-run
-/// walkthrough from Settings ("Take the Tour"). The tour shows once
-/// on its own (first entry to Home); this row starts it again any
-/// time, from the beginning. Dismisses Settings, lands on Home, and
-/// starts the tour after a short delay so the cover is gone first.
-private struct TakeTheTourSettingsCard: View {
+/// walkthrough from Settings ("Replay Tutorial" — renamed from
+/// "Take the Tour" in build 54, the owner's words; "Take the Tour"
+/// reads as first-time, "Replay Tutorial" reads as on-demand).
+/// The tour shows once on its own (first entry to Home); this row
+/// starts it again any time, from the beginning. Dismisses
+/// Settings, lands on Home, and starts the tour after a short
+/// delay so the cover is gone first. Replay works regardless of
+/// the "Show on first open" toggle, and completing/skipping a
+/// replay still marks the tour seen (existing `finish()`
+/// behaviour). Build 54: the toggle to disable the auto-show
+/// lives in this card, right after the Home Layout card.
+private struct ReplayTutorialSettingsCard: View {
     @ObservedObject var appState: AppViewModel
     let onBack: () -> Void
 
     var body: some View {
-        SettingsCard(title: "Take the Tour") {
+        SettingsCard(title: "Replay Tutorial") {
             Text("A quick walk through the app — your spending number, charity, adding, transactions, and funds.")
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.muted)
-            Button("Take the Tour") {
+            // Build 54 (owner, Nov 21, 2026): the auto-show
+            // toggle — default ON, per device (UserDefaults,
+            // `hb-tour-auto-show`, same pattern as Home Layout).
+            // When OFF, the tour never auto-shows on first Home
+            // entry; the button below still replays it on demand.
+            Toggle("Show on first open", isOn: $appState.tourAutoShow)
+                .font(.system(size: 15))
+                .accessibilityIdentifier("settings.tourAutoShowToggle")
+            Button("Replay Tutorial") {
                 onBack()
                 appState.selectedTab = .home
                 Task {
@@ -116,7 +131,7 @@ private struct TakeTheTourSettingsCard: View {
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .accessibilityIdentifier("settings.takeTheTour")
+            .accessibilityIdentifier("settings.replayTutorial")
         }
     }
 }

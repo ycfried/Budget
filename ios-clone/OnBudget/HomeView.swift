@@ -743,7 +743,7 @@ public struct HomeView: View {
         // household, and it is not already running. A short delay
         // lets the user see Home first. Skipping or finishing marks
         // it seen, so it shows once; re-playable from Settings
-        // ("Take the Tour"). The onAppear covers an already-loaded
+        // ("Replay Tutorial"). The onAppear covers an already-loaded
         // week (returning to Home); the onChange covers the load
         // finishing while Home is showing.
         .onAppear { maybeStartTour() }
@@ -785,7 +785,16 @@ public struct HomeView: View {
     /// the shadow to read without the cards touching.
     private var classicContent: some View {
         Group {
+            // Walkthrough anchors (build 54, owner Nov 21, 2026):
+            // the Classic layout had NO anchors for steps 1–2 —
+            // the tour pointed at nothing (tooltip at the bottom,
+            // no cutout, no arrow). Mirrors the Simple layout
+            // (simpleContent), where the hero carries
+            // .spendingHero and the Tzedaka card carries
+            // .charityCard. Only one layout is in the hierarchy
+            // at a time, so the two anchor sites never conflict.
             heroCard()
+                .tourAnchor(.spendingHero, tour: appState.tour)
             // Charity + Extra Fund share one row, half-width each
             // (owner, Nov 14, 2026 — supersedes the Nov 12 bigger
             // full-width stacked cards). Each card is ONE unified
@@ -797,6 +806,7 @@ public struct HomeView: View {
             // unchanged).
             HStack(alignment: .top, spacing: 14) {
                 charityCard
+                    .tourAnchor(.charityCard, tour: appState.tour)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 // Build 47: Savings leaves the classic Home too
                 // when hidden — the Tzedaka card then takes the
@@ -841,14 +851,18 @@ public struct HomeView: View {
     /// the user is on the Home tab with a household set. A short
     /// delay lets the user see Home first; the guards re-run after
     /// the delay, so navigating away in that window cancels the
-    /// start.
+    /// start. Build 54: the "Show on first open" toggle (default
+    /// ON, Settings → Replay Tutorial) gates the auto-start — when
+    /// OFF the tour never auto-shows, but replay still works.
     private func maybeStartTour() {
         let tour = appState.tour
+        guard appState.tourAutoShow else { return }
         guard viewModel.week.isLoaded else { return }
         guard !tour.isActive, !appState.tourSeen else { return }
         guard appState.selectedTab == .home, appState.householdId != nil else { return }
         Task {
             try? await Task.sleep(for: .milliseconds(800))
+            guard appState.tourAutoShow else { return }
             guard viewModel.week.isLoaded else { return }
             guard !tour.isActive, !appState.tourSeen else { return }
             guard appState.selectedTab == .home else { return }

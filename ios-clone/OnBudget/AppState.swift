@@ -241,6 +241,25 @@ public final class AppViewModel: ObservableObject {
         }
     }
 
+    /// Whether the first-run walkthrough auto-shows on first
+    /// entry to Home (build 54, owner Nov 21, 2026): a per-device
+    /// preference (UserDefaults, not household data — each member
+    /// picks on their own device), same pattern as `homeLayout`.
+    /// Default ON. When OFF, `maybeStartTour` never auto-starts
+    /// the tour; the "Replay Tutorial" row in Settings still
+    /// starts it on demand. The Settings screen offers the toggle,
+    /// inside the tour card.
+    @Published public var tourAutoShow: Bool = {
+        // UserDefaults bool(forKey:) returns false for a missing
+        // key, so read the stored object and default to true
+        // when absent — a fresh install auto-shows the tour.
+        UserDefaults.standard.object(forKey: "hb-tour-auto-show") as? Bool ?? true
+    }() {
+        didSet {
+            UserDefaults.standard.set(tourAutoShow, forKey: "hb-tour-auto-show")
+        }
+    }
+
     /// The Home dashboard's view model, owned here (not by HomeView)
     /// so boot can preload it behind the loading screen (owner,
     /// Nov 15, 2026). Created once the household is known
