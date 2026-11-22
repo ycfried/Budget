@@ -259,6 +259,112 @@ final class TransactionExportTests: XCTestCase {
         XCTAssertFalse(statement.rows[0].merchant.contains("amex_alert"))
     }
 
+    // MARK: - Charts (build 59, Nov 22, 2026)
+
+    func testChartsInVsOutAndKindAndCharityShare() {
+        let rows = [
+            txn(amount: 1234, kind: .charge),          // out 12.34
+            txn(amount: -350_000, kind: .income),      // in 3500.00
+            txn(amount: -2500, kind: .refund),         // in 25.00
+            txn(amount: 10_000, kind: .transfer),      // out 100.00
+            txn(amount: 200, kind: .charity),          // out 2.00
+        ]
+        let charts = TransactionExport.charts(transactions: rows)
+        XCTAssertEqual(charts.count, 3)
+
+        // 1. In vs Out: in 3525.00 deep blue, out 114.34 ink.
+        XCTAssertEqual(charts[0].title, "Money In vs Out")
+        XCTAssertEqual(charts[0].totalCents, 363_934)
+        XCTAssertEqual(charts[0].slices[0].label, "Money In")
+        XCTAssertEqual(charts[0].slices[0].cents, 352_500)
+        XCTAssertEqual(charts[0].slices[0].colorHex, "#1d4ed8")
+        XCTAssertEqual(charts[0].slices[1].label, "Money Out")
+        XCTAssertEqual(charts[0].slices[1].cents, 11_434)
+        XCTAssertEqual(charts[0].slices[1].colorHex, "#0f172a")
+
+        // 2. Spending by kind: biggest first, brand colours.
+        XCTAssertEqual(charts[1].title, "Spending by Kind")
+        XCTAssertEqual(charts[1].totalCents, 11_434)
+        XCTAssertEqual(charts[1].slices[0].label, "Transfer")
+        XCTAssertEqual(charts[1].slices[0].cents, 10_000)
+        XCTAssertEqual(charts[1].slices[0].colorHex, "#3b82f6")
+        XCTAssertEqual(charts[1].slices[1].label, "Charge")
+        XCTAssertEqual(charts[1].slices[1].cents, 1234)
+        XCTAssertEqual(charts[1].slices[1].colorHex, "#0f172a")
+        XCTAssertEqual(charts[1].slices[2].label, "Charity")
+        XCTAssertEqual(charts[1].slices[2].cents, 200)
+        XCTAssertEqual(charts[1].slices[2].colorHex, "#2f6bff")
+
+        // 3. Tzedaka share: charity blue vs everything else.
+        XCTAssertEqual(charts[2].title, "Tzedaka Share")
+        XCTAssertEqual(charts[2].totalCents, 11_434)
+        XCTAssertEqual(charts[2].slices[0].label, "Tzedaka")
+        XCTAssertEqual(charts[2].slices[0].cents, 200)
+        XCTAssertEqual(charts[2].slices[0].colorHex, "#2f6bff")
+        XCTAssertEqual(charts[2].slices[1].label, "Everything Else")
+        XCTAssertEqual(charts[2].slices[1].cents, 11_234)
+        XCTAssertEqual(charts[2].slices[1].colorHex, "#e5e7eb")
+    }
+
+    func testChartsMatchTotalsAndTable() {
+        // The charts are built from the same rows as the table,
+        // so their totals can never drift from the footer.
+        let rows = [
+            txn(amount: 5000, kind: .charge),
+            txn(amount: -100_000, kind: .income),
+            txn(amount: 750, kind: .charity),
+        ]
+        let statement = TransactionExport.pdfStatement(
+            transactions: rows, householdName: "H", generatedDate: "2026-11-22"
+        )
+        XCTAssertEqual(statement.charts[0].totalCents,
+                       statement.totals.totalInCents + statement.totals.totalOutCents)
+        XCTAssertEqual(statement.charts[1].totalCents, statement.totals.totalOutCents)
+        XCTAssertEqual(statement.charts[2].totalCents, statement.totals.totalOutCents)
+        // The charity slice is the same money as the charity row.
+        XCTAssertEqual(statement.charts[2].slices[0].cents, 750)
+    }
+
+    func testChartsOmitEmptyAndZeroSlices() {
+        // Nothing to chart at all.
+        XCTAssertTrue(TransactionExport.charts(transactions: []).isEmpty)
+        // Income only: just the In vs Out chart, one slice.
+        let incomeOnly = TransactionExport.charts(transactions: [
+            txn(amount: -100_000, kind: .income),
+        ])
+        XCTAssertEqual(incomeOnly.count, 1)
+        XCTAssertEqual(incomeOnly[0].slices.count, 1)
+        XCTAssertEqual(incomeOnly[0].slices[0].label, "Money In")
+        // No charity: no Tzedaka Share chart.
+        let noCharity = TransactionExport.charts(transactions: [
+            txn(amount: 5000, kind: .charge),
+            txn(amount: -100_000, kind: .income),
+        ])
+        XCTAssertEqual(noCharity.count, 2)
+        XCTAssertFalse(noCharity.contains { $0.title == "Tzedaka Share" })
+    }
+
+    func testRowColorsFollowTheTransactionColourCode() {
+        XCTAssertEqual(TransactionExport.rowColorHex(for: txn(amount: -100_000, kind: .income)), "#1d4ed8")
+        XCTAssertEqual(TransactionExport.rowColorHex(for: txn(amount: -2500, kind: .refund)), "#1d4ed8")
+        XCTAssertEqual(TransactionExport.rowColorHex(for: txn(amount: 200, kind: .charity)), "#2f6bff")
+        XCTAssertEqual(TransactionExport.rowColorHex(for: txn(amount: 1234, kind: .charge)), "#0f172a")
+        XCTAssertEqual(TransactionExport.rowColorHex(for: txn(amount: 5000, kind: .payment)), "#0f172a")
+        XCTAssertEqual(TransactionExport.rowColorHex(for: txn(amount: 10_000, kind: .transfer)), "#6b7280")
+        XCTAssertEqual(TransactionExport.rowColorHex(for: txn(amount: 0, kind: .charge)), "#0f172a")
+        // An excluded row reads grey whatever its kind.
+        let excluded = txn(amount: -100_000, kind: .income, state: .excluded)
+        XCTAssertEqual(TransactionExport.rowColorHex(for: excluded), "#6b7280")
+        // The statement carries the colour on each row.
+        let statement = TransactionExport.pdfStatement(
+            transactions: [txn(amount: -100_000, kind: .income), txn(amount: 200, kind: .charity)],
+            householdName: "H", generatedDate: "2026-11-22"
+        )
+        XCTAssertEqual(statement.rows[0].colorHex, "#1d4ed8")
+        XCTAssertEqual(statement.rows[1].colorHex, "#2f6bff")
+        XCTAssertEqual(statement.charts.count, 3)
+    }
+
     // MARK: - Filenames
 
     func testExportFileNamesCarryTheDateAndFormat() {

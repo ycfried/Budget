@@ -393,14 +393,29 @@ final class OnBudgetUITests: XCTestCase {
         )
         attachScreenshot(named: "09-export-popup")
 
-        // -- Generate (PDF, filtered) opens the share sheet ---------
+        // -- Generate (PDF, filtered) opens the PREVIEW first ----
+        // Build 59 (owner, Nov 22, 2026): a PDF is previewed
+        // in-app before anything is shared — Generate opens the
+        // preview sheet, Share inside it opens the share sheet.
         app.buttons["export.generate"].tap()
         XCTAssertTrue(
+            app.buttons["export.preview.share"].waitForExistence(timeout: 30),
+            "Preview did not appear after Generate (PDF)"
+        )
+        attachScreenshot(named: "10-export-preview")
+        app.buttons["export.preview.share"].tap()
+        XCTAssertTrue(
             app.staticTexts["AirDrop"].waitForExistence(timeout: 30),
-            "Share sheet did not appear after Generate (no AirDrop section)"
+            "Share sheet did not appear after Share in the preview (no AirDrop section)"
         )
         attachScreenshot(named: "10-export-share-sheet")
         tapHittableCancel()
+        // Back on the preview — close it to return to the popup.
+        app.buttons["export.preview.close"].tap()
+        XCTAssertTrue(
+            app.staticTexts["export.count"].waitForExistence(timeout: 15),
+            "Closing the preview did not return to the export popup"
+        )
 
         // -- Export all + CSV ---------------------------------------
         app.segmentedControls["export.scope"].buttons["All"].tap()

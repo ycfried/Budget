@@ -81,17 +81,54 @@ public struct TransactionExportTotals: Equatable {
 }
 
 /// One PDF statement row (what the renderer draws, in order).
+/// `colorHex` is the transaction's colour from the app's colour
+/// code (Income deep blue, Spending ink, Charity primary blue,
+/// Excluded grey) — the renderer colours the amount and kind by
+/// it, so the PDF reads like the app's transaction list.
 public struct TransactionExportPDFRow: Equatable {
     public let date: String
     public let merchant: String
     public let amount: String
     public let kind: String
+    public let colorHex: String
 
-    public init(date: String, merchant: String, amount: String, kind: String) {
+    public init(date: String, merchant: String, amount: String, kind: String, colorHex: String) {
         self.date = date
         self.merchant = merchant
         self.amount = amount
         self.kind = kind
+        self.colorHex = colorHex
+    }
+}
+
+/// One slice of a statement chart: a labeled share of a total,
+/// in cents, with its brand colour as a hex string. The renderer
+/// draws slices as donut wedges and the legend from these.
+public struct TransactionExportChartSlice: Equatable {
+    public let label: String
+    public let cents: Int
+    public let colorHex: String
+    public let amountText: String
+
+    public init(label: String, cents: Int, colorHex: String, amountText: String) {
+        self.label = label
+        self.cents = cents
+        self.colorHex = colorHex
+        self.amountText = amountText
+    }
+}
+
+/// One chart in the statement: a titled set of slices that sum
+/// to a total. Built from the same transactions as the table, so
+/// the charts and the rows can never disagree.
+public struct TransactionExportChart: Equatable {
+    public let title: String
+    public let slices: [TransactionExportChartSlice]
+    public var totalCents: Int { slices.reduce(0) { $0 + $1.cents } }
+
+    public init(title: String, slices: [TransactionExportChartSlice]) {
+        self.title = title
+        self.slices = slices
     }
 }
 
@@ -111,11 +148,16 @@ public struct TransactionExportPDFStatement: Equatable {
     public let totalInText: String
     public let totalOutText: String
     public let netText: String
+    /// The summary charts (donuts), built from the same
+    /// transactions as `rows` — In vs Out, Out by kind, Charity
+    /// share. Empty when the set has nothing to chart.
+    public let charts: [TransactionExportChart]
 
     public init(
         householdName: String, dateRange: String, generatedLine: String,
         rows: [TransactionExportPDFRow], totals: TransactionExportTotals,
-        totalInText: String, totalOutText: String, netText: String
+        totalInText: String, totalOutText: String, netText: String,
+        charts: [TransactionExportChart]
     ) {
         self.householdName = householdName
         self.dateRange = dateRange
@@ -125,6 +167,7 @@ public struct TransactionExportPDFStatement: Equatable {
         self.totalInText = totalInText
         self.totalOutText = totalOutText
         self.netText = netText
+        self.charts = charts
     }
 }
 
@@ -176,7 +219,13 @@ public enum TransactionExport {
     /// kind reads Title-Cased from its raw value ("fund_charge"
     /// would read "Fund Charge" the same way).
     public static func kindName(for transaction: Transaction) -> String {
-        switch transaction.kind {
+        kindName(forKind: transaction.kind)
+    }
+
+    /// The same human-readable name from the kind alone (the
+    /// charts group by kind, with no single transaction to name).
+    public static func kindName(forKind kind: TransactionKind) -> String {
+        switch kind {
         case .charge: return "Charge"
         case .refund: return "Refund"
         case .fundCharge: return "Fund Charge"
@@ -352,6 +401,129 @@ public enum TransactionExport {
         return TransactionExportTotals(totalInCents: totalIn, totalOutCents: totalOut)
     }
 
+    // MARK: - Row colour + charts (build 59, Nov 22, 2026)
+
+    /// The row's colour from the app's transaction colour code
+    /// (owner, Nov 22, 2026 — the branded PDF reads like the
+    /// app's list): money-in kinds deep blue #1d4ed8, Charity
+    /// primary blue #2f6bff, transfers muted grey #6b7280,
+    /// excluded rows muted grey, a zero amount ink, everything
+    /// else Spending ink #0f172a. Mirrors the app's
+    /// `amountDisplay` colour rule (kit-pinned here so the PDF
+    /// and the list can never drift apart).
+    public static func rowColorHex(for transaction: Transaction) -> String {
+        if transaction.excluded || transaction.state == .excluded {
+            return DesignTokens.mutedHex
+        }
+        if transaction.amountCents == 0 { return DesignTokens.inkHex }
+        if let fixed = transaction.kind.fixedAmountColorHex { return fixed }
+        if transaction.isInflow { return DesignTokens.deepHex }
+        return DesignTokens.inkHex
+    }
+
+    /// The donut-slice colour for one money-out kind: Charge is
+    /// Spending ink, Charity primary blue, Payment muted grey,
+    /// Fund Charge fund amber, Transfer mid blue, anything else
+    /// light blue. All brand tokens — never a guessed hex.
+    public static func chartColorHex(for kind: TransactionKind) -> String {
+        switch kind {
+        case .charge: return DesignTokens.inkHex
+        case .charity: return DesignTokens.primaryHex
+        case .payment: return DesignTokens.mutedHex
+        case .fundCharge: return DesignTokens.fundHex
+        case .transfer: return DesignTokens.midHex
+        default: return DesignTokens.lightHex
+        }
+    }
+
+    /// The statement's summary charts, built from the same
+    /// transactions as the table — so the charts and the rows
+    /// always agree. Three donuts, in order: Money In vs Money
+    /// Out; Money Out by kind; Tzedaka's share of Money Out.
+    /// A chart is left out when it has nothing to show (no money
+    /// in or out at all; no charity yet), and a slice is left out
+    /// when its amount is zero — a donut never carries an empty
+    /// wedge. Slices are biggest first, so the legend reads in
+    /// size order.
+    public static func charts(transactions: [Transaction]) -> [TransactionExportChart] {
+        let totals = totals(transactions: transactions)
+        var result: [TransactionExportChart] = []
+
+        // 1. Money In vs Money Out.
+        var inOutSlices: [TransactionExportChartSlice] = []
+        if totals.totalInCents > 0 {
+            inOutSlices.append(TransactionExportChartSlice(
+                label: "Money In", cents: totals.totalInCents,
+                colorHex: DesignTokens.deepHex,
+                amountText: MoneyFormat.formatCents(totals.totalInCents)
+            ))
+        }
+        if totals.totalOutCents > 0 {
+            inOutSlices.append(TransactionExportChartSlice(
+                label: "Money Out", cents: totals.totalOutCents,
+                colorHex: DesignTokens.inkHex,
+                amountText: MoneyFormat.formatCents(totals.totalOutCents)
+            ))
+        }
+        if !inOutSlices.isEmpty {
+            result.append(TransactionExportChart(title: "Money In vs Out", slices: inOutSlices))
+        }
+
+        // 2. Money Out by kind (the spending breakdown).
+        var byKind: [TransactionKind: Int] = [:]
+        for transaction in transactions {
+            let signed = displaySignedCents(for: transaction)
+            let outCents: Int
+            if transaction.isInflow {
+                continue
+            } else if transaction.kind == .transfer {
+                guard signed < 0 else { continue }
+                outCents = -signed
+            } else {
+                guard signed != 0 else { continue }
+                outCents = abs(signed)
+            }
+            byKind[transaction.kind, default: 0] += outCents
+        }
+        let kindSlices = byKind
+            .filter { $0.value > 0 }
+            .sorted { $0.value > $1.value }
+            .map { kind, cents in
+                TransactionExportChartSlice(
+                    label: kindName(forKind: kind),
+                    cents: cents,
+                    colorHex: chartColorHex(for: kind),
+                    amountText: MoneyFormat.formatCents(cents)
+                )
+            }
+        if !kindSlices.isEmpty {
+            result.append(TransactionExportChart(title: "Spending by Kind", slices: kindSlices))
+        }
+
+        // 3. Tzedaka's share of Money Out.
+        let charityCents = byKind[.charity] ?? 0
+        if totals.totalOutCents > 0, charityCents > 0 {
+            var charitySlices: [TransactionExportChartSlice] = [
+                TransactionExportChartSlice(
+                    label: "Tzedaka", cents: charityCents,
+                    colorHex: DesignTokens.primaryHex,
+                    amountText: MoneyFormat.formatCents(charityCents)
+                ),
+            ]
+            let rest = totals.totalOutCents - charityCents
+            if rest > 0 {
+                charitySlices.append(TransactionExportChartSlice(
+                    label: "Everything Else", cents: rest,
+                    colorHex: DesignTokens.tertiaryHex,
+                    amountText: MoneyFormat.formatCents(rest)
+                ))
+            }
+            result.append(TransactionExportChart(title: "Tzedaka Share", slices: charitySlices))
+        }
+
+        return result
+    }
+
     // MARK: - Date range + PDF statement model
 
     /// Today's date as `YYYY-MM-DD` in New York.
@@ -390,7 +562,8 @@ public enum TransactionExport {
                 date: MoneyFormat.fmtLong(transaction.date),
                 merchant: merchantDisplay(for: transaction),
                 amount: amountText(for: transaction),
-                kind: kindName(for: transaction)
+                kind: kindName(for: transaction),
+                colorHex: rowColorHex(for: transaction)
             )
         }
         return TransactionExportPDFStatement(
@@ -401,7 +574,8 @@ public enum TransactionExport {
             totals: totals,
             totalInText: MoneyFormat.formatCents(totals.totalInCents),
             totalOutText: MoneyFormat.formatCents(totals.totalOutCents),
-            netText: MoneyFormat.netTotalText(cents: totals.netCents)
+            netText: MoneyFormat.netTotalText(cents: totals.netCents),
+            charts: charts(transactions: transactions)
         )
     }
 }
