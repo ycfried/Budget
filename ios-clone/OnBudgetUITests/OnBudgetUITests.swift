@@ -1523,6 +1523,22 @@ final class OnBudgetUITests: XCTestCase {
         XCTFail("Field \(fieldName) never gained keyboard focus after 3 taps — cannot type")
     }
 
+    /// The field's real text, or "" when it is empty. A
+    /// UITextField's `value` returns its PLACEHOLDER when it holds
+    /// no text ("Email" for the email field, "Password" for the
+    /// password field) — so a bare `value as? String` read cannot
+    /// tell empty from filled, and the first version of
+    /// clearField() treated the placeholder as content, tried to
+    /// delete it, read it back as a "leftover", and failed every
+    /// test (run 44978341731: 'leftover: Email' on all 11). The
+    /// placeholder is the empty signal: value == placeholderValue
+    /// means the field holds nothing.
+    private func fieldText(_ field: XCUIElement) -> String {
+        guard let value = field.value as? String else { return "" }
+        if let placeholder = field.placeholderValue, value == placeholder { return "" }
+        return value
+    }
+
     /// Empties a text field and PROVES it is empty before the
     /// caller types. The old approach typed `value.count` deletes
     /// from wherever the tap put the cursor — but a tap lands
@@ -1540,14 +1556,16 @@ final class OnBudgetUITests: XCTestCase {
     /// the leftover instead of letting a corrupted value reach
     /// a sign-in.
     private func clearField(_ field: XCUIElement, fieldName: String) {
-        guard let current = field.value as? String, !current.isEmpty else { return }
+        let current = fieldText(field)
+        guard !current.isEmpty else { return }
         field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
-        if let remaining = field.value as? String, !remaining.isEmpty {
+        if !fieldText(field).isEmpty {
             field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
             field.typeText(XCUIKeyboardKey.delete.rawValue)
         }
-        if let remaining = field.value as? String, !remaining.isEmpty {
+        let remaining = fieldText(field)
+        if !remaining.isEmpty {
             XCTFail("Field \(fieldName) could not be cleared — leftover: \(remaining)")
         }
     }
