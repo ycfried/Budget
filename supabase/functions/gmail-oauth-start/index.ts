@@ -48,7 +48,17 @@ const corsHeaders = {
 };
 
 const CALLBACK_URL =
-  'https://tnkhvdkmwmwiogiienee.supabase.co/functions/v1/gmail-oauth-callback';
+  'https://auth.getstag.us/functions/v1/gmail-oauth-callback';
+// Branded redirect (Nov 22, 2026): the OAuth redirect goes through
+// the Cloudflare Worker proxy auth.getstag.us so Google's sign-in
+// screen shows getstag.us instead of the raw Supabase host. The
+// Worker forwards /functions/v1/* to the Supabase Edge Function
+// unchanged. This URI must be registered as an Authorized redirect
+// URI in the Google OAuth client "STAGE" (the old supabase.co URI
+// stays registered until the new one is verified working).
+// Keep this identical to the CALLBACK_URL in gmail-oauth-callback —
+// Google requires the redirect_uri in the token exchange to match
+// the one in the authorization request exactly.
 const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 
 Deno.serve(async (req) => {

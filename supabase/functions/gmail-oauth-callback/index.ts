@@ -1,7 +1,9 @@
 // gmail-oauth-callback — completes a per-user Gmail OAuth connection.
 // This is a GET endpoint: Google redirects the browser here after the
 // user consents (redirect URI registered in Google Cloud Console:
-// https://tnkhvdkmwmwiogiienee.supabase.co/functions/v1/gmail-oauth-callback).
+// https://auth.getstag.us/functions/v1/gmail-oauth-callback —
+// branded via the Cloudflare Worker proxy, Nov 22, 2026; the old
+// supabase.co URI stays registered until the new one is verified).
 //
 // Flow, in order:
 //   1. If Google reports ?error= (user denied, etc.), show an error
@@ -40,7 +42,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CALLBACK_URL =
-  'https://tnkhvdkmwmwiogiienee.supabase.co/functions/v1/gmail-oauth-callback';
+  'https://auth.getstag.us/functions/v1/gmail-oauth-callback';
+// Branded redirect (Nov 22, 2026): must match the redirect_uri sent
+// by gmail-oauth-start exactly — Google requires the token-exchange
+// redirect_uri to equal the authorization-request redirect_uri.
+// Reached via the Cloudflare Worker proxy auth.getstag.us, which
+// forwards /functions/v1/* to this Edge Function unchanged.
 const APP_URL = 'https://ycfried.github.io/Budget/live.html';
 // Native iOS return URL (scheme registered in the app target via
 // INFOPLIST_KEY_CFBundleURLTypes). The app's ASWebAuthenticationSession
