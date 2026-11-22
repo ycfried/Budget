@@ -41,10 +41,17 @@ public struct SupabaseConfiguration: Equatable, Sendable {
     /// Do not duplicate the values here.
     public static let live = SupabaseConfiguration(
         baseURL: URL(string: Configuration.supabaseURL)!,
+        authURL: URL(string: Configuration.supabaseAuthURL)!,
         anonKey: Configuration.supabaseAnonKey
     )
 
     public let baseURL: URL
+    /// Auth-only host (build 54, owner Nov 21, 2026): GoTrue
+    /// requests go to the Cloudflare Worker proxy
+    /// (auth.getstag.us), never to supabase.co — see
+    /// Configuration.supabaseAuthURL. Rest + Edge Functions stay
+    /// on baseURL.
+    public let authURL: URL
     public let anonKey: String
     /// Per-request timeout. A request that exceeds it fails as
     /// `.timedOut` — it never spins forever (see Errors.swift).
@@ -54,17 +61,22 @@ public struct SupabaseConfiguration: Equatable, Sendable {
 
     public init(
         baseURL: URL,
+        authURL: URL = URL(string: Configuration.supabaseAuthURL)!,
         anonKey: String,
         requestTimeoutSeconds: TimeInterval = 30,
         refreshLeewaySeconds: TimeInterval = 60
     ) {
         self.baseURL = baseURL
+        self.authURL = authURL
         self.anonKey = anonKey
         self.requestTimeoutSeconds = requestTimeoutSeconds
         self.refreshLeewaySeconds = refreshLeewaySeconds
     }
 
-    var authBaseURL: URL { baseURL.appendingPathComponent("auth/v1") }
+    /// GoTrue base (build 54 — auth-only routing): the Worker
+    /// proxy host, NOT supabase.co. Rest + functions stay on
+    /// baseURL (see restBaseURL / functionsBaseURL below).
+    var authBaseURL: URL { authURL.appendingPathComponent("auth/v1") }
     var restBaseURL: URL { baseURL.appendingPathComponent("rest/v1") }
     var functionsBaseURL: URL { baseURL.appendingPathComponent("functions/v1") }
 }
