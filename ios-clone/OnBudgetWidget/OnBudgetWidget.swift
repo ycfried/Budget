@@ -50,9 +50,10 @@
 // swapped: the main budget amount is blue, charity is black).
 // All figures are whole dollars, no cents (owner, Nov 15, 2026).
 // Figures are privacySensitive so they hide on the lock screen
-// like other financial widgets. Tapping the widget opens the app
-// (no widgetURL — the app has no deep link for the widget to
-// land on).
+// like other financial widgets. Tapping the widget's CONTENT
+// opens Home (onbudget://home); tapping the refresh button runs
+// the sync intent in place (build 54 — the button sits outside
+// the content's widgetURL, so its tap reaches the intent).
 //
 // Label note (owner, Nov 14, 2026): his screenshot reads "Left left
 // this week", but the label in every version of this file in the
@@ -230,20 +231,15 @@ struct Provider: TimelineProvider {
         // clears promptly instead of lingering on the rendered entry
         // until the next hourly one. The view itself also expires
         // the mark by time, so this entry is only the prompt
-        // re-render. Build 51: a FAILED mark is NOT transient — it
-        // persists until the next sync — so it gets no short entry;
-        // there is nothing to clear.
+        // re-render. Build 54: a FAILED mark gets the same short
+        // entry — the red mark must actually appear, so a failed
+        // tap re-renders promptly like a success (the mark itself
+        // still PERSISTS until the next sync; the entry only forces
+        // the render). The decision lives in OnBudgetKit
+        // (WidgetSyncStateStore.needsShortTimelineEntry) so the
+        // package tests pin it.
         let (syncState, syncDate) = WidgetSyncStateStore.read()
-        let syncTransient: Bool = {
-            switch syncState {
-            case .syncing: return true
-            case .succeeded:
-                guard let at = syncDate else { return false }
-                return now.timeIntervalSince(at) < WidgetSyncStateStore.clearAfter
-            case .failed, .idle: return false
-            }
-        }()
-        if syncTransient {
+        if WidgetSyncStateStore.needsShortTimelineEntry(state: syncState, at: syncDate, now: now) {
             entries.append(WidgetEntry(date: now.addingTimeInterval(WidgetSyncStateStore.clearAfter), snapshot: WidgetSnapshotStore.read()))
             entries.sort { $0.date < $1.date }
         }
@@ -318,6 +314,13 @@ struct WidgetView: View {
     /// (widget polish): a very pale blue tint #f2f7ff so the card
     /// reads less plain.
     private var background: Color { Color(hex: "#f2f7ff") }
+
+    /// The Home deep link (build 54): applied to the widget's
+    /// CONTENT only — wordmark, dates, figures, footer — never to
+    /// the refresh button. Tapping the content opens HOME
+    /// (onbudget://home → goHome()); tapping the button runs the
+    /// sync intent in place. See the configuration comment above.
+    private var homeURL: URL? { URL(string: "onbudget://home") }
 
     var body: some View {
         // Build 48: a placeholder entry carrying REAL data opts out
@@ -650,10 +653,19 @@ struct WidgetView: View {
     private func small(snapshot: WidgetSnapshot, stale: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
+                // Build 54: the wordmark opens Home; the refresh
+                // button does NOT sit inside the link (it runs the
+                // sync intent in place).
                 wordmark(logoSize: 22, font: .subheadline.weight(.semibold))
+                    .widgetURL(homeURL)
                 Spacer()
                 refreshButton
             }
+            // Build 54: the body below the header opens Home; the
+            // header's button stays outside the link. The inner
+            // VStack keeps the same 6pt spacing as the flat list
+            // it replaces, so the layout is unchanged.
+            VStack(alignment: .leading, spacing: 6) {
             // Build 42: the two halves mirror — label above, big
             // amount, progress bar below — in both blocks, with
             // both figures at 22pt. The label is just "available";
@@ -690,6 +702,8 @@ struct WidgetView: View {
             }
             Spacer(minLength: 0)
             footer(snapshot: snapshot, stale: stale, compact: true)
+            }
+            .widgetURL(homeURL)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(background, for: .widget)
@@ -708,10 +722,16 @@ struct WidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 wordmark()
+                    .widgetURL(homeURL)
                 Spacer()
                 headerDates(snapshot.weekStart)
+                    .widgetURL(homeURL)
                 refreshButton
             }
+            // Build 54: the body below the header opens Home; the
+            // header's button stays outside the link. Same 8pt
+            // spacing as the flat list it replaces.
+            VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 14) {
                 if snapshot.spentCents != nil {
                     donut(snapshot: snapshot, size: 64, lineWidth: 10)
@@ -750,6 +770,8 @@ struct WidgetView: View {
             }
             Spacer(minLength: 0)
             footer(snapshot: snapshot, stale: stale)
+            }
+            .widgetURL(homeURL)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(background, for: .widget)
@@ -764,10 +786,16 @@ struct WidgetView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 wordmark()
+                    .widgetURL(homeURL)
                 Spacer()
                 headerDates(snapshot.weekStart)
+                    .widgetURL(homeURL)
                 refreshButton
             }
+            // Build 54: the body below the header opens Home; the
+            // header's button stays outside the link. Same 16pt
+            // spacing as the flat list it replaces.
+            VStack(alignment: .leading, spacing: 16) {
             // Two spacers, not one (owner, Nov 15, 2026): the
             // single spacer above "Updated" left one dead gap —
             // the slack is now split above and below the content.
@@ -808,6 +836,8 @@ struct WidgetView: View {
             }
             Spacer(minLength: 0)
             footer(snapshot: snapshot, stale: stale)
+            }
+            .widgetURL(homeURL)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(background, for: .widget)
@@ -825,10 +855,16 @@ struct WidgetView: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 wordmark()
+                    .widgetURL(homeURL)
                 Spacer()
                 headerDates(snapshot.weekStart)
+                    .widgetURL(homeURL)
                 refreshButton
             }
+            // Build 54: the body below the header opens Home; the
+            // header's button stays outside the link. Same 20pt
+            // spacing as the flat list it replaces.
+            VStack(alignment: .leading, spacing: 20) {
             Spacer(minLength: 0)
             HStack(alignment: .center, spacing: 32) {
                 HStack(alignment: .center, spacing: 20) {
@@ -869,6 +905,8 @@ struct WidgetView: View {
             }
             Spacer(minLength: 0)
             footer(snapshot: snapshot, stale: stale)
+            }
+            .widgetURL(homeURL)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(background, for: .widget)
@@ -884,9 +922,14 @@ struct WidgetView: View {
             // shows, and the text still says to open the app.
             HStack {
                 wordmark()
+                    .widgetURL(homeURL)
                 Spacer()
                 refreshButton
             }
+            // Build 54: the text below the header opens Home; the
+            // header's button stays outside the link. Same 6pt
+            // spacing as the flat list it replaces.
+            VStack(alignment: .leading, spacing: 6) {
             Text("Open the app to refresh")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(DesignTokens.ink)
@@ -894,6 +937,8 @@ struct WidgetView: View {
                 .font(.caption)
                 .foregroundStyle(DesignTokens.muted)
             Spacer(minLength: 0)
+            }
+            .widgetURL(homeURL)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(background, for: .widget)
@@ -905,12 +950,15 @@ struct OnBudgetWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "OnBudgetWidget", provider: Provider()) { entry in
             WidgetView(entry: entry)
-                // Build 40 (owner, Nov 16, 2026): tapping the widget
-                // always opens the HOME main page — never a fund, a
-                // sub-view, or wherever the app was last left.
-                // onbudget://home is handled in OnBudgetApp's
-                // onOpenURL (AppState.goHome()).
-                .widgetURL(URL(string: "onbudget://home"))
+            // Build 54 (owner, Nov 21, 2026 — the iPad sync button
+            // tap did nothing, and the tap did not even open the
+            // app): the whole-widget .widgetURL used to cover the
+            // refresh button too, swallowing its tap before the
+            // intent ran. The link now lives INSIDE WidgetView, on
+            // the content only — the refresh button sits
+            // unambiguously outside it, so its intent fires.
+            // Tapping the widget still opens HOME (onbudget://home,
+            // handled in OnBudgetApp's onOpenURL → goHome()).
         }
         .configurationDisplayName("STAGE")
         .description("Spending, saving, and giving balances for the week.")

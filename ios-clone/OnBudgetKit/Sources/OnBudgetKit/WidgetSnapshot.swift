@@ -230,6 +230,30 @@ public enum WidgetSyncStateStore {
     /// state is live, so the mark clears promptly.
     public static let clearAfter: TimeInterval = 20
 
+    /// Whether getTimeline should add a short entry so WidgetKit
+    /// re-renders promptly while this sync state is live (build 54).
+    /// .syncing and a still-visible .succeeded mark get one (the
+    /// success mark clears ~15s after it lands, and the short entry
+    /// is the prompt re-render that clears it). .failed gets one
+    /// too (build 54 — the red failure mark must actually appear,
+    /// so a failed tap gets the same prompt re-render as a success;
+    /// the mark itself PERSISTS until the next sync, unlike the
+    /// transient success mark — the entry only forces the render,
+    /// it does not clear anything). .idle gets none.
+    public static func needsShortTimelineEntry(state: WidgetSyncState, at date: Date?, now: Date = Date()) -> Bool {
+        switch state {
+        case .syncing:
+            return true
+        case .succeeded:
+            guard let date else { return false }
+            return now.timeIntervalSince(date) < clearAfter
+        case .failed:
+            return true
+        case .idle:
+            return false
+        }
+    }
+
     /// Whether the button mark for the stored (state, date) is
     /// still visible at `now`. Success is transient (15 seconds);
     /// failure persists until the next sync writes a new state

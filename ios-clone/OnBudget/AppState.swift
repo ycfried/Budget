@@ -14,6 +14,7 @@
 // Clone basis: live web v66. API calls are OnBudgetKit only.
 
 import SwiftUI
+import WidgetKit
 import OnBudgetKit
 
 /// The app shell: loading / auth / household / app (live.js:349-368).
@@ -127,6 +128,32 @@ public final class AppViewModel: ObservableObject {
     /// finishing the last step.
     public func markTourSeen() {
         tour.markSeen(householdId: householdId, userId: client.currentSession?.user.id)
+    }
+
+    /// The snapshot the app last reloaded widget timelines for
+    /// (build 54 — reload gate): WidgetKit budgets reloads, so
+    /// the app only reloads when the snapshot actually changed.
+    /// In-memory only, per process; a fresh launch always reloads
+    /// once (nil last snapshot). The widget extension's own reloads
+    /// (sync tap, background refresh) are user- / schedule-
+    /// initiated and are not gated here.
+    private var lastWidgetReloadSnapshot: WidgetSnapshot?
+
+    /// Reload widget timelines only when the stored snapshot
+    /// actually changed since the last reload (build 54,
+    /// WidgetReloadGate). Call this instead of
+    /// WidgetCenter.shared.reloadAllTimelines() from launch,
+    /// foreground, Home refresh and Funds rename paths — the
+    /// launch + foreground pair used to fire back-to-back with the
+    /// same snapshot, and foregrounding with no new data reloaded
+    /// every time. A genuinely new snapshot (new numbers, or the
+    /// same numbers freshly computed with a new "As of" time)
+    /// still reloads; only a byte-identical snapshot is skipped.
+    public func reloadWidgetTimelinesIfSnapshotChanged() {
+        let current = WidgetSnapshotStore.read()
+        guard WidgetReloadGate.shouldReload(current: current, lastReloaded: lastWidgetReloadSnapshot) else { return }
+        lastWidgetReloadSnapshot = current
+        WidgetCenter.shared.reloadAllTimelines()
     }
     /// Tab-reset suppression (owner, Nov 16, 2026 — build 40): a
     /// USER tab tap resets that tab to its top-level main page

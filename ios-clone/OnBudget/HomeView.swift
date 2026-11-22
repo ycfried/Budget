@@ -536,7 +536,11 @@ public final class HomeViewModel: ObservableObject {
             // earlier tap no longer applies — clear it, or the
             // button would stay red after the app itself refreshed.
             WidgetSyncStateStore.clear()
-            WidgetCenter.shared.reloadAllTimelines()
+            // Build 54: gated — reload only when the snapshot
+            // actually changed (a fresh snapshot here is new, so
+            // this reloads; a duplicate refresh with no new data
+            // does not burn the budget).
+            appState.reloadWidgetTimelinesIfSnapshotChanged()
         }
     }
 

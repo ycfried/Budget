@@ -345,7 +345,10 @@ public struct FundsView: View {
                     // shows the new name without waiting for Home.
                     if let snapshot = WidgetSnapshotStore.read() {
                         WidgetSnapshotStore.write(snapshot.withFundNames(names))
-                        WidgetCenter.shared.reloadAllTimelines()
+                        // Build 54: gated — a rename changes the
+                        // snapshot's fund names, so this reloads;
+                        // a no-op rename does not burn the budget.
+                        appState.reloadWidgetTimelinesIfSnapshotChanged()
                     }
                 },
                 onIconsSaved: { icons in

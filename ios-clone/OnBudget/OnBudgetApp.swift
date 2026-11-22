@@ -1,5 +1,6 @@
 import SwiftUI
 import WidgetKit
+import OnBudgetKit
 
 /// OnBudget native iOS clone — app entry point.
 /// Clone basis: live web v66 (branch ios-clone-v66). The app uses
@@ -51,12 +52,15 @@ struct OnBudgetApp: App {
                 // alongside, so a missed or failed schedule is
                 // repaired every time the app opens.
                 .task {
-                    WidgetCenter.shared.reloadAllTimelines()
+                    // Build 54: gated — reload only when the stored
+                    // snapshot actually changed (launch always
+                    // reloads once; see AppViewModel).
+                    appState.reloadWidgetTimelinesIfSnapshotChanged()
                     WidgetBackgroundRefreshTask.schedule()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
-                        WidgetCenter.shared.reloadAllTimelines()
+                        appState.reloadWidgetTimelinesIfSnapshotChanged()
                         WidgetBackgroundRefreshTask.schedule()
                         // Plaid refresh on open (build 50, owner
                         // Nov 20, 2026): foregrounding the app also
@@ -81,10 +85,24 @@ struct OnBudgetApp: App {
                     // - onbudget://home → the widget (build 40, owner
                     //   Nov 16, 2026): tapping the widget always
                     //   opens the HOME main page.
+                    // - onbudget://widget-sync → the widget sync
+                    //   fallback (build 54, owner Nov 21, 2026):
+                    //   the widget button's primary path is the
+                    //   in-place intent, but the owner's iPad tap
+                    //   never reached it — opening the app through
+                    //   this URL runs a snapshot refresh + timeline
+                    //   reload, so the widget updates. Lands on
+                    //   Home, like onbudget://home.
                     if url.host == "gmail-callback" {
                         Task { @MainActor in _ = appState.handleGmailDeepLink(url) }
                     } else if url.host == "home" {
                         appState.goHome()
+                    } else if url.host == "widget-sync" {
+                        appState.goHome()
+                        Task {
+                            _ = await WidgetSnapshotRefresher.refreshSnapshot()
+                            WidgetCenter.shared.reloadAllTimelines()
+                        }
                     } else if url.host == "reset-password" {
                         Task { await appState.handleResetDeepLink(url) }
                     } else if url.host == "email-confirmed" {
