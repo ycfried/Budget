@@ -298,7 +298,7 @@ begin
       -- provisional, excluded, or pre-Nov at ingest — or it was
       -- already reversed). Nothing to deduct, nothing to audit.
       return null;
-    end;
+    end if;
     v_committed := (v_amount::bigint * v_rate + 5000) / 10000;
     begin
       insert into public.audit_log (household_id, actor, actor_name, action, detail)
