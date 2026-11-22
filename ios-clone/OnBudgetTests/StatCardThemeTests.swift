@@ -2,6 +2,7 @@ import XCTest
 import SwiftUI
 import UIKit
 @testable import OnBudget
+import OnBudgetKit
 
 /// Savings header is the BRAND grey (owner, Nov 22, 2026 —
 /// build 57: the muted #6b7280 "isn't bad but it's not the one
