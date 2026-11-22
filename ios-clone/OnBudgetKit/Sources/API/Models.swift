@@ -1324,7 +1324,12 @@ public struct CharityGiftResult: Equatable, Codable {
 /// charity_cash_gifts — NOT transaction rows, so the caller passes
 /// their sum as cashGiftCents, exactly as FundsViewModel.loadCharity
 /// does). Pending (provisional) gifts count toward Given only once
-/// they post (live.js:3814-3820).
+/// they post (live.js:3814-3820) — but they come off Available
+/// immediately (owner, Nov 22, 2026 — build 60: "it should come
+/// off owed charity"): Available = committed − given − pending,
+/// so Available + Given + Pending = Total. A pending gift that
+/// disappears drops out of Pending and Available recovers on its
+/// own (the figure derives from the current rows every load).
 public struct CharitySummary: Equatable {
     public let committedCents: Int
     public let givenCents: Int
@@ -1346,7 +1351,15 @@ public struct CharitySummary: Equatable {
         self.defaultRateBp = defaultRateBp
     }
 
-    public var remainingCents: Int { committedCents - givenCents }
+    /// Available (what is left to give) — committed, less what
+    /// is already given, less what is pending (provisional gifts
+    /// come off what is owed immediately, owner Nov 22, 2026 —
+    /// build 60; they move to Given when they post, so Available
+    /// does not move on posting, and if one disappears Available
+    /// recovers). Every construction site (compute, Funds
+    /// loadCharity, Home) builds the same fields, so this one
+    /// computed property is the single definition.
+    public var remainingCents: Int { committedCents - givenCents - pendingGiftCents }
 
     public static func compute(
         activeIncome: [CharityIncome],

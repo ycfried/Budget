@@ -434,11 +434,12 @@ public final class FundsViewModel: ObservableObject {
             let defaultRate = settingsValue?.defaultRateBp ?? 1000
             let charityRows = allTransactions.filter { $0.kind == .charity && !$0.excluded && $0.date >= MoneyFormat.dataFloor }
             // Given counts only verified gifts; pending gifts count once
-            // they post (live.js:3814-3820). Committed sums each ACTIVE
-            // income row at that row's own rate. Cash gifts given
-            // off-card (build 40) are NOT transaction rows, so their
-            // sum is added to Given here — Available stays
-            // committed − given, Total unchanged.
+            // they post (live.js:3814-3820) — but they come off
+            // Available immediately (owner, Nov 22, 2026 — build 60):
+            // Available is committed − given − pending, Total
+            // unchanged. Cash gifts given off-card (build 40) are
+            // NOT transaction rows, so their sum is added to Given
+            // here.
             charitySummary = CharitySummary(
                 committedCents: incomeRows.filter { $0.status == "active" }.reduce(0) { $0 + $1.committedCents },
                 givenCents: givenAmounts.reduce(0, +) + cashGiftRows.reduce(0) { $0 + $1.amountCents },
@@ -1273,9 +1274,17 @@ public final class FundsViewModel: ObservableObject {
                 pGiftDate: MoneyFormat.todayNY(),
                 pNote: note
             )
-            succeed("Recorded a \(MoneyFormat.formatCents(amountCents)) gift. \(MoneyFormat.formatCents(result.remainingCents)) left to give.")
-            succeeded = true
             await refresh()
+            // The toast's "left to give" must match the Tzedaka
+            // card's Available (build 60: committed − given −
+            // pending). The RPC's own remainingCents is committed
+            // − given only, so it reads high by the pending gifts
+            // whenever any are outstanding — use the refreshed
+            // client summary instead, falling back to the RPC
+            // figure when the summary failed to load.
+            let leftCents = charitySummary?.remainingCents ?? result.remainingCents
+            succeed("Recorded a \(MoneyFormat.formatCents(amountCents)) gift. \(MoneyFormat.formatCents(leftCents)) left to give.")
+            succeeded = true
         }
         return succeeded
     }
@@ -1297,9 +1306,14 @@ public final class FundsViewModel: ObservableObject {
         var succeeded = false
         await guarded("delete-cash-gift", title: "Could Not Delete Gift") {
             let result = try await context.client.rpcs.reverseCharityCashGift(pGiftId: gift.id)
-            succeed("Gift removed. \(MoneyFormat.formatCents(result.remainingCents)) left to give.")
-            succeeded = true
             await refresh()
+            // Same as the record toast above (build 60): the
+            // card's Available is committed − given − pending,
+            // so the toast uses the refreshed client summary,
+            // not the RPC's committed − given figure.
+            let leftCents = charitySummary?.remainingCents ?? result.remainingCents
+            succeed("Gift removed. \(MoneyFormat.formatCents(leftCents)) left to give.")
+            succeeded = true
         }
         return succeeded
     }

@@ -97,6 +97,18 @@ public enum WidgetSnapshotRefresher {
             }
             let committed = incomeRows.filter { $0.status == "active" }.reduce(0) { $0 + $1.committedCents }
             let givenTotal = givenAmounts.reduce(0, +) + cashGiftRows.reduce(0) { $0 + $1.amountCents }
+            // Pending gifts come off Available immediately (owner,
+            // Nov 22, 2026 — build 60), exactly as the app's
+            // CharitySummary.remainingCents does — the widget must
+            // show the same Available as Home and Funds. Fault-
+            // tolerant like the cash gifts: a failed pending fetch
+            // reads as $0 pending rather than failing the sync.
+            let pendingTotal: Int
+            do {
+                pendingTotal = try await client.postgrest.provisionalCharityGiftAmounts(householdId: householdId).reduce(0, +)
+            } catch {
+                pendingTotal = 0
+            }
             // The fund names ride along from the existing snapshot
             // (a rename pushes them there immediately, and a Home
             // refresh rewrites them) — a sync must not drop them.
@@ -104,7 +116,7 @@ public enum WidgetSnapshotRefresher {
             WidgetSnapshotStore.write(WidgetSnapshot(
                 weekStart: week.weekStart,
                 availableCents: week.availableCents,
-                charityRemainingCents: committed - givenTotal,
+                charityRemainingCents: committed - givenTotal - pendingTotal,
                 spentCents: week.chargesCents,
                 charityGivenCents: givenTotal,
                 charityCommittedCents: committed,

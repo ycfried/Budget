@@ -9,7 +9,8 @@
 //   - availableCents = WeekResult.availableCents from the compute-week
 //     Edge Function — what's left to spend this week (may be negative).
 //   - charityRemainingCents = CharitySummary.remainingCents
-//     (committed − given) — what's left to give.
+//     (committed − given − pending — pending gifts come off what
+//     is owed immediately, owner Nov 22, 2026, build 60).
 //   - spentCents = WeekResult.chargesCents — what's been spent this
 //     week (large / extra-large widget donut, build 28; the spent
 //     line it fed in build 26 is gone).

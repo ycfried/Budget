@@ -84,7 +84,62 @@ final class APISummaryTests: XCTestCase {
         XCTAssertEqual(summary.committedCents, 5000) // 10% of 50000; reversed row ignored
         XCTAssertEqual(summary.givenCents, 200) // pending gift not counted yet
         XCTAssertEqual(summary.pendingGiftCents, 500)
-        XCTAssertEqual(summary.remainingCents, 4800)
+        // Build 60 (owner, Nov 22, 2026): a pending gift comes off
+        // Available immediately — 5000 − 200 − 500, not 4800.
+        XCTAssertEqual(summary.remainingCents, 4300)
+    }
+
+    func testPendingGiftComesOffAvailable() {
+        // Owner, Nov 22, 2026 — build 60 ("it should come off
+        // owed charity"): a pending (provisional) charity gift
+        // reduces Available immediately, not only once it posts.
+        // Available + Given + Pending = Total throughout.
+        let householdId = UUID()
+        let income = [
+            CharityIncome(id: UUID(), householdId: householdId, sourceLabel: "Pay",
+                          amountCents: 100000, incomeDate: "2026-11-01", rateBp: 1000,
+                          status: "active", replacesId: nil, note: "", createdBy: nil, createdAt: nil),
+        ]
+        func txn(state: TransactionState, amount: Int, date: String) -> Transaction {
+            Transaction(id: UUID(), householdId: householdId, date: date, merchant: "ORG",
+                        amountCents: amount, cardSuffix: "0000", source: .manual, state: state,
+                        kind: .charity, fundAllocationCents: 0, excluded: false, excludeReason: "",
+                        late: false, externalId: nil, dedupeHash: "h", originalPurchaseId: nil,
+                        preExclusionState: nil, plaidPendingTransactionId: nil,
+                        plaidTransactionId: nil, createdAt: "2026-11-02T00:00:00Z")
+        }
+        // Pending: Available 9300 (10000 − 200 given − 500 pending).
+        let pending = CharitySummary.compute(
+            activeIncome: income,
+            charityTransactions: [txn(state: .verified, amount: 200, date: "2026-11-03"),
+                                  txn(state: .provisional, amount: 500, date: "2026-11-04")],
+            defaultRateBp: 1000)
+        XCTAssertEqual(pending.committedCents, 10000)
+        XCTAssertEqual(pending.givenCents, 200)
+        XCTAssertEqual(pending.pendingGiftCents, 500)
+        XCTAssertEqual(pending.remainingCents, 9300)
+        XCTAssertEqual(pending.remainingCents + pending.givenCents + pending.pendingGiftCents,
+                       pending.committedCents)
+        // Posted: the gift moves from pending to given — Available
+        // does NOT move (it was already off what was owed).
+        let posted = CharitySummary.compute(
+            activeIncome: income,
+            charityTransactions: [txn(state: .verified, amount: 200, date: "2026-11-03"),
+                                  txn(state: .verified, amount: 500, date: "2026-11-04")],
+            defaultRateBp: 1000)
+        XCTAssertEqual(posted.givenCents, 700)
+        XCTAssertEqual(posted.pendingGiftCents, 0)
+        XCTAssertEqual(posted.remainingCents, 9300)
+        // Disappeared: the pending gift never posts — Available
+        // recovers on its own (the figure derives from the
+        // current rows every load).
+        let gone = CharitySummary.compute(
+            activeIncome: income,
+            charityTransactions: [txn(state: .verified, amount: 200, date: "2026-11-03")],
+            defaultRateBp: 1000)
+        XCTAssertEqual(gone.givenCents, 200)
+        XCTAssertEqual(gone.pendingGiftCents, 0)
+        XCTAssertEqual(gone.remainingCents, 9800)
     }
 
     func testCharitySummaryIncludesCashGifts() {
@@ -122,7 +177,8 @@ final class APISummaryTests: XCTestCase {
     func testCharitySummaryWholeHistoryIncludesNov3Gifts() {
         // Build 50 (owner Nov 20, 2026 — Tzedaka $37 fix): the live
         // household's Home read Available $982.32 while Funds read
-        // the correct $945.32. The $37.00 gap was the two Nov 3
+        // the correct $945.32 (both under the then-current
+        // committed − given rule). The $37.00 gap was the two Nov 3
         // verified gifts — TOIREM.ORG CHARITY $2.00 +
         // =TENYADKALLAHGEMACH $35.00, the only verified
         // non-excluded charity rows — which Home missed because it
@@ -130,7 +186,8 @@ final class APISummaryTests: XCTestCase {
         // Nov 3 gifts had aged out of the page. The whole-history
         // path (verifiedCharityGiftAmounts, as Funds uses) must
         // include them: Given $104.68 ($37.00 gifts + $67.68 cash
-        // gift), Available $945.32 on $1,050.00 committed.
+        // gift), Available $927.32 on $1,050.00 committed (build 60
+        // also subtracts the $18.00 provisional Timepiece gift).
         let householdId = UUID()
         let income = [
             CharityIncome(id: UUID(), householdId: householdId, sourceLabel: "Mobile Check Deposit",
@@ -159,16 +216,19 @@ final class APISummaryTests: XCTestCase {
         XCTAssertEqual(summary.committedCents, 105000)
         XCTAssertEqual(summary.givenCents, 10468) // 200 + 3500 verified + 6768 cash gift
         XCTAssertEqual(summary.pendingGiftCents, 1800)
-        XCTAssertEqual(summary.remainingCents, 94532) // Available — NOT 98232
+        // Build 60: Available is committed − given − pending, so
+        // the $18.00 provisional Timepiece gift comes off it too —
+        // $927.32, not $945.32.
+        XCTAssertEqual(summary.remainingCents, 92732) // Available — NOT 96432
         // The page-capped input (Nov 3 gifts aged out of the first
         // 100 newest rows) is the bug's signature: Given drops to
-        // the cash gift alone and Available reads $982.32. Home
+        // the cash gift alone and Available reads $964.32. Home
         // must never compute from that input again.
         let pageCapped = wholeHistory.filter { $0.date != "2026-11-03" }
         let stale = CharitySummary.compute(activeIncome: income, charityTransactions: pageCapped,
                                            defaultRateBp: 1000, cashGiftCents: 6768)
         XCTAssertEqual(stale.givenCents, 6768)
-        XCTAssertEqual(stale.remainingCents, 98232)
+        XCTAssertEqual(stale.remainingCents, 96432)
     }
 
     func testFundRequestApprovedCents() {
