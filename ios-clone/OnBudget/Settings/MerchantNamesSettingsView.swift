@@ -170,11 +170,6 @@ struct MerchantNamesSettingsView: View {
     /// collected as transaction rows render. Loaded when the card
     /// appears; hidden when empty.
     @State private var needsIcon: [String] = []
-    /// Merchants whose icon is a remembered GUESS (build 53, audit
-    /// C3): the guessed domain is unverified — it only means its
-    /// favicon loaded once, and it can be the wrong company. The
-    /// screen surfaces them so a wrong guess can be cleared.
-    @State private var guessedIcons: [(merchant: String, domain: String)] = []
 
     /// Fixed-kind options: the server's kind values with plain
     /// labels (same list as the transaction Actions sheet).
@@ -308,15 +303,16 @@ struct MerchantNamesSettingsView: View {
                 .task {
                     await viewModel.load()
                     needsIcon = TransactionIconLookup.needsIconMerchants()
-                    guessedIcons = TransactionIconLookup.unverifiedGuessedMerchants()
                 }
                 // Build 52 (owner, Nov 20, 2026 — the smart plan's
                 // catch-up loop): merchants that still have no icon
                 // — they show their first letter instead. The list
                 // is collected as transaction rows render; a
                 // merchant drops off it as soon as a later build
-                // maps it or its auto-guessed logo loads. Hidden
-                // entirely when empty — nothing to catch up on.
+                // maps it in the curated map. (Build 57 removed
+                // the auto-guess, so there is no guessed logo to
+                // load any more.) Hidden entirely when empty —
+                // nothing to catch up on.
                 if !needsIcon.isEmpty {
                     SettingsCard(title: "Merchants Without an Icon") {
                         MutedLine(text: "These merchants don't have an icon yet. They'll be added in a future update.")
@@ -330,52 +326,6 @@ struct MerchantNamesSettingsView: View {
                                 }
                                 .padding(.vertical, 6)
                                 if name != needsIcon.last {
-                                    Divider()
-                                }
-                            }
-                        }
-                    }
-                }
-                // Build 53 (audit C3): guessed icons, unverified —
-                // a remembered guess only means its favicon loaded
-                // once; it can still be the wrong company (erie.com
-                // is a real favicon for the wrong company). Each row
-                // shows the guessed domain and a Clear: clearing
-                // removes the guess and suppresses re-guessing it,
-                // so the wrong logo does not come straight back —
-                // the merchant returns to the list above until a
-                // later build maps it properly. Hidden entirely
-                // when empty — no guesses to check.
-                if !guessedIcons.isEmpty {
-                    SettingsCard(title: "Guessed Icons — Not Verified") {
-                        MutedLine(text: "These icons were guessed, not confirmed. Clear any that look wrong — the merchant will show its initial until the right icon is added.")
-                        VStack(spacing: 0) {
-                            ForEach(guessedIcons, id: \.merchant) { entry in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(TitleCase.apply(to: entry.merchant.lowercased()))
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundStyle(DesignTokens.ink)
-                                        Text(entry.domain)
-                                            .font(.system(size: 13))
-                                            .foregroundStyle(Color(hex: "#6b7280"))
-                                    }
-                                    Spacer()
-                                    Button("Clear") {
-                                        TransactionIconLookup.clearGuessedDomain(for: entry.merchant)
-                                        // The merchant has no icon
-                                        // again — record it now, so
-                                        // it lands in the list above
-                                        // at once instead of waiting
-                                        // for its row to render.
-                                        TransactionIconLookup.recordNeedsIcon(entry.merchant)
-                                        guessedIcons = TransactionIconLookup.unverifiedGuessedMerchants()
-                                        needsIcon = TransactionIconLookup.needsIconMerchants()
-                                    }
-                                    .buttonStyle(SmallTertiaryButtonStyle())
-                                }
-                                .padding(.vertical, 6)
-                                if entry.merchant != guessedIcons.last?.merchant {
                                     Divider()
                                 }
                             }

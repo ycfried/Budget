@@ -436,12 +436,12 @@ public struct DebtRuleSection: View {
     }
 
     /// The editor (owner, Nov 15, 2026 — build 33): the label on its
-    /// own line so it can never truncate, the mode picker
-    /// full-width on the next row, then the field on its own row,
-    /// then Save + Reset on their own row, each 1/2 the width
-    /// (owner, Nov 16, 2026 — build 37: the small Save / quiet
-    /// Reset bunched on the left left a large empty space on the
-    /// right). The picker uses "%" for Percent (owner rule: a word
+    /// own line so it can never truncate, the mode picker + Apply
+    /// on the next row (build 57: the picker is shortened so Apply
+    /// fits beside it on the same line), then the field on its own
+    /// row below (in %/$ mode; Off has no field). Save + Reset are
+    /// gone (build 56 — one small Apply, Reset removed entirely).
+    /// The picker uses "%" for Percent (owner rule: a word
     /// that does not fit becomes a symbol, never a truncation —
     /// "Percent" was rendering as "Perc...") and "$" for Fixed
     /// (owner, Nov 16, 2026 — build 37: the word "Fixed" is gone,
@@ -457,53 +457,62 @@ public struct DebtRuleSection: View {
             Text("\(debtName) Repayment Rule")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
-            Picker("Rule", selection: $selectedMode) {
-                Text("%").tag(DebtRule.Mode.percent)
-                Text("$").tag(DebtRule.Mode.fixed)
-                Text("Off").tag(DebtRule.Mode.off)
+            // Build 57 (owner, Nov 22, 2026): the picker bar is
+            // shorter now — Apply sits on the SAME row as the
+            // segmented control, to its right — so the row reads
+            // [picker][Apply] instead of the picker full-width
+            // with Apply alone underneath (Off mode). The picker
+            // is flexible, so it takes whatever width is left
+            // after Apply — on an iPhone (390pt) the three short
+            // segments still get ~80pt each, no clipping. The
+            // field (in %/$ mode) sits below this row, full
+            // width; in Off mode there is no field.
+            HStack(spacing: 8) {
+                Picker("Rule", selection: $selectedMode) {
+                    Text("%").tag(DebtRule.Mode.percent)
+                    Text("$").tag(DebtRule.Mode.fixed)
+                    Text("Off").tag(DebtRule.Mode.off)
+                }
+                .pickerStyle(.segmented)
+                // Build 36 (owner, Nov 16, 2026): the picker segments
+                // were small and cheap — taller segments with larger
+                // text, like the other fund editors. Build 37 (owner,
+                // Nov 16, 2026): thicker still and more square — the
+                // thin rounded bar read as flimsy. The rule value is
+                // untouched: the picker still shows the saved rule.
+                .font(.system(size: 16, weight: .semibold))
+                .frame(minHeight: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "debt-rule") {
+                    saveRule()
+                }
             }
-            .pickerStyle(.segmented)
-            // Build 36 (owner, Nov 16, 2026): the picker segments
-            // were small and cheap — taller segments with larger
-            // text, like the other fund editors. Build 37 (owner,
-            // Nov 16, 2026): thicker still and more square — the
-            // thin rounded bar read as flimsy. The rule value is
-            // untouched: the picker still shows the saved rule.
-            .font(.system(size: 16, weight: .semibold))
-            .frame(minHeight: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
             // The field row (build 56, owner Nov 22, 2026): the %
-            // or $ editor plus one small inline "Apply" beside it
+            // or $ editor, full width below the picker+Apply row
             // — Save + Reset are gone (Reset removed entirely).
             // In % mode the "%" is a LEFT prefix INSIDE the field,
             // mirroring the "$" prefix in DollarTextField and the
             // Tzedaka rate field — the "% of base" label outside
-            // the box is gone. In Off mode there is no field, so
-            // Apply sits alone under the picker and applies Off.
-            HStack(spacing: 8) {
-                if selectedMode == .percent {
-                    HStack(spacing: 2) {
-                        Text("%")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
-                        TextField(MoneyFormat.formatRateBp(savedRule.percentBp), text: $percentText)
-                            .keyboardType(.decimalPad)
-                            .font(.system(size: 17))
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                    .background(.white)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                } else if selectedMode == .fixed {
-                    DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
+            // the box is gone. In Off mode there is no field.
+            if selectedMode == .percent {
+                HStack(spacing: 2) {
+                    Text("%")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    TextField(MoneyFormat.formatRateBp(savedRule.percentBp), text: $percentText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 17))
                 }
-                FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "debt-rule") {
-                    saveRule()
-                }
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .background(.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else if selectedMode == .fixed {
+                DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
             }
             if let ruleError {
                 FundsErrorBox(ruleError)

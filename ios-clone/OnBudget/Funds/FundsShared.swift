@@ -1005,7 +1005,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
     /// uniform 28pt bold on every card, in the theme's number
     /// colour (the build-46 "number colour = header colour" rule:
     /// Spending deep #1d4ed8, Tzedaka primary #2f6bff, Savings
-    /// amber #b45309, Overspent ink — each reads on white), on the
+    /// muted grey #6b7280, Overspent ink — each reads on white), on the
     /// full card width with NO minimumScaleFactor — a long amount
     /// never shrinks to a different size per card, and the full
     /// width means it never truncates on an iPhone. Loading shows

@@ -32,6 +32,12 @@ struct OnBudgetApp: App {
         // (loses the system tab bar's behaviour and the existing UI
         // tests' `tabBars` queries).
         UserDefaults.standard.register(defaults: ["UseFloatingTabBar": false])
+        // Build 57 (owner, Nov 22, 2026 — no more guessed icons):
+        // clear the retired guessed-icon data (remembered guesses
+        // + cleared-guess list) left by builds 52–53, so a device
+        // that remembered THE Timepiece's clock cannot resurface
+        // it. Idempotent — safe on every launch.
+        TransactionIconLookup.clearStaleGuessedIconData()
     }
 
     var body: some Scene {
