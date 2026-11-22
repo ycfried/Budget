@@ -84,6 +84,10 @@ name: OnBudget iOS clone TestFlight upload
 # orphaned certificate.
 #
 # Manual trigger: gh workflow run ios-clone-testflight-upload.yml --ref <branch>
+# Owner-approved simulator-gate override (use ONLY with the owner's
+# explicit approval for that commit — it ships a commit whose
+# simulator run was never green):
+#   gh workflow run ios-clone-testflight-upload.yml --ref <branch> -f override_simulator_gate=true
 # Push trigger (mirrors ios-clone-device-ipa.yml — workflow_dispatch
 # lookup needs the file on the default branch, so push is the working
 # trigger): any push to the branch below that touches this file starts
@@ -91,6 +95,12 @@ name: OnBudget iOS clone TestFlight upload
 # [ios-clone].
 on:
   workflow_dispatch:
+    inputs:
+      override_simulator_gate:
+        description: 'Owner-approved override of the simulator gate: ship this commit to TestFlight even though its simulator run was never green. Use ONLY with the owner''s explicit approval for that commit.'
+        type: choice
+        options: ['false', 'true']
+        default: 'false'
   push:
     branches: [ios-clone-testflight]
     paths:
@@ -112,6 +122,12 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
     steps:
       - name: Gate — simulator run for this commit must be green (build 53, audit W2)
+        # Enforced by default. It is skipped ONLY when the run was
+        # dispatched with override_simulator_gate=true — the
+        # owner-approved override (the "Simulator gate overridden"
+        # step below records it). Push events carry no dispatch
+        # input, so the gate still applies to them.
+        if: inputs.override_simulator_gate != 'true'
         # The upload must never ship a commit the simulator never
         # proved. The simulator only runs on commits whose message
         # starts "ci(ios-clone): approved cloud build", so an
@@ -140,6 +156,15 @@ jobs:
             exit 1
           fi
           echo "Simulator run for $SHA is green — proceeding with the upload."
+      - name: Simulator gate overridden (owner-approved)
+        # Runs ONLY when dispatched with override_simulator_gate=true.
+        # Records the override in the run log so it is auditable:
+        # who approved it is the owner (explicit approval for this
+        # commit — see the run's dispatch), and the SHA it applies to.
+        if: inputs.override_simulator_gate == 'true'
+        run: |
+          echo "OWNER-APPROVED OVERRIDE: simulator gate skipped for SHA ${{ github.sha }} (override_simulator_gate=true)."
+          echo "This commit is being uploaded to TestFlight without a green simulator run, per the owner's explicit approval."
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
