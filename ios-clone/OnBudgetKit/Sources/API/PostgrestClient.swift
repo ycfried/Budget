@@ -1015,8 +1015,10 @@ public struct PostgrestClient {
             table: "charity_income",
             // All non-optional CharityIncome fields: the previous
             // "amount_cents,rate_bp" select failed decoding (found
-            // by the Auth+Home builder, Nov 9, 2026).
-            columns: "id,household_id,source_label,amount_cents,income_date,rate_bp,status,replaces_id,note,created_by,created_at",
+            // by the Auth+Home builder, Nov 9, 2026). transaction_id
+            // is included too (build 55): the charity feed hides an
+            // accrual whose linked transaction is excluded.
+            columns: "id,household_id,source_label,amount_cents,income_date,rate_bp,status,replaces_id,note,created_by,created_at,transaction_id",
             filters: [.householdId(householdId), .equal("status", "active")],
             orders: [PostgrestOrder("created_at", ascending: true), PostgrestOrder("id", ascending: true)]
         ))
@@ -1030,7 +1032,7 @@ public struct PostgrestClient {
     public func charityIncomeHistory(householdId: UUID) async throws -> [CharityIncome] {
         try await fetch(PostgrestQuery(
             table: "charity_income",
-            columns: "id,household_id,source_label,amount_cents,income_date,rate_bp,status,replaces_id,note,created_by,created_at",
+            columns: "id,household_id,source_label,amount_cents,income_date,rate_bp,status,replaces_id,note,created_by,created_at,transaction_id",
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("income_date", ascending: false)],
             limit: 50

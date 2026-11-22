@@ -630,7 +630,15 @@ public struct CharityIncomeHistory: View {
     }
 
     private var feed: [FeedItem] {
-        var items: [FeedItem] = viewModel.charityIncome.map { .income($0) }
+        // Build 55 (owner, Nov 22, 2026): an accrual whose linked
+        // transaction is excluded does not appear in this feed —
+        // excluded income is not income at all. The server reverses
+        // the accrual on exclude; the feed hides the row so it
+        // cannot read as live income. (Reversed rows whose
+        // transaction is NOT excluded stay visible, marked
+        // "(Reversed)" — the audit trail for a reclassification
+        // or a correction.)
+        var items: [FeedItem] = CharityIncome.visibleIncomeRows(viewModel.charityIncome, allTransactions: viewModel.allTransactions).map { .income($0) }
         items += giftTransactions.map { .gift($0) }
         // Cash gifts given off-card (build 40): recorded on the
         // charity fund, not transaction rows — this feed is their

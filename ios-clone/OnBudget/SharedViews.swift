@@ -443,23 +443,18 @@ public struct LoadingView: View {
             }
             // Build 54 (owner, Nov 21, 2026): the loading page says
             // the tagline "Spend, Track & Give Easily" instead of
-            // "Loading Your Household" — each word in its own brand
-            // colour, matching its STAGE letter: Spend = S =
-            // primary #2f6bff, Track = T = stageBlue #0288dd,
-            // Give = G = charity #16a34a, Easily = E = deep
-            // #1d4ed8. The punctuation stays muted so the four
-            // words are the coloured elements. Same 15pt size as
-            // the old line; semibold so it reads as a tagline, not
-            // a caption.
-            (
-                Text("Spend").foregroundStyle(DesignTokens.primary)
-                + Text(", ").foregroundStyle(DesignTokens.muted)
-                + Text("Track").foregroundStyle(DesignTokens.stageBlue)
-                + Text(" & ").foregroundStyle(DesignTokens.muted)
-                + Text("Give").foregroundStyle(DesignTokens.charity)
-                + Text(" Easily").foregroundStyle(DesignTokens.deep)
-            )
-            .font(.system(size: 15, weight: .semibold))
+            // "Loading Your Household" — same 15pt size as the old
+            // line; semibold so it reads as a tagline, not a
+            // caption. Build 55 (owner, Nov 22, 2026): the whole
+            // tagline is ONE uniform blue (#0288dd stageBlue,
+            // matching the S logo above it) — the build-54
+            // per-word colours were "ugly beyond", especially the
+            // green Give in the middle of blue text. No green, no
+            // mixed blues; the words stay "Spend, Track & Give
+            // Easily", just all in that one blue.
+            Text("Spend, Track & Give Easily")
+                .foregroundStyle(DesignTokens.stageBlue)
+                .font(.system(size: 15, weight: .semibold))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.background)

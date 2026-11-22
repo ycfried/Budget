@@ -1404,8 +1404,17 @@ public struct FundsView: View {
                 .buttonStyle(DimOnPressButtonStyle())
                 .accessibilityIdentifier(section.accessibilityID)
                 if openMore == section {
+                    // Build 55 (owner, Nov 22, 2026): clear space
+                    // between the header button and the first row of
+                    // the expanded content — the button and the top
+                    // row read as touching with no gap. The 12pt top
+                    // padding matches the 12pt bottom padding, so the
+                    // content sits centred in the open space. This
+                    // is the shared row, so every fund's Activity &
+                    // Transactions section gets the same spacing.
                     content()
                         .padding(.horizontal, hPad)
+                        .padding(.top, 12)
                         .padding(.bottom, 12)
                 }
             }

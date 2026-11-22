@@ -1173,6 +1173,15 @@ public struct CharityIncome: Equatable, Codable, Identifiable {
     public let note: String
     public let createdBy: UUID?
     public let createdAt: String?
+    /// The transaction this accrual came from, when it was accrued
+    /// from a synced income row (build 44). Nil for manually
+    /// recorded income and unlinked backfills. Build 55 (owner,
+    /// Nov 22, 2026): the charity feed hides an accrual whose
+    /// linked transaction is excluded — excluded income is not
+    /// income at all — and that needs this link. Optional so rows
+    /// fetched by a select that does not include transaction_id
+    /// still decode.
+    public let transactionId: UUID?
 
     /// Committed cents for this income row, as the server computes it
     /// in `record_charity_income` — round HALF-UP, not truncate:
@@ -1182,6 +1191,45 @@ public struct CharityIncome: Equatable, Codable, Identifiable {
     /// (audit P1-2). The RPC return carries the server's exact
     /// figure; this is the same arithmetic for display sums.
     public var committedCents: Int { Int((Int64(amountCents) * Int64(rateBp) + 5000) / 10_000) }
+
+    /// Build 55 (owner, Nov 22, 2026): the charity feed shows only
+    /// income that still counts. An accrual whose linked transaction
+    /// is excluded is not income at all — exclusion reverses the
+    /// accrual server-side, and the row must not appear in the
+    /// feed either (the same way a reclassification away from
+    /// income removes it from the committed total). Rows with no
+    /// linked transaction (manually recorded income, unlinked
+    /// backfills) are never hidden by this rule — they cannot be
+    /// excluded through a transaction, so there is nothing to hide.
+    /// A reversed row whose transaction is NOT excluded stays
+    /// visible (marked "(Reversed)" by the feed) — that is the
+    /// audit trail for a reclassification or a correction, not an
+    /// exclusion.
+    public static func visibleIncomeRows(_ income: [CharityIncome], allTransactions: [Transaction]) -> [CharityIncome] {
+        income.filter { row in
+            guard let txnId = row.transactionId else { return true }
+            return !(allTransactions.first { $0.id == txnId }?.excluded ?? false)
+        }
+    }
+
+    /// Memberwise init. `transactionId` defaults to nil so callers
+    /// that build rows without a linked transaction (and the
+    /// existing tests) keep compiling — the link is only set when
+    /// the row was accrued from a synced income transaction.
+    public init(id: UUID, householdId: UUID, sourceLabel: String, amountCents: Int, incomeDate: String, rateBp: Int, status: String, replacesId: UUID?, note: String, createdBy: UUID?, createdAt: String?, transactionId: UUID? = nil) {
+        self.id = id
+        self.householdId = householdId
+        self.sourceLabel = sourceLabel
+        self.amountCents = amountCents
+        self.incomeDate = incomeDate
+        self.rateBp = rateBp
+        self.status = status
+        self.replacesId = replacesId
+        self.note = note
+        self.createdBy = createdBy
+        self.createdAt = createdAt
+        self.transactionId = transactionId
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -1195,6 +1243,7 @@ public struct CharityIncome: Equatable, Codable, Identifiable {
         case note
         case createdBy = "created_by"
         case createdAt = "created_at"
+        case transactionId = "transaction_id"
     }
 }
 
