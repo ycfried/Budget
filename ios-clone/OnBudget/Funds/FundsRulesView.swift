@@ -200,9 +200,10 @@ public struct CharityRateSection: View {
             HStack(spacing: 8) {
                 // Build 36 (owner, Nov 16, 2026): the editor controls
                 // were small and cheap — the field is now 17pt /
-                // 48pt tall and the Save / Reset are the editor
-                // sizes, not the small list-row sizes. The value is
-                // untouched: the field still shows the live default.
+                // 48pt tall and the Apply button is the small
+                // primary size (build 56), not the small list-row
+                // sizes. The value is untouched: the field still
+                // shows the live default.
                 // Owner, Nov 16, 2026 (build 40): the "%" is a LEFT
                 // prefix INSIDE the field ("Percent sign on the
                 // left."), mirroring the "$" prefix in
@@ -218,8 +219,9 @@ public struct CharityRateSection: View {
                 .padding(.horizontal, 12)
                 // Build 37 (owner, Nov 16, 2026): the field
                 // expands to fill the row — the 72pt field left
-                // a large empty space on the right. Save and
-                // Reset sit at the row's right end.
+                // a large empty space on the right. Apply sits at
+                // the row's right end (build 56: Save + Reset are
+                // gone, Reset removed entirely).
                 .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                 .background(.white)
                 .overlay(
@@ -227,12 +229,8 @@ public struct CharityRateSection: View {
                         .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                FundsEditorPrimaryButton("Save", isBusy: viewModel.busyAction == "rate") {
+                FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "rate") {
                     saveRate()
-                }
-                FundsEditorQuietButton("Reset") {
-                    rateText = MoneyFormat.formatRateBp(defaultRateBp)
-                    rateError = nil
                 }
             }
             if let pending = pendingRateBp {
@@ -474,36 +472,37 @@ public struct DebtRuleSection: View {
             .font(.system(size: 16, weight: .semibold))
             .frame(minHeight: 52)
             .clipShape(RoundedRectangle(cornerRadius: 6))
-            // The field row: the % or $ editor spans the full width
-            // when its mode is selected (owner, Nov 16, 2026 —
-            // build 37), with no Save / Reset crowding it — those
-            // sit on their own row below, each 1/2 the width.
+            // The field row (build 56, owner Nov 22, 2026): the %
+            // or $ editor plus one small inline "Apply" beside it
+            // — Save + Reset are gone (Reset removed entirely).
+            // In % mode the "%" is a LEFT prefix INSIDE the field,
+            // mirroring the "$" prefix in DollarTextField and the
+            // Tzedaka rate field — the "% of base" label outside
+            // the box is gone. In Off mode there is no field, so
+            // Apply sits alone under the picker and applies Off.
             HStack(spacing: 8) {
                 if selectedMode == .percent {
-                    TextField(MoneyFormat.formatRateBp(savedRule.percentBp), text: $percentText)
-                        .keyboardType(.decimalPad)
-                        .font(.system(size: 17))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                    Text("% of base")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color(hex: "#6b7280"))
+                    HStack(spacing: 2) {
+                        Text("%")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        TextField(MoneyFormat.formatRateBp(savedRule.percentBp), text: $percentText)
+                            .keyboardType(.decimalPad)
+                            .font(.system(size: 17))
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                    .background(.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 } else if selectedMode == .fixed {
                     DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
                 }
-            }
-            // Save + Reset, each 1/2 the width, together filling
-            // the full width (owner, Nov 16, 2026 — build 37).
-            // The two-button rule: primary blue Save + grey
-            // tertiary Reset. In Off mode there is no field row, so
-            // the buttons sit directly under the picker.
-            HStack(spacing: 8) {
-                FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "debt-rule", isLarge: true) {
+                FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "debt-rule") {
                     saveRule()
-                }
-                FundsTertiaryButton("Reset", isLarge: true) {
-                    syncFromSaved()
-                    ruleError = nil
                 }
             }
             if let ruleError {
@@ -537,13 +536,13 @@ public struct DebtRuleSection: View {
 /// Weekly Allowance, under the Spending card (build 30 — moved from
 /// the Settings Budget card; owner, Nov 15, 2026: ALL fund settings
 /// live on the Funds page, and the base allowance is the spending
-/// fund's setting). The row + the admin editor (field + Save sized
-/// to fit, Reset a small quiet link) and the preview line, then the
-/// Temporary Allowance block below it. No heading — the "Weekly
-/// Allowance" row says what it is, and the Spending card above is
-/// the section header. A change applies from the current week
-/// onward; closed weeks are never rewritten (the confirm dialog
-/// says so, as the Settings card did).
+/// fund's setting). The row + the admin editor (field + small Apply
+/// beside it, build 56) and the preview line, then the Temporary
+/// Allowance block below it. No heading — the "Weekly Allowance"
+/// row says what it is, and the Spending card above is the section
+/// header. A change applies from the current week onward; closed
+/// weeks are never rewritten (the confirm dialog says so, as the
+/// Settings card did).
 ///
 /// Visibility decision (same as the rate/rule sections): visible to
 /// every role, read-only for regular members ("Only the admin can
@@ -565,10 +564,15 @@ public struct SpendingAllowanceSection: View {
     public let bare: Bool
     /// Opens the Temporary Allowance form (owned by FundsView).
     public let onOpenTemp: () -> Void
+    /// Opens the Weekly Budget Calculator (owned by FundsView).
+    /// Nil when the section is shown without a calculator — the
+    /// button is then omitted.
+    public let onCalculate: (() -> Void)?
 
-    public init(viewModel: FundsViewModel, bare: Bool = false, onOpenTemp: @escaping () -> Void) {
+    public init(viewModel: FundsViewModel, bare: Bool = false, onCalculate: (() -> Void)? = nil, onOpenTemp: @escaping () -> Void) {
         self.viewModel = viewModel
         self.bare = bare
+        self.onCalculate = onCalculate
         self.onOpenTemp = onOpenTemp
     }
 
@@ -649,10 +653,10 @@ public struct SpendingAllowanceSection: View {
     /// the caller (the Spending fund container) wraps it, or
     /// FundsCard when standalone. The editor is the same shape as
     /// the other fund editors (owner, Nov 15, 2026 — build 33):
-    /// the label on its own line, the field + Save + Reset on the
-    /// row below. There is NO separate "Weekly Allowance $400.00"
-    /// value row for admins — the amount is already in the card
-    /// header and in the field itself, so the row was redundant.
+    /// the label on its own line, the field + small Apply on the
+    /// row below (build 56). There is NO separate "Weekly Allowance
+    /// $400.00" value row for admins — the amount is already in the
+    /// card header and in the field itself, so the row was redundant.
     /// Members (who cannot edit) keep the read-only value row.
     private var allowanceContent: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -689,8 +693,8 @@ public struct SpendingAllowanceSection: View {
 
     /// The large-purchase threshold editor (Nov 16, 2026): the same
     /// shape as the allowance editor (label on its own line, $ field
-    /// + Save + Reset on the row below). A purchase at or above this
-    /// amount sends a large purchase notification.
+    /// + small Apply on the row below, build 56). A purchase at or
+    /// above this amount sends a large purchase notification.
     private var thresholdEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Large Purchase Threshold")
@@ -698,12 +702,8 @@ public struct SpendingAllowanceSection: View {
                 .foregroundStyle(DesignTokens.ink)
             HStack(spacing: 10) {
                 DollarTextField(text: $thresholdText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
-                FundsEditorPrimaryButton("Save", isBusy: viewModel.busyAction == "large-purchase-threshold") {
+                FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "large-purchase-threshold") {
                     thresholdSaveTapped()
-                }
-                FundsEditorQuietButton("Reset") {
-                    syncThresholdField()
-                    thresholdError = nil
                 }
             }
             // Build 42 (owner, Nov 17, 2026 — spending card
@@ -743,20 +743,17 @@ public struct SpendingAllowanceSection: View {
                 .foregroundStyle(DesignTokens.ink)
             HStack(spacing: 10) {
                 // Build 36 (owner, Nov 16, 2026): the allowance
-                // field and Save were the small sizes — the field is
-                // now 52pt tall and Save / Reset are the editor
-                // sizes. The value is untouched: still $400.00.
+                // field and its buttons were the small sizes — the
+                // field is now 52pt tall and Apply is the small
+                // primary size (build 56: Save / Reset are gone).
+                // The value is untouched: still $400.00.
                 // Build 37 (owner, Nov 16, 2026): the allowance
                 // field expands to fill the row — the 180pt field
-                // left a large empty space on the right. Save and
-                // Reset sit at the row's right end.
+                // left a large empty space on the right. Apply sits
+                // at the row's right end.
                 DollarTextField(text: $allowanceText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
-                FundsEditorPrimaryButton("Save", isBusy: viewModel.busyAction == "base-allowance") {
+                FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "base-allowance") {
                     saveTapped()
-                }
-                FundsEditorQuietButton("Reset") {
-                    syncField()
-                    allowanceError = nil
                 }
             }
             // Build 42 (owner, Nov 17, 2026 — spending card
@@ -817,6 +814,21 @@ public struct SpendingAllowanceSection: View {
             .padding(.bottom, 8)
             if let temp = tempOverrideCents, let base = savedBase, temp != base {
                 FundsMuted("This week's total is \(MoneyFormat.formatCents(temp)) instead of \(MoneyFormat.formatCents(base)).")
+            }
+            // Build 56 (owner, Nov 22, 2026): "Calculate" sits
+            // with the other two buttons at the bottom of the
+            // Spending card — Calculate, Top Up Budget, Set
+            // Temporary Allowance, in that order — instead of at
+            // the top above the fields. It stays visible to every
+            // role (local-only, suggestion-only) while the other
+            // two stay admin-only, so it sits OUTSIDE the
+            // `if isAdmin` block below. Solid blue primary, as
+            // before; Top Up Budget stays pale and Set Temporary
+            // Allowance stays grey, so no two adjacent buttons
+            // share a colour.
+            if let onCalculate {
+                FundsPrimaryButton("Calculate", isLarge: true) { onCalculate() }
+                    .accessibilityIdentifier("funds.openWeeklyBudgetCalculator")
             }
             if isAdmin {
                 // Top Up Budget (Nov 16, 2026): a one-time top-up to

@@ -609,32 +609,27 @@ public struct FundsView: View {
                         }
                     }
                     Divider()
-                    // Build 44 (owner, Nov 18, 2026): the Weekly
-                    // Budget Calculator lives behind this button
-                    // now — the open section below the fund cards
-                    // is gone. A lone button, so primary blue;
-                    // full-width large like the card's other
-                    // action buttons. It sits directly below the
-                    // budget breakdown above (action buttons go
-                    // below the thing they act on) and clear of
-                    // the Temporary Allowance buttons below, so
-                    // no two adjacent buttons share a colour.
-                    // Visible to every role: the calculator is
-                    // local-only and suggestion-only.
-                    FundsPrimaryButton("Calculate", isLarge: true) { showCalculator = true }
-                        .accessibilityIdentifier("funds.openWeeklyBudgetCalculator")
-                        // Build 43 (owner, Nov 17, 2026 — item 17):
-                        // full-screen cover, not a detent sheet.
-                        .fullScreenCover(isPresented: $showCalculator) {
-                            WeeklyBudgetCalculatorSheet(
-                                householdId: viewModel.context.householdId,
-                                charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
-                                onClose: { showCalculator = false }
-                            )
-                        }
-                    Divider()
-                    SpendingAllowanceSection(viewModel: viewModel, bare: true) {
+                    // Build 56 (owner, Nov 22, 2026): "Calculate"
+                    // moved DOWN into SpendingAllowanceSection,
+                    // grouped with "Top Up Budget" and "Set
+                    // Temporary Allowance" at the bottom of the
+                    // card (Calculate, Top Up Budget, Set Temporary
+                    // Allowance, in that order) — it no longer sits
+                    // alone above the fields. The calculator sheet
+                    // itself is unchanged (full-screen cover, build
+                    // 43) and the button stays visible to every
+                    // role (local-only, suggestion-only).
+                    SpendingAllowanceSection(viewModel: viewModel, bare: true, onCalculate: { showCalculator = true }) {
                         openForm = .temp
+                    }
+                    // Build 43 (owner, Nov 17, 2026 — item 17):
+                    // full-screen cover, not a detent sheet.
+                    .fullScreenCover(isPresented: $showCalculator) {
+                        WeeklyBudgetCalculatorSheet(
+                            householdId: viewModel.context.householdId,
+                            charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
+                            onClose: { showCalculator = false }
+                        )
                     }
                 }
             } else {
@@ -761,8 +756,10 @@ public struct FundsView: View {
                     // order, Nov 4, 2026 — no two adjacent share
                     // a colour). Owner, Nov 17, 2026 (build 42):
                     // the old Spend button + the old cash-spent
-                    // section are ONE button now — "Remove from
-                    // Savings".
+                    // section are ONE button now — "Take Money Out"
+                    // (build 56, owner Nov 22, 2026: renamed from
+                    // "Remove from Savings" — plain language,
+                    // parallel to "Add Money").
                     // Both did the same thing (money out of the
                     // fund, no transaction row) and the pale middle
                     // button of a three-button row is gone with
@@ -774,7 +771,7 @@ public struct FundsView: View {
                     if isAdmin {
                         VStack(alignment: .leading, spacing: 12) {
                             FundsPrimaryButton("Add Money") { openForm = .add }
-                            FundsTertiaryButton("Remove from \(FundSectionID.fund.displayName(customNames: appState.fundNames))") { showRemoveFromSavings = true }
+                            FundsTertiaryButton("Take Money Out") { showRemoveFromSavings = true }
                                 .accessibilityIdentifier("funds.removeFromSavings")
                                 // Build 43 (owner, Nov 17, 2026 — item 17):
                                 // full-screen cover, not a detent sheet.
@@ -872,6 +869,16 @@ public struct FundsView: View {
                         }
                         FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.committedCents))
                     }
+                    // Build 56 (owner, Nov 22, 2026): the Default
+                    // Tzedaka Rate sits ABOVE the buttons now —
+                    // right after the breakdown, like the Spending
+                    // and Overspent cards, where the fields already
+                    // sit above the buttons.
+                    Divider()
+                    CharityRateSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames)
+                        // Walkthrough anchor (build 48): the rate
+                        // editor — "change the rate, or turn it off".
+                        .tourAnchor(.charityRules, tour: appState.tour)
                     // Build 37 (owner, Nov 16, 2026): the grey
                     // "Close" button is gone — the card already
                     // collapses by tapping its header/chevron, so
@@ -914,11 +921,6 @@ public struct FundsView: View {
                             }
                         }
                     }
-                    Divider()
-                    CharityRateSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames)
-                        // Walkthrough anchor (build 48): the rate
-                        // editor — "change the rate, or turn it off".
-                        .tourAnchor(.charityRules, tour: appState.tour)
                     Divider()
                     charityActivitySection
                 }
@@ -1375,10 +1377,17 @@ public struct FundsView: View {
                 // was the only pale button that also carried an
                 // outline, and the outline is what made it read
                 // as unfinished next to the other pale buttons.
+                // Build 56 (owner, Nov 22, 2026): the pale fill is
+                // gone too — the bar is now a WHITE background with
+                // a brand-black INK #0f172a outline only (1.5pt),
+                // ink text and ink chevron, NOT a solid fill, so
+                // it sits with everything else without
+                // overpowering it. The outline supersedes the
+                // build-53 removal (owner direction).
                 // Squarish rounded edges (cornerRadius 10, the
                 // no-pills rule), full width — it reads as
                 // something to tap. The chevron is a real SF Symbol
-                // (`chevron.down`, primary blue), rotating 180° when
+                // (`chevron.down`, ink), rotating 180° when
                 // open; the "⌄" text character is gone. Press
                 // feedback via DimOnPress (opacity dip while held).
                 Button {
@@ -1391,14 +1400,18 @@ public struct FundsView: View {
                         Spacer()
                         Image(systemName: "chevron.down")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(DesignTokens.primary)
+                            .foregroundStyle(DesignTokens.ink)
                             .rotationEffect(.degrees(openMore == section ? 180 : 0))
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity)
-                    .background(DesignTokens.pale)
+                    .background(Color.white)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(DesignTokens.ink, lineWidth: 1.5)
+                    )
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(DimOnPressButtonStyle())
