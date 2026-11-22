@@ -43,6 +43,8 @@
 		E6E6E6E6E6E6E6E6E6E6E6E6 /* LinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = E5E5E5E5E5E5E5E5E5E5E5E5 /* LinkKit */; };
 		B5B5B5B5B5B5B5B5B5B5B5B5 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */; };
 		D7D7D7D7D7D7D7D7D7D7D7D7 /* TransactionSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C7C7C7C7C7C7C7C7C7C7C7 /* TransactionSearchTests.swift */; };
+		8C3616087BC84C7EA3CEE9F6 /* StatCardThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17828114EEDE443F93421E99 /* StatCardThemeTests.swift */; };
+		A8F60F46B088445191EAB9BC /* TransactionIconLookupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 106590F759B44F91B1BE2937 /* TransactionIconLookupTests.swift */; };
 		9C9C9C9C9C9C9C9C9C9C9C9C /* OnBudgetUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9A9A9A9A9A9A9A9A9A9A9A /* OnBudgetUITests.swift */; };
 		9C9C9C9C9C9C9C9C9C9C9C9D /* UITestSecrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9A9A9A9A9A9A9A9A9A9A9C /* UITestSecrets.swift */; };
 		B6B6B6B6B6B6B6B6B6B6B6B6 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = E3E3E3E3E3E3E3E3E3E3E3E3 /* OnBudgetKit */; };
@@ -144,6 +146,8 @@
 		A4A4A4A4A4A4A4A4A4A4A4A4 /* OnBudget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OnBudget.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
 		C7C7C7C7C7C7C7C7C7C7C7C7 /* TransactionSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionSearchTests.swift; sourceTree = "<group>"; };
+		17828114EEDE443F93421E99 /* StatCardThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatCardThemeTests.swift; sourceTree = "<group>"; };
+		106590F759B44F91B1BE2937 /* TransactionIconLookupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionIconLookupTests.swift; sourceTree = "<group>"; };
 		A6A6A6A6A6A6A6A6A6A6A6A6 /* OnBudgetTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OnBudgetTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9A9A9A9A9A9A9A9A9A9A9A9A /* OnBudgetUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnBudgetUITests.swift; sourceTree = "<group>"; };
 		9A9A9A9A9A9A9A9A9A9A9A9C /* UITestSecrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestSecrets.swift; sourceTree = "<group>"; };
@@ -317,6 +321,8 @@
 			children = (
 				A5A5A5A5A5A5A5A5A5A5A5A5 /* SmokeTests.swift */,
 				C7C7C7C7C7C7C7C7C7C7C7C7 /* TransactionSearchTests.swift */,
+				17828114EEDE443F93421E99 /* StatCardThemeTests.swift */,
+				106590F759B44F91B1BE2937 /* TransactionIconLookupTests.swift */,
 			);
 			path = OnBudgetTests;
 			sourceTree = "<group>";
@@ -570,6 +576,8 @@
 			files = (
 				B5B5B5B5B5B5B5B5B5B5B5B5 /* SmokeTests.swift in Sources */,
 				D7D7D7D7D7D7D7D7D7D7D7D7 /* TransactionSearchTests.swift in Sources */,
+				8C3616087BC84C7EA3CEE9F6 /* StatCardThemeTests.swift in Sources */,
+				A8F60F46B088445191EAB9BC /* TransactionIconLookupTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
