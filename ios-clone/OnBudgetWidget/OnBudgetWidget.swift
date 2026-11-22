@@ -364,7 +364,12 @@ struct WidgetView: View {
     /// than the old 20pt logo / subheadline wordmark — 24pt logo and
     /// a headline wordmark by default; the small size takes the
     /// compact 22pt form so the stacked layout still fits.
-    private func wordmark(logoSize: CGFloat = 24, font: Font = .headline.weight(.semibold)) -> some View {
+    /// Build 54 (owner, Nov 21, 2026): the TAGE letters are bolder
+    /// (black weight) and slightly larger — they were a drop too
+    /// thin and small next to the S logo. Default 19pt (was
+    /// headline 17pt semibold); the small layout passes 17pt
+    /// (was subheadline 15pt semibold).
+    private func wordmark(logoSize: CGFloat = 24, font: Font = .system(size: 19, weight: .black)) -> some View {
         HStack(spacing: 6) {
             Image("AppLogo")
                 .resizable()
@@ -656,7 +661,7 @@ struct WidgetView: View {
                 // Build 54: the wordmark opens Home; the refresh
                 // button does NOT sit inside the link (it runs the
                 // sync intent in place).
-                wordmark(logoSize: 22, font: .subheadline.weight(.semibold))
+                wordmark(logoSize: 22, font: .system(size: 17, weight: .black))
                     .widgetURL(homeURL)
                 Spacer()
                 refreshButton

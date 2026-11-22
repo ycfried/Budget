@@ -63,7 +63,11 @@ public struct AuthBrandHeader: View {
             // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
             // build 47): the logo + "T · A · G · E", never the logo
             // next to the full word "STAGE" (no second S).
-            StageWordmarkText(font: .system(size: 30, weight: .bold))
+            // Build 54 (owner, Nov 21, 2026): the TAGE letters
+            // are bolder (black weight) and slightly larger
+            // (32pt, was 30pt) — they were a drop too thin and
+            // small next to the S logo.
+            StageWordmarkText(font: .system(size: 32, weight: .black))
         }
         // Centered as a unit (owner, Nov 11, 2026): the header was
         // left-aligned, which read as shifted-left on a wide screen.

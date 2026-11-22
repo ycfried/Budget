@@ -15,7 +15,9 @@ import Foundation
 /// horizontal line with the logo — never stacked above/below it
 /// (owner, Nov 20, 2026 — build 50: the loading screen read
 /// "S" then "TAGE"), never with the full word "STAGE" (no second
-/// S).
+/// S). Build 54 (owner, Nov 21, 2026): the letters are bolder
+/// (black weight) and slightly larger (+2pt at every call site) —
+/// they were a drop too thin and small next to the S logo.
 ///
 /// Call sites: AuthViews AuthBrandHeader, SharedViews
 /// LoadingView, OnBudgetWidget wordmark().

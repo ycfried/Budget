@@ -411,11 +411,12 @@ public struct SuccessBox: View {
 // MARK: - Loading screen
 
 /// Full-screen loading view (live.html:39-43): logo + blue ring,
-/// S logo + "T · A · G · E" wordmark, "Loading Your Household". Shown on first paint and
-/// kept until the first data load completes or fails — never a blank
-/// or half-built page, and never an endless spinner with no error.
-/// The logo wears the animated blue ring (BrandedLoader) — the
-/// iOS spinner is abolished app-wide (owner, Nov 14, 2026).
+/// S logo + "T · A · G · E" wordmark, "Spend, Track & Give Easily".
+/// Shown on first paint and kept until the first data load
+/// completes or fails — never a blank or half-built page, and never
+/// an endless spinner with no error. The logo wears the animated
+/// blue ring (BrandedLoader) — the iOS spinner is abolished
+/// app-wide (owner, Nov 14, 2026).
 public struct LoadingView: View {
     public init() {}
     public var body: some View {
@@ -434,11 +435,31 @@ public struct LoadingView: View {
                 // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
                 // build 47): the logo + "T · A · G · E", never the logo
                 // next to the full word "STAGE" (no second S).
-                StageWordmarkText(font: .system(size: 28, weight: .bold))
+                // Build 54 (owner, Nov 21, 2026): the TAGE letters
+                // are bolder (black weight) and slightly larger
+                // (30pt, was 28pt) — they were a drop too thin and
+                // small next to the S logo.
+                StageWordmarkText(font: .system(size: 30, weight: .black))
             }
-            Text("Loading Your Household")
-                .font(.system(size: 15))
-                .foregroundStyle(Color(hex: "#6b7280"))
+            // Build 54 (owner, Nov 21, 2026): the loading page says
+            // the tagline "Spend, Track & Give Easily" instead of
+            // "Loading Your Household" — each word in its own brand
+            // colour, matching its STAGE letter: Spend = S =
+            // primary #2f6bff, Track = T = stageBlue #0288dd,
+            // Give = G = charity #16a34a, Easily = E = deep
+            // #1d4ed8. The punctuation stays muted so the four
+            // words are the coloured elements. Same 15pt size as
+            // the old line; semibold so it reads as a tagline, not
+            // a caption.
+            (
+                Text("Spend").foregroundStyle(DesignTokens.primary)
+                + Text(", ").foregroundStyle(DesignTokens.muted)
+                + Text("Track").foregroundStyle(DesignTokens.stageBlue)
+                + Text(" & ").foregroundStyle(DesignTokens.muted)
+                + Text("Give").foregroundStyle(DesignTokens.charity)
+                + Text(" Easily").foregroundStyle(DesignTokens.deep)
+            )
+            .font(.system(size: 15, weight: .semibold))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.background)
