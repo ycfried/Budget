@@ -487,6 +487,9 @@ public struct DebtRuleSection: View {
                     saveRule()
                 }
             }
+            // Identifier for a UI test to find the picker+Apply row
+            // and prove both sit on the same line at iPhone width.
+            .accessibilityIdentifier("debt-rule-picker-apply-row")
             // The field row (build 56, owner Nov 22, 2026): the %
             // or $ editor, full width below the picker+Apply row
             // — Save + Reset are gone (Reset removed entirely).
