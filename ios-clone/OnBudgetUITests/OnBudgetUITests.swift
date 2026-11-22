@@ -175,6 +175,14 @@ final class OnBudgetUITests: XCTestCase {
         // sign-out path; AppState.signOut dismisses Settings and
         // lands on the auth screen). The Profile card is first in
         // Settings, so its Sign Out button needs no scrolling.
+        // Clear any overlay first: run 44980488090's
+        // testHomeHeroAmountAndDonut and testTabBarIsAtBottom both
+        // died here — the Profile tap failed to scroll into view
+        // (kAXErrorCannotComplete), which is what an overlay
+        // (walkthrough, or the notifications alert) covering Home
+        // looks like from XCTest.
+        dismissTourIfPresent()
+        dismissNotificationAlertIfPresent()
         app.buttons["Profile"].tap()
         let settingsItem = app.buttons["Settings"]
         XCTAssertTrue(
@@ -1181,14 +1189,11 @@ final class OnBudgetUITests: XCTestCase {
 
     /// Signs in via the app UI with the given credentials. The
     /// account is already confirmed, so there is no "Check Your
-    /// Email" step.
-    /// Verifies what was actually typed before tapping Sign In:
-    /// run 44970315808's sign-ins failed with "Username or password
-    /// is incorrect." for valid credentials, and the failure only
-    /// surfaced 90 s later as "Household screen did not appear"
-    /// because nothing checked the typed values. A mismatch here
-    /// fails fast WITH the evidence (typed vs expected) instead of
-    /// burning a 90 s wait on a doomed sign-in.
+    /// Email" step. tapAndTypeText verifies each typed value
+    /// settled (see its comment — the AX value read races the
+    /// typing), so a garbled credential fails here with the
+    /// evidence instead of burning a 90 s wait on a doomed
+    /// sign-in.
     private func signInWithAccount(email: String, password: String) {
         let emailField = app.textFields["auth.email"]
         XCTAssertTrue(
@@ -1196,24 +1201,12 @@ final class OnBudgetUITests: XCTestCase {
             "Auth screen did not appear: no email field within 60s of launch"
         )
         tapAndTypeText(emailField, email, fieldName: "auth.email")
-        XCTAssertEqual(
-            emailField.value as? String, email,
-            "Typed email differs from the created account (typeText garbled it?) — typed: \(emailField.value as? String ?? "(nil)")"
-        )
         let passwordField = app.secureTextFields["auth.password"]
         XCTAssertTrue(
             passwordField.waitForExistence(timeout: 10),
             "Password field missing on the auth screen"
         )
         tapAndTypeText(passwordField, password, fieldName: "auth.password")
-        // A secure field's value is its bullets — one per typed
-        // character. A dropped character (run 44970315808) shows
-        // up here as a short count before the sign-in is attempted.
-        let bulletCount = (passwordField.value as? String)?.count ?? 0
-        XCTAssertEqual(
-            bulletCount, password.count,
-            "Typed password has \(bulletCount) characters, expected \(password.count) — typeText dropped a character"
-        )
         dismissKeyboardIfPresent(focusedField: passwordField)
         app.buttons["auth.signIn"].tap()
     }
@@ -1517,10 +1510,48 @@ final class OnBudgetUITests: XCTestCase {
             if waitForKeyboardFocus(field, timeout: 5) {
                 clearField(field, fieldName: fieldName)
                 field.typeText(text)
+                // Verify the typed value SETTLED — do not trust a
+                // single read right after typing. The AX `value`
+                // lags the field: run 44980488090 proved it — the
+                // email assert read "iosclonevideo" (12 of 36
+                // chars) in one test and the placeholder "Email"
+                // (empty) in the next, while the message built in
+                // the SAME assert call already saw the full email.
+                // So poll until the value matches (up to 5 s) and
+                // only then return; a value that never settles is
+                // a real typing failure, reported with the actual
+                // value instead of a stale snapshot. Secure fields
+                // read back as bullets — compare the COUNT.
+                verifyTypedValue(field, text: text, fieldName: fieldName)
                 return
             }
         }
         XCTFail("Field \(fieldName) never gained keyboard focus after 3 taps — cannot type")
+    }
+
+    /// Polls until the field's value matches what was just typed
+    /// (or the bullet count, for secure fields), up to 5 s. See
+    /// tapAndTypeText: a single immediate read races the AX
+    /// snapshot and can return a partial or placeholder value
+    /// even though the typing landed fine.
+    private func verifyTypedValue(_ field: XCUIElement, text: String, fieldName: String) {
+        let isSecure = field.elementType == .secureTextField
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if isSecure {
+                let bullets = (field.value as? String)?.count ?? 0
+                if bullets == text.count { return }
+            } else if fieldText(field) == text {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        if isSecure {
+            let bullets = (field.value as? String)?.count ?? 0
+            XCTFail("Field \(fieldName): typed password has \(bullets) characters, expected \(text.count) — typeText dropped a character")
+        } else {
+            XCTFail("Field \(fieldName): typed value differs from expected — typed: \(fieldText(field)); expected: \(text)")
+        }
     }
 
     /// The field's real text, or "" when it is empty. A
@@ -1694,7 +1725,12 @@ final class OnBudgetUITests: XCTestCase {
     /// it again next test — the helper runs every preamble).
     private func dismissTourIfPresent() {
         let skip = app.buttons["Skip"]
-        if skip.waitForExistence(timeout: 10) {
+        // 3 s is enough: the tour triggers on Home appear, so by
+        // the time any caller runs, it is either already showing
+        // or never will be for this account. (A 10 s wait here
+        // burned 10 s in every test whose tour was already gone —
+        // ~100 s a run — for no benefit.)
+        if skip.waitForExistence(timeout: 3) {
             skip.tap()
             Thread.sleep(forTimeInterval: 1)
         }
