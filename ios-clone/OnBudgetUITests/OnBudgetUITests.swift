@@ -134,16 +134,35 @@ final class OnBudgetUITests: XCTestCase {
         let emailField = app.textFields["auth.email"]
         if emailField.waitForExistence(timeout: 10) { return }
 
-        // No auth screen: the app must be signed in. The tab bar is
-        // the proof — anything else (a stuck launch, an expired
-        // session) is a state this helper cannot recover from, so
-        // fail fast with the actual state instead of burning the
-        // 60s auth wait in signUpFreshAccount.
+        // No auth screen: the app must be signed in. It is either on
+        // Home (tab bar visible) or on the Household screen — a
+        // previous test failed between sign-in and join, so the
+        // account has no household yet. The Household screen has no
+        // sign-out, so join the test household first and sign out
+        // from Home. (Without this branch, one preamble failure
+        // poisons the whole suite: every later setUp fails here,
+        // run 44963752823 proved it — 11 tests died in setUp after
+        // the first test left the app signed-in on the Household
+        // screen.) A stuck launch or an expired session is a state
+        // this helper cannot recover from, so fail fast with the
+        // actual state instead of burning the 60s auth wait in
+        // signUpFreshAccount.
         let homeTab = app.tabBars.buttons["tab.home"]
-        XCTAssertTrue(
-            homeTab.waitForExistence(timeout: 10),
-            "Neither the auth screen nor the signed-in Home appeared within ~20s of launch — cannot start from a known state"
-        )
+        if !homeTab.waitForExistence(timeout: 10) {
+            let inviteField = app.textFields["household.inviteCode"]
+            if inviteField.waitForExistence(timeout: 10) {
+                tapAndTypeText(inviteField, testInviteCode, fieldName: "household.inviteCode")
+                dismissKeyboardIfPresent(focusedField: inviteField)
+                app.buttons["household.joinAsMember"].tap()
+                XCTAssertTrue(
+                    app.staticTexts["Weekly Budget"].waitForExistence(timeout: 90),
+                    "Home did not render after joining the test household from setUp recovery"
+                )
+            } else {
+                XCTFail("Neither the auth screen, the signed-in Home, nor the Household screen appeared within ~30s of launch — cannot start from a known state")
+                return
+            }
+        }
 
         // Profile menu → Settings → Sign Out (the app's own
         // sign-out path; AppState.signOut dismisses Settings and
@@ -987,10 +1006,21 @@ final class OnBudgetUITests: XCTestCase {
     /// XCTAssertTrue with continueAfterFailure=false aborts before
     /// any screenshot, so the wait captures the stuck state and
     /// the diagnosis names it.
-    private func waitForElement(_ element: XCUIElement, timeout: TimeInterval, screenshotName: String, message: String) {
+    /// Waits for an element, screenshotting + failing with `message`
+    /// when it never appears. The message is an @autoclosure on
+    /// purpose — build 53's first simulator run proved why: a plain
+    /// String argument evaluates the diagnostic BEFORE the wait
+    /// starts, so `diagnosePostSignInState()` ran one second after
+    /// the sign-in tap, mid-transition, and its
+    /// `allElementsBoundByIndex` walk hit a hierarchy that was
+    /// changing under it ("Failed to get matching snapshot", run
+    /// 44963752823) — failing the test before the wait even began.
+    /// Lazy, the diagnostic only runs after the wait has actually
+    /// failed, when the screen has been stable for the whole timeout.
+    private func waitForElement(_ element: XCUIElement, timeout: TimeInterval, screenshotName: String, message: @autoclosure () -> String) {
         if element.waitForExistence(timeout: timeout) { return }
         attachScreenshot(named: screenshotName)
-        XCTFail(message)
+        XCTFail(message())
     }
 
     /// Steps 1–4 of the milestone proof, WITHOUT the public
