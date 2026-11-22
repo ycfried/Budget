@@ -393,6 +393,61 @@ final class OnBudgetUITests: XCTestCase {
         )
         attachScreenshot(named: "09-export-popup")
 
+        // -- Filter picker (build 61) -------------------------------
+        // Choosing Filtered must let the user pick HOW to filter —
+        // kind, date range, amount, account. The controls live in
+        // the popup; picking a kind updates the summary and the
+        // count, and Clear Filters restores the no-filters state.
+        let kindPicker = app.buttons["export.filter.kind"]
+        XCTAssertTrue(
+            kindPicker.waitForExistence(timeout: 15),
+            "Kind filter picker missing on Export popup"
+        )
+        XCTAssertTrue(
+            app.buttons["export.filter.when"].waitForExistence(timeout: 15),
+            "Date filter missing on Export popup"
+        )
+        XCTAssertTrue(
+            app.buttons["export.filter.card"].waitForExistence(timeout: 15),
+            "Account filter picker missing on Export popup"
+        )
+        XCTAssertTrue(
+            app.textFields["export.filter.min"].waitForExistence(timeout: 15),
+            "Min amount field missing on Export popup"
+        )
+        XCTAssertTrue(
+            app.textFields["export.filter.max"].waitForExistence(timeout: 15),
+            "Max amount field missing on Export popup"
+        )
+        kindPicker.tap()
+        let chargeOption = app.menuItems["Charge"]
+        XCTAssertTrue(
+            chargeOption.waitForExistence(timeout: 15),
+            "Kind menu did not offer Charge"
+        )
+        chargeOption.tap()
+        // The summary now names the picked kind, and the count
+        // still shows (the filtered count).
+        let summaryCharge = app.staticTexts
+            .containing(NSPredicate(format: "label CONTAINS 'Charge'")).firstMatch
+        XCTAssertTrue(
+            summaryCharge.waitForExistence(timeout: 15),
+            "Filter summary did not show the picked kind"
+        )
+        XCTAssertTrue(
+            app.staticTexts["export.count"].waitForExistence(timeout: 30),
+            "Count disappeared after picking a kind filter"
+        )
+        attachScreenshot(named: "09-export-filtered-kind")
+        // Clear Filters restores the no-filters state.
+        app.buttons["export.filter.clear"].tap()
+        let summaryClear = app.staticTexts
+            .containing(NSPredicate(format: "label CONTAINS 'No filters active'")).firstMatch
+        XCTAssertTrue(
+            summaryClear.waitForExistence(timeout: 15),
+            "Clear Filters did not restore the no-filters summary"
+        )
+
         // -- Generate (PDF, filtered) opens the PREVIEW first ----
         // Build 59 (owner, Nov 22, 2026): a PDF is previewed
         // in-app before anything is shared — Generate opens the

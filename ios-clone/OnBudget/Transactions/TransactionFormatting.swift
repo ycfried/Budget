@@ -574,6 +574,15 @@ public enum WhenSelection: Equatable {
 /// whole household history page (live.js:751-756).
 public struct TransactionFilters: Equatable {
     public var status: TransactionStatusFilter = .all
+    /// Transaction kind, or nil for any kind (build 61 — export
+    /// filter picker, owner Nov 22, 2026: "what kind of
+    /// transaction"). The list's `status` covers only a few kinds
+    /// (refunds / charity / spending / extra fund); a kind pick
+    /// covers all eight concrete kinds (charge / refund / fund
+    /// charge / payment / cashback / transfer / income / charity).
+    /// `.other` rows match only under "any kind" — the picker
+    /// never offers an open-ended kind.
+    public var kind: TransactionKind? = nil
     /// `YYYY-MM`, or "all".
     public var month: String = "all"
     /// Card suffix, or "all".
@@ -601,7 +610,7 @@ public struct TransactionFilters: Equatable {
     /// True when any search or filter is active (drives the
     /// no-match empty copy).
     public var isSearchOrFilterActive: Bool {
-        status != .all || month != "all" || card != "all" || weekOnly
+        status != .all || kind != nil || month != "all" || card != "all" || weekOnly
             || !fromDate.isEmpty || !toDate.isEmpty
             || minCents != nil || maxCents != nil
             || !search.trimmingCharacters(in: .whitespaces).isEmpty
@@ -622,6 +631,10 @@ public struct TransactionFilters: Equatable {
     public func activeChips(customNames: [String: String]) -> [(key: String, label: String)] {
         var chips: [(String, String)] = []
         if status != .all { chips.append(("status", status.label(customNames: customNames))) }
+        // Kind (build 61 — export filter picker): the picked kind
+        // reads by its export name ("Fund Charge", not the raw
+        // enum), right after the status chip.
+        if let kind { chips.append(("kind", TransactionExport.kindName(forKind: kind))) }
         if card != "all" { chips.append(("card", "••\(card)")) }
         // ONE date chip at most, from the single "When" choice —
         // never a "From" chip and a "To" chip, never a week chip
@@ -646,6 +659,7 @@ public struct TransactionFilters: Equatable {
     public mutating func clearChip(_ key: String) {
         switch key {
         case "status": status = .all
+        case "kind": kind = nil
         case "month": month = "all"
         case "card": card = "all"
         case "week": weekOnly = false
@@ -678,6 +692,25 @@ public struct TransactionFilters: Equatable {
     public mutating func setToDate(_ date: String) {
         toDate = date
         if !date.isEmpty { weekOnly = false }
+    }
+
+    /// Pick a kind (build 61 — export filter picker): the kind
+    /// subsumes the kind-ish statuses, so picking one clears a
+    /// kind-ish status (refunds / charity / spending / extra fund)
+    /// — otherwise kind + status AND to an empty set (a kind of
+    /// Income with a Spending status matches nothing, and the user
+    /// sees an empty export for a pick that should match). A
+    /// state-ish status (pending / posted) composes with a kind
+    /// and is left alone; picking "All kinds" (nil) leaves the
+    /// status alone too.
+    public mutating func setKind(_ kind: TransactionKind?) {
+        self.kind = kind
+        if kind != nil {
+            switch status {
+            case .refunds, .charity, .spending, .extraFund: status = .all
+            case .all, .pending, .posted: break
+            }
+        }
     }
 
     /// The stored date fields as the single "When" choice. A stored
@@ -737,6 +770,12 @@ public struct TransactionFilters: Equatable {
             case .extraFund: guard tx.kind == .fundCharge else { return false }
             case .all: break
             }
+            // Kind (build 61 — export filter picker): an AND with
+            // the status above — a kind pick already clears a
+            // kind-ish status (see setKind), so the two cannot
+            // contradict; a state-ish status (pending / posted)
+            // composes with a kind.
+            if let kind, tx.kind != kind { return false }
             if month != "all", !tx.date.hasPrefix(month) { return false }
             if card != "all", tx.cardSuffix != card { return false }
             if weekOnly, !(tx.date >= week.start && tx.date <= week.end) { return false }

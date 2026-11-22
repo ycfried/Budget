@@ -13,20 +13,34 @@ import OnBudgetKit
 /// auto-emailed or auto-saved anywhere — the sheet is the choice.
 /// Read-only: it never changes transactions.
 ///
+/// Choosing Filtered opens the filter picker (build 61, Nov 22,
+/// 2026 — owner: "Once choosing filtered you should have to select
+/// how to filter"): kind, date range, amount, and account, picked
+/// right here before exporting. The picks edit a draft of the
+/// shared `TransactionFilters` (one filter system — the same
+/// `apply(to:)` the list uses, never a second one); the count and
+/// the summary update live as the user picks, and Generate commits
+/// the draft to the list's filter, so the list and the export agree
+/// after an export. Cancel discards the draft and leaves the list
+/// untouched — the same snapshot/draft/apply/cancel pattern as the
+/// list's Filters sheet.
+///
 /// The full history is fetched once, in the background, when the
 /// popup opens — the list page only ever holds the rows loaded so
 /// far (25 at a time), so exporting the loaded page alone would
 /// silently miss the rows the user never tapped Load More for.
 /// Switching scope never refetches: the filtered scope applies the
-/// active `TransactionFilters` to the fetched rows, Export all
-/// passes them through untouched.
+/// draft filter to the fetched rows, Export all passes them
+/// through untouched.
 ///
 /// Design rules: Title Case headings and labels; two-button row
 /// primary blue first + grey tertiary second; no greyed-out
 /// buttons — Generate stays tappable and duplicate taps are
-/// ignored (the `isSaving` guard pattern); loading is shimmer
-/// skeletons, no spinner, no "Loading..." text; errors are the
-/// soft-red box with dark red text.
+/// ignored (the `isSaving` guard pattern), except a min-above-max
+/// amount range, which disables Generate the same way the list's
+/// Filters sheet disables Apply (the error box above already says
+/// why); loading is shimmer skeletons, no spinner, no "Loading..."
+/// text; errors are the soft-red box with dark red text.
 public struct TransactionExportView: View {
     @Bindable var viewModel: TransactionsViewModel
     /// The household name the shell already loaded
@@ -38,6 +52,25 @@ public struct TransactionExportView: View {
 
     @State private var scope: TransactionExportScope = .filtered
     @State private var format: TransactionExportFormat = .pdf
+    /// Draft of the shared filter (build 61 — export filter
+    /// picker): starts from the list's active filter, so an
+    /// export of the list's filtered view needs no re-picking.
+    /// The pickers edit this draft live; Generate commits it to
+    /// `viewModel.filters`, Cancel discards it.
+    @State private var draftFilters: TransactionFilters
+    /// Amount text (the draft's bounds live as text until parsed
+    /// — same as the list's Filters sheet: blank / unparseable =
+    /// no limit; min > max is a validation state, not an empty
+    /// result).
+    @State private var minText: String
+    @State private var maxText: String
+    /// Which amount field holds the keyboard — the decimal pad
+    /// has no return key, so the keyboard toolbar's Done button
+    /// is the only way out (owner, Nov 13, 2026).
+    @FocusState private var focusedField: AmountField?
+
+    private enum AmountField: Hashable { case min, max }
+
     /// The whole household history, fetched once on open (nil
     /// until it arrives). Scope switching re-slices this, never
     /// refetches.
@@ -57,63 +90,148 @@ public struct TransactionExportView: View {
         self.viewModel = viewModel
         self.householdName = householdName
         self.onDismiss = onDismiss
+        _draftFilters = State(initialValue: viewModel.filters)
+        _minText = State(initialValue: viewModel.filters.minCents.map { String(format: "%.2f", Double($0) / 100.0) } ?? "")
+        _maxText = State(initialValue: viewModel.filters.maxCents.map { String(format: "%.2f", Double($0) / 100.0) } ?? "")
+    }
+
+    /// The kinds the picker offers (build 61): the eight concrete
+    /// kinds, in the order the owner listed them — "All kinds" is
+    /// the nil option, not a case. `.other` rows match only under
+    /// "All kinds".
+    private static let filterKinds: [TransactionKind] = [
+        .charge, .income, .charity, .refund, .transfer, .payment, .cashback, .fundCharge,
+    ]
+
+    /// Card suffixes in the fetched full history (the account
+    /// picker) — from the whole history, not the list's loaded
+    /// page, so an account with only older rows still appears.
+    private var cardsInHistory: [String] {
+        guard let allRows else { return [] }
+        return TransactionFilters.cards(in: allRows)
+    }
+
+    /// The kind picker's selection: picking a concrete kind runs
+    /// `setKind`, which clears a kind-ish status so kind + status
+    /// cannot AND to an empty set (see TransactionFilters.setKind).
+    private var kindBinding: Binding<TransactionKind?> {
+        Binding(get: { draftFilters.kind }, set: { draftFilters.setKind($0) })
+    }
+
+    /// The When picker's selection: the single "When" choice, read
+    /// from and written to the draft's date fields.
+    private var whenBinding: Binding<WhenSelection> {
+        Binding(get: { draftFilters.whenSelection }, set: { draftFilters.setWhenSelection($0) })
+    }
+
+    /// Draft amount bounds are invalid when both ends parse and
+    /// min > max — a validation state, not an empty result (same
+    /// as the list's Filters sheet).
+    private var draftAmountInvalid: Bool {
+        guard let min = TransactionFormatting.parseDollarsStrict(minText),
+              let max = TransactionFormatting.parseDollarsStrict(maxText) else { return false }
+        return min > max
     }
 
     /// The rows this scope covers, in export order (filtered:
-    /// the active filters + sort; all: date desc, as fetched).
+    /// the DRAFT filter + sort; all: date desc, as fetched).
+    /// The preview and the file are built from this same array,
+    /// so the count, the preview, and the file can never disagree.
     private var rowsForScope: [Transaction] {
         guard let allRows else { return [] }
         switch scope {
         case .all: return allRows
-        case .filtered: return viewModel.filters.apply(to: allRows)
+        case .filtered: return draftFilters.apply(to: allRows)
         }
     }
 
-    /// The filter summary under the scope picker: the active
-    /// filters as "This Week · Spending", or the no-filters line.
+    /// The filter summary under the scope picker: the DRAFT's
+    /// active filters as "This Week · Spending", or the
+    /// no-filters line. Live — it updates as the user picks.
     private var filterSummary: String {
-        let chips = viewModel.filters.activeChips(customNames: viewModel.fundNames)
+        let chips = draftFilters.activeChips(customNames: viewModel.fundNames)
         if chips.isEmpty { return "No filters active — this exports every transaction." }
         return chips.map(\.label).joined(separator: " · ")
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: "Export Transactions", onClose: onDismiss)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    scopeSection
-                    formatSection
-                    statusSection
-                    TwoButtonRow {
-                        Button(format == .pdf ? "Preview PDF" : "Export as CSV") { generate() }
-                            .buttonStyle(PrimaryButtonStyle())
-                            .accessibilityIdentifier("export.generate")
-                    } secondary: {
-                        Button("Cancel") { onDismiss() }
-                            .buttonStyle(TertiaryButtonStyle())
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 0) {
+                SheetHeader(title: "Export Transactions", onClose: onDismiss)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        scopeSection
+                        // The filter picker (build 61): only for
+                        // Filtered — All needs no picks.
+                        if scope == .filtered {
+                            filterSection
+                        }
+                        formatSection
+                        statusSection
+                        TwoButtonRow {
+                            Button(format == .pdf ? "Preview PDF" : "Export as CSV") { generate() }
+                                .buttonStyle(PrimaryButtonStyle())
+                                .accessibilityIdentifier("export.generate")
+                                // A min-above-max range disables
+                                // Generate the same way the list's
+                                // Filters sheet disables Apply —
+                                // the error box above already says
+                                // why. Only in Filtered scope: the
+                                // draft does not apply to All.
+                                .disabled(scope == .filtered && draftAmountInvalid)
+                        } secondary: {
+                            Button("Cancel") { onDismiss() }
+                                .buttonStyle(TertiaryButtonStyle())
+                        }
+                        // Clear Filters is a real button (owner, Nov
+                        // 14, 2026 — a plain grey link under the
+                        // buttons did not read as tappable).
+                        // Full-width outline, below the Generate /
+                        // Cancel row — a third button in a different
+                        // treatment, so no two adjacent buttons
+                        // share a colour. Filtered scope only.
+                        if scope == .filtered {
+                            Button("Clear Filters") { clearDraftFilters() }
+                                .buttonStyle(OutlineButtonStyle())
+                                .accessibilityIdentifier("export.filter.clear")
+                        }
+                        // Progress, inline: the Generate button is
+                        // never greyed out — a duplicate tap while a
+                        // file is being built is ignored instead.
+                        if isGenerating {
+                            Text("Preparing your file…")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        }
                     }
-                    // Progress, inline: the Generate button is
-                    // never greyed out — a duplicate tap while a
-                    // file is being built is ignored instead.
-                    if isGenerating {
-                        Text("Preparing your file…")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                            .frame(maxWidth: .infinity, alignment: .center)
-                    }
+                    .padding()
                 }
-                .padding()
+                // Dragging the sheet dismisses the keyboard too —
+                // the number pad has no return key, so Done + drag
+                // are the two ways out (owner, Nov 13, 2026).
+                .scrollDismissesKeyboard(.interactively)
             }
+            .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+            .accessibilityIdentifier("export.popup")
         }
-        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        .accessibilityIdentifier("export.popup")
         .task {
             resolvedHouseholdName = householdName
             if resolvedHouseholdName == nil {
                 resolvedHouseholdName = await viewModel.fetchHouseholdName()
             }
             await fetchAllRows()
+        }
+        .toolbar {
+            // Keyboard Done (owner, Nov 13, 2026): the decimal
+            // pad has no return key and no other way to dismiss
+            // it — this button resigns the amount field.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedField = nil }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(DesignTokens.primary)
+            }
         }
         .sheet(isPresented: Binding(
             get: { shareURL != nil },
@@ -156,6 +274,167 @@ public struct TransactionExportView: View {
         }
     }
 
+    /// The filter picker (build 61, Nov 22, 2026 — owner: "Once
+    /// choosing filtered you should have to select how to
+    /// filter"): kind, date range, amount, and account. Every
+    /// pick is optional — an unset pick means "any" — and picks
+    /// combine (AND), so kind + account + date + amount narrows
+    /// to the intersection. The controls reuse the list's Filters
+    /// sheet treatment (white field, 1pt #e5e7eb border,
+    /// cornerRadius 10, 40pt, ink tint) and its patterns: the Kind
+    /// and Card menu pickers, the one-button-one-calendar When
+    /// control, and the Min/Max amount fields with a $ prefix and
+    /// a decimal pad. The count and the summary above update live
+    /// as the user picks — the draft applies to the fetched rows
+    /// on every change.
+    private var filterSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Filter By")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            // Kind — the picker value says it.
+            Picker("Kind", selection: kindBinding) {
+                Text("All kinds").tag(nil as TransactionKind?)
+                ForEach(Self.filterKinds, id: \.self) { kind in
+                    Text(TransactionExport.kindName(forKind: kind)).tag(kind as TransactionKind?)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(DesignTokens.ink)
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .padding(.horizontal, 10)
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .accessibilityIdentifier("export.filter.kind")
+
+            // When — ONE button + ONE calendar (owner, Nov 11,
+            // 2026). The button shows the range; the calendar
+            // picks a start date, then an end date.
+            NavigationLink {
+                DateRangeCalendarView(selection: whenBinding)
+            } label: {
+                HStack {
+                    Text(draftFilters.whenSelection.label)
+                        .font(.system(size: 15))
+                        .foregroundStyle(DesignTokens.ink)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                .background(.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .accessibilityIdentifier("export.filter.when")
+
+            // Card / Account — the picker value says it. The
+            // options come from the fetched full history, so an
+            // account with only older rows still appears.
+            Picker("Card", selection: $draftFilters.card) {
+                Text("All cards").tag("all")
+                ForEach(cardsInHistory, id: \.self) { card in
+                    Text("••\(card)").tag(card)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(DesignTokens.ink)
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .padding(.horizontal, 10)
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .accessibilityIdentifier("export.filter.card")
+
+            // Amount — Min / Max side by side, same as the list's
+            // Filters sheet.
+            amountBlock
+        }
+    }
+
+    /// Amount — draft-held like the rest; the validation reads
+    /// the draft text, not the live filter. Min / Max carry
+    /// visible labels above the fields, and the fields share the
+    /// sheet's white-bg + 1pt #e5e7eb border + cornerRadius 10
+    /// treatment. The $ is a fixed prefix inside the field
+    /// (owner, Nov 13, 2026) — display only, never part of the
+    /// typed text, so parsing is unchanged. Bounds compare to the
+    /// SIGNED amount, same as the list's filter; either end alone
+    /// works; blank / unparseable = no limit.
+    private var amountBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Min")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    HStack(spacing: 2) {
+                        Text("$")
+                            .font(.system(size: 17))
+                            .foregroundStyle(DesignTokens.ink)
+                        TextField("0.00", text: $minText)
+                            .keyboardType(.decimalPad)
+                            .focused($focusedField, equals: .min)
+                            .accessibilityIdentifier("export.filter.min")
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
+                    .background(.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Max")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    HStack(spacing: 2) {
+                        Text("$")
+                            .font(.system(size: 17))
+                            .foregroundStyle(DesignTokens.ink)
+                        TextField("0.00", text: $maxText)
+                            .keyboardType(.decimalPad)
+                            .focused($focusedField, equals: .max)
+                            .accessibilityIdentifier("export.filter.max")
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
+                    .background(.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            if draftAmountInvalid {
+                SoftErrorBox("Minimum amount is above the maximum amount — change one of them to see transactions.")
+            }
+        }
+        // The bounds live in the draft, so the count updates as
+        // the user types — the parse runs on every keystroke.
+        .onChange(of: minText) { _, new in
+            draftFilters.minCents = TransactionFormatting.parseDollarsStrict(new)
+        }
+        .onChange(of: maxText) { _, new in
+            draftFilters.maxCents = TransactionFormatting.parseDollarsStrict(new)
+        }
+    }
+
     private var formatSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Format")
@@ -192,9 +471,15 @@ public struct TransactionExportView: View {
             }
             .accessibilityLabel("Loading transactions")
         } else if rowsForScope.isEmpty {
-            SoftErrorBox(scope == .filtered
-                ? "No transactions match the current filters — change the filters or choose All."
-                : "No transactions here yet — nothing to export.")
+            // A min > max range is a validation state, not an
+            // empty result — the amount block above already says
+            // why, so this section stays quiet instead of stacking
+            // a second, misleading "no match" box.
+            if scope != .filtered || !draftAmountInvalid {
+                SoftErrorBox(scope == .filtered
+                    ? "No transactions match the current filters — change the filters or choose All."
+                    : "No transactions here yet — nothing to export.")
+            }
         } else {
             Text("\(rowsForScope.count) transactions")
                 .font(.system(size: 13))
@@ -220,6 +505,22 @@ public struct TransactionExportView: View {
         }
     }
 
+    /// Clear the export picks (build 61): kind, when, card,
+    /// amount bounds, and status back to defaults. The list's
+    /// search text rides along unchanged — the export sheet never
+    /// edits search, and clearing it here would leave the list's
+    /// search box showing text the filter no longer has. Sort is
+    /// untouched (not an export pick). The count and the summary
+    /// update live from the cleared draft.
+    private func clearDraftFilters() {
+        var cleared = TransactionFilters()
+        cleared.search = draftFilters.search
+        cleared.sort = draftFilters.sort
+        draftFilters = cleared
+        minText = ""
+        maxText = ""
+    }
+
     /// Generate the file. A PDF opens the in-app preview
     /// first — the user confirms the finished statement, then
     /// shares it from the preview. A CSV has no preview and
@@ -228,9 +529,18 @@ public struct TransactionExportView: View {
     /// button); a tap before the rows arrive is ignored the
     /// same way. A zero-match scope shows its message instead
     /// of an empty file.
+    ///
+    /// Generate commits the draft to the shared filter (build
+    /// 61): the list and the export agree after an export — one
+    /// filter system. `persistFilters()` only (NOT
+    /// `filterChanged()`): an export must never yank the list
+    /// out of week mode — the list sheet's Cancel avoids
+    /// `filterChanged()` for the same reason.
     private func generate() {
         guard !isGenerating else { return }
         guard allRows != nil, !rowsForScope.isEmpty else { return }
+        viewModel.filters = draftFilters
+        viewModel.persistFilters()
         let scopeRows = rowsForScope
         let fundNames = viewModel.fundNames
         let household = resolvedHouseholdName ?? "Household"
