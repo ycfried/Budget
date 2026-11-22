@@ -24,7 +24,7 @@
 //      invite code Q6GFME. Never the real household, never the
 //      owner's account. (The test admin account's password is lost;
 //      nothing here depends on it.)
-//   Assert Home renders (Weekly Budget card), Transactions loads
+//   Assert Home renders (household title), Transactions loads
 //      rows (the test household holds ~1000 rows — assert non-empty,
 //      not an exact count), and Funds renders (Extra Fund + Charity).
 //   `testPastWeeksAndActivitySubpages` reuses the same preamble
@@ -87,6 +87,17 @@ final class OnBudgetUITests: XCTestCase {
 
     // TEST BACKEND ONLY — Proof Household 2 invite code.
     private let testInviteCode = "Q6GFME"
+    /// TEST BACKEND ONLY — the household the shared preambles join
+    /// ("Proof Household 2", invite Q6GFME). Home's title is the
+    /// household NAME — the hero card is titled by the fund name
+    /// ("Spending"), and "Weekly Budget" is not a visible text
+    /// anywhere on Home (it only exists on the Funds page's Weekly
+    /// Budget Calculator popup), so the old Home waits for
+    /// "Weekly Budget" could never pass even though Home rendered
+    /// fine (proven by run 44970315808's 04-home-missing
+    /// screenshot: Home fully rendered behind the notifications
+    /// alert). Wait for this name, not "Weekly Budget".
+    private let proofHouseholdName = "Proof Household 2"
 
     // TEST BACKEND ONLY — the test household the video tests join
     // ("Goldstein Household", invite XPKVGJ). Was "Simcha House!"
@@ -137,27 +148,23 @@ final class OnBudgetUITests: XCTestCase {
         // No auth screen: the app must be signed in. It is either on
         // Home (tab bar visible) or on the Household screen — a
         // previous test failed between sign-in and join, so the
-        // account has no household yet. The Household screen has no
-        // sign-out, so join the test household first and sign out
-        // from Home. (Without this branch, one preamble failure
-        // poisons the whole suite: every later setUp fails here,
-        // run 44963752823 proved it — 11 tests died in setUp after
-        // the first test left the app signed-in on the Household
-        // screen.) A stuck launch or an expired session is a state
-        // this helper cannot recover from, so fail fast with the
-        // actual state instead of burning the 60s auth wait in
-        // signUpFreshAccount.
+        // account has no household yet. The Household screen HAS its
+        // own Sign Out button (household.signOut, HouseholdViews) —
+        // tap it directly instead of joining first: joining would
+        // render Home and fire the one-time notifications-permission
+        // alert, which then blocks the sign-out taps. (Without this
+        // branch, one preamble failure poisons the whole suite:
+        // every later setUp fails here, run 44963752823 proved it —
+        // 11 tests died in setUp after the first test left the app
+        // signed-in on the Household screen.) A stuck launch or an
+        // expired session is a state this helper cannot recover
+        // from, so fail fast with the actual state instead of
+        // burning the 60s auth wait in signUpFreshAccount.
         let homeTab = app.tabBars.buttons["tab.home"]
         if !homeTab.waitForExistence(timeout: 10) {
             let inviteField = app.textFields["household.inviteCode"]
             if inviteField.waitForExistence(timeout: 10) {
-                tapAndTypeText(inviteField, testInviteCode, fieldName: "household.inviteCode")
-                dismissKeyboardIfPresent(focusedField: inviteField)
-                app.buttons["household.joinAsMember"].tap()
-                XCTAssertTrue(
-                    app.staticTexts["Weekly Budget"].waitForExistence(timeout: 90),
-                    "Home did not render after joining the test household from setUp recovery"
-                )
+                app.buttons["household.signOut"].tap()
             } else {
                 XCTFail("Neither the auth screen, the signed-in Home, nor the Household screen appeared within ~30s of launch — cannot start from a known state")
                 return
@@ -261,13 +268,13 @@ final class OnBudgetUITests: XCTestCase {
             "Funds tab did not show the Funds screen (no Extra Fund card)"
         )
         XCTAssertFalse(
-            app.staticTexts["Weekly Budget"].exists,
-            "Weekly Budget still showing after switching to Funds"
+            app.staticTexts[proofHouseholdName].exists,
+            "Household title still showing after switching to Funds"
         )
         tapTab(identifier: "tab.home", label: "Home")
         XCTAssertTrue(
-            app.staticTexts["Weekly Budget"].waitForExistence(timeout: 30),
-            "Home tab did not return to the Weekly Budget card"
+            app.staticTexts[proofHouseholdName].waitForExistence(timeout: 30),
+            "Home tab did not return to the household title"
         )
         // The bar stays at the bottom after switching tabs.
         XCTAssertGreaterThan(
@@ -656,11 +663,7 @@ final class OnBudgetUITests: XCTestCase {
         // test proceed. This is all before the SCENE-1 marker, so
         // it never shows in the video — it only lengthens the
         // recording preamble.
-        let alertDeadline = Date().addingTimeInterval(75)
-        var alertDismissed = false
-        while Date() < alertDeadline && !alertDismissed {
-            alertDismissed = dismissNotificationAlertIfPresent()
-        }
+        settleNotificationAlertIfNeeded()
         videoMark("HOME-READY")
 
         // -- Scene 1: Home, hold (narration 8.76 + 1.5 gap = 10.26) --
@@ -969,7 +972,8 @@ final class OnBudgetUITests: XCTestCase {
         let labels = app.staticTexts.allElementsBoundByIndex.map(\.label).filter { !$0.isEmpty }
         let errorLike = labels.filter { label in
             let lower = label.lowercased()
-            return lower.contains("invalid") || lower.contains("fail") || lower.contains("error")
+            return lower.contains("invalid") || lower.contains("incorrect") || lower.contains("wrong")
+                || lower.contains("fail") || lower.contains("error") || lower.contains("could not")
                 || lower.contains("rate") || lower.contains("limit") || lower.contains("many")
                 || lower.contains("try again") || lower.contains("expired") || lower.contains("offline")
         }
@@ -996,10 +1000,19 @@ final class OnBudgetUITests: XCTestCase {
         if app.buttons["Sign In Again"].exists {
             return "session-expired screen is showing"
         }
-        if app.staticTexts["Weekly Budget"].exists {
+        if app.textFields["household.inviteCode"].exists {
+            return "still on the Household screen (join did not complete — the invite field is showing; visible text: \(visibleErrorText()))"
+        }
+        // Home's title is the household NAME (either household the
+        // tests join), and the tab bar is the other Home signal.
+        // The old check looked for "Weekly Budget", which is not a
+        // visible text on Home at all — so a fully-rendered Home
+        // was reported as "unknown state" (run 44970315808).
+        if app.staticTexts[proofHouseholdName].exists || app.staticTexts[videoHouseholdName].exists
+            || app.tabBars.buttons["tab.home"].exists || app.tabBars.buttons["Home"].exists {
             return "Home already rendered (the account already has a household?)"
         }
-        return "unknown state (not auth, not boot-error, not session-expired, not Home)"
+        return "unknown state (not auth, not boot-error, not session-expired, not Household screen, not Home)"
     }
 
     /// Wait for an element, screenshotting on failure first:
@@ -1049,11 +1062,17 @@ final class OnBudgetUITests: XCTestCase {
         dismissKeyboardIfPresent(focusedField: inviteField)
         app.buttons["household.joinAsMember"].tap()
 
-        // Home renders.
+        // Home renders — its title is the household NAME
+        // (proofHouseholdName), not "Weekly Budget" (see the
+        // constant's comment). Then settle the one-time
+        // notifications-permission alert before the test proceeds:
+        // it is requested asynchronously after first Home load and
+        // blocks every tap while it is up (run 44970315808).
         waitForElement(
-            app.staticTexts["Weekly Budget"], timeout: 90, screenshotName: "04-home-missing",
+            app.staticTexts[proofHouseholdName], timeout: 90, screenshotName: "04-home-missing",
             message: "Home did not render after joining the household (\(diagnosePostSignInState()))"
         )
+        settleNotificationAlertIfNeeded()
         XCTAssertTrue(
             app.tabBars.buttons["tab.home"].exists
                 || app.tabBars.buttons["Home"].exists,
@@ -1084,10 +1103,15 @@ final class OnBudgetUITests: XCTestCase {
         app.buttons["household.joinAsMember"].tap()
 
         // -- 5. Home renders ---------------------------------------------
+        // Title is the household NAME (proofHouseholdName), not
+        // "Weekly Budget" (see the constant's comment). Then settle
+        // the one-time notifications-permission alert before the
+        // test proceeds (run 44970315808).
         waitForElement(
-            app.staticTexts["Weekly Budget"], timeout: 90, screenshotName: "04-home-missing",
+            app.staticTexts[proofHouseholdName], timeout: 90, screenshotName: "04-home-missing",
             message: "Home did not render after joining the household (\(diagnosePostSignInState()))"
         )
+        settleNotificationAlertIfNeeded()
         XCTAssertTrue(
             app.tabBars.buttons["tab.home"].exists
                 || app.tabBars.buttons["Home"].exists,
@@ -1107,8 +1131,20 @@ final class OnBudgetUITests: XCTestCase {
             return nil
         }
         let runId = UUID().uuidString.lowercased().prefix(8)
-        let email = "ios-clone-video-\(runId)@example.com"
-        let password = "Video-\(runId)-2026!"
+        // Letters + digits ONLY — no "-" or "!" anywhere. Run
+        // 44970315808 proved why: the old password
+        // "Video-<runId>-2026!" made the app show "Username or
+        // password is incorrect." for accounts that sign in fine
+        // via curl with the exact same credentials — XCTest
+        // typeText drops or substitutes characters that need a
+        // keyboard-plane switch ("-" and "!" live on the
+        // numbers/symbols planes), so the submitted password
+        // differed from the created one while looking right (20
+        // dots). The "@" and "." in the email are unavoidable for
+        // a valid address and typed fine; the hyphens are dropped
+        // anyway so the email needs no plane switch either.
+        let email = "iosclonevideo\(runId)@example.com"
+        let password = "Video\(runId)2026"
         var request = URLRequest(url: URL(string: "\(Self.supabaseAuthAdminBase)/users")!)
         request.httpMethod = "POST"
         request.setValue(serviceKey, forHTTPHeaderField: "apikey")
@@ -1131,6 +1167,13 @@ final class OnBudgetUITests: XCTestCase {
     /// Signs in via the app UI with the given credentials. The
     /// account is already confirmed, so there is no "Check Your
     /// Email" step.
+    /// Verifies what was actually typed before tapping Sign In:
+    /// run 44970315808's sign-ins failed with "Username or password
+    /// is incorrect." for valid credentials, and the failure only
+    /// surfaced 90 s later as "Household screen did not appear"
+    /// because nothing checked the typed values. A mismatch here
+    /// fails fast WITH the evidence (typed vs expected) instead of
+    /// burning a 90 s wait on a doomed sign-in.
     private func signInWithAccount(email: String, password: String) {
         let emailField = app.textFields["auth.email"]
         XCTAssertTrue(
@@ -1138,12 +1181,24 @@ final class OnBudgetUITests: XCTestCase {
             "Auth screen did not appear: no email field within 60s of launch"
         )
         tapAndTypeText(emailField, email, fieldName: "auth.email")
+        XCTAssertEqual(
+            emailField.value as? String, email,
+            "Typed email differs from the created account (typeText garbled it?) — typed: \(emailField.value as? String ?? "(nil)")"
+        )
         let passwordField = app.secureTextFields["auth.password"]
         XCTAssertTrue(
             passwordField.waitForExistence(timeout: 10),
             "Password field missing on the auth screen"
         )
         tapAndTypeText(passwordField, password, fieldName: "auth.password")
+        // A secure field's value is its bullets — one per typed
+        // character. A dropped character (run 44970315808) shows
+        // up here as a short count before the sign-in is attempted.
+        let bulletCount = (passwordField.value as? String)?.count ?? 0
+        XCTAssertEqual(
+            bulletCount, password.count,
+            "Typed password has \(bulletCount) characters, expected \(password.count) — typeText dropped a character"
+        )
         dismissKeyboardIfPresent(focusedField: passwordField)
         app.buttons["auth.signIn"].tap()
     }
@@ -1566,5 +1621,28 @@ final class OnBudgetUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    /// Polls for the one-time notifications-permission alert
+    /// (requested asynchronously after first Home load, ~11-35 s
+    /// later) and dismisses it with "Don't Allow", so no test
+    /// proceeds while the alert can still pop up and block its
+    /// taps. Run 44970315808: test #1 reached Home fine, but the
+    /// alert sat in the middle of the screen and the test could
+    /// not tap anything. Runs ONCE per test process (static flag):
+    /// the prompt is once per install, so if it did not appear
+    /// within 75 s of the first Home entry it will not appear
+    /// later in this run — re-polling in every test would burn
+    /// 75 s each for nothing. The video tests share this helper
+    /// instead of their own inline loop for the same reason.
+    private static var notificationAlertSettled = false
+    private func settleNotificationAlertIfNeeded() {
+        guard !Self.notificationAlertSettled else { return }
+        let deadline = Date().addingTimeInterval(75)
+        var dismissed = false
+        while Date() < deadline && !dismissed {
+            dismissed = dismissNotificationAlertIfPresent()
+        }
+        Self.notificationAlertSettled = true
     }
 }
