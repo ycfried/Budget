@@ -8,6 +8,7 @@ import OnBudgetKit
 /// word should just name the category", and "This page needs a bit
 /// more color.. too many options that all look the same.. things
 /// need to be easier and nicer to spot.."
+/// Shipped in build 62 under the owner's blanket TestFlight approval.
 ///
 /// The label names the category; the subline says what it does;
 /// each option is colour-coded from the transaction colour code
