@@ -12,24 +12,35 @@ import OnBudgetKit
 /// - Group 1, "How It Counts", always visible: the row's CURRENT
 ///   category first (marked with a checkmark, not a Button — it is
 ///   the current state, not an action), then the actions that drive
-///   the math, in the brief's order — Spending, Income, Mark as
-///   Tzedaka, Cover with Savings, Add to Savings, Exclude, Delete
-///   (RED). Spending IS in the list now (it was not, even though
-///   the charge IS spending). For a kind that lives in Group 2
+///   the math, in the brief's order — Purchase, Income, Tzedaka,
+///   Cover with Savings, Add to Savings, Exclude, Delete (RED).
+///   Purchase IS in the list now (it was not, even though the
+///   charge IS a purchase). For a kind that lives in Group 2
 ///   (Transfer, Refund, Fund Charge, Payment, Cashback), the
 ///   current category is prepended to Group 1 marked — the current
 ///   category is always visible, never hidden in "More".
+///
+/// Build 62 (owner, Nov 22, 2026 — the Actions options "all look
+/// the same"): every row is colour-coded from the transaction
+/// colour code with an SF Symbol in a tinted chip, so each option
+/// is easy to spot at a glance — Purchase ink, Income deep blue,
+/// Tzedaka primary blue, Exclude grey, Delete red, and the two
+/// fund actions share one muted slate family so they read as a
+/// pair. The label names the category; the subline says what it
+/// does (owner: "The word should just name the category").
 /// - Group 2, "More", collapsed by default behind a "More"
 ///   disclosure row that expands inline: Transfer, Refund, Fund
 ///   Charge, Payment, Cashback, Rename Merchant. The sheet opens
 ///   showing only Group 1 + the More row.
 ///
 /// Subtitles STAY (owner, Nov 21, 2026 — they help many users).
-/// "Mark as Tzedaka" IS the Tzedaka reclassify (there is no second
-/// Tzedaka row), and "Cover with Savings" (ask the fund to cover
-/// this charge) and "Add to Savings" (count this amount toward the
-/// fund) are different functions, so each appears exactly once,
-/// clearly labelled, not literally merged. A refund row keeps
+/// "Tzedaka" IS the Tzedaka reclassify (there is no second
+/// Tzedaka row; build 62 dropped the "Mark as" prefix — the label
+/// is just the fund name, the subline says what it does), and
+/// "Cover with Savings" (ask the fund to cover this charge) and
+/// "Add to Savings" (count this amount toward the fund) are
+/// different functions, so each appears exactly once, clearly
+/// labelled, not literally merged. A refund row keeps
 /// "Link to Purchase" in Group 1 (it was a TOP action; dropping it
 /// would break refund linking).
 ///
@@ -42,13 +53,13 @@ import OnBudgetKit
 /// from TOP to "More" for every kind):
 ///
 /// | kind | Admin — Group 1 | Admin — Group 2 (More) | Member |
-/// | charge | Spending (current), Income, Mark as Tzedaka, Cover with Savings, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | Spending (current), Cover with Savings |
-/// | refund | Refund (current), Link to Purchase, Spending, Income, Add to Savings, Exclude, Delete | Transfer, Fund Charge, Payment, Cashback, Rename Merchant | — (no actions) |
-/// | transfer, payment, fund_charge | current kind, Spending, Income, Exclude, Delete | the other kinds, Rename Merchant | — |
-/// | cashback | Cashback (current), Spending, Income, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Rename Merchant | — |
-/// | charity | Mark as Tzedaka (current), Delete | Rename Merchant | — |
-/// | income | Income (current), Spending, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | — |
-/// | other | Other (current), Spending, Income, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | — |
+/// | charge | Purchase (current), Income, Tzedaka, Cover with Savings, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | Purchase (current), Cover with Savings |
+/// | refund | Refund (current), Link to Purchase, Purchase, Income, Add to Savings, Exclude, Delete | Transfer, Fund Charge, Payment, Cashback, Rename Merchant | — (no actions) |
+/// | transfer, payment, fund_charge | current kind, Purchase, Income, Exclude, Delete | the other kinds, Rename Merchant | — |
+/// | cashback | Cashback (current), Purchase, Income, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Rename Merchant | — |
+/// | charity | Tzedaka (current), Purchase, Income, Exclude, Delete | Rename Merchant | — |
+/// | income | Income (current), Purchase, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | — |
+/// | other | Other (current), Purchase, Income, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | — |
 ///
 /// "Add to Savings" only appears when `canDesignateAsSavings`
 /// (admin, non-zero, live row, charge/income/refund/cashback).
@@ -64,7 +75,7 @@ import OnBudgetKit
 ///
 /// Owner rule (Nov 13, 2026): the sheet never renders a disabled
 /// row — only actions that work. A member simply does not see
-/// "Mark as Charity" (it used to render greyed-out with an
+/// the Tzedaka action (it used to render greyed-out with an
 /// "Only the admin can..." subline). The `disabled` flag is gone
 /// from SheetAction entirely so the pattern cannot come back. The
 /// current-category row is a non-Button indicator, not a disabled
@@ -139,16 +150,27 @@ public struct TransactionActionsSheet: View {
         /// checkmark, never a tappable action and never a
         /// greyed-out button (the standing rule forbids those).
         let isCurrent: Bool
-        /// Build 54: Delete — the label renders in error red
-        /// (#dc2626), the subline and chevron stay muted.
-        let isDestructive: Bool
+        /// Build 62 (owner, Nov 22, 2026 — the options "all look
+        /// the same"): the row's colour, from the transaction
+        /// colour code — Purchase ink, Income deep blue, Tzedaka
+        /// primary blue, Exclude grey, Delete error red, the fund
+        /// pair muted slate. The label renders in this colour and
+        /// the icon chip is tinted with it, so each option is easy
+        /// to spot at a glance. A hex string (not a Color) so the
+        /// mapping is unit-testable.
+        let colorHex: String
+        /// Build 62: the SF Symbol for the row, shown in the
+        /// action's colour in a tinted chip — rows are
+        /// distinguishable by icon as well as colour.
+        let icon: String
 
-        init(id: ActionKind, label: String, subline: String, isCurrent: Bool = false, isDestructive: Bool = false) {
+        init(id: ActionKind, label: String, subline: String, colorHex: String, icon: String, isCurrent: Bool = false) {
             self.id = id
             self.label = label
             self.subline = subline
+            self.colorHex = colorHex
+            self.icon = icon
             self.isCurrent = isCurrent
-            self.isDestructive = isDestructive
         }
     }
 
@@ -157,9 +179,9 @@ public struct TransactionActionsSheet: View {
     @Bindable var viewModel: TransactionsViewModel
     let onDismiss: () -> Void
     /// Custom fund names (build 37 — fund rename, owner Nov 16,
-    /// 2026): the household's `fund_names` map, so the "Mark as
-    /// Charity" / "Use Extra Fund" action labels use the renamed
-    /// fund's name. [:] means the defaults.
+    /// 2026): the household's `fund_names` map, so the Tzedaka /
+    /// Cover with Savings action labels use the renamed fund's
+    /// name. [:] means the defaults.
     let fundNames: [String: String]
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -251,13 +273,16 @@ public struct TransactionActionsSheet: View {
         }
     }
 
-    /// The plain label for a reclassify kind. Build 54: a charge
-    /// is "Spending", not "Charge" — the owner wants the list to
-    /// say what the money IS, and the current category (a charge)
-    /// must read "Spending" in Group 1.
-    private func kindLabel(_ kind: TransactionKind) -> String {
+    /// The plain label for a reclassify kind. Build 62: a charge
+    /// is "Purchase", not "Spending" (owner, Nov 22, 2026 —
+    /// "change spending to purchase"), and charity is just the
+    /// fund name (owner: "just plain tzedaka"). The label names
+    /// the category; the subline says what it does. Static + pure
+    /// (the charity display name is passed in) so the mapping is
+    /// unit-testable.
+    static func kindLabel(_ kind: TransactionKind, charityName: String) -> String {
         switch kind {
-        case .charge: return "Spending"
+        case .charge: return "Purchase"
         case .refund: return "Refund"
         case .fundCharge: return "Fund Charge"
         case .transfer: return "Transfer"
@@ -269,10 +294,32 @@ public struct TransactionActionsSheet: View {
         }
     }
 
-    /// The one-line plain-English subline for a reclassify kind.
-    private func kindSubline(_ kind: TransactionKind) -> String {
+    /// The colour + SF Symbol for one kind (build 62, owner Nov 22,
+    /// 2026 — the Actions options "all look the same"). Colours
+    /// follow the amount rule (Models.fixedAmountColorHex + the
+    /// export chart colours): money-in kinds deep blue, charity
+    /// primary blue, transfer/payment muted grey, fund charge fund
+    /// amber, regular kinds ink. A hex string (not a Color) so the
+    /// mapping is unit-testable.
+    static func kindStyle(_ kind: TransactionKind) -> (colorHex: String, icon: String) {
         switch kind {
-        case .charge: return "Count it as spending"
+        case .charge: return (DesignTokens.inkHex, "bag")
+        case .income: return (DesignTokens.deepHex, "arrow.down.left")
+        case .charity: return (DesignTokens.primaryHex, "heart")
+        case .refund: return (DesignTokens.deepHex, "arrow.uturn.left")
+        case .transfer: return (DesignTokens.mutedHex, "arrow.left.arrow.right")
+        case .fundCharge: return (DesignTokens.fundHex, "banknote")
+        case .payment: return (DesignTokens.mutedHex, "creditcard")
+        case .cashback: return (DesignTokens.deepHex, "dollarsign.circle")
+        case .other: return (DesignTokens.mutedHex, "ellipsis.circle")
+        }
+    }
+
+    /// The one-line plain-English subline for a reclassify kind.
+    /// Static + pure so it is unit-testable alongside the label.
+    static func kindSubline(_ kind: TransactionKind) -> String {
+        switch kind {
+        case .charge: return "Count it as a purchase"
         case .refund: return "Count it as a refund"
         case .fundCharge: return "Count it as a fund charge"
         case .transfer: return "Move money between accounts, not spending"
@@ -292,45 +339,46 @@ public struct TransactionActionsSheet: View {
         let deleteSubline = transaction.source == .manual
             ? "Permanently deletes this hand-entered row"
             : "Moves this row to the Trash"
-        let rename = SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it")
-        let delete = SheetAction(id: .delete, label: "Delete", subline: deleteSubline, isDestructive: true)
-        let exclude = SheetAction(id: .exclude, label: "Exclude", subline: "Takes it out of the spending math")
+        let rename = SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it", colorHex: DesignTokens.mutedHex, icon: "pencil")
+        let delete = SheetAction(id: .delete, label: "Delete", subline: deleteSubline, colorHex: DesignTokens.errorTextHex, icon: "trash")
+        let exclude = SheetAction(id: .exclude, label: "Exclude", subline: "Takes it out of the spending math", colorHex: DesignTokens.mutedHex, icon: "eye.slash")
         // Build 54 (owner, Nov 21, 2026): the owner renamed "Pay
         // from Savings" to "Cover with Savings" (build 53 used
         // "Pay from Savings" for audit item 8). "Cover with
         // Savings" spends from the fund for this purchase; "Add
         // to Savings" moves this money into the fund — the two
         // labels say their direction, so they no longer read as
-        // the same thing.
-        let extraFund = SheetAction(id: .extraFund, label: "Cover with \(extraFundName)", subline: "Use the fund to cover this charge")
-        let charity = SheetAction(id: .charity, label: "Mark as \(charityName)", subline: charitySubline)
-        let designate = SheetAction(id: .designateSavings, label: "Add to \(extraFundName)", subline: "Counts this amount toward the fund")
+        // the same thing. Build 62: the two fund actions share
+        // one muted slate family so they read as a pair.
+        let extraFund = SheetAction(id: .extraFund, label: "Cover with \(extraFundName)", subline: "Use the fund to cover this charge", colorHex: DesignTokens.actionSlateHex, icon: "shield")
+        let charity = SheetAction(id: .charity, label: charityName, subline: charitySubline, colorHex: DesignTokens.primaryHex, icon: "heart")
+        let designate = SheetAction(id: .designateSavings, label: "Add to \(extraFundName)", subline: "Counts this amount toward the fund", colorHex: DesignTokens.actionSlateHex, icon: "plus.circle")
 
         /// A reclassify row for a kind — nil when it IS the row's
         /// current kind (reclassifying to what it already is is
         /// not an action). Tzedaka is never a reclassify row here:
-        /// it is the top "Mark as Tzedaka" action.
+        /// it is the top Tzedaka action.
         func reclassify(_ kind: TransactionKind) -> SheetAction? {
             guard kind != transaction.kind else { return nil }
-            return SheetAction(id: .reclassifyTo(kind), label: kindLabel(kind), subline: kindSubline(kind))
+            let style = Self.kindStyle(kind)
+            return SheetAction(id: .reclassifyTo(kind), label: Self.kindLabel(kind, charityName: charityName), subline: Self.kindSubline(kind), colorHex: style.colorHex, icon: style.icon)
         }
 
         /// The row's CURRENT category (build 54): always first in
         /// Group 1, marked with a checkmark, not a Button — it is
-        /// the current state, not an action. Spending is in the
-        /// list now (it was not, even though the charge IS
-        /// spending). For a kind that lives in Group 2 (Transfer,
+        /// the current state, not an action. Purchase is in the
+        /// list now (it was not, even though the charge IS a
+        /// purchase). For a kind that lives in Group 2 (Transfer,
         /// Refund, Fund Charge, Payment, Cashback), the current
         /// category is prepended to Group 1 marked — the current
         /// category is always visible, never hidden in "More".
         func current() -> SheetAction {
+            let style = Self.kindStyle(transaction.kind)
             switch transaction.kind {
             case .charity:
-                return SheetAction(id: .charity, label: "Mark as \(charityName)", subline: "Current category", isCurrent: true)
-            case .charge:
-                return SheetAction(id: .reclassifyTo(.charge), label: "Spending", subline: "Current category", isCurrent: true)
+                return SheetAction(id: .charity, label: charityName, subline: "Current category", colorHex: style.colorHex, icon: style.icon, isCurrent: true)
             default:
-                return SheetAction(id: .reclassifyTo(transaction.kind), label: kindLabel(transaction.kind), subline: "Current category", isCurrent: true)
+                return SheetAction(id: .reclassifyTo(transaction.kind), label: Self.kindLabel(transaction.kind, charityName: charityName), subline: "Current category", colorHex: style.colorHex, icon: style.icon, isCurrent: true)
             }
         }
 
@@ -351,14 +399,14 @@ public struct TransactionActionsSheet: View {
                 ]
             }
             // Owner rule (Nov 13, 2026): no disabled rows — a
-            // member simply does not see "Mark as Charity".
+            // member simply does not see the Tzedaka action.
             return [ActionGroup(label: "How It Counts", actions: [current(), extraFund])]
         case .refund:
             guard isAdmin else { return [] }
             let linkSubline = transaction.originalPurchaseId != nil
                 ? "Change or remove the purchase this refund is linked to"
                 : "Link this refund to the purchase it came from"
-            let link = SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline)
+            let link = SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline, colorHex: DesignTokens.deepHex, icon: "link")
             var group1 = [current(), link]
             group1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
             if canDesignateAsSavings { group1.append(designate) }
@@ -382,9 +430,21 @@ public struct TransactionActionsSheet: View {
                 ActionGroup(label: nil, actions: group2, isMore: true),
             ]
         case .charity:
+            // Build 62 (owner, Nov 22, 2026 — "Why shouldn't you
+            // be able to reclassify it?"): a charity row can be
+            // reclassified to Purchase or Income, and excluded —
+            // so a misclassified gift can be corrected in-app
+            // instead of only deleted. The backend already
+            // reverses the charity accrual on reclassify (trigger
+            // v4), and the reclassify flow requires a reason
+            // (audited), so no server change is needed.
             guard isAdmin else { return [] }
+            var group1 = [current()]
+            group1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
+            group1.append(exclude)
+            group1.append(delete)
             return [
-                ActionGroup(label: "How It Counts", actions: [current(), delete]),
+                ActionGroup(label: "How It Counts", actions: group1),
                 ActionGroup(label: nil, actions: [rename], isMore: true),
             ]
         case .income, .other:
@@ -575,16 +635,32 @@ public struct TransactionActionsSheet: View {
     /// `isCurrent` — a non-Button indicator row with a checkmark.
     /// A non-Button is honest: the current category is not an
     /// action, and the standing rule forbids greyed-out buttons.
-    /// Delete renders its label in error red; every other label
-    /// stays ink, the subline and chevron stay muted.
+    /// Build 62: every row carries a tinted icon chip (the
+    /// action's colour at low opacity, icon in the full colour)
+    /// and the label renders in the action's colour, so each
+    /// option is easy to spot at a glance; the subline and
+    /// chevron stay muted. Delete's colour is error red.
     @ViewBuilder
     private func actionRow(_ action: SheetAction) -> some View {
+        /// The tinted icon chip (build 62): a small squarish chip
+        /// in the action's colour at low opacity, icon in the full
+        /// colour — rows are distinguishable by icon as well as
+        /// colour.
+        let chip = ZStack {
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color(hex: action.colorHex).opacity(0.12))
+                .frame(width: 30, height: 30)
+            Image(systemName: action.icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(hex: action.colorHex))
+        }
         if action.isCurrent {
-            HStack {
+            HStack(spacing: 12) {
+                chip
                 VStack(alignment: .leading, spacing: 2) {
                     Text(action.label)
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(DesignTokens.ink)
+                        .foregroundStyle(Color(hex: action.colorHex))
                     Text(action.subline)
                         .font(.system(size: 14))
                         .foregroundStyle(Color(hex: "#6b7280"))
@@ -604,11 +680,12 @@ public struct TransactionActionsSheet: View {
             Button {
                 select(action.id)
             } label: {
-                HStack {
+                HStack(spacing: 12) {
+                    chip
                     VStack(alignment: .leading, spacing: 2) {
                         Text(action.label)
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(action.isDestructive ? DesignTokens.errorText : DesignTokens.ink)
+                            .foregroundStyle(Color(hex: action.colorHex))
                         Text(action.subline)
                             .font(.system(size: 14))
                             .foregroundStyle(Color(hex: "#6b7280"))
@@ -643,7 +720,7 @@ public struct TransactionActionsSheet: View {
             }
         case .reclassifyTo(let kind):
             // Tzedaka is never a reclassify row (it is the top
-            // "Mark as Tzedaka" action), but the guard keeps the
+            // Tzedaka action), but the guard keeps the
             // charity path honest if one is ever constructed.
             if kind == .charity {
                 flow = .charityConfirm

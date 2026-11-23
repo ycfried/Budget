@@ -143,6 +143,12 @@ public enum DesignTokens {
     public static let fundHex = "#d97706"
     public static let fundDeepHex = "#b45309"
 
+    /// Muted slate for the Actions sheet fund pair (build 62,
+    /// owner Nov 22, 2026): "Cover with Savings" / "Add to
+    /// Savings" share one slate family so they read as a pair,
+    /// distinct from the kind colours.
+    public static let actionSlateHex = "#475569"
+
     // Soft-green inline success box (owner decision, Nov 12, 2026:
     // inline success states are GREEN like the success toasts):
     // pale background, dark green text, soft border — the green
@@ -182,6 +188,7 @@ public enum DesignTokens {
     public static var charityDeep: Color { Color(hex: charityDeepHex) }
     public static var fund: Color { Color(hex: fundHex) }
     public static var fundDeep: Color { Color(hex: fundDeepHex) }
+    public static var actionSlate: Color { Color(hex: actionSlateHex) }
     #endif
 }
 
