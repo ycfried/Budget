@@ -7,6 +7,9 @@ import OnBudgetKit
 /// Lean design tokens + page select (build 63, owner Nov 23,
 /// 2026). Pins the values so a later change to the Lean palette
 /// or the page-select options is a deliberate edit, not drift.
+/// Shipped in build 63 under the owner's TestFlight approval
+/// (Nov 23, 2026 — "Push everything to TestFlight as long as it
+/// can later be undone if we decide").
 final class LeanDesignTests: XCTestCase {
     /// Resolve a SwiftUI Color to its "#rrggbb" hex (sRGB).
     private func hex(of color: Color) -> String? {
