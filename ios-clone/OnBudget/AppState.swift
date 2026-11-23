@@ -290,6 +290,13 @@ public final class AppViewModel: ObservableObject {
     /// Transactions screen once consumed.
     @Published public var pendingWeekFilter: String?
 
+    /// Handoff from the Home Tzedaka sheet (build 65, owner Nov
+    /// 23, 2026): open Transactions pre-filtered to the Tzedaka
+    /// rows behind the sheet's numbers — gifts given plus income
+    /// rows that accrued charity, all time. Cleared by the
+    /// Transactions screen once consumed.
+    @Published public var pendingTzedakaFilter = false
+
     /// Handoff from Home "See All" (audit H-P2-8): open Transactions
     /// with search/filters cleared first, like the recent-row jump.
     /// Cleared by the Transactions screen once consumed.
@@ -651,6 +658,7 @@ public final class AppViewModel: ObservableObject {
     public func jumpToTransaction(_ id: UUID) {
         pendingTransactionJump = id
         pendingWeekFilter = nil
+        pendingTzedakaFilter = false
         suppressNextTabReset = true
         selectedTab = .transactions
     }
@@ -662,6 +670,7 @@ public final class AppViewModel: ObservableObject {
     public func showAllTransactions() {
         pendingClearTransactionFilters = true
         pendingWeekFilter = nil
+        pendingTzedakaFilter = false
         pendingTransactionJump = nil
         suppressNextTabReset = true
         selectedTab = .transactions
@@ -732,6 +741,19 @@ public final class AppViewModel: ObservableObject {
     /// current week (live.js:3457-3500).
     public func showTransactionsForWeek(_ weekStart: String) {
         pendingWeekFilter = weekStart
+        pendingTzedakaFilter = false
+        pendingTransactionJump = nil
+        suppressNextTabReset = true
+        selectedTab = .transactions
+    }
+
+    /// Tzedaka sheet "Show Transactions" (build 65, owner Nov 23,
+    /// 2026): Transactions pre-filtered to the Tzedaka rows behind
+    /// the sheet's numbers — gifts given plus income rows that
+    /// accrued charity, all time (not one week, not spending).
+    public func showTzedakaTransactions() {
+        pendingTzedakaFilter = true
+        pendingWeekFilter = nil
         pendingTransactionJump = nil
         suppressNextTabReset = true
         selectedTab = .transactions

@@ -6,7 +6,7 @@ import OnBudgetKit
 /// The text column is exactly as tall as the 40pt icon, split
 /// into two halves (owner, Nov 14, 2026): the merchant name sits
 /// centred on the icon's top half, the badges line centred on its
-/// bottom half. Row line 1: icon, Title-Cased merchant (bold) —
+/// bottom half. Row line 1: icon, ALL-CAPS merchant (bold) —
 /// ALWAYS the merchant name, even for transfers (build 50, owner
 /// Nov 20, 2026: the transfer title hid the merchant) — signed
 /// amount, chevron (rotates when open). Line 2 (collapsed only):
@@ -21,7 +21,8 @@ import OnBudgetKit
 /// Detail panel: labelled rows Date (long) / Account / Status
 /// (plain grey text) / Source (plain grey text) (+ Refund Link row
 /// for refunds; + Amount row for refunded purchases, whose
-/// collapsed amount is struck through). Then the Actions button —
+/// collapsed amount is struck through; + Type row, the bottom row
+/// — the kind in the Actions sheet's labels, build 65). Then the Actions button —
 /// one small tertiary button, only when the viewer has any action
 /// on that row. The bold merchant — amount header is gone (owner,
 /// Nov 13, 2026): the collapsed row already says both, so
@@ -108,9 +109,14 @@ public struct TransactionRowView: View {
                         // The title is ALWAYS the merchant name
                         // (build 50, owner Nov 20, 2026) — a
                         // transfer used to show "Transfer to" here
-                        // and hide the merchant. The kind is a
-                        // badge on the bottom line; the direction +
-                        // other account live in the detail panel.
+                        // and hide the merchant — in ALL CAPS
+                        // (build 65: `rowTitle` uppercases via the
+                        // shared `displayMerchant` helper, so the
+                        // collapsed row, its search highlight, and
+                        // its accessibility label all agree). The
+                        // kind is a badge on the bottom line; the
+                        // direction + other account live in the
+                        // detail panel.
                         HStack(spacing: 10) {
                             TransactionFormatting.highlightedSearchText(
                                 TransactionFormatting.rowTitle(for: transaction),
@@ -290,17 +296,25 @@ public struct TransactionDetailView: View {
                             : "Not linked to a purchase yet"
                     )
                 }
-                // Transfer direction + other account (build 50,
-                // owner Nov 20, 2026): the full title when the
-                // other account's digits are derivable, else bare
+                // Type row (build 65, owner Nov 23, 2026): the
+                // bottom row, below Source — the kind, in the
+                // Actions sheet's own labels (`typeLabel`:
+                // Purchase / Refund / Fund Charge / Transfer /
+                // Payment / Cashback / Income / Tzedaka / Other).
+                // For transfers the value keeps the old transfer
+                // detail ("Transfer to ••5939" when the other
+                // account's digits are derivable, else bare
                 // "Transfer" — never a dangling "Transfer to"
-                // with no destination.
-                if transaction.kind == .transfer {
-                    detailRow(
-                        label: "Type",
-                        value: TransactionFormatting.transferDetailText(for: transaction)
-                    )
-                }
+                // with no destination, build 50, owner Nov 20,
+                // 2026): that used to be the only Type row, and
+                // the direction is part of what the detail says.
+                // One Type row only — never two.
+                detailRow(
+                    label: "Type",
+                    value: transaction.kind == .transfer
+                        ? TransactionFormatting.transferDetailText(for: transaction)
+                        : TransactionFormatting.typeLabel(for: transaction)
+                )
             }
 
             // Build 52 (owner, Nov 20, 2026): a SOLID BLUE button,

@@ -154,7 +154,7 @@
 // file; no new auth flow is invented.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyKind, decideRemovedRow, EMAIL_SOURCES, flagLookalikes, loadMerchantRules, normalizeMerchant, pickPlaidHashClaim, type MerchantRule, type RemovedReplacement, type SyncArrivalLike } from './canonical.ts';
+import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyKind, decideRemovedRow, EMAIL_SOURCES, flagLookalikes, loadMerchantRules, normalizeMerchant, pickPlaidHashClaim, shouldPreserveDate, type MerchantRule, type RemovedReplacement, type SyncArrivalLike } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -944,6 +944,19 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.error('plaid-sync: dedupe backstop failed (best-effort):', (e as Error)?.message ?? e);
     }
+    // Build 65 (Yaldel rule): sweep for similar-name pairs the
+    // ingestion-time flag missed — e.g. both rows arrived before
+    // this rule existed, or arrived in an order the flag did not
+    // see. Same guards as flagLookalikes (TOIREMORG, dismissed
+    // pairs, suffix rule) live in the SQL (supabase/similar-name-
+    // review-backstop.sql). Best-effort: a missing SQL apply must
+    // never fail the sync.
+    try {
+      const { error: similarErr } = await supabaseAdmin.rpc('backstop_similar_name_duplicates', { p_household_id: householdId });
+      if (similarErr) console.error('plaid-sync: similar-name backstop failed (best-effort):', similarErr.message ?? similarErr);
+    } catch (e) {
+      console.error('plaid-sync: similar-name backstop failed (best-effort):', (e as Error)?.message ?? e);
+    }
     await releaseLock?.();
     return json({
       added, updated, reversed, skipped, skipped_by_reason: skipReasons,
@@ -1015,15 +1028,15 @@ async function upsertPlaidTx(
   };
 
   // 1. external_id (this transaction's own id).
-  let existing: { id: string; state?: string | null; excluded?: boolean | null; source?: string | null; kind?: string | null } | null = null;
+  let existing: { id: string; state?: string | null; excluded?: boolean | null; source?: string | null; kind?: string | null; date?: string | null } | null = null;
   if (txId) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind,date')
       .eq('household_id', householdId).eq('external_id', txId).maybeSingle();
     existing = data;
   }
   // 2. pending_transaction_id linkage (pending -> posted transition).
   if (!existing && pendingTxId) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind,date')
       .eq('household_id', householdId)
       .or(`external_id.eq.${pendingTxId},plaid_pending_transaction_id.eq.${pendingTxId}`)
       .maybeSingle();
@@ -1036,7 +1049,7 @@ async function upsertPlaidTx(
   //    to link) may be claimed here. Two identical real purchases keep
   //    coexisting, and the earliest matching alert row is the claim.
   if (!existing) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind,date')
       .eq('household_id', householdId).eq('dedupe_hash', hash)
       .in('source', [...EMAIL_SOURCES])
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
@@ -1065,7 +1078,7 @@ async function upsertPlaidTx(
   //     remaining gap is only for merchants nobody has taught yet,
   //     and those fall through to the auto-merge / review path below.
   if (!existing) {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind,date')
       .eq('household_id', householdId)
       .eq('merchant', displayMerchant).eq('date', date).eq('amount_cents', signed)
       .in('source', [...EMAIL_SOURCES]).eq('card_suffix', '0000')
@@ -1085,7 +1098,7 @@ async function upsertPlaidTx(
   //     Gated on the incoming tx being posted: a pending tx must not
   //     consume a provisional predecessor.
   if (!existing && state === 'verified') {
-    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
+    const { data } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind,date')
       .eq('household_id', householdId).eq('dedupe_hash', hash)
       .eq('source', 'plaid').eq('state', 'provisional').eq('excluded', false)
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
@@ -1097,14 +1110,28 @@ async function upsertPlaidTx(
     // (state='excluded', excluded=true) and never overwrites kind —
     // kind is set at insert only, so an admin reclassification
     // survives the next sync. A trashed row gets only the bank
-    // facts refreshed (date/merchant/amount/suffix/ids); a live row
+    // facts refreshed (merchant/amount/suffix/ids); a live row
     // also gets its pending->posted state transition.
+    // Build 65 (Nov 23, 2026 — Nordstrom $158.97): on the
+    // pending→posted transition the DATE is also not refreshed.
+    // The pending date is when the purchase was made; the posted
+    // date is only when the bank processed it, and overwriting it
+    // moves the purchase into the next week's spending. The
+    // dedupe_hash is recomputed from the PRESERVED date so the
+    // hash still matches the stored row. Verified→verified
+    // re-deliveries still overwrite the date (genuine Plaid
+    // corrections).
     const trashed = existing.excluded === true || existing.state === 'excluded';
+    const preserveDate = shouldPreserveDate(existing.state ?? null, state) && !!existing.date;
+    const storedHash = preserveDate
+      ? await canonicalHash(displayMerchant, existing.date as string, signed, suffix)
+      : hash;
     const update: Record<string, unknown> = {
-      date, merchant: displayMerchant, amount_cents: signed, card_suffix: suffix,
-      external_id: txId, dedupe_hash: hash,
+      merchant: displayMerchant, amount_cents: signed, card_suffix: suffix,
+      external_id: txId, dedupe_hash: storedHash,
       plaid_transaction_id: txId, plaid_pending_transaction_id: pendingTxId,
     };
+    if (!preserveDate) update.date = date;
     if (!trashed) update.state = state;
     const { error } = await supabaseAdmin.from('transactions').update(update)
       .eq('id', existing.id).eq('household_id', householdId);
@@ -1142,15 +1169,23 @@ async function upsertPlaidTx(
     // second insert with 23505. Re-select by external_id and update
     // the row that won instead of reporting insert-failed.
     if (error && txId && (error.code === '23505' || /duplicate key/i.test(error.message ?? ''))) {
-      const { data: raced } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind')
+      const { data: raced } = await supabaseAdmin.from('transactions').select('id,state,excluded,source,kind,date')
         .eq('household_id', householdId).eq('external_id', txId).maybeSingle();
       if (raced) {
         const racedTrashed = raced.excluded === true || raced.state === 'excluded';
+        // Build 65: same pending→posted date preservation as the
+        // main update path above (Nordstrom $158.97) — the race
+        // winner is re-delivered under the same rule.
+        const racedPreserveDate = shouldPreserveDate(raced.state ?? null, state) && !!raced.date;
+        const racedHash = racedPreserveDate
+          ? await canonicalHash(displayMerchant, raced.date as string, signed, suffix)
+          : hash;
         const retryUpdate: Record<string, unknown> = {
-          date, merchant: displayMerchant, amount_cents: signed, card_suffix: suffix,
-          external_id: txId, dedupe_hash: hash,
+          merchant: displayMerchant, amount_cents: signed, card_suffix: suffix,
+          external_id: txId, dedupe_hash: racedHash,
           plaid_transaction_id: txId, plaid_pending_transaction_id: pendingTxId,
         };
+        if (!racedPreserveDate) retryUpdate.date = date;
         if (!racedTrashed) retryUpdate.state = state;
         const { error: retryErr } = await supabaseAdmin.from('transactions').update(retryUpdate)
           .eq('id', raced.id).eq('household_id', householdId);

@@ -95,6 +95,15 @@ public final class TransactionsViewModel {
     /// fix. Cleared by "Clear Search and Filters" (back to the
     /// normal paged list).
     public private(set) var isWeekMode: Bool = false
+    /// Tzedaka mode (build 65, owner Nov 23, 2026): the list
+    /// arrived from the Home Tzedaka sheet, so the full history is
+    /// loaded at once (no Load More), pre-filtered to the Tzedaka
+    /// rows behind the sheet's numbers — gifts given plus income
+    /// rows that accrued charity — all time, not one week. The
+    /// accrual ids live in `filters.tzedakaAccrualIds`. Cleared by
+    /// "Clear Search and Filters" and by any filter change (back
+    /// to the normal paged list), like week mode.
+    public private(set) var isTzedakaMode: Bool = false
     /// A Load More fetch is in flight: the button disables while
     /// appending so a double-tap cannot fire two appends. The
     /// existing rows stay visible — Load More never blanks the list.
@@ -433,6 +442,18 @@ public final class TransactionsViewModel {
                     self.loadedPage = merged
                     self.hasMore = false
                     self.loadState = .loaded(merged)
+                } else if self.isTzedakaMode {
+                    // Build 65: Tzedaka mode loads the FULL history
+                    // at once (all time, no Load More) — the
+                    // Tzedaka rows span the whole history, and a
+                    // first page could miss older income/gifts.
+                    let all = try await self.client.postgrest.allTransactions(
+                        householdId: self.householdId
+                    )
+                    guard !Task.isCancelled else { return }
+                    self.loadedPage = all
+                    self.hasMore = false
+                    self.loadState = .loaded(all)
                 } else {
                     let (rows, hasMore) = try await self.client.postgrest.transactionsPage(
                         householdId: self.householdId,
@@ -528,11 +549,13 @@ public final class TransactionsViewModel {
     /// and restoring `hasMore` — no refetch.
     public func clearSearchAndFilters() {
         let wasWeekMode = isWeekMode
+        let wasTzedakaMode = isTzedakaMode
         isWeekMode = false
+        isTzedakaMode = false
         filters = TransactionFilters()
         persistFilters()
         searchResetNonce += 1
-        if wasWeekMode {
+        if wasWeekMode || wasTzedakaMode {
             let all = loadedPage
             loadedPage = Array(all.prefix(pageSize))
             hasMore = all.count > pageSize
@@ -566,6 +589,35 @@ public final class TransactionsViewModel {
         await load()
     }
 
+    /// Tzedaka-sheet jump (build 65, owner Nov 23, 2026): show
+    /// the rows behind the Tzedaka sheet's numbers — gifts given
+    /// (kind .charity) PLUS income rows that accrued charity —
+    /// all time, with the FULL history loaded at once (no Load
+    /// More), like week mode. The income rows are identified by
+    /// the active `charity_income` rows' `transactionId`
+    /// (`activeCharityIncome` fetches all pages, no cap — the
+    /// 50-row `charityIncomeHistory` would silently drop older
+    /// income). A failed accrual read falls back to gifts only
+    /// (empty id set) rather than failing the whole list. The
+    /// shell clears `pendingTzedakaFilter` once consumed.
+    public func applyTzedakaFilter() async {
+        let accrualIds: Set<UUID>
+        do {
+            let income = try await client.postgrest.activeCharityIncome(householdId: householdId)
+            accrualIds = Set(income.compactMap(\.transactionId))
+        } catch {
+            accrualIds = []
+        }
+        filters = TransactionFilters()
+        persistFilters()
+        searchResetNonce += 1
+        filters.status = .tzedaka
+        filters.tzedakaAccrualIds = accrualIds
+        filterChanged()
+        isTzedakaMode = true
+        await load()
+    }
+
     /// Recent-row jump (live.js:1040-1110): clear search/filters
     /// first, then expand the row — when it is in the loaded page.
     /// Otherwise the shell's exact toast: the row is not loaded yet.
@@ -592,8 +644,9 @@ public final class TransactionsViewModel {
     /// (it restores the snapshot and persists only), so a Cancel
     /// leaves the list — including week mode — unchanged.
     public func filterChanged() {
-        if isWeekMode {
+        if isWeekMode || isTzedakaMode {
             isWeekMode = false
+            isTzedakaMode = false
             let all = loadedPage
             loadedPage = Array(all.prefix(pageSize))
             hasMore = all.count > pageSize

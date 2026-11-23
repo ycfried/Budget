@@ -282,9 +282,13 @@ public enum TransactionExport {
     /// bank description — mirrors `TransactionFormatting.
     /// transferTitle`, app target; the parsing is restated here so
     /// the kit stays self-contained).
+    /// Build 65 (merchant names ALL CAPS, display-only): the
+    /// export merchant name is uppercased, matching the app list
+    /// (`TransactionFormatting.displayMerchant`). Stored data,
+    /// dedupe, and search are untouched.
     public static func merchantDisplay(for transaction: Transaction) -> String {
         guard transaction.kind == .transfer else {
-            return TitleCase.apply(to: transaction.merchant)
+            return TitleCase.apply(to: transaction.merchant).uppercased()
         }
         let direction: String?
         if transaction.amountCents < 0 {
@@ -294,11 +298,11 @@ public enum TransactionExport {
         } else {
             direction = nil
         }
-        guard let direction else { return "Transfer" }
+        guard let direction else { return "TRANSFER" }
         if let last4 = otherAccountLast4(for: transaction) {
-            return TitleCase.apply(to: "Transfer \(direction) ••\(last4)")
+            return TitleCase.apply(to: "Transfer \(direction) ••\(last4)").uppercased()
         }
-        return TitleCase.apply(to: "Transfer \(direction)")
+        return TitleCase.apply(to: "Transfer \(direction)").uppercased()
     }
 
     /// The OTHER account's last 4 digits from the bank's merchant

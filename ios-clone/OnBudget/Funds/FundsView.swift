@@ -245,15 +245,9 @@ public struct FundsView: View {
     public var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // Build 63 (Lean): the page select — Home /
-                // Transactions / Funds, the current page active
-                // as a white floater — sits directly under the
-                // Household header. Left-aligned (the VStack is
-                // centre-aligned, so the Spacer pins it left).
-                HStack {
-                    PageSelectControl(selectedTab: $appState.selectedTab)
-                    Spacer()
-                }
+                // Build 65: the page select lives in the shell
+                // (AppShellView) now — one control for all tabs,
+                // so Funds no longer renders its own.
                 if let form = openForm {
                     backButton
                     // The balance the open form acts on stays visible
@@ -914,52 +908,40 @@ public struct FundsView: View {
                     // Build 64 (C-3 B3, owner Nov 23, 2026): ONE
                     // solid-blue primary full-width on top ("Add
                     // to Tzedaka"), then "Record a Gift" (ink
-                    // outline) and "Record Income" (darker-grey
-                    // outline) side by side below it — all three
-                    // clearly distinct, no two sharing a colour or
-                    // looking similar. The old stack was primary /
-                    // pale / grey-tertiary; the pale middle tier is
-                    // retired for three-button groups.
+                    // outline) below it. Build 65 (owner, Nov 23,
+                    // 2026 — item 8): "Record Income" is gone from
+                    // this card — recording income is an income
+                    // action, not a charity action — it lives in
+                    // the "+ Add" flow now (AddTransactionView),
+                    // which presents the same CharityIncomeForm.
+                    // The correction flow is untouched: Correct in
+                    // Activity still opens the form via .income.
                     if isAdmin {
                         VStack(alignment: .leading, spacing: 12) {
                             AddToCharitySection(
                                 viewModel: viewModel,
                                 fundName: FundSectionID.charity.displayName(customNames: appState.fundNames)
                             )
-                            HStack(spacing: 12) {
-                                // Owner, Nov 16, 2026 (build 40):
-                                // record a cash gift given off-card
-                                // — Available decreases, Given
-                                // increases, Total unchanged, NO
-                                // transaction row. The sheet still
-                                // lives in CharityIncomeForm.swift
-                                // (RecordCashGiftSheet); the button
-                                // here is the B3 ink outline, and
-                                // RecordCashGiftSection (pale) is no
-                                // longer used on this card.
-                                FundsInkOutlineButton("Record a Gift", isLarge: true) {
-                                    showRecordGift = true
-                                }
-                                .accessibilityIdentifier("funds.recordCashGift")
-                                .fullScreenCover(isPresented: $showRecordGift) {
-                                    RecordCashGiftSheet(
-                                        viewModel: viewModel,
-                                        fundName: FundSectionID.charity.displayName(customNames: appState.fundNames),
-                                        onClose: { showRecordGift = false }
-                                    )
-                                }
-                                // Owner, Nov 16, 2026 (build 40):
-                                // "Record Income" is the darker-grey
-                                // outline (#4b5563) now, not the
-                                // grey-tertiary fill — the B3 pair
-                                // is ink vs darker grey, clearly
-                                // distinct. Same size as "Record a
-                                // Gift" (17pt, 16pt vertical
-                                // padding, half width each).
-                                FundsSlateOutlineButton("Record Income", isLarge: true) {
-                                    correctingIncome = nil
-                                    openForm = .income
-                                }
+                            // Owner, Nov 16, 2026 (build 40):
+                            // record a cash gift given off-card
+                            // — Available decreases, Given
+                            // increases, Total unchanged, NO
+                            // transaction row. The sheet still
+                            // lives in CharityIncomeForm.swift
+                            // (RecordCashGiftSheet); the button
+                            // here is the B3 ink outline, and
+                            // RecordCashGiftSection (pale) is no
+                            // longer used on this card.
+                            FundsInkOutlineButton("Record a Gift", isLarge: true) {
+                                showRecordGift = true
+                            }
+                            .accessibilityIdentifier("funds.recordCashGift")
+                            .fullScreenCover(isPresented: $showRecordGift) {
+                                RecordCashGiftSheet(
+                                    viewModel: viewModel,
+                                    fundName: FundSectionID.charity.displayName(customNames: appState.fundNames),
+                                    onClose: { showRecordGift = false }
+                                )
                             }
                         }
                     }

@@ -2,11 +2,24 @@ import SwiftUI
 import OnBudgetKit
 
 /// Add popup (CLONE_SPEC §8): the Transactions header's + button
-/// opens an options popup. Admin sees Purchase (primary) / Donation
-/// (pale); members see Purchase only. Choosing an option opens that
+/// opens an options popup. Admin sees Purchase (solid blue) /
+/// Donation (grey fill) / Record Income (ink outline) — three
+/// clearly distinct treatments, no two sharing a colour or looking
+/// similar (standing button rule, strengthened Nov 23, 2026);
+/// members see Purchase only. Choosing an option opens that
 /// form; Back returns to the options and keeps the draft; Cancel
 /// clears the draft AND closes. A successful submit returns to the
 /// list. Popup scroll = popup only (native sheets scroll internally).
+///
+/// Build 65 (owner, Nov 23, 2026 — item 8): Record Income moved
+/// here from the Tzedaka card — recording income is an income
+/// action, not a charity action. It presents the same
+/// CharityIncomeForm (same fields, validation and
+/// `record_charity_income` RPC), driven by a FundsViewModel built
+/// from this view model's client + household — the Funds tab's
+/// view model is not reachable from this sheet, and the sheet's
+/// call site (TransactionsView) passes only a
+/// TransactionsViewModel, so the funds view model is built here.
 ///
 /// NOTE: the web options list also has Upload (CSV import, §8.3).
 /// CSV import is out of scope for this workstream — the options list
@@ -16,6 +29,7 @@ public struct AddTransactionView: View {
         case options
         case purchase
         case donation
+        case income
     }
 
     @Bindable var viewModel: TransactionsViewModel
@@ -23,11 +37,54 @@ public struct AddTransactionView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var step: Step = .options
+    /// Build 65: the funds view model behind the Record Income
+    /// step (see the init — built from this view model's client +
+    /// household, so the form saves through the same
+    /// FundsViewModel.saveIncome RPC path as on the Funds page).
+    /// It is a separate instance from the Funds tab's: it loads
+    /// only what the income step needs, and nothing else observes
+    /// it — its success toast is forwarded through this view
+    /// model's confirmation funnel and its failure alert is shown
+    /// by the income step itself.
+    @StateObject private var fundsViewModel: FundsViewModel
+    /// The income entry being corrected — always nil from this
+    /// sheet (there is no Correct path here); the binding exists
+    /// because CharityIncomeForm owns one. Kept as state so the
+    /// form's correction machinery stays inert, never half-wired.
+    @State private var correctingIncome: CharityIncome? = nil
+    /// The funds view model loads its charity settings once, when
+    /// the income step first appears (its default-rate preview
+    /// must read the household's real rate, not the assumed 10%).
+    @State private var didLoadFunds = false
 
     public init(viewModel: TransactionsViewModel, onDismiss: @escaping () -> Void) {
         self.viewModel = viewModel
         self.onDismiss = onDismiss
+        let fundsContext = FundsContext(
+            client: viewModel.client,
+            householdId: viewModel.householdId,
+            // The income flow only ever consults `isAdmin`
+            // (admin-only form; the charity-history guard in the
+            // loads) — owner vs admin is not distinguished here.
+            role: viewModel.isAdmin ? .admin : .member,
+            // The shell always sets currentUserId (AppShellView
+            // guards on it before building this view model). The
+            // fallback is never sent by this flow: the income
+            // RPCs take the household id only, and the loads never
+            // read the user id — it is only used by fund-request /
+            // audit paths this sheet never calls.
+            userId: viewModel.currentUserId ?? UUID()
+        )
+        let fundsViewModel = FundsViewModel(context: fundsContext)
+        fundsViewModel.fundNames = viewModel.fundNames
+        self._fundsViewModel = StateObject(wrappedValue: fundsViewModel)
     }
+
+    /// The charity fund's CURRENT display name (build 43, owner
+    /// Nov 17, 2026 — item 16): the income form's heading reads
+    /// it, never a hardcoded "Charity" — same helper as
+    /// AddDonationForm's below.
+    private var charityName: String { FundSectionID.charity.displayName(customNames: viewModel.fundNames) }
 
     public var body: some View {
         // No NavigationStack root (owner, Nov 14, 2026): the
@@ -55,6 +112,8 @@ public struct AddTransactionView: View {
                 AddPurchaseForm(viewModel: viewModel, onDone: onDismiss)
             case .donation:
                 AddDonationForm(viewModel: viewModel, onDone: onDismiss)
+            case .income:
+                incomeStep
             }
         }
         .padding()
@@ -88,10 +147,33 @@ public struct AddTransactionView: View {
                     )
                 }
                 // Grey tertiary, not pale (audit SH-P2-2, Nov 12
-                // 2026): pale #bfdbfe is ONLY the middle tier of a
-                // three-button row — this is a vertical two-option
-                // stack under Primary "Purchase".
+                // 2026; B3, Nov 23, 2026): the pale middle tier is
+                // retired for three-button groups, and pale blue
+                // would sit too close to the solid-blue Purchase
+                // under the strengthened rule. Grey fill is
+                // clearly distinct from solid blue and from the
+                // ink outline below.
                 .buttonStyle(TertiaryButtonStyle())
+                // Build 65 (owner, Nov 23, 2026 — item 8): Record
+                // Income moved here from the Tzedaka card. Admin
+                // only, like Donation — the form itself is
+                // admin-only by construction.
+                Button {
+                    step = .income
+                } label: {
+                    optionRow(
+                        title: "Record Income",
+                        subtitle: "Record money received by hand"
+                    )
+                }
+                // Ink outline (white bg, ink border + text) — the
+                // third treatment in this stack. Solid blue
+                // (Purchase) and grey fill (Donation) are taken;
+                // a brand-blue outline would sit too close to the
+                // solid blue, and a pale fill too close to it as
+                // well, so the outline is ink — clearly distinct
+                // from both under the strengthened button rule.
+                .buttonStyle(InkOutlineButtonStyle())
             }
             // Build 43 (owner, Nov 17, 2026 — item 18): the
             // trailing Spacer top-anchors the options in the
@@ -100,6 +182,66 @@ public struct AddTransactionView: View {
             // (The purchase / donation steps are ScrollViews, so
             // they start at the top without one.)
             Spacer()
+        }
+    }
+
+    /// Build 65 (owner, Nov 23, 2026 — item 8): Record Income,
+    /// moved here from the Tzedaka card. The same CharityIncomeForm
+    /// the Funds page uses — same fields, validation and
+    /// `record_charity_income` RPC — driven by the funds view model
+    /// built in the init. The form is NOT a ScrollView itself, so
+    /// this step wraps it in one (the Funds page scrolls it; the
+    /// sheet does not). Back returns to the options; the form's
+    /// Cancel closes the whole sheet, like Purchase/Donation.
+    private var incomeStep: some View {
+        ScrollView {
+            CharityIncomeForm(
+                viewModel: fundsViewModel,
+                fundName: charityName,
+                correcting: $correctingIncome,
+                onClose: onDismiss,
+                onSaved: {
+                    // The form's save raises the success toast on
+                    // the funds view model; forward it through
+                    // this view model's confirmation funnel
+                    // (app-shell toast when wired, else the local
+                    // one) BEFORE dismissing — dismissing first
+                    // would drop the observation, and
+                    // Purchase/Donation confirm the same way.
+                    if let toast = fundsViewModel.toast {
+                        viewModel.showConfirmation(toast.message, kind: toast.kind)
+                        fundsViewModel.toast = nil
+                    }
+                    onDismiss()
+                }
+            )
+        }
+        .scrollIndicators(.hidden)
+        // The funds view model's default-rate preview needs the
+        // household's real charity settings (not the assumed 10%):
+        // load them once, when this step first appears. A failed
+        // load leaves the 10% fallback — the save itself still
+        // uses the server's default rate.
+        .task {
+            if !didLoadFunds {
+                didLoadFunds = true
+                await fundsViewModel.refresh()
+            }
+        }
+        // A failed save raises an alert on the funds view model
+        // (same as on the Funds page); show it here, since nothing
+        // else observes that view model from this sheet. The typed
+        // input stays in the form (F-P1-4).
+        .alert(
+            fundsViewModel.alertTitle ?? "Could Not Complete",
+            isPresented: Binding(
+                get: { fundsViewModel.alertMessage != nil },
+                set: { if !$0 { fundsViewModel.alertMessage = nil; fundsViewModel.alertTitle = nil } }
+            )
+        ) {
+            Button(TitleCase.apply(to: "Close"), role: .cancel) {}
+        } message: {
+            Text(fundsViewModel.alertMessage ?? "")
         }
     }
 
@@ -117,6 +259,29 @@ public struct AddTransactionView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .opacity(0.6)
         }
+    }
+}
+
+/// Ink outline option (build 65): white bg, ink #0f172a border +
+/// text, same sizing as Primary / Tertiary. The third treatment in
+/// the + Add three-option stack — solid blue and grey fill are
+/// taken, and a brand-blue outline would sit too close to the solid
+/// blue under the strengthened button rule.
+private struct InkOutlineButtonStyle: ButtonStyle {
+    func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(DesignTokens.ink)
+            .padding(.vertical, 13)
+            .padding(.horizontal, 18)
+            .frame(maxWidth: .infinity)
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(DesignTokens.ink, lineWidth: 1.5)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
 

@@ -301,9 +301,17 @@ public enum TransactionFormatting {
 
     // MARK: - Row labels
 
-    /// Merchant names display Title-Cased; stored values stay upper-case.
+    /// Merchant / transaction names display ALL CAPS (build 65,
+    /// owner Nov 23, 2026): banks print merchants in caps, and
+    /// Plaid / email / manual entry disagree on casing — caps
+    /// normalizes it. Display only: the stored value is
+    /// unchanged, and dedupe / search stay case-insensitive, so
+    /// they are untouched. This is the ONE shared helper for a
+    /// display merchant/transaction name — every merchant-name
+    /// render site routes through this (or through `rowTitle`,
+    /// which calls it). Names only, never other app text.
     public static func displayMerchant(_ merchant: String) -> String {
-        TitleCase.apply(to: merchant)
+        merchant.uppercased()
     }
 
     // MARK: - Transfer row titles (build 42, owner Nov 17, 2026)
@@ -317,8 +325,12 @@ public enum TransactionFormatting {
 
     /// The row's title: ALWAYS the merchant name. The row and its
     /// search highlight both render this string, so they agree.
+    /// ALL CAPS (build 65, owner Nov 23, 2026 — via
+    /// `displayMerchant`, the one shared name helper; the kit's
+    /// `TransactionTitles.rowTitle` still Title-Cases, so the caps
+    /// are applied here, at the app layer).
     public static func rowTitle(for transaction: Transaction) -> String {
-        TransactionTitles.rowTitle(for: transaction)
+        displayMerchant(TransactionTitles.rowTitle(for: transaction))
     }
 
     /// "Transfer from ••5939" / "Transfer to ••5939" (detail only).
@@ -409,6 +421,32 @@ public enum TransactionFormatting {
         TransactionTitles.kindLabel(for: transaction)
     }
 
+    /// Kind display name for the expanded detail's "Type" row
+    /// (build 65, owner Nov 23, 2026): the SAME labels the
+    /// Actions sheet uses (`TransactionActionsSheet.kindLabel` —
+    /// "Purchase", not "Spending", owner Nov 22, 2026), so the
+    /// detail and the sheet never disagree. `kindLabel(for:)`
+    /// above is NOT used here — it only distinguishes Refund /
+    /// Charity gift / Transfer / Transaction (live.js:990) and
+    /// collapses charge / income / fund charge / payment /
+    /// cashback / other to "Transaction". Charity reads "Tzedaka"
+    /// (the default fund name — the detail has no custom fund
+    /// name handy; the Actions sheet passes the household's
+    /// custom name when it has it).
+    public static func typeLabel(for transaction: Transaction) -> String {
+        switch transaction.kind {
+        case .charge: return "Purchase"
+        case .refund: return "Refund"
+        case .fundCharge: return "Fund Charge"
+        case .transfer: return "Transfer"
+        case .payment: return "Payment"
+        case .cashback: return "Cashback"
+        case .income: return "Income"
+        case .charity: return "Tzedaka"
+        case .other: return "Other"
+        }
+    }
+
     /// Source labels, display only (live.js:347): Bank / By hand /
     /// File / Email (renamed from "Email alert", owner Nov 11, 2026).
     /// Restored (build 44, change 2): a bank-dropped row restored
@@ -463,6 +501,14 @@ public enum TransactionStatusFilter: String, Equatable, CaseIterable {
     case pending
     case posted
     case refunds
+    /// Build 65 (Tzedaka sheet pre-filter): the rows behind the
+    /// Tzedaka numbers — gifts given (kind .charity) PLUS income
+    /// rows that accrued charity (kind .income whose id is in
+    /// `TransactionFilters.tzedakaAccrualIds`). NOT offered in the
+    /// Filters sheet picker (it needs the accrual set, which only
+    /// the Tzedaka sheet handoff supplies) — the picker filters
+    /// it out of `allCases`.
+    case tzedaka
 
     public var label: String {
         switch self {
@@ -473,6 +519,7 @@ public enum TransactionStatusFilter: String, Equatable, CaseIterable {
         case .pending: return "Pending"
         case .posted: return "Posted"
         case .refunds: return "Refunds"
+        case .tzedaka: return "Tzedaka"
         }
     }
 
@@ -490,6 +537,8 @@ public enum TransactionStatusFilter: String, Equatable, CaseIterable {
             return FundSectionID.spending.displayName(customNames: customNames)
         case .extraFund:
             return FundSectionID.fund.displayName(customNames: customNames)
+        case .tzedaka:
+            return FundSectionID.charity.displayName(customNames: customNames)
         default:
             return label
         }
@@ -604,6 +653,13 @@ public struct TransactionFilters: Equatable {
     public var maxCents: Int? = nil
     public var search: String = ""
     public var sort: TransactionSort = .dateDesc
+    /// Build 65 (Tzedaka sheet pre-filter): the transaction ids
+    /// whose income accrued charity (active `charity_income` rows'
+    /// `transactionId`). Only consulted when `status == .tzedaka`;
+    /// ignored for every other status. Empty by default — a
+    /// `.tzedaka` filter with an empty set still shows the gifts
+    /// (kind .charity), just no income rows.
+    public var tzedakaAccrualIds: Set<UUID> = []
 
     public init() {}
 
@@ -664,7 +720,7 @@ public struct TransactionFilters: Equatable {
 
     public mutating func clearChip(_ key: String) {
         switch key {
-        case "status": status = .all
+        case "status": status = .all; tzedakaAccrualIds = []
         case "kind": kind = nil
         case "month": month = "all"
         case "card": card = "all"
@@ -713,7 +769,7 @@ public struct TransactionFilters: Equatable {
         self.kind = kind
         if kind != nil {
             switch status {
-            case .refunds, .charity, .spending, .extraFund: status = .all
+            case .refunds, .charity, .spending, .extraFund, .tzedaka: status = .all
             case .all, .pending, .posted: break
             }
         }
@@ -774,6 +830,12 @@ public struct TransactionFilters: Equatable {
             case .charity: guard tx.kind == .charity else { return false }
             case .spending: guard tx.kind == .charge else { return false }
             case .extraFund: guard tx.kind == .fundCharge else { return false }
+            // Build 65 (Tzedaka sheet): gifts given (kind
+            // .charity) PLUS income rows that accrued charity
+            // (their id is in tzedakaAccrualIds). The plain
+            // .charity status matches gifts only — that is why
+            // this is a separate case.
+            case .tzedaka: guard tx.kind == .charity || tzedakaAccrualIds.contains(tx.id) else { return false }
             case .all: break
             }
             // Kind (build 61 — export filter picker): an AND with
@@ -885,6 +947,15 @@ public struct TransactionFilters: Equatable {
     ) -> Int {
         if status == .charity {
             return shown.filter { !$0.isInTrash && $0.kind == .charity }
+                .reduce(0) { $0 + $1.amountCents }
+        }
+        // Build 65 (Tzedaka sheet): the shown rows are the income
+        // that accrued charity (money in) plus the gifts given
+        // (money out) — the total is their plain net sum, not the
+        // spending netting below (which only counts charges /
+        // fund charges / refunds and would read 0 here).
+        if status == .tzedaka {
+            return shown.filter { !$0.isInTrash }
                 .reduce(0) { $0 + $1.amountCents }
         }
         // Build 53 (audit C6): the spending total lives in

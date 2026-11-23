@@ -62,14 +62,19 @@ public enum TourAnchor: String, CaseIterable {
     case savingsCard
     /// Funds — the Overspent (Past) card.
     case debtCard
+    /// The shell's PageSelectControl (Home / Transactions /
+    /// Funds) — build 65, the single page select, rendered by
+    /// the shell above the tab content. The Funds-tab step
+    /// points at it; it used to point at the bottom tab bar's
+    /// Funds item, which no longer exists (no TabView).
+    case pageSelect
 }
 
 /// One step of the walkthrough (v2 plan, 11 steps). The `line` is the
 /// one short plain line the tooltip shows; `tab` is the screen the
 /// step lives on; `anchor` is the element the arrow points at (nil
-/// for the Funds-tab step, whose target is the tab bar item itself,
-/// computed from the container geometry, and for Close, which has
-/// no target).
+/// only for Close, which has no target; the Funds-tab step points
+/// at the shell's PageSelectControl via `.pageSelect`).
 public enum TourStep: Int, CaseIterable {
     case spendingNumber
     case charityCard
@@ -141,7 +146,9 @@ public enum TourStep: Int, CaseIterable {
             return .firstRow
         case .searchFilters:
             return .searchBar
-        case .fundsTab, .close:
+        case .fundsTab:
+            return .pageSelect
+        case .close:
             return nil
         case .savingsCard:
             return .savingsCard
@@ -377,23 +384,16 @@ public struct TourOverlayView: View {
         49 + proxy.safeAreaInsets.bottom
     }
 
-    /// The current step's target frame: the reported anchor frame,
-    /// or (for the Funds-tab step) the Funds tab bar item, computed
-    /// from the container — three equal tabs, Funds is the third.
+    /// The current step's target frame: the reported anchor frame.
     /// Nil for Close (no target) and while a new tab is still
-    /// laying out (the anchor has not reported yet).
+    /// laying out (the anchor has not reported yet). Build 65: the
+    /// Funds-tab step used to compute the bottom tab bar's Funds
+    /// item from the container geometry — that branch is gone with
+    /// the tab bar; the step now points at the shell's
+    /// PageSelectControl via the `.pageSelect` anchor instead.
     private func targetFrame(for step: TourStep, containerSize: CGSize, tabBarHeight: CGFloat) -> CGRect? {
         if let anchor = step.anchor {
             return tour.frame(for: anchor)
-        }
-        if step == .fundsTab {
-            let tabWidth = containerSize.width / 3
-            return CGRect(
-                x: tabWidth * 2,
-                y: containerSize.height - tabBarHeight,
-                width: tabWidth,
-                height: tabBarHeight
-            )
         }
         return nil
     }

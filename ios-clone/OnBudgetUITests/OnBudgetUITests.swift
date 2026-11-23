@@ -180,7 +180,7 @@ final class OnBudgetUITests: XCTestCase {
         // expired session is a state this helper cannot recover
         // from, so fail fast with the actual state instead of
         // burning the 60s auth wait in signUpFreshAccount.
-        let homeTab = app.tabBars.buttons["tab.home"]
+        let homeTab = app.buttons["pageSelect.home"]
         if !homeTab.waitForExistence(timeout: 10) {
             let inviteField = app.textFields["household.inviteCode"]
             if inviteField.waitForExistence(timeout: 10) {
@@ -196,7 +196,7 @@ final class OnBudgetUITests: XCTestCase {
         // lands on the auth screen). The Profile card is first in
         // Settings, so its Sign Out button needs no scrolling.
         // Clear any overlay first: run 44980488090's
-        // testHomeHeroAmountAndDonut and testTabBarIsAtBottom both
+        // testHomeHeroAmountAndDonut and testPageSelectIsSingleNavigation both
         // died here — the Profile tap failed to scroll into view
         // (kAXErrorCannotComplete), which is what an overlay
         // (walkthrough, or the notifications alert) covering Home
@@ -253,47 +253,39 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "06-funds")
     }
 
-    /// Bottom tab bar (owner, Nov 11 2026): on iPad the system renders
-    /// a plain TabView's tabs as a segmented control at the TOP —
-    /// the "Home / Transactions / Funds segmented pill" that threw the
-    /// owner off. `OnBudgetApp` registers `UseFloatingTabBar` = false
-    /// so the traditional bottom tab bar is used on iPad too. This
-    /// test pins the bar to the bottom of the screen and proves all
-    /// three tabs switch content. NOTE: CI runs on an iPhone 16
-    /// simulator (compact size class), where the bar is at the bottom
-    /// with or without the flag — this test guards the placement on
-    /// iPhone and the tab switching; the iPad rendering itself can
-    /// only be proven on a real iPad.
-    func testTabBarIsAtBottom() throws {
+    /// Page select is the ONE navigation (build 65, owner Nov 23,
+    /// 2026): the TabView is gone — the duplicate Home /
+    /// Transactions / Funds bar (bottom tab bar + Lean floater)
+    /// is replaced by a single PageSelectControl under the top
+    /// bar. This test proves there is NO tab bar at all, the page
+    /// select exists with all three segments, and each segment
+    /// switches content. NOTE: CI runs on an iPhone 16 simulator
+    /// (compact size class) — this guards the navigation on
+    /// iPhone; the iPad rendering itself can only be proven on a
+    /// real iPad.
+    func testPageSelectIsSingleNavigation() throws {
         signInAndJoinTestHousehold()
 
-        let tabBar = app.tabBars.firstMatch
-        XCTAssertTrue(
-            tabBar.waitForExistence(timeout: 30),
-            "Tab bar missing on Home"
+        XCTAssertFalse(
+            app.tabBars.firstMatch.exists,
+            "A tab bar is still present — build 65 removed the TabView; navigation is the page select only"
         )
-        let screenHeight = app.windows.firstMatch.frame.height
-        XCTAssertGreaterThan(screenHeight, 0, "No window frame to measure against")
-        XCTAssertGreaterThan(
-            tabBar.frame.minY, screenHeight * 0.5,
-            "Tab bar is not at the bottom of the screen (minY \(tabBar.frame.minY) on a \(screenHeight)pt screen) — on iPad this is the top segmented control"
-        )
-        for identifier in ["tab.home", "tab.transactions", "tab.funds"] {
+        for identifier in ["pageSelect.home", "pageSelect.transactions", "pageSelect.funds"] {
             XCTAssertTrue(
-                app.tabBars.buttons[identifier].exists,
-                "Tab bar is missing the \(identifier) tab"
+                app.buttons[identifier].exists,
+                "Page select is missing the \(identifier) segment"
             )
         }
 
         tapTab(identifier: "tab.transactions", label: "Transactions")
         XCTAssertTrue(
             app.staticTexts["Transactions"].waitForExistence(timeout: 30),
-            "Transactions tab did not show the Transactions screen"
+            "Transactions page select did not show the Transactions screen"
         )
         tapTab(identifier: "tab.funds", label: "Funds")
         XCTAssertTrue(
             app.staticTexts["Extra Fund"].waitForExistence(timeout: 30),
-            "Funds tab did not show the Funds screen (no Extra Fund card)"
+            "Funds page select did not show the Funds screen (no Extra Fund card)"
         )
         XCTAssertFalse(
             app.staticTexts[proofHouseholdName].exists,
@@ -302,14 +294,9 @@ final class OnBudgetUITests: XCTestCase {
         tapTab(identifier: "tab.home", label: "Home")
         XCTAssertTrue(
             app.staticTexts[proofHouseholdName].waitForExistence(timeout: 30),
-            "Home tab did not return to the household title"
+            "Home page select did not return to the household title"
         )
-        // The bar stays at the bottom after switching tabs.
-        XCTAssertGreaterThan(
-            app.tabBars.firstMatch.frame.minY, screenHeight * 0.5,
-            "Tab bar left the bottom of the screen after switching tabs"
-        )
-        attachScreenshot(named: "07-tab-bar-bottom")
+        attachScreenshot(named: "07-page-select")
     }
 
     /// Gmail callback deep link (CI run 42746242404 finding): the
@@ -376,7 +363,7 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- Export popup opens, history fetch shows a count --------
         // Build 53 (audit U2): Export lives in the "More" menu now.
-        app.buttons["pageLinks.more"].tap()
+        app.buttons["header.more"].tap()
         let exportChip = app.buttons["export.open"]
         XCTAssertTrue(
             exportChip.waitForExistence(timeout: 15),
@@ -1030,7 +1017,7 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- Past Weeks pushes -------------------------------------------
         // Build 53 (audit U2): Past Weeks lives in the "More" menu now.
-        app.buttons["pageLinks.more"].tap()
+        app.buttons["header.more"].tap()
         let pastWeeksLink = app.buttons["Past Weeks"]
         XCTAssertTrue(
             pastWeeksLink.waitForExistence(timeout: 15),
@@ -1054,7 +1041,7 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- Activity pushes ---------------------------------------------
         // Build 53 (audit U2): Activity lives in the "More" menu now.
-        app.buttons["pageLinks.more"].tap()
+        app.buttons["header.more"].tap()
         let activityLink = app.buttons["Activity"]
         XCTAssertTrue(
             activityLink.waitForExistence(timeout: 15),
@@ -1115,12 +1102,12 @@ final class OnBudgetUITests: XCTestCase {
             return "still on the Household screen (join did not complete — the invite field is showing; visible text: \(visibleErrorText()))"
         }
         // Home's title is the household NAME (either household the
-        // tests join), and the tab bar is the other Home signal.
+        // tests join), and the page select is the other Home signal.
         // The old check looked for "Weekly Budget", which is not a
         // visible text on Home at all — so a fully-rendered Home
         // was reported as "unknown state" (run 44970315808).
         if app.staticTexts[proofHouseholdName].exists || app.staticTexts[videoHouseholdName].exists
-            || app.tabBars.buttons["tab.home"].exists || app.tabBars.buttons["Home"].exists {
+            || app.buttons["pageSelect.home"].exists || app.buttons["Home"].exists {
             return "Home already rendered (the account already has a household?)"
         }
         return "unknown state (not auth, not boot-error, not session-expired, not Household screen, not Home)"
@@ -1186,8 +1173,8 @@ final class OnBudgetUITests: XCTestCase {
         settleNotificationAlertIfNeeded()
         dismissTourIfPresent()
         XCTAssertTrue(
-            app.tabBars.buttons["tab.home"].exists
-                || app.tabBars.buttons["Home"].exists,
+            app.buttons["pageSelect.home"].exists
+                || app.buttons["Home"].exists,
             "Tab bar missing on Home"
         )
         attachScreenshot(named: "04-home")
@@ -1226,8 +1213,8 @@ final class OnBudgetUITests: XCTestCase {
         settleNotificationAlertIfNeeded()
         dismissTourIfPresent()
         XCTAssertTrue(
-            app.tabBars.buttons["tab.home"].exists
-                || app.tabBars.buttons["Home"].exists,
+            app.buttons["pageSelect.home"].exists
+                || app.buttons["Home"].exists,
             "Tab bar missing on Home"
         )
         attachScreenshot(named: "04-home")
@@ -1567,15 +1554,20 @@ final class OnBudgetUITests: XCTestCase {
     /// Tab-bar buttons carry both the identifier (tab.*) and the
     /// visible label; prefer the identifier, fall back to the label.
     private func tapTab(identifier: String, label: String) {
-        let byIdentifier = app.tabBars.buttons[identifier]
+        // Build 65: the TabView is gone — navigation is the shell
+        // PageSelectControl (one control, under the top bar). The
+        // call sites still pass the old "tab.*" identifiers; map
+        // them to the page-select ids ("pageSelect.home" etc.).
+        let pageSelectId = identifier.replacingOccurrences(of: "tab.", with: "pageSelect.")
+        let byIdentifier = app.buttons[pageSelectId]
         if byIdentifier.waitForExistence(timeout: 15) {
             byIdentifier.tap()
             return
         }
-        let byLabel = app.tabBars.buttons[label]
+        let byLabel = app.buttons[label]
         XCTAssertTrue(
             byLabel.waitForExistence(timeout: 15),
-            "Tab bar button \(label) (\(identifier)) not found"
+            "Page select button \(label) (\(pageSelectId)) not found"
         )
         byLabel.tap()
     }

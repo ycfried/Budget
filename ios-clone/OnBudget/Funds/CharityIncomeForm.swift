@@ -26,6 +26,12 @@ public struct CharityIncomeForm: View {
     public let fundName: String
     /// Closes the form back to the Funds list (owned by FundsView).
     public var onClose: () -> Void = {}
+    /// Build 65 (owner, Nov 23, 2026 — item 8): called after a
+    /// successful save, so a presenter that shows this form as a
+    /// step (the + Add sheet) can close itself. Nil by default —
+    /// the Funds page keeps its existing behaviour (the form stays
+    /// open, cleared, beside the success toast).
+    public var onSaved: (() -> Void)? = nil
 
     @State private var sourceText = ""
     @State private var amountText = ""
@@ -50,11 +56,12 @@ public struct CharityIncomeForm: View {
     /// the owner opened it.
     @State private var showNoteField = false
 
-    public init(viewModel: FundsViewModel, fundName: String, correcting: Binding<CharityIncome?>, onClose: @escaping () -> Void = {}) {
+    public init(viewModel: FundsViewModel, fundName: String, correcting: Binding<CharityIncome?>, onClose: @escaping () -> Void = {}, onSaved: (() -> Void)? = nil) {
         self.viewModel = viewModel
         self.fundName = fundName
         self._correcting = correcting
         self.onClose = onClose
+        self.onSaved = onSaved
     }
 
     private var defaultRateBp: Int { viewModel.charitySettings?.defaultRateBp ?? 1000 }
@@ -312,6 +319,7 @@ public struct CharityIncomeForm: View {
             ) {
                 correcting = nil
                 clearIncomeFields()
+                onSaved?()
             }
         }
     }

@@ -14,28 +14,17 @@ struct OnBudgetApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        // Bottom tab bar on iPad too (owner, Nov 11 2026): iPadOS 18+
-        // renders a plain TabView's tabs as a segmented control at the
-        // TOP in the regular size class — the "Home / Transactions /
-        // Funds segmented pill" the owner circled on his iPad. On
-        // iPhone (compact) the same code already renders the bottom
-        // tab bar. This default restores the traditional bottom tab
-        // bar (the Liquid Glass version on iPadOS 26); it is read by
-        // the system when the tab bar is created, so it must be
-        // registered here, before any UI loads. It is an undocumented
-        // system default: if a future iPadOS removes it, the app falls
-        // back to the top segmented control — navigation still works,
-        // only the placement changes. Build 64 (C-6): the primary
-        // fix is now `.tabViewStyle(.tabBarOnly)` on the TabView in
-        // AppShellView (iOS 18+); this default stays as the fallback
-        // for any TabView that does not set the style.
-        // Alternatives rejected: forcing
-        // `.horizontalSizeClass` to `.compact` (public API, but it can
-        // glitch the navigation hierarchy and shrinks the tab bar to a
-        // small centred pill on iPadOS 26) and a hand-rolled tab bar
-        // (loses the system tab bar's behaviour and the existing UI
-        // tests' `tabBars` queries).
-        UserDefaults.standard.register(defaults: ["UseFloatingTabBar": false])
+        // Build 65: the `UseFloatingTabBar` = false default is
+        // GONE — it existed only to force a plain TabView's tabs
+        // to the bottom tab bar on iPad (owner, Nov 11 2026: the
+        // top segmented pill "throws me off"). Build 65 removes
+        // the app's last TabView (AppShellView switches on
+        // `selectedTab` and renders one PageSelectControl), so no
+        // TabView reads this default any more and the bottom tab
+        // bar itself is gone. History: build 64's
+        // `.tabViewStyle(.tabBarOnly)` did not hold — the
+        // duplicate page select was still seen on Home and Funds
+        // — hence the removal rather than another TabView tweak.
         // Build 57 (owner, Nov 22, 2026 — no more guessed icons):
         // clear the retired guessed-icon data (remembered guesses
         // + cleared-guess list) left by builds 52–53, so a device

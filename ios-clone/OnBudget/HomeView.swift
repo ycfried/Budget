@@ -26,6 +26,13 @@
 // Fund amber #d97706 outline, both 2px, white inside like the
 // hero, shared StatCardTheme with the Funds page); the Weekly
 // Budget hero above them keeps its thicker 3px outline.
+// Build 65 (owner, Nov 23, 2026 — items 2, 5): on iPad the
+// Spending hero and Tzedaka card sit side by side in two equal
+// columns inside the 900pt column (see simpleContent), and
+// tapping the Tzedaka card opens the Tzedaka sheet — numbers plus
+// its two actions (Add to Tzedaka + Record a Gift) — mirroring
+// the Weekly sheet. The classic stacked stat cards above are the
+// retired backup; the live Home is simpleContent.
 // "Last synced" is shown once, quietly, under Automatic Sync in
 // Settings (ConnectedAccountsView); Home carries NO sync line
 // (owner, Nov 11, 2026 — removed from Home entirely).
@@ -601,7 +608,7 @@ public final class HomeViewModel: ObservableObject {
     /// TransactionsViewModel.runSync() — same halves, same plain
     /// pre-deploy 403 line, same combined toast; only the bank
     /// text keeps Home's richer `syncToastText` (duplicate-removed
-    /// + stale lines). The server auth relax (members allowed to
+    /// line — build 65 dropped the counts and the stale line). The server auth relax (members allowed to
     /// call the sync functions) is a separate change and is NOT
     /// deployed yet — until it lands, a member's tap can come back
     /// 403, and that shows as one plain line, never the server's
@@ -685,15 +692,25 @@ public final class HomeViewModel: ObservableObject {
         await refresh()
     }
 
-    /// bankSyncToast (filterState.mjs:449-463).
+    /// bankSyncToast (filterState.mjs:449-463). Build 65 (owner,
+    /// Nov 23, 2026 — item 3): drastically shorter — the count
+    /// list ("X added, Y updated, Z skipped across N connected
+    /// account(s)") is gone. Nothing changed reads just "You're
+    /// up to date" (no counts, no account line); a change names
+    /// only the meaningful count, the new transactions. The
+    /// duplicate-connection line stays: a removed connection is a
+    /// real event, not a count. The stale line is dropped with the
+    /// counts. The failure path (.partial in syncBank, above) is
+    /// untouched — it still names what failed.
     static func syncToastText(_ out: PlaidSyncResult) -> String {
-        var text = "Sync done: \(out.added) added, \(out.updated) updated, \(out.skipped) skipped across \(out.items) connected account(s)."
+        var text: String
+        if out.added > 0 {
+            text = out.added == 1 ? "1 new transaction" : "\(out.added) new transactions"
+        } else {
+            text = "You're up to date"
+        }
         if let removed = out.duplicateRemoved, !removed.isEmpty {
             text += " A duplicate bank connection was removed because those accounts are already connected on another connection. Past transactions stay."
-        }
-        if out.stale == true {
-            let mins = out.minutesSincePreviousSync
-            text += " Scheduled sync hadn't run in a while before this sync\(mins.map { " (\($0) minutes since the last one)" } ?? "")."
         }
         return text
     }
@@ -717,6 +734,11 @@ public struct HomeView: View {
     /// it. Falls back to a fresh one if AppState has none yet.
     @ObservedObject var viewModel: HomeViewModel
     @State private var showWeeklySheet = false
+    /// Build 65 (owner, Nov 23, 2026 — item 5): tapping the
+    /// Tzedaka card opens the Tzedaka sheet (same fitted
+    /// full-screen presentation as the Weekly sheet), not the
+    /// Funds tab.
+    @State private var showTzedakaSheet = false
     @State private var showPastWeeks = false
     /// Past Weeks presented from Home (build 64, F-18): its own
     /// toast + date filter, like the shell's history pages — the
@@ -753,11 +775,9 @@ public struct HomeView: View {
             // wants it back). Recent Transactions is shared by
             // both layouts.
             VStack(alignment: .leading, spacing: 12) {
-                // Build 63 (Lean): the page select — Home /
-                // Transactions / Funds, the current page active
-                // as a white floater — sits directly under the
-                // Household header, above both Home layouts.
-                PageSelectControl(selectedTab: $appState.selectedTab)
+                // Build 65: the page select lives in the shell
+                // (AppShellView) now — one control for all tabs,
+                // so Home no longer renders its own.
                 // Build 49 (owner, Nov 19, 2026): when a Gmail
                 // connection is in error state, email alerts have
                 // stopped — Home says so out loud at the top, with a
@@ -850,12 +870,25 @@ public struct HomeView: View {
         // cover, not a detent sheet — popups are always full size.
         .fullScreenCover(isPresented: $showWeeklySheet) {
             if case .loaded(let result) = viewModel.week {
-                WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, purchasesThisWeek: viewModel.purchasesThisWeek, appState: appState)
+                WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, purchasesThisWeek: viewModel.purchasesThisWeek, appState: appState, onChanged: { Task { await viewModel.refresh() } })
                     // iPad width (owner, Nov 12 2026): WeeklySheet
                     // fixes its width to 600pt in the regular size
                     // class, so the popup opens 600pt wide and
                     // centred; on iPhone (compact) the width stays
                     // full-screen.
+            }
+        }
+        // Build 65 (owner, Nov 23, 2026 — item 5): the Tzedaka
+        // sheet — the same fitted full-screen presentation as the
+        // Weekly sheet above. It needs both a loaded charity
+        // summary (its numbers) and a loaded week (the week start
+        // its transactions button routes to); otherwise the card
+        // tap shows the not-loaded alert instead (see
+        // simpleFundCard).
+        .fullScreenCover(isPresented: $showTzedakaSheet) {
+            if case .loaded(let summary) = viewModel.charity,
+               case .loaded(let result) = viewModel.week {
+                TzedakaSheet(summary: summary, appState: appState, onChanged: { Task { await viewModel.refresh() } })
             }
         }
         // Build 64 (F-18): Past Weeks presented from Home, same
@@ -989,9 +1022,50 @@ public struct HomeView: View {
     /// quiet row. Build 47: a hidden fund leaves Home entirely
     /// (hero, card and quiet tiers all filter it out); hiding
     /// both quiet funds removes the quiet card itself.
+    /// Build 65 (owner, Nov 23, 2026 — item 2): on iPad the hero
+    /// and card tiers sit SIDE BY SIDE in two equal columns
+    /// instead of each stretching the full 900pt column with
+    /// iPhone-sized content and huge empty areas — Spending left,
+    /// Tzedaka right, by default. iPhone keeps the stacked
+    /// full-width layout. The two-column form applies only when
+    /// both tiers are non-empty; otherwise the stacked layout
+    /// stays (a lone tier keeps the full width).
     private var simpleContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ForEach(mockupOrder.filter { prominence(of: $0) == .hero && !isHiddenFromHome($0) }, id: \.self) { section in
+            if useIPadTwoColumn {
+                HStack(alignment: .top, spacing: 14) {
+                    heroTier
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    cardTier
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                heroTier
+                cardTier
+            }
+            quietCard
+        }
+    }
+
+    /// The hero-tier funds, in mockup order (Spending by default).
+    private var heroSections: [FundSectionID] {
+        mockupOrder.filter { prominence(of: $0) == .hero && !isHiddenFromHome($0) }
+    }
+
+    /// The card-tier funds, in mockup order (Tzedaka by default).
+    private var cardSections: [FundSectionID] {
+        mockupOrder.filter { prominence(of: $0) == .card && !isHiddenFromHome($0) }
+    }
+
+    /// True only on iPad when both the hero and card tiers have a
+    /// fund to show — the two-column condition (build 65, item 2).
+    private var useIPadTwoColumn: Bool {
+        isIPad && !heroSections.isEmpty && !cardSections.isEmpty
+    }
+
+    private var heroTier: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(heroSections, id: \.self) { section in
                 if section == .spending {
                     heroCard(simple: true)
                         .tourAnchor(.spendingHero, tour: appState.tour)
@@ -999,10 +1073,14 @@ public struct HomeView: View {
                     simpleFundCard(section: section, hero: true)
                 }
             }
-            ForEach(mockupOrder.filter { prominence(of: $0) == .card && !isHiddenFromHome($0) }, id: \.self) { section in
+        }
+    }
+
+    private var cardTier: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(cardSections, id: \.self) { section in
                 simpleFundCard(section: section, hero: false)
             }
-            quietCard
         }
     }
 
@@ -1490,7 +1568,13 @@ public struct HomeView: View {
     /// the same card with the hero-sized amount (a non-Spending
     /// fund set to hero — the ring stays Spending-only, so a hero
     /// card has no ring and no chevron). Tapping a card opens its
-    /// fund on the Funds tab. The header renders immediately —
+    /// fund on the Funds tab — EXCEPT Tzedaka (build 65, owner
+    /// Nov 23, 2026 — item 5): tapping the Tzedaka card opens
+    /// the Tzedaka sheet instead, like the Spending hero opens
+    /// the Weekly sheet. A Tzedaka tap while charity is still
+    /// loading (or failed) shows the not-loaded alert, like the
+    /// retired stat cards did — the sheet needs loaded numbers.
+    /// The header renders immediately —
     /// the name and icon are local — only the body waits on the
     /// numbers.
     private func simpleFundCard(section: FundSectionID, hero: Bool) -> some View {
@@ -1610,7 +1694,28 @@ public struct HomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .fundCardShadow()
         .contentShape(Rectangle())
-        .onTapGesture { appState.openFund(section) }
+        .onTapGesture {
+            if section == .charity {
+                switch viewModel.charity {
+                case .loaded:
+                    // The sheet also routes its transactions button
+                    // by week start, so a failed week keeps the
+                    // alert instead of opening a sheet whose button
+                    // would go nowhere.
+                    if case .loaded = viewModel.week {
+                        showTzedakaSheet = true
+                    } else {
+                        notLoadedAlertTitle = "Weekly Budget"
+                        showNotLoadedAlert = true
+                    }
+                case .loading, .failed:
+                    notLoadedAlertTitle = FundSectionID.charity.displayName(customNames: appState.fundNames)
+                    showNotLoadedAlert = true
+                }
+            } else {
+                appState.openFund(section)
+            }
+        }
         .accessibilityIdentifier(section == .charity ? "home.tzedakaCard" : "home.simpleCard.\(section.rawValue)")
         .accessibilityLabel(
             simpleCardData(for: section).map { "\(name), \($0.amountText), show fund" } ?? "\(name), loading"
@@ -2443,7 +2548,7 @@ public struct HomeView: View {
                     // never the bank logo.
                     isBankRow: row.kind == .transfer || row.kind == .payment)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(TitleCase.apply(to: row.merchant.lowercased()))
+                    Text(TransactionFormatting.displayMerchant(row.merchant))
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(DesignTokens.ink)
                     HStack(spacing: 6) {
@@ -2473,6 +2578,90 @@ public struct HomeView: View {
     // (ConnectedAccountsView).
 }
 
+// MARK: - Home sheets' fund forms (build 65)
+//
+// The Weekly and Tzedaka sheets reuse the Funds page's own forms
+// (Top Up Budget, Temporary Allowance, Add to Tzedaka, Record a
+// Gift) — the forms live in FundsRulesView / FundsView /
+// CharityIncomeForm and take a FundsViewModel, which Home does not
+// own. The sheets build one lazily from the same
+// FundsContext the shell builds for the Funds tab
+// (AppShellView), refresh it once so the forms' previews and
+// balances load (base allowance, charity Available), and forward
+// its toast to the one root toast, exactly like FundsView does —
+// so a form's success message is never lost inside a sheet.
+// The view model is created once per sheet presentation and kept
+// in the sheet's @State; its refresh only fills its own figures,
+// so the sheet's onChanged hook refreshes Home after a form
+// closes, or Home would keep showing pre-action numbers.
+
+private func makeFundsViewModel(appState: AppViewModel) -> FundsViewModel? {
+    guard let householdId = appState.householdId,
+          let role = appState.role,
+          let userId = appState.client.currentSession?.user.id else { return nil }
+    let viewModel = FundsViewModel(context: FundsContext(
+        client: appState.client, householdId: householdId, role: role, userId: userId))
+    viewModel.fundNames = appState.fundNames
+    return viewModel
+}
+
+/// One tappable action row inside a Home sheet (build 65, owner
+/// Nov 23, 2026 — items 4–5): a real row, not a big button and
+/// not bare text — icon in the action's colour, title + subline,
+/// faint chevron, 56pt minimum height, the whole row tappable.
+/// Rows (not more big buttons) so the extra actions never clash
+/// with the sheet's solid-blue primary / grey Close pair and
+/// never break the button rule.
+private struct SheetActionRow: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let subtitle: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 22, height: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(DesignTokens.muted)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#c3cad2"))
+            }
+            .frame(minHeight: 56)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title), \(subtitle)")
+    }
+}
+
+/// The hairline divider between two sheet action rows, matching
+/// the quiet card's divider on Home.
+private struct SheetActionDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color(hex: "#e7eaee"))
+            .frame(height: 0.5)
+            .padding(.horizontal, 16)
+    }
+}
+
 // MARK: - Weekly sheet
 
 /// Weekly sheet (CLONE_SPEC §14, live.js:3457-3500). Opened by
@@ -2494,14 +2683,40 @@ public struct WeeklySheet: View {
     let baseAllowanceCents: Int?
     let purchasesThisWeek: Int?
     @ObservedObject var appState: AppViewModel
+    /// Build 65: run after a form sheet opened from here closes,
+    /// so Home reloads the changed week numbers (the Funds view
+    /// model refreshes only its own figures). Home passes its own
+    /// refresh; nil keeps the old behaviour.
+    var onChanged: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Build 65 (owner, Nov 23, 2026 — item 4): the three action
+    /// rows below the numbers — Top Up Budget, Set This Week's
+    /// Budget, Weekly Budget Calculator.
+    @State private var showTopUp = false
+    @State private var showTempAllowance = false
+    @State private var showCalculator = false
+    /// The Funds view model the Top Up / Temporary Allowance forms
+    /// need (see the note above the Weekly sheet section). Built
+    /// lazily, once per presentation.
+    @State private var fundsViewModel: FundsViewModel?
 
-    public init(week: WeekResult, baseAllowanceCents: Int?, purchasesThisWeek: Int?, appState: AppViewModel) {
+    public init(week: WeekResult, baseAllowanceCents: Int?, purchasesThisWeek: Int?, appState: AppViewModel, onChanged: (() -> Void)? = nil) {
         self.week = week
         self.baseAllowanceCents = baseAllowanceCents
         self.purchasesThisWeek = purchasesThisWeek
         self.appState = appState
+        self.onChanged = onChanged
+    }
+
+    /// The Funds view model, built on first need (see
+    /// makeFundsViewModel). Nil only before the household is
+    /// known — in practice never while Home is showing.
+    private func ensureFundsViewModel() -> FundsViewModel? {
+        if let fundsViewModel { return fundsViewModel }
+        guard let viewModel = makeFundsViewModel(appState: appState) else { return nil }
+        fundsViewModel = viewModel
+        return viewModel
     }
 
     public var body: some View {
@@ -2537,6 +2752,22 @@ public struct WeeklySheet: View {
             if let purchases = purchasesThisWeek {
                 sheetRow(label: "Purchases", value: String(purchases))
             }
+            // Build 65 (owner, Nov 23, 2026 — item 4): the sheet
+            // used to end at the numbers with dead space below —
+            // the week actions live here now, as tappable ROWS in
+            // one white card (not more big buttons, so they never
+            // clash with the solid-blue Show Transactions / grey
+            // Close pair below and never break the button rule).
+            // Top Up Budget + Set This Week's Budget are admin-only
+            // (the Funds page gates them the same way); the
+            // Calculator is local-only and stays visible to every
+            // role. Each row opens the Funds page's own form — no
+            // logic is duplicated here. The card renders only when
+            // it holds at least one row (admin rows, or the
+            // calculator for every role) — never an empty white card.
+            if appState.isAdmin || appState.householdId != nil {
+                weeklyActionsCard
+            }
             HStack(spacing: 12) {
                 Button("Show Transactions") {
                     dismiss()
@@ -2570,6 +2801,298 @@ public struct WeeklySheet: View {
         // the system ~540pt form sheet. On iPhone (compact) no width
         // is fixed and the popup stays full-width.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // Build 65: load the Funds figures the forms need (base
+        // allowance for the Temporary Allowance preview); forward
+        // the forms' toasts to the one root toast, like FundsView.
+        .task {
+            if let viewModel = ensureFundsViewModel() {
+                await viewModel.refresh()
+            }
+        }
+        .onChange(of: fundsViewModel?.toast) { _, newValue in
+            if let toast = newValue {
+                appState.showToast(toast.message, kind: toast.kind)
+                fundsViewModel?.toast = nil
+            }
+        }
+        // Top Up Budget (FundsRulesView.AddToBudgetSheet): a
+        // one-time top-up to the CURRENT week only. Refreshes Home
+        // on dismiss, so the new total shows at once.
+        .fullScreenCover(isPresented: $showTopUp, onDismiss: { onChanged?() }) {
+            if let fundsViewModel {
+                AddToBudgetSheet(viewModel: fundsViewModel, onClose: { showTopUp = false })
+            }
+        }
+        // Set This Week's Budget (Funds.TemporaryAllowanceView):
+        // a one-week allowance override. The form has no dismiss
+        // control of its own, so it rides under a SheetHeader —
+        // the same chrome the other fund popups use.
+        .fullScreenCover(isPresented: $showTempAllowance, onDismiss: { onChanged?() }) {
+            if let fundsViewModel {
+                VStack(alignment: .leading, spacing: 16) {
+                    SheetHeader(title: "Set This Week's Budget", onClose: { showTempAllowance = false })
+                    TemporaryAllowanceView(viewModel: fundsViewModel)
+                    Spacer()
+                }
+                .padding()
+                .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+            }
+        }
+        // Weekly Budget Calculator (FundsView.
+        // WeeklyBudgetCalculatorSheet): the existing calculator,
+        // reused as-is — local-only, suggestion-only, no server
+        // write, so no Home refresh on dismiss.
+        .fullScreenCover(isPresented: $showCalculator) {
+            if let householdId = appState.householdId {
+                WeeklyBudgetCalculatorSheet(
+                    householdId: householdId,
+                    charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
+                    onClose: { showCalculator = false }
+                )
+            }
+        }
+    }
+
+    /// The week-action rows (build 65, item 4): Top Up Budget and
+    /// Set This Week's Budget for admins, the Weekly Budget
+    /// Calculator for every role. When the Funds view model cannot
+    /// be built (household not yet known — in practice never while
+    /// Home is showing), the two admin rows fall back to the
+    /// Spending fund on the Funds page, where the same actions
+    /// live; the sheet itself never strands the user.
+    private var weeklyActionsCard: some View {
+        VStack(spacing: 0) {
+            if appState.isAdmin {
+                SheetActionRow(
+                    icon: "plus.circle",
+                    iconColor: DesignTokens.deep,
+                    title: "Top Up Budget",
+                    subtitle: "Add a one-time amount to this week"
+                ) {
+                    if ensureFundsViewModel() != nil {
+                        showTopUp = true
+                    } else {
+                        dismiss()
+                        appState.openSpendingFund()
+                    }
+                }
+                SheetActionDivider()
+                SheetActionRow(
+                    icon: "calendar",
+                    iconColor: DesignTokens.ink,
+                    title: "Set This Week's Budget",
+                    subtitle: "Change this week's total for one week"
+                ) {
+                    if ensureFundsViewModel() != nil {
+                        showTempAllowance = true
+                    } else {
+                        dismiss()
+                        appState.openSpendingFund()
+                    }
+                }
+                if appState.householdId != nil {
+                    SheetActionDivider()
+                }
+            }
+            if appState.householdId != nil {
+                SheetActionRow(
+                    icon: "calculator",
+                    iconColor: DesignTokens.primary,
+                    title: "Weekly Budget Calculator",
+                    subtitle: "Work out the right weekly amount"
+                ) {
+                    showCalculator = true
+                }
+            }
+        }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
+        .fundCardShadow()
+    }
+
+    private func sheetRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 15))
+            Spacer()
+            Text(value)
+                .font(.system(size: 15, weight: .semibold))
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Tzedaka sheet (build 65, owner Nov 23, 2026 — item 5)
+//
+// Opened by tapping the Tzedaka card on Home. Mirrors the Weekly
+// Budget sheet's structure and fitted full-screen presentation:
+// the Tzedaka numbers (Available / Given / Pending / Total), the
+// two Tzedaka actions as tappable rows (Add to Tzedaka + Record a
+// Gift — Record Income is NOT here; it lives in the "+ Add" flow),
+// then the Show Transactions (primary) + Close (tertiary) pair.
+// The actions are rows, not more big buttons, for the same reason
+// as the Weekly sheet's rows: the sheet already has its
+// solid-blue / grey button pair, and two more full-width buttons
+// would put two solid blues in one sheet.
+
+public struct TzedakaSheet: View {
+    let summary: CharitySummary
+    @ObservedObject var appState: AppViewModel
+    /// Build 65: run after a form sheet opened from here closes,
+    /// so Home reloads the changed charity numbers. Home passes
+    /// its own refresh; nil keeps the sheet self-contained.
+    var onChanged: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var showAddToCharity = false
+    @State private var showRecordGift = false
+    /// The Funds view model the Add to Tzedaka / Record a Gift
+    /// forms need (see the note above the Weekly sheet section).
+    /// Built lazily, once per presentation.
+    @State private var fundsViewModel: FundsViewModel?
+
+    public init(summary: CharitySummary, appState: AppViewModel, onChanged: (() -> Void)? = nil) {
+        self.summary = summary
+        self.appState = appState
+        self.onChanged = onChanged
+    }
+
+    private var charityName: String {
+        FundSectionID.charity.displayName(customNames: appState.fundNames)
+    }
+
+    /// The Funds view model, built on first need (see
+    /// makeFundsViewModel). Nil only before the household is
+    /// known — in practice never while Home is showing.
+    private func ensureFundsViewModel() -> FundsViewModel? {
+        if let fundsViewModel { return fundsViewModel }
+        guard let viewModel = makeFundsViewModel(appState: appState) else { return nil }
+        fundsViewModel = viewModel
+        return viewModel
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(charityName)
+                .font(.system(size: 17, weight: .bold))
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 8)
+            // The Tzedaka numbers, in the same row shape as the
+            // Weekly sheet's rows. All four always show — Available
+            // is committed less Given less Pending, so the four
+            // add up on sight.
+            sheetRow(label: "Available", value: MoneyFormat.signedString(cents: summary.remainingCents))
+            sheetRow(label: "Given", value: MoneyFormat.string(cents: summary.givenCents))
+            sheetRow(label: "Pending", value: MoneyFormat.string(cents: summary.pendingGiftCents))
+            sheetRow(label: "Total", value: MoneyFormat.string(cents: summary.committedCents))
+            // The Tzedaka actions, as tappable rows (admin-only,
+            // like the Funds page's Tzedaka card). Only these two:
+            // Add to Tzedaka + Record a Gift. Record Income is
+            // deliberately absent — it lives in the "+ Add" flow.
+            if appState.isAdmin {
+                tzedakaActionsCard
+            }
+            HStack(spacing: 12) {
+                Button("Show \(charityName) Transactions") {
+                    dismiss()
+                    // Build 65: the Tzedaka pre-filter — the list
+                    // lands on the rows behind these numbers (gifts
+                    // given + income rows that accrued charity, all
+                    // time), via the pending-charity handoff.
+                    appState.showTzedakaTransactions()
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                Button("Close") { dismiss() }
+                    .buttonStyle(TertiaryButtonStyle())
+            }
+            .padding(.top, 8)
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 20)
+        .padding(.bottom, 24)
+        // iPad width, like the Weekly sheet: a fixed 600pt width
+        // in the regular size class, full-width on iPhone.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // Build 65: load the Funds figures the forms need (the
+        // charity Available for the Record a Gift over-available
+        // check); forward the forms' toasts to the one root toast,
+        // like FundsView.
+        .task {
+            if let viewModel = ensureFundsViewModel() {
+                await viewModel.refresh()
+            }
+        }
+        .onChange(of: fundsViewModel?.toast) { _, newValue in
+            if let toast = newValue {
+                appState.showToast(toast.message, kind: toast.kind)
+                fundsViewModel?.toast = nil
+            }
+        }
+        // Add to Tzedaka (CharityIncomeForm.AddToCharitySheet):
+        // a manual amount onto the Available balance. Refreshes
+        // Home on dismiss, so the new Available shows at once.
+        .fullScreenCover(isPresented: $showAddToCharity, onDismiss: { onChanged?() }) {
+            if let fundsViewModel {
+                AddToCharitySheet(viewModel: fundsViewModel, fundName: charityName, onClose: { showAddToCharity = false })
+            }
+        }
+        // Record a Gift (CharityIncomeForm.RecordCashGiftSheet):
+        // a cash gift given off-card — Available down, Given up.
+        // Refreshes Home on dismiss, like Add to Tzedaka.
+        .fullScreenCover(isPresented: $showRecordGift, onDismiss: { onChanged?() }) {
+            if let fundsViewModel {
+                RecordCashGiftSheet(viewModel: fundsViewModel, fundName: charityName, onClose: { showRecordGift = false })
+            }
+        }
+    }
+
+    /// The Tzedaka action rows (build 65, item 5). When the Funds
+    /// view model cannot be built (household not yet known — in
+    /// practice never while Home is showing), the rows fall back
+    /// to the Tzedaka fund on the Funds page, where the same
+    /// actions live; the sheet itself never strands the user.
+    private var tzedakaActionsCard: some View {
+        VStack(spacing: 0) {
+            SheetActionRow(
+                icon: "plus.circle",
+                iconColor: DesignTokens.primary,
+                title: "Add to \(charityName)",
+                subtitle: "Add money to the amount ready to give"
+            ) {
+                if ensureFundsViewModel() != nil {
+                    showAddToCharity = true
+                } else {
+                    dismiss()
+                    appState.openFund(.charity)
+                }
+            }
+            SheetActionDivider()
+            SheetActionRow(
+                icon: "gift",
+                iconColor: DesignTokens.ink,
+                title: "Record a Gift",
+                subtitle: "Record a cash gift given off-card"
+            ) {
+                if ensureFundsViewModel() != nil {
+                    showRecordGift = true
+                } else {
+                    dismiss()
+                    appState.openFund(.charity)
+                }
+            }
+        }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
+        .fundCardShadow()
     }
 
     private func sheetRow(label: String, value: String) -> some View {

@@ -15,8 +15,11 @@ import assert from 'node:assert/strict';
 import {
   canonicalHash,
   flagLookalikes,
+  longestCommonSubstringLength,
   merchantsRelated,
+  merchantsSimilarForReview,
   pickCanonicalPair,
+  sharedWholeWords,
 } from '../supabase/functions/_shared/canonical.ts';
 
 // --- merchantsRelated: the Amazon case -------------------------------
@@ -95,7 +98,12 @@ function fakeDb({ txRows, candRows = [], aliasRows = [], inserted }) {
         }
         if (table === 'merchant_aliases') return Promise.resolve({ data: aliasRows });
         if (table === 'duplicate_candidates') {
-          return Promise.resolve({ data: candRows.length ? candRows[0] : null });
+          // A candidate inserted earlier in this call (pass 1) is
+          // visible to a later prior-check (pass 2), as in the real
+          // database — otherwise a pair flagged in pass 1 would be
+          // flagged a second time in pass 2 of the same call.
+          const insertedCand = inserted.filter((i) => i.table === 'duplicate_candidates');
+          return Promise.resolve({ data: insertedCand.length ? insertedCand[0].row : (candRows.length ? candRows[0] : null) });
         }
         return Promise.resolve({ data: null });
       };
@@ -257,4 +265,158 @@ test('flag: a confirmed alias extends detection beyond substrings', async () => 
   });
   assert.equal(n, 1);
   assert.equal(inserted.length, 1);
+});
+
+// --- merchantsSimilarForReview: the Yaldel rule (build 65) ------------
+// Same date + same amount + similar names flag for Review, never
+// auto-merge. Similar = squashes share an 8+ char substring, or
+// share 2+ whole words, or one contains the other.
+
+test('similar: Yaldel pair qualifies (shared 16-char substring + 2 words)', () => {
+  assert.equal(
+    merchantsSimilarForReview('Yaldel Shluchei Harebbe', 'Yaldei Shluchei Harebbe Special Needs'),
+    true,
+  );
+  assert.equal(
+    merchantsSimilarForReview('Yaldei Shluchei Harebbe Special Needs', 'Yaldel Shluchei Harebbe'),
+    true,
+  );
+  assert.equal(sharedWholeWords('Yaldel Shluchei Harebbe', 'Yaldei Shluchei Harebbe Special Needs'), 2);
+  assert.equal(
+    longestCommonSubstringLength('YALDELSHLUCHEIHAREBBE', 'YALDEISHLUCHEIHAREBBESPECIALNEEDS') >= 8,
+    true,
+  );
+});
+
+test('similar: 2+ whole words qualify even without a long substring', () => {
+  // Squashes share only "OAKHILL" (7 chars) — the words OAK + HILL carry it.
+  assert.equal(merchantsSimilarForReview('Oak Hill Bakery', 'Oak Hill Deli'), true);
+  assert.equal(sharedWholeWords('Oak Hill Bakery', 'Oak Hill Deli'), 2);
+});
+
+test('similar: one shared word only does not qualify', () => {
+  // Shared word AMAZON (1) and shared substring "AMAZON" (6 chars) — both short of the rule.
+  assert.equal(merchantsSimilarForReview('Amazon Fresh', 'Amazon Books'), false);
+  assert.equal(sharedWholeWords('Amazon Fresh', 'Amazon Books'), 1);
+});
+
+test('similar: unrelated names do not qualify', () => {
+  assert.equal(merchantsSimilarForReview('Starbucks', 'Star Market'), false);
+  assert.equal(merchantsSimilarForReview('Keren Hatzedaka', 'Colel Chabad'), false);
+});
+
+test('similar: identical names are not "similar" (handled elsewhere)', () => {
+  assert.equal(merchantsSimilarForReview('Keren Hatzedaka', 'Keren Hatzedaka'), false);
+});
+
+test('similar: short names do not qualify', () => {
+  assert.equal(merchantsSimilarForReview('A', 'Amazon'), false);
+});
+
+test('substring: longest common substring is exact on small inputs', () => {
+  assert.equal(longestCommonSubstringLength('ABCDEF', 'XBCDEY'), 4);
+  assert.equal(longestCommonSubstringLength('ABC', 'XYZ'), 0);
+  assert.equal(longestCommonSubstringLength('SHLUCHEIHAREBBE', 'YALDEISHLUCHEIHAREBBE'), 15);
+});
+
+// --- flagLookalikes pass 2: the Yaldel rule ----------------------------
+
+test('flag: Yaldel-style pair IS flagged (different suffixes, similar names)', async () => {
+  // Live shape: Plaid row (real suffix) + email alert row (suffix
+  // '0000', unknown). Pass 1 misses it on the suffix filter; pass 2
+  // must catch it with reason 'similar-name', Plaid canonical.
+  const inserted = [];
+  const db = fakeDb({
+    txRows: [{
+      id: 'email-row', household_id: HH, date: '2026-11-22', merchant: 'YALDEI SHLUCHEI HAREBBE SPECIAL NEEDS',
+      amount_cents: 5400, card_suffix: '0000', source: 'amex_alert', created_at: '2026-11-22T18:00:00Z',
+    }],
+    inserted,
+  });
+  const n = await flagLookalikes(db, HH, {
+    id: 'plaid-row', merchant: 'YALDEL SHLUCHEI HAREBBE', date: '2026-11-22', amount_cents: 5400,
+    card_suffix: '1005', source: 'plaid', created_at: '2026-11-22T20:00:00Z',
+  });
+  assert.equal(n, 1);
+  assert.equal(inserted.length, 1);
+  assert.equal(inserted[0].table, 'duplicate_candidates');
+  assert.equal(inserted[0].row.reason, 'similar-name');
+  assert.equal(inserted[0].row.canonical_transaction_id, 'plaid-row');
+  assert.equal(inserted[0].row.duplicate_transaction_id, 'email-row');
+});
+
+test('flag: TOIREMORG-style pair is NEVER flagged (owner ruling Nov 3)', async () => {
+  // The names qualify as similar on their own (TOIREMORG is
+  // contained in TOIREMORGCHARITY) and the date + amount match —
+  // the guard must still refuse, on either suffix shape.
+  for (const emailSuffix of ['0000', '1005']) {
+    const inserted = [];
+    const db = fakeDb({
+      txRows: [{
+        id: 'email-row', household_id: HH, date: '2026-11-03', merchant: 'TOIREMORG CHARITY',
+        amount_cents: 200, card_suffix: emailSuffix, source: 'amex_alert',
+      }],
+      inserted,
+    });
+    const n = await flagLookalikes(db, HH, {
+      id: 'plaid-row', merchant: 'TOIREMORG', date: '2026-11-03', amount_cents: 200,
+      card_suffix: '1005', source: 'plaid',
+    });
+    assert.equal(n, 0, `email suffix ${emailSuffix} must not flag`);
+    assert.equal(inserted.length, 0);
+  }
+});
+
+test('flag: same date + amount but unrelated names are NOT flagged', async () => {
+  const inserted = [];
+  const db = fakeDb({
+    txRows: [{
+      id: 'old', household_id: HH, date: '2026-11-22', merchant: 'STAR MARKET',
+      amount_cents: 5400, card_suffix: '1005', source: 'plaid',
+    }],
+    inserted,
+  });
+  const n = await flagLookalikes(db, HH, {
+    id: 'new', merchant: 'STARBUCKS', date: '2026-11-22', amount_cents: 5400,
+    card_suffix: '1005', source: 'plaid',
+  });
+  assert.equal(n, 0);
+  assert.equal(inserted.length, 0);
+});
+
+test('flag: similar names on DIFFERENT known cards are NOT flagged', async () => {
+  // Two real donations to similar-named charities on different
+  // cards are two real purchases, not one duplicate.
+  const inserted = [];
+  const db = fakeDb({
+    txRows: [{
+      id: 'email-row', household_id: HH, date: '2026-11-22', merchant: 'YALDEI SHLUCHEI HAREBBE SPECIAL NEEDS',
+      amount_cents: 5400, card_suffix: '2005', source: 'amex_alert',
+    }],
+    inserted,
+  });
+  const n = await flagLookalikes(db, HH, {
+    id: 'plaid-row', merchant: 'YALDEL SHLUCHEI HAREBBE', date: '2026-11-22', amount_cents: 5400,
+    card_suffix: '1005', source: 'plaid',
+  });
+  assert.equal(n, 0);
+  assert.equal(inserted.length, 0);
+});
+
+test('flag: a dismissed (already-resolved) Yaldel-style pair is NEVER re-flagged', async () => {
+  const inserted = [];
+  const db = fakeDb({
+    txRows: [{
+      id: 'email-row', household_id: HH, date: '2026-11-22', merchant: 'YALDEI SHLUCHEI HAREBBE SPECIAL NEEDS',
+      amount_cents: 5400, card_suffix: '0000', source: 'amex_alert', created_at: '2026-11-22T18:00:00Z',
+    }],
+    candRows: [{ id: 'cand-1' }],
+    inserted,
+  });
+  const n = await flagLookalikes(db, HH, {
+    id: 'plaid-row', merchant: 'YALDEL SHLUCHEI HAREBBE', date: '2026-11-22', amount_cents: 5400,
+    card_suffix: '1005', source: 'plaid', created_at: '2026-11-22T20:00:00Z',
+  });
+  assert.equal(n, 0);
+  assert.equal(inserted.length, 0);
 });

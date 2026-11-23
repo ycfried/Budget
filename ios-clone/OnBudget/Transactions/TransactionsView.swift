@@ -4,33 +4,24 @@ import OnBudgetKit
 /// Transactions screen (CLONE_SPEC §7).
 ///
 /// - Heading "Transactions". Header actions (right, in order):
-///   "+ Add" (primary) → the Add popup · "Filters" (tertiary) →
-///   the filter sheet. The Add label stays compact so the 28pt
-///   title fits on one line at iPhone width. The sync icon used to
-///   sit here too (owner, Nov 12, 2026) but it read as a second
-///   blue button next to "+ Add" (owner, Nov 12 ~10:29 PM), so it
-///   now lives at the right end of the page-links row below, in
-///   the lighter blue #3b82f6.
-/// - Page links under the header: "Review" (admin-only) ·
-///   "Weeks" (Past Weeks) · "Export" as visible soft buttons, with
-///   "Activity" · "Trash" · "Merchants" behind a single "More"
-///   menu (build 64, F-18 — Past Weeks and Export surfaced out
-///   of the menu). The app shell supplies the
-///   Activity / Past Weeks handlers, so the links push PastWeeksView /
-///   ActivityView as subpages on the Transactions NavigationStack — the
-///   native equivalent of the web's full pages. The links are hidden
-///   until a handler is supplied, so they never lead nowhere. Trash is
-///   admin-only, only when trashed rows exist. "Export" (build 45) opens
-///   the full-screen export popup (PDF / CSV, filtered scope or all).
-///   The manual sync icon (44pt circle, lighter blue) sits
-///   right-aligned at the end of this row, for members too
-///   (build 64, F-19 — the old admin-only gate is gone).
+///   "+ Add" (primary, solid blue) → the Add popup · "Filters"
+///   (grey fill) → the filter sheet · "⋯" (grey outline) → a
+///   menu holding the secondary actions: Sync Now, Review,
+///   Weeks, Export (plus Activity / Trash / Merchants, which
+///   used to live behind the old "More" menu). Three distinct
+///   treatments, so no two share a colour or look very similar
+///   (owner button rule, strengthened Nov 23, 2026). Build 65,
+///   item 12: the old page-links row (Review / Weeks / Export /
+///   More pills + the circular sync icon) is gone — its actions
+///   live only in the ⋯ menu now.
 /// - Search box (owner, Nov 12, 2026): standard iOS search look —
 ///   system-grey filled field, magnifier inside on the left, short
 ///   "Search transactions" placeholder, no explainer underneath.
-///   Searches loaded transactions only (merchant / date / amount;
-///   250ms debounce). Filters apply client-side to the rows already
-///   loaded, so a search or filter change needs no refetch.
+///   LIVE: typing filters as you go (250ms debounce) — there is
+///   no Search button any more (build 65, item 12). Searches
+///   loaded transactions only (merchant / date / amount).
+///   Filters apply client-side to the rows already loaded, so a
+///   search or filter change needs no refetch.
 /// - Active-filter chips: one removable chip per applied filter.
 /// - Count line: "`N` transactions · Total `$X`" — one quiet
 ///   muted line, CENTERED (owner, Nov 16, 2026 — build 40: the
@@ -43,14 +34,9 @@ import OnBudgetKit
 ///   already loaded; the existing rows stay visible while it
 ///   appends. Filters, search, and sort apply client-side to
 ///   everything loaded so far.
-/// - Pull-to-refresh + manual sync icon, at the right
-///   end of the page-links row: the same
-///   `arrow.clockwise` symbol as the Home Weekly Budget card, in a
-///   44pt circle — lighter blue #3b82f6 (DesignTokens.mid) when an
-///   allowance has been set, grey while unset; it spins while
-///   syncing. It used to sit in the title row before "+ Add", but
-///   next to the blue "+ Add" it read as a second blue button
-///   (owner, Nov 12 ~10:29 PM — option 2, lighter blue).
+/// - Pull-to-refresh + the ⋯ menu's Sync Now: the same manual
+///   sync (`viewModel.runSync`, Plaid bank + Gmail email halves),
+///   throttled to one sync at a time (`isSyncing`).
 /// - Empty / loading / error states per §2.4 — a real error state,
 ///   never an endless spinner. Auth failure: "Your sign-in expired —
 ///   sign in again to see transactions." + "Sign In Again" (calls
@@ -79,7 +65,9 @@ public struct TransactionsView: View {
 
     @State private var searchText: String = ""
     /// The search field's keyboard focus (build 41, owner Nov 17,
-    /// 2026): the Search button dismisses it after applying.
+    /// 2026): the keyboard's Return key dismisses it. Search is
+    /// live-as-you-type — there is no Search button any more
+    /// (build 65, item 12).
     @FocusState private var searchFocused: Bool
     @State private var showingFilters: Bool = false
     @State private var showingAdd: Bool = false
@@ -122,6 +110,7 @@ public struct TransactionsView: View {
         scrollContent
             .task { await boot() }
             .onChange(of: appState.pendingWeekFilter) { _, _ in consumeHandoffs() }
+            .onChange(of: appState.pendingTzedakaFilter) { _, _ in consumeHandoffs() }
             .onChange(of: appState.fundNames) { _, names in viewModel.fundNames = names }
             .onChange(of: appState.pendingTransactionJump) { _, _ in consumeHandoffs() }
             .onChange(of: appState.pendingClearTransactionFilters) { _, _ in consumeHandoffs() }
@@ -163,7 +152,6 @@ public struct TransactionsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 header
-                pageLinks
                 searchBox
                 activeChips
                 countLine
@@ -320,12 +308,18 @@ public struct TransactionsView: View {
     /// then clear the flag so a later tab switch does not re-apply.
     /// Home "See All" (`pendingClearTransactionFilters`) clears
     /// search/filters first, same as the jump (audit H-P2-8).
+    /// Home Tzedaka sheet (`pendingTzedakaFilter`, build 65):
+    /// pre-filter to the Tzedaka rows (gifts + income that accrued).
     private func consumeHandoffs() {
         if let week = appState.pendingWeekFilter {
             appState.pendingWeekFilter = nil
             // Build 52: the week filter fetches the whole history,
             // so it is async — the list fills in when it lands.
             Task { await viewModel.applyWeekFilter(weekStart: week) }
+        }
+        if appState.pendingTzedakaFilter {
+            appState.pendingTzedakaFilter = false
+            Task { await viewModel.applyTzedakaFilter() }
         }
         if let jump = appState.pendingTransactionJump {
             appState.pendingTransactionJump = nil
@@ -343,18 +337,18 @@ public struct TransactionsView: View {
     // MARK: - Header
 
     private var header: some View {
-        // Title row, one line: "+ Add" (primary) then "Filters"
-        // (tertiary) on the right, under which the Trash /
-        // Activity / Past Weeks row moves up directly. The sync
-        // button used to sit here before "+ Add" (owner, Nov 12,
-        // 2026) but two blue buttons side by side read wrong, so
-        // it moved to the right end of the page-links row below,
-        // in the lighter blue (owner, Nov 12 ~10:29 PM — option 2).
-        // Narrow-phone fit (375pt, default type size): the row's
-        // content is 375 − 2×16 page padding = 343pt wide. Title
-        // "Transactions" at 28pt bold ≈ 168pt, "+ Add" ≈ 62pt,
-        // "Filters" ≈ 64pt — intrinsic ≈ 294pt, leaving room for
-        // comfortable gaps.
+        // Build 65 (item 12): three buttons only, three distinct
+        // treatments — "+ Add" solid blue (the one coloured
+        // button, the primary action), "Filters" grey fill, "⋯"
+        // grey outline — so no two share a colour or look very
+        // similar (owner button rule, strengthened Nov 23, 2026).
+        // The old page-links row (Review / Weeks / Export / More
+        // pills + circular sync icon) is gone; its actions live
+        // only in the ⋯ menu. Narrow-phone fit (375pt, default
+        // type size): the row's content is 375 − 2×16 page
+        // padding = 343pt wide. Title "Transactions" at 28pt
+        // bold ≈ 168pt, "+ Add" ≈ 62pt, "Filters" ≈ 64pt,
+        // "⋯" ≈ 44pt — intrinsic ≈ 338pt, inside 343pt.
         HStack(spacing: 8) {
             Text("Transactions")
                 .font(.system(size: 28, weight: .bold))
@@ -367,156 +361,79 @@ public struct TransactionsView: View {
                 .tourAnchor(.addButton, tour: appState.tour)
             Button("Filters") { showingFilters = true }
                 .buttonStyle(SmallTertiaryButtonStyle())
-        }
-    }
-
-    /// The manual sync button — same refresh symbol as the Home
-    /// Weekly Budget card, same 44pt circle, same lighter-blue-
-    /// when-set / grey-when-unset rule, same repeating spin while
-    /// syncing (audit H-P1-1/H-P1-2). Placement: right-aligned at
-    /// the end of the Trash / Activity / Past Weeks row (owner,
-    /// Nov 12 ~10:29 PM — option 2); it used to sit in the title
-    /// row before "+ Add", where it read as a second blue button.
-    /// The fill is the lighter blue #3b82f6 (DesignTokens.mid),
-    /// not the primary #2f6bff — same condition, same owner call.
-    private var syncButton: some View {
-        Button { Task { await viewModel.runSync() } } label: {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 17, weight: .semibold))
-                // White icon on the blue state; dark ink on the
-                // grey state — white-on-grey was ~1.1:1 and
-                // effectively invisible (audit H-P1-1). Build 53
-                // (owner, Nov 21, 2026 — the refresh-button
-                // flash): allowanceSet is nil while the state is
-                // unknown, and nil renders like set — the button
-                // is blue on first paint (the common case) and
-                // never flashes grey → blue. Only a KNOWN not-set
-                // state shows the grey.
-                .foregroundStyle(viewModel.allowanceSet != false ? .white : DesignTokens.ink)
-                .frame(width: 44, height: 44)
-                .background(
-                    viewModel.allowanceSet != false
-                        ? DesignTokens.mid : Color(hex: "#e5e7eb"))
-                .clipShape(Circle())
-                // Repeating linear spin while syncing: a plain
-                // 0°→360° rotation with no animation renders
-                // identically at both ends, so it never
-                // visibly spun (audit H-P1-2).
-                .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
-                .animation(
-                    viewModel.isSyncing
-                        ? .linear(duration: 0.9).repeatForever(autoreverses: false)
-                        : .default,
-                    value: viewModel.isSyncing)
-        }
-        .disabled(viewModel.isSyncing)
-        .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")
-    }
-
-    @ViewBuilder
-    private var pageLinks: some View {
-        // Build 53 (audit U2): the scrolling chip row hid pages
-        // inside pages — the owner's Nov 20 navigation complaint
-        // ("too many pages hiding in pages"). Review now stands
-        // OUTSIDE any scroll (it carries the count badge, so it
-        // must never hide), and the rest live behind a single
-        // "More" menu. No horizontal scroll, no cut-off chip
-        // hinting at more. Review is the pale #bfdbfe button
-        // (coloured, not an outline — the owner keeps flagging
-        // outline buttons as ugly); More is the one outline chip
-        // left, a secondary navigation affordance. The manual sync
-        // icon stays FIXED at the right end (owner, Nov 12 ~10:29
-        // PM — option 2, lighter blue).
-        // Build 64 (F-18): Past Weeks and Export join Review as
-        // visible buttons outside the menu (the two most-used
-        // destinations, same build-52 pattern) — only Activity,
-        // Trash, and Merchants stay behind "More".
-        // Build 64 (F-18 overflow): on a 375pt phone the row
-        // (Review + Past Weeks + Export + More + 44pt sync circle)
-        // ran ~15–20pt past the 343pt available, so labels could
-        // wrap or compress. "Past Weeks" reads "Weeks" here (the
-        // full name stays the accessibility label) and the row
-        // spacing is 6, not 8 — Review ~65 + Weeks ~55 + Export
-        // ~65 + More ~70 + spacing 24 + sync 44 ≈ 323pt, inside
-        // 343pt even with a Review count badge. Members (no
-        // Review button) fit with room to spare.
-        HStack(spacing: 6) {
-            // Build 30: Review moved off the Funds page — an
-            // admin-only button here opens the dedicated Review
-            // page, with a count badge while anything is waiting
-            // (held refunds + possible duplicates + refund links).
-            // The badge is a small squarish count chip, not a pill.
-            if viewModel.isAdmin, let onShowReview {
-                Button(action: onShowReview) {
-                    HStack(spacing: 6) {
-                        Text("Review")
-                        if reviewViewModel.reviewCount > 0 {
-                            Text("\(reviewViewModel.reviewCount)")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(DesignTokens.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                        }
+            Menu {
+                // Sync Now: the SAME manual sync the circular
+                // icon ran — `viewModel.runSync()` (Plaid bank +
+                // Gmail email halves, toast confirms the result).
+                // Shown for members too (build 64, F-19 — the
+                // old admin-only gate is gone); disabled while
+                // a sync is already running.
+                Button {
+                    Task { await viewModel.runSync() }
+                } label: {
+                    Label(viewModel.isSyncing ? "Syncing…" : "Sync Now", systemImage: "arrow.clockwise")
+                }
+                .disabled(viewModel.isSyncing)
+                // Review: admin-only, same gate and same handler
+                // as the old pill — pushes the Review page via
+                // the shell. The waiting count rides in the
+                // label (the pill's badge has nowhere to sit in
+                // a menu row).
+                if viewModel.isAdmin, let onShowReview {
+                    Button(action: onShowReview) {
+                        Label(
+                            reviewViewModel.reviewCount > 0
+                                ? "Review (\(reviewViewModel.reviewCount))"
+                                : "Review",
+                            systemImage: "checkmark.circle"
+                        )
                     }
                 }
-                // Build 63 (Lean, Polished): the Review button is
-                // a soft button (pale soft-blue fill + hairline
-                // border), not a bare pale chip — the Transactions
-                // page-links row reads as real buttons.
-                .buttonStyle(SmallSoftButtonStyle())
-            }
-            // Build 64 (F-18): Past Weeks as a visible button
-            // (was behind "More") — same soft-button treatment
-            // as Review. Hidden until a handler is supplied, so
-            // it never leads nowhere. Labelled "Weeks" for the
-            // 375pt row fit (F-18 overflow); the full name stays
-            // the accessibility label.
-            if let onShowPastWeeks {
-                Button("Weeks", action: onShowPastWeeks)
-                    .buttonStyle(SmallSoftButtonStyle())
+                // Weeks: same handler as the old pill — pushes
+                // Past Weeks via the shell. Hidden until a
+                // handler is supplied, so it never leads nowhere.
+                if let onShowPastWeeks {
+                    Button(action: onShowPastWeeks) {
+                        Label("Weeks", systemImage: "calendar")
+                    }
                     .accessibilityLabel("Past Weeks")
-            }
-            // Build 64 (F-18): Export as a visible button (was
-            // behind "More", build 45). Opens the full-screen
-            // export popup (PDF / CSV, filtered scope or all).
-            Button("Export") { showingExport = true }
-                .buttonStyle(SmallSoftButtonStyle())
+                }
+                // Export: same as the old pill — opens the
+                // full-screen export popup (PDF / CSV, filtered
+                // scope or all).
+                Button {
+                    showingExport = true
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
                 .accessibilityIdentifier("export.open")
-            Menu {
+                Divider()
+                // The rest of the old "More" menu, unchanged —
+                // kept here so no destination is lost when the
+                // pills row goes away.
                 if let onShowActivity {
-                    Button("Activity", action: onShowActivity)
+                    Button(action: onShowActivity) {
+                        Label("Activity", systemImage: "list.bullet")
+                    }
                 }
                 if viewModel.isAdmin, !viewModel.trashTransactions.isEmpty {
-                    Button("Trash") { showingTrash = true }
+                    Button { showingTrash = true } label: {
+                        Label("Trash", systemImage: "trash")
+                    }
                 }
-                // Merchants (owner, Nov 15, 2026 — build 34):
-                // the Merchant Names editor moved out of Settings
-                // — it lives here now, as a menu item. Admin-only,
-                // like Review.
                 if viewModel.isAdmin, let onShowMerchantNames {
-                    Button("Merchants", action: onShowMerchantNames)
+                    Button(action: onShowMerchantNames) {
+                        Label("Merchants", systemImage: "tag")
+                    }
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Text("More")
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                }
+                Text("⋯")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
             }
-            // Build 63 (Lean, Polished): the More chip is a soft
-            // button (pale soft-blue fill + hairline border), not
-            // an outline — the owner keeps flagging outline buttons
-            // as ugly, and the page-links row reads as real
-            // buttons now.
-            .buttonStyle(SmallSoftButtonStyle())
-            .accessibilityIdentifier("pageLinks.more")
-            Spacer(minLength: 0)
-            // Build 64 (F-19): the sync button shows for members
-            // too — the old `isAdmin` gate meant members never
-            // saw a sync button. Sync itself is unchanged.
-            syncButton
+            .buttonStyle(SmallGreyOutlineButtonStyle())
+            .accessibilityLabel("More")
+            .accessibilityIdentifier("header.more")
         }
     }
 
@@ -534,61 +451,45 @@ public struct TransactionsView: View {
         // clearing the box flows through the existing `onChange`
         // → `applySearch("")` path, and T-P1-1 (searchResetNonce)
         // still clears the box when filters clear.
-        // Build 41 (owner, Nov 17, 2026): a visible "Search"
-        // button beside the field, so the search feels official
-        // instead of only live-as-you-type. Live filtering is
-        // unchanged — typing still filters as you go — the button
-        // re-applies the current text and dismisses the keyboard.
-        // Primary blue, full label, no truncation; the keyboard's
-        // Return key says "Search" too and does the same.
+        // Build 65 (item 12): the blue "Search" button is gone —
+        // search is LIVE, no button tap needed. Typing already
+        // filters through the `onChange(of: searchText)` →
+        // `applySearch` path (250ms debounce, client-side over
+        // the loaded rows), so the button only ever re-applied
+        // what typing had already applied, plus dismissed the
+        // keyboard. The keyboard's Return key now just dismisses
+        // the keyboard.
         HStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                TextField("Search transactions", text: $searchText)
-                    .font(.system(size: 17))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .focused($searchFocused)
-                    .submitLabel(.search)
-                    .onSubmit { runSearch() }
-                if !searchText.isEmpty {
-                    Button { searchText = "" } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color(hex: "#9ca3af"))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Clear search")
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color(hex: "#6b7280"))
+            TextField("Search transactions", text: $searchText)
+                .font(.system(size: 17))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($searchFocused)
+                .submitLabel(.done)
+                .onSubmit { searchFocused = false }
+            if !searchText.isEmpty {
+                Button { searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color(hex: "#9ca3af"))
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            // Search fill is systemGray6 (#f2f2f7, owner Nov 12 2026):
-            // lighter than systemGray5 so the field sits quietly on
-            // the white page, still reading as a field — no border.
-            .background(Color(.systemGray6))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            Button("Search") { runSearch() }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 14)
-                .background(DesignTokens.primary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .accessibilityLabel("Search")
         }
-        // Walkthrough anchor (build 48): the search field + button.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        // Search fill is systemGray6 (#f2f2f7, owner Nov 12 2026):
+        // lighter than systemGray5 so the field sits quietly on
+        // the white page, still reading as a field — no border.
+        .background(Color(.systemGray6))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        // Walkthrough anchor (build 48): the search field.
         .tourAnchor(.searchBar, tour: appState.tour)
-    }
-
-    /// Applies the current search text and dismisses the keyboard
-    /// (build 41 — the Search button and the keyboard's Search key).
-    private func runSearch() {
-        viewModel.applySearch(searchText)
-        searchFocused = false
     }
 
     @ViewBuilder
@@ -813,6 +714,34 @@ public struct TransactionsView: View {
     }
 }
 
+/// Small grey-outline style for the Transactions header "⋯" menu
+/// button (build 65, item 12): white background, 1pt grey #6b7280
+/// border, ink text — the third treatment in the header trio
+/// (solid blue "+ Add" / grey-fill "Filters" / grey outline "⋯"),
+/// so no two header buttons share a colour or look very similar.
+/// Same sizing as `SmallTertiaryButtonStyle` (14pt semibold,
+/// 8pt vertical / 12pt horizontal, 8pt radius). Deliberately NOT
+/// the shared `OutlineButtonStyle` — that one is brand-blue
+/// border + text, which would read as a second blue button next
+/// to "+ Add".
+public struct SmallGreyOutlineButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(DesignTokens.ink)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(hex: "#6b7280"), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}
+
 // MARK: - Filters sheet (§7.3)
 
 /// Bottom sheet: handle bar, heading "Filters" (RETHOUGHT, Nov 11,
@@ -897,8 +826,14 @@ public struct TransactionsFilterSheet: View {
                 // fields need them to tell the ends apart.
                 VStack(alignment: .leading, spacing: 12) {
                     // Status — the picker value says it.
+                    // Build 65: `.tzedaka` is NOT offered here — it
+                    // needs the accrual id set, which only the
+                    // Tzedaka sheet handoff supplies. A list that
+                    // arrived pre-filtered to Tzedaka keeps its
+                    // status (the picker just shows "Status" until
+                    // another pick is made).
                     Picker("Status", selection: $draftStatus) {
-                        ForEach(TransactionStatusFilter.allCases, id: \.self) { status in
+                        ForEach(TransactionStatusFilter.allCases.filter { $0 != .tzedaka }, id: \.self) { status in
                             Text(status.label(customNames: fundNames)).tag(status)
                         }
                     }

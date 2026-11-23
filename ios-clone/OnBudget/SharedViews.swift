@@ -491,10 +491,12 @@ public struct SuccessBox: View {
 /// S logo + "T · A · G · E" wordmark, "Spend, Track & Give Easily".
 /// Shown on first paint and kept until the first data load
 /// completes or fails — never a blank or half-built page, and never
-/// an endless spinner with no error. The logo is static with a
-/// skeleton shimmer behind it (BrandedLoader, build 64 — the
-/// animated ring is gone); skeleton blocks shaped like the Home
-/// below say what is coming.
+/// an endless spinner with no error. Build 65: logo + tagline
+/// ONLY — no skeleton blocks at all (the owner read the three grey
+/// bars below the wordmark as stray boxes / a bug, and the
+/// BrandedLoader skeleton halo behind the logo the same way).
+/// The skeletons belong on the Home screen itself (its
+/// card-shaped skeletons), not on the splash.
 public struct LoadingView: View {
     public init() {}
     public var body: some View {
@@ -507,10 +509,17 @@ public struct LoadingView: View {
             // stacked layout read as "S" then "TAGE".
             HStack(spacing: 8) {
                 // The real logo (Assets.xcassets/AppLogo), not the "S"
-                // placeholder ring (owner, Nov 11, 2026), static
-                // with a skeleton shimmer behind it (build 64 —
-                // the animated ring is gone, F-35).
-                BrandedLoader(size: 72)
+                // placeholder ring (owner, Nov 11, 2026) — plain,
+                // no skeleton halo: build 65, the splash holds no
+                // skeleton blocks at all (the BrandedLoader halo
+                // read as a stray box / bug, like the bars below).
+                // BrandedLoader itself is untouched — it is still
+                // used by other loading states (see its uses).
+                Image("AppLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 72, height: 72)
+                    .clipShape(Circle())
                 // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
                 // build 47): the logo + "T · A · G · E", never the logo
                 // next to the full word "STAGE" (no second S).
@@ -534,19 +543,13 @@ public struct LoadingView: View {
             Text("Spend, Track & Give Easily")
                 .foregroundStyle(DesignTokens.stageBlue)
                 .font(.system(size: 15, weight: .semibold))
-            // Build 64 (F-35): skeletons shaped like the Home that
-            // follows — the hero amount + a fund card — under the
-            // wordmark, so the loading page is a skeleton of the
-            // content, not a spinner and not a bare logo. The logo
-            // above stays static (BrandedLoader's ring is gone).
-            VStack(alignment: .leading, spacing: 12) {
-                SkeletonBlock(width: 200, height: 44, cornerRadius: 6)
-                SkeletonBlock(width: 280, height: 14, cornerRadius: 6)
-                SkeletonBlock(width: 240, height: 14, cornerRadius: 6)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 32)
-            .padding(.top, 24)
+            // Build 65 (owner, Nov 23, 2026): NO skeleton bars
+            // here — the three grey bars read as stray boxes / a
+            // bug on the splash. The splash is logo + tagline
+            // only; the skeletons belong on the Home screen
+            // itself (its card-shaped skeletons), not here.
+            // (Build 64, F-35, had put hero- + fund-card-shaped
+            // SkeletonBlocks here; they are removed, not moved.)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.background)

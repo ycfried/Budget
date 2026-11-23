@@ -1,19 +1,22 @@
 // STAGE — AppShellView.swift
 //
-// App shell + tab bar (CLONE_SPEC §0.1–0.2, §2.2).
+// App shell + page select (CLONE_SPEC §0.1–0.2, §2.2).
 // Home on EVERY fresh load (app start, login, reopen), never on
-// in-app navigation. Tab bar: Home, Transactions, Funds — ALWAYS at
-// the bottom, on iPhone and iPad (owner, Nov 11 2026: the top
-// segmented pill "throws me off"). The system renders a plain TabView
-// as a top segmented control on iPad (regular size class) — the flag
-// in OnBudgetApp.init (`UseFloatingTabBar` = false) forces the
-// traditional bottom tab bar back. Build 64 (C-6): the flag alone
-// did not hold — the owner still saw TWO page selects on Home (the
-// top segmented pill above the PageSelectControl floater). The
-// TabView below now also forces `.tabViewStyle(.tabBarOnly)`
-// (iOS 18+, the deployment target), so the tabs render as a bottom
-// tab bar on iPad too and the top pill is gone. The tab bar itself
-// stays; only the duplicate top control is removed.
+// in-app navigation. Build 65: there is NO TabView and NO bottom
+// tab bar any more. The shell switches on `appState.selectedTab`
+// (home / transactions / funds) and renders ONE PageSelectControl
+// (SharedViews) below the top bar, above the switched content —
+// the single Home/Transactions/Funds control for all three tabs,
+// on iPhone and iPad. History: the TabView rendered as a top
+// segmented pill on iPad (regular size class) above Home's /
+// Funds' own PageSelectControl floaters — two page selects at
+// once. Build 64's `.tabViewStyle(.tabBarOnly)` did not hold —
+// the duplicate was still seen on Home AND Funds — so build 65
+// removes the TabView outright (and the per-page floaters with
+// it). Losing swipe-between-tabs is accepted: the owner
+// navigates via the page select. The `UseFloatingTabBar` default
+// was removed from OnBudgetApp.init with the TabView — see
+// that file.
 // The top bar keeps just the title
 // (household name) + the profile menu.
 // Settings is NOT a tab — reached from the profile menu only, as a
@@ -87,41 +90,18 @@ public struct AppShellView: View {
     /// pop back to the list.
     @StateObject private var historyToast = ToastState()
 
+    /// iPad content width (build 36): the shell's page-select row
+    /// reads as part of the centred 900pt column on the regular
+    /// size class, like the tab content below it.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     public init(appState: AppViewModel) { self.appState = appState }
 
     public var body: some View {
         VStack(spacing: 0) {
             topBar
-            TabView(selection: $appState.selectedTab) {
-                homeTab
-                    .tabItem {
-                        Label("Home", systemImage: "house")
-                            .accessibilityIdentifier("tab.home")
-                    }
-                    .tag(AppTab.home)
-                transactionsTab
-                    .tabItem {
-                        Label("Transactions", systemImage: "list.bullet")
-                            .accessibilityIdentifier("tab.transactions")
-                    }
-                    .tag(AppTab.transactions)
-                fundsTab
-                    .tabItem {
-                        Label("Funds", systemImage: "banknote")
-                            .accessibilityIdentifier("tab.funds")
-                    }
-                    .tag(AppTab.funds)
-            }
-            .tint(DesignTokens.primary)
-            // Build 64 (C-6): force the BOTTOM tab bar on iPad
-            // too. A plain TabView renders as a top segmented
-            // control in the regular size class, which stacked
-            // above Home's PageSelectControl floater — two page
-            // selects at once (the duplicate the owner circled).
-            // `.tabBarOnly` (iOS 18+) removes the top pill; the
-            // bottom tab bar itself stays. The `UseFloatingTabBar`
-            // default in OnBudgetApp.init stays as the fallback.
-            .tabViewStyle(.tabBarOnly)
+            pageSelectRow
+            selectedTabContent
         }
         // The walkthrough's coordinate space (build 48): every tour
         // anchor reports its frame in "tourSpace", and the overlay
@@ -256,6 +236,46 @@ public struct AppShellView: View {
             onShowWeekTransactions: { appState.showTransactionsForWeek($0) },
             unregisterPushToken: { await appState.unregisterPushToken() }
         )
+    }
+
+    /// Build 65: the ONE page select for all three tabs — Home /
+    /// Transactions / Funds, the current page active as a white
+    /// floater — rendered here in the shell, below the top bar and
+    /// above the switched tab content, so it can never render
+    /// twice. It stays pinned while the tab content scrolls
+    /// beneath it (it used to scroll away with the Home/Funds
+    /// content). Left-aligned, 16pt in from the edge, inside the
+    /// same centred 900pt iPad column as the tab content below
+    /// (see `mainContentWidth`). The Funds-tab walkthrough step
+    /// points at it (`.pageSelect` tour anchor).
+    private var pageSelectRow: some View {
+        HStack {
+            PageSelectControl(selectedTab: $appState.selectedTab)
+                .tourAnchor(.pageSelect, tour: appState.tour)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .background(DesignTokens.background)
+        .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
+    }
+
+    /// Build 65: plain view switch on `appState.selectedTab` — no
+    /// TabView, so no system tab bar is rendered anywhere (the
+    /// build-64 `.tabBarOnly` fix did not hold). The Transactions
+    /// tab's own NavigationStack lives inside `transactionsTab`
+    /// and is unaffected. Swipe-between-tabs is gone; the owner
+    /// navigates via the page select above.
+    @ViewBuilder
+    private var selectedTabContent: some View {
+        switch appState.selectedTab {
+        case .home:
+            homeTab
+        case .transactions:
+            transactionsTab
+        case .funds:
+            fundsTab
+        }
     }
 
     private var topBar: some View {

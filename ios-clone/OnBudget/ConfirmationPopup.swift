@@ -14,9 +14,11 @@
 //   - Info: brand-blue info mark + ink message text.
 //
 // Same behaviour as the toast spec it replaces (owner, Nov 20,
-// 2026 — build 50): pops up at the TOP, auto-dismisses after 4s
-// (ToastStyle.autoDismissSeconds), tap elsewhere or the X closes
-// early, never blocks the user (not a modal).
+// 2026 — build 50): pops up CENTRED on the screen (build 65,
+// owner Nov 23, 2026 — larger text, centred, so it reads as a
+// clean confirmation, not a crammed top banner), auto-dismisses
+// after 4s (ToastStyle.autoDismissSeconds), tap elsewhere or the
+// X closes early, never blocks the user (not a modal).
 //
 // WHY A SEPARATE FILE: SharedViews.swift owns the old ToastBanner
 // / ToastOverlayModifier (another stream owns that file). This file
@@ -55,7 +57,8 @@ import OnBudgetKit
 /// The confirmation popup card itself: a compact white card
 /// (soft-red tint for errors) with a status icon, the message in
 /// ink (dark red for errors), and an X to close early. Compact:
-/// at most 380pt wide, centred at the top — never a full-width bar.
+/// at most 420pt wide, centred on the screen — never a
+/// full-width bar, never a top banner (build 65).
 public struct ConfirmationPopupView: View {
     public let toast: Toast
     public let onDismiss: () -> Void
@@ -88,9 +91,9 @@ public struct ConfirmationPopupView: View {
             ZStack {
                 Circle()
                     .fill(DesignTokens.primary)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 28, height: 28)
                 Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
             }
             .accessibilityHidden(true)
@@ -98,9 +101,9 @@ public struct ConfirmationPopupView: View {
             ZStack {
                 Circle()
                     .fill(DesignTokens.errorBorder)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 28, height: 28)
                 Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(DesignTokens.errorText)
             }
             .accessibilityHidden(true)
@@ -108,9 +111,9 @@ public struct ConfirmationPopupView: View {
             ZStack {
                 Circle()
                     .fill(DesignTokens.primary)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 28, height: 28)
                 Image(systemName: "info")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
             }
             .accessibilityHidden(true)
@@ -118,14 +121,19 @@ public struct ConfirmationPopupView: View {
     }
 
     public var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             statusIcon
-                .padding(.top, 1)
             Text(toast.message)
-                .font(.system(size: 15, weight: .semibold))
+                // Larger, centred (build 65, owner Nov 23, 2026):
+                // 17pt semibold, centred text — a clean
+                // confirmation, not a crammed top banner. Message
+                // CONTENT is untouched here (the sync wording
+                // itself is shortened separately, in HomeView's
+                // sync handler) — this is rendering only.
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(messageColor)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .bold))
@@ -136,8 +144,8 @@ public struct ConfirmationPopupView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
         .background(cardBackground)
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -148,23 +156,25 @@ public struct ConfirmationPopupView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
-        // Compact card, never a full-width bar: at most 380pt,
-        // centred, with room to breathe on each side.
-        .frame(maxWidth: 380)
+        // Compact card, never a full-width bar: at most 420pt,
+        // centred on the screen, with room to breathe on each side.
+        .frame(maxWidth: 420)
         .padding(.horizontal, 16)
         .accessibilityIdentifier("confirmation-popup")
     }
 }
 
-/// Overlays the current confirmation popup at the TOP of the
-/// screen, with the 4-second auto-dismiss
-/// (ToastStyle.autoDismissSeconds — the one shared value,
-/// CLONE_SPEC §2.3). Same behaviour as the ToastOverlayModifier
-/// it replaces: a tap anywhere else on the page dismisses it —
-/// the clear background below catches the tap, so the page under
-/// it never receives a stray tap while the popup is up. The popup
-/// itself is a small card, never a modal — it never blocks the
-/// page, it just sits on top of it for 4 seconds.
+/// Overlays the current confirmation popup CENTRED on the
+/// screen (build 65, owner Nov 23, 2026 — it used to sit at the
+/// top; a centred card with larger text reads as a clean
+/// confirmation, not a crammed banner), with the 4-second
+/// auto-dismiss (ToastStyle.autoDismissSeconds — the one shared
+/// value, CLONE_SPEC §2.3). Same behaviour as the
+/// ToastOverlayModifier it replaces: a tap anywhere else on the
+/// page dismisses it — the clear background below catches the
+/// tap, so the page under it never receives a stray tap while the
+/// popup is up. The popup itself is a small card, never a modal —
+/// it never blocks the page, it just sits on top of it for 4 seconds.
 public struct ConfirmationPopupOverlayModifier: ViewModifier {
     @Binding public var toast: Toast?
 
@@ -175,8 +185,8 @@ public struct ConfirmationPopupOverlayModifier: ViewModifier {
     public func body(content: Content) -> some View {
         content.overlay {
             if let toast {
-                GeometryReader { proxy in
-                    ZStack(alignment: .top) {
+                GeometryReader { _ in
+                    ZStack(alignment: .center) {
                         // Tap anywhere else dismisses (owner,
                         // Nov 20, 2026). Clear, so the page shows
                         // through — but it still catches the tap.
@@ -184,7 +194,6 @@ public struct ConfirmationPopupOverlayModifier: ViewModifier {
                             .contentShape(Rectangle())
                             .onTapGesture { self.toast = nil }
                         ConfirmationPopupView(toast: toast) { self.toast = nil }
-                            .padding(.top, proxy.safeAreaInsets.top + 8)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }

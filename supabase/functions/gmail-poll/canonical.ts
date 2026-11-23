@@ -564,6 +564,79 @@ export function merchantsRelated(a: string, b: string): boolean {
   return na.includes(nb) || nb.includes(na);
 }
 
+// --- Similar-name review rule (build 65, Nov 23, 2026 — Yaldel case) ---
+// Two $54.00 donation rows ("Yaldel Shluchei Harebbe" vs "Yaldei
+// Shluchei Harebbe Special Needs", same date, same amount, both
+// pending) were the SAME donation, but the auto-merge AND the Review
+// possible-duplicate flag both missed them: the merchant names hash
+// differently, and merchantsRelated() needs one squash to CONTAIN
+// the other — "YALDELSHLUCHEIHAREBBE" contains neither "YALDEI
+// SHLUCHEIHAREBBE..." nor vice versa (the spellings differ in the
+// middle: YALDEL vs YALDEI). This rule catches that class for
+// REVIEW ONLY — never auto-merge (standing no-fuzzy-matching rule
+// for auto-merge). Two names are "similar" when their squashes
+// (UPPER + strip every non-alphanumeric) share a common substring
+// of 8+ characters OR share 2+ whole words (length 3+) OR one
+// contains the other. The Yaldel pair qualifies twice over: shared
+// substring "SHLUCHEIHAREBBE" (16 chars) and shared words SHLUCHEI
+// + HAREBBE. Identical names return false here on purpose: they are
+// handled by the existing identical-Bank+Email branch in
+// flagLookalikes, and two identical same-source rows are two real
+// identical purchases that must never be flagged.
+export function longestCommonSubstringLength(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  let best = 0;
+  let prev = new Array<number>(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    const cur = new Array<number>(n + 1).fill(0);
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        cur[j] = prev[j - 1] + 1;
+        if (cur[j] > best) best = cur[j];
+      }
+    }
+    prev = cur;
+  }
+  return best;
+}
+
+export function sharedWholeWords(a: string, b: string): number {
+  const words = (s: string): Set<string> => new Set(
+    normalizeMerchant(s).split(' ').filter((w) => w.length >= 3),
+  );
+  const wa = words(a);
+  let shared = 0;
+  for (const w of words(b)) if (wa.has(w)) shared++;
+  return shared;
+}
+
+export function merchantsSimilarForReview(a: string, b: string): boolean {
+  const sa = merchantRuleSquash(a);
+  const sb = merchantRuleSquash(b);
+  if (!sa || !sb || sa === sb) return false;
+  if (sa.length < 4 || sb.length < 4) return false;
+  if (sa.includes(sb) || sb.includes(sa)) return true;
+  if (sharedWholeWords(a, b) >= 2) return true;
+  return longestCommonSubstringLength(sa, sb) >= 8;
+}
+
+// --- Pending→posted date preservation (build 65, Nov 23, 2026) ---
+// The Nordstrom $158.97 purchase was made Nov 19 as pending and
+// counted in that week; when it posted Nov 22, plaid-sync
+// overwrote its date to Nov 22 and it jumped into the next week's
+// spending. A pending→posted re-delivery must NOT overwrite the
+// date: the pending date is when the purchase was made, the posted
+// date is only when the bank processed it. Verified→verified
+// re-deliveries still overwrite the date (genuine Plaid
+// corrections), and so do provisional→provisional ones.
+export function shouldPreserveDate(
+  existingState: string | null | undefined,
+  incomingState: string | null | undefined,
+): boolean {
+  return existingState === 'provisional' && incomingState === 'verified';
+}
+
 export type LookalikeRow = {
   id: string;
   merchant: string;
@@ -587,12 +660,42 @@ export function pickCanonicalPair(
 // Best-effort lookalike flagging. Never throws and never fails the
 // sync: if the review tables do not exist yet (SQL not applied),
 // the queries fail inside try/catch and the sync continues.
+//
+// Pass 1 (unchanged, Nov 3 Amazon case): same date + amount +
+// card suffix + related merchant names (one contains the other, a
+// confirmed alias, or a shared rule display name) — plus identical
+// Bank+Email merchants (Royal Farms, Nov 20).
+//
+// Pass 2 — similar-name rule (build 65, Yaldel case): same date +
+// same amount + similar merchant names (merchantsSimilarForReview)
+// flag for Review, never auto-merge. Unlike pass 1 this does NOT
+// require the same card suffix: the Yaldel pair was a Plaid row
+// (real suffix) and an email alert (suffix '0000', unknown), so
+// the suffix filter hid it. Two rows on DIFFERENT known cards are
+// still two real purchases and never flag.
+//
+// TOIREMORG (owner ruling Nov 3): the $2 bank "TOIREMORG" and $2
+// email "TOIREMORG CHARITY" rows are TWO real gifts — never merge,
+// never flag. Guarded up front and on every candidate row, in
+// BOTH passes: the names qualify as similar on their own
+// ("TOIREMORG" is contained in "TOIREMORGCHARITY"), so without
+// this guard the new rule would flag the ruled-separate pair.
+//
+// DISMISSED PAIRS (the dismissed-pairs mechanism): a pair is never
+// flagged twice — the detector skips any pair that already has a
+// duplicate_candidates row in ANY status, either direction. Tapping
+// "Separate" in Review sets status='separate' (resolve_duplicate_
+// candidate), so a dismissed pair is never re-flagged by either
+// pass or by the SQL backstop (backstop_similar_name_duplicates
+// consults the same table). Reopen is the undo: reopen_duplicate_
+// candidate moves a 'separate' row back to 'pending'.
 export async function flagLookalikes(
   supabaseAdmin: SupaAdmin,
   householdId: string,
   newRow: LookalikeRow & { date: string; amount_cents: number; card_suffix: string },
 ): Promise<number> {
   try {
+    if (isToiremorgMerchant(newRow.merchant)) return 0;
     const { data: rows } = await supabaseAdmin.from('transactions')
       .select('id, merchant, source, created_at, excluded, state')
       .eq('household_id', householdId)
@@ -632,10 +735,45 @@ export async function flagLookalikes(
       const r2 = matchMerchantRule(rules, m2);
       return !!r1 && !!r2 && normalizeMerchant(r1.display_name) === normalizeMerchant(r2.display_name);
     };
+    // A pair with a candidate row in ANY status (pending, merged,
+    // separate) is never flagged again — this is the dismissed-pairs
+    // flag. Fail CLOSED on error: an unreadable review table skips
+    // the flag rather than risking a re-flag of a dismissed pair.
+    const alreadyHasCandidate = async (canonicalId: string, duplicateId: string): Promise<boolean> => {
+      try {
+        const { data: prior } = await supabaseAdmin.from('duplicate_candidates')
+          .select('id').eq('household_id', householdId)
+          .or(`and(canonical_transaction_id.eq.${canonicalId},duplicate_transaction_id.eq.${duplicateId}),and(canonical_transaction_id.eq.${duplicateId},duplicate_transaction_id.eq.${canonicalId})`)
+          .limit(1).maybeSingle();
+        return !!prior;
+      } catch {
+        return true;
+      }
+    };
+    const insertCandidate = async (
+      canonical: LookalikeRow,
+      duplicate: LookalikeRow,
+      reason: string,
+    ): Promise<boolean> => {
+      try {
+        const { error } = await supabaseAdmin.from('duplicate_candidates').insert({
+          household_id: householdId,
+          canonical_transaction_id: canonical.id,
+          duplicate_transaction_id: duplicate.id,
+          reason,
+          merchant_a: normalizeMerchant(canonical.merchant),
+          merchant_b: normalizeMerchant(duplicate.merchant),
+        });
+        return !error;
+      } catch {
+        return false;
+      }
+    };
     let flagged = 0;
     for (const r of rows ?? []) {
       if (flagged >= 5) break;
       if (r.excluded === true || r.state === 'excluded') continue;
+      if (isToiremorgMerchant(r.merchant)) continue;
       // Royal Farms (Nov 20, 2026): identical merchant names are the
       // strongest duplicate signal — but only across sources
       // (Bank+Email). merchantsRelated() deliberately returns false
@@ -653,23 +791,40 @@ export async function flagLookalikes(
         { id: r.id, merchant: r.merchant, source: r.source, created_at: r.created_at },
         newRow,
       );
-      try {
-        const { data: prior } = await supabaseAdmin.from('duplicate_candidates')
-          .select('id').eq('household_id', householdId)
-          .or(`and(canonical_transaction_id.eq.${canonical.id},duplicate_transaction_id.eq.${duplicate.id}),and(canonical_transaction_id.eq.${duplicate.id},duplicate_transaction_id.eq.${canonical.id})`)
-          .limit(1).maybeSingle();
-        if (prior) continue;
-        const { error } = await supabaseAdmin.from('duplicate_candidates').insert({
-          household_id: householdId,
-          canonical_transaction_id: canonical.id,
-          duplicate_transaction_id: duplicate.id,
-          reason: 'lookalike',
-          merchant_a: normalizeMerchant(canonical.merchant),
-          merchant_b: normalizeMerchant(duplicate.merchant),
-        });
-        if (!error) flagged += 1;
-      } catch {
-        continue;
+      if (await alreadyHasCandidate(canonical.id, duplicate.id)) continue;
+      if (await insertCandidate(canonical, duplicate, 'lookalike')) flagged += 1;
+    }
+    // Pass 2 — similar-name rule (build 65, Yaldel case). Same date
+    // + same amount, NO suffix requirement (the alert side carries
+    // '0000' when the card ending is unknown), similar names only.
+    // Different known suffixes still refuse: two rows on different
+    // cards are two real purchases.
+    if (flagged < 5) {
+      const { data: sameDayRows } = await supabaseAdmin.from('transactions')
+        .select('id, merchant, source, created_at, excluded, state, card_suffix')
+        .eq('household_id', householdId)
+        .eq('date', newRow.date)
+        .eq('amount_cents', newRow.amount_cents)
+        .neq('id', newRow.id)
+        .limit(20);
+      for (const r of sameDayRows ?? []) {
+        if (flagged >= 5) break;
+        if (r.excluded === true || r.state === 'excluded') continue;
+        if (isToiremorgMerchant(r.merchant)) continue;
+        const newSuffix = String(newRow.card_suffix ?? '0000');
+        const oldSuffix = String((r as { card_suffix?: string | null }).card_suffix ?? '0000');
+        if (newSuffix !== '0000' && oldSuffix !== '0000' && newSuffix !== oldSuffix) continue;
+        const identicalBankEmail =
+          merchantRuleSquash(newRow.merchant) === merchantRuleSquash(r.merchant) &&
+          ((newRow.source === 'plaid' && isEmailSource(r.source)) ||
+            (r.source === 'plaid' && isEmailSource(newRow.source)));
+        if (!identicalBankEmail && !merchantsSimilarForReview(newRow.merchant, r.merchant)) continue;
+        const [canonical, duplicate] = pickCanonicalPair(
+          { id: r.id, merchant: r.merchant, source: r.source, created_at: r.created_at },
+          newRow,
+        );
+        if (await alreadyHasCandidate(canonical.id, duplicate.id)) continue;
+        if (await insertCandidate(canonical, duplicate, 'similar-name')) flagged += 1;
       }
     }
     return flagged;

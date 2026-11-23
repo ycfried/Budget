@@ -689,8 +689,8 @@ private struct PDFKitView: UIViewRepresentable {
 /// statement (build 59, Nov 22, 2026): wordmark header in
 /// uniform stage blue, a Summary section with three donut charts
 /// (Money In vs Out, Spending by Kind, Tzedaka Share) built from
-/// the same transactions as the table, the table (date, merchant,
-/// amount, kind) with amounts and kinds in the transaction
+/// the same transactions as the table, the table (date, merchant —
+/// ALL CAPS, build 65 — amount, kind) with amounts and kinds in the transaction
 /// colour code, footer totals, and a page number on every page.
 /// Letter pages. The content model is kit-tested; this is only
 /// the drawing.
@@ -948,7 +948,15 @@ public enum TransactionExportPDFRenderer {
             at: CGPoint(x: margin, y: y),
             withAttributes: [.font: font, .foregroundColor: ink]
         )
-        (row.merchant as NSString).draw(
+        // Merchant names ALL CAPS (build 65, owner Nov 23, 2026):
+        // display-only, via the one shared `displayMerchant`
+        // helper — the statement row itself is built in kit
+        // (`TransactionExport.merchantDisplay`, still Title-Case),
+        // so the caps are applied here, at the draw site. The CSV
+        // file is built whole in kit (`csvString`) and is NOT
+        // covered by this file — the kit's `merchantDisplay`
+        // needs the same one-line change for CSV names to match.
+        (TransactionFormatting.displayMerchant(row.merchant) as NSString).draw(
             in: CGRect(x: margin + 100, y: y, width: 240, height: 16),
             withAttributes: merchantAttributes
         )
