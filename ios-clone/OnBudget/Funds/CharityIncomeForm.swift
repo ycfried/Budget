@@ -524,7 +524,7 @@ public struct RecordCashGiftSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: "Record a Transaction to \(fundName)"), onClose: onClose)
             if let availableCents {
-                FundsMuted("Available to give: \(MoneyFormat.formatCents(availableCents)). The gift comes off Available and goes into Given.")
+                FundsMuted("Available to give: \(MoneyFormat.formatCents(availableCents)). The donation comes off Available and goes into Given.")
             }
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
             TextField("Note", text: $noteText)
@@ -607,7 +607,7 @@ public struct CharityIncomeHistory: View {
     private enum FeedItem: Identifiable {
         case income(CharityIncome)
         case gift(Transaction)
-        /// A cash gift given off-card (build 40, Nov 16, 2026):
+        /// A cash donation given off-card (build 40, Nov 16, 2026):
         /// recorded on the charity fund, NOT a transaction row.
         case cashGift(CharityCashGift)
 
@@ -650,7 +650,7 @@ public struct CharityIncomeHistory: View {
         items += giftTransactions.map { .gift($0) }
         // Cash gifts given off-card (build 40): recorded on the
         // charity fund, not transaction rows — this feed is their
-        // audit trail, so they appear here with the "Cash gift"
+        // audit trail, so they appear here with the "Cash donation"
         // label.
         items += viewModel.charityCashGifts.map { .cashGift($0) }
         // Build 52 (owner, Nov 20, 2026 — the same pattern as the
@@ -777,7 +777,7 @@ public struct CharityIncomeHistory: View {
         }
     }
 
-    /// A cash gift given off-card (build 40, Nov 16, 2026): money
+    /// A cash donation given off-card (build 40, Nov 16, 2026): money
     /// given, so it shows in charity BLUE by kind — the same
     /// treatment as a gift transaction. Minimal overview (label +
     /// amount); the full detail — date, note, "cash, no transaction
@@ -790,7 +790,7 @@ public struct CharityIncomeHistory: View {
     private func cashGiftRow(_ gift: CharityCashGift) -> some View {
         FundsActivityRow {
             HStack(spacing: 4) {
-                Text("Cash gift")
+                Text("Cash donation")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                     .lineLimit(1)
@@ -815,7 +815,7 @@ public struct CharityIncomeHistory: View {
                 if viewModel.context.isAdmin, gift.status == "active" {
                     if confirmingCashGiftId == gift.id {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("This removes the cash gift — the money goes back to \(viewModel.charityName) Available. The gift stays in the record, marked reversed.")
+                            Text("This removes the cash donation — the money goes back to \(viewModel.charityName) Available. The donation stays in the record, marked reversed.")
                                 .font(.system(size: 14))
                                 .foregroundStyle(DesignTokens.ink)
                             HStack(spacing: 12) {

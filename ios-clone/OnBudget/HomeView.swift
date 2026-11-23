@@ -30,7 +30,7 @@
 // Spending hero and Tzedaka card sit side by side in two equal
 // columns inside the 900pt column (see simpleContent), and
 // tapping the Tzedaka card opens the Tzedaka sheet — numbers plus
-// its two actions (Add to Tzedaka + Record a Gift) — mirroring
+// its two actions (Add to Tzedaka + Record a Donation) — mirroring
 // the Weekly sheet. The classic stacked stat cards above are the
 // retired backup; the live Home is simpleContent.
 // "Last synced" is shown once, quietly, under Automatic Sync in
@@ -253,7 +253,7 @@ public final class HomeViewModel: ObservableObject {
         // Cash gifts (build 43, item 22, owner Nov 17, 2026): cash
         // given off-card lives in charity_cash_gifts, NOT in the
         // transactions table, so Home must fetch it separately —
-        // otherwise "Record a Gift" never shows in the Tzedaka
+        // otherwise "Record a Donation" never shows in the Tzedaka
         // figures. Awaited fault-tolerantly below (the Funds
         // pattern): if the table does not exist yet, the fetch
         // throws and the gifts read as $0 rather than failing the
@@ -1156,7 +1156,7 @@ public struct HomeView: View {
                 // + a circle + the spent line — so the body holds
                 // its size while loading.
                 HStack(spacing: 16) {
-                    SkeletonBlock(width: isIPad ? 320 : 200, height: heroAmountSkeletonHeight, cornerRadius: 6)
+                    SkeletonBlock(width: heroAmountSkeletonWidth, height: heroAmountSkeletonHeight, cornerRadius: 6)
                     Spacer()
                     SkeletonBlock(width: heroDonutSize, height: heroDonutSize, cornerRadius: heroDonutSize / 2)
                 }
@@ -1174,8 +1174,12 @@ public struct HomeView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 36)
-        .padding(.bottom, 36)
+        // Build 66 (owner, Nov 23, 2026 — iPad two-column): the
+        // full-width 36pt top/bottom padding makes the half-width
+        // Spending card tall and empty next to the Tzedaka card —
+        // 20pt in two columns keeps the two cards balanced.
+        .padding(.top, useIPadTwoColumn ? 20 : 36)
+        .padding(.bottom, useIPadTwoColumn ? 20 : 36)
     }
 
     // Build 64 (C-2 B2): the solid deep-blue banner is gone, so
@@ -1189,9 +1193,25 @@ public struct HomeView: View {
     /// (56-64pt on iPad — 60pt here), down from 52pt heavy /
     /// 96pt, and the loading skeleton height matches the amount's
     /// line height, so the body holds its size while loading.
-    private var heroAmountSize: CGFloat { isIPad ? 60 : 36 }
-    private var heroAmountSkeletonHeight: CGFloat { isIPad ? 72 : 44 }
-    private var heroDonutSize: CGFloat { isIPad ? 120 : 88 }
+    /// Build 66 (owner, Nov 23, 2026 — iPad two-column): in the
+    /// half-width two-column layout the full-width iPad sizes
+    /// make the Spending card tall and empty next to the Tzedaka
+    /// card, and the 320pt amount skeleton overflows the column
+    /// (it forced the whole Home wider than the screen while
+    /// loading — labels clipped on both edges). In two columns
+    /// the hero scales down — 48pt amount, 96pt donut, 56pt
+    /// skeleton height — so the two cards balance, and the
+    /// loading skeleton (160pt amount + 96pt donut) fits the
+    /// narrowest iPad column with room to spare. iPhone and the
+    /// full-width iPad hero are untouched.
+    private var heroAmountSize: CGFloat { useIPadTwoColumn ? 48 : (isIPad ? 60 : 36) }
+    private var heroAmountSkeletonHeight: CGFloat { useIPadTwoColumn ? 56 : (isIPad ? 72 : 44) }
+    private var heroDonutSize: CGFloat { useIPadTwoColumn ? 96 : (isIPad ? 120 : 88) }
+    /// The loading amount-skeleton width (build 66): 160pt in the
+    /// two-column layout — 160 + 16 + 96 (donut) = 272pt, inside
+    /// the narrowest iPad column's ~309pt body width — so the
+    /// skeleton can never force the page wider than the screen.
+    private var heroAmountSkeletonWidth: CGFloat { useIPadTwoColumn ? 160 : (isIPad ? 320 : 200) }
 
     // Hero header — icon + title in ONE row, with the sync button
     // at the trailing end (the top-right corner of the card).
@@ -2716,6 +2736,25 @@ public struct WeeklySheet: View {
         self.onChanged = onChanged
     }
 
+    /// Build 66 (owner, Nov 23, 2026 — item 5): the numbers as
+    /// one list for the numbers card below — the reconciliation
+    /// rows (Base / Spent / Balance / Debt Remaining) plus the
+    /// Purchases count — so the card can lay them out with
+    /// hairline dividers like the actions card. Deduction rows
+    /// print with a leading minus (audit H-P2-2) so Base $375 −
+    /// Debt $50 = Balance $325 adds up on sight; the model cents
+    /// stay positive. Purchases is a count, not money — same row
+    /// shape, no dollar sign (owner, Nov 14, 2026).
+    private var weeklyNumbersRows: [(label: String, value: String)] {
+        var rows = week.sheetRows(baseAllowanceCents: baseAllowanceCents).map { row in
+            (label: row.label, value: MoneyFormat.string(cents: row.isDeduction ? -row.cents : row.cents))
+        }
+        if let purchases = purchasesThisWeek {
+            rows.append((label: "Purchases", value: String(purchases)))
+        }
+        return rows
+    }
+
     /// The Funds view model, built on first need (see
     /// makeFundsViewModel). Nil only before the household is
     /// known — in practice never while Home is showing.
@@ -2747,18 +2786,31 @@ public struct WeeklySheet: View {
             // a normal week keeps the approved two rows (Spent,
             // Balance) — the redundant Allowance row is gone
             // (owner, Nov 15, 2026 — build 34).
-            ForEach(week.sheetRows(baseAllowanceCents: baseAllowanceCents), id: \.label) { row in
-                // Deduction rows print with a leading minus
-                // (audit H-P2-2) so Base $375 − Debt $50 = Balance
-                // $325 adds up on sight; the model cents stay positive.
-                sheetRow(label: row.label, value: MoneyFormat.string(cents: row.isDeduction ? -row.cents : row.cents))
+            // Build 66 (owner, Nov 23, 2026 — item 5): the numbers
+            // live on a white card matching the actions card below
+            // — plain rows on the sheet background read as
+            // background noise, not part of the centerpiece. Same
+            // card treatment (white, 12pt radius, hairline
+            // #e5e7eb border, fund shadow) and hairline dividers
+            // between the rows, so the two halves read as one sheet.
+            VStack(spacing: 0) {
+                ForEach(weeklyNumbersRows.indices, id: \.self) { index in
+                    let row = weeklyNumbersRows[index]
+                    sheetRow(label: row.label, value: row.value)
+                    if index < weeklyNumbersRows.count - 1 {
+                        SheetActionDivider()
+                    }
+                }
             }
-            // Purchases count (owner, Nov 14, 2026): moved here
-            // from the hero card. A count, not money — same row
-            // shape, no dollar sign.
-            if let purchases = purchasesThisWeek {
-                sheetRow(label: "Purchases", value: String(purchases))
-            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            .fundCardShadow()
             // Build 65 (owner, Nov 23, 2026 — item 4): the sheet
             // used to end at the numbers with dead space below —
             // the week actions live here now, as tappable ROWS in
@@ -2903,7 +2955,14 @@ public struct WeeklySheet: View {
             }
             if appState.householdId != nil {
                 SheetActionRow(
-                    icon: "calculator",
+                    // Build 66 (owner, Nov 23, 2026 — item 6): the
+                    // calculator icon was missing on device — the
+                    // "calculator" SF Symbol renders nothing there
+                    // (an unavailable symbol name draws empty),
+                    // so this row uses the ± keys glyph instead
+                    // (plus.forwardslash.minus, iOS 13, always
+                    // available) — it reads as calculator keys.
+                    icon: "plus.forwardslash.minus",
                     iconColor: DesignTokens.primary,
                     title: "Weekly Budget Calculator",
                     subtitle: "Work out the right weekly amount"
@@ -2957,7 +3016,7 @@ public struct TzedakaSheet: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showAddToCharity = false
     @State private var showRecordGift = false
-    /// The Funds view model the Add to Tzedaka / Record a Gift
+    /// The Funds view model the Add to Tzedaka / Record a Donation
     /// forms need (see the note above the Weekly sheet section).
     /// Built lazily, once per presentation.
     @State private var fundsViewModel: FundsViewModel?
@@ -2992,13 +3051,33 @@ public struct TzedakaSheet: View {
             // Weekly sheet's rows. All four always show — Available
             // is committed less Given less Pending, so the four
             // add up on sight.
-            sheetRow(label: "Available", value: MoneyFormat.signedString(cents: summary.remainingCents))
-            sheetRow(label: "Given", value: MoneyFormat.string(cents: summary.givenCents))
-            sheetRow(label: "Pending", value: MoneyFormat.string(cents: summary.pendingGiftCents))
-            sheetRow(label: "Total", value: MoneyFormat.string(cents: summary.committedCents))
+            // Build 66 (owner, Nov 23, 2026 — item 7, "Same on
+            // this page"): the numbers live on a white card
+            // matching the actions card below, exactly like the
+            // Weekly sheet's numbers card — plain rows on the
+            // sheet background read as background noise, not part
+            // of the centerpiece.
+            VStack(spacing: 0) {
+                sheetRow(label: "Available", value: MoneyFormat.signedString(cents: summary.remainingCents))
+                SheetActionDivider()
+                sheetRow(label: "Given", value: MoneyFormat.string(cents: summary.givenCents))
+                SheetActionDivider()
+                sheetRow(label: "Pending", value: MoneyFormat.string(cents: summary.pendingGiftCents))
+                SheetActionDivider()
+                sheetRow(label: "Total", value: MoneyFormat.string(cents: summary.committedCents))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            .fundCardShadow()
             // The Tzedaka actions, as tappable rows (admin-only,
             // like the Funds page's Tzedaka card). Only these two:
-            // Add to Tzedaka + Record a Gift. Record Income is
+            // Add to Tzedaka + Record a Donation. Record Income is
             // deliberately absent — it lives in the "+ Add" flow.
             if appState.isAdmin {
                 tzedakaActionsCard
@@ -3026,7 +3105,7 @@ public struct TzedakaSheet: View {
         // in the regular size class, full-width on iPhone.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         // Build 65: load the Funds figures the forms need (the
-        // charity Available for the Record a Gift over-available
+        // charity Available for the Record a Donation over-available
         // check); forward the forms' toasts to the one root toast,
         // like FundsView.
         .task {
@@ -3048,8 +3127,8 @@ public struct TzedakaSheet: View {
                 AddToCharitySheet(viewModel: fundsViewModel, fundName: charityName, onClose: { showAddToCharity = false })
             }
         }
-        // Record a Gift (CharityIncomeForm.RecordCashGiftSheet):
-        // a cash gift given off-card — Available down, Given up.
+        // Record a Donation (CharityIncomeForm.RecordCashGiftSheet):
+        // a cash donation given off-card — Available down, Given up.
         // Refreshes Home on dismiss, like Add to Tzedaka.
         .fullScreenCover(isPresented: $showRecordGift, onDismiss: { onChanged?() }) {
             if let fundsViewModel {
@@ -3082,8 +3161,8 @@ public struct TzedakaSheet: View {
             SheetActionRow(
                 icon: "gift",
                 iconColor: DesignTokens.ink,
-                title: "Record a Gift",
-                subtitle: "Record a cash gift given off-card"
+                title: "Record a Donation",
+                subtitle: "Record a cash donation given off-card"
             ) {
                 if ensureFundsViewModel() != nil {
                     showRecordGift = true

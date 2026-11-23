@@ -6,7 +6,7 @@
 // card with a soft shadow, never a full-width bar.
 //
 //   - Success: brand-blue checkmark in a blue circle + ink message
-//     text (e.g. "Saved — Gift recorded · Tzedaka $533.08").
+//     text (e.g. "Saved — Donation recorded · Tzedaka $533.08").
 //     Success is BRAND BLUE, not green — this revises the earlier
 //     "success GREEN" rule (owner, Nov 11, 2026).
 //   - Failure: soft-red tint card + dark red text + red X

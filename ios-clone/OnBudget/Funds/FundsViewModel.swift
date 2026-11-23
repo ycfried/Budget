@@ -1254,7 +1254,7 @@ public final class FundsViewModel: ObservableObject {
         return succeeded
     }
 
-    /// Record a cash gift given off-card (build 40, owner Nov 16,
+    /// Record a cash donation given off-card (build 40, owner Nov 16,
     /// 2026): the owner gave charity in cash and wants to take it
     /// off what he owes. Available decreases by the amount, Given
     /// increases by it, Total (committed) is unchanged — and NO
@@ -1267,7 +1267,7 @@ public final class FundsViewModel: ObservableObject {
     /// so the caller clears the typed input on success only (F-P1-4).
     public func recordCharityCashGift(amountCents: Int, note: String) async -> Bool {
         var succeeded = false
-        await guarded("record-cash-gift", title: "Could Not Record Gift") {
+        await guarded("record-cash-gift", title: "Could Not Record Donation") {
             let result = try await context.client.rpcs.recordCharityCashGift(
                 pHouseholdId: context.householdId,
                 pAmountCents: amountCents,
@@ -1283,13 +1283,13 @@ public final class FundsViewModel: ObservableObject {
             // client summary instead, falling back to the RPC
             // figure when the summary failed to load.
             let leftCents = charitySummary?.remainingCents ?? result.remainingCents
-            succeed("Recorded a \(MoneyFormat.formatCents(amountCents)) gift. \(MoneyFormat.formatCents(leftCents)) left to give.")
+            succeed("Recorded a \(MoneyFormat.formatCents(amountCents)) donation. \(MoneyFormat.formatCents(leftCents)) left to give.")
             succeeded = true
         }
         return succeeded
     }
 
-    /// Reverse (delete) a cash gift given off-card (build 46, owner
+    /// Reverse (delete) a cash donation given off-card (build 46, owner
     /// Nov 18, 2026 — "you can't delete it once it was added"):
     /// the gift had NO delete path at all — it lives in
     /// charity_cash_gifts, not the transactions table, so the
@@ -1304,7 +1304,7 @@ public final class FundsViewModel: ObservableObject {
     /// error; nothing is changed.
     public func deleteCharityCashGift(_ gift: CharityCashGift) async -> Bool {
         var succeeded = false
-        await guarded("delete-cash-gift", title: "Could Not Delete Gift") {
+        await guarded("delete-cash-gift", title: "Could Not Delete Donation") {
             let result = try await context.client.rpcs.reverseCharityCashGift(pGiftId: gift.id)
             await refresh()
             // Same as the record toast above (build 60): the
@@ -1312,7 +1312,7 @@ public final class FundsViewModel: ObservableObject {
             // so the toast uses the refreshed client summary,
             // not the RPC's committed − given figure.
             let leftCents = charitySummary?.remainingCents ?? result.remainingCents
-            succeed("Gift removed. \(MoneyFormat.formatCents(leftCents)) left to give.")
+            succeed("Donation removed. \(MoneyFormat.formatCents(leftCents)) left to give.")
             succeeded = true
         }
         return succeeded

@@ -101,17 +101,22 @@ public struct SmallSoftButtonStyle: ButtonStyle {
 
 /// Page select (build 63, Lean): the top segmented control on
 /// Home and Funds — Home / Transactions / Funds, in that order,
-/// the current page active. A light-grey track (#eef0f3, 10pt
-/// radius, 3pt padding); the active tab is a white floater
-/// (white bg, ink semibold text, soft shadow 0/2/7/20%) — never
-/// a blue fill. Tapping a segment switches to that tab (the same
-/// destination as the bottom tab bar). The real app had no page
-/// select — the Lean mockup adds this control directly under the
-/// Household header on Home and Funds, so it is new here.
-/// Left-aligned, sized to its content. State changes are
-/// instant (standing rule) — no slide animation.
+/// the current page active. Build 66 (owner, Nov 23, 2026): a
+/// WHITE floating card (soft shadow, centred in the shell by
+/// AppShellView) instead of the build-65 grey left-aligned bar —
+/// the Lean look was nicer — and the selected tab is a light-grey
+/// floater on the white card (the old grey track colour, now the
+/// pill, never a blue fill). Tapping a segment switches to that
+/// tab. The selected pill SLIDES to the tapped tab (the Lean
+/// glide, restored build 66 — build 65's instant jump read as
+/// broken); the slide is the page-select exception to the
+/// instant-change rule, which covers expand/collapse only.
 public struct PageSelectControl: View {
     @Binding var selectedTab: AppTab
+    /// Build 66: the namespace for the sliding indicator — the
+    /// selected pill glides between segments via
+    /// matchedGeometryEffect (see the background below).
+    @Namespace private var indicatorNamespace
 
     public init(selectedTab: Binding<AppTab>) {
         self._selectedTab = selectedTab
@@ -130,12 +135,13 @@ public struct PageSelectControl: View {
                         .padding(.vertical, 6)
                         .padding(.horizontal, 14)
                         .background(
-                            RoundedRectangle(cornerRadius: 7)
-                                .fill(isSelected ? Color.white : Color.clear)
-                                .shadow(
-                                    color: isSelected ? Color.black.opacity(0.2) : .clear,
-                                    radius: 7, x: 0, y: 2
-                                )
+                            Group {
+                                if isSelected {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(DesignTokens.track)
+                                        .matchedGeometryEffect(id: "pageSelectIndicator", in: indicatorNamespace)
+                                }
+                            }
                         )
                 }
                 .buttonStyle(.plain)
@@ -144,9 +150,11 @@ public struct PageSelectControl: View {
         }
         .padding(3)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(DesignTokens.track)
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 2)
         )
+        .animation(.easeInOut(duration: 0.25), value: selectedTab)
     }
 }
 
@@ -496,8 +504,16 @@ public struct SuccessBox: View {
 /// bars below the wordmark as stray boxes / a bug, and the
 /// BrandedLoader skeleton halo behind the logo the same way).
 /// The skeletons belong on the Home screen itself (its
-/// card-shaped skeletons), not on the splash.
+/// card-shaped skeletons), not on the splash. Build 66 (owner,
+/// Nov 23, 2026): the splash WITHOUT any loading indicator read
+/// as frozen — a subtle brand-blue arc ring circles the logo
+/// while the app loads. This ring is the branded splash
+/// exception to the no-spinner rule (a thin arc around the logo,
+/// not a generic spinner); the three grey skeleton bars stay gone.
 public struct LoadingView: View {
+    /// Drives the loading ring's rotation (false → true on appear,
+    /// then repeating — the same pattern as the sync button's spin).
+    @State private var ringSpinning = false
     public init() {}
     public var body: some View {
         VStack(spacing: 12) {
@@ -515,11 +531,28 @@ public struct LoadingView: View {
                 // read as a stray box / bug, like the bars below).
                 // BrandedLoader itself is untouched — it is still
                 // used by other loading states (see its uses).
-                Image("AppLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 72, height: 72)
-                    .clipShape(Circle())
+                // Build 66: a subtle loading ring circles the logo
+                // (see the comment on LoadingView) — a light track
+                // ring plus a brand-blue arc that rotates slowly,
+                // so the splash reads as loading, not frozen. The
+                // ring sits 7pt outside the 72pt logo.
+                ZStack {
+                    Circle()
+                        .stroke(DesignTokens.stageBlue.opacity(0.18), lineWidth: 3)
+                        .frame(width: 86, height: 86)
+                    Circle()
+                        .trim(from: 0, to: 0.3)
+                        .stroke(DesignTokens.stageBlue, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .frame(width: 86, height: 86)
+                        .rotationEffect(.degrees(ringSpinning ? 360 : 0))
+                        .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: ringSpinning)
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 72, height: 72)
+                        .clipShape(Circle())
+                }
+                .onAppear { ringSpinning = true }
                 // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
                 // build 47): the logo + "T · A · G · E", never the logo
                 // next to the full word "STAGE" (no second S).

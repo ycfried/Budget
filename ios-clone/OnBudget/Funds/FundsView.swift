@@ -218,8 +218,8 @@ public struct FundsView: View {
     /// 2026): opened by the grey-tertiary "Remove from Savings"
     /// button on the Savings card, admin only.
     @State private var showRemoveFromSavings = false
-    /// The Record a Gift sheet (build 64, B3): opened by the ink
-    /// outline "Record a Gift" button on the Tzedaka card, admin
+    /// The Record a Donation sheet (build 64, B3): opened by the ink
+    /// outline "Record a Donation" button on the Tzedaka card, admin
     /// only. The sheet itself (RecordCashGiftSheet) still lives in
     /// CharityIncomeForm.swift — this state only drives the
     /// presentation from the B3 button row.
@@ -907,7 +907,7 @@ public struct FundsView: View {
                     // the button was redundant clutter.
                     // Build 64 (C-3 B3, owner Nov 23, 2026): ONE
                     // solid-blue primary full-width on top ("Add
-                    // to Tzedaka"), then "Record a Gift" (ink
+                    // to Tzedaka"), then "Record a Donation" (ink
                     // outline) below it. Build 65 (owner, Nov 23,
                     // 2026 — item 8): "Record Income" is gone from
                     // this card — recording income is an income
@@ -916,6 +916,9 @@ public struct FundsView: View {
                     // which presents the same CharityIncomeForm.
                     // The correction flow is untouched: Correct in
                     // Activity still opens the form via .income.
+                    // Build 66 (owner, Nov 23, 2026): "Record a
+                    // Gift" is renamed "Record a Donation",
+                    // cross app — same action, same sheet.
                     if isAdmin {
                         VStack(alignment: .leading, spacing: 12) {
                             AddToCharitySection(
@@ -923,7 +926,7 @@ public struct FundsView: View {
                                 fundName: FundSectionID.charity.displayName(customNames: appState.fundNames)
                             )
                             // Owner, Nov 16, 2026 (build 40):
-                            // record a cash gift given off-card
+                            // record a cash donation given off-card
                             // — Available decreases, Given
                             // increases, Total unchanged, NO
                             // transaction row. The sheet still
@@ -932,7 +935,7 @@ public struct FundsView: View {
                             // here is the B3 ink outline, and
                             // RecordCashGiftSection (pale) is no
                             // longer used on this card.
-                            FundsInkOutlineButton("Record a Gift", isLarge: true) {
+                            FundsInkOutlineButton("Record a Donation", isLarge: true) {
                                 showRecordGift = true
                             }
                             .accessibilityIdentifier("funds.recordCashGift")

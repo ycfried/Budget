@@ -143,7 +143,7 @@ public struct AddTransactionView: View {
                 } label: {
                     optionRow(
                         title: "Donation",
-                        subtitle: "Record a gift by hand"
+                        subtitle: "Record a donation by hand"
                     )
                 }
                 // Grey tertiary, not pale (audit SH-P2-2, Nov 12
@@ -590,16 +590,16 @@ public struct AddPurchaseForm: View {
 /// as weekly spending. Admin only." Admin-only (server-enforced).
 /// Fields: Organization (max 80, required), Amount, Date,
 /// Card / Account (connected account, Cash, or an added last 4 —
-/// defaults to Cash), Note (max 120). Submit: Record Gift.
+/// defaults to Cash), Note (max 120). Submit: Record Donation.
 /// Validation: positive amount; organization required; date required;
-/// date ≥ 2026-11-01 ("Date: gifts before November 2026 are outside
+/// date ≥ 2026-11-01 ("Date: donations before November 2026 are outside
 /// the charity period."); date must not be in the future (native-only
 /// guard, T-P2-13 — the web spec has none); suffix if present exactly
 /// 4 digits.
-/// Duplicate warning mirrors the manual form ("Record this gift anyway?").
+/// Duplicate warning mirrors the manual form ("Record this donation anyway?").
 /// Missing-RPC error → "Charity isn't live yet — the database step
 /// still needs approval."; admin-only refusal → "Only the admin can
-/// record charity gifts."
+/// record charity donations."
 public struct AddDonationForm: View {
     @Bindable var viewModel: TransactionsViewModel
     let onDone: () -> Void
@@ -688,7 +688,7 @@ public struct AddDonationForm: View {
                 }
 
                 TwoButtonRow {
-                    Button("Record Gift") { save() }
+                    Button("Record Donation") { save() }
                         .buttonStyle(PrimaryButtonStyle())
                         .disabled(viewModel.isSaving)
                 } secondary: {
@@ -707,7 +707,7 @@ public struct AddDonationForm: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("A gift already exists for \(duplicateLabel). Record this gift anyway?")
+            Text("A donation already exists for \(duplicateLabel). Record this donation anyway?")
         }
     }
 
@@ -736,7 +736,7 @@ public struct AddDonationForm: View {
         }
         let dateStr = dateString
         guard dateStr >= TransactionFormatting.dataFloorDate else {
-            errorMessage = "Date: gifts before November 2026 are outside the charity period."
+            errorMessage = "Date: donations before November 2026 are outside the charity period."
             return nil
         }
         // T-P2-13: no future dates on hand-entered rows (a deliberate
@@ -788,7 +788,7 @@ public struct AddDonationForm: View {
             return "\(charityName) isn't live yet — the database step still needs approval."
         }
         if case .adminOnly = error {
-            return "Only the admin can record charity gifts."
+            return "Only the admin can record charity donations."
         }
         return error.displayMessage
     }

@@ -244,12 +244,16 @@ public struct AppShellView: View {
     /// above the switched tab content, so it can never render
     /// twice. It stays pinned while the tab content scrolls
     /// beneath it (it used to scroll away with the Home/Funds
-    /// content). Left-aligned, 16pt in from the edge, inside the
-    /// same centred 900pt iPad column as the tab content below
-    /// (see `mainContentWidth`). The Funds-tab walkthrough step
+    /// content). Build 66 (owner, Nov 23, 2026): CENTRED and
+    /// floating — the control is a white floating card (see
+    /// PageSelectControl) and sits in the middle of the row, not
+    /// left-aligned — the Lean look was nicer. Inside the same
+    /// centred 900pt iPad column as the tab content below (see
+    /// `mainContentWidth`). The Funds-tab walkthrough step
     /// points at it (`.pageSelect` tour anchor).
     private var pageSelectRow: some View {
         HStack {
+            Spacer()
             PageSelectControl(selectedTab: $appState.selectedTab)
                 .tourAnchor(.pageSelect, tour: appState.tour)
             Spacer()

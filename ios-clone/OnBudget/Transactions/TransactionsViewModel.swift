@@ -1310,7 +1310,7 @@ public final class TransactionsViewModel {
                 pClientKey: clientKey
             )
             confirm(
-                "Gift recorded: \(TransactionFormatting.formatCents(amountCents)) to \(TransactionFormatting.displayMerchant(merchant)).",
+                "Donation recorded: \(TransactionFormatting.formatCents(amountCents)) to \(TransactionFormatting.displayMerchant(merchant)).",
                 kind: .success
             )
             await reloadAfterMutation()
