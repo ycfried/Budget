@@ -2595,6 +2595,13 @@ public struct HomeView: View {
 // so the sheet's onChanged hook refreshes Home after a form
 // closes, or Home would keep showing pre-action numbers.
 
+// @MainActor (build 65 fix): AppViewModel's householdId / role /
+// fundNames and FundsViewModel.init are main-actor-isolated, and
+// a free function is nonisolated by default — the archive failed
+// to compile until this was marked @MainActor. All call sites are
+// SwiftUI view code (already main actor), so the call stays
+// synchronous.
+@MainActor
 private func makeFundsViewModel(appState: AppViewModel) -> FundsViewModel? {
     guard let householdId = appState.householdId,
           let role = appState.role,
