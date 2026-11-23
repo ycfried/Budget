@@ -54,7 +54,7 @@ final class TransactionActionsSheetTests: XCTestCase {
         XCTAssertEqual(TransactionActionsSheet.kindLabel(.fundCharge, charityName: charityName), "Fund Charge")
         XCTAssertEqual(TransactionActionsSheet.kindLabel(.payment, charityName: charityName), "Payment")
         XCTAssertEqual(TransactionActionsSheet.kindLabel(.cashback, charityName: charityName), "Cashback")
-        XCTAssertEqual(TransactionActionsSheet.kindLabel(.other, charityName: charityName), "Other")
+        XCTAssertEqual(TransactionActionsSheet.kindLabel(.other("custom_kind"), charityName: charityName), "Other")
     }
 
     // MARK: - Sublines say what the option does
@@ -111,7 +111,7 @@ final class TransactionActionsSheetTests: XCTestCase {
     func testEveryKindHasAnIcon() {
         // Every kind must be spottable by icon as well as colour —
         // no empty icon string anywhere.
-        for kind: TransactionKind in [.charge, .refund, .fundCharge, .transfer, .payment, .cashback, .income, .charity, .other] {
+        for kind: TransactionKind in [.charge, .refund, .fundCharge, .transfer, .payment, .cashback, .income, .charity, .other("custom_kind")] {
             XCTAssertFalse(
                 TransactionActionsSheet.kindStyle(kind).icon.isEmpty,
                 "\(kind) must have an icon"
