@@ -58,6 +58,7 @@
 		9051A85E7352EDDD7DD458C5 /* HouseholdViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F4D0951A49AF8D74DC7EDF /* HouseholdViews.swift */; };
 		CBA111F13C502EA3D22E33D9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31D3DD86A75C3F15F49CF64D /* HomeView.swift */; };
 		328FAC8708AF8A36C0C524B3 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7BB5F7C35A36F6EACB66200 /* AppShellView.swift */; };
+		55EB61FE5C2A7D27FBC8BEB9 /* ConfirmationPopup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B5278ECCD46E6F5268D457 /* ConfirmationPopup.swift */; };
 		B70101010101010101010101 /* TransactionFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70101010101010101010101 /* TransactionFormatting.swift */; };
 		B70202020202020202020202 /* TransactionIconLookup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70202020202020202020202 /* TransactionIconLookup.swift */; };
 		B70303030303030303030303 /* OnBudgetButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70303030303030303030303 /* OnBudgetButtons.swift */; };
@@ -165,6 +166,7 @@
 		C9F4D0951A49AF8D74DC7EDF /* HouseholdViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseholdViews.swift; sourceTree = "<group>"; };
 		31D3DD86A75C3F15F49CF64D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		B7BB5F7C35A36F6EACB66200 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
+		C5B5278ECCD46E6F5268D457 /* ConfirmationPopup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfirmationPopup.swift; sourceTree = "<group>"; };
 		A70101010101010101010101 /* TransactionFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionFormatting.swift; sourceTree = "<group>"; };
 		A70202020202020202020202 /* TransactionIconLookup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionIconLookup.swift; sourceTree = "<group>"; };
 		A70303030303030303030303 /* OnBudgetButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnBudgetButtons.swift; sourceTree = "<group>"; };
@@ -250,6 +252,7 @@
 				C9F4D0951A49AF8D74DC7EDF /* HouseholdViews.swift */,
 				31D3DD86A75C3F15F49CF64D /* HomeView.swift */,
 				B7BB5F7C35A36F6EACB66200 /* AppShellView.swift */,
+				C5B5278ECCD46E6F5268D457 /* ConfirmationPopup.swift */,
 				D201D201D201D201D201D201 /* AppDelegate.swift */,
 				D207D207D207D207D207D207 /* WidgetBackgroundRefreshTask.swift */,
 				D203D203D203D203D203D203 /* PushNotificationCoordinator.swift */,
@@ -530,6 +533,7 @@
 				9051A85E7352EDDD7DD458C5 /* HouseholdViews.swift in Sources */,
 				CBA111F13C502EA3D22E33D9 /* HomeView.swift in Sources */,
 				328FAC8708AF8A36C0C524B3 /* AppShellView.swift in Sources */,
+				55EB61FE5C2A7D27FBC8BEB9 /* ConfirmationPopup.swift in Sources */,
 				F20000000000000000000002 /* FundsShared.swift in Sources */,
 				F20000000000000000000003 /* RefundSuggestions.swift in Sources */,
 				F20000000000000000000004 /* FundsViewModel.swift in Sources */,

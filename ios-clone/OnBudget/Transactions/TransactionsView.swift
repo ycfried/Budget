@@ -119,6 +119,43 @@ public struct TransactionsView: View {
     }
 
     public var body: some View {
+        scrollContent
+            .task { await boot() }
+            .onChange(of: appState.pendingWeekFilter) { _, _ in consumeHandoffs() }
+            .onChange(of: appState.fundNames) { _, names in viewModel.fundNames = names }
+            .onChange(of: appState.pendingTransactionJump) { _, _ in consumeHandoffs() }
+            .onChange(of: appState.pendingClearTransactionFilters) { _, _ in consumeHandoffs() }
+            // NOTE (T-P2-1): no `.alert` here — the failure alert lives
+            // on the Actions and Trash sheets themselves, because an
+            // alert attached to this parent never surfaces above a
+            // presented sheet. Every `showAlert` call site originates
+            // from one of those sheets.
+            .onChange(of: searchText) { _, new in
+                viewModel.applySearch(new)
+            }
+            // T-P1-1: the box is local state, so a filter clear from the
+            // view model (empty-state button, Past Weeks / Home-row jump)
+            // must clear it too — otherwise the box shows a search the
+            // list no longer applies.
+            .onChange(of: viewModel.searchResetNonce) { _, _ in
+                searchText = ""
+            }
+            .modifier(TransactionCovers(
+                viewModel: viewModel,
+                appState: appState,
+                showingFilters: $showingFilters,
+                showingAdd: $showingAdd,
+                showingTrash: $showingTrash,
+                showingExport: $showingExport,
+                actionsTransaction: $actionsTransaction
+            ))
+    }
+
+    /// The scrollable list (build 64): extracted from `body` so the
+    /// compiler can type-check `body` in reasonable time — the single
+    /// chained expression (ScrollView + task + onChanges + five
+    /// covers) hit the Swift 6 type-check timeout.
+    private var scrollContent: some View {
         // Build 64 (F-8): the toast is the shared TOP popup
         // (.toastOverlay, SharedViews) — the centered ZStack
         // popup (build 38) was "horrendous" (owner, Nov 20,
@@ -146,132 +183,133 @@ public struct TransactionsView: View {
         // centered 900pt column on the regular size class (see
         // mainContentWidth), never stretched edge-to-edge.
         .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
-        .task {
-            // Build 43 (owner, Nov 17, 2026 — item 16): the view
-            // model composes alerts/toasts with the funds' CURRENT
-            // display names, so it reads the same `appState.fundNames`
-            // source as the views — synced here and on every rename
-            // below.
-            viewModel.fundNames = appState.fundNames
-            // Build 52: when a week filter is pending (Spending
-            // card / Weekly sheet), skip the page-1 load — the
-            // week handoff below fetches the whole history
-            // instead. Loading page 1 first would flash the
-            // paged list, then replace it with the week list.
-            if case .idle = viewModel.loadState, appState.pendingWeekFilter == nil {
-                await viewModel.load()
-            }
-            // Build 30: the Review badge count loads with the tab.
-            // The Review page refreshes the same instance on open,
-            // and every review action reloads it, so the badge
-            // stays live without a second load here.
-            await reviewViewModel.refreshReview()
-            consumeHandoffs()
+    }
+
+    /// The on-appear work (build 64): extracted from `body`'s `.task`
+    /// for the same type-check reason as `scrollContent`.
+    private func boot() async {
+        // Build 43 (owner, Nov 17, 2026 — item 16): the view
+        // model composes alerts/toasts with the funds' CURRENT
+        // display names, so it reads the same `appState.fundNames`
+        // source as the views — synced here and on every rename
+        // below.
+        viewModel.fundNames = appState.fundNames
+        // Build 52: when a week filter is pending (Spending
+        // card / Weekly sheet), skip the page-1 load — the
+        // week handoff below fetches the whole history
+        // instead. Loading page 1 first would flash the
+        // paged list, then replace it with the week list.
+        if case .idle = viewModel.loadState, appState.pendingWeekFilter == nil {
+            await viewModel.load()
         }
-        .onChange(of: appState.pendingWeekFilter) { _, _ in consumeHandoffs() }
-        .onChange(of: appState.fundNames) { _, names in viewModel.fundNames = names }
-        .onChange(of: appState.pendingTransactionJump) { _, _ in consumeHandoffs() }
-        .onChange(of: appState.pendingClearTransactionFilters) { _, _ in consumeHandoffs() }
-        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
-        // cover, not a detent sheet — popups are always full size.
-        // The Filters content is a ScrollView in a NavigationStack,
-        // so it fills the full screen and starts at the top;
-        // Apply / Cancel at the bottom dismiss it. Width stays
-        // 600pt (regular) via the frame inside the sheet content.
-        .fullScreenCover(isPresented: $showingFilters) {
-            TransactionsFilterSheet(viewModel: viewModel, fundNames: appState.fundNames, onDismiss: { showingFilters = false })
-                // Build 64 (C-5, follow-up): the shell-root popup
-                // sits UNDERNEATH a fullScreenCover, so a
-                // confirmation fired while this cover is open
-                // needs the overlay inside the cover's content.
-                // The Filters sheet fires no toast of its own;
-                // the binding is the app-shell toast state, so
-                // any confirmation fired while it is open shows.
-                .confirmationPopupOverlay($appState.toast)
-        }
-        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
-        // cover, not a detent sheet. AddTransactionView sets no
-        // sizing itself any more — the cover is full-screen on
-        // both steps; the forms are ScrollViews, so they start at
-        // the top, and the options step top-anchors with its own
-        // trailing Spacer (build 43, item 18).
-        .fullScreenCover(isPresented: $showingAdd) {
-            AddTransactionView(viewModel: viewModel, onDismiss: { showingAdd = false })
-                // Build 64 (C-5, follow-up): overlay inside the
-                // cover — the Add save confirmation fires through
-                // the view model into the app-shell toast
-                // (`AppViewModel.showToast`), which the shell-root
-                // popup cannot show from underneath this cover.
-                .confirmationPopupOverlay($appState.toast)
-        }
-        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
-        // cover, not a detent sheet. The Trash content is a
-        // ScrollView in a NavigationStack, so it fills the full
-        // screen and starts at the top; Back dismisses it.
-        .fullScreenCover(isPresented: $showingTrash) {
-            TrashView(viewModel: viewModel, onBack: { showingTrash = false })
-                // Build 64 (C-5, follow-up): overlay inside the
-                // cover — the restore confirmations fire through
-                // the view model into the app-shell toast, which
-                // the shell-root popup cannot show from
-                // underneath this cover.
-                .confirmationPopupOverlay($appState.toast)
-        }
-        // Build 45 (Nov 18, 2026): full-screen cover, not a detent
-        // sheet — popups are always full size. The export popup
-        // fetches the whole history on open and opens the system
-        // share sheet on top of itself after generating.
-        .fullScreenCover(isPresented: $showingExport) {
-            TransactionExportView(
-                viewModel: viewModel,
-                appState: appState,
-                householdName: appState.householdName,
-                onDismiss: { showingExport = false }
-            )
-            // Build 64 (C-5, follow-up): overlay inside the
-            // cover — the export's "List now shows…" and
-            // no-match toasts fire via `AppViewModel.showToast`,
-            // which the shell-root popup cannot show from
-            // underneath this cover.
-            .confirmationPopupOverlay($appState.toast)
-        }
-        // Build 64 (C-4, owner Nov 23, 2026): fitted detents,
-        // NOT a full-screen cover — this reverses the Nov 17
-        // full-screen rule (build 43, item 17). The sheet sizes
-        // itself: .medium for the Actions list, small for the
-        // confirm flows (the detents live in the sheet itself,
-        // which knows its flow). iPad width stays 600pt
-        // (regular) via the frame inside the sheet content, so
-        // the sheet is a centred card on iPad, never full-width.
-        .sheet(item: $actionsTransaction) { transaction in
-            TransactionActionsSheet(
-                transaction: transaction,
-                isAdmin: viewModel.isAdmin,
-                viewModel: viewModel,
-                fundNames: appState.fundNames,
-                onDismiss: { actionsTransaction = nil }
-            )
-            // Build 64 (C-5, follow-up): overlay inside the
-            // sheet — a sheet presents above the shell root too,
-            // so the action confirmations (which fire through
-            // the view model into the app-shell toast) need the
-            // popup attached here to be seen.
-            .confirmationPopupOverlay($appState.toast)
-        }
-        // NOTE (T-P2-1): no `.alert` here — the failure alert lives
-        // on the Actions and Trash sheets themselves, because an
-        // alert attached to this parent never surfaces above a
-        // presented sheet. Every `showAlert` call site originates
-        // from one of those sheets.
-        .onChange(of: searchText) { _, new in
-            viewModel.applySearch(new)
-        }
-        // T-P1-1: the box is local state, so a filter clear from the
-        // view model (empty-state button, Past Weeks / Home-row jump)
-        // must clear it too — otherwise the box shows a search the
-        // list no longer applies.
-        .onChange(of: viewModel.searchResetNonce) { _, _ in
-            searchText = ""
+        // Build 30: the Review badge count loads with the tab.
+        // The Review page refreshes the same instance on open,
+        // and every review action reloads it, so the badge
+        // stays live without a second load here.
+        await reviewViewModel.refreshReview()
+        consumeHandoffs()
+    }
+
+    /// The five presented covers/sheets (build 64): extracted from
+    /// `body` into a ViewModifier so the compiler can type-check
+    /// `body` in reasonable time.
+    private struct TransactionCovers: ViewModifier {
+        var viewModel: TransactionsViewModel
+        @ObservedObject var appState: AppViewModel
+        @Binding var showingFilters: Bool
+        @Binding var showingAdd: Bool
+        @Binding var showingTrash: Bool
+        @Binding var showingExport: Bool
+        @Binding var actionsTransaction: Transaction?
+
+        func body(content: Content) -> some View {
+            content
+                // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+                // cover, not a detent sheet — popups are always full size.
+                // The Filters content is a ScrollView in a NavigationStack,
+                // so it fills the full screen and starts at the top;
+                // Apply / Cancel at the bottom dismiss it. Width stays
+                // 600pt (regular) via the frame inside the sheet content.
+                .fullScreenCover(isPresented: $showingFilters) {
+                    TransactionsFilterSheet(viewModel: viewModel, fundNames: appState.fundNames, onDismiss: { showingFilters = false })
+                        // Build 64 (C-5, follow-up): the shell-root popup
+                        // sits UNDERNEATH a fullScreenCover, so a
+                        // confirmation fired while this cover is open
+                        // needs the overlay inside the cover's content.
+                        // The Filters sheet fires no toast of its own;
+                        // the binding is the app-shell toast state, so
+                        // any confirmation fired while it is open shows.
+                        .confirmationPopupOverlay($appState.toast)
+                }
+                // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+                // cover, not a detent sheet. AddTransactionView sets no
+                // sizing itself any more — the cover is full-screen on
+                // both steps; the forms are ScrollViews, so they start at
+                // the top, and the options step top-anchors with its own
+                // trailing Spacer (build 43, item 18).
+                .fullScreenCover(isPresented: $showingAdd) {
+                    AddTransactionView(viewModel: viewModel, onDismiss: { showingAdd = false })
+                        // Build 64 (C-5, follow-up): overlay inside the
+                        // cover — the Add save confirmation fires through
+                        // the view model into the app-shell toast
+                        // (`AppViewModel.showToast`), which the shell-root
+                        // popup cannot show from underneath this cover.
+                        .confirmationPopupOverlay($appState.toast)
+                }
+                // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
+                // cover, not a detent sheet. The Trash content is a
+                // ScrollView in a NavigationStack, so it fills the full
+                // screen and starts at the top; Back dismisses it.
+                .fullScreenCover(isPresented: $showingTrash) {
+                    TrashView(viewModel: viewModel, onBack: { showingTrash = false })
+                        // Build 64 (C-5, follow-up): overlay inside the
+                        // cover — the restore confirmations fire through
+                        // the view model into the app-shell toast, which
+                        // the shell-root popup cannot show from
+                        // underneath this cover.
+                        .confirmationPopupOverlay($appState.toast)
+                }
+                // Build 45 (Nov 18, 2026): full-screen cover, not a detent
+                // sheet — popups are always full size. The export popup
+                // fetches the whole history on open and opens the system
+                // share sheet on top of itself after generating.
+                .fullScreenCover(isPresented: $showingExport) {
+                    TransactionExportView(
+                        viewModel: viewModel,
+                        appState: appState,
+                        householdName: appState.householdName,
+                        onDismiss: { showingExport = false }
+                    )
+                    // Build 64 (C-5, follow-up): overlay inside the
+                    // cover — the export's "List now shows…" and
+                    // no-match toasts fire via `AppViewModel.showToast`,
+                    // which the shell-root popup cannot show from
+                    // underneath this cover.
+                    .confirmationPopupOverlay($appState.toast)
+                }
+                // Build 64 (C-4, owner Nov 23, 2026): fitted detents,
+                // NOT a full-screen cover — this reverses the Nov 17
+                // full-screen rule (build 43, item 17). The sheet sizes
+                // itself: .medium for the Actions list, small for the
+                // confirm flows (the detents live in the sheet itself,
+                // which knows its flow). iPad width stays 600pt
+                // (regular) via the frame inside the sheet content, so
+                // the sheet is a centred card on iPad, never full-width.
+                .sheet(item: $actionsTransaction) { transaction in
+                    TransactionActionsSheet(
+                        transaction: transaction,
+                        isAdmin: viewModel.isAdmin,
+                        viewModel: viewModel,
+                        fundNames: appState.fundNames,
+                        onDismiss: { actionsTransaction = nil }
+                    )
+                    // Build 64 (C-5, follow-up): overlay inside the
+                    // sheet — a sheet presents above the shell root too,
+                    // so the action confirmations (which fire through
+                    // the view model into the app-shell toast) need the
+                    // popup attached here to be seen.
+                    .confirmationPopupOverlay($appState.toast)
+                }
         }
     }
 

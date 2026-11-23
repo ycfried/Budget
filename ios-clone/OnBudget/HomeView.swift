@@ -614,7 +614,7 @@ public final class HomeViewModel: ObservableObject {
         // Bank half: the existing Plaid sync. A 403 here is the
         // pre-deploy server (auth relax not live yet) — plain
         // words, no reload, no technical text.
-        let outcome: PlaidSyncOutcome
+        let outcome: EdgeFunctionsClient.PlaidSyncOutcome
         do {
             outcome = try await client.functions.plaidSyncAllowingPartialFailure(householdId: householdId)
         } catch let error as OnBudgetError {
