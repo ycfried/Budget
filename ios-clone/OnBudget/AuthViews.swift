@@ -438,7 +438,7 @@ public struct AuthView: View {
         // in — never swap that store away.
         if !appState.biometricUnlockAvailable {
             appState.client.replaceSessionStore(
-                rememberMe ? UserDefaultsSessionStore() : InMemorySessionStore())
+                rememberMe ? KeychainSessionStore() : InMemorySessionStore())
         }
         do {
             _ = try await appState.client.signIn(

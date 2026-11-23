@@ -18,11 +18,30 @@
 --
 -- DECISION (owner rule, build 44): income auto-accrues charity at the
 -- household default rate (10% unless changed) when an income
--- transaction is DETECTED — but VERIFIED-only, i.e. on the
--- pending→posted transition, never provisional. A pending income row
--- accrues nothing until the bank confirms it. Transfers, refunds,
--- card payments, and cashback NEVER accrue: only kind='income' rows
--- reach the RPC, and the RPC refuses every other kind itself.
+-- transaction is DETECTED. The RPC below accrues VERIFIED rows only
+-- (the ingest hook calls it on the pending→posted transition, and
+-- on insert of a verified row); a provisional income row accrues
+-- through the TRIGGER instead (reclassify-income-accrual.sql v4:
+-- provisional income accrues immediately when it becomes income
+-- by reclassification / restore, owner rule Nov 22, 2026 — pending
+-- counts toward totals). Transfers, refunds, card payments, and
+-- cashback NEVER accrue: only kind='income' rows reach the RPC, and
+-- the RPC refuses every other kind itself.
+--
+-- RATE LOCK (F-10, owner decision Nov 23, 2026 — "Always stay to
+-- old charity rate.. unless changed for a specific transaction.."):
+-- the rate is locked at income time. This RPC reads
+-- charity_settings.default_rate_bp ONCE, at accrual time, and
+-- stores it as the row's rate_bp (rate_at_accrual). Changing the
+-- household default rate affects NEW income only; existing
+-- charity_income rows keep their recorded rate_bp, and NOTHING
+-- restates them on a rate change — there is no trigger on
+-- charity_settings, and the reclassify trigger's amount/date
+-- re-derive (reclassify-income-accrual.sql v5) re-reads the
+-- ORIGINAL rate from the existing accrual row, not the current
+-- default. A per-transaction override is the only way to change
+-- one row's rate: correct_charity_income (r13-charity.sql)
+-- reverses the row and replaces it at the override rate.
 -- Do NOT hand-record charity for the existing $3,500 check deposit
 -- through this file: that deposit predates this accrual path and its
 -- reclassification is a separate, still-open owner step.

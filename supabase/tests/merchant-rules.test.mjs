@@ -110,8 +110,16 @@ test('exact beats prefix: a taught exact spelling wins over a stem', () => {
   assert.equal(matchMerchantRule(rules, 'AMAZON PRIME').display_name, 'AMAZON');
 });
 
-test('prefix does not match mid-word: AMAZON must be a stem, not a substring', () => {
-  assert.equal(matchMerchantRule(SEED_RULES, 'MY AMAZON STORE'), null);
+test('includes matches mid-word: AMAZON is a substring stem, not an anchor (build 34)', () => {
+  // F-26 (build 61 audit): this test pinned the pre-build-34 'prefix'
+  // rule (a stem must anchor at the start). Build 34 renamed 'prefix'
+  // to 'includes' — the name must CONTAIN the pattern anywhere
+  // (canonical.ts matchMerchantRule, merchant-rules-includes.sql) —
+  // so 'MY AMAZON STORE' now matches the AMAZON rule. The old
+  // expectation (null) was the stale pin, not a regression.
+  assert.equal(matchMerchantRule(SEED_RULES, 'MY AMAZON STORE')?.display_name, 'AMAZON');
+  // And a merchant with no rule substring still matches nothing.
+  assert.equal(matchMerchantRule(SEED_RULES, 'MY STORE'), null);
 });
 
 test('empty merchant matches nothing', () => {

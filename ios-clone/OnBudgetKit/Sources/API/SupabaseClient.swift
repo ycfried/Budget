@@ -18,11 +18,17 @@
 // service-role key must NEVER appear anywhere in this package.
 //
 // Session persistence: `SessionStore` is a protocol. The shipped
-// default stores the session JSON in UserDefaults; opting in to
-// Face ID unlock swaps in the biometric Keychain store instead
-// (`BiometricSessionStore`, via `replaceSessionStore`) — the
-// UserDefaults copy is cleared on opt-in, so the session cannot be
-// read without a biometric match. Tokens are never logged.
+// default is the shared App Group Keychain item
+// (`KeychainSessionStore`, build 64, audit F-17) — the session JSON
+// lives in the Keychain, readable by the app and the widget
+// extension, never in plaintext UserDefaults. UserDefaults holds a
+// session only as a legacy copy from before build 64, moved into
+// the Keychain once by `KeychainSessionStore.migrateLegacyCopies`
+// and then deleted. Opting in to Face ID unlock swaps in the
+// biometric Keychain store instead (`BiometricSessionStore`, via
+// `replaceSessionStore`) — the session is then also mirrored to the
+// shared Keychain item so the widget keeps working, and the app UI
+// still needs a biometric match to open. Tokens are never logged.
 
 import Foundation
 #if canImport(FoundationNetworking)
@@ -208,19 +214,27 @@ public enum SignUpOutcome {
     case needsConfirmation
 }
 
-/// Where a session is persisted. The default implementation below
-/// uses UserDefaults; Face ID unlock swaps in the biometric
-/// Keychain store (`BiometricSessionStore`) via
-/// `replaceSessionStore` — the client only ever talks to this
-/// protocol, so the swap is a single call and every later save
-/// (refresh, password change) follows the active store.
+/// Where a session is persisted. The default implementation is
+/// the shared App Group Keychain item (`KeychainSessionStore`);
+/// Face ID unlock swaps in the biometric Keychain store
+/// (`BiometricSessionStore`) via `replaceSessionStore` — the client
+/// only ever talks to this protocol, so the swap is a single call
+/// and every later save (refresh, password change) follows the
+/// active store.
 public protocol SessionStore: AnyObject {
     func load() -> AuthSession?
     func save(_ session: AuthSession?)
 }
 
-/// UserDefaults-backed store (default). Key is versioned so a future
-/// store migration can be detected.
+/// UserDefaults-backed store. LEGACY / MIGRATION SOURCE ONLY
+/// (build 64, audit F-17): the pre-build-64 default kept the
+/// session JSON in plaintext UserDefaults. It must never be
+/// installed as the client's active store again — the default is
+/// `KeychainSessionStore`. It survives for two uses: the one-time
+/// migration of a pre-build-64 session into the Keychain
+/// (`KeychainSessionStore.migrateLegacyCopies`), and tests that
+/// need a trivially inspectable store. Key is versioned so a
+/// future store migration can be detected.
 public final class UserDefaultsSessionStore: SessionStore {
     private let defaults: UserDefaults
     private let key: String
@@ -245,29 +259,37 @@ public final class UserDefaultsSessionStore: SessionStore {
     }
 }
 
-/// A session store that mirrors every save to the shared App Group
-/// container (build 40, Nov 16, 2026 — widget sync). The widget
-/// extension cannot read the app's standard UserDefaults, so the
-/// session must ALSO live in the App Group for the widget to fetch
-/// fresh numbers on a sync tap. This wraps the app's real store
-/// (UserDefaults or the biometric Keychain) and mirrors each save —
-/// sign-in, token refresh, sign-out — to the App Group under the
-/// same key. Reads always come from the real store, so the app's
-/// auth behavior is unchanged; the mirror is write-only from the
-/// app's side and read-only from the widget extension's side.
-/// The mirror holds the same AuthSession JSON (access + refresh
-/// tokens) the app already stores in UserDefaults — it does not
-/// weaken storage, it only widens the container to the app's own
-/// extension. Sign-out clears both copies.
+/// A session store that keeps the shared App Group Keychain item
+/// in sync (build 64, audit F-17 — the mirror target used to be
+/// App Group UserDefaults, build 40, which kept the tokens in
+/// plaintext in the shared container). The widget extension reads
+/// the session from that same shared Keychain item
+/// (`KeychainSessionStore`), so the mirror is what lets the widget
+/// fetch fresh numbers when the app's active store is NOT itself
+/// the shared item — i.e. when Face ID unlock is on and the active
+/// store is the biometric Keychain item, which the widget cannot
+/// read. When the active store IS the shared Keychain item (the
+/// default), there is nothing to mirror: the store already is the
+/// shared item, and the mirror is a no-op. Reads always come from
+/// the real store, so the app's auth behavior is unchanged.
+/// Sign-out clears both copies.
 public final class MirroredSessionStore: SessionStore {
     private let inner: SessionStore
-    private let mirrorDefaults: UserDefaults?
-    private let key: String
+    /// The shared Keychain copy, or nil when the inner store is
+    /// already the shared item (nothing to mirror) — see init.
+    private let mirrorKeychain: KeychainSessionStore?
 
-    public init(inner: SessionStore, groupID: String = WidgetSnapshotStore.groupID, key: String = "onbudget.supabase.session.v1") {
+    public init(inner: SessionStore, groupID: String = WidgetSnapshotStore.groupID) {
         self.inner = inner
-        self.mirrorDefaults = UserDefaults(suiteName: groupID)
-        self.key = key
+        // Already the shared item: mirroring would write the same
+        // Keychain item twice. Anything else (notably the
+        // biometric store) gets a mirror so the widget can still
+        // read the session.
+        if inner is KeychainSessionStore {
+            self.mirrorKeychain = nil
+        } else {
+            self.mirrorKeychain = KeychainSessionStore(accessGroup: groupID)
+        }
     }
 
     /// The store this mirror wraps, so callers that need to know
@@ -276,28 +298,28 @@ public final class MirroredSessionStore: SessionStore {
     /// wrapper.
     public var wrappedStore: SessionStore { inner }
 
+    /// The Keychain item this mirror writes to, if it mirrors at
+    /// all. `SupabaseClient.replaceSessionStore` uses it so a store
+    /// swap never deletes storage the new store just wrote to.
+    var mirrorStorageIdentity: String? { mirrorKeychain?.storageIdentity }
+
     public func load() -> AuthSession? {
         inner.load()
     }
 
     public func save(_ session: AuthSession?) {
         inner.save(session)
-        if let session {
-            let data = try? JSONEncoder().encode(session)
-            mirrorDefaults?.set(data, forKey: key)
-        } else {
-            mirrorDefaults?.removeObject(forKey: key)
-        }
+        mirrorKeychain?.save(session)
     }
 
-    /// Clears only the inner store (e.g. the Keychain item or the
-    /// UserDefaults copy) without touching the shared App Group
-    /// mirror. Used when the session is MOVING to a new store, not
-    /// being removed: the new store just wrote the session to the
-    /// mirror, and a plain save(nil) here would remove that same
-    /// mirror key. When the session is being removed outright
-    /// (sign-out / delete-account), save(nil) is the right call —
-    /// it clears the mirror too.
+    /// Clears only the inner store (e.g. the biometric Keychain
+    /// item) without touching the shared Keychain mirror. Used when
+    /// the session is MOVING to a new store, not being removed: the
+    /// new store just wrote the session to the mirror, and a plain
+    /// save(nil) here would remove that same mirror key. When the
+    /// session is being removed outright (sign-out /
+    /// delete-account), save(nil) is the right call — it clears
+    /// the mirror too.
     public func clearInner() {
         inner.save(nil)
     }
@@ -397,9 +419,9 @@ public final class SupabaseClient: @unchecked Sendable {
     /// means the session is dead, so clearing it forces re-sign-in
     /// instead of retrying a dead token forever. A throwaway /
     /// extension client (the widget refresher) must pass `false`:
-    /// it shares the App Group session mirror with the app, and
-    /// clearing on a refused refresh would DELETE the mirror —
-    /// permanently sticking the widget until the user opens the app
+    /// it shares the App Group Keychain item with the app, and
+    /// clearing on a refused refresh would DELETE that shared item
+    /// — permanently sticking the widget until the user opens the app
     /// again. With `false`, a refused refresh still throws
     /// `.sessionExpired` (the fetch fails), but the persisted
     /// session survives for a later tap / background run, once the
@@ -446,7 +468,7 @@ public final class SupabaseClient: @unchecked Sendable {
         clearsSessionOnRefusedRefresh: Bool = true
     ) {
         self.configuration = configuration
-        self.store = store ?? UserDefaultsSessionStore()
+        self.store = store ?? KeychainSessionStore.migrated()
         self.transport = transport ?? URLSessionTransport()
         self.clearsSessionOnRefusedRefresh = clearsSessionOnRefusedRefresh
         self._session = self.store.load()
@@ -521,26 +543,28 @@ public final class SupabaseClient: @unchecked Sendable {
     /// Swap the persistence store, migrating the live session to the
     /// new store and clearing the old one. Face ID opt-in swaps to
     /// the biometric Keychain store; opt-out (and dropping a dead or
-    /// invalidated protected session) swaps back to UserDefaults.
-    /// The new store is saved first, so a failure to write the new
-    /// store can never lose the session before the old copy is
-    /// cleared; swapping to the store already in use is a no-op
-    /// re-save. The swap itself is under the session lock so a
-    /// concurrent refresh cannot write to a store that has just
-    /// been cleared.
+    /// invalidated protected session) swaps back to the default
+    /// Keychain store. The new store is saved first, so a failure
+    /// to write the new store can never lose the session before the
+    /// old copy is cleared; swapping to the store already in use is
+    /// a no-op re-save. The swap itself is under the session lock
+    /// so a concurrent refresh cannot write to a store that has
+    /// just been cleared.
     ///
-    /// Build 48 (widget sync, owner Nov 19, 2026): the App Group
-    /// session mirror must survive every store swap. Sign-in, Face
-    /// ID opt-in/out, sign-out and delete-account all replace the
+    /// Build 48 (widget sync, owner Nov 19, 2026): the widget must
+    /// always be able to find the session. Sign-in, Face ID
+    /// opt-in/out, sign-out and delete-account all replace the
     /// store, and each bare replacement silently dropped the
-    /// mirror — the widget extension's mirrored session went stale
+    /// widget's session — the widget extension's session went stale
     /// and the sync button did nothing (no session to fetch with).
-    /// The active store is now always mirrored: the incoming store
-    /// is wrapped in a MirroredSessionStore, so every later save
-    /// (sign-in, token refresh, sign-out) reaches the App Group.
-    /// The one exception is InMemorySessionStore (remember-me off,
-    /// and tests): a session the user chose not to persist must
-    /// not be persisted into the App Group either.
+    /// The active store is now always widget-visible: either it IS
+    /// the shared App Group Keychain item (the default
+    /// `KeychainSessionStore`), or it is wrapped in a
+    /// MirroredSessionStore that keeps that shared item in sync
+    /// (the biometric store). The one exception is
+    /// InMemorySessionStore (remember-me off, and tests): a session
+    /// the user chose not to persist must not be persisted into the
+    /// App Group either.
     public func replaceSessionStore(_ newStore: SessionStore) {
         let wrapped: SessionStore
         if newStore is InMemorySessionStore {
@@ -581,7 +605,19 @@ public final class SupabaseClient: @unchecked Sendable {
             // very store, and clearing the old one would delete it
             // again. (Build 48 fix: the first cloud run caught
             // re-enable deleting the Keychain item.)
-            clearStoreKeepingMirror(oldStore)
+            //
+            // F-17 (build 64): "same store" also covers two
+            // different objects over the SAME shared Keychain item.
+            // Opting in to Face ID replaces a default Keychain
+            // store with the biometric store, whose mirror just
+            // wrote the session back to that very item; clearing
+            // the old store would delete it again. The object
+            // identity check above cannot see that, so
+            // `newStoreCoversOldStorage` covers the same-item case
+            // before anything is cleared.
+            if !newStoreCoversOldStorage(wrapped, oldStore) {
+                clearStoreKeepingMirror(oldStore)
+            }
         }
     }
 
@@ -596,6 +632,30 @@ public final class SupabaseClient: @unchecked Sendable {
             current = mirrored.wrappedStore
         }
         return current
+    }
+
+    /// True when the new store — its inner store, or its mirror —
+    /// writes to the same storage the old store used. Only Keychain
+    /// stores can share storage across different objects (same
+    /// access group + service + account = same item); every other
+    /// store type is identified by its object, which the caller
+    /// already checked. Used by `replaceSessionStore` so a swap
+    /// never deletes a shared Keychain item the new store just
+    /// wrote (F-17, build 64).
+    private func newStoreCoversOldStorage(_ newStore: SessionStore, _ oldStore: SessionStore) -> Bool {
+        guard let oldKeychain = unwrappedStore(oldStore) as? KeychainSessionStore else {
+            return false
+        }
+        let identity = oldKeychain.storageIdentity
+        if let newKeychain = unwrappedStore(newStore) as? KeychainSessionStore,
+           newKeychain.storageIdentity == identity {
+            return true
+        }
+        if let mirrored = newStore as? MirroredSessionStore,
+           mirrored.mirrorStorageIdentity == identity {
+            return true
+        }
+        return false
     }
 
     /// Clears a store's own storage without touching the shared App
@@ -690,14 +750,15 @@ public final class SupabaseClient: @unchecked Sendable {
             if let request { _ = try? await transport.send(request) }
         }
         setSession(nil)
-        // Back to the plain store (audit P1-4): with Face ID enabled
-        // the store is the Keychain one, and the next password
-        // sign-in would save straight into it — silently re-enabling
-        // biometric unlock with no opt-in, against the documented
-        // rule. Swapping back means the next sign-in lands in
-        // UserDefaults and Face ID stays off until the user opts in
-        // again in Settings.
-        replaceSessionStore(UserDefaultsSessionStore())
+        // Back to the default store (audit P1-4): with Face ID
+        // enabled the store is the biometric Keychain one, and the
+        // next password sign-in would save straight into it —
+        // silently re-enabling biometric unlock with no opt-in,
+        // against the documented rule. Swapping back means the next
+        // sign-in lands in the default (non-biometric) Keychain
+        // store and Face ID stays off until the user opts in again
+        // in Settings.
+        replaceSessionStore(KeychainSessionStore())
     }
 
     /// Request a password-reset email (live.js:2399-2410). The reply
@@ -831,7 +892,7 @@ public final class SupabaseClient: @unchecked Sendable {
         setSession(nil)
         // Same store swap as signOut (audit P1-4): the next sign-in
         // must not silently re-enable biometric unlock.
-        replaceSessionStore(UserDefaultsSessionStore())
+        replaceSessionStore(KeychainSessionStore())
     }
 
     // MARK: - Internals
@@ -887,12 +948,12 @@ public final class SupabaseClient: @unchecked Sendable {
             // so the app does not keep retrying a dead token —
             // unless this is a throwaway / extension client
             // (clearsSessionOnRefusedRefresh == false, build 51):
-            // the widget extension shares the App Group mirror
-            // with the app, and clearing here would DELETE the
-            // mirror and stick the widget until the app is opened
-            // again. The throw still reports `.sessionExpired`,
-            // so the caller fails the same way — only the
-            // persisted session survives.
+            // the widget extension shares the App Group Keychain
+            // item with the app, and clearing here would DELETE
+            // that shared item and stick the widget until the app
+            // is opened again. The throw still reports
+            // `.sessionExpired`, so the caller fails the same way —
+            // only the persisted session survives.
             if response.statusCode == 401 || response.statusCode == 400 {
                 if clearsSessionOnRefusedRefresh { setSession(nil) }
                 throw OnBudgetError.sessionExpired

@@ -12,8 +12,10 @@
 //
 // Rules pinned:
 //  1. Pending counts toward totals: a provisional charge counts
-//     in week math; a provisional refund counts nothing until it
-//     posts; a provisional income row accrues charity immediately.
+//     in week math; a provisional refund ALSO counts now (F-1,
+//     owner rule Nov 23, 2026 — the old "counts nothing until it
+//     posts" rule is gone); a provisional income row accrues
+//     charity immediately.
 //  2. A pending transaction that disappears (in removed[] with no
 //     replacement anywhere) auto-reverses — decideRemovedRow
 //     returns 'exclude' for it. A replacement / re-issue signal
@@ -124,9 +126,9 @@ test('week math: verified charge counts', () => {
   assert.equal(chargeContribution(charge({ state: 'verified' })), 4496);
 });
 
-test('week math: provisional refund counts nothing until it posts', () => {
+test('week math: provisional refund counts right away (F-1, owner rule Nov 23, 2026)', () => {
   const refund = charge({ kind: 'refund', amount_cents: -4496 });
-  assert.equal(isExcludedFromMath(refund), true);
+  assert.equal(isExcludedFromMath(refund), false);
   assert.equal(chargeContribution(refund), 0);
   assert.equal(chargeContribution(charge({ kind: 'refund', state: 'verified', amount_cents: -4496 })), 0);
 });

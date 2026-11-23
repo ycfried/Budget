@@ -3,6 +3,12 @@
 // search query). ONE contract end to end with
 // integrations/gmail-apps-script.gs — see integrations/INGEST_CONTRACT.md,
 // which is the authoritative contract document. This file implements it.
+// Amex-ONLY by contract: Chase is NOT added here (F-15, build 64).
+// The Apps Script path is a per-household HMAC webhook for the Amex
+// alert format; a Chase alert would need its own script, contract,
+// and sender verification. Chase ingestion lives on the OAuth path
+// (gmail-poll, gated by CHASE_ALERTS_ENABLED) instead — see
+// supabase/functions/_shared/gmail-parse.ts.
 //
 // Security, in order:
 //   1. Per-household HMAC-SHA256 signature (header 'x-budget-signature')

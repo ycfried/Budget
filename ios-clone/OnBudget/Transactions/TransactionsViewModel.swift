@@ -8,7 +8,10 @@ import OnBudgetKit
 /// Wiring — every call goes through the typed `OnBudgetKit` API client:
 /// - List: `client.postgrest.transactionsPage(householdId:pageSize:)`
 ///   (fetch `limit + 1`; the probe row proves whether older rows exist).
-/// - Manual sync (admin only): `client.functions.plaidSyncAllowingPartialFailure(householdId:)`.
+/// - Manual sync (everyone, build 64 F-19): Plaid bank
+///   (`client.functions.plaidSyncAllowingPartialFailure(householdId:)`)
+///   AND Gmail email (`client.functions.gmailPoll(householdId:)`,
+///   best-effort), one combined toast, then the list reloads.
 /// - Charity: `client.rpcs.markTransactionCharity(pTransactionId:)`.
 /// - Reclassify: `client.rpcs.reclassifyTransaction(txnId:newKind:reason:)`.
 /// - Link / unlink refund: `client.rpcs.linkRefund(pRefundId:pPurchaseId:)`
@@ -136,6 +139,53 @@ public final class TransactionsViewModel {
     public var pendingForceRestoreTransaction: Transaction?
 
     public let toastManager = ToastManager()
+
+    /// Build 64 (C-5): the app-shell toast sink. The shell
+    /// (TransactionsView) wires this to `AppViewModel.showToast`,
+    /// so confirmations render at app-shell level — ABOVE a
+    /// presented sheet — instead of underneath it, where the
+    /// local `toastManager` toast would be hidden by the Actions
+    /// / export cover. Nil (e.g. in tests, or before the view
+    /// wires it) falls back to the local `toastManager`, which
+    /// TransactionsView renders with the shared top
+    /// `.toastOverlay`. Every action confirmation in this file
+    /// goes through `confirm`, never straight to `toastManager`.
+    public var appToast: ((String, ToastStyle.Kind) -> Void)?
+
+    /// Fire a C-5 confirmation — success or failure — via the
+    /// app-shell toast when wired, else the local toast manager.
+    private func confirm(_ message: String, kind: ToastStyle.Kind) {
+        if let appToast {
+            appToast(message, kind)
+        } else {
+            toastManager.show(message, kind: kind)
+        }
+    }
+
+    /// `confirm` for a plain failure message (kind `.error`).
+    private func confirmError(_ message: String) {
+        confirm(message, kind: .error)
+    }
+
+    /// Fire a C-5 confirmation from a view that owns no toast
+    /// state of its own (e.g. the Actions sheet's designate
+    /// success, which used to call `toastManager.show` directly
+    /// and so rendered underneath the sheet). Same funnel as
+    /// `confirm`: app-shell toast when wired, local toast
+    /// manager otherwise.
+    public func showConfirmation(_ message: String, kind: ToastStyle.Kind) {
+        confirm(message, kind: kind)
+    }
+
+    /// A failed action: the C-5 failure confirmation (app-shell
+    /// toast) AND the detailed alert the sheet shows. The toast
+    /// is the transient confirmation the owner asked for ("the
+    /// success/failure toasts never landed"); the alert stays
+    /// because it carries the title + full message on the sheet.
+    private func fail(title: String, message: String) {
+        confirm(message, kind: .error)
+        showAlert(title: title, message: message)
+    }
 
     private var searchTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
@@ -348,13 +398,18 @@ public final class TransactionsViewModel {
                     let toDate = self.filters.toDate
                     let merged: [Transaction]
                     if fromDate.isEmpty || toDate.isEmpty {
-                        // Defensive: week mode without bounds
-                        // (applyWeekFilter always sets them) falls
-                        // back to the old whole-history fetch
-                        // rather than failing on an empty filter.
-                        merged = try await self.client.postgrest.allTransactions(
-                            householdId: self.householdId
-                        )
+                        // Build 64 (F-27): week mode WITHOUT
+                        // bounds is an error, never a whole-history
+                        // fetch — the old fallback re-read the
+                        // entire history precisely when something
+                        // else had already gone wrong (audit C6
+                        // fixed the normal path; this was the
+                        // remaining hole). The list shows the
+                        // error state with a retry instead.
+                        self.loadedPage = []
+                        self.hasMore = false
+                        self.loadState = .failed(.unknown("The week's dates are missing, so the week could not be loaded. Pull to refresh and try again."))
+                        return
                     } else {
                         let rows = try await self.client.postgrest.transactionsInDateRange(
                             householdId: self.householdId, fromDate: fromDate, toDate: toDate
@@ -442,9 +497,9 @@ public final class TransactionsViewModel {
             self.hasMore = hasMore
             loadState = .loaded(loadedPage)
         } catch let error as OnBudgetError {
-            toastManager.showError(error.displayMessage)
+            confirmError(error.displayMessage)
         } catch {
-            toastManager.showError(OnBudgetError.displayMessage(for: error))
+            confirmError(OnBudgetError.displayMessage(for: error))
         }
     }
 
@@ -519,7 +574,7 @@ public final class TransactionsViewModel {
         if loadedPage.contains(where: { $0.id == id }) {
             expandedTransactionId = id
         } else {
-            toastManager.show("That transaction is not in the loaded list — tap Load more for older ones.", kind: .info)
+            confirm("That transaction is not in the loaded list — tap Load more for older ones.", kind: .info)
         }
     }
 
@@ -616,38 +671,91 @@ public final class TransactionsViewModel {
         try? await client.postgrest.householdName(householdId: householdId)
     }
 
-    // MARK: - Manual sync (admin only)
+    // MARK: - Manual sync (everyone, bank + email)
 
     /// `runBankSync` (live.js:2842-2874): one sync at a time; a repeat
     /// tap while syncing is ignored. Then the list reloads.
+    /// Build 64 (F-19, owner Nov 23, 2026): the sync button syncs
+    /// EVERYTHING — Plaid bank AND Gmail email — and is open to
+    /// members, not just admins (the old `isAdmin` guard meant
+    /// members never saw a sync button, and the old path never
+    /// pulled Gmail). ONE combined toast covers both halves, via
+    /// the app-shell toast (`confirm` → `AppState.showToast`).
+    /// The email half is best-effort: a failed email check never
+    /// fails the bank sync, it just adds a line to the toast.
+    /// The server auth relax (members allowed to call the sync
+    /// functions) is a separate change and is NOT deployed yet —
+    /// until it lands, a member's tap can come back 403, and that
+    /// shows as one plain line ("Sync isn't available for members
+    /// yet…"), never the server's 403 text.
     public func runSync() async {
-        guard isAdmin, !isSyncing else { return }
+        guard !isSyncing else { return }
         isSyncing = true
         defer { isSyncing = false }
+        // Bank half: the existing Plaid sync. A 403 here is the
+        // pre-deploy server (auth relax not live yet) — plain
+        // words, no reload, no technical text.
+        let outcome: PlaidSyncOutcome
         do {
-            let outcome = try await client.functions.plaidSyncAllowingPartialFailure(householdId: householdId)
-            switch outcome {
-            case .success(let result):
-                if result.noBankConnected == true {
-                    toastManager.show("No bank connection yet — connect a bank account first.", kind: .error)
-                } else {
-                    toastManager.show("Bank sync complete: \(result.added) new, \(result.updated) updated.", kind: .success)
-                }
-            case .partial(let partial):
-                let names = partial.failedInstitutions.isEmpty
-                    ? partial.failedItems.joined(separator: ", ")
-                    : partial.failedInstitutions.joined(separator: ", ")
-                toastManager.show(
-                    "Sync finished, but \(names) failed — \(partial.result.added) new, \(partial.result.updated) updated.",
-                    kind: .error
-                )
-            }
+            outcome = try await client.functions.plaidSyncAllowingPartialFailure(householdId: householdId)
         } catch let error as OnBudgetError {
-            toastManager.showError(error.displayMessage)
+            if case .adminOnly = error {
+                confirm("Sync isn't available for members yet — the server update is still on its way. Try again later.", kind: .error)
+            } else if case .forbidden = error {
+                confirm("Sync isn't available for members yet — the server update is still on its way. Try again later.", kind: .error)
+            } else {
+                confirmError(error.displayMessage)
+            }
             return
         } catch {
-            toastManager.showError(OnBudgetError.displayMessage(for: error))
+            confirmError(OnBudgetError.displayMessage(for: error))
             return
+        }
+        // Email half: best-effort Gmail poll alongside the bank
+        // sync. A throw here never fails the sync — the toast just
+        // says the email check didn't run.
+        let emailText: String?
+        do {
+            let poll = try await client.functions.gmailPoll(householdId: householdId)
+            let (text, isError) = EmailCheckMessage.text(
+                topLevelError: nil,
+                firstConnectionError: poll.firstError?.error,
+                stored: poll.stored,
+                duplicates: poll.duplicates,
+                quarantined: poll.quarantined,
+                unparseable: poll.unparseable,
+                stale: poll.stale,
+                minutesSincePreviousPoll: poll.minutesSincePreviousPoll
+            )
+            // Only mention email when it added something or
+            // failed — a quiet "0 added" line adds nothing.
+            emailText = (isError || poll.stored > 0) ? text : nil
+        } catch {
+            emailText = "Email check didn't run — bank sync still finished."
+        }
+        // ONE combined toast for both halves.
+        let bankText: String
+        let bankKind: ToastStyle.Kind
+        switch outcome {
+        case .success(let result):
+            if result.noBankConnected == true {
+                bankText = "No bank connection yet — connect a bank account first."
+                bankKind = .error
+            } else {
+                bankText = "Bank sync complete: \(result.added) new, \(result.updated) updated."
+                bankKind = .success
+            }
+        case .partial(let partial):
+            let names = partial.failedInstitutions.isEmpty
+                ? partial.failedItems.joined(separator: ", ")
+                : partial.failedInstitutions.joined(separator: ", ")
+            bankText = "Sync finished, but \(names) failed — \(partial.result.added) new, \(partial.result.updated) updated."
+            bankKind = .error
+        }
+        if let emailText {
+            confirm("\(bankText) \(emailText)", kind: bankKind)
+        } else {
+            confirm(bankText, kind: bankKind)
         }
         await load()
     }
@@ -687,7 +795,7 @@ public final class TransactionsViewModel {
         }
         do {
             try await client.rpcs.markTransactionCharity(pTransactionId: transaction.id)
-            toastManager.show(
+            confirm(
                 "Marked as charity gift: \(TransactionFormatting.amountDisplay(for: transaction).text) to \(TransactionFormatting.displayMerchant(transaction.merchant)).",
                 kind: .success
             )
@@ -697,10 +805,10 @@ public final class TransactionsViewModel {
             if error == .sessionExpired {
                 loadState = .failed(error)
             }
-            showAlert(title: "Could Not Mark as \(charityName)", message: error.displayMessage)
+            fail(title: "Could Not Mark as \(charityName)", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Mark as \(charityName)", message: OnBudgetError.displayMessage(for: error))
+            fail(title: "Could Not Mark as \(charityName)", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -718,14 +826,14 @@ public final class TransactionsViewModel {
         }
         do {
             try await client.rpcs.reclassifyTransaction(txnId: transaction.id, newKind: kind, reason: reason)
-            toastManager.show("Transaction reclassified.", kind: .success)
+            confirm("Transaction reclassified.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Reclassify", message: error.displayMessage)
+            fail(title: "Could Not Reclassify", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Reclassify", message: OnBudgetError.displayMessage(for: error))
+            fail(title: "Could Not Reclassify", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -748,7 +856,7 @@ public final class TransactionsViewModel {
                 pFixedKind: fixedKind,
                 pMatchType: matchType
             )
-            toastManager.show(
+            confirm(
                 renamed == 1
                     ? "Renamed 1 transaction."
                     : "Renamed \(renamed) transactions.",
@@ -757,10 +865,10 @@ public final class TransactionsViewModel {
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Rename", message: error.displayMessage)
+            fail(title: "Could Not Rename", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Rename", message: OnBudgetError.displayMessage(for: error))
+            fail(title: "Could Not Rename", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -817,14 +925,14 @@ public final class TransactionsViewModel {
                 action: "\(fundName) request created",
                 detail: "Requested \(TransactionFormatting.formatCents(amountCents)) for \(TransactionFormatting.displayMerchant(transaction.merchant))."
             )
-            toastManager.show("\(fundName) request sent.", kind: .success)
+            confirm("\(fundName) request sent.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Send Request", message: error.displayMessage)
+            fail(title: "Could Not Send Request", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Send Request", message: OnBudgetError.displayMessage(for: error))
+            fail(title: "Could Not Send Request", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -840,18 +948,18 @@ public final class TransactionsViewModel {
         do {
             if transaction.source == .manual {
                 try await client.rpcs.deleteTransaction(pTransactionId: transaction.id)
-                toastManager.show("Transaction deleted.", kind: .success)
+                confirm("Transaction deleted.", kind: .success)
             } else {
                 try await client.rpcs.excludeTransaction(txnId: transaction.id, reason: reason)
-                toastManager.show("Moved to trash bin.", kind: .success)
+                confirm("Moved to trash bin.", kind: .success)
             }
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Delete", message: error.displayMessage)
+            fail(title: "Could Not Delete", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Delete", message: OnBudgetError.displayMessage(for: error))
+            fail(title: "Could Not Delete", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -871,14 +979,14 @@ public final class TransactionsViewModel {
         }
         do {
             try await client.rpcs.excludeTransaction(txnId: transaction.id, reason: reason)
-            toastManager.show("Transaction excluded.", kind: .success)
+            confirm("Transaction excluded.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Exclude", message: error.displayMessage)
+            fail(title: "Could Not Exclude", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Exclude", message: OnBudgetError.displayMessage(for: error))
+            fail(title: "Could Not Exclude", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -912,7 +1020,7 @@ public final class TransactionsViewModel {
                 action: "Transaction restored",
                 detail: "\(TransactionFormatting.displayMerchant(transaction.merchant)) returned to the week."
             )
-            toastManager.show("Transaction restored.", kind: .success)
+            confirm("Transaction restored.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
@@ -920,10 +1028,10 @@ public final class TransactionsViewModel {
                 pendingForceRestoreTransaction = transaction
                 return false
             }
-            showAlert(title: "Could Not Restore", message: error.displayMessage)
+            fail(title: "Could Not Restore", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Restore", message: OnBudgetError.displayMessage(for: error))
+            fail(title: "Could Not Restore", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -945,14 +1053,14 @@ public final class TransactionsViewModel {
                 action: "Transaction force-restored",
                 detail: "\(TransactionFormatting.displayMerchant(transaction.merchant)) returned to the week as verified (bank-dropped row)."
             )
-            toastManager.show("Transaction restored.", kind: .success)
+            confirm("Transaction restored.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Restore", message: error.displayMessage)
+            fail(title: "Could Not Restore", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Restore", message: OnBudgetError.displayMessage(for: error))
+            fail(title: "Could Not Restore", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -1009,14 +1117,14 @@ public final class TransactionsViewModel {
         }
         do {
             _ = try await client.rpcs.linkRefund(pRefundId: refund.id, pPurchaseId: purchase.id)
-            toastManager.show("Refund linked to its purchase.", kind: .success)
+            confirm("Refund linked to its purchase.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Link Refund", message: error.displayMessage)
+            fail(title: "Could Not Link Refund", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Link Refund", message: OnBudgetError.displayMessage(for: error))
+            fail(title: "Could Not Link Refund", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -1031,14 +1139,14 @@ public final class TransactionsViewModel {
         }
         do {
             try await client.rpcs.unlinkRefund(pRefundId: refund.id)
-            toastManager.show("Refund unlinked.", kind: .success)
+            confirm("Refund unlinked.", kind: .success)
             await reloadAfterMutation()
             return true
         } catch let error as OnBudgetError {
-            showAlert(title: "Could Not Unlink Refund", message: error.displayMessage)
+            fail(title: "Could Not Unlink Refund", message: error.displayMessage)
             return false
         } catch {
-            showAlert(title: "Could Not Unlink Refund", message: OnBudgetError.displayMessage(for: error))
+            fail(title: "Could Not Unlink Refund", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -1100,7 +1208,7 @@ public final class TransactionsViewModel {
                 action: "Transaction added by hand",
                 detail: "\(TransactionFormatting.displayMerchant(merchant)) \(TransactionFormatting.formatCents(amountCents)) on \(TransactionFormatting.fmtLong(date))."
             )
-            toastManager.show("Transaction added.", kind: .success)
+            confirm("Transaction added.", kind: .success)
             await reloadAfterMutation()
             return .saved
         } catch let error as OnBudgetError {
@@ -1148,7 +1256,7 @@ public final class TransactionsViewModel {
                 pDedupeHash: hash,
                 pClientKey: clientKey
             )
-            toastManager.show(
+            confirm(
                 "Gift recorded: \(TransactionFormatting.formatCents(amountCents)) to \(TransactionFormatting.displayMerchant(merchant)).",
                 kind: .success
             )

@@ -49,6 +49,21 @@
 -- Nothing else changes: same signatures, same admin-only checks,
 -- same 'transaction is not excluded' guard, same audit rows.
 --
+-- F-4 (build 61 audit, Nov 23, 2026): exclude_transaction now has
+-- a linked-refund guard — a live refund linked to the row is
+-- re-pointed at the sole surviving live purchase with the same
+-- dedupe_hash when exactly one exists, and otherwise the exclude
+-- REFUSES with a clear message (the Nov 20 Walmart failure must
+-- not be possible from the app). restore_transaction restores, with
+-- the purchase, any refund the system auto-excluded with it
+-- (auto_link_refund's arrival-direction rule, refund-linking.sql).
+--
+-- F-14 (build 61 audit, Nov 23, 2026): exclude_transaction now
+-- accepts a service_role caller (plaid-sync's removed[] path routes
+-- through it for the snapshot + audit + locked-week check; the
+-- admin check is skipped for service_role only, EXECUTE is granted
+-- to service_role below). Authenticated callers are unchanged.
+--
 -- No secrets, tokens, or keys appear in this file.
 -- =====================================================================
 
@@ -87,11 +102,23 @@ declare
   v_now date;
   v_cur_week date;
   v_tx_week date;
+  v_refund record;
+  v_surv_count integer;
+  v_surv_id uuid;
+  v_repointed integer := 0;
+  v_is_service boolean := (auth.role() = 'service_role');
 begin
-  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  if auth.uid() is null and not v_is_service then raise exception 'not authenticated'; end if;
   select * into v_row from transactions where id = txn_id;
   if not found then raise exception 'transaction not found'; end if;
-  if not exists (select 1 from household_members
+  -- F-14: the service-role sync path (plaid-sync removed[]) routes
+  -- through this RPC for its snapshot + audit + locked-week check.
+  -- A service-role caller is trusted server code (it already holds
+  -- the service key); the admin check below is skipped for it, the
+  -- same pattern as accrue_charity_for_transaction
+  -- (charity-auto-accrue.sql). An authenticated caller must still
+  -- be an admin of the row's household.
+  if not v_is_service and not exists (select 1 from household_members
                  where household_id = v_row.household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';
   end if;
@@ -105,6 +132,47 @@ begin
   if v_cur_week > v_tx_week + 35 then
     raise exception 'week is locked: a locked-week transaction cannot be changed here';
   end if;
+  -- F-4 (build 61 audit, Nov 23, 2026) — linked-refund guard: the
+  -- Nov 20 Walmart failure (a refund left linked to an excluded
+  -- charge) must not be possible from the app's Exclude action.
+  -- For every LIVE refund linked to this row (kind='refund', not
+  -- excluded, not reversed): re-point it at the SOLE surviving live
+  -- purchase with the same dedupe_hash when exactly one exists
+  -- (the duplicate-exclude case — the refund's money belongs to
+  -- the surviving purchase), and REFUSE the exclude otherwise,
+  -- with a clear message telling the admin to handle the refund
+  -- first. Re-pointing and refusing both happen in this same
+  -- statement, so the refund can never be stranded mid-exclude.
+  -- A refund that is already excluded/reversed does not block.
+  for v_refund in
+    select id, merchant, amount_cents from public.transactions
+     where original_purchase_id = txn_id
+       and kind = 'refund'
+       and excluded is not true
+       and state not in ('excluded', 'reversed')
+  loop
+    v_surv_count := 0;
+    v_surv_id := null;
+    if v_row.dedupe_hash is not null and v_row.dedupe_hash <> '' then
+      select count(*), (array_agg(id))[1] into v_surv_count, v_surv_id
+        from public.transactions
+       where household_id = v_row.household_id
+         and id <> txn_id
+         and kind in ('charge', 'fund_charge')
+         and excluded is not true
+         and state not in ('excluded', 'reversed')
+         and dedupe_hash = v_row.dedupe_hash;
+    end if;
+    if v_surv_count = 1 then
+      update public.transactions
+         set original_purchase_id = v_surv_id
+       where id = v_refund.id;
+      v_repointed := v_repointed + 1;
+    else
+      raise exception 'cannot exclude: a live refund (% % cents) is linked to this transaction — re-point the refund to its surviving purchase or exclude the refund first',
+        v_refund.merchant, v_refund.amount_cents;
+    end if;
+  end loop;
   update transactions
     set excluded = true, state = 'excluded',
         exclude_reason = coalesce(reason, ''),
@@ -114,14 +182,20 @@ begin
         end
     where id = txn_id;
   insert into audit_log (household_id, actor, actor_name, action, detail)
-    values (v_row.household_id, auth.uid(), 'admin', 'Transaction excluded',
+    values (v_row.household_id, auth.uid(),
+            case when v_is_service then 'system (plaid-sync)' else 'admin' end,
+            'Transaction excluded',
             v_row.merchant || ' ' || v_row.amount_cents::text || ' cents excluded'
             || case when reason is not null and btrim(reason) <> ''
-                    then ' — reason: ' || reason else ' — no reason given' end || '.');
+                    then ' — reason: ' || reason else ' — no reason given' end
+            || case when v_repointed > 0
+                    then ' (' || v_repointed::text || ' linked refund(s) re-pointed to the surviving purchase)'
+                    else '' end || '.');
 end;
 $$;
 revoke execute on function public.exclude_transaction(uuid, text) from public;
 grant execute on function public.exclude_transaction(uuid, text) to authenticated;
+grant execute on function public.exclude_transaction(uuid, text) to service_role;
 
 -- ---------------------------------------------------------------------
 -- restore_transaction(txn_id uuid) returns void
@@ -197,6 +271,7 @@ declare
   v_now date;
   v_cur_week date;
   v_tx_week date;
+  v_restored_refunds integer := 0;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_row from transactions where id = txn_id;
@@ -238,10 +313,31 @@ begin
     set excluded = false, state = v_state, exclude_reason = '',
         pre_exclusion_state = null
     where id = txn_id;
+  -- F-4 (owner-agreed, Nov 23, 2026): a refund that followed this
+  -- purchase into exclusion (auto-excluded by auto_link_refund with
+  -- exclude_reason 'Purchase excluded; ...' and its link to this
+  -- purchase preserved) comes back WITH the purchase, to its own
+  -- snapshotted state — restoring the purchase lets the refund
+  -- count again. Only refunds the system excluded for exactly this
+  -- reason are touched; a refund an admin excluded by hand stays
+  -- excluded until the admin restores it.
+  update transactions
+     set excluded = false, state = pre_exclusion_state,
+         exclude_reason = '', pre_exclusion_state = null
+   where original_purchase_id = txn_id
+     and kind = 'refund'
+     and excluded = true
+     and state = 'excluded'
+     and pre_exclusion_state is not null
+     and exclude_reason like 'Purchase excluded;%';
+  get diagnostics v_restored_refunds = row_count;
   insert into audit_log (household_id, actor, actor_name, action, detail)
     values (v_row.household_id, auth.uid(), 'admin', 'Transaction restored',
             v_row.merchant || ' ' || v_row.amount_cents::text || ' cents restored to the week as '
-            || case when v_state = 'provisional' then 'pending' else 'posted' end || '.');
+            || case when v_state = 'provisional' then 'pending' else 'posted' end
+            || case when v_restored_refunds > 0
+                    then ' (' || v_restored_refunds::text || ' linked refund(s) excluded with it restored too)'
+                    else '' end || '.');
   -- P2-N7 (Nov 8, 2026): a restored row can become linkable (it was
   -- excluded when its pair arrived, or its counterpart arrived while
   -- it was in Trash). Offer it to the refund linker best-effort:
@@ -283,4 +379,15 @@ grant execute on function public.restore_transaction(uuid) to authenticated;
 --    where id = '<txn-uuid>';
 --     -- expect: state = prior state, excluded false,
 --     -- pre_exclusion_state null
+--   -- F-4: exclude a purchase with a live linked refund REFUSES
+--   -- (as admin; throwaway purchase + linked refund):
+--   select exclude_transaction('<purchase-with-refund>', 'test');
+--     -- expect: ERROR 'cannot exclude: a live refund ... is linked
+--     -- to this transaction'
+--   -- F-4: exclude a DUPLICATE purchase whose refund can re-point
+--   -- to the surviving identical purchase SUCCEEDS, and the refund
+--   -- now points at the survivor:
+--   select exclude_transaction('<duplicate-purchase>', 'duplicate');
+--   select original_purchase_id from transactions
+--    where id = '<refund>';  -- expect: the survivor's id
 -- =====================================================================

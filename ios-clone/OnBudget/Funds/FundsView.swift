@@ -10,10 +10,11 @@ import OnBudgetKit
 // same face as the Home stat cards (Title + Amount only, chevron `⌄`
 // bottom-right) with the same in-place expansion, except the Funds
 // expansions INCLUDE action buttons (Home does not). One fund IS one
-// section (owner, Nov 15, 2026; redesigned build 33; banner
-// redesign build 37): the fund's coloured BANNER heads its section
-// and its detail — breakdown, actions, editor, Activity — sits below
-// it on plain white, so each fund reads as one group, not a card
+// section (owner, Nov 15, 2026; redesigned build 33; build 64:
+// the header is plain white with the fund name in its own colour,
+// no solid banner) and its detail — breakdown, actions, editor,
+// Activity — sits below it on plain white, so each fund reads as
+// one group, not a card
 // with loose rows hanging below it. Spending (Weekly
 // Allowance editor + Temporary Allowance), Extra Fund (shortfall
 // row, Activity), Charity (rate editor + Activity), Carried Debt
@@ -217,6 +218,12 @@ public struct FundsView: View {
     /// 2026): opened by the grey-tertiary "Remove from Savings"
     /// button on the Savings card, admin only.
     @State private var showRemoveFromSavings = false
+    /// The Record a Gift sheet (build 64, B3): opened by the ink
+    /// outline "Record a Gift" button on the Tzedaka card, admin
+    /// only. The sheet itself (RecordCashGiftSheet) still lives in
+    /// CharityIncomeForm.swift — this state only drives the
+    /// presentation from the B3 button row.
+    @State private var showRecordGift = false
     /// The Weekly Budget Calculator popup (build 44, owner Nov
     /// 18, 2026): opened by the "Calculate" button in the
     /// expanded Spending card.
@@ -839,7 +846,14 @@ public struct FundsView: View {
             title: FundSectionID.charity.displayName(customNames: appState.fundNames),
             amountText: charityFaceText,
             isExpanded: appState.expandedCard == .charity,
-            amountIsStatus: viewModel.charitySummary == nil,
+            // Build 64 (F-16): the face is a status (static grey
+            // block) when the transactions load failed too — the
+            // charity summary's pending-gift figure derives from
+            // `allTransactions`, so a failed transactions load
+            // would leave Available overstated (pending gifts not
+            // deducted). A failed load shows an error state, never
+            // a wrong number.
+            amountIsStatus: viewModel.charitySummary == nil || viewModel.transactionsError != nil,
             // Build 42 (owner, Nov 17, 2026): the ONE page-ready
             // gate — `!cardsReady` (see spendingCard).
             isLoading: !viewModel.cardsReady,
@@ -863,7 +877,12 @@ public struct FundsView: View {
                     SkeletonBlock(width: 170, height: 16)
                     SkeletonBlock(width: 190, height: 16)
                 }
-            } else if let error = viewModel.charityError {
+            } else if let error = viewModel.charityError ?? viewModel.transactionsError {
+                // Build 64 (F-16): a failed transactions load
+                // fails this card too — its pending-gift figure
+                // comes from that load, so the summary cannot be
+                // trusted without it. Error state, never $0 and
+                // never an overstated Available.
                 FundsErrorBox(error)
             } else if let summary = viewModel.charitySummary {
                 VStack(alignment: .leading, spacing: 20) {
@@ -892,41 +911,55 @@ public struct FundsView: View {
                     // "Close" button is gone — the card already
                     // collapses by tapping its header/chevron, so
                     // the button was redundant clutter.
+                    // Build 64 (C-3 B3, owner Nov 23, 2026): ONE
+                    // solid-blue primary full-width on top ("Add
+                    // to Tzedaka"), then "Record a Gift" (ink
+                    // outline) and "Record Income" (darker-grey
+                    // outline) side by side below it — all three
+                    // clearly distinct, no two sharing a colour or
+                    // looking similar. The old stack was primary /
+                    // pale / grey-tertiary; the pale middle tier is
+                    // retired for three-button groups.
                     if isAdmin {
-                        AddToCharitySection(
-                            viewModel: viewModel,
-                            fundName: FundSectionID.charity.displayName(customNames: appState.fundNames)
-                        )
-                    }
-                    if isAdmin {
-                        // Owner, Nov 16, 2026 (build 40): record a
-                        // cash gift given off-card — Available
-                        // decreases, Given increases, Total unchanged,
-                        // NO transaction row. The middle of the three
-                        // stacked buttons, so it is the PALE
-                        // treatment (Nov 4, 2026: pale is the middle
-                        // tier of a three-button row) — blue, pale,
-                        // grey, no two adjacent share a color — and
-                        // isLarge so all three are the same size.
-                        RecordCashGiftSection(
-                            viewModel: viewModel,
-                            fundName: FundSectionID.charity.displayName(customNames: appState.fundNames)
-                        )
-                    }
-                    if isAdmin {
-                        // Owner, Nov 16, 2026 (build 40): "Record
-                        // Income" is the GREY tertiary treatment,
-                        // not primary blue — the stacked full-width
-                        // Charity buttons must not share a color
-                        // (standing no-adjacent-same-color rule).
-                        // They stay the SAME SIZE: isLarge: true,
-                        // matching "Add to Charity" and "Record a
-                        // Gift" (17pt, 16pt vertical padding, full
-                        // width).
-                        HStack(spacing: 12) {
-                            FundsTertiaryButton("Record Income", isLarge: true) {
-                                correctingIncome = nil
-                                openForm = .income
+                        VStack(alignment: .leading, spacing: 12) {
+                            AddToCharitySection(
+                                viewModel: viewModel,
+                                fundName: FundSectionID.charity.displayName(customNames: appState.fundNames)
+                            )
+                            HStack(spacing: 12) {
+                                // Owner, Nov 16, 2026 (build 40):
+                                // record a cash gift given off-card
+                                // — Available decreases, Given
+                                // increases, Total unchanged, NO
+                                // transaction row. The sheet still
+                                // lives in CharityIncomeForm.swift
+                                // (RecordCashGiftSheet); the button
+                                // here is the B3 ink outline, and
+                                // RecordCashGiftSection (pale) is no
+                                // longer used on this card.
+                                FundsInkOutlineButton("Record a Gift", isLarge: true) {
+                                    showRecordGift = true
+                                }
+                                .accessibilityIdentifier("funds.recordCashGift")
+                                .fullScreenCover(isPresented: $showRecordGift) {
+                                    RecordCashGiftSheet(
+                                        viewModel: viewModel,
+                                        fundName: FundSectionID.charity.displayName(customNames: appState.fundNames),
+                                        onClose: { showRecordGift = false }
+                                    )
+                                }
+                                // Owner, Nov 16, 2026 (build 40):
+                                // "Record Income" is the darker-grey
+                                // outline (#4b5563) now, not the
+                                // grey-tertiary fill — the B3 pair
+                                // is ink vs darker grey, clearly
+                                // distinct. Same size as "Record a
+                                // Gift" (17pt, 16pt vertical
+                                // padding, half width each).
+                                FundsSlateOutlineButton("Record Income", isLarge: true) {
+                                    correctingIncome = nil
+                                    openForm = .income
+                                }
                             }
                         }
                     }
@@ -969,8 +1002,8 @@ public struct FundsView: View {
     //
     // The third fund section (owner, Nov 15, 2026): the debt
     // balance, what it is from, the rule in effect, and its actions.
-    // The face is the current balance D, white on the black banner
-    // (build 37 — the muted deep red #991b1b outline is gone).
+    // The face is the current balance D, in ink on the white card
+    // (build 64, B2 — the black banner is gone).
 
     private var debtCard: some View {
         FundsExpandableCard(
@@ -1030,10 +1063,12 @@ public struct FundsView: View {
                     // Three actions cannot sit side by side on an
                     // iPhone — their labels wrap (owner button
                     // audit, build 33). A vertical stack, full
-                    // width, primary first, pale middle, tertiary
-                    // last (the two-button-row order, extended) —
-                    // the same stack as the Savings and Charity
-                    // cards. "Edit Debt" (build 41, owner Nov 17,
+                    // width — build 64 (C-3 B3): one solid-blue
+                    // primary first, then two OUTLINES in different
+                    // colours (ink, then darker grey), so no group
+                    // of three shares a colour. The pale middle
+                    // tier is retired for three-button groups.
+                    // "Edit Debt" (build 41, owner Nov 17,
                     // 2026) opens one sheet holding both manual
                     // changes — Add Debt and Set Debt — so the card
                     // keeps one entry point instead of a fourth
@@ -1059,11 +1094,11 @@ public struct FundsView: View {
                             if week.carriedDebtCents > 0 {
                                 FundsPrimaryButton("Pay from \(FundSectionID.fund.displayName(customNames: appState.fundNames))") { openForm = .payDebt }
                             }
-                            FundsPaleButton("Edit \(FundSectionID.debt.displayName(customNames: appState.fundNames))") { showEditDebt = true }
+                            FundsInkOutlineButton("Edit \(FundSectionID.debt.displayName(customNames: appState.fundNames))") { showEditDebt = true }
                             // No button that cannot work (owner, Nov 13):
                             // with no debt left there is nothing to clear.
                             if week.carriedDebtCents > 0 {
-                                FundsTertiaryButton("Clear \(FundSectionID.debt.displayName(customNames: appState.fundNames))") { openForm = .clearDebt }
+                                FundsSlateOutlineButton("Clear \(FundSectionID.debt.displayName(customNames: appState.fundNames))") { openForm = .clearDebt }
                             }
                             // Build 37 (owner, Nov 16, 2026): the
                             // grey "Close" button is gone — the card
@@ -1119,8 +1154,8 @@ public struct FundsView: View {
     // redesigned build 33)
     //
     // One fund IS one section: the fund's `FundsExpandableCard`
-    // carries its coloured banner, and the detail — breakdown,
-    // actions, editor, Activity — sits below that banner on plain
+    // carries its coloured name, and the detail — breakdown,
+    // actions, editor, Activity — sits below that header on plain
     // white, so the whole thing reads as one group. There is no outer
     // wrapper card any more (build 33): it was a plain white card
     // whose faint shadow was invisible against the page, so the
@@ -1616,9 +1651,9 @@ public struct SavingsSection: View {
     /// One savings-ledger line, MINIMAL in the overview (build 36,
     /// owner Nov 16, 2026): kind + amount only — the recorded
     /// balance, date and note expand on tap. Transfer-in and
-    /// interest are money in — green with a "+" prefix under the
-    /// shared kind rule; withdrawals and adjustments stay muted and
-    /// plain. The recorded balance is a balance, never an inflow.
+    /// interest are money in — deep blue with a "+" prefix under
+    /// the shared kind rule; withdrawals and adjustments stay muted
+    /// and plain. The recorded balance is a balance, never an inflow.
     private func savingsRecordRow(_ row: SavingsLedgerEntry) -> some View {
         let isInflow = row.kind == "transfer_in" || row.kind == "interest"
         let amount = TransactionFormatting.inflowDisplay(cents: row.amountCents)
@@ -1661,8 +1696,9 @@ public struct SavingsSection: View {
                     "Balance",
                     value: latestBalance.map { MoneyFormat.formatCents($0) } ?? "Not recorded yet"
                 )
-                // "Transferred In" is money in: green with a "+"
-                // prefix under the shared kind rule. A zero sum
+                // "Transferred In" is money in: deep blue with a "+"
+                // prefix under the shared kind rule (build 64,
+                // F-20 — the old green is retired). A zero sum
                 // stays plain "$0.00" (inflowDisplay's guard).
                 let transferredIn = sum(kind: "transfer_in")
                 FundsBreakdownRow(
@@ -2357,12 +2393,14 @@ public struct WeeklyBudgetCalculatorContent: View {
             Text("Lifestyle")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
-            Picker("Lifestyle", selection: $lifestyle) {
-                ForEach(LifestyleHoldback.allCases, id: \.self) { option in
-                    Text(option.displayName).tag(option)
-                }
-            }
-            .pickerStyle(.segmented)
+            // Build 64 (C-6): the segmented picker is gone — a
+            // squarish control (8pt radius, ink text, pale-blue
+            // selected cell), no pill track. All three choices
+            // stay visible at once.
+            SquarishPicker(
+                LifestyleHoldback.allCases.map { ($0, $0.displayName) },
+                selection: $lifestyle
+            )
             HStack(spacing: 8) {
                 Text("Custom Holdback")
                     .font(.system(size: 15))

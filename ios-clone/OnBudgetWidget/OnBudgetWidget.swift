@@ -39,10 +39,10 @@
 // ever READS that snapshot. It never signs in, never calls Supabase,
 // never holds a session. When there is no snapshot (never opened the
 // app, or signed out) it says so plainly. When the snapshot is stale
-// (over 1 hour old) it still shows the numbers with the update time
-// in the bottom-right footer ("As of 6:15PM", build 42) and an amber
-// freshness dot — a stale number is never presented as if it were
-// live, and the old stale wording is gone.
+// (over 1 hour old) it still shows the numbers, and the footer says
+// so in plain words — "Updated 2h ago — tap to refresh" (build 64,
+// F-38; the old developer word "Stale" is gone) — so a stale number
+// is never presented as if it were live.
 //
 // Colours mirror Home: the weekly figure is brand blue, red when
 // over budget (negative); the charity figure is ink (owner, Nov 15,
@@ -112,11 +112,12 @@ struct WidgetEntry: TimelineEntry {
 /// anything..")
 ///
 /// HOW IT FETCHES (build 40, moved to the kit in build 43): the
-/// app mirrors its session into the shared App Group container on
-/// every save (MirroredSessionStore), and writes the household id
-/// alongside the snapshot. The shared kit refresher
-/// (WidgetSnapshotRefresher.refreshSnapshot) builds a
-/// SupabaseClient on an App-Group-backed session store, calls
+/// app keeps its session in the shared Keychain item
+/// (KeychainSessionStore, access group group.com.onbudget.ios —
+/// build 64, F-17: the plaintext UserDefaults mirror is gone), and
+/// writes the household id alongside the snapshot. The shared kit
+/// refresher (WidgetSnapshotRefresher.refreshSnapshot) builds a
+/// SupabaseClient on the shared Keychain item, calls
 /// compute-week + the charity summary (active income, verified
 /// gifts, cash gifts), and writes a new snapshot. The fund names
 /// ride along from the existing snapshot (a rename does not change
@@ -344,13 +345,13 @@ struct WidgetView: View {
             let stale = snapshot.isStale(at: entry.date)
             switch family {
             case .systemExtraLarge:
-                extraLarge(snapshot: snapshot, stale: stale)
+                extraLarge(snapshot: snapshot, stale: stale, now: entry.date)
             case .systemLarge:
-                large(snapshot: snapshot, stale: stale)
+                large(snapshot: snapshot, stale: stale, now: entry.date)
             case .systemMedium:
-                medium(snapshot: snapshot, stale: stale)
+                medium(snapshot: snapshot, stale: stale, now: entry.date)
             default:
-                small(snapshot: snapshot, stale: stale)
+                small(snapshot: snapshot, stale: stale, now: entry.date)
             }
         } else {
             empty
@@ -455,7 +456,16 @@ struct WidgetView: View {
                 }
             }
             .frame(width: 14, height: 14)
-            .padding(6)
+            // Build 64 (F-37, owner Nov 23, 2026): 44×44pt hit
+            // target — Apple's minimum. It was 26×26pt (14pt icon
+            // + 6pt padding), too small to tap reliably, on the
+            // smallest widget most of all. The icon stays 14pt,
+            // centred in the 44pt target; the frame, not the
+            // padding, sets the target, so the tap lands even when
+            // the finger is nowhere near the 14pt glyph. The
+            // layout still fits everywhere (small: ~22pt logo +
+            // wordmark + 44pt button fits the 155pt canvas).
+            .frame(width: 44, height: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -484,6 +494,19 @@ struct WidgetView: View {
         }
     }
 
+    /// Donut size that scales down on a narrow widget (build 64,
+    /// F-37, owner Nov 23, 2026 — "just scale it so it works on a
+    /// smaller screen"): the designed size holds while the widget
+    /// is at least ~300pt wide; below that it shrinks
+    /// proportionally, never below 40pt, so the ring + the two
+    /// figure columns still fit instead of overflowing. On every
+    /// current device the width is above 300pt, so the sizes are
+    /// unchanged (medium 64, large 110, XL 120) — this is the
+    /// safety net for narrower screens, not a redesign.
+    private func adaptiveDonutSize(base: CGFloat, width: CGFloat) -> CGFloat {
+        min(base, max(40, width * base / 300))
+    }
+
     /// Donut: spent vs left of the weekly allowance (owner, Nov 15,
     /// 2026). Spent slice brand blue, over budget the muted red
     /// #991b1b (full ring), remaining slice pale light blue #dbeafe
@@ -491,12 +514,19 @@ struct WidgetView: View {
     /// blue track instead of plain grey). The centre shows the
     /// spent percentage. Shown only when the snapshot carries a
     /// spent figure. privacySensitive like the figures.
-    private func donut(snapshot: WidgetSnapshot, size: CGFloat, lineWidth: CGFloat = 14) -> some View {
+    /// `availableWidth` (build 64, F-37): when the caller passes
+    /// the row's measured width, the ring scales down on a narrow
+    /// widget (adaptiveDonutSize) and the line width scales with
+    /// it, so the ring keeps its proportions. Without a width the
+    /// designed size is used as-is.
+    private func donut(snapshot: WidgetSnapshot, size: CGFloat, lineWidth: CGFloat = 14, availableWidth: CGFloat? = nil) -> some View {
+        let actualSize = availableWidth.map { adaptiveDonutSize(base: size, width: $0) } ?? size
+        let actualLineWidth = lineWidth * actualSize / size
         let fraction = snapshot.spentFraction ?? 0
         let overBudget = snapshot.availableCents < 0
         return ZStack {
             Circle()
-                .stroke(Color(hex: "#dbeafe"), lineWidth: lineWidth)
+                .stroke(Color(hex: "#dbeafe"), lineWidth: actualLineWidth)
             // While loading there is no real spent figure to show:
             // the placeholder snapshot's 70% arc is sample data, so
             // the ring stays a plain pale-blue track with a skeleton bar
@@ -506,7 +536,7 @@ struct WidgetView: View {
                     .trim(from: 0, to: fraction)
                     .stroke(
                         overBudget ? DesignTokens.heroOverBudget : DesignTokens.primary,
-                        style: StrokeStyle(lineWidth: lineWidth, lineCap: fraction >= 1 ? .butt : .round)
+                        style: StrokeStyle(lineWidth: actualLineWidth, lineCap: fraction >= 1 ? .butt : .round)
                     )
                     .rotationEffect(.degrees(-90))
             }
@@ -514,14 +544,14 @@ struct WidgetView: View {
                 skeletonBar(width: 36, height: 18)
             } else {
                 Text("\(Int((fraction * 100).rounded()))%")
-                    .font(.system(size: size * 0.22, weight: .bold))
+                    .font(.system(size: actualSize * 0.22, weight: .bold))
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .foregroundStyle(DesignTokens.ink)
             }
         }
-        .frame(width: size, height: size)
+        .frame(width: actualSize, height: actualSize)
         .privacySensitive()
     }
 
@@ -588,13 +618,33 @@ struct WidgetView: View {
     /// Freshness footer (build 35; build 42, owner Nov 17, 2026):
     /// bottom-RIGHT in every size — a freshness dot (green when the
     /// snapshot is fresh, amber when stale) followed by "As of
-    /// 6:15PM" in caption. The stale wording is gone; the amber
-    /// dot is now the only stale signal, and the
-    /// exact time stays in the words. The small widget takes the
-    /// compact form (caption2). The leading Spacer is what pins it
+    /// 6:15PM" in caption. Build 64 (F-38, owner Nov 23, 2026):
+    /// a stale snapshot no longer says the developer word "Stale"
+    /// (build 53) — it says what it means in plain words,
+    /// "Updated 2h ago — tap to refresh", with the time since the
+    /// snapshot was computed. The small widget takes the compact
+    /// form (caption2). The leading Spacer is what pins it
     /// to the right edge.
+    ///
+    /// "Updated … ago" from a computed-at date and now (build 64,
+    /// F-38): whole hours once an hour has passed, whole minutes
+    /// before that, "just now" under a minute (or when the
+    /// computed-at time is in the future — clock skew). The footer
+    /// only calls this when the snapshot is stale, so the hours
+    /// form is the one the user normally sees.
+    private func staleText(computedAt: Date, now: Date) -> String {
+        let seconds = now.timeIntervalSince(computedAt)
+        if seconds < 60 {
+            return "Updated just now — tap to refresh"
+        }
+        if seconds < 3600 {
+            return "Updated \(Int(seconds / 60))m ago — tap to refresh"
+        }
+        return "Updated \(Int(seconds / 3600))h ago — tap to refresh"
+    }
+
     @ViewBuilder
-    private func footer(snapshot: WidgetSnapshot, stale: Bool, compact: Bool = false) -> some View {
+    private func footer(snapshot: WidgetSnapshot, stale: Bool, now: Date, compact: Bool = false) -> some View {
         if isPlaceholder {
             HStack {
                 Spacer(minLength: 0)
@@ -621,39 +671,44 @@ struct WidgetView: View {
         } else if compact {
             HStack(spacing: 5) {
                 Spacer(minLength: 0)
-                // Build 53 (audit WG3): a silently stale widget
-                // showed no warning beyond a dot and a timestamp.
-                // The word "Stale" is unmissable; the dot stays
-                // for the fresh case only.
+                // Build 64 (F-38): plain words, not the developer
+                // word "Stale" (build 53) — the text says when the
+                // numbers are from and what to do about it. It
+                // replaces the dot + "As of …" pair in the stale
+                // case; the fresh case below keeps them.
                 if stale {
-                    Text("Stale")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(DesignTokens.fund)
+                    Text(staleText(computedAt: snapshot.computedAt, now: now))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DesignTokens.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 } else {
                     Circle()
                         .fill(DesignTokens.success)
                         .frame(width: 7, height: 7)
+                    Text(asOfString(snapshot.computedAt))
+                        .font(.caption2)
+                        .foregroundStyle(DesignTokens.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
-                Text(asOfString(snapshot.computedAt))
-                    .font(.caption2)
-                    .foregroundStyle(DesignTokens.muted)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
             }
         } else {
             HStack(spacing: 5) {
                 Spacer(minLength: 0)
                 if stale {
-                    Text("Stale")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(DesignTokens.fund)
+                    Text(staleText(computedAt: snapshot.computedAt, now: now))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DesignTokens.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 } else {
                     Circle()
                         .fill(DesignTokens.success)
                         .frame(width: 7, height: 7)
+                    Text(asOfString(snapshot.computedAt))
+                        .foregroundStyle(DesignTokens.muted)
                 }
-                Text(asOfString(snapshot.computedAt))
-                    .foregroundStyle(DesignTokens.muted)
             }
             .font(.caption)
             .lineLimit(1)
@@ -679,7 +734,7 @@ struct WidgetView: View {
     /// + its progress bar, and the compact footer. Nothing else.
     /// Build 42: both figures are 22pt, so the two halves mirror
     /// (label above, big amount, bar below).
-    private func small(snapshot: WidgetSnapshot, stale: Bool) -> some View {
+    private func small(snapshot: WidgetSnapshot, stale: Bool, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 // Build 54: the wordmark opens Home; the refresh
@@ -702,7 +757,7 @@ struct WidgetView: View {
             // the app). The bar is always drawn: with no spent
             // figure it is an empty track, never a faked fill.
             VStack(alignment: .leading, spacing: 2) {
-                figureLabel("available")
+                figureLabel("Available")
                 figure(
                     cents: snapshot.availableCents,
                     color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
@@ -730,7 +785,7 @@ struct WidgetView: View {
                 }
             }
             Spacer(minLength: 0)
-            footer(snapshot: snapshot, stale: stale, compact: true)
+            footer(snapshot: snapshot, stale: stale, now: now, compact: true)
             }
             .widgetURL(homeURL)
         }
@@ -747,7 +802,7 @@ struct WidgetView: View {
     /// "available". Height budget in the ~138pt content area:
     /// header 24 + spacing 8 + body ~52 + spacing 8 + footer 14 ≈
     /// 106, ~30pt of slack.
-    private func medium(snapshot: WidgetSnapshot, stale: Bool) -> some View {
+    private func medium(snapshot: WidgetSnapshot, stale: Bool, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 wordmark()
@@ -761,12 +816,18 @@ struct WidgetView: View {
             // header's button stays outside the link. Same 8pt
             // spacing as the flat list it replaces.
             VStack(alignment: .leading, spacing: 8) {
+            // Build 64 (F-37): the row measures its own width so
+            // the donut can scale down on a narrow screen
+            // (adaptiveDonutSize, via donut's availableWidth). The
+            // 64pt height is the donut's designed size — the row's
+            // height when the donut is shown.
+            GeometryReader { geo in
             HStack(alignment: .top, spacing: 14) {
                 if snapshot.spentCents != nil {
-                    donut(snapshot: snapshot, size: 64, lineWidth: 10)
+                    donut(snapshot: snapshot, size: 64, lineWidth: 10, availableWidth: geo.size.width)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    figureLabel("available")
+                    figureLabel("Available")
                     figure(
                         cents: snapshot.availableCents,
                         color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
@@ -797,8 +858,10 @@ struct WidgetView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            }
+            .frame(height: 64)
             Spacer(minLength: 0)
-            footer(snapshot: snapshot, stale: stale)
+            footer(snapshot: snapshot, stale: stale, now: now)
             }
             .widgetURL(homeURL)
         }
@@ -811,7 +874,7 @@ struct WidgetView: View {
     /// label above, big amount, progress bar below, both figures
     /// 36pt — with the "of $X allowance" and "Spent $X" lines gone
     /// (they live in the app) and the left label just "available".
-    private func large(snapshot: WidgetSnapshot, stale: Bool) -> some View {
+    private func large(snapshot: WidgetSnapshot, stale: Bool, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 wordmark()
@@ -829,12 +892,18 @@ struct WidgetView: View {
             // single spacer above "Updated" left one dead gap —
             // the slack is now split above and below the content.
             Spacer(minLength: 0)
+            // Build 64 (F-37): the row measures its own width so
+            // the donut can scale down on a narrow screen
+            // (adaptiveDonutSize, via donut's availableWidth). The
+            // 110pt height is the donut's designed size — the row's
+            // height when the donut is shown.
+            GeometryReader { geo in
             HStack(alignment: .center, spacing: 20) {
                 if snapshot.spentCents != nil {
-                    donut(snapshot: snapshot, size: 110)
+                    donut(snapshot: snapshot, size: 110, availableWidth: geo.size.width)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    figureLabel("available")
+                    figureLabel("Available")
                     figure(
                         cents: snapshot.availableCents,
                         color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
@@ -850,6 +919,8 @@ struct WidgetView: View {
                     }
                 }
             }
+            }
+            .frame(height: 110)
             Divider()
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel(snapshot.charityLeftLabel)
@@ -864,7 +935,7 @@ struct WidgetView: View {
                 }
             }
             Spacer(minLength: 0)
-            footer(snapshot: snapshot, stale: stale)
+            footer(snapshot: snapshot, stale: stale, now: now)
             }
             .widgetURL(homeURL)
         }
@@ -880,7 +951,7 @@ struct WidgetView: View {
     /// label above, big amount, progress bar below, both figures
     /// 44pt — with the allowance and Spent lines gone and the left
     /// label just "available".
-    private func extraLarge(snapshot: WidgetSnapshot, stale: Bool) -> some View {
+    private func extraLarge(snapshot: WidgetSnapshot, stale: Bool, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 wordmark()
@@ -895,13 +966,19 @@ struct WidgetView: View {
             // spacing as the flat list it replaces.
             VStack(alignment: .leading, spacing: 20) {
             Spacer(minLength: 0)
+            // Build 64 (F-37): the row measures its own width so
+            // the donut can scale down on a narrow screen
+            // (adaptiveDonutSize, via donut's availableWidth). The
+            // 120pt height is the donut's designed size — the row's
+            // height when the donut is shown.
+            GeometryReader { geo in
             HStack(alignment: .center, spacing: 32) {
                 HStack(alignment: .center, spacing: 20) {
                     if snapshot.spentCents != nil {
-                        donut(snapshot: snapshot, size: 120)
+                        donut(snapshot: snapshot, size: 120, availableWidth: geo.size.width)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        figureLabel("available")
+                        figureLabel("Available")
                         figure(
                             cents: snapshot.availableCents,
                             color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
@@ -932,8 +1009,10 @@ struct WidgetView: View {
                 }
                 Spacer(minLength: 0)
             }
+            }
+            .frame(height: 120)
             Spacer(minLength: 0)
-            footer(snapshot: snapshot, stale: stale)
+            footer(snapshot: snapshot, stale: stale, now: now)
             }
             .widgetURL(homeURL)
         }

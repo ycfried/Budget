@@ -7,7 +7,14 @@
 // segmented pill "throws me off"). The system renders a plain TabView
 // as a top segmented control on iPad (regular size class) — the flag
 // in OnBudgetApp.init (`UseFloatingTabBar` = false) forces the
-// traditional bottom tab bar back. The top bar keeps just the title
+// traditional bottom tab bar back. Build 64 (C-6): the flag alone
+// did not hold — the owner still saw TWO page selects on Home (the
+// top segmented pill above the PageSelectControl floater). The
+// TabView below now also forces `.tabViewStyle(.tabBarOnly)`
+// (iOS 18+, the deployment target), so the tabs render as a bottom
+// tab bar on iPad too and the top pill is gone. The tab bar itself
+// stays; only the duplicate top control is removed.
+// The top bar keeps just the title
 // (household name) + the profile menu.
 // Settings is NOT a tab — reached from the profile menu only, as a
 // full-screen cover over the current tab.
@@ -35,6 +42,11 @@
 //   (Past Weeks tap opens Transactions filtered to that week).
 // Toasts render at the ContentView root so they also show on the
 // Auth screen (account-created / account-deleted notices).
+// Build 64 (C-5): the app-shell confirmation popup is ALSO
+// attached here (shell root + inside the Settings cover) — see
+// ConfirmationPopup.swift. While both attachments live, the
+// ContentView call must be retired or gated by the coordinator
+// (see that file's header) or the popup renders twice in-app.
 //
 // Clone basis: live web v66.
 
@@ -101,6 +113,15 @@ public struct AppShellView: View {
                     .tag(AppTab.funds)
             }
             .tint(DesignTokens.primary)
+            // Build 64 (C-6): force the BOTTOM tab bar on iPad
+            // too. A plain TabView renders as a top segmented
+            // control in the regular size class, which stacked
+            // above Home's PageSelectControl floater — two page
+            // selects at once (the duplicate the owner circled).
+            // `.tabBarOnly` (iOS 18+) removes the top pill; the
+            // bottom tab bar itself stays. The `UseFloatingTabBar`
+            // default in OnBudgetApp.init stays as the fallback.
+            .tabViewStyle(.tabBarOnly)
         }
         // The walkthrough's coordinate space (build 48): every tour
         // anchor reports its frame in "tourSpace", and the overlay
@@ -116,6 +137,19 @@ public struct AppShellView: View {
                 )
             }
         }
+        // Build 64 (C-5): the confirmation popup renders at the
+        // APP-SHELL level, above the tab content — so a confirmation
+        // fired from Home / Transactions / Funds is seen. The
+        // `AppState.showToast` API is unchanged; only the rendering
+        // changed, from toast bars to the popup card
+        // (ConfirmationPopup.swift). This overlay still renders
+        // UNDERNEATH any fullScreenCover presented from the shell
+        // or its tabs (covers live above the presenting view), so
+        // the Settings cover gets its own attachment inside its
+        // content below, and TransactionsView's covers need the
+        // same inside theirs. See ConfirmationPopup.swift's header
+        // for the ContentView double-rendering note.
+        .confirmationPopupOverlay($appState.toast)
         .fullScreenCover(isPresented: $appState.showSettings) {
             settingsCover
         }
@@ -189,6 +223,14 @@ public struct AppShellView: View {
                 LoadingView()
             }
         }
+        // Build 64 (C-5): the popup attached INSIDE the Settings
+        // cover's content, so a confirmation fired while Settings
+        // is open renders ABOVE the cover instead of underneath
+        // it (a shell-root overlay cannot show above a cover the
+        // shell presents). Bound to the same `$appState.toast`, so
+        // a confirmation shows exactly once — here while Settings
+        // is open, at the shell root otherwise.
+        .confirmationPopupOverlay($appState.toast)
     }
 
     /// The Settings context the shell owns: session + household from

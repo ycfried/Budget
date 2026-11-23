@@ -25,7 +25,11 @@ struct OnBudgetApp: App {
         // registered here, before any UI loads. It is an undocumented
         // system default: if a future iPadOS removes it, the app falls
         // back to the top segmented control — navigation still works,
-        // only the placement changes. Alternatives rejected: forcing
+        // only the placement changes. Build 64 (C-6): the primary
+        // fix is now `.tabViewStyle(.tabBarOnly)` on the TabView in
+        // AppShellView (iOS 18+); this default stays as the fallback
+        // for any TabView that does not set the style.
+        // Alternatives rejected: forcing
         // `.horizontalSizeClass` to `.compact` (public API, but it can
         // glitch the navigation hierarchy and shrinks the tab bar to a
         // small centred pill on iPadOS 26) and a hand-rolled tab bar

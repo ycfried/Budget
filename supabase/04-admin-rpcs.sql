@@ -379,7 +379,78 @@ create trigger trg_audit_log_force_actor
 --    here so 04 is self-contained and the guarantee is re-asserted
 --    rather than assumed from an older file. Canonical copy is
 --    delete-transaction-rpc.sql; apply THAT file live, never 04 whole.
+--    F-2 (build 61 audit, Nov 23, 2026): the BEFORE DELETE guard
+--    guard_transaction_delete / trg_transactions_delete_guard lives
+--    in delete-transaction-rpc.sql and is mirrored here so the two
+--    files stay identical: it reverses any ACTIVE charity accrual
+--    linked to the deleted row (append-only, + audit row) and
+--    REFUSES the delete when a live linked refund exists in either
+--    direction. The FK stays ON DELETE SET NULL — Postgres has no
+--    conditional RESTRICT, and the trigger does the conditional work.
 -- ---------------------------------------------------------------------
+create or replace function public.guard_transaction_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_accrual record;
+  v_refund record;
+  v_committed bigint;
+begin
+  -- (1) Reverse any ACTIVE charity accrual linked to this row.
+  -- At most one can be active (partial unique index
+  -- charity_income_household_transaction_uidx), but loop
+  -- defensively so a second active row could never slip through.
+  for v_accrual in
+    select id, household_id, amount_cents, rate_bp, merchant
+      from public.charity_income
+     where transaction_id = OLD.id
+       and status = 'active'
+  loop
+    update public.charity_income
+       set status = 'reversed', transaction_id = null
+     where id = v_accrual.id;
+    v_committed := (v_accrual.amount_cents::bigint * v_accrual.rate_bp + 5000) / 10000;
+    insert into public.audit_log (household_id, actor, actor_name, action, detail)
+    values (v_accrual.household_id, null, 'auto-accrual', 'Charity income reversed',
+            'Income ' || v_accrual.merchant || ' ' || v_accrual.amount_cents::text || ' cents'
+            || ' at ' || v_accrual.rate_bp::text || ' basis points was deleted; '
+            || v_committed::text || ' cents deducted from charity owed.');
+  end loop;
+  -- (2) Refuse when a live refund is linked TO this row (this row
+  -- is a purchase with a live refund). A reversed / excluded refund
+  -- does not block: it no longer counts anywhere.
+  select id, merchant, amount_cents into v_refund
+    from public.transactions
+   where original_purchase_id = OLD.id
+     and kind = 'refund'
+     and excluded is not true
+     and state not in ('excluded', 'reversed')
+   limit 1;
+  if v_refund.id is not null then
+    raise exception 'cannot delete: a live refund (% % cents) is linked to this transaction — re-point or exclude the refund first',
+      v_refund.merchant, v_refund.amount_cents;
+  end if;
+  -- (3) Refuse when THIS row is a refund linked to a live purchase.
+  if OLD.kind = 'refund' and OLD.original_purchase_id is not null then
+    if exists (select 1 from public.transactions
+                where id = OLD.original_purchase_id
+                  and excluded is not true
+                  and state not in ('excluded', 'reversed')) then
+      raise exception 'cannot delete: this refund is linked to a live purchase — unlink it first';
+    end if;
+  end if;
+  return OLD;
+end;
+$$;
+
+drop trigger if exists trg_transactions_delete_guard on public.transactions;
+create trigger trg_transactions_delete_guard
+  before delete on public.transactions
+  for each row execute function public.guard_transaction_delete();
+
 create or replace function public.delete_transaction(p_transaction_id uuid)
 returns void
 language plpgsql
@@ -428,12 +499,18 @@ grant execute on function public.delete_transaction(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 6. set_base_allowance — replacement: audit records OLD and NEW
---    (P0-14 audit half). Signature and >= 0 validation unchanged
---    so existing callers keep working. The empty-input -> $0 client
---    bug is NOT fixed here: the RPC cannot distinguish "admin meant
---    $0" from "admin cleared the field"; the UI must reject empty /
---    non-numeric input and confirm before calling (UI workstream).
+--    (P0-14 audit half). F-32 (build 61 audit, Nov 23, 2026): the
+--    RPC now distinguishes "$0" from "cleared" — an explicit NULL
+--    stores NULL ("unset": the $375 default applies until the admin
+--    sets a value), and 0 stores $0. The old claim that the RPC
+--    "cannot distinguish" the two is gone: NULL is the unset
+--    signal, and the UI must send NULL (not 0, not an empty string)
+--    when the field is cleared. The column must allow NULL first
+--    (the ALTER below; idempotent — safe to re-run). Server readers
+--    of the base (compute-week, week-close) coalesce NULL to 37500.
 -- ---------------------------------------------------------------------
+alter table households alter column base_allowance_cents drop not null;
+
 create or replace function public.set_base_allowance(p_household_id uuid, p_cents integer)
 returns void
 language plpgsql
@@ -444,7 +521,7 @@ declare
   v_old integer;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
-  if p_cents is null or p_cents < 0 then raise exception 'allowance must be non-negative'; end if;
+  if p_cents is not null and p_cents < 0 then raise exception 'allowance must be non-negative'; end if;
   if not exists (select 1 from household_members
                  where household_id = p_household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';
@@ -454,7 +531,9 @@ begin
   update households set base_allowance_cents = p_cents where id = p_household_id;
   insert into audit_log (household_id, actor, actor_name, action, detail)
     values (p_household_id, auth.uid(), 'admin', 'Base allowance changed',
-            'Base allowance changed from ' || v_old::text || ' cents to ' || p_cents::text || ' cents.');
+            'Base allowance changed from ' || coalesce(v_old::text, 'unset') || ' cents to '
+            || coalesce(p_cents::text, 'unset') || ' cents'
+            || case when p_cents is null then ' (unset — the $375 default applies until set)' else '' end || '.');
 end;
 $$;
 revoke execute on function public.set_base_allowance(uuid, integer) from public;

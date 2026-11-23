@@ -268,7 +268,7 @@ test('week boundaries: Saturday belongs to the closing week, Sunday starts a new
 
 // --- Transaction counting rules (P0-12, A7) -------------------------------
 
-test('counting rules: provisional refunds excluded, provisional charges count, payment/cashback/reversed/excluded never count', () => {
+test('counting rules: provisional refunds COUNT (F-1, owner rule Nov 23, 2026), provisional charges count, payment/cashback/reversed/excluded never count', () => {
   const charge = { amount_cents: 4000, kind: 'charge', state: 'verified', excluded: false, fund_allocation_cents: 0 };
   const provCharge = { ...charge, state: 'provisional' };
   const provRefund = { amount_cents: -15000, kind: 'refund', state: 'provisional', excluded: false };
@@ -277,7 +277,10 @@ test('counting rules: provisional refunds excluded, provisional charges count, p
   const cashback = { amount_cents: -2500, kind: 'cashback', state: 'verified', excluded: false };
   const reversed = { ...charge, state: 'reversed' };
   const excluded = { ...charge, excluded: true };
-  assert.equal(isExcludedFromMath(provRefund), true);
+  // F-1: a pending refund counts right away, like a pending charge.
+  // The old assertion (isExcludedFromMath(provRefund) === true) was
+  // the P0-12 rule the owner replaced Nov 23, 2026.
+  assert.equal(isExcludedFromMath(provRefund), false);
   assert.equal(isExcludedFromMath(provCharge), false);
   assert.equal(isExcludedFromMath(postedRefund), false);
   assert.equal(isExcludedFromMath(payment), true);
@@ -286,6 +289,9 @@ test('counting rules: provisional refunds excluded, provisional charges count, p
   assert.equal(isExcludedFromMath(excluded), true);
   assert.equal(isPendingRefund(provRefund), true);
   assert.equal(isPendingRefund(postedRefund), false);
+  // pendingRefundExcludedCents keeps its arithmetic (the sum of
+  // pending refunds) but the meaning changed with F-1: those cents
+  // ARE counted in C now, not excluded — see engine.mjs.
   assert.equal(pendingRefundExcludedCents([provRefund, postedRefund, charge]), 15000);
   assert.equal(chargeContribution(charge), 4000);
   assert.equal(chargeContribution({ ...charge, fund_allocation_cents: 1000 }), 3000);

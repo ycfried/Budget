@@ -245,7 +245,7 @@ final class BiometricToggleTests: XCTestCase {
 
         XCTAssertFalse(unlock.isEnabled)
         XCTAssertNil(keychain.stored, "opt-out must delete the Keychain item")
-        XCTAssertTrue(storeBehind(client.store) is UserDefaultsSessionStore, "client must persist to UserDefaults again")
+        XCTAssertTrue(storeBehind(client.store) is KeychainSessionStore, "client must persist to the default Keychain store again")
         XCTAssertEqual(client.currentSession, session, "the live session survives opt-out")
     }
 
@@ -400,7 +400,7 @@ final class BiometricUnlockFlowTests: XCTestCase {
         }
         XCTAssertNil(keychain.stored, "the invalidated item must be deleted")
         XCTAssertFalse(unlock.isEnabled)
-        XCTAssertTrue(storeBehind(client.store) is UserDefaultsSessionStore, "the client must fall back to the plain store")
+        XCTAssertTrue(storeBehind(client.store) is KeychainSessionStore, "the client must fall back to the default Keychain store")
         XCTAssertNil(client.currentSession, "no session may survive a failed unlock")
     }
 
@@ -431,7 +431,7 @@ final class BiometricUnlockFlowTests: XCTestCase {
         }
         XCTAssertNil(keychain.stored, "the dead session must be dropped from the Keychain")
         XCTAssertFalse(unlock.isEnabled)
-        XCTAssertTrue(storeBehind(client.store) is UserDefaultsSessionStore, "the client must fall back to the plain store")
+        XCTAssertTrue(storeBehind(client.store) is KeychainSessionStore, "the client must fall back to the default Keychain store")
         XCTAssertNil(client.currentSession)
     }
 
@@ -453,7 +453,7 @@ final class BiometricUnlockFlowTests: XCTestCase {
         }
         XCTAssertFalse(authenticator.evaluateCalled, "must not prompt when biometrics cannot evaluate")
         XCTAssertNil(keychain.stored, "the now-unreadable item must be deleted")
-        XCTAssertTrue(storeBehind(client.store) is UserDefaultsSessionStore)
+        XCTAssertTrue(storeBehind(client.store) is KeychainSessionStore)
     }
 
     func testUnlockCancelledKeepsItemForRetry() async {
@@ -499,9 +499,9 @@ final class BiometricAvailabilityTests: XCTestCase {
         XCTAssertTrue(store is BiometricSessionStore)
     }
 
-    func testSessionStoreForLaunchPicksPlainStoreWhenNoItemExists() {
+    func testSessionStoreForLaunchPicksKeychainStoreWhenNoItemExists() {
         let store = BiometricUnlock.sessionStoreForLaunch(keychain: MockBiometricKeychain())
-        XCTAssertTrue(store is UserDefaultsSessionStore)
+        XCTAssertTrue(store is KeychainSessionStore)
     }
 
     func testNoBiometricsMeansUnavailableAndDisabled() {

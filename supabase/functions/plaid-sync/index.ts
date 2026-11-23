@@ -25,9 +25,11 @@
 //     sequence completes without a Plaid error, and never from a
 //     client-supplied value.
 //   * Auth (server-sync build, Nov 2, 2026): verify_jwt=false in
-//     config.toml + in-code auth (admin JWT for manual sync, or the
-//     service-key bearer for server calls from plaid-webhook / pg_cron).
-//     A bare call with neither credential 401s. Manual sync is
+//     config.toml + in-code auth (a household MEMBER's JWT for
+//     manual sync — F-19, build 64: members may trigger a manual
+//     sync too, not just admins — or the service-key bearer for
+//     server calls from plaid-webhook / pg_cron).
+//     A bare call with neither credential 401s. Manual sync was
 //     admin-only (owner decision 15).
 //
 // Plaid amounts: positive for outflows, negative for inflows. The app
@@ -46,10 +48,12 @@
 // State mapping (compute-week interface, S2 consumes these verbatim):
 //   pending Plaid row  -> state='provisional'
 //   posted Plaid row   -> state='verified'
-//   removed Plaid row  -> state='reversed' AND excluded=true ONLY for a
-//                         row with no replacement in this sync or in a
-//                         recent window of household rows (never
-//                         deleted; append-only, audit P1-3).
+//   removed Plaid row  -> routed through exclude_transaction
+//                         (F-14, build 64): snapshot +
+//                         audit row + locked-week check, then
+//                         state='reversed' to keep the bank-reversal
+//                         signal (restore accepts both states). Never
+//                         deleted; append-only, audit P1-3.
 //                         Build 44 change 1 (Nov 18, 2026): a
 //                         PROVISIONAL row in removed[] is left untouched
 //                         when a replacement / re-issue signal exists
@@ -74,11 +78,13 @@
 //                         item's pages are read, so a replacement on a
 //                         later page still counts. See decideRemovedRow
 //                         in canonical.ts.
-//   NOTE on provisional refunds: spec FINAL A4 says a pending refund
-//   restores nothing until it posts. This function labels the row
-//   provisional; S2 MUST exclude provisional refunds from week math
-//   and restoration until state='verified' (audit P0-12, S2-owned).
-//   Provisional CHARGES counting is the intended provisional behaviour.
+//   NOTE on provisional refunds: a pending refund counts right
+//   away in open-week math (F-1, owner rule Nov 23, 2026 — the old
+//   P0-12 rule that S2 must exclude provisional refunds until they
+//   post is gone). This function labels the row provisional; S2
+//   counts it, and the removed[] path below auto-reverses it
+//   (via exclude_transaction) if it disappears. Provisional
+//   CHARGES counting is the intended provisional behaviour.
 //
 // Dedupe / upsert order (P1-4, P0-13) — for every added/modified tx:
 //   1. existing row with external_id = tx.transaction_id, else
@@ -261,12 +267,15 @@ Deno.serve(async (req) => {
     //      timing-safe compare). Used by plaid-webhook and the hourly
     //      pg_cron job. No member check: the server is trusted, and
     //      the household comes from the request body.
-    //   2. Manual path: a user JWT. The caller must be an ADMIN member
-    //      of the household (owner decision 15: manual sync is
-    //      admin-only once server sync is live; previously any member
-    //      could sync).
-    // Anything else (no bearer, wrong key, invalid JWT, non-admin
-    // member) is rejected. A bare call with neither credential 401s.
+    //   2. Manual path: a user JWT. The caller must be a MEMBER of
+    //      the household (F-19, build 64, Nov 23, 2026: members may
+    //      trigger a manual sync too — the owner's wife shares the
+    //      household and a stale phone had no button to press.
+    //      Owner decision 15's admin-only rule is superseded for
+    //      the SYNC trigger only; admin-only mutations are
+    //      untouched). A non-member still gets 403.
+    // Anything else (no bearer, wrong key, invalid JWT, non-member)
+    // is rejected. A bare call with neither credential 401s.
     const auth = req.headers.get('Authorization') ?? '';
     const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : '';
     const serviceKey = Deno.env.get('SERVICE_ROLE_SECRET') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -289,7 +298,12 @@ Deno.serve(async (req) => {
         .eq('household_id', householdId)
         .eq('user_id', user.id)
         .maybeSingle();
-      if (!membership || membership.role !== 'admin') return json({ error: 'manual sync is admin-only' }, 403);
+      if (!membership) return json({ error: 'not a household member' }, 403);
+      // F-19: any household member may trigger a manual sync, not
+      // just admins. The old check (role !== 'admin' -> 403) is
+      // gone; the sync itself runs under the service-role client
+      // either way, and a member triggering it can only refresh
+      // their own household's shared data.
     }
     // All DB access below uses the service-role key (server-side only,
     // never in the browser) because member JWTs lost direct table/RPC
@@ -738,6 +752,10 @@ Deno.serve(async (req) => {
       // a failure there still leaves exactly one live row (the
       // linked one) plus the duplicate, which the next sync's
       // decision can revisit — it never fails the sync.
+      // F-14: the duplicate exclusion goes through
+      // exclude_transaction (snapshot + audit + locked-week check),
+      // not a direct UPDATE — a direct exclusion can never be
+      // restored normally (no pre_exclusion_state snapshot).
       const linkRemovedRow = async (row: { id: string }, replacement: RemovedReplacement): Promise<boolean> => {
         const { error } = await supabaseAdmin.from('transactions')
           .update({
@@ -750,10 +768,10 @@ Deno.serve(async (req) => {
         if (error) return false;
         const dupId = replacement.rowId;
         if (dupId && dupId !== row.id) {
-          const { error: dupErr } = await supabaseAdmin.from('transactions')
-            .update({ state: 'excluded', excluded: true })
-            .eq('id', dupId).eq('household_id', householdId);
-          if (!dupErr) {
+          const { error: dupErr } = await supabaseAdmin.rpc('exclude_transaction', { txn_id: dupId, reason: 'plaid-removed-duplicate' });
+          if (dupErr) {
+            console.error('plaid-sync: duplicate exclusion via exclude_transaction failed (best-effort):', dupErr.message ?? dupErr);
+          } else {
             await supabaseAdmin.from('transactions')
               .update({ original_purchase_id: row.id })
               .eq('household_id', householdId).eq('original_purchase_id', dupId);
@@ -825,24 +843,45 @@ Deno.serve(async (req) => {
           } else logSkip(item.plaid_item_id, 'removed-link-failed');
           continue;
         }
-        const { error } = await supabaseAdmin.from('transactions')
-          .update({ state: 'reversed', excluded: true })
+        // F-14 (build 61 audit, Nov 23, 2026): a genuine reversal
+        // goes through exclude_transaction — snapshot +
+        // audit row + locked-week check + the F-4 linked-refund
+        // guard — instead of the old direct UPDATE, which wrote
+        // no snapshot (unrestorable), no audit row, and could hit
+        // a locked week. exclude_transaction sets state='excluded';
+        // the follow-up UPDATE below sets state='reversed' to keep
+        // the bank-reversal signal (restore accepts both states,
+        // and the snapshot the RPC just wrote stays intact).
+        // ORDER MATTERS: unlink any live refund linked to this
+        // purchase FIRST (Nov 20, 2026 — Walmart case: a refund
+        // must never be left linked to an excluded charge). The
+        // F-4 guard inside exclude_transaction would otherwise
+        // REFUSE this genuine bank reversal whenever a refund
+        // links to the row. repoint_refund_links is defined in
+        // supabase/refund-linking.sql (F-4) — before build 64 it
+        // did not exist and this call always failed silently, so
+        // the refund stayed stranded. Best-effort: if the unlink
+        // fails, the RPC below still refuses rather than strand it.
+        try {
+          const { error: repointErr } = await supabaseAdmin.rpc('repoint_refund_links', { p_from_id: row.id, p_to_id: null });
+          if (repointErr) console.error('plaid-sync: refund unlink on reversal failed (best-effort):', repointErr.message ?? repointErr);
+        } catch (e) {
+          console.error('plaid-sync: refund unlink on reversal failed (best-effort):', (e as Error)?.message ?? e);
+        }
+        const { error: rpcErr } = await supabaseAdmin.rpc('exclude_transaction', { txn_id: row.id, reason: 'plaid-removed' });
+        if (rpcErr) {
+          console.error(`plaid-sync: removed ${removedId} NOT excluded (exclude_transaction refused):`, rpcErr.message ?? rpcErr);
+          logSkip(item.plaid_item_id, 'removed-exclude-failed');
+          continue;
+        }
+        const { error: revErr } = await supabaseAdmin.from('transactions')
+          .update({ state: 'reversed' })
           .eq('id', row.id).eq('household_id', householdId);
-        if (error) {
+        if (revErr) {
+          console.error(`plaid-sync: removed ${removedId} state-to-reversed failed:`, revErr.message ?? revErr);
           logSkip(item.plaid_item_id, 'removed-update-failed');
         } else {
           reversed++;
-          // Refund-link guard (Nov 20, 2026 — Walmart case): a
-          // genuine bank reversal strands any refund linked to this
-          // purchase. Unlink it (no surviving row here) so it can
-          // re-link or fall to the unlinked fallback instead of
-          // restoring nothing. Best-effort: never fails the sync.
-          try {
-            const { error: repointErr } = await supabaseAdmin.rpc('repoint_refund_links', { p_from_id: row.id, p_to_id: null });
-            if (repointErr) console.error('plaid-sync: refund unlink on reversal failed (best-effort):', repointErr.message ?? repointErr);
-          } catch (e) {
-            console.error('plaid-sync: refund unlink on reversal failed (best-effort):', (e as Error)?.message ?? e);
-          }
         }
       }
 

@@ -306,7 +306,7 @@ final class WidgetSnapshotTests: XCTestCase {
         let decoded = try JSONDecoder().decode(WidgetSnapshot.self, from: json)
         XCTAssertNil(decoded.fundNames)
         XCTAssertEqual(decoded.charityDisplayName, "Charity")
-        XCTAssertEqual(decoded.charityLeftLabel, "Charity left")
+        XCTAssertEqual(decoded.charityLeftLabel, "Available")
     }
 
     func testCharityDisplayNameUsesCustomName() {
@@ -318,7 +318,7 @@ final class WidgetSnapshotTests: XCTestCase {
             computedAt: Date()
         )
         XCTAssertEqual(snapshot.charityDisplayName, "Tzedakah")
-        XCTAssertEqual(snapshot.charityLeftLabel, "Tzedakah left")
+        XCTAssertEqual(snapshot.charityLeftLabel, "Available")
     }
 
     func testCharityDisplayNameFallsBackOnBlank() {
@@ -330,6 +330,6 @@ final class WidgetSnapshotTests: XCTestCase {
             computedAt: Date()
         )
         XCTAssertEqual(snapshot.charityDisplayName, "Charity")
-        XCTAssertEqual(snapshot.charityLeftLabel, "Charity left")
+        XCTAssertEqual(snapshot.charityLeftLabel, "Available")
     }
 }

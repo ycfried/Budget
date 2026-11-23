@@ -22,18 +22,32 @@
 //   B is that override and T is 0 (debt still comes off the top).
 //   A stored close snapshot still wins over a later override.
 // - Week math counts: charges (including provisional charges) net of
-//   fund allocations; posted refunds linked to a purchase in this week
+//   fund allocations; refunds linked to a purchase in this week
 //   (open weeks only — a locked week's refunds go through restoration,
-//   never through this week's C); unlinked posted refunds dated in this
-//   week (fallback until the S3 linking workstream links everything);
-//   and, for the CURRENT week only, unposted late charges from locked
-//   weeks (audit P0-9 — see week-close for how they freeze into a
-//   snapshot when the current week closes).
+//   never through this week's C), whether VERIFIED or PROVISIONAL
+//   (F-1, owner rule Nov 23, 2026: a pending refund counts right
+//   away, like a pending charge, and auto-reverses if it disappears
+//   via the Plaid removed[] path); unlinked refunds dated in this
+//   week (verified or provisional, same rule); and, for the CURRENT
+//   week only, unposted late charges from locked weeks (audit P0-9
+//   — see week-close for how they freeze into a snapshot when the
+//   current week closes).
 // - Excluded from math (engine.isExcludedFromMath): excluded rows,
-//   state 'reversed', kind 'payment', kind 'cashback', and provisional
-//   REFUNDS (pending restores nothing, audit P0-12). Provisional
-//   charges still count. Cash-back reclassified by an admin via the
-//   reclassify_transaction RPC counts under its CURRENT kind.
+//   state 'reversed', kind 'payment', kind 'cashback'. Provisional
+//   REFUNDS COUNT (F-1) — the old P0-12 rule that excluded them is
+//   gone. Provisional charges still count. Cash-back reclassified by
+//   an admin via the reclassify_transaction RPC counts under its
+//   CURRENT kind.
+// - A linked refund nets by the OWNER RULE (F-1, Nov 23, 2026), not
+//   the audit's fund-first logic: it restores to the classification
+//   of the charge it links to — a refund on a spending charge nets
+//   in full against C; a refund on a fund charge nets 0 (it goes
+//   back to the fund via restoration). NO SPLITS: Cover with Savings
+//   is always the WHOLE charge, so linkedRefundNormalPortionCents
+//   (fund-first) is MOOT — the walk uses
+//   linkedRefundSpendingPortionCents. The Swift list side must
+//   compute the same total; the shared fixture is
+//   supabase/tests/f1-owner-refund-rule.test.mjs.
 // - C is floored at 0 (FINAL A2). A negative net in an open week (a
 //   refund larger than the week's charges) floors here; any amount
 //   beyond the original purchase is captured by week-close's held
@@ -54,8 +68,13 @@
 //   charges_cents: C (floored net eligible charges),
 //   available_cents: base_available + temp - charges (may be negative),
 //   week_locked: boolean (28-day open window, FINAL A4),
-//   pending_refund_excluded_cents: absolute total of provisional
-//     refunds excluded from this week's math (display only)
+//   pending_refund_excluded_cents: F-1 (Nov 23, 2026) — pending
+//     refunds now COUNT toward the week's math, so nothing is
+//     excluded on this account any more and this field is always 0.
+//     Kept in the response shape (the UI codes against these fields)
+//     rather than removed; do not read it as "pending refunds held
+//     back". The pending-refund cents that ARE counted are visible
+//     in the charges total itself.
 //   debt_payment_cents: the base allowance paid toward the incoming
 //     debt this week (Carried Debt fund, build 29) — the effective
 //     payment, capped at the debt and at the base. Under the old
@@ -73,7 +92,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
   chargeContribution,
-  linkedRefundNormalPortionCents, restorationDebtCutsAfterClose,
+  linkedRefundSpendingPortionCents, restorationDebtCutsAfterClose,
   debtRulePayment, debtPaymentsAfterClose,
 } from './engine.mjs';
 
@@ -336,31 +355,39 @@ Deno.serve(async (req) => {
     // contribute here — see chargeContribution).
     let chargesNet = windowRows.reduce((s: number, t: any) => s + chargeContribution(t), 0);
 
-    // Posted refunds: linked to a purchase in this week (open weeks
-    // only), plus unlinked posted refunds dated in this week.
+    // Refunds (verified OR provisional — F-1, Nov 23, 2026: a pending
+    // refund counts right away): linked to a purchase in this week
+    // (open weeks only), plus unlinked refunds dated in this week.
     const purchaseIdsInWindow = new Set(
       windowRows.filter((t: any) => t.kind === 'charge' || t.kind === 'fund_charge').map((t: any) => t.id),
     );
-    const postedRefund = (t: any) =>
-      t.kind === 'refund' && t.state === 'verified' && t.excluded !== true && t.state !== 'reversed';
+    // F-1: verified or provisional, not excluded, not reversed. The
+    // old posted-only filter (state === 'verified') is gone — a
+    // provisional refund nets now and auto-reverses via the Plaid
+    // removed[] path if it disappears.
+    const countableRefund = (t: any) =>
+      t.kind === 'refund' && (t.state === 'verified' || t.state === 'provisional') && t.excluded !== true && t.state !== 'reversed';
     if (!weekLocked) {
-      // N1 Option A — fund-first, counted once (Nov 5, 2026): a linked
-      // refund nets only its NORMAL portion against this week's
-      // charges. The fund portion is credited to the fund by refund
-      // restoration, never by this walk — netting the full refund
-      // here paid a split purchase's refund twice ($90 of benefit
-      // from a $50 refund on a $60 fund / $40 normal purchase).
-      // Aggregated per purchase from the cumulative refund total, so
-      // partial refunds are order-independent; capped at the
-      // purchase's normal portion (excess over the charge is HELD).
+      // F-1 owner rule (Nov 23, 2026) — refund restores to its
+      // purchase's classification, counted once per purchase:
+      // a spending purchase's refund nets in full against this
+      // week's charges; a fund purchase's refund nets 0 (it goes
+      // back to the fund via restoration, never via this walk).
+      // No splits exist (Cover with Savings is always the whole
+      // charge), so there is no fund-first split to compute — the
+      // old linkedRefundNormalPortionCents call is replaced by the
+      // classification helper. Aggregated per purchase from the
+      // cumulative refund total, so partial refunds are
+      // order-independent; capped at the purchase's spending
+      // portion (excess over the charge is HELD).
       // Unlinked refunds (below) still net in full — they have no
-      // purchase to split against.
+      // purchase to classify against.
       const purchaseById = new Map(
         windowRows.filter((t: any) => t.kind === 'charge' || t.kind === 'fund_charge').map((t: any) => [t.id, t]),
       );
       const refundTotalByPurchase = new Map<string, number>();
       for (const t of txns) {
-        if (postedRefund(t) && t.original_purchase_id && purchaseIdsInWindow.has(t.original_purchase_id)) {
+        if (countableRefund(t) && t.original_purchase_id && purchaseIdsInWindow.has(t.original_purchase_id)) {
           refundTotalByPurchase.set(
             t.original_purchase_id,
             (refundTotalByPurchase.get(t.original_purchase_id) ?? 0) + Math.abs(t.amount_cents ?? 0),
@@ -369,12 +396,12 @@ Deno.serve(async (req) => {
       }
       for (const [purchaseId, totalRefunded] of refundTotalByPurchase) {
         const purchase: any = purchaseById.get(purchaseId);
-        chargesNet -= linkedRefundNormalPortionCents(
-          purchase.amount_cents, purchase.fund_allocation_cents, totalRefunded,
+        chargesNet -= linkedRefundSpendingPortionCents(
+          purchase.kind, purchase.amount_cents, purchase.fund_allocation_cents, totalRefunded,
         );
       }
     }
-    // Defence in depth (Nov 5, 2026): unlinked posted refunds net only
+    // Defence in depth (Nov 5, 2026): unlinked refunds net only
     // up to the week's charges. A refund bigger than the week's spending
     // (e.g. a misclassified $7,000 check deposit) used to floor spent to
     // $0 silently. The excess is exposed as unlinked_excess_cents
@@ -387,8 +414,9 @@ Deno.serve(async (req) => {
     // while a locked week never nets unlinked refunds (restoration
     // handles locked-week refunds instead). The excess stays exposed
     // in both cases, so a late locked-week refund is visible, not lost.
+    // F-1: unlinked PROVISIONAL refunds count here too (same rule).
     const unlinkedRefundAbs = windowRows
-      .filter((t: any) => postedRefund(t) && (!hasLinkage || !t.original_purchase_id))
+      .filter((t: any) => countableRefund(t) && (!hasLinkage || !t.original_purchase_id))
       .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
     const unlinkedNetted = weekLocked ? 0 : Math.min(unlinkedRefundAbs, Math.max(0, chargesNet));
     chargesNet -= unlinkedNetted;
@@ -417,23 +445,12 @@ Deno.serve(async (req) => {
       chargesNet += latePart;
     }
 
-    // Pending refunds excluded from math (display only). Window-dated
-    // provisional refunds plus provisional refunds linked to a
-    // purchase in this week but dated elsewhere, de-duplicated by id.
-    const pendingById = new Map<string, any>();
-    for (const t of windowRows) {
-      if (t.kind === 'refund' && t.state === 'provisional' && t.excluded !== true && t.state !== 'reversed') {
-        pendingById.set(t.id, t);
-      }
-    }
-    for (const t of txns) {
-      if (t.kind === 'refund' && t.state === 'provisional' && t.excluded !== true && t.state !== 'reversed'
-        && t.original_purchase_id && purchaseIdsInWindow.has(t.original_purchase_id)) {
-        pendingById.set(t.id, t);
-      }
-    }
-    const pendingExcluded = [...pendingById.values()]
-      .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
+    // F-1 (Nov 23, 2026): pending refunds are no longer "excluded
+    // from math" — they count in the netting walks above, so there
+    // is no excluded pending-refund total any more. The response
+    // field pending_refund_excluded_cents is kept for shape
+    // compatibility and is always 0 (see the header contract).
+    const pendingExcluded = 0;
 
     // Snapshot precedence: a closed week's stored B/T win over any
     // later override (a later change never rewrites a closed week).
@@ -444,7 +461,9 @@ Deno.serve(async (req) => {
       ? thisClose.base_allowance_cents
       : overrideCents != null
       ? overrideCents
-      : household.base_allowance_cents;
+      // F-32 (build 64): a NULL household base means "unset" — the
+      // $375 default applies until the admin sets a value.
+      : household.base_allowance_cents ?? 37500;
     const T = thisClose && thisClose.temp_increase_cents != null
       ? thisClose.temp_increase_cents
       : overrideCents != null

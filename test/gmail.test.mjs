@@ -14,7 +14,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   authResultsPass,
+  authResultsPassFor,
   buildAlertQuery,
+  buildChaseAlertQuery,
   EMAIL_PARSERS,
   extractPlainText,
   filterNewMessageIds,
@@ -22,6 +24,7 @@ import {
   headerValue,
   htmlToText,
   parseAmexAlertText,
+  parseChaseAlertText,
   parseEmailAlert,
 } from '../supabase/functions/_shared/gmail-parse.ts';
 
@@ -183,19 +186,23 @@ test('parse copies stay identical: gmail-poll vs _shared (N12)', () => {
     assert.ok(body.length > 100, `${name} extraction too short to trust`);
     return body;
   };
-  for (const name of ['parseAmexAlertText', 'extractPlainText', 'htmlToText', 'parseEmailAlert']) {
+  for (const name of ['parseAmexAlertText', 'parseChaseAlertText', 'authResultsPassFor', 'buildChaseAlertQuery', 'extractPlainText', 'htmlToText', 'parseEmailAlert']) {
     assert.equal(extract(poll, name), extract(shared, name), `${name} drifted between parse copies`);
   }
 });
 
-// --- Per-bank dispatcher (build 44, item 4) --------------------------------
-// Structural skeleton only: Amex is the one registered parser. An
-// unknown source parses to null — no Chase / Capital One parser is
-// invented, and no sender/subject format is guessed.
+// --- Per-bank dispatcher (build 44, item 4; F-15, build 64) --------
+// Amex is the proven parser; Chase is a fail-closed scaffold
+// (parseChaseAlertText) — registered, but the Chase path is gated
+// OFF in gmail-poll until a real Chase alert is verified against
+// it. An unknown source still parses to null, and an Amex-shaped
+// input still parses to null under the Chase parser (no 'chase'
+// marker in the mail).
 
-test('dispatcher: Amex registered, unknown sources return null (no invented parsers)', () => {
-  assert.deepEqual(Object.keys(EMAIL_PARSERS), ['amex_alert']);
+test('dispatcher: Amex proven, Chase scaffold registered, unknown sources return null', () => {
+  assert.deepEqual(Object.keys(EMAIL_PARSERS), ['amex_alert', 'chase_alert']);
   assert.equal(EMAIL_PARSERS.amex_alert, parseAmexAlertText);
+  assert.equal(EMAIL_PARSERS.chase_alert, parseChaseAlertText);
   const input = { subject: 'Large Purchase Alert', body: 'You made a purchase of $48.25 at Amazon\non your card ending in 1005.', date: '2026-10-28' };
   assert.deepEqual(parseEmailAlert('amex_alert', input), { amountCents: 4825, merchant: 'Amazon', cardSuffix: '1005', date: '2026-10-28' });
   assert.equal(parseEmailAlert('chase_alert', input), null);
@@ -209,7 +216,8 @@ test('dispatcher: gmail-poll copy carries the same dispatcher (N12)', () => {
   const shared = read('../supabase/functions/_shared/gmail-parse.ts');
   assert.ok(poll.includes('export const EMAIL_PARSERS: Record<string, EmailAlertParser> = {'));
   assert.ok(poll.includes('amex_alert: parseAmexAlertText,'));
-  assert.ok(shared.includes('Do NOT register a Chase / Capital One parser here'));
+  assert.ok(poll.includes('chase_alert: parseChaseAlertText,'));
+  assert.ok(shared.includes('FAIL-CLOSED SCAFFOLD'));
 });
 
 test('headerValue: case-insensitive lookup, missing header is empty', () => {

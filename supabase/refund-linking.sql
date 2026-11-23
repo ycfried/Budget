@@ -30,8 +30,9 @@
 -- A charge insert runs the reverse direction (link_refunds_to_purchase)
 -- so a refund that arrived BEFORE its purchase still gets linked.
 -- Auto-linking is best-effort: ingestion never fails because linking
--- did. A linked provisional refund is harmless — restoration and
--- week math only ever count POSTED refunds.
+-- did. A linked provisional refund counts in OPEN-week math (F-1,
+-- owner rule Nov 23, 2026 — pending refunds count right away);
+-- restoration for LOCKED weeks still counts posted refunds only.
 --
 -- MANUAL LINK (link_refund / unlink_refund): admin-only, same
 -- household, same card suffix, purchase date on or before the refund
@@ -171,7 +172,59 @@ begin
            and r.kind = 'refund'
            and r.excluded is not true and r.state not in ('excluded', 'reversed')) < c.amount_cents;
 
-  if v_cand_count <> 1 then return null; end if;
+  if v_cand_count <> 1 then
+    -- F-4 arrival direction (owner-agreed, Nov 23, 2026): the refund
+    -- ARRIVED after its purchase was already excluded. Two branches:
+    -- (1) a surviving live purchase exists — the live-candidate
+    -- search above already links to it (it only ever considers
+    -- live purchases; exactly one live match links). That branch
+    -- needs no new code, only the test in this file's verification
+    -- section to lock it in.
+    -- (2) NO live purchase matches (v_cand_count = 0) but exactly
+    -- ONE excluded purchase matches the same exact-match rule —
+    -- the refund's purchase is gone with no survivor. The refund
+    -- then FOLLOWS the purchase into exclusion (state='excluded',
+    -- excluded=true, with a pre_exclusion_state snapshot and the
+    -- link PRESERVED so restore_transaction can bring it back with
+    -- the purchase), instead of staying unlinked and netting
+    -- against the current week for a purchase that never counted.
+    -- Ambiguity stays conservative: two-or-more live candidates,
+    -- or two-or-more excluded matches, link/exclude NOTHING — the
+    -- refund stays unlinked for an admin to link by hand.
+    if v_cand_count = 0 then
+      declare
+        v_exc_count integer;
+        v_exc_id uuid;
+      begin
+        select count(*), (array_agg(c.id))[1] into v_exc_count, v_exc_id
+        from transactions c
+        where c.household_id = v_ref.household_id
+          and c.kind in ('charge', 'fund_charge')
+          and c.excluded is true
+          and c.state = 'excluded'
+          and c.card_suffix = v_ref.card_suffix
+          and public._same_normalized_merchant(c.merchant, v_ref.merchant)
+          and c.amount_cents = -v_ref.amount_cents
+          and c.date <= v_ref.date
+          and c.date >= v_ref.date - interval '90 days';
+        if v_exc_count = 1 then
+          update transactions
+             set excluded = true, state = 'excluded',
+                 pre_exclusion_state = v_ref.state,
+                 exclude_reason = 'Purchase excluded; refund follows the purchase (F-4)',
+                 original_purchase_id = v_exc_id
+           where id = p_refund_id;
+          insert into public.audit_log (household_id, actor, actor_name, action, detail)
+          values (v_ref.household_id, null, 'auto-refund-follow',
+                  'Refund excluded with purchase',
+                  'Refund ' || v_ref.merchant || ' ' || v_ref.amount_cents::text
+                  || ' cents excluded: its purchase is excluded with no surviving purchase; '
+                  || 'restoring the purchase restores this refund.');
+        end if;
+      end;
+    end if;
+    return null;
+  end if;
   -- P2-N9: lock the candidate purchase row before trusting the
   -- count above, then re-check the linked total after the lock.
   -- Two refunds for the same purchase racing here could otherwise
@@ -243,6 +296,66 @@ end;
 $$;
 revoke execute on function public.link_refunds_to_purchase(uuid) from public;
 grant execute on function public.link_refunds_to_purchase(uuid) to service_role;
+
+-- ---------------------------------------------------------------------
+-- repoint_refund_links(p_from_id, p_to_id) — move every live linked
+-- refund from one purchase to another (F-4, build 61 audit, Nov 23,
+-- 2026). This function was CALLED by cleanup_same_hash_duplicates
+-- and plaid-sync's reversal branch but never DEFINED anywhere in
+-- the repo — both callers swallowed the "function does not exist"
+-- error best-effort, so refunds were silently never re-pointed.
+-- Defining it here makes those calls real.
+--   * p_to_id NOT NULL: re-point all live refunds linked to
+--     p_from_id at p_to_id. The target must be a LIVE purchase in
+--     the SAME household, else it raises (a refund must never be
+--     left linked to an excluded charge).
+--   * p_to_id NULL: UNLINK all refunds linked to p_from_id (the
+--     plaid-sync reversal case: the purchase is genuinely reversed
+--     with no surviving row, so the refund is unlinked and can
+--     re-link or fall to the unlinked fallback instead of restoring
+--     nothing).
+-- Returns the number of refunds moved / unlinked. SECURITY DEFINER,
+-- service_role only (called from Edge Functions and from other
+-- SECURITY DEFINER functions); the client never calls it directly.
+-- ---------------------------------------------------------------------
+create or replace function public.repoint_refund_links(p_from_id uuid, p_to_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_from_household uuid;
+  v_to_household uuid;
+  v_count integer;
+begin
+  select household_id into v_from_household from public.transactions where id = p_from_id;
+  if v_from_household is null then return 0; end if;
+  if p_to_id is not null then
+    select household_id into v_to_household from public.transactions where id = p_to_id;
+    if v_to_household is null then
+      raise exception 'repoint target purchase not found';
+    end if;
+    if v_to_household <> v_from_household then
+      raise exception 'repoint target is in a different household';
+    end if;
+    if not exists (select 1 from public.transactions
+                    where id = p_to_id and kind in ('charge', 'fund_charge')
+                      and excluded is not true and state not in ('excluded', 'reversed')) then
+      raise exception 'repoint target is not a live purchase';
+    end if;
+    update public.transactions set original_purchase_id = p_to_id
+     where original_purchase_id = p_from_id and kind = 'refund';
+  else
+    update public.transactions set original_purchase_id = null
+     where original_purchase_id = p_from_id and kind = 'refund';
+  end if;
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+revoke execute on function public.repoint_refund_links(uuid, uuid) from public;
+grant execute on function public.repoint_refund_links(uuid, uuid) to service_role;
 
 -- ---------------------------------------------------------------------
 -- link_refund(p_refund_id, p_purchase_id) — admin-only manual link.
@@ -352,3 +465,44 @@ end;
 $$;
 revoke execute on function public.unlink_refund(uuid) from public;
 grant execute on function public.unlink_refund(uuid) to authenticated;
+
+-- =====================================================================
+-- VERIFICATION — F-4 (commented, test household only, as an admin;
+-- replace <household> with the test household id):
+--
+-- repoint_refund_links exists now (it was called but never defined
+-- before build 64 — both callers swallowed the missing-function
+-- error best-effort):
+--   select proname from pg_proc where proname = 'repoint_refund_links';
+--     -- expect: 1 row
+--
+-- Branch 1 — refund arrives, purchase excluded as a duplicate, a
+-- surviving purchase exists: the refund links to the SURVIVOR.
+-- (Setup: two live identical purchases P1/P2, same merchant/amount/
+-- card/date; exclude P1 via exclude_transaction; then insert a
+-- refund row for the same merchant/amount/card and call
+-- auto_link_refund on it — or let ingestion link it.)
+--   select auto_link_refund('<refund>');
+--     -- expect: returns P2's id (the survivor), not null.
+--   select original_purchase_id from transactions where id = '<refund>';
+--     -- expect: P2's id.
+--
+-- Branch 2 — refund arrives, purchase excluded, NO survivor: the
+-- refund follows the purchase into exclusion (it must NOT stay
+-- unlinked and net against the current week).
+-- (Setup: one live purchase P; exclude P via exclude_transaction;
+-- then insert a refund row for the same merchant/amount/card and
+-- call auto_link_refund on it.)
+--   select auto_link_refund('<refund>');
+--     -- expect: null (no live purchase to link to).
+--   select state, excluded, pre_exclusion_state, original_purchase_id
+--     from transactions where id = '<refund>';
+--     -- expect: state 'excluded', excluded true,
+--     -- pre_exclusion_state = the refund's prior state,
+--     -- original_purchase_id = P's id (link preserved).
+--   -- Restoring P restores the refund with it (n4
+--   -- restore_transaction, F-4): 
+--   select restore_transaction('<P>');
+--   select state, excluded from transactions where id = '<refund>';
+--     -- expect: state = the refund's prior state, excluded false.
+-- =====================================================================

@@ -160,10 +160,10 @@ test('classifier: deposits and depository inflows are income; payments/cashback 
 
 // --- Email source set (build 44, item 4) -----------------------------------
 
-test('email sources: single set, Amex only — no invented Chase/Capital One source', () => {
-  assert.deepEqual([...EMAIL_SOURCES], ['amex_alert']);
+test('email sources: Amex proven + Chase scaffold — no invented Capital One source', () => {
+  assert.deepEqual([...EMAIL_SOURCES], ['amex_alert', 'chase_alert']);
   assert.equal(isEmailSource('amex_alert'), true);
-  assert.equal(isEmailSource('chase_alert'), false);
+  assert.equal(isEmailSource('chase_alert'), true);
   assert.equal(isEmailSource('capital_one_alert'), false);
   assert.equal(isEmailSource('plaid'), false);
   assert.ok(!plaidSync.includes('chase_alert') && !plaidSync.includes('capital_one'));

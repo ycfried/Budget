@@ -554,16 +554,25 @@ public final class HomeViewModel: ObservableObject {
     /// them (Plaid per-Item freshness). So opening the app now
     /// also triggers a Plaid sync. Throttled to once per 15
     /// minutes per household (UserDefaults) so it never hammers
-    /// Plaid on every Home appear or foreground; admin only
-    /// (members would get a 403 — handled silently); best-effort
+    /// Plaid on every Home appear or foreground; best-effort
     /// and SILENT — no toast on success or failure, the data just
     /// refreshes when it arrives. The hourly cron stays as the
     /// backstop, and the manual sync button stays the visible
     /// path (it surfaces errors; this one never does). Reuses
     /// `isSyncing`, so a manual sync cannot overlap it (and the
-    /// button honestly spins while it runs).
+    /// button honestly spins while it runs). Build 64 (F-19
+    /// follow-up): the old `isAdmin` guard is gone — members get
+    /// the open sync too, now that the server auth relax lets
+    /// them call the sync functions; before that deploy lands, a
+    /// member's 403 is swallowed here silently by design, exactly
+    /// like any other background failure. Gmail is deliberately
+    /// NOT added here: this silent path exists for Plaid per-Item
+    /// freshness, a Plaid-specific problem, and the manual sync
+    /// button now covers Gmail explicitly — a second silent Gmail
+    /// check on every foreground would add edge-function calls
+    /// for no visible benefit.
     public func syncBankOnOpenIfDue() async {
-        guard isAdmin, !isSyncing else { return }
+        guard !isSyncing else { return }
         let key = "plaid.openSyncAt.\(householdId.uuidString)"
         let last = UserDefaults.standard.double(forKey: key)
         if last > 0, Date().timeIntervalSince1970 - last < 900 { return }
@@ -580,34 +589,100 @@ public final class HomeViewModel: ObservableObject {
         }
     }
 
-    /// Home sync button (live.js:2842-2876, runBankSync): admin
-    /// only, one sync at a time, spins while syncing. The toast
-    /// text is bankSyncToast (filterState.mjs:449-463).
+    /// Home sync button (live.js:2842-2876, runBankSync): one sync
+    /// at a time, spins while syncing. Build 64 (F-19, owner Nov
+    /// 23, 2026): the sync button syncs EVERYTHING — Plaid bank
+    /// AND Gmail email — and is open to members, not just admins
+    /// (the old `isAdmin` guard meant members never saw a sync
+    /// button, and the old path never pulled Gmail). ONE combined
+    /// toast covers both halves, via `AppState.showToast`. The
+    /// email half is best-effort: a failed email check never fails
+    /// the bank sync, it just adds a line to the toast. Mirrors
+    /// TransactionsViewModel.runSync() — same halves, same plain
+    /// pre-deploy 403 line, same combined toast; only the bank
+    /// text keeps Home's richer `syncToastText` (duplicate-removed
+    /// + stale lines). The server auth relax (members allowed to
+    /// call the sync functions) is a separate change and is NOT
+    /// deployed yet — until it lands, a member's tap can come back
+    /// 403, and that shows as one plain line, never the server's
+    /// 403 text. The toast text is bankSyncToast
+    /// (filterState.mjs:449-463).
     public func syncBank() async {
-        guard isAdmin, !isSyncing else { return }
+        guard !isSyncing else { return }
         isSyncing = true
         defer { isSyncing = false }
+        // Bank half: the existing Plaid sync. A 403 here is the
+        // pre-deploy server (auth relax not live yet) — plain
+        // words, no reload, no technical text.
+        let outcome: PlaidSyncOutcome
         do {
-            let outcome = try await client.functions.plaidSyncAllowingPartialFailure(householdId: householdId)
-            switch outcome {
-            case .success(let result):
-                appState.showToast(Self.syncToastText(result), kind: .success)
-            case .partial(let partial):
-                // Lead with the failure (audit H-P2-7): the old text
-                // opened "Sync done:" and never said what failed.
-                // The counts still follow, so the partial progress
-                // is not lost.
-                appState.showToast(
-                    "Couldn't sync \(partial.failedInstitutions.joined(separator: ", ")): \(partial.result.added) added, \(partial.result.updated) updated, \(partial.result.skipped) skipped across \(partial.result.items) connected account(s).",
-                    kind: .error)
-            }
-            await refresh()
+            outcome = try await client.functions.plaidSyncAllowingPartialFailure(householdId: householdId)
         } catch let error as OnBudgetError {
-            if error == .sessionExpired { appState.showSessionExpired(); return }
-            appState.showToast("Sync failed: \(error.displayMessage)", kind: .error)
+            if case .adminOnly = error {
+                appState.showToast("Sync isn't available for members yet — the server update is still on its way. Try again later.", kind: .error)
+            } else if case .forbidden = error {
+                appState.showToast("Sync isn't available for members yet — the server update is still on its way. Try again later.", kind: .error)
+            } else if error == .sessionExpired {
+                appState.showSessionExpired()
+            } else {
+                appState.showToast("Sync failed: \(error.displayMessage)", kind: .error)
+            }
+            return
         } catch {
             appState.showToast("Sync failed: the server did not answer.", kind: .error)
+            return
         }
+        // Email half: best-effort Gmail poll alongside the bank
+        // sync. A throw here never fails the sync — the toast just
+        // says the email check didn't run.
+        let emailText: String?
+        do {
+            let poll = try await client.functions.gmailPoll(householdId: householdId)
+            let (text, isError) = EmailCheckMessage.text(
+                topLevelError: nil,
+                firstConnectionError: poll.firstError?.error,
+                stored: poll.stored,
+                duplicates: poll.duplicates,
+                quarantined: poll.quarantined,
+                unparseable: poll.unparseable,
+                stale: poll.stale,
+                minutesSincePreviousPoll: poll.minutesSincePreviousPoll
+            )
+            // Only mention email when it added something or
+            // failed — a quiet "0 added" line adds nothing.
+            emailText = (isError || poll.stored > 0) ? text : nil
+        } catch {
+            emailText = "Email check didn't run — bank sync still finished."
+        }
+        // ONE combined toast for both halves.
+        let bankText: String
+        let bankKind: ToastStyle.Kind
+        switch outcome {
+        case .success(let result):
+            if result.noBankConnected == true {
+                bankText = "No bank connection yet — connect a bank account first."
+                bankKind = .error
+            } else {
+                bankText = Self.syncToastText(result)
+                bankKind = .success
+            }
+        case .partial(let partial):
+            // Lead with the failure (audit H-P2-7): the old text
+            // opened "Sync done:" and never said what failed.
+            // The counts still follow, so the partial progress
+            // is not lost.
+            let names = partial.failedInstitutions.isEmpty
+                ? partial.failedItems.joined(separator: ", ")
+                : partial.failedInstitutions.joined(separator: ", ")
+            bankText = "Couldn't sync \(names): \(partial.result.added) added, \(partial.result.updated) updated, \(partial.result.skipped) skipped across \(partial.result.items) connected account(s)."
+            bankKind = .error
+        }
+        if let emailText {
+            appState.showToast("\(bankText) \(emailText)", kind: bankKind)
+        } else {
+            appState.showToast(bankText, kind: bankKind)
+        }
+        await refresh()
     }
 
     /// bankSyncToast (filterState.mjs:449-463).
@@ -642,6 +717,13 @@ public struct HomeView: View {
     /// it. Falls back to a fresh one if AppState has none yet.
     @ObservedObject var viewModel: HomeViewModel
     @State private var showWeeklySheet = false
+    @State private var showPastWeeks = false
+    /// Past Weeks presented from Home (build 64, F-18): its own
+    /// toast + date filter, like the shell's history pages — the
+    /// shell owns the Transactions-tab copies and Home cannot
+    /// reach them.
+    @StateObject private var pastWeeksToast = ToastState()
+    @StateObject private var pastWeeksFilter = HistoryFilterState()
     @State private var showNotLoadedAlert = false
     @State private var notLoadedAlertTitle = "Weekly Budget"
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -662,11 +744,14 @@ public struct HomeView: View {
             // Build 46 (owner, Nov 18, 2026 — the simpler-Home
             // mockup IS the new Home): the default layout is the
             // mockup — a Spending hero, Tzedaka as the clear second
-            // card, Savings and Overspent (Past) as quiet rows —
-            // and the previous layout stays as `.classic`, behind
-            // the Home Layout switch in Settings, so it can be
-            // restored if the owner changes his mind. Recent
-            // Transactions is shared by both layouts.
+            // card, Savings and Overspent (Past) as quiet rows.
+            // Build 64 (F-40 follow-up): Simple IS the Home — the
+            // stored `homeLayout` is ignored, so nobody is stuck
+            // on Classic now that the Settings switch is gone.
+            // `classicContent` below is retired (kept in the file
+            // as the backup; restore from git if the owner ever
+            // wants it back). Recent Transactions is shared by
+            // both layouts.
             VStack(alignment: .leading, spacing: 12) {
                 // Build 63 (Lean): the page select — Home /
                 // Transactions / Funds, the current page active
@@ -705,12 +790,18 @@ public struct HomeView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(gmailError) Open Settings to reconnect.")
                 }
-                switch appState.homeLayout {
-                case .simple:
-                    simpleContent
-                case .classic:
-                    classicContent
-                }
+                // Build 64 (F-40 follow-up): Simple is the Home —
+                // the stored `homeLayout` is ignored, so nobody is
+                // stuck on Classic now that the Settings switch is
+                // gone (see the note above).
+                simpleContent
+                // Build 64 (F-18): Past Weeks as a VISIBLE
+                // destination from Home — it used to hide behind
+                // the Spending card's chevron (the Weekly sheet)
+                // and behind the Transactions "More" menu. A
+                // quiet white row, like the quiet fund rows, so
+                // closed weeks are one tap away from Home.
+                pastWeeksButton
                 // Recent Transactions sits on the same 10pt stack
                 // gap as the cards above it (owner, Nov 16, 2026 —
                 // build 40: no extra padding — the old 8pt top
@@ -767,6 +858,16 @@ public struct HomeView: View {
                     // full-screen.
             }
         }
+        // Build 64 (F-18): Past Weeks presented from Home, same
+        // full-screen cover as the Weekly sheet. Its own toast
+        // overlay rides on the cover, so the week-tap toast
+        // ("Showing transactions for the week of …") is visible.
+        .fullScreenCover(isPresented: $showPastWeeks) {
+            if let context = pastWeeksContext {
+                PastWeeksView(context: context, toast: pastWeeksToast, filter: pastWeeksFilter, onBack: { showPastWeeks = false })
+                    .toastOverlay(pastWeeksToast)
+            }
+        }
         .alert(notLoadedAlertTitle, isPresented: $showNotLoadedAlert) {
             Button("Close", role: .cancel) {}
         } message: {
@@ -779,9 +880,11 @@ public struct HomeView: View {
     /// The previous Home layout (builds 40–45), preserved verbatim
     /// as the backup (owner, Nov 18, 2026 — "keep the current Home
     /// as a backup"): the Spending hero on top, Charity + Extra
-    /// Fund half-width in one row below it. Restorable from the
-    /// Home Layout switch in Settings. The fund cards sit as ONE
-    /// COMPACT UNIT (owner, Nov 16, 2026 — build 40: the white gap
+    /// Fund half-width in one row below it. RETIRED in build 64
+    /// (F-40 follow-up) — Simple is the Home and the stored layout
+    /// value is ignored, so this is unreachable now; kept in the
+    /// file as the backup (restore from git if the owner ever
+    /// wants it back). The fund cards sit as ONE COMPACT UNIT (owner, Nov 16, 2026 — build 40: the white gap
     /// between the Spending hero and the Charity/Extra Fund row was
     /// "extra" and had to be removed). Build 41 (owner, Nov 16,
     /// 2026 — "much bigger and look like cards.. a small shadow
@@ -907,21 +1010,15 @@ public struct HomeView: View {
 
     // Hero — Weekly Budget. Bigger and more prominent than the
     // other cards (owner, Nov 11, 2026: it is the most important
-    // number on the page). Owner, Nov 16, 2026 (build 40): ONE
-    // UNIFIED CARD — a SHORT colored header strip on top (a "$"
-    // icon in a white circle + "Spending", all white on deep blue)
-    // and a WHITE body below (the MAJORITY of the card) holding
-    // the big amount + the progress circle side by side, with the
-    // spent line below. The color is a header accent, not half
-    // the card — "the majority should be white, not half half."
-    // Build 46 (owner, Nov 18, 2026): the amount moved OUT of the
-    // header strip DOWN into the white body (it sat in the blue
-    // in builds 40–45), sized as big as the card allows, and the
-    // horizontal progress bar became the widget's progress CIRCLE
-    // alongside it. The sync button stays at the trailing end of
-    // the header strip. The loading state renders at the same full
-    // hero size (shimmer skeleton blocks on WHITE, no tint, no
-    // spinner), so the layout never jumps when the number arrives.
+    // number on the page). Build 64 (C-2 B2): the header is plain
+    // white — the name in deep blue, a small deep-blue glyph, no
+    // solid banner, no thin rule — and the WHITE body below (the
+    // MAJORITY of the card) holds the big amount + the progress
+    // circle side by side, with the spent line below. The sync
+    // button stays at the trailing end of the header. The loading
+    // state renders at the same full hero size (shimmer skeleton
+    // blocks on WHITE, no tint, no spinner), so the layout never
+    // jumps when the number arrives.
     private func heroCard(simple: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header strip (colored, short): ONE ROW — icon + name
@@ -1003,135 +1100,95 @@ public struct HomeView: View {
         .padding(.bottom, 36)
     }
 
-    /// Banner colour: the Spending theme's banner (deep blue #1d4ed8
-    /// since build 46 — see StatCardTheme) when loaded AND while
-    /// LOADING (build 47, owner Nov 19, 2026 — "Only the tzedaka
-    /// colored bar loads in the beginning.. the spending one should
-    /// too": the header shows its colour from the first paint, the
-    /// grey skeleton blocks on top of it — this supersedes the
-    /// build-40 white loading banner for the header strip); muted
-    /// grey #e5e7eb when FAILED (a failed load stays distinct
-    /// from loading). The theme is the single source — the hero
-    /// reads it, never a hard-coded hex.
-    private var heroBannerColor: Color {
-        switch viewModel.week {
-        case .loaded, .loading: return StatCardTheme.spending.banner
-        case .failed: return Color(hex: "#e5e7eb")
-        }
-    }
+    // Build 64 (C-2 B2): the solid deep-blue banner is gone, so
+    // the heroBannerColor / heroBannerTextColor helpers are deleted
+    // with it — the header is plain white, the name in deep blue.
+    // (The helpers used to live here; see git history.)
 
-    /// Text/icon colour on the hero banner: WHITE on the loaded
-    /// deep blue banner (build 46, owner Nov 18, 2026 — the header
-    /// is brand dark blue again; white on #1d4ed8 reads ~5.9:1),
-    /// and WHITE while LOADING too (build 48 — the banner is deep
-    /// blue from the first paint, so the real name shows in white
-    /// on it; ink would be unreadable on the blue). Ink only on
-    /// the grey FAILED banner.
-    private var heroBannerTextColor: Color {
-        if case .failed = viewModel.week { return DesignTokens.ink }
-        return StatCardTheme.spending.onBanner
-    }
-
-    /// The hero amount + donut sizes (build 46, owner Nov 18,
-    /// 2026 — "numbers as big as they can be"): the amount is the
-    /// biggest size that still fits beside the circle — 52pt on
-    /// iPhone (body interior ~321pt: "$163.58" at 52pt is ~200pt,
-    /// the 88pt circle + 16pt gap take the rest; longer amounts
-    /// shrink via minimumScaleFactor), 96pt on iPad (body interior
-    /// ~828pt: the same figure at 96pt is ~370pt beside the 120pt
-    /// circle). The loading skeleton height matches the amount's
+    /// The hero amount + donut sizes (build 64, C-1 — QUIETER:
+    /// the owner picked the maturity option over "numbers as big
+    /// as they can be"): the amount is 36pt bold on iPhone
+    /// (56-64pt on iPad — 60pt here), down from 52pt heavy /
+    /// 96pt, and the loading skeleton height matches the amount's
     /// line height, so the body holds its size while loading.
-    private var heroAmountSize: CGFloat { isIPad ? 96 : 52 }
-    private var heroAmountSkeletonHeight: CGFloat { isIPad ? 108 : 60 }
+    private var heroAmountSize: CGFloat { isIPad ? 60 : 36 }
+    private var heroAmountSkeletonHeight: CGFloat { isIPad ? 72 : 44 }
     private var heroDonutSize: CGFloat { isIPad ? 120 : 88 }
 
     // Hero header — icon + title in ONE row, with the sync button
-    // at the trailing end (the top-right corner of the banner).
-    // The title is "Spending" and there is NO date anywhere on the
-    // card (owner, Nov 14, 2026 — this supersedes the inline-date
-    // Header strip (owner, Nov 16, 2026 — build 40): ONE ROW —
-    // a "$" icon in a white circle + "Spending", white on the deep
-    // blue banner (build 46), with the sync button at the trailing
-    // end. The amount is NOT here any more — it lives in the white
-    // body below, at the biggest size the card allows (build 46,
-    // owner Nov 18, 2026: it sat inline in the header in builds
-    // 40–45 and read too small). While loading the strip is the
-    // SAME deep blue with the REAL icon + name on it (build 48,
-    // owner Nov 19, 2026 — the Spending name and button icon show
-    // from the first paint, like the Tzedaka card below, which
-    // renders its header unconditionally; only the NUMBER in the
-    // body skeletons). While failed the strip is muted grey.
-    // Build 41 (owner, Nov 16, 2026 — "much bigger"): the title
-    // is 20pt, the icon disc 36pt, the sync circle 40pt, and the
-    // strip carries 14pt vertical padding — the header reads as a
-    // big card header now, not a slim bar. Skeleton blocks match.
+    // at the trailing end (the top-right corner of the card).
+    // Build 64 (C-2 B2 — "Coloured name, no line"): the solid
+    // deep-blue banner is GONE — the header is plain white, the
+    // name "Spending" is written in its own deep blue #1d4ed8 at
+    // 17pt semibold, and the icon is a small 20pt deep-blue glyph
+    // directly on white (P-6 — the white-circle disc is gone).
+    // "This week" stays muted. While failed the name keeps its
+    // colour (the name is local); the failed signal is the error
+    // box in the body below.
     private func heroHeaderStrip(simple: Bool = false) -> some View {
         HStack(spacing: 8) {
             // The icon + name are LOCAL — they render in every
             // state (loading, loaded, failed), never as skeletons.
             // Only the number in the body below waits on the data.
             Image(systemName: FundSectionID.spending.resolvedIconName(customIcons: appState.fundIcons))
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(StatCardTheme.spending.glyph)
-                .frame(width: 36, height: 36)
-                .background(.white)
-                .clipShape(Circle())
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(StatCardTheme.spending.number)
+                .frame(width: 22, height: 22)
             Text(FundSectionID.spending.displayName(customNames: appState.fundNames))
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(heroBannerTextColor)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(StatCardTheme.spending.number)
                 .lineLimit(1)
             Spacer()
             // The simpler Home (build 46 — the mockup): "This week"
-            // at the right of the header, white at 85%. Only when
-            // loaded — on the white loading strip white text would
-            // be invisible, and a failed strip is grey.
+            // at the right of the header, muted. Only when
+            // loaded — a failed week has no "this week" to name.
             if simple, case .loaded = viewModel.week {
                 Text("This week")
                     .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(DesignTokens.muted)
             }
-            if viewModel.isAdmin {
-                switch viewModel.week {
-                case .loading, .loaded:
-                    // The real sync button from the first paint
-                    // (build 48): syncBank() guards isAdmin and
-                    // !isSyncing and refresh() coalesces with the
-                    // in-flight load, so showing it while loading
-                    // is safe — and the header never jumps when the
-                    // numbers arrive.
-                    syncButton
-                case .failed:
-                    EmptyView()
-                }
+            // Build 64 (F-19): the sync button shows to EVERY role
+            // now — the isAdmin gate around it is gone, so members
+            // see it too, and syncBank() itself is open to members
+            // (bank + Gmail, one combined toast) — the button tap
+            // really syncs now, not just shows.
+            switch viewModel.week {
+            case .loading, .loaded:
+                // The real sync button from the first paint
+                // (build 48): syncBank() guards !isSyncing and
+                // refresh() coalesces with the in-flight load, so
+                // showing it while loading is safe — and the header
+                // never jumps when the numbers arrive.
+                syncButton
+            case .failed:
+                EmptyView()
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(heroBannerColor)
     }
 
-    /// Sync button: admin-only; grey tertiary while no allowance
-    /// is set, so "Set Your Weekly Allowance" is the hero's only
-    /// primary control. On the deep blue banner (build 46) it is a
-    /// WHITE circle so it reads against the banner: the arrow is
-    /// primary blue when an allowance is set, ink when not set —
-    /// the two states still tell apart, and both read on white.
+    /// Sync button: a plain arrow in deep blue (ink while no
+    /// allowance is set, so the two states still tell apart) on
+    /// the white header — build 64 (P-6): the white-circle disc
+    /// is gone, and the header is white now, so a white circle
+    /// would be invisible. 44pt hit target. Visible to every
+    /// role (build 64, F-19 — the isAdmin gate is gone from the
+    /// header); the sync itself runs through syncBank().
     /// Moved here from the figure row (owner, Nov 14, 2026: the
     /// top-right corner of the card, not mid-right over the
     /// progress bar).
     private var syncButton: some View {
         Button { Task { await viewModel.syncBank() } } label: {
             Image(systemName: "arrow.clockwise")
-                .font(.system(size: 17, weight: .semibold))
-                // Blue arrow on the white circle when an allowance
-                // is set; dark ink when not set — both read on
-                // white, and the states still tell apart (audit
-                // H-P1-1: white-on-grey was ~1.1:1 and effectively
-                // invisible).
-                .foregroundStyle(viewModel.allowanceSet == true ? DesignTokens.primary : DesignTokens.ink)
-                .frame(width: 40, height: 40)
-                .background(.white)
-                .clipShape(Circle())
+                .font(.system(size: 20, weight: .semibold))
+                // Deep-blue arrow when an allowance is set; dark
+                // ink when not set — both read on white, and the
+                // states still tell apart (audit H-P1-1: white-on-
+                // grey was ~1.1:1 and effectively invisible).
+                .foregroundStyle(viewModel.allowanceSet == true ? DesignTokens.deep : DesignTokens.ink)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
                 // Repeating linear spin while syncing: a plain
                 // 0°→360° rotation with no animation renders
                 // identically at both ends, so it never
@@ -1213,10 +1270,10 @@ public struct HomeView: View {
 
     /// Big amount + progress circle, in the hero's WHITE body
     /// (build 46, owner Nov 18, 2026): the amount moved DOWN out
-    /// of the header strip into the body, at the biggest size the
-    /// card allows (52pt iPhone / 96pt iPad — see heroAmountSize),
-    /// with the widget's progress CIRCLE alongside it — the
-    /// horizontal progress bar is gone. The spent line sits below
+    /// of the header strip into the body (build 64, C-1: 36pt bold
+    /// on iPhone / 60pt iPad — see heroAmountSize), with the
+    /// widget's progress CIRCLE alongside it — the horizontal
+    /// progress bar is gone. The spent line sits below
     /// the pair, with the chevron at its right end (the hint that
     /// the card opens the Weekly sheet). Same math as the old bar:
     /// charges / capacity, capped at 100%; over budget the ring is
@@ -1235,16 +1292,15 @@ public struct HomeView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 16) {
                 Text(MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false))
-                    .font(.system(size: heroAmountSize, weight: .heavy))
-                    // Build 46 (owner, Nov 18, 2026 — the simpler
-                    // Home: "number colour = header colour"): in
-                    // the simple layout the amount is the brand
-                    // dark blue #1d4ed8 (the header colour, 5.9:1
-                    // on white). The classic layout keeps its ink
-                    // amount. Over budget the amount is red in
-                    // both layouts — the over-budget signal is
-                    // never lost.
-                    .foregroundStyle(overBudget ? DesignTokens.heroOverBudget : (simple ? StatCardTheme.spending.number : DesignTokens.ink))
+                    .font(.system(size: heroAmountSize, weight: .bold))
+                    // Build 64 (C-1 + C-2 B2): 36pt bold (was 52pt
+                    // heavy), in the Spending name colour — deep
+                    // blue #1d4ed8 — in both layouts (the old
+                    // simple-vs-classic split is gone: the amount
+                    // is the same colour as the name). Over budget
+                    // the amount is red in both layouts — the
+                    // over-budget signal is never lost.
+                    .foregroundStyle(overBudget ? DesignTokens.heroOverBudget : StatCardTheme.spending.number)
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                     .accessibilityIdentifier("home.heroAmount")
@@ -1307,12 +1363,13 @@ public struct HomeView: View {
     /// the muted red #991b1b (full ring), the remaining slice pale
     /// light blue #dbeafe, the spent percentage in the centre. Same
     /// colours as OnBudgetWidget.donut, so the card and the widget
-    /// can never drift apart. The ring is 12pt on iPhone (88pt
-    /// circle) and 14pt on iPad (120pt circle). In the simpler Home
+    /// can never drift apart. Build 64 (P-6): the ring is THIN
+    /// now — 5pt on iPhone and iPad (was 12/14pt) — a hairline
+    /// track, not a thick coloured band. In the simpler Home
     /// the centre also carries "used" under the percentage, like
     /// the mockup's ring (59% over "used").
     private func spendingDonut(fraction: Double, overBudget: Bool, size: CGFloat, showUsedLabel: Bool = false) -> some View {
-        let lineWidth: CGFloat = isIPad ? 14 : 12
+        let lineWidth: CGFloat = 5
         let percent = Int((fraction * 100).rounded())
         return ZStack {
             Circle()
@@ -1359,15 +1416,11 @@ public struct HomeView: View {
 
     // MARK: Simpler Home — fund card + quiet rows
 
-    /// The Tzedaka header colour in the simpler Home (build 47 —
-    /// owner, Nov 19, 2026: "The blue of the tzedaka should be
-    /// the same blue as its header, no?"): the header is the
-    /// solid primary blue #2f6bff now — the same blue as the
-    /// number — with white text, like Spending's deep-blue header
-    /// and number. The pale #d7e6fd header from build 46 is gone;
-    /// pale on white was unreadable as a number, so the number
-    /// never goes pale — the header deepens to match the number.
-    private var simpleCharityBanner: Color { DesignTokens.primary }
+    // Build 64 (C-2 B2): simpleCharityBanner is DELETED — there
+    // is no solid Tzedaka banner any more. The name is written in
+    // primary blue #2f6bff on white (theme.number), like every
+    // other fund's name in its own colour. (The helper used to
+    // live here; see git history.)
 
     /// The loaded body data for a fund's simple card: the small
     /// label above the amount, the amount itself, and the sub-line
@@ -1427,41 +1480,38 @@ public struct HomeView: View {
     }
 
     /// A full-width fund card in the simpler Home (build 46 — the
-    /// mockup): a SHORT coloured header (icon in a white circle +
-    /// the fund name) and a WHITE body holding the label, the big
-    /// amount in the header's colour, the sub-line, and a faint
-    /// chevron at the bottom-right. `hero: true` is the same card
-    /// with the hero-sized amount (a non-Spending fund set to hero
-    /// — the ring stays Spending-only, so a hero card has no ring
-    /// and no chevron). Tapping a card opens its fund on the Funds
-    /// tab. The header renders immediately — the name and icon are
-    /// local — only the body waits on the numbers.
+    /// mockup): build 64 (C-2 B2) — NO solid header banner any
+    /// more. The header is plain white: a small 20pt glyph in the
+    /// fund's own colour + the fund NAME in that colour at 17pt
+    /// semibold (Spending deep blue, Tzedaka primary blue, Savings
+    /// muted grey, Overspent ink), and the WHITE body below holds
+    /// the label, the big amount in the same colour, the sub-line,
+    /// and a faint chevron at the bottom-right. `hero: true` is
+    /// the same card with the hero-sized amount (a non-Spending
+    /// fund set to hero — the ring stays Spending-only, so a hero
+    /// card has no ring and no chevron). Tapping a card opens its
+    /// fund on the Funds tab. The header renders immediately —
+    /// the name and icon are local — only the body waits on the
+    /// numbers.
     private func simpleFundCard(section: FundSectionID, hero: Bool) -> some View {
         let theme = section.theme
         let name = section.displayName(customNames: appState.fundNames)
-        // Tzedaka's header is the solid primary blue #2f6bff
-        // (build 47 — header and number the same blue, like
-        // Spending's); every other fund takes its theme banner.
-        // White text on the solid primary header (white on
-        // #2f6bff reads ~4.4:1); the icon stays the theme glyph
-        // on its white disc, which reads on white against it.
-        let banner: Color = section == .charity ? simpleCharityBanner : theme.banner
-        let onBanner: Color = section == .charity ? .white : theme.onBanner
-        let amountSize: CGFloat = hero ? heroAmountSize : (isIPad ? 64 : 42)
+        // Build 64 (C-1): fund amounts are 30pt semibold on
+        // iPhone (32pt iPad), down from 42pt heavy / 64pt; a hero
+        // card takes the hero size (36/60pt).
+        let amountSize: CGFloat = hero ? heroAmountSize : (isIPad ? 32 : 30)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(theme.glyph)
-                    .frame(width: 36, height: 36)
-                    .background(.white)
-                    .clipShape(Circle())
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(theme.number)
+                    .frame(width: 22, height: 22)
                 Text(name)
-                    .font(.system(size: 19, weight: .bold))
-                    .foregroundStyle(onBanner)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(theme.number)
                     // Build 50 (owner, Nov 20, 2026 — iPhone
                     // readability): the name wraps to a second line
-                    // rather than shrinking — one uniform 19pt on
+                    // rather than shrinking — one uniform 17pt on
                     // every card, nothing cut off. The old 0.85
                     // minimumScaleFactor made long names render
                     // smaller than short ones.
@@ -1488,7 +1538,7 @@ public struct HomeView: View {
                     } label: {
                         Image(systemName: "eye.slash")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(onBanner)
+                            .foregroundStyle(DesignTokens.muted)
                             .frame(width: 28, height: 28)
                             .contentShape(Rectangle())
                     }
@@ -1499,7 +1549,6 @@ public struct HomeView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .background(banner)
             VStack(alignment: .leading, spacing: 6) {
                 if let data = simpleCardData(for: section) {
                     Text(data.label)
@@ -1603,9 +1652,10 @@ public struct HomeView: View {
     /// the given slice in Tzedaka blue #2f6bff, the remaining
     /// slice pale light blue #dbeafe (the same track as
     /// Spending's ring), the given percentage in the centre with
-    /// "given" under it, like Spending's "used".
+    /// "given" under it, like Spending's "used". Build 64 (P-6):
+    /// the ring is THIN now — 5pt (was 12/14pt).
     private func charityDonut(fraction: Double, size: CGFloat) -> some View {
-        let lineWidth: CGFloat = isIPad ? 14 : 12
+        let lineWidth: CGFloat = 5
         let percent = Int((fraction * 100).rounded())
         return ZStack {
             Circle()
@@ -1636,10 +1686,12 @@ public struct HomeView: View {
 
     /// The big amount text for a simple card (build 47 — the
     /// Tzedaka amount is shared by the plain and the ring
-    /// layouts, so it lives once here).
+    /// layouts, so it lives once here). Build 64 (C-1): semibold,
+    /// not heavy; the colour is the fund's own (theme.number) —
+    /// the B2 rule that the amount matches the name.
     private func simpleAmountText(_ text: String, amountSize: CGFloat, section: FundSectionID, theme: StatCardTheme) -> some View {
         Text(text)
-            .font(.system(size: amountSize, weight: .heavy))
+            .font(.system(size: amountSize, weight: .semibold))
             .foregroundStyle(theme.number)
             .lineLimit(1)
             .minimumScaleFactor(0.5)
@@ -1690,34 +1742,19 @@ public struct HomeView: View {
                 }
             }
             .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .fundCardShadow()
             .accessibilityIdentifier("home.quietCard")
         }
     }
 
-    /// The quiet row's icon-disc colour (build 48, owner Nov 19,
-    /// 2026): the fund's own banner — Tzedaka's solid Home blue
-    /// #2f6bff (its `simpleFundCard` banner), every other fund its
-    /// theme banner (Savings amber, Overspent ink, Spending deep
-    /// blue). The row is quiet, not colourless.
-    private func quietRowBanner(_ section: FundSectionID) -> Color {
-        section == .charity ? simpleCharityBanner : section.theme.banner
-    }
-
-    /// The glyph colour on the quiet row's disc: the banner's text
-    /// colour — white on the dark Savings amber / Overspent ink /
-    /// Spending deep banners, white on Tzedaka's solid #2f6bff.
-    private func quietRowOnBanner(_ section: FundSectionID) -> Color {
-        section == .charity ? .white : section.theme.onBanner
-    }
-
-    /// One quiet row (build 46 — the mockup): a 30pt icon circle
-    /// in the fund's own colour, the fund name, the amount in
-    /// muted grey, and a faint chevron. Tapping the row opens its
-    /// fund on the Funds tab. A failed row reads "Couldn't load"
-    /// in error red (its fund's ErrorBox + Try Again live on the
-    /// Funds page).
+    /// One quiet row (build 46 — the mockup): build 64 (P-6) — a
+    /// small 20pt glyph in the fund's own colour directly on
+    /// white, NO coloured circle disc; the fund name, the amount
+    /// in muted grey, and a faint chevron. Tapping the row opens
+    /// its fund on the Funds tab. A failed row reads "Couldn't
+    /// load" in error red (its fund's ErrorBox + Try Again live
+    /// on the Funds page).
     private func quietRow(_ section: FundSectionID) -> some View {
         let name = section.displayName(customNames: appState.fundNames)
         let failed = simpleCardFailed(for: section)
@@ -1729,17 +1766,14 @@ public struct HomeView: View {
                 // 2026: "The other 2 funds should also have
                 // theirs colors, although they're collapsed" — the
                 // icon and name are local, so the row shows its
-                // colours from the first paint; only the amount
-                // waits on the numbers). Build 48: the disc carries
-                // the fund's own colour (Savings amber, Overspent
-                // ink, Tzedaka solid blue) — the old grey disc +
-                // grey glyph read as no fund at all.
+                // colour from the first paint; only the amount
+                // waits on the numbers). Build 64 (P-6): the glyph
+                // sits directly on white in the fund's own colour
+                // (theme.number) — the old coloured disc is gone.
                 Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(quietRowOnBanner(section))
-                    .frame(width: 30, height: 30)
-                    .background(quietRowBanner(section))
-                    .clipShape(Circle())
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(section.theme.number)
+                    .frame(width: 22, height: 22)
                 Text(name)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Color(hex: "#3c4654"))
@@ -2021,46 +2055,33 @@ public struct HomeView: View {
         // body holds its size while loading. The iPad title
         // skeleton widens to 150pt (FIX 2, same owner report — the
         // 90pt bar was lost in the 387pt card interior).
-        let chip: CGFloat = compact ? (isIPad ? 40 : 34) : 40
-        let iconSize: CGFloat = compact ? (isIPad ? 18 : 16) : 20
-        let titleSize: CGFloat = compact ? (isIPad ? 20 : 18) : 20
-        let amountSize: CGFloat = compact ? (isIPad ? 64 : 34) : (isIPad ? 64 : 44)
-        let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 72 : 40) : (isIPad ? 72 : 50)
+        // Build 64 (C-1 — QUIETER): the amounts step back down —
+        // 28pt on a compact iPhone (32pt iPad), 30pt non-compact —
+        // semibold, not heavy, in the fund's own colour; titles
+        // are 17pt semibold everywhere. The header icon is a
+        // small 20pt glyph directly on white (P-6 — the white
+        // circle disc is gone).
+        let iconSize: CGFloat = 20
+        let titleSize: CGFloat = 17
+        let amountSize: CGFloat = compact ? (isIPad ? 32 : 28) : (isIPad ? 32 : 30)
+        let amountSkeletonHeight: CGFloat = compact ? (isIPad ? 40 : 34) : (isIPad ? 40 : 36)
         let amountSkeletonWidth: CGFloat = compact ? (isIPad ? 240 : 130) : (isIPad ? 240 : 170)
         let statusSize: CGFloat = compact ? (isIPad ? 14 : 13) : 14
         let chevronSize: CGFloat = compact ? (isIPad ? 15 : 14) : 15
         let pad: CGFloat = compact ? (isIPad ? 20 : 16) : 24
-        // Header colour: the theme colour when loaded AND while
-        // LOADING (build 47, owner Nov 19, 2026 — every fund shows
-        // its colour from the first paint; this supersedes the
-        // build-40 white loading banner), muted grey #e5e7eb when
-        // FAILED (a failed load stays distinct from loading).
-        let bannerColor: Color = {
-            if statusIsError { return Color(hex: "#e5e7eb") }
-            return theme.banner
-        }()
-        // Text colour on the header: the theme's onBanner colour
-        // (build 41, updated build 43 — per theme: white on the
-        // dark Debt banner only, ink on the light Spending /
-        // Charity pale / Extra Fund tertiary banners), ink on the
-        // grey failed header. While loading the header shows the
-        // real icon + name (build 47 — the name and icon are local,
-        // like the simpler Home's cards), so the text colour is
-        // the theme's too — the skeleton blocks are gone from the
-        // header, only the body amount is a skeleton.
-        // The icon is always the theme's glyph colour — it sits on
-        // a WHITE circle, so it reads on white in every state.
-        let onBanner: Color = {
-            if statusIsError { return DesignTokens.ink }
-            return theme.onBanner
-        }()
+        // Build 64 (C-2 B2): NO banner any more — the header is
+        // plain white and the name is written in the fund's own
+        // colour (theme.number). The old bannerColor / onBanner
+        // helpers are deleted with the banner; the failed signal
+        // is the static grey block in the body plus the red status
+        // line, never a grey header.
         return VStack(alignment: .leading, spacing: 0) {
-            // Header strip (colored, short): ONE ROW — icon in a
-            // white circle + title, all on the fund color.
-            // Build 43 (owner, Nov 17, 2026): the amount is NOT
-            // here any more — it is centred in the white body
-            // below (build 42 item 22 had it here with the title
-            // hidden; that is reversed).
+            // Header (build 64, B2): ONE ROW — a small glyph in
+            // the fund's own colour + the title in that colour,
+            // on plain white. Build 43 (owner, Nov 17, 2026):
+            // the amount is NOT here any more — it is centred in
+            // the white body below (build 42 item 22 had it here
+            // with the title hidden; that is reversed).
             HStack(spacing: 8) {
                 // The icon + name render in EVERY state — loaded,
                 // loading, and failed (build 47, owner Nov 19,
@@ -2071,17 +2092,12 @@ public struct HomeView: View {
                 // the header — a grey block on the light banners
                 // (Savings tertiary #e5e7eb) was nearly invisible,
                 // and the body amount skeleton is the loading sign.
-                // Icon in a white circle (owner, Nov 16, 2026 —
-                // build 40 reference): the theme's glyph colour
-                // on a white disc (build 41 — the banner colour
-                // itself is unreadable on white for the light
-                // banners).
+                // Icon directly on white (build 64, P-6): the
+                // theme's number colour, no white disc.
                 Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
                     .font(.system(size: iconSize, weight: .semibold))
-                    .foregroundStyle(theme.glyph)
-                    .frame(width: chip, height: chip)
-                    .background(.white)
-                    .clipShape(Circle())
+                    .foregroundStyle(theme.number)
+                    .frame(width: 22, height: 22)
                 // Build 43 (owner, Nov 17, 2026): the name is
                 // always in the header; the amount lives in the
                 // white body below, so the header is icon + name
@@ -2093,14 +2109,13 @@ public struct HomeView: View {
                 // 0.85 minimumScaleFactor made long names render
                 // smaller than short ones.
                 Text(title)
-                    .font(.system(size: titleSize, weight: .bold))
-                    .foregroundStyle(onBanner)
+                    .font(.system(size: titleSize, weight: .semibold))
+                    .foregroundStyle(theme.number)
                     .lineLimit(2)
                 Spacer()
             }
             .padding(.horizontal, pad)
             .padding(.vertical, 14)
-            .background(bannerColor)
             // White body (majority): the amount CENTRED when
             // collapsed (build 43), the detail rows when expanded.
             // While loading a centred amount-sized skeleton; while
@@ -2108,9 +2123,11 @@ public struct HomeView: View {
             // rows (ErrorBox + Retry) when expanded. Build 42
             // (owner, Nov 17, 2026 — "the white body should be
             // double the header"): roughly 1/3 header, 2/3 white
-            // body, so the body padding steps up to 52pt top and
-            // bottom — the card gets taller with the white body
-            // dominating. The header is untouched.
+            // body. Build 64 (P-4): the body padding steps DOWN
+            // to 22pt top and bottom (was 52pt) — the card stops
+            // towering over its content; the white body still
+            // dominates, just without the dead air. The header is
+            // untouched.
             VStack(alignment: .leading, spacing: 8) {
                 if isLoading {
                     // Amount-sized skeleton, CENTRED like the
@@ -2150,9 +2167,12 @@ public struct HomeView: View {
                     // chevron sits at the bottom-right below it, so
                     // the amount stays truly centred. The expanded
                     // view still shows the full detail rows above.
+                    // Build 64 (C-1 + C-2 B2): semibold, not heavy,
+                    // in the fund's own colour (theme.number) — the
+                    // amount matches the name.
                     Text(face)
-                        .font(.system(size: amountSize, weight: .heavy))
-                        .foregroundStyle(DesignTokens.ink)
+                        .font(.system(size: amountSize, weight: .semibold))
+                        .foregroundStyle(theme.number)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -2165,8 +2185,8 @@ public struct HomeView: View {
                 }
             }
             .padding(.horizontal, pad)
-            .padding(.top, 52)
-            .padding(.bottom, 52)
+            .padding(.top, 22)
+            .padding(.bottom, 22)
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -2272,6 +2292,74 @@ public struct HomeView: View {
         case .loading:
             return "\(name), loading, show breakdown"
         }
+    }
+
+    // MARK: Past Weeks (build 64, F-18)
+
+    /// The visible Past Weeks destination on Home: a quiet white
+    /// row — calendar glyph in deep blue, "Past Weeks" in ink,
+    /// faint chevron — so closed weeks are one tap away instead
+    /// of hiding behind the Spending card's chevron or the
+    /// Transactions "More" menu.
+    private var pastWeeksButton: some View {
+        Button { showPastWeeks = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(DesignTokens.deep)
+                    .frame(width: 22, height: 22)
+                Text("Past Weeks")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#c3cad2"))
+            }
+            .frame(minHeight: 48)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .fundCardShadow()
+        .accessibilityIdentifier("home.pastWeeks")
+        .accessibilityLabel("Past Weeks, show closed weeks")
+    }
+
+    /// The Settings context for the Home-presented Past Weeks —
+    /// the same context the shell builds for its history pages
+    /// (AppShellView.settingsContext), except a Past Week tap
+    /// closes this cover first and THEN applies the week filter —
+    /// otherwise the filtered list would sit hidden under the
+    /// cover. Nil when the household is unknown (the shell's
+    /// homeTab already gates on it, so this is a safe fallback,
+    /// never a blank cover).
+    private var pastWeeksContext: SettingsContext? {
+        guard let householdId = appState.householdId else { return nil }
+        return SettingsContext(
+            client: appState.client,
+            householdId: householdId,
+            isAdmin: viewModel.isAdmin,
+            isOwner: appState.isOwner,
+            currentUserId: appState.client.currentSession?.user.id,
+            displayName: appState.displayName,
+            email: appState.client.currentSession?.user.email,
+            householdName: appState.householdName,
+            onSignOut: { Task { await appState.signOut() } },
+            onAccountDeleted: { message in
+                Task { await appState.signOut() }
+                appState.showToast(message, kind: .info)
+            },
+            onShowWeekTransactions: { week in
+                showPastWeeks = false
+                appState.showTransactionsForWeek(week)
+            },
+            unregisterPushToken: { await appState.unregisterPushToken() }
+        )
     }
 
     // MARK: Recent transactions

@@ -20,10 +20,12 @@ import OnBudgetKit
 /// shared `TransactionFilters` (one filter system — the same
 /// `apply(to:)` the list uses, never a second one); the count and
 /// the summary update live as the user picks, and Generate commits
-/// the draft to the list's filter, so the list and the export agree
-/// after an export. Cancel discards the draft and leaves the list
-/// untouched — the same snapshot/draft/apply/cancel pattern as the
-/// list's Filters sheet.
+/// the draft to the list's filter in Filtered scope, so the list
+/// and the export agree after a filtered export (build 64, F-7:
+/// exporting All leaves the list's filter untouched, and a commit
+/// toasts "List now shows…"). Cancel discards the draft and leaves
+/// the list untouched — the same snapshot/draft/apply/cancel
+/// pattern as the list's Filters sheet.
 ///
 /// The full history is fetched once, in the background, when the
 /// popup opens — the list page only ever holds the rows loaded so
@@ -43,6 +45,12 @@ import OnBudgetKit
 /// text; errors are the soft-red box with dark red text.
 public struct TransactionExportView: View {
     @Bindable var viewModel: TransactionsViewModel
+    /// The app state (build 64, F-7/F-34): confirmations from this
+    /// popup go through `AppViewModel.showToast` (app-shell level),
+    /// because the popup is a full-screen cover over
+    /// TransactionsView — a toast fired from the view model would
+    /// render underneath the cover, where nobody can see it.
+    let appState: AppViewModel
     /// The household name the shell already loaded
     /// (`appState.householdName`); nil falls back to a fetch.
     let householdName: String?
@@ -86,8 +94,9 @@ public struct TransactionExportView: View {
     @State private var previewURL: URL? = nil
     @State private var resolvedHouseholdName: String? = nil
 
-    public init(viewModel: TransactionsViewModel, householdName: String?, onDismiss: @escaping () -> Void) {
+    public init(viewModel: TransactionsViewModel, appState: AppViewModel, householdName: String?, onDismiss: @escaping () -> Void) {
         self.viewModel = viewModel
+        self.appState = appState
         self.householdName = householdName
         self.onDismiss = onDismiss
         _draftFilters = State(initialValue: viewModel.filters)
@@ -473,17 +482,31 @@ public struct TransactionExportView: View {
             }
             .accessibilityLabel("Loading transactions")
         } else if rowsForScope.isEmpty {
-            // A min > max range is a validation state, not an
-            // empty result — the amount block above already says
-            // why, so this section stays quiet instead of stacking
-            // a second, misleading "no match" box.
+            // Build 64 (F-21): "no match" is a normal state, not
+            // an error — a quiet neutral line, never a red box
+            // (soft-red is for real errors only). A min > max
+            // range is a validation state, not an empty result —
+            // the amount block above already says why, so this
+            // section stays quiet instead of stacking a second,
+            // misleading "no match" line.
             if scope != .filtered || !draftAmountInvalid {
-                SoftErrorBox(scope == .filtered
+                Text(scope == .filtered
                     ? "No transactions match the current filters — change the filters or choose All."
                     : "No transactions here yet — nothing to export.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityIdentifier("export.empty")
             }
         } else {
-            Text("\(rowsForScope.count) transactions")
+            // Build 64 (F-21): the count line carries the net
+            // total, so the filtered set's worth reads at a
+            // glance — "12 transactions · Net −$340.20".
+            // `formatCents` (not `netTotalText`): the export net
+            // is In − Out, so a negative net is money out and
+            // reads with a minus, not the list count line's "+".
+            let totals = TransactionExport.totals(transactions: rowsForScope)
+            Text("\(rowsForScope.count) transactions · Net \(TransactionFormatting.formatCents(totals.netCents))")
                 .font(.system(size: 13))
                 .foregroundStyle(Color(hex: "#6b7280"))
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -528,21 +551,43 @@ public struct TransactionExportView: View {
     /// shares it from the preview. A CSV has no preview and
     /// goes straight to the share sheet. Duplicate taps while
     /// a file is being built are ignored (never a greyed-out
-    /// button); a tap before the rows arrive is ignored the
-    /// same way. A zero-match scope shows its message instead
-    /// of an empty file.
+    /// button); a tap before the rows arrive, or with nothing
+    /// matching, now says so (build 64, F-34) instead of
+    /// dead-tapping — via the app-shell toast, which renders
+    /// above this full-screen cover.
     ///
-    /// Generate commits the draft to the shared filter (build
-    /// 61): the list and the export agree after an export — one
-    /// filter system. `persistFilters()` only (NOT
-    /// `filterChanged()`): an export must never yank the list
-    /// out of week mode — the list sheet's Cancel avoids
-    /// `filterChanged()` for the same reason.
+    /// Generate commits the draft to the shared filter ONLY in
+    /// Filtered scope (build 64, F-7): exporting All used to
+    /// silently change the list's filter to the draft picks.
+    /// For All the list's filter is left untouched. When a
+    /// commit happens, the app-shell toast says what the list
+    /// now shows ("List now shows…"). `persistFilters()` only
+    /// (NOT `filterChanged()`): an export must never yank the
+    /// list out of week mode.
     private func generate() {
         guard !isGenerating else { return }
-        guard allRows != nil, !rowsForScope.isEmpty else { return }
-        viewModel.filters = draftFilters
-        viewModel.persistFilters()
+        // Build 64 (F-34): a tap with nothing to export is not
+        // silence — it says why, via the app-shell toast.
+        guard allRows != nil else {
+            appState.showToast("Still loading transactions — try again in a moment.", kind: .info)
+            return
+        }
+        guard !rowsForScope.isEmpty else {
+            appState.showToast("Nothing matches those filters — change the filters or choose All.", kind: .info)
+            return
+        }
+        // Build 64 (F-7): commit the draft only when scope is
+        // Filtered; for All, leave the list's filter untouched.
+        if scope == .filtered {
+            viewModel.filters = draftFilters
+            viewModel.persistFilters()
+            let chips = draftFilters.activeChips(customNames: viewModel.fundNames)
+            if chips.isEmpty {
+                appState.showToast("List now shows all transactions.", kind: .info)
+            } else {
+                appState.showToast("List now shows \(chips.map(\.label).joined(separator: " · ")).", kind: .info)
+            }
+        }
         let scopeRows = rowsForScope
         let fundNames = viewModel.fundNames
         let household = resolvedHouseholdName ?? "Household"

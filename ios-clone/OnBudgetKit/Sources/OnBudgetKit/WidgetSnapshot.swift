@@ -89,10 +89,16 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
         return "Charity"
     }
 
-    /// The widget's charity figure label (build 37): "<Name> left"
-    /// — "Charity left" by default, the custom name when renamed.
+    /// The widget's charity figure label (build 64, owner
+    /// Nov 23, 2026 — F-37): "Available" — plain words, matching
+    /// the Tzedaka Available the figure shows. Was "<Name> left"
+    /// ("Charity left" by default, the custom name when renamed);
+    /// the owner asked for "Available" instead of "Tzedaka left".
+    /// (The Spending half's label matches — also "Available",
+    /// build 64 — so the two halves read the same word in the
+    /// same case.)
     public var charityLeftLabel: String {
-        "\(charityDisplayName) left"
+        "Available"
     }
 
     /// A copy of this snapshot with new fund names (build 40, Nov 16,

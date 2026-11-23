@@ -83,7 +83,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   computeWeek, weekStartOf, nyTodayString, addDays, isWeekLocked,
-  chargeContribution, linkedRefundNormalPortionCents,
+  chargeContribution, linkedRefundSpendingPortionCents,
   restorationDebtCutsAfterClose,
   debtRulePayment, debtPaymentsAfterClose,
 } from './engine.mjs';
@@ -318,26 +318,41 @@ Deno.serve(async (req) => {
     const tempSum = (ws: string) => (temps ?? [])
       .filter((t: any) => t.week_start === ws)
       .reduce((s: number, t: any) => s + (t.amount_cents ?? 0), 0);
+    // Two refund predicates (F-1, Nov 23, 2026). The open-week walk
+    // below counts VERIFIED or PROVISIONAL refunds (a pending refund
+    // counts right away, like a pending charge). The restoration
+    // phase further down keeps POSTED-only: restoration posts real
+    // entries for locked weeks, and a pending refund on a locked
+    // purchase restores only once it posts (then the restoration
+    // phase picks it up). That is the one boundary where a pending
+    // refund still waits — it counts nowhere until it posts, rather
+    // than posting a provisional restoration that would need
+    // reversing if the refund disappeared.
     const postedRefund = (t: any) =>
       t.kind === 'refund' && t.state === 'verified' && t.excluded !== true && t.state !== 'reversed';
+    const countableRefund = (t: any) =>
+      t.kind === 'refund' && (t.state === 'verified' || t.state === 'provisional') && t.excluded !== true && t.state !== 'reversed';
     const inWeek = (t: any, ws: string) => t.date >= ws && t.date < addDays(ws, 7);
     const ownCharges = (ws: string) =>
       txns.filter((t: any) => inWeek(t, ws)).reduce((s: number, t: any) => s + chargeContribution(t), 0);
-    // N1 Option A — fund-first, counted once (Nov 5, 2026): the
-    // NORMAL portion of each linked refund for purchases in this
-    // week, aggregated per purchase from the cumulative refund
-    // total (see engine.mjs linkedRefundNormalPortionCents). The
-    // fund portion is credited to the fund by refund restoration,
-    // never by this walk. Returns a Map purchaseId -> normal
-    // portion (positive cents) so the restoration simulation can
-    // add back exactly what this walk netted for one purchase.
-    const linkedNormalPortionByPurchase = (ws: string) => {
+    // F-1 owner rule (Nov 23, 2026) — refund restores to its
+    // purchase's classification, counted once per purchase (see
+    // engine.mjs linkedRefundSpendingPortionCents). A spending
+    // purchase's refund nets in full; a fund purchase's refund nets
+    // 0 (back to the fund via restoration). No splits exist, so the
+    // old fund-first helper is not used here any more. Aggregated
+    // per purchase from the cumulative refund total (verified OR
+    // provisional), so partial refunds are order-independent.
+    // Returns a Map purchaseId -> spending portion (positive cents)
+    // so the restoration simulation can add back exactly what this
+    // walk netted for one purchase.
+    const linkedSpendingPortionByPurchase = (ws: string) => {
       const purchaseById = new Map(
         txns.filter((t: any) => inWeek(t, ws) && (t.kind === 'charge' || t.kind === 'fund_charge')).map((t: any) => [t.id, t]),
       );
       const refundTotalByPurchase = new Map<string, number>();
       for (const r of txns) {
-        if (postedRefund(r) && r.original_purchase_id && purchaseById.has(r.original_purchase_id)) {
+        if (countableRefund(r) && r.original_purchase_id && purchaseById.has(r.original_purchase_id)) {
           refundTotalByPurchase.set(
             r.original_purchase_id,
             (refundTotalByPurchase.get(r.original_purchase_id) ?? 0) + Math.abs(r.amount_cents ?? 0),
@@ -347,27 +362,28 @@ Deno.serve(async (req) => {
       const out = new Map<string, number>();
       for (const [purchaseId, totalRefunded] of refundTotalByPurchase) {
         const purchase: any = purchaseById.get(purchaseId);
-        out.set(purchaseId, linkedRefundNormalPortionCents(
-          purchase.amount_cents, purchase.fund_allocation_cents, totalRefunded,
+        out.set(purchaseId, linkedRefundSpendingPortionCents(
+          purchase.kind, purchase.amount_cents, purchase.fund_allocation_cents, totalRefunded,
         ));
       }
       return out;
     };
     const linkedPostedToWeek = (ws: string) => {
       let total = 0;
-      for (const portion of linkedNormalPortionByPurchase(ws).values()) total += portion;
+      for (const portion of linkedSpendingPortionByPurchase(ws).values()) total += portion;
       return -total; // negative: reduces C, as the old full-amount sum did
     };
     const unlinkedAbsInWeek = (ws: string) =>
-      txns.filter((t: any) => inWeek(t, ws) && postedRefund(t) && !t.original_purchase_id)
+      txns.filter((t: any) => inWeek(t, ws) && countableRefund(t) && !t.original_purchase_id)
         .reduce((s: number, t: any) => s + Math.abs(t.amount_cents ?? 0), 0);
     // Defence in depth (Nov 5, 2026), mirroring compute-week: unlinked
-    // posted refunds net only up to the week's charges after linked
+    // refunds net only up to the week's charges after linked
     // refunds. The excess is NOT netted; unlinkedExcessInWeek exposes
     // it so a future misclassification is visible instead of silent.
     // P1-M1 (Nov 8, 2026): locked weeks never net unlinked refunds —
     // the same rule as compute-week. Locked history is rewritten only
-    // by restoration, never by re-netting.
+    // by restoration, never by re-netting. F-1: unlinked PROVISIONAL
+    // refunds count here too (countableRefund, same as compute-week).
     const unlinkedPostedInWeek = (ws: string) => {
       if (isWeekLocked(ws, currentWeekStart)) return 0;
       const cap = Math.max(0, ownCharges(ws) + linkedPostedToWeek(ws));
@@ -400,7 +416,9 @@ Deno.serve(async (req) => {
       // override does not rewrite a closed week.
       const snap = closeByWeek.get(ws);
       return {
-        B: snap && snap.base_allowance_cents != null ? snap.base_allowance_cents : overrideByWeek.has(ws) ? overrideByWeek.get(ws)! : household.base_allowance_cents,
+        // F-32 (build 64): a NULL household base means "unset" — the
+        // $375 default applies until the admin sets a value.
+        B: snap && snap.base_allowance_cents != null ? snap.base_allowance_cents : overrideByWeek.has(ws) ? overrideByWeek.get(ws)! : household.base_allowance_cents ?? 37500,
         T: snap && snap.temp_increase_cents != null ? snap.temp_increase_cents : overrideByWeek.has(ws) ? 0 : tempSum(ws),
       };
     };
@@ -491,8 +509,19 @@ Deno.serve(async (req) => {
       return res;
     };
     const upsertClose = async (row: any) => {
+      // Fallback variants, newest columns first: a DB that has not
+      // applied a migration yet must still close the week instead of
+      // failing the whole run. F-13 (build 61 audit, Nov 23, 2026):
+      // the old second variant dropped debt_payment_cents along with
+      // the snapshot columns, so a closed week written via the
+      // fallback stored NULL there — the very column the debt fund
+      // reads. The intermediate variant below keeps
+      // debt_payment_cents (dropping only the older snapshot
+      // columns), so the fallback loses the debt figure only when
+      // the debt_payment_cents column itself does not exist yet.
       const variants = [
         row,
+        { household_id: row.household_id, week_start: row.week_start, surplus_cents: row.surplus_cents, outgoing_debt_cents: row.outgoing_debt_cents, late_adjustment_cents: row.late_adjustment_cents, debt_payment_cents: row.debt_payment_cents },
         { household_id: row.household_id, week_start: row.week_start, surplus_cents: row.surplus_cents, outgoing_debt_cents: row.outgoing_debt_cents, late_adjustment_cents: row.late_adjustment_cents },
         { household_id: row.household_id, week_start: row.week_start, surplus_cents: row.surplus_cents, outgoing_debt_cents: row.outgoing_debt_cents },
       ];
@@ -875,6 +904,9 @@ Deno.serve(async (req) => {
         );
         const txnById = new Map(txns.map((t: any) => [t.id, t]));
         // Group verified linked refunds by purchase, in date order.
+        // POSTED-only on purpose (F-1 boundary, see the two
+        // predicates above): a pending refund on a locked purchase
+        // restores only once it posts.
         const refundsByPurchase = new Map<string, any[]>();
         for (const t of txns) {
           if (postedRefund(t) && t.original_purchase_id) {
@@ -935,14 +967,14 @@ Deno.serve(async (req) => {
             // Remove them: baseline must carry the FULL purchase
             // charge, with refunds modeled only by the reduction.
             if (!isWeekLocked(ws, currentWeekStart) && ws === purchaseWeek) {
-              // N1: weekCharges netted only the NORMAL portion of
+              // F-1: weekCharges netted only the SPENDING portion of
               // this purchase's refunds (linkedPostedToWeek), so
               // exactly that portion is added back here — adding
               // back the full refund sum would put the fund portion
               // into the baseline charges too and overstate the
               // restoration. (Other purchases' refunds linked to
               // this week stay, as booked.)
-              charges += linkedNormalPortionByPurchase(purchaseWeek).get(purchaseId) ?? 0;
+              charges += linkedSpendingPortionByPurchase(purchaseWeek).get(purchaseId) ?? 0;
             }
             simWeeks.push({
               week_start: ws, B, T, charges_cents: Math.max(0, charges),

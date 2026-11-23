@@ -459,30 +459,23 @@ public struct DebtRuleSection: View {
                 .foregroundStyle(DesignTokens.ink)
             // Build 57 (owner, Nov 22, 2026): the picker bar is
             // shorter now — Apply sits on the SAME row as the
-            // segmented control, to its right — so the row reads
+            // control, to its right — so the row reads
             // [picker][Apply] instead of the picker full-width
-            // with Apply alone underneath (Off mode). The picker
+            // with Apply alone underneath (Off mode). The control
             // is flexible, so it takes whatever width is left
             // after Apply — on an iPhone (390pt) the three short
-            // segments still get ~80pt each, no clipping. The
+            // cells still get ~80pt each, no clipping. The
             // field (in %/$ mode) sits below this row, full
-            // width; in Off mode there is no field.
+            // width; in Off mode there is no field. Build 64
+            // (C-6): the segmented picker is gone — a squarish
+            // control (8pt radius, ink text, pale-blue selected
+            // cell), no pill track.
             HStack(spacing: 8) {
-                Picker("Rule", selection: $selectedMode) {
-                    Text("%").tag(DebtRule.Mode.percent)
-                    Text("$").tag(DebtRule.Mode.fixed)
-                    Text("Off").tag(DebtRule.Mode.off)
-                }
-                .pickerStyle(.segmented)
-                // Build 36 (owner, Nov 16, 2026): the picker segments
-                // were small and cheap — taller segments with larger
-                // text, like the other fund editors. Build 37 (owner,
-                // Nov 16, 2026): thicker still and more square — the
-                // thin rounded bar read as flimsy. The rule value is
-                // untouched: the picker still shows the saved rule.
-                .font(.system(size: 16, weight: .semibold))
-                .frame(minHeight: 52)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                SquarishPicker(
+                    [(DebtRule.Mode.percent, "%"), (DebtRule.Mode.fixed, "$"), (DebtRule.Mode.off, "Off")],
+                    selection: $selectedMode,
+                    minHeight: 52
+                )
                 FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "debt-rule") {
                     saveRule()
                 }
@@ -834,27 +827,30 @@ public struct SpendingAllowanceSection: View {
             // the top above the fields. It stays visible to every
             // role (local-only, suggestion-only) while the other
             // two stay admin-only, so it sits OUTSIDE the
-            // `if isAdmin` block below. Solid blue primary, as
-            // before; Top Up Budget stays pale and Set Temporary
-            // Allowance stays grey, so no two adjacent buttons
-            // share a colour.
+            // `if isAdmin` block below. Build 64 (C-3 B3): one
+            // solid-blue primary, then two OUTLINES in different
+            // colours — Top Up Budget ink, Set Temporary
+            // Allowance darker grey — so no group of three
+            // shares a colour. The pale middle tier is retired
+            // for three-button groups.
             if let onCalculate {
                 FundsPrimaryButton("Calculate", isLarge: true) { onCalculate() }
                     .accessibilityIdentifier("funds.openWeeklyBudgetCalculator")
             }
             if isAdmin {
                 // Top Up Budget (Nov 16, 2026): a one-time top-up to
-                // this week's budget. PALE #bfdbfe, full-width large
-                // (17pt, 16pt vertical padding) — build 52 (owner,
-                // Nov 20, 2026): solid blue here sat as a second
-                // stark blue button below "Calculate" in the same
-                // Spending card. The Temporary Allowance button
-                // below stays grey tertiary, so no two adjacent
-                // buttons share a colour.
-                FundsPaleButton("Top Up Budget", isBusy: viewModel.busyAction == "add-budget", isLarge: true) {
+                // this week's budget. INK OUTLINE, full-width large
+                // (17pt, 16pt vertical padding) — build 64 (B3):
+                // solid blue here sat as a second stark blue button
+                // below "Calculate" in the same Spending card
+                // (build 52 made it pale for the same reason), and
+                // the Temporary Allowance button below is the
+                // darker-grey outline, so no two adjacent buttons
+                // share a colour.
+                FundsInkOutlineButton("Top Up Budget", isBusy: viewModel.busyAction == "add-budget", isLarge: true) {
                     showAddToBudget = true
                 }
-                FundsTertiaryButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance", isLarge: true) {
+                FundsSlateOutlineButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance", isLarge: true) {
                     onOpenTemp()
                 }
             }

@@ -4,16 +4,19 @@
 // biometric-protected copy of the Supabase session.
 //
 // Why a second store exists at all: the shipped default session
-// store (`UserDefaultsSessionStore`, SupabaseClient.swift) keeps the
-// session JSON in UserDefaults in plaintext. A Face ID gate is
-// meaningless on top of that — `boot()` would read the plaintext
-// session and walk straight into Home without asking for a face.
-// So opting in MOVES the session: the client swaps its store to this
-// one (see `SupabaseClient.replaceSessionStore`), the old
-// UserDefaults copy is cleared, and every later save (sign-in,
-// token refresh, password change) lands in the Keychain instead.
-// Opting out swaps back and deletes the Keychain item. Sign-out and
-// a refused refresh clear the session through the same `setSession`
+// store (`KeychainSessionStore`, below) keeps the session JSON in
+// the shared App Group Keychain item with NO biometric gate —
+// `boot()` would read it and walk straight into Home without
+// asking for a face. So opting in moves the APP-side session: the
+// client swaps its store to this one (see
+// `SupabaseClient.replaceSessionStore`), and every later app-side
+// save (sign-in, token refresh, password change) lands in the
+// biometric item instead. The shared Keychain copy stays — the
+// mirror (`MirroredSessionStore`) keeps it in sync so the widget
+// can still fetch fresh numbers — so Face ID gates opening the
+// app, not the widget's numbers. Opting out swaps back to the
+// default store and deletes the biometric item. Sign-out and a
+// refused refresh clear the session through the same `setSession`
 // path, so the Keychain item is deleted by those flows too — no
 // separate cleanup call is needed anywhere.
 //
@@ -299,3 +302,190 @@ public final class BiometricSessionStore: SessionStore {
         }
     }
 }
+
+// MARK: - Default Keychain session store (F-17, build 64)
+
+/// The DEFAULT session store: the session JSON in a single
+/// generic-password Keychain item shared with the widget extension
+/// through the App Group — never in plaintext UserDefaults, and
+/// never behind a biometric prompt.
+///
+/// Why the widget can read this item: its access group is the App
+/// Group identifier (`group.com.onbudget.ios`,
+/// `WidgetSnapshotStore.groupID`) — the same identifier the app and
+/// the widget already share. An app's effective Keychain
+/// access-group list is its `keychain-access-groups` entitlement,
+/// then its application identifier, then its
+/// `com.apple.security.application-groups` entitlement, so the App
+/// Group identifier is a valid `kSecAttrAccessGroup` with no
+/// separate Keychain Sharing capability and no Team ID prefix on
+/// the value (the prefix belongs on `keychain-access-groups`
+/// entitlement values, not on App Group identifiers). Both targets
+/// already carry the App Group entitlement
+/// (`OnBudget.entitlements`, `OnBudgetWidget.entitlements`), so the
+/// app and the widget read and write this one item.
+///
+/// Accessibility is `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`:
+/// readable once the device has been unlocked after boot (so the
+/// widget's background refresh can read it), never leaving the
+/// device, never in a backup. There is deliberately NO biometric
+/// access control on this item — that gate lives on the separate
+/// `BiometricSessionStore` item, which guards opening the app UI;
+/// the widget must be able to read the session without a face.
+/// The item is NOT synchronizable — it never leaves this device.
+///
+/// One item, one account: there is no account switch without
+/// sign-out first, exactly like the biometric item.
+///
+/// Platform split: the same seam as `KeychainBiometricStore` — the
+/// real SecItem implementation on Apple platforms, a stub that
+/// stores nothing on Linux (the package also compiles there), so
+/// the feature is simply unavailable in Linux CI and every test
+/// still compiles. The migration below verifies its Keychain write
+/// before deleting the legacy copies, so on a platform where the
+/// store holds nothing the legacy copies are left in place.
+public final class KeychainSessionStore: SessionStore {
+    public let service: String
+    public let account: String
+    /// The Keychain access group — the App Group identifier, shared
+    /// with the widget extension (see the type doc above).
+    public let accessGroup: String
+
+    public init(
+        service: String = "com.onbudget.ios.session",
+        account: String = "supabase-session",
+        accessGroup: String = WidgetSnapshotStore.groupID
+    ) {
+        self.service = service
+        self.account = account
+        self.accessGroup = accessGroup
+    }
+
+    /// Identifies the underlying Keychain item (access group +
+    /// service + account). Two stores with the same identity point
+    /// at the same item even when they are different objects —
+    /// `SupabaseClient.replaceSessionStore` uses this so swapping
+    /// between two wrappers of the same item can never delete the
+    /// session the new store just wrote.
+    public var storageIdentity: String { "\(accessGroup)\n\(service)\n\(account)" }
+
+    public func load() -> AuthSession? {
+        guard let data = Self.readItem(service: service, account: account, accessGroup: accessGroup) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(AuthSession.self, from: data)
+    }
+
+    public func save(_ session: AuthSession?) {
+        if let session {
+            guard let data = try? JSONEncoder().encode(session) else { return }
+            Self.writeItem(data, service: service, account: account, accessGroup: accessGroup)
+        } else {
+            Self.deleteItem(service: service, account: account, accessGroup: accessGroup)
+        }
+    }
+
+    /// True when the shared item holds a readable session. Never
+    /// prompts (the item has no biometric access control). A
+    /// corrupt item reads as absent — it is unrecoverable either
+    /// way, and the caller falls back to sign-in.
+    public func exists() -> Bool { load() != nil }
+
+    // MARK: Migration from the legacy plaintext stores
+
+    /// Moves any session still in the legacy plaintext stores into
+    /// this shared Keychain item, then deletes both plaintext
+    /// copies: the standard UserDefaults copy (the pre-build-64
+    /// default) and the App Group UserDefaults mirror copy (build
+    /// 40, widget sync). Returns the moved session, or the session
+    /// already in the Keychain when there was one, or nil when
+    /// there was nothing anywhere. Idempotent — safe to call on
+    /// every launch; after the first run there are no legacy copies
+    /// left to move, and a Keychain copy always wins over the
+    /// plaintext ones (it is the freshest write). A failed Keychain
+    /// write leaves the legacy copies in place so the next launch
+    /// can retry instead of forcing a re-login.
+    @discardableResult
+    public static func migrateLegacyCopies() -> AuthSession? {
+        let store = KeychainSessionStore()
+        let standardLegacy = UserDefaultsSessionStore()
+        let mirrorLegacy = UserDefaults(suiteName: WidgetSnapshotStore.groupID)
+            .map { UserDefaultsSessionStore(defaults: $0) }
+        if let existing = store.load() {
+            standardLegacy.save(nil)
+            mirrorLegacy?.save(nil)
+            return existing
+        }
+        let legacy = standardLegacy.load() ?? mirrorLegacy?.load()
+        guard let legacy else {
+            standardLegacy.save(nil)
+            mirrorLegacy?.save(nil)
+            return nil
+        }
+        store.save(legacy)
+        guard store.load() != nil else { return nil }
+        standardLegacy.save(nil)
+        mirrorLegacy?.save(nil)
+        return legacy
+    }
+
+    /// The default store for a fresh client: runs the one-time
+    /// legacy migration, then returns the shared Keychain store.
+    public static func migrated() -> KeychainSessionStore {
+        _ = migrateLegacyCopies()
+        return KeychainSessionStore()
+    }
+}
+
+#if canImport(Security)
+
+extension KeychainSessionStore {
+    fileprivate static func baseQuery(service: String, account: String, accessGroup: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: accessGroup,
+        ]
+    }
+
+    fileprivate static func readItem(service: String, account: String, accessGroup: String) -> Data? {
+        var query = baseQuery(service: service, account: account, accessGroup: accessGroup)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return nil }
+        return result as? Data
+    }
+
+    fileprivate static func writeItem(_ data: Data, service: String, account: String, accessGroup: String) {
+        // Delete-then-add: updating in place would keep a stale
+        // accessibility / access group, and deleting needs no
+        // authentication. A failed add leaves no item rather than a
+        // half-written one; the migration verifies the write before
+        // deleting the legacy copies.
+        deleteItem(service: service, account: account, accessGroup: accessGroup)
+        var query = baseQuery(service: service, account: account, accessGroup: accessGroup)
+        query[kSecValueData as String] = data
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        _ = SecItemAdd(query as CFDictionary, nil)
+    }
+
+    fileprivate static func deleteItem(service: String, account: String, accessGroup: String) {
+        _ = SecItemDelete(baseQuery(service: service, account: account, accessGroup: accessGroup) as CFDictionary)
+    }
+}
+
+#else
+
+extension KeychainSessionStore {
+    /// No Security framework (Linux CI): the default store holds
+    /// nothing, exactly like the `KeychainBiometricStore` stub
+    /// above. The migration's write verification fails, so legacy
+    /// copies are left alone on Linux too.
+    fileprivate static func readItem(service: String, account: String, accessGroup: String) -> Data? { nil }
+    fileprivate static func writeItem(_ data: Data, service: String, account: String, accessGroup: String) {}
+    fileprivate static func deleteItem(service: String, account: String, accessGroup: String) {}
+}
+
+#endif

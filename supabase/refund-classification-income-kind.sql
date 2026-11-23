@@ -84,11 +84,23 @@ begin
   if v_cur_week > v_tx_week + 35 then
     raise exception 'week is locked: a locked-week transaction cannot be changed here';
   end if;
-  update transactions set kind = new_kind where id = txn_id;
+  -- F-31 (build 61 audit, Nov 23, 2026): a row reclassified AWAY
+  -- from 'refund' must not keep a stale original_purchase_id —
+  -- the link would keep restoring money against a purchase for a
+  -- row that is no longer a refund, and the linked-transaction
+  -- guard (F-2/F-4) would keep treating the pair as linked. Clear
+  -- it in the same statement as the kind change, so the row can
+  -- never be half-reclassified. The audit detail records the
+  -- clearing when a link was present.
+  update transactions set kind = new_kind,
+    original_purchase_id = case when new_kind <> 'refund' then null else original_purchase_id end
+    where id = txn_id;
   insert into audit_log (household_id, actor, actor_name, action, detail)
     values (v_row.household_id, auth.uid(), 'admin', 'Transaction reclassified',
             v_row.merchant || ' ' || v_row.amount_cents::text || ' cents reclassified from '
             || v_row.kind || ' to ' || new_kind
+            || case when v_row.original_purchase_id is not null and new_kind <> 'refund'
+                    then ' (refund link cleared)' else '' end
             || case when reason is not null and btrim(reason) <> ''
                     then ' — reason: ' || reason else ' — no reason given' end || '.');
   -- P2-N7 (Nov 8, 2026): a reclassification can make a pair linkable
@@ -96,10 +108,10 @@ begin
   -- row reclassified TO a purchase gains earlier unlinked refunds).
   -- Offer it to the refund linker best-effort so the pair links
   -- without waiting for a re-delivery. Linking never fails the
-  -- reclassify, so errors are swallowed deliberately. NOTE: a row
-  -- reclassified AWAY from 'refund' keeps any original_purchase_id
-  -- it already had — clearing stale links is not done here; an
-  -- admin unlinks it by hand if that ever matters.
+  -- reclassify, so errors are swallowed deliberately. A row
+  -- reclassified AWAY from 'refund' has its link cleared above, so
+  -- no stale link survives; an admin re-links it by hand if that
+  -- ever matters.
   begin
     if new_kind = 'refund' then
       perform public.auto_link_refund(txn_id);
@@ -120,3 +132,18 @@ grant execute on function public.reclassify_transaction(uuid, text, text) to aut
 --   -- expected: kind in ('charge','refund','fund_charge','payment','cashback','charity','transfer','income')
 --   select pg_get_functiondef(oid) from pg_proc where proname = 'reclassify_transaction';
 --   -- expected: allow-list contains 'income'
+--   -- F-31 (build 64): a refund reclassified away must lose its link:
+--   --   -- on the TEST household, take a live refund row linked to a
+--   --   -- purchase (original_purchase_id not null), then as admin:
+--   --   select reclassify_transaction('<refund-id>', 'charge', 'F-31 check');
+--   --   select kind, original_purchase_id from transactions where id = '<refund-id>';
+--   --   -- expect: kind 'charge', original_purchase_id NULL. The audit
+--   --   -- row reads 'Transaction reclassified ... (refund link cleared)'.
+--   --   -- Reclassifying TO 'refund' again re-links via
+--   --   -- auto_link_refund (P2-N7) and leaves the link intact:
+--   --   select reclassify_transaction('<refund-id>', 'refund', 'F-31 check 2');
+--   --   -- expect: kind 'refund', original_purchase_id set again
+--   --   -- (to the same purchase, if it is still live).
+--   -- The SUPERSEDED copy of this function in
+--   -- 05-transaction-mutation-rpcs.sql is bannered never-apply and is
+--   -- NOT updated — it must never be pasted. Only this file is canonical.

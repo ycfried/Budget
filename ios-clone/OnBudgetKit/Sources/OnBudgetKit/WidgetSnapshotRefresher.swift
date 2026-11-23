@@ -12,13 +12,15 @@
 //     spinner / checkmark is tap feedback only, and a background
 //     run has no tap to feed back to.
 //
-// The fetch itself is unchanged (build 40): the app mirrors its
-// session into the shared App Group container on every save
-// (MirroredSessionStore), and writes the household id alongside the
-// snapshot. The refresher builds a SupabaseClient on an
-// App-Group-backed session store, calls compute-week + the charity
-// summary (active income, verified gifts, cash gifts), and writes a
-// new snapshot. The fund names ride along from the existing snapshot
+// The fetch itself is unchanged (build 40): the app keeps its
+// session in the shared App Group Keychain item
+// (`KeychainSessionStore`, build 64, audit F-17) — that item IS the
+// app's default store, and when Face ID unlock is on the mirror
+// (`MirroredSessionStore`) keeps it in sync — and writes the
+// household id alongside the snapshot. The refresher builds a
+// SupabaseClient on that shared item, calls compute-week + the
+// charity summary (active income, verified gifts, cash gifts), and
+// writes a new snapshot. The fund names ride along from the existing snapshot
 // (a rename does not change the numbers, and the names are already
 // pushed there on rename). When there is no session / no household
 // id / the fetch fails (signed out, token expired, offline), it
@@ -66,18 +68,21 @@ public enum WidgetSnapshotRefresher {
     @discardableResult
     public static func refreshSnapshot() async -> Bool {
         guard let householdId = WidgetSnapshotStore.readHouseholdId() else { return false }
-        // The session mirrored into the App Group by the app
-        // (MirroredSessionStore). No session → signed out (or the
-        // app has never saved one) → nothing fresh to fetch.
-        guard let groupDefaults = UserDefaults(suiteName: WidgetSnapshotStore.groupID) else { return false }
-        let store = UserDefaultsSessionStore(defaults: groupDefaults)
+        // The session in the shared App Group Keychain item (build
+        // 64, audit F-17): the app's default store IS this item, and
+        // when Face ID unlock is on the mirror keeps it in sync —
+        // either way the widget reads the same session the app
+        // writes. No session → signed out (or the app has never
+        // saved one) → nothing fresh to fetch.
+        let store = KeychainSessionStore()
         guard store.load() != nil else { return false }
         // Build 51 (widget refresh): this client must NOT clear the
         // persisted session on a refused refresh. It shares the App
-        // Group mirror with the app — clearing here would delete
-        // the mirror and stick the widget until the app is opened
-        // again. A refused refresh still fails this fetch (false),
-        // but the mirror survives for a later tap / background run.
+        // Group Keychain item with the app — clearing here would
+        // delete the app's session too and stick the widget until
+        // the app is opened again. A refused refresh still fails
+        // this fetch (false), but the shared item survives for a
+        // later tap / background run.
         let client = SupabaseClient(store: store, clearsSessionOnRefusedRefresh: false)
         do {
             let week = try await client.functions.computeWeek(householdId: householdId)

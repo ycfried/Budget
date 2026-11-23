@@ -20,6 +20,23 @@ concurrency:
   group: onbudget-ios-clone-simulator-testflight
   cancel-in-progress: true
 jobs:
+  # F-24 (build 61 audit, Nov 23, 2026) — SPLIT PENDING, NOT DONE:
+  # this single `simulator` job runs the whole script
+  # (ios-clone/scripts/macos_simulator_test.sh: kit tests, then
+  # build-for-testing, then the iPhone UI tests, then the iPad leg)
+  # sequentially and now takes ~65 min against a 90-min timeout.
+  # Splitting it into two jobs (iPhone / iPad) CANNOT be done in
+  # YAML alone: both jobs would run the whole script, doubling the
+  # work, and the upload workflow gates on this run for the commit
+  # SHA, so a split changes that gate too. The script needs a leg
+  # selector first — e.g. ONBUDGET_SIMULATOR_LEG=iphone|ipad gating
+  # the iPhone UI-test phase and the iPad leg (the kit-test +
+  # build-for-testing phases run in both legs, or in a shared
+  # setup job whose artefacts the legs download) — and only then
+  # can this file become two jobs with the same `if:` trigger and
+  # one shared artifact upload. Until that script patch lands, the
+  # 90-min timeout stands. Do NOT "split" this file by duplicating
+  # the job with the same run command.
   simulator:
     if: >-
       startsWith(github.ref, 'refs/heads/ios-clone-testflight') &&

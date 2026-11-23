@@ -20,10 +20,9 @@ import OnBudgetKit
 
 struct SettingsView: View {
     let context: SettingsContext
-    /// The shared app state (build 46 — the Home Layout switch
-    /// below reads and writes `appState.homeLayout`, the per-device
-    /// Home layout preference, so flipping it changes Home as soon
-    /// as Settings closes).
+    /// The shared app state (build 48 — the Replay Tutorial card
+    /// below reads `appState.tourAutoShow` and starts the tour via
+    /// `appState.tour`, so replaying lands on Home first).
     let appState: AppViewModel
     let onBack: () -> Void
     let plaidLauncher: PlaidLinkLauncher
@@ -59,7 +58,6 @@ struct SettingsView: View {
                 ConnectedAccountsView(context: context, toast: toast, plaidLauncher: plaidLauncher)
                 EmailAlertsView(context: context, toast: toast)
                 MembersSettingsView(context: context, toast: toast)
-                HomeLayoutSettingsCard(appState: appState)
                 ReplayTutorialSettingsCard(appState: appState, onBack: onBack)
                 PrivacyTermsSettingsCard()
                 // Merchant Names is NOT here anymore (owner, Nov 15,
@@ -70,26 +68,6 @@ struct SettingsView: View {
             .padding()
         }
         .toastOverlay(toast) // Top popup toast (owner, Nov 20, 2026 — build 50).
-    }
-}
-
-/// Build 46 (owner, Nov 18, 2026): the Home Layout switch — the
-/// simpler mockup layout is the default, and the previous layout
-/// stays available as "Classic" so it can be restored if the owner
-/// changes his mind. A per-device preference (each member picks
-/// their own layout on their own device), not an admin setting.
-private struct HomeLayoutSettingsCard: View {
-    @ObservedObject var appState: AppViewModel
-
-    var body: some View {
-        SettingsCard(title: "Home Layout") {
-            Picker("Home Layout", selection: $appState.homeLayout) {
-                Text("Simple").tag(AppViewModel.HomeLayout.simple)
-                Text("Classic").tag(AppViewModel.HomeLayout.classic)
-            }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("settings.homeLayoutPicker")
-        }
     }
 }
 
@@ -104,7 +82,12 @@ private struct HomeLayoutSettingsCard: View {
 /// the "Show on first open" toggle, and completing/skipping a
 /// replay still marks the tour seen (existing `finish()`
 /// behaviour). Build 54: the toggle to disable the auto-show
-/// lives in this card, right after the Home Layout card.
+/// lives in this card. Build 64 (F-40): the Home Layout
+/// (Simple / Classic) switch that used to sit above this card
+/// is gone — Simple is the Home, no decision to make (the
+/// per-device `homeLayout` default is `.simple`; the stored
+/// value stays respected for anyone who had picked Classic,
+/// they just cannot switch anymore).
 private struct ReplayTutorialSettingsCard: View {
     @ObservedObject var appState: AppViewModel
     let onBack: () -> Void
@@ -116,7 +99,7 @@ private struct ReplayTutorialSettingsCard: View {
                 .foregroundStyle(DesignTokens.muted)
             // Build 54 (owner, Nov 21, 2026): the auto-show
             // toggle — default ON, per device (UserDefaults,
-            // `hb-tour-auto-show`, same pattern as Home Layout).
+            // `hb-tour-auto-show`, same per-device UserDefaults pattern).
             // When OFF, the tour never auto-shows on first Home
             // entry; the button below still replays it on demand.
             Toggle("Show on first open", isOn: $appState.tourAutoShow)

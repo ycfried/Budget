@@ -17,6 +17,16 @@ name: OnBudget iOS clone TestFlight upload
 # the workflow stays on that runner and picks the newest Xcode 26
 # it finds. (The simulator workflow stays on Xcode 16.4 — it never
 # uploads, so the SDK gate does not apply there.)
+# From April 2027 App Store Connect requires Xcode 27 / the iOS 27
+# SDK (F-24, build 61 audit) — this workflow MUST move to Xcode 27
+# before then or uploads will be rejected the same way. Do not let
+# the April 2027 cutoff pass unnoticed.
+# Polling discipline (F-30, build 61 audit; see CONTRIBUTING.md):
+# trigger commits MUST start "ci(ios-clone): approved cloud build"
+# AND touch a file; check a run with sparse 5-minute polls only —
+# NEVER "gh run watch" (it burned the 5,000-call API budget on
+# Nov 13, 2026). The rule lived only in audit docs until build 64;
+# it is written here so the next person does not re-learn it.
 # Signing: the project MUST keep its project-level
 # CODE_SIGNING_ALLOWED = NO — ios-clone/scripts/validate_project.py
 # (run by the simulator workflow) requires it, and the scaffold's

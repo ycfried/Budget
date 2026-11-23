@@ -22,17 +22,21 @@ public struct FundsContext {
     }
 }
 
-// MARK: - Buttons (spec §1.3, owner rules Nov 3–4)
+// MARK: - Buttons (spec §1.3, owner rules Nov 3–4, B3 Nov 23)
 //
-// Two-button rows: primary blue FIRST + grey tertiary SECOND.
-// Pale #bfdbfe is the middle tier of a three-button row — and,
-// since build 52 (owner, Nov 20, 2026), the full-width treatment
-// for exactly two buttons that sit below a solid blue one (Top Up
-// Budget under Calculate; Activity & Transactions under Add to
-// Tzedaka). No two adjacent buttons may share the same
-// colour/treatment.
+// B3 (owner, Nov 23, 2026 — build 64): one solid-blue primary on
+// top + two OUTLINE buttons below, in DIFFERENT colours — ink
+// #0f172a on one side, darker grey #4b5563 on the other. The
+// strengthened standing rule: never have 3 buttons with 2 sharing
+// the same colour or looking very similar — all three must be
+// clearly distinct. The pale middle tier is retired for
+// three-button groups (it survives as a component for the few
+// two-button spots that still use it). Two-button rows stay
+// primary blue first + grey tertiary second.
 // Every label is Title Cased (minor words lower unless first;
 // exceptions "Sign In", "Mark as Charity" — see TitleCase.swift).
+// Radii (build 64, P-3 — one radius system): full-width buttons
+// 10pt, small buttons 8pt, cards 12pt.
 
 public struct FundsPrimaryButton: View {
     public let label: String
@@ -59,10 +63,11 @@ public struct FundsPrimaryButton: View {
                 .padding(.horizontal, 18)
                 // Build 63 (Lean): the one filled deep-blue
                 // primary in an action group — the deeper blue
-                // (#1d4ed8) among the soft secondaries.
+                // (#1d4ed8) among the soft secondaries. Build 64
+                // (P-3): full-width buttons are 10pt radius.
                 .background(DesignTokens.deep)
                 .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .disabled(isBusy)
         .opacity(isBusy ? 0.6 : 1.0)
@@ -94,7 +99,7 @@ public struct FundsTertiaryButton: View {
                 .padding(.horizontal, 18)
                 .background(Color(hex: "#e5e7eb"))
                 .foregroundStyle(DesignTokens.ink)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .disabled(isBusy)
         .opacity(isBusy ? 0.6 : 1.0)
@@ -128,7 +133,7 @@ public struct FundsDangerButton: View {
                 .padding(.horizontal, 18)
                 .background(DesignTokens.errorBackground)
                 .foregroundStyle(DesignTokens.errorText)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .disabled(isBusy)
         .opacity(isBusy ? 0.6 : 1.0)
@@ -168,10 +173,10 @@ public struct FundsPaleButton: View {
                 .background(DesignTokens.softFill)
                 .foregroundStyle(DesignTokens.ink)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(cornerRadius: 10)
                         .stroke(DesignTokens.softBorder, lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .disabled(isBusy)
         .opacity(isBusy ? 0.6 : 1.0)
@@ -202,7 +207,7 @@ public struct FundsSmallPrimaryButton: View {
                     .padding(.horizontal, 12)
                     .background(DesignTokens.primary)
                     .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 Text(TitleCase.apply(to: label))
                     .font(.system(size: 14, weight: .semibold))
@@ -210,7 +215,7 @@ public struct FundsSmallPrimaryButton: View {
                     .padding(.horizontal, 12)
                     .background(DesignTokens.primary)
                     .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
         .disabled(isBusy)
@@ -242,7 +247,7 @@ public struct FundsSmallTertiaryButton: View {
                 .padding(.horizontal, isLarge ? 16 : 12)
                 .background(Color(hex: "#e5e7eb"))
                 .foregroundStyle(DesignTokens.ink)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .disabled(isBusy)
         .opacity(isBusy ? 0.6 : 1.0)
@@ -272,6 +277,135 @@ public struct FundsQuietButton: View {
         }
         .disabled(isBusy)
         .opacity(isBusy ? 0.6 : 1.0)
+    }
+}
+
+/// The B3 darker-grey outline (#4b5563) lives here, not in the
+/// kit: DesignTokens.swift is the shared kit file and #4b5563 is
+/// not in it — this extension is the one place the B3 grey is
+/// defined, so the two outline buttons below and their call sites
+/// never hard-code the hex.
+public extension DesignTokens {
+    static var outlineSlate: Color { Color(hex: "#4b5563") }
+}
+
+/// B3 outline buttons (owner, Nov 23, 2026 — build 64): the two
+/// secondary buttons under a solid-blue primary, in DIFFERENT
+/// colours — ink #0f172a on one side, darker grey #4b5563 on the
+/// other — white background, 1.5pt outline, same sizing as the
+/// full-width primary/tertiary. The two must never sit side by
+/// side in the same colour: ink pairs with slate, never ink with
+/// ink or slate with slate.
+public struct FundsInkOutlineButton: View {
+    public let label: String
+    public let isBusy: Bool
+    public let isLarge: Bool
+    public let action: () -> Void
+
+    public init(_ label: String, isBusy: Bool = false, isLarge: Bool = false, action: @escaping () -> Void) {
+        self.label = label
+        self.isBusy = isBusy
+        self.isLarge = isLarge
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(TitleCase.apply(to: label))
+                .font(.system(size: isLarge ? 17 : 15, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, isLarge ? 16 : 13)
+                .padding(.horizontal, 18)
+                .background(.white)
+                .foregroundStyle(DesignTokens.ink)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(DesignTokens.ink, lineWidth: 1.5)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.6 : 1.0)
+    }
+}
+
+public struct FundsSlateOutlineButton: View {
+    public let label: String
+    public let isBusy: Bool
+    public let isLarge: Bool
+    public let action: () -> Void
+
+    public init(_ label: String, isBusy: Bool = false, isLarge: Bool = false, action: @escaping () -> Void) {
+        self.label = label
+        self.isBusy = isBusy
+        self.isLarge = isLarge
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(TitleCase.apply(to: label))
+                .font(.system(size: isLarge ? 17 : 15, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, isLarge ? 16 : 13)
+                .padding(.horizontal, 18)
+                .background(.white)
+                .foregroundStyle(DesignTokens.outlineSlate)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(DesignTokens.outlineSlate, lineWidth: 1.5)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.6 : 1.0)
+    }
+}
+
+/// Squarish option control (build 64, C-6 — replaces every
+/// `.pickerStyle(.segmented)` in the Funds screens): a row of
+/// squarish cells, 8pt radius, ink text — the selected cell pale
+/// blue (#e9effe soft fill + #bfdbfe hairline), the rest white
+/// with a hairline #e5e7eb border. No pill/capsule track, no
+/// system segmented control anywhere in these screens. One cell
+/// per option; the caller passes (value, label) pairs so enums
+/// without a display string still read plainly.
+public struct SquarishPicker<Option: Hashable>: View {
+    public let options: [(Option, String)]
+    @Binding public var selection: Option
+    /// Minimum cell height (e.g. 52pt beside the debt-rule Apply
+    /// button); nil sizes the cells to their content.
+    public let minHeight: CGFloat?
+
+    public init(_ options: [(Option, String)], selection: Binding<Option>, minHeight: CGFloat? = nil) {
+        self.options = options
+        self._selection = selection
+        self.minHeight = minHeight
+    }
+
+    public var body: some View {
+        HStack(spacing: 8) {
+            ForEach(options, id: \.0) { option, label in
+                let isSelected = selection == option
+                Button { selection = option } label: {
+                    Text(label)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 8)
+                        .frame(minHeight: minHeight)
+                        .background(isSelected ? DesignTokens.softFill : .white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(isSelected ? DesignTokens.softBorder : Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(label + (isSelected ? ", selected" : ""))
+            }
+        }
     }
 }
 
@@ -310,7 +444,7 @@ public struct FundsEditorPrimaryButton: View {
                 .padding(.horizontal, 18)
                 .background(DesignTokens.primary)
                 .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .disabled(isBusy)
         .opacity(isBusy ? 0.6 : 1.0)
@@ -343,7 +477,7 @@ public struct FundsEditorTertiaryButton: View {
                 .padding(.horizontal, 16)
                 .background(Color(hex: "#e5e7eb"))
                 .foregroundStyle(DesignTokens.ink)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .disabled(isBusy)
         .opacity(isBusy ? 0.6 : 1.0)
@@ -431,7 +565,7 @@ public struct FundsActivityRow<Summary: View, Detail: View>: View {
 /// (merchant + amount in its kind colour) with the detail on tap
 /// (date, source, card, state). The amount uses the one shared kind
 /// rule (`TransactionFormatting.amountDisplay`): charity blue,
-/// money-in green with "+", everything else ink.
+/// money-in deep blue with "+", everything else ink.
 /// One transaction row in a fund's Activity & Transactions feed
 /// (Funds, Charity, Debt). The merchant resolves through the
 /// household's rename rules (build 41 — owner, Nov 16, 2026: the
@@ -580,7 +714,8 @@ public struct FundTransactionRow: View {
 
 // MARK: - Cards, rows, error boxes
 
-/// A white card, radius 20, hairline shadow (spec §1.2). `background`
+/// A white card, radius 12, hairline shadow (spec §1.2; build 64,
+/// P-3 — one radius system: cards 12pt everywhere). `background`
 /// / `padding` are overridable; `outline` is nil for the plain white
 /// cards, which stay outline-free. The fund sections no longer use
 /// this card's outline (owner, Nov 16, 2026 — Mockup C banners);
@@ -607,11 +742,11 @@ public struct FundsCard<Content: View>: View {
             .background(background)
             .overlay {
                 if let outline {
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(outline, lineWidth: outlineWidth)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
     }
 }
@@ -642,10 +777,12 @@ public struct FundsErrorBox: View {
 
 /// One labelled row inside an expanded balance card
 /// (Available / Pending / Total — spec §6.2/§9.1). `isInflow`
-/// marks a money-in row (e.g. savings "Transferred In"): green
-/// with a "+" prefix under the shared kind rule — never red, and
-/// never applied to a balance or a shortfall (those stay ink, or
-/// red when negative via `isNegative`).
+/// marks a money-in row (e.g. savings "Transferred In"): deep
+/// blue with a "+" prefix under the shared kind rule (build 64,
+/// F-20 — the old success green is retired; colour means kind,
+/// never direction). A negative balance reads in the error red
+/// via `isNegative` — a negative balance is one of the three
+/// places red is allowed, never a row amount.
 public struct FundsBreakdownRow: View {
     public let label: String
     public let value: String
@@ -666,26 +803,23 @@ public struct FundsBreakdownRow: View {
             Spacer()
             Text(value)
                 .fontWeight(.semibold)
-                .foregroundStyle(isNegative ? DesignTokens.errorText : (isInflow ? DesignTokens.success : DesignTokens.ink))
+                .foregroundStyle(isNegative ? DesignTokens.errorText : (isInflow ? DesignTokens.deep : DesignTokens.ink))
         }
         .font(.system(size: 15))
     }
 }
 
 /// A fund section: ONE UNIFIED CARD that expands in place (no
-/// sheet, no overlay — spec §6.2/§9.1). Owner, Nov 16, 2026
-/// (build 40): a SHORT colored header strip on top (an icon in a
-/// white circle + the fund name + the amount in ONE row, all white
-/// on the fund's theme colour — Debt black #0f172a, Spending dark
-/// blue #1d4ed8, Extra Fund muted grey #6b7280, Charity mid blue
-/// #3b82f6) and a WHITE body below (the MAJORITY of the card)
-/// holding the detail rows, editors and actions when expanded.
-/// The color is a header accent, not half the card — "the majority
-/// should be white, not half half." The detail below the header is
-/// part of the SAME card (one container, one boundary) — it was a
-/// separate block floating on white with a gap in build 39. The
-/// green/amber/red outlines are gone. Chevron `⌄` at the header's
-/// right end, white, flips to `⌃` when expanded (instant, build 34).
+/// sheet, no overlay — spec §6.2/§9.1). Build 64 (C-2 B2): the
+/// header is plain WHITE — the fund NAME in its own colour
+/// (Spending deep blue, Tzedaka primary blue, Savings muted grey,
+/// Overspent ink) with a small glyph beside it, no solid banner
+/// and no thin rule — and a WHITE body below holding the amount
+/// in the same colour, then the detail rows, editors and actions
+/// when expanded. The detail below the header is part of the SAME
+/// card (one container, one boundary). The green/amber/red
+/// outlines are gone. Chevron `⌄` at the header's right end,
+/// muted grey, flips to `⌃` when expanded (instant, build 34).
 /// A small pencil icon sits next to the fund name (admin-only) —
 /// it opens the rename sheet (owner, Nov 16, 2026 — build 40: the
 /// full-width "Rename" button is gone; rename is a pencil by the
@@ -862,92 +996,51 @@ public struct FundsExpandableCard<Expanded: View>: View {
         }
     }
 
-    /// The header strip (owner, Nov 16, 2026 — build 40): ONE ROW
-    /// — icon in a white circle + title + (admin-only) pencil +
-    /// chevron, on the theme colour. NAME ONLY (build 50, owner
-    /// Nov 20, 2026): the amount used to sit here too and fought
-    /// the name for width, so cards had different text sizes and
-    /// some words were cut off — the amount now lives in the body
-    /// (`amountBody`). The text colour is the theme's onBanner
-    /// colour — white on the dark Debt and Spending banners, ink
-    /// on the light Charity pale / Extra Fund tertiary banners
-    /// (build 41, 3-button scheme; build 46 — Spending's banner
-    /// is deep #1d4ed8 with white text again). The icon sits on a
-    /// WHITE circle in the theme's glyph colour (the reference's
-    /// "$ in a white circle"). Loading / failed show the same
-    /// strip shape in WHITE / muted grey with grey skeleton faces
-    /// — no colour until the numbers arrive, and never a bare "—"
-    /// in amount type. (Owner, Nov 16, 2026 — build 38, "a bit too
-    /// heavy": the strip is a touch shorter than build 37. Build
-    /// 41, owner Nov 16, 2026 — "much bigger": the title is 20pt,
-    /// the icon disc 36pt, 14pt vertical padding.) The title is
-    /// one uniform 20pt bold on every card, and wraps to a second
-    /// line rather than truncating (build 50 — layout change, not
-    /// shrinking: a long name on a narrow iPhone wraps instead of
-    /// being cut off).
+    /// The header strip (build 64, C-2 B2 — "Coloured name, no
+    /// line"): NO solid banner and NO thin rule any more. The
+    /// header is plain white; the fund NAME is written in its own
+    /// colour — Spending deep blue #1d4ed8, Tzedaka primary blue
+    /// #2f6bff, Savings muted grey #6b7280, Overspent ink — and
+    /// the amount in the body below takes the same colour
+    /// (`theme.number`). The icon is a small 20pt glyph in the
+    /// same colour, directly on white (build 64, P-6 — the white
+    /// circle disc is gone). The name is 17pt semibold (build 64,
+    /// C-1). The title always shows, even on failure — the failed
+    /// signal is the static grey block in the amount body plus the
+    /// error box in the expanded detail, never a grey header.
+    /// Loading shows skeleton icon + title, never real text on a
+    /// placeholder.
     private func headerStrip(pad: CGFloat) -> some View {
-        // Header colour: WHITE while LOADING (owner, Nov 16, 2026
-        // — build 40: the pale #dbeafe tint was horrendous, the
-        // original white background with grey skeleton shapes was
-        // nicest), muted grey #e5e7eb when FAILED (a failed load
-        // stays distinct from loading), the theme colour when
-        // loaded.
-        let bannerColor: Color = {
-            if isLoading { return DesignTokens.loadingBanner }
-            if amountIsStatus { return Color(hex: "#e5e7eb") }
-            return theme?.banner ?? .white
-        }()
-        // Title colour on the header: the theme's onBanner colour,
-        // ink on the plain unthemed face or on a grey failed header
-        // (the title always shows, even on failure). While LOADING
-        // the title is a skeleton block, not real ink text — real
-        // text on the placeholder read as a finished card.
-        let titleColor: Color = {
-            if theme == nil || amountIsStatus { return DesignTokens.ink }
-            return theme?.onBanner ?? .white
-        }()
-        // Chevron colour: the theme's onBanner colour on a loaded
-        // theme banner, muted grey everywhere else.
-        let chevronColor: Color = {
-            if theme != nil && !isLoading && !amountIsStatus { return theme?.onBanner ?? .white }
-            return DesignTokens.muted
-        }()
-        // Pencil colour: the theme's onBanner colour on a loaded
-        // theme banner (it sits on the colored header, next to the
-        // title — white on dark banners, ink on the light Charity
-        // pale / Extra Fund tertiary banners since build 41),
-        // muted grey on the loading/failed header.
-        let pencilColor: Color = {
-            if theme != nil && !isLoading && !amountIsStatus { return theme?.onBanner ?? .white }
-            return DesignTokens.muted
-        }()
+        // Title colour: the fund's own colour (theme.number) —
+        // the B2 rule. Ink only when the card has no theme.
+        let titleColor: Color = theme?.number ?? DesignTokens.ink
+        // Chevron / pencil / info colours: muted grey on the
+        // white header — they are hints, not the name.
+        let hintColor: Color = DesignTokens.muted
         return HStack(spacing: 10) {
             if let theme {
-                if isLoading || amountIsStatus {
-                    SkeletonBlock(width: 36, height: 36, cornerRadius: 18, animated: isLoading)
+                if isLoading {
+                    SkeletonBlock(width: 22, height: 22, cornerRadius: 6, animated: true)
                 } else {
-                    // Icon in a white circle (owner, Nov 16, 2026 —
-                    // build 40 reference): the theme's glyph colour
-                    // on a white disc (build 41 — the banner colour
-                    // itself is unreadable on white for the light
-                    // banners).
+                    // Small glyph directly on white (build 64,
+                    // P-6): no white circle disc. The glyph takes
+                    // the name's colour, so icon + name read as
+                    // one fund identity.
                     Image(systemName: iconName ?? theme.iconName)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(theme.glyph)
-                        .frame(width: 36, height: 36)
-                        .background(.white)
-                        .clipShape(Circle())
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(theme.number)
+                        .frame(width: 22, height: 22)
                 }
             }
             if isLoading {
                 // Skeleton title while loading (owner, Nov 16,
                 // 2026 — build 38): real dark-ink text on the
                 // placeholder read as a finished card. The failed
-                // state keeps the real title in ink.
+                // state keeps the real title in its colour.
                 SkeletonBlock(width: 140, height: 22, cornerRadius: 6, animated: true)
             } else {
                 Text(TitleCase.apply(to: title))
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(titleColor)
                     .lineLimit(2)
             }
@@ -965,7 +1058,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 Button(action: onRename) {
                     Image(systemName: "pencil")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(pencilColor)
+                        .foregroundStyle(hintColor)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -987,7 +1080,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 Button(action: { showingDescription = true }) {
                     Image(systemName: "info.circle")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(chevronColor)
+                        .foregroundStyle(hintColor)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -1000,36 +1093,34 @@ public struct FundsExpandableCard<Expanded: View>: View {
             if !isReorderMode {
                 Text("⌄")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(chevronColor)
+                    .foregroundStyle(hintColor)
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
             }
         }
         .padding(.horizontal, pad)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(bannerColor)
     }
 
     /// The amount body (build 50, owner Nov 20, 2026): the fund's
     /// amount on the white card body, always visible (collapsed or
-    /// expanded) — NAME in the header, AMOUNT in the body. One
-    /// uniform 28pt bold on every card, in the theme's number
-    /// colour (the build-46 "number colour = header colour" rule:
-    /// Spending deep #1d4ed8, Tzedaka primary #2f6bff, Savings
-    /// muted grey #6b7280, Overspent ink — each reads on white), on the
-    /// full card width with NO minimumScaleFactor — a long amount
-    /// never shrinks to a different size per card, and the full
-    /// width means it never truncates on an iPhone. Loading shows
-    /// the same 150-wide skeleton block the header used to show
-    /// (sized to the 28pt amount); a failed load shows it static,
-    /// never a bare "—".
+    /// expanded) — NAME in the header, AMOUNT in the body. Build 64
+    /// (C-1): one uniform 24pt semibold on every card, in the
+    /// theme's number colour — Spending deep #1d4ed8, Tzedaka
+    /// primary #2f6bff, Savings muted grey #6b7280, Overspent ink
+    /// (the B2 rule: the amount is the same colour as the name) —
+    /// on the full card width with NO minimumScaleFactor, so a long
+    /// amount never shrinks to a different size per card and never
+    /// truncates on an iPhone. Loading shows the same 150-wide
+    /// skeleton block the header used to show (sized to the 24pt
+    /// amount); a failed load shows it static, never a bare "—".
     private func amountBody(pad: CGFloat) -> some View {
         Group {
             if isLoading || amountIsStatus {
-                SkeletonBlock(width: 150, height: 34, cornerRadius: 8, animated: isLoading)
+                SkeletonBlock(width: 150, height: 30, cornerRadius: 8, animated: isLoading)
             } else {
                 Text(amountText)
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(theme?.number ?? DesignTokens.ink)
                     .lineLimit(1)
             }

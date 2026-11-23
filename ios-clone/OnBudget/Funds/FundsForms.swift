@@ -1054,7 +1054,7 @@ public struct RenameFundSheet: View {
                             .foregroundStyle(symbol == effectiveIcon ? DesignTokens.primary : DesignTokens.ink)
                             .frame(width: 52, height: 52)
                             .background(symbol == effectiveIcon ? DesignTokens.pale : Color(hex: "#f3f4f6"))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(symbol == effectiveIcon ? "\(symbol), selected" : symbol)
@@ -1097,12 +1097,13 @@ public struct RenameFundSheet: View {
                 Text("Size on Home")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
-                Picker("Size on Home", selection: $selectedProminence) {
-                    Text("Hero").tag(FundProminence.hero)
-                    Text("Card").tag(FundProminence.card)
-                    Text("Quiet Row").tag(FundProminence.quiet)
-                }
-                .pickerStyle(.segmented)
+                // Build 64 (C-6): the segmented picker is gone —
+                // a squarish control (8pt radius, ink text,
+                // pale-blue selected cell), no pill track.
+                SquarishPicker(
+                    [(FundProminence.hero, "Hero"), (FundProminence.card, "Card"), (FundProminence.quiet, "Quiet Row")],
+                    selection: $selectedProminence
+                )
                 .accessibilityIdentifier("funds.prominencePicker")
             }
             if let fieldError {

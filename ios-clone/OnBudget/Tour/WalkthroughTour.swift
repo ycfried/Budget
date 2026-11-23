@@ -4,7 +4,7 @@
 // one short plain line each. About 11 steps, ~90 seconds to 2 minutes
 // — long enough that nobody is lost, short enough that nobody loses
 // patience. Shows once on first entry to Home after sign-up AND the
-// household is set (join-by-code or create-your-own, either path),
+// household is set (invite-only — join-by-code),
 // skippable at any point, re-playable from Settings ("Replay Tutorial").
 //
 // The v2 plan (owner-delegated priorities, Nov 19, 2026 — the full
@@ -30,8 +30,8 @@
 // How it works: each target view reports its frame in the shell's
 // "tourSpace" coordinate space via `.tourAnchor(_:)`; the shell
 // draws a dim overlay with a cutout around the current target, a
-// border, and a tooltip card with the one line + Skip / Next (or
-// Done). The tour drives `appState.selectedTab` as it moves between
+// border, and a tooltip card with the one line + Back / Skip tour
+// / Next (or Done). The tour drives `appState.selectedTab` as it moves between
 // screens, and opens the Charity card / expands the first row where
 // the step needs it. The v2 lines are name-agnostic, so no fund-name
 // substitution is needed — but any line added later must read the
@@ -298,7 +298,7 @@ private struct TourArrow: View {
 
 /// The walkthrough overlay: dim + cutout + border around the current
 /// target, and the tooltip card with the one line, the step count,
-/// and Skip / Next (Done on the last step). The card sits below the
+/// and Back / Skip tour / Next (Done on the last step). The card sits below the
 /// target when it fits there, else above it, with the arrow pointing
 /// at the target. When a step has no target yet (the new tab is still
 /// laying out) or no target at all (Close), the card sits at the
@@ -418,8 +418,8 @@ public struct TourOverlayView: View {
         return max(topSafe, bottomLimit - cardHeight)
     }
 
-    /// The tooltip card: the one line, the step count, Skip + Next
-    /// (Done on the last step). White, squarish rounded edges
+    /// The tooltip card: the one line, the step count, Back /
+    /// Skip tour / Next (Done on the last step). White, squarish rounded edges
     /// (cornerRadius 14, the app's card treatment), shadow so it
     /// lifts off the dim.
     private func tooltipCard(step: TourStep) -> some View {
@@ -435,21 +435,24 @@ public struct TourOverlayView: View {
                 .foregroundStyle(DesignTokens.ink)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
-                Button("Skip") { skip() }
-                    .font(.system(size: 15, weight: .semibold))
+                // Build 64 (F-9): one "Skip tour" (quiet text
+                // link — muted, not blue) + "Next"; the two
+                // near-identical blue Skips are gone (a mis-tap
+                // on "Skip" used to kill the whole tour), and a
+                // Back chevron returns to the previous step.
+                // "Skip this tip" is dropped outright — it did
+                // the same thing as "Next" (advance one step).
+                if tour.stepIndex > 0 {
+                    Button { back() } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
                     .foregroundStyle(DesignTokens.primary)
-                // Build 54 (owner, Nov 21, 2026): "Skip this tip"
-                // passes on ONE step without ending the tour —
-                // "Next" means "got it, continue", "Skip this tip"
-                // means "I don't need this one, move on". It shares
-                // the advance path with "Next" (finishes on the
-                // last step); it does not mark the tour seen, and
-                // skipped steps are NOT persisted in build 54
-                // (in-the-moment affordance — a persisted per-step
-                // skip list is a possible follow-up, not build 54).
-                Button("Skip this tip") { next() }
+                    .accessibilityLabel("Back")
+                }
+                Button("Skip tour") { skip() }
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
+                    .foregroundStyle(DesignTokens.muted)
                 Spacer()
                 Button(step == .close ? "Done" : "Next") { next() }
                     .buttonStyle(PrimaryButtonStyle())
@@ -527,6 +530,24 @@ public struct TourOverlayView: View {
         } else {
             goToStep(nextIndex)
         }
+    }
+
+    /// Build 64 (F-9): back one step. Steps over the open-row
+    /// step when there are no transactions — `goToStep` would
+    /// skip forward past it again, landing back where we
+    /// started. No-op on the first step (no Back button there).
+    private func back() {
+        var target = tour.stepIndex - 1
+        while target >= 0 {
+            if tour.steps[target] == .openRow,
+               transactionsViewModel?.shownTransactions.first == nil {
+                target -= 1
+                continue
+            }
+            break
+        }
+        guard target >= 0 else { return }
+        goToStep(target)
     }
 
     /// Skip and Done both end the tour and count as seen — the user

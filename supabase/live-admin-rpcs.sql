@@ -68,6 +68,13 @@ grant execute on function public.decline_fund_request(uuid) to authenticated;
 -- is the setting the demo exposes as admin-only. Temporary increases
 -- ride on the existing engine input T and are added via the week
 -- function's inputs in a later slice, not by editing history.
+-- F-32 (build 61 audit, Nov 23, 2026): NULL = "unset" (stores NULL;
+-- the $375 default applies until the admin sets a value), 0 = $0.
+-- The column must allow NULL first (the ALTER below; idempotent).
+-- This is the LIVE-APPLIED copy — keep it in sync with
+-- 04-admin-rpcs.sql §6, which is the canonical paste-ready copy.
+alter table households alter column base_allowance_cents drop not null;
+
 create or replace function public.set_base_allowance(p_household_id uuid, p_cents integer)
 returns void
 language plpgsql
@@ -76,14 +83,17 @@ set search_path = public
 as $$
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
-  if p_cents is null or p_cents < 0 then raise exception 'allowance must be non-negative'; end if;
+  if p_cents is not null and p_cents < 0 then raise exception 'allowance must be non-negative'; end if;
   if not exists (select 1 from household_members
                  where household_id = p_household_id and user_id = auth.uid() and role = 'admin') then
     raise exception 'admin only';
   end if;
   update households set base_allowance_cents = p_cents where id = p_household_id;
   insert into audit_log (household_id, actor, actor_name, action, detail)
-    values (p_household_id, auth.uid(), 'admin', 'Base allowance changed', 'Base allowance set to ' || p_cents::text || ' cents.');
+    values (p_household_id, auth.uid(), 'admin', 'Base allowance changed',
+            case when p_cents is null
+                 then 'Base allowance unset (the $375 default applies until set).'
+                 else 'Base allowance set to ' || p_cents::text || ' cents.' end);
 end;
 $$;
 revoke execute on function public.set_base_allowance(uuid, integer) from public;

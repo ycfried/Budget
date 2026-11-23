@@ -48,27 +48,35 @@ public struct ReviewView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // Build 64 (F-39, owner Nov 23, 2026): when there is
+            // nothing to review, this ONE card is the whole page —
+            // the sections below stay hidden, so the page never
+            // reads as a list of "No…" lines. When there IS
+            // something to review, the sections show as before.
             if allClear {
                 allClearCard
+            } else {
+                restorationsSection
+                duplicatesSection
+                resolvedSection
+                refundLinksSection
             }
-            restorationsSection
-            duplicatesSection
-            resolvedSection
-            refundLinksSection
         }
     }
 
-    /// One "All clear" card at the top when nothing needs review
-    /// (build 52, owner Nov 20, 2026 — the page was "an ocean of
-    /// text… especially when there's nothing to review"): a green
-    /// checkmark and one line, not three empty sections.
+    /// One "All clear" card — the whole page when nothing needs
+    /// review (build 52, owner Nov 20, 2026 — the page was "an
+    /// ocean of text… especially when there's nothing to review";
+    /// build 64, F-39: the empty sections are hidden entirely
+    /// now, so this card stands alone): a green checkmark and one
+    /// line, not three empty sections.
     private var allClearCard: some View {
         HStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 28))
                 .foregroundStyle(Color(hex: "#16a34a"))
             VStack(alignment: .leading, spacing: 2) {
-                Text("Nothing Needs Your Review")
+                Text("All clear — nothing to review")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
                 Text("You're all caught up.")

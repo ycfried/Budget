@@ -18,7 +18,8 @@ import OnBudgetKit
 
 // MARK: - Buttons
 
-/// Primary: #2f6bff fill, white text.
+/// Primary: #2f6bff fill, white text. Build 64 (P-3): full-width
+/// buttons are 10pt radius.
 public struct PrimaryButtonStyle: ButtonStyle {
     public init() {}
     public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
@@ -29,7 +30,7 @@ public struct PrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity)
             .background(DesignTokens.primary)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
@@ -46,7 +47,7 @@ public struct TertiaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity)
             .background(DesignTokens.tertiary)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
@@ -68,7 +69,7 @@ public struct PaleButtonStyle: ButtonStyle {
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity)
             .background(DesignTokens.pale)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
@@ -164,10 +165,10 @@ public struct OutlineButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity)
             .background(.white)
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(DesignTokens.primary, lineWidth: 1.5)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
@@ -182,7 +183,7 @@ public struct SmallTertiaryButtonStyle: ButtonStyle {
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
             .background(DesignTokens.tertiary)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
@@ -490,9 +491,10 @@ public struct SuccessBox: View {
 /// S logo + "T · A · G · E" wordmark, "Spend, Track & Give Easily".
 /// Shown on first paint and kept until the first data load
 /// completes or fails — never a blank or half-built page, and never
-/// an endless spinner with no error. The logo wears the animated
-/// blue ring (BrandedLoader) — the iOS spinner is abolished
-/// app-wide (owner, Nov 14, 2026).
+/// an endless spinner with no error. The logo is static with a
+/// skeleton shimmer behind it (BrandedLoader, build 64 — the
+/// animated ring is gone); skeleton blocks shaped like the Home
+/// below say what is coming.
 public struct LoadingView: View {
     public init() {}
     public var body: some View {
@@ -505,8 +507,9 @@ public struct LoadingView: View {
             // stacked layout read as "S" then "TAGE".
             HStack(spacing: 8) {
                 // The real logo (Assets.xcassets/AppLogo), not the "S"
-                // placeholder ring (owner, Nov 11, 2026), with the
-                // animated brand-blue ring around it.
+                // placeholder ring (owner, Nov 11, 2026), static
+                // with a skeleton shimmer behind it (build 64 —
+                // the animated ring is gone, F-35).
                 BrandedLoader(size: 72)
                 // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
                 // build 47): the logo + "T · A · G · E", never the logo
@@ -531,6 +534,19 @@ public struct LoadingView: View {
             Text("Spend, Track & Give Easily")
                 .foregroundStyle(DesignTokens.stageBlue)
                 .font(.system(size: 15, weight: .semibold))
+            // Build 64 (F-35): skeletons shaped like the Home that
+            // follows — the hero amount + a fund card — under the
+            // wordmark, so the loading page is a skeleton of the
+            // content, not a spinner and not a bare logo. The logo
+            // above stays static (BrandedLoader's ring is gone).
+            VStack(alignment: .leading, spacing: 12) {
+                SkeletonBlock(width: 200, height: 44, cornerRadius: 6)
+                SkeletonBlock(width: 280, height: 14, cornerRadius: 6)
+                SkeletonBlock(width: 240, height: 14, cornerRadius: 6)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 32)
+            .padding(.top, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.background)
@@ -540,20 +556,19 @@ public struct LoadingView: View {
 // MARK: - Branded loader
 
 /// Branded loading indicator (owner, Nov 14, 2026): the real app
-/// logo with an animated brand-blue ring around it. This replaces
-/// EVERY ProgressView in the app — the iOS asterisk spinner is
-/// abolished app-wide. The logo itself is static; only the ring
-/// moves (a 270° arc rotating once a second). Use it for full-page
-/// or section loading states. Where a shimmer skeleton already
-/// stands in for the content, keep the skeleton and do NOT stack
-/// this on top of it. The sync button's rotating arrow is a
-/// different thing (the sync affordance the owner approved) and is
-/// untouched.
+/// logo. Build 64 (F-35): the spinning ring is GONE — the loading
+/// rule forbids spinners, and the ring was one. The logo is static
+/// now; the only motion is the skeleton shimmer behind it (a
+/// circular SkeletonBlock the size of the logo + ring, the same
+/// shimmer language every loading state already uses), so the mark
+/// reads as a skeleton of the content that follows rather than a
+/// spinner. Where a shimmer skeleton already stands in for the
+/// content, keep the skeleton and do NOT stack this on top of it.
+/// The sync button's rotating arrow is a different thing (the sync
+/// affordance the owner approved) and is untouched.
 public struct BrandedLoader: View {
-    /// Logo size; the ring sits 6pt outside it on every side.
+    /// Logo size; the skeleton halo sits 6pt outside it on every side.
     public let size: CGFloat
-
-    @State private var spinning = false
 
     public init(size: CGFloat = 56) {
         self.size = size
@@ -561,25 +576,13 @@ public struct BrandedLoader: View {
 
     public var body: some View {
         ZStack {
+            SkeletonBlock(width: size + 12, height: size + 12, cornerRadius: (size + 12) / 2)
             Image("AppLogo")
                 .resizable()
                 .scaledToFit()
                 .frame(width: size, height: size)
                 .clipShape(Circle())
-            Circle()
-                .trim(from: 0, to: 0.75)
-                .stroke(
-                    DesignTokens.primary,
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                )
-                .frame(width: size + 12, height: size + 12)
-                .rotationEffect(.degrees(spinning ? 360 : 0))
-                .animation(
-                    .linear(duration: 1.0).repeatForever(autoreverses: false),
-                    value: spinning
-                )
         }
-        .onAppear { spinning = true }
         .accessibilityLabel("Loading")
     }
 }
@@ -690,12 +693,14 @@ public struct ToastBanner: View {
 /// page, it just sits on top of it for 4 seconds.
 public struct ToastOverlayModifier: ViewModifier {
     @Binding public var toast: Toast?
-    public init(toast: Binding<Toast?>) {
+    public var enabled: Bool
+    public init(toast: Binding<Toast?>, enabled: Bool = true) {
         self._toast = toast
+        self.enabled = enabled
     }
     public func body(content: Content) -> some View {
         content.overlay {
-            if let toast {
+            if enabled, let toast {
                 GeometryReader { proxy in
                     ZStack(alignment: .top) {
                         // Tap anywhere else dismisses (owner,
@@ -719,8 +724,8 @@ public struct ToastOverlayModifier: ViewModifier {
 }
 
 public extension View {
-    func toastOverlay(_ toast: Binding<Toast?>) -> some View {
-        modifier(ToastOverlayModifier(toast: toast))
+    func toastOverlay(_ toast: Binding<Toast?>, enabled: Bool = true) -> some View {
+        modifier(ToastOverlayModifier(toast: toast, enabled: enabled))
     }
 
     /// Main tab content width (build 36, owner Nov 16, 2026 — iPad):
@@ -736,7 +741,8 @@ public extension View {
 
 // MARK: - Cards
 
-/// Standard white card: radius 20, hairline shadow (styles.css:388).
+/// Standard white card: radius 12, hairline shadow (styles.css:388;
+/// build 64, P-3 — one radius system: cards 12pt everywhere).
 public struct Card<Content: View>: View {
     public let content: Content
     public init(@ViewBuilder content: () -> Content) { self.content = content() }
@@ -744,7 +750,7 @@ public struct Card<Content: View>: View {
         content
             .padding(16)
             .background(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 40 / 255, opacity: 0.05),
                     radius: 2, x: 0, y: 1)
     }

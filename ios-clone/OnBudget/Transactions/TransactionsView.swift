@@ -11,20 +11,20 @@ import OnBudgetKit
 ///   blue button next to "+ Add" (owner, Nov 12 ~10:29 PM), so it
 ///   now lives at the right end of the page-links row below, in
 ///   the lighter blue #3b82f6.
-/// - Page links under the header: "Trash" · "Activity" · "Past Weeks"
-///   on ONE line, as proper small low-key outline buttons (owner, Nov
-///   11, 2026 — the quiet grey text read as labels, not as something
-///   tappable; but not big or bulky — kinda low key). Trash shows no
-///   count. The app shell supplies the
+/// - Page links under the header: "Review" (admin-only) ·
+///   "Weeks" (Past Weeks) · "Export" as visible soft buttons, with
+///   "Activity" · "Trash" · "Merchants" behind a single "More"
+///   menu (build 64, F-18 — Past Weeks and Export surfaced out
+///   of the menu). The app shell supplies the
 ///   Activity / Past Weeks handlers, so the links push PastWeeksView /
 ///   ActivityView as subpages on the Transactions NavigationStack — the
 ///   native equivalent of the web's full pages. The links are hidden
 ///   until a handler is supplied, so they never lead nowhere. Trash is
-///   admin-only, only when trashed rows exist. "Export" (build 45) is
-///   last in the row: it opens the full-screen export popup (PDF /
-///   CSV, filtered scope or all). The manual sync icon (admin only,
-///   44pt circle, lighter blue) sits right-aligned at
-///   the end of this row.
+///   admin-only, only when trashed rows exist. "Export" (build 45) opens
+///   the full-screen export popup (PDF / CSV, filtered scope or all).
+///   The manual sync icon (44pt circle, lighter blue) sits
+///   right-aligned at the end of this row, for members too
+///   (build 64, F-19 — the old admin-only gate is gone).
 /// - Search box (owner, Nov 12, 2026): standard iOS search look —
 ///   system-grey filled field, magnifier inside on the left, short
 ///   "Search transactions" placeholder, no explainer underneath.
@@ -43,8 +43,8 @@ import OnBudgetKit
 ///   already loaded; the existing rows stay visible while it
 ///   appends. Filters, search, and sort apply client-side to
 ///   everything loaded so far.
-/// - Pull-to-refresh + manual sync icon (admin only), at the right
-///   end of the Trash / Activity / Past Weeks row: the same
+/// - Pull-to-refresh + manual sync icon, at the right
+///   end of the page-links row: the same
 ///   `arrow.clockwise` symbol as the Home Weekly Budget card, in a
 ///   44pt circle — lighter blue #3b82f6 (DesignTokens.mid) when an
 ///   allowance has been set, grey while unset; it spins while
@@ -108,35 +108,40 @@ public struct TransactionsView: View {
         self.onShowActivity = onShowActivity
         self.onShowReview = onShowReview
         self.onShowMerchantNames = onShowMerchantNames
+        // Build 64 (C-5): the view model's confirmations go
+        // through the app-shell toast (`AppViewModel.showToast`),
+        // so they render ABOVE a presented sheet instead of
+        // underneath it. The weak capture is safe: the app state
+        // outlives the view model.
+        viewModel.appToast = { [weak appState] message, kind in
+            appState?.showToast(message, kind: kind)
+        }
     }
 
     public var body: some View {
-        // Centered toast popup (owner, Nov 16, 2026 — build 38):
-        // the ZStack alignment centers the popup; the ScrollView
-        // fills the stack regardless of alignment.
-        ZStack(alignment: .center) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    header
-                    pageLinks
-                    searchBox
-                    activeChips
-                    countLine
-                    listContent
-                    loadMoreButton
-                }
-                .padding()
+        // Build 64 (F-8): the toast is the shared TOP popup
+        // (.toastOverlay, SharedViews) — the centered ZStack
+        // popup (build 38) was "horrendous" (owner, Nov 20,
+        // 2026 — build 50) and covered the list mid-screen.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                pageLinks
+                searchBox
+                activeChips
+                countLine
+                listContent
+                loadMoreButton
             }
-            .refreshable {
-                await viewModel.load()
-            }
-
-            if let toast = viewModel.toastManager.toast {
-                ToastBanner(toast: toast) {
-                    viewModel.toastManager.dismiss()
-                }
-            }
+            .padding()
         }
+        .refreshable {
+            await viewModel.load()
+        }
+        .toastOverlay(Binding(
+            get: { viewModel.toastManager.toast },
+            set: { viewModel.toastManager.toast = $0 }
+        ))
         // Build 36 (owner, Nov 16, 2026 — iPad): the tab reads as a
         // centered 900pt column on the regular size class (see
         // mainContentWidth), never stretched edge-to-edge.
@@ -175,6 +180,14 @@ public struct TransactionsView: View {
         // 600pt (regular) via the frame inside the sheet content.
         .fullScreenCover(isPresented: $showingFilters) {
             TransactionsFilterSheet(viewModel: viewModel, fundNames: appState.fundNames, onDismiss: { showingFilters = false })
+                // Build 64 (C-5, follow-up): the shell-root popup
+                // sits UNDERNEATH a fullScreenCover, so a
+                // confirmation fired while this cover is open
+                // needs the overlay inside the cover's content.
+                // The Filters sheet fires no toast of its own;
+                // the binding is the app-shell toast state, so
+                // any confirmation fired while it is open shows.
+                .confirmationPopupOverlay($appState.toast)
         }
         // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
         // cover, not a detent sheet. AddTransactionView sets no
@@ -184,6 +197,12 @@ public struct TransactionsView: View {
         // trailing Spacer (build 43, item 18).
         .fullScreenCover(isPresented: $showingAdd) {
             AddTransactionView(viewModel: viewModel, onDismiss: { showingAdd = false })
+                // Build 64 (C-5, follow-up): overlay inside the
+                // cover — the Add save confirmation fires through
+                // the view model into the app-shell toast
+                // (`AppViewModel.showToast`), which the shell-root
+                // popup cannot show from underneath this cover.
+                .confirmationPopupOverlay($appState.toast)
         }
         // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
         // cover, not a detent sheet. The Trash content is a
@@ -191,6 +210,12 @@ public struct TransactionsView: View {
         // screen and starts at the top; Back dismisses it.
         .fullScreenCover(isPresented: $showingTrash) {
             TrashView(viewModel: viewModel, onBack: { showingTrash = false })
+                // Build 64 (C-5, follow-up): overlay inside the
+                // cover — the restore confirmations fire through
+                // the view model into the app-shell toast, which
+                // the shell-root popup cannot show from
+                // underneath this cover.
+                .confirmationPopupOverlay($appState.toast)
         }
         // Build 45 (Nov 18, 2026): full-screen cover, not a detent
         // sheet — popups are always full size. The export popup
@@ -199,14 +224,26 @@ public struct TransactionsView: View {
         .fullScreenCover(isPresented: $showingExport) {
             TransactionExportView(
                 viewModel: viewModel,
+                appState: appState,
                 householdName: appState.householdName,
                 onDismiss: { showingExport = false }
             )
+            // Build 64 (C-5, follow-up): overlay inside the
+            // cover — the export's "List now shows…" and
+            // no-match toasts fire via `AppViewModel.showToast`,
+            // which the shell-root popup cannot show from
+            // underneath this cover.
+            .confirmationPopupOverlay($appState.toast)
         }
-        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
-        // cover, not a detent sheet. iPad width stays 600pt
-        // (regular) via the frame inside the sheet content.
-        .fullScreenCover(item: $actionsTransaction) { transaction in
+        // Build 64 (C-4, owner Nov 23, 2026): fitted detents,
+        // NOT a full-screen cover — this reverses the Nov 17
+        // full-screen rule (build 43, item 17). The sheet sizes
+        // itself: .medium for the Actions list, small for the
+        // confirm flows (the detents live in the sheet itself,
+        // which knows its flow). iPad width stays 600pt
+        // (regular) via the frame inside the sheet content, so
+        // the sheet is a centred card on iPad, never full-width.
+        .sheet(item: $actionsTransaction) { transaction in
             TransactionActionsSheet(
                 transaction: transaction,
                 isAdmin: viewModel.isAdmin,
@@ -214,6 +251,12 @@ public struct TransactionsView: View {
                 fundNames: appState.fundNames,
                 onDismiss: { actionsTransaction = nil }
             )
+            // Build 64 (C-5, follow-up): overlay inside the
+            // sheet — a sheet presents above the shell root too,
+            // so the action confirmations (which fire through
+            // the view model into the app-shell toast) need the
+            // popup attached here to be seen.
+            .confirmationPopupOverlay($appState.toast)
         }
         // NOTE (T-P2-1): no `.alert` here — the failure alert lives
         // on the Actions and Trash sheets themselves, because an
@@ -346,7 +389,20 @@ public struct TransactionsView: View {
         // left, a secondary navigation affordance. The manual sync
         // icon stays FIXED at the right end (owner, Nov 12 ~10:29
         // PM — option 2, lighter blue).
-        HStack(spacing: 12) {
+        // Build 64 (F-18): Past Weeks and Export join Review as
+        // visible buttons outside the menu (the two most-used
+        // destinations, same build-52 pattern) — only Activity,
+        // Trash, and Merchants stay behind "More".
+        // Build 64 (F-18 overflow): on a 375pt phone the row
+        // (Review + Past Weeks + Export + More + 44pt sync circle)
+        // ran ~15–20pt past the 343pt available, so labels could
+        // wrap or compress. "Past Weeks" reads "Weeks" here (the
+        // full name stays the accessibility label) and the row
+        // spacing is 6, not 8 — Review ~65 + Weeks ~55 + Export
+        // ~65 + More ~70 + spacing 24 + sync 44 ≈ 323pt, inside
+        // 343pt even with a Review count badge. Members (no
+        // Review button) fit with room to spare.
+        HStack(spacing: 6) {
             // Build 30: Review moved off the Funds page — an
             // admin-only button here opens the dedicated Review
             // page, with a count badge while anything is waiting
@@ -373,15 +429,29 @@ public struct TransactionsView: View {
                 // page-links row reads as real buttons.
                 .buttonStyle(SmallSoftButtonStyle())
             }
+            // Build 64 (F-18): Past Weeks as a visible button
+            // (was behind "More") — same soft-button treatment
+            // as Review. Hidden until a handler is supplied, so
+            // it never leads nowhere. Labelled "Weeks" for the
+            // 375pt row fit (F-18 overflow); the full name stays
+            // the accessibility label.
+            if let onShowPastWeeks {
+                Button("Weeks", action: onShowPastWeeks)
+                    .buttonStyle(SmallSoftButtonStyle())
+                    .accessibilityLabel("Past Weeks")
+            }
+            // Build 64 (F-18): Export as a visible button (was
+            // behind "More", build 45). Opens the full-screen
+            // export popup (PDF / CSV, filtered scope or all).
+            Button("Export") { showingExport = true }
+                .buttonStyle(SmallSoftButtonStyle())
+                .accessibilityIdentifier("export.open")
             Menu {
                 if let onShowActivity {
                     Button("Activity", action: onShowActivity)
                 }
                 if viewModel.isAdmin, !viewModel.trashTransactions.isEmpty {
                     Button("Trash") { showingTrash = true }
-                }
-                if let onShowPastWeeks {
-                    Button("Past Weeks", action: onShowPastWeeks)
                 }
                 // Merchants (owner, Nov 15, 2026 — build 34):
                 // the Merchant Names editor moved out of Settings
@@ -390,10 +460,6 @@ public struct TransactionsView: View {
                 if viewModel.isAdmin, let onShowMerchantNames {
                     Button("Merchants", action: onShowMerchantNames)
                 }
-                // Export (build 45, Nov 18, 2026): read-only and
-                // non-urgent. Opens the full-screen export popup.
-                Button("Export") { showingExport = true }
-                    .accessibilityIdentifier("export.open")
             } label: {
                 HStack(spacing: 4) {
                     Text("More")
@@ -409,9 +475,10 @@ public struct TransactionsView: View {
             .buttonStyle(SmallSoftButtonStyle())
             .accessibilityIdentifier("pageLinks.more")
             Spacer(minLength: 0)
-            if viewModel.isAdmin {
-                syncButton
-            }
+            // Build 64 (F-19): the sync button shows for members
+            // too — the old `isAdmin` gate meant members never
+            // saw a sync button. Sync itself is unchanged.
+            syncButton
         }
     }
 
@@ -1102,10 +1169,24 @@ struct DateRangeCalendarView: View {
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(DesignTokens.ink)
                     HStack(spacing: 10) {
+                        // Build 64 (F-23): the quick picks were two
+                        // adjacent identical outline buttons — the
+                        // exact shape the no-adjacent-same-treatment
+                        // rule forbids. Now one is primary blue and
+                        // the other a quiet text link. The primary
+                        // is compact (same padding as the soft
+                        // button), not the full-width PrimaryButton
+                        // treatment — the two picks share one row.
                         Button("This Week") { choose(.thisWeek) }
-                            .buttonStyle(SmallSoftButtonStyle())
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .background(DesignTokens.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                         Button("This Month") { choose(.thisMonth) }
-                            .buttonStyle(SmallSoftButtonStyle())
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
                     }
                 }
 

@@ -172,6 +172,43 @@
 -- via the missed-accrual detection query at the end, backfilled
 -- with accrue_charity_for_transaction.
 --
+-- v5 (build 64, Nov 23, 2026 — F-5 + F-10): the trigger now also
+-- fires on amount_cents / date corrections, and re-derives the
+-- linked accrual on them. Before v5 the trigger fired only on
+-- kind / excluded, so when Plaid corrected an income row's amount
+-- (its upsert overwrites date, merchant, amount_cents on every
+-- re-delivery) or its date crossed the Nov 1 floor, the
+-- charity_income row kept the original figure and committed
+-- charity went stale with no user action. The re-derive:
+--   * fires only when the row STAYS income and is not excluded
+--     and the amount or date actually changed (IS DISTINCT FROM —
+--     a re-delivery that rewrites the same values is a no-op);
+--   * reverses the old active accrual and inserts a NEW one for
+--     the new amount at the ORIGINAL rate_bp (F-10: the rate locks
+--     at income time — see RATE LOCK below), never the current
+--     default rate;
+--   * when no active accrual exists (the row never accrued, or its
+--     date just crossed INTO eligibility), accrues fresh at the
+--     current default rate, like the TO-income path;
+--   * when the new date falls before 2026-11-01 or the new amount
+--     is 0, reverses the accrual (no longer eligible) instead.
+--
+-- RATE LOCK (F-10, owner decision Nov 23, 2026 — "Always stay to
+-- old charity rate.. unless changed for a specific transaction.."):
+-- the rate is locked at income time. Changing the household
+-- default rate (charity_settings.default_rate_bp) affects NEW
+-- income only; existing charity_income rows keep the rate_bp
+-- recorded when they accrued, and NOTHING in this file (or
+-- anywhere else) restates them on a rate change — there is no
+-- trigger on charity_settings, and the re-derive above re-reads
+-- the ORIGINAL rate from the existing accrual row, not the
+-- current default. A per-transaction override is the only way to
+-- change one row's rate: correct_charity_income (r13-charity.sql)
+-- reverses the row and replaces it at the override rate. The
+-- same lock applies at ingest (accrue_charity_for_transaction in
+-- charity-auto-accrue.sql reads the default rate once, at accrual
+-- time, and stores it as rate_bp / rate_at_accrual).
+--
 -- FAIL-OPEN: the trigger function catches any unexpected error,
 -- raises a WARNING (visible in the Supabase Postgres logs), and
 -- returns NULL so the reclassification / exclusion / restoration
@@ -211,11 +248,14 @@ set search_path = public
 as $$
 declare
   v_rate integer;
+  v_old_rate integer;
   v_amount integer;
   v_committed bigint;
+  v_old_committed bigint;
   v_id uuid;
   v_do_accrue boolean := false;
   v_do_reverse boolean := false;
+  v_do_rederive boolean := false;
   v_cause text;
 begin
   -- Decide the direction from the transition. Excluded transitions
@@ -236,8 +276,93 @@ begin
     -- v2: kind changed AWAY from income -> reverse.
     v_do_reverse := true;
     v_cause := 'reclassified away from income';
+  elsif NEW.kind = 'income' and OLD.kind = 'income'
+    and (OLD.amount_cents is distinct from NEW.amount_cents
+         or OLD.date is distinct from NEW.date) then
+    -- v5 (F-5): the row STAYS income but its amount or date was
+    -- corrected (typically a Plaid re-delivery). Re-derive the
+    -- linked accrual — never a no-op, never a restatement at the
+    -- current rate (see the re-derive block below). A kind change
+    -- in the same statement takes the branches above instead.
+    v_do_rederive := true;
   else
     return null;
+  end if;
+
+  -- Re-derive (v5, F-5 + F-10): the row stays income but its amount
+  -- or date was corrected. The existing active accrual (if any) is
+  -- reversed and a NEW one is inserted for the NEW amount at the
+  -- ORIGINAL rate_bp — the rate locks at income time (F-10), so a
+  -- later household rate change never restates this row, and a
+  -- correction never re-accrues at the current default rate. When
+  -- no active accrual exists, the row accrues fresh at the current
+  -- default rate instead (same as the TO-income path — e.g. its
+  -- date just crossed into eligibility, or it never accrued). When
+  -- the corrected date falls before 2026-11-01 or the corrected
+  -- amount is 0, the accrual is reversed and nothing replaces it.
+  if v_do_rederive then
+    if NEW.state not in ('verified', 'provisional') then return null; end if;
+    if coalesce(NEW.excluded, false) then return null; end if;
+    select id, amount_cents, rate_bp into v_id, v_amount, v_old_rate
+      from public.charity_income
+     where household_id = NEW.household_id
+       and transaction_id = NEW.id
+       and status = 'active';
+    if NEW.date < date '2026-11-01' or abs(NEW.amount_cents) <= 0 then
+      -- No longer eligible: reverse the old accrual (if any) and stop.
+      if v_id is not null then
+        v_old_committed := (v_amount::bigint * v_old_rate + 5000) / 10000;
+        update public.charity_income set status = 'reversed' where id = v_id;
+        insert into public.audit_log (household_id, actor, actor_name, action, detail)
+        values (NEW.household_id, null, 'auto-accrual', 'Charity income reversed',
+                'Income ' || NEW.merchant || ' ' || v_amount::text || ' cents on ' || OLD.date::text
+                || ' at ' || v_old_rate::text || ' basis points was corrected out of eligibility ('
+                || case when NEW.date < date '2026-11-01' then 'date before 2026-11-01' else 'amount is zero' end || '); '
+                || v_old_committed::text || ' cents deducted from charity owed.');
+      end if;
+      return null;
+    end if;
+    if v_id is null then
+      -- Never accrued: accrue fresh at the current default rate.
+      v_do_accrue := true;
+    else
+      -- Reverse the old accrual, then insert the corrected one at
+      -- the ORIGINAL rate. The reversal frees the partial-unique
+      -- slot, so the insert below cannot conflict with it.
+      v_old_committed := (v_amount::bigint * v_old_rate + 5000) / 10000;
+      begin
+        update public.charity_income set status = 'reversed' where id = v_id;
+      exception when others then
+        raise warning 'reclassify-income-accrual: re-derive reversal failed for transaction % (%): %', NEW.id, NEW.merchant, SQLERRM;
+        return null;
+      end;
+      v_rate := v_old_rate;
+      v_amount := abs(NEW.amount_cents);
+      v_committed := (v_amount::bigint * v_rate + 5000) / 10000;
+      begin
+        insert into public.charity_income
+          (household_id, source_label, amount_cents, income_date, rate_bp, note, transaction_id, created_by)
+        values (NEW.household_id,
+                coalesce(nullif(btrim(NEW.merchant), ''), 'Income'),
+                v_amount, NEW.date, v_rate, 'Auto-accrued from synced income', NEW.id, null);
+      exception when others then
+        raise warning 'reclassify-income-accrual: re-derive insert failed for transaction % (%): %', NEW.id, NEW.merchant, SQLERRM;
+        return null;
+      end;
+      begin
+        insert into public.audit_log (household_id, actor, actor_name, action, detail)
+        values (NEW.household_id, null, 'auto-accrual', 'Charity income corrected',
+                'Income ' || NEW.merchant || ' corrected from ' || OLD.amount_cents::text || ' cents on ' || OLD.date::text
+                || ' to ' || v_amount::text || ' cents on ' || NEW.date::text
+                || ' at the original rate ' || v_rate::text || ' basis points; charity corrected from '
+                || v_old_committed::text || ' to ' || v_committed::text || ' cents.');
+      exception when others then
+        raise warning 'reclassify-income-accrual: re-derive audit row failed for transaction %: %', NEW.id, SQLERRM;
+      end;
+      return null;
+    end if;
+    -- Falls through to the accrue block below (v_do_accrue = true)
+    -- when there was no active accrual to re-derive.
   end if;
 
   -- Accrue: TO income, or restored to income. The guards are
@@ -352,7 +477,7 @@ drop trigger if exists trg_accrue_charity_on_reclassify_to_income on public.tran
 drop function if exists public.accrue_charity_on_reclassify_to_income();
 drop trigger if exists trg_sync_charity_on_reclassify on public.transactions;
 create trigger trg_sync_charity_on_reclassify
-  after update of kind, excluded on public.transactions
+  after update of kind, excluded, amount_cents, date on public.transactions
   for each row
   when (
     -- TO income: kind changes to income (verified OR provisional,
@@ -373,6 +498,13 @@ create trigger trg_sync_charity_on_reclassify
     -- v3: excluded flips either way (exclude -> reverse, restore
     -- -> re-accrue for income rows). The function decides which.
     or (NEW.excluded is distinct from OLD.excluded)
+    -- v5 (F-5): amount or date corrected on a row that stays
+    -- income. The function re-derives the accrual (new amount x
+    -- ORIGINAL rate) only when the values actually changed; a
+    -- re-delivery rewriting identical values is a no-op inside.
+    or ((OLD.amount_cents is distinct from NEW.amount_cents
+         or OLD.date is distinct from NEW.date)
+        and NEW.kind = 'income' and OLD.kind = 'income')
   )
   execute function public.sync_charity_on_reclassify();
 
@@ -573,6 +705,43 @@ end $$;
 --   -- Expect 1 row: trg_sync_charity_on_reclassify only. The v1
 --   -- trigger must be gone. The repair block must report 0 rows
 --   -- affected on the second run (nothing left to reverse).
+--   -- The trigger event must now list amount_cents and date (v5):
+--   select event_manipulation, action_statement from information_schema.triggers
+--    where trigger_name = 'trg_sync_charity_on_reclassify';
+--   -- Expect the trigger's event list to include UPDATE OF kind,
+--   -- excluded, amount_cents, date.
+--
+-- 12. AMOUNT CORRECTION re-derives at the ORIGINAL rate (v5, F-5 +
+--     F-10 — the audit's example: $1,000 pending accrues $100;
+--     Plaid corrects to $1,200 on posting; charity must become
+--     $120, at the ORIGINAL 10%, not the current default rate).
+--   -- Start from an active accrual: $1,000.00 income
+--   -- (amount_cents = -100000), rate_bp 1000, committed 10000.
+--   -- Correct the amount to $1,200.00 (a direct UPDATE stands in
+--   -- for the Plaid re-delivery upsert):
+--   update transactions set amount_cents = -120000 where id = '<txn>';
+--   select amount_cents, rate_bp, status from charity_income
+--    where household_id = '<household>' and transaction_id = '<txn>'
+--    order by created_at;
+--   -- Expect 2 rows: the first status 'reversed' (amount_cents
+--   -- 100000, rate_bp 1000), and a NEW row status 'active' with
+--   -- amount_cents 120000, rate_bp 1000 (ORIGINAL rate, even if
+--   -- the household default has since changed), committed 12000.
+--   select action, detail from audit_log
+--    where household_id = '<household>' order by created_at desc limit 1;
+--   -- Expect 'Charity income corrected' (detail: corrected from
+--   -- 100000 to 120000 cents at the original rate 1000 bp).
+--   -- Correcting to the SAME amount is a no-op (no new row):
+--   update transactions set amount_cents = -120000 where id = '<txn>';
+--   select count(*) from charity_income
+--    where household_id = '<household>' and transaction_id = '<txn>'
+--      and status = 'active';  -- expect 1
+--   -- Correcting the date to before 2026-11-01 reverses with no
+--   -- replacement (no longer eligible):
+--   update transactions set date = '2026-10-31' where id = '<txn>';
+--   select count(*) from charity_income
+--    where household_id = '<household>' and transaction_id = '<txn>'
+--      and status = 'active';  -- expect 0
 --
 -- BEFORE APPLYING LIVE (in addition to the prerequisite checks in
 -- the header): run steps 1–11 on the TEST household (Goldstein,

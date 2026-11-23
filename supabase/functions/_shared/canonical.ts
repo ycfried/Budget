@@ -294,12 +294,13 @@ export async function loadMerchantRules(
 // The merge paths below used to hardcode source 'amex_alert'. The
 // set is the single place that knows which transaction sources are
 // email alerts; adding a bank means adding its source here (and a
-// parser in gmail-parse.ts) — no other merge code changes. Today
-// the only email source is the Amex Large Purchase alert.
-// NO Chase / Capital One source exists yet: no parser and no known
-// sender/subject format — do not add one without a real redacted
-// sample from the owner.
-export const EMAIL_SOURCES = ['amex_alert'] as const;
+// parser in gmail-parse.ts) — no other merge code changes. Amex is
+// the proven source; Chase is a FAIL-CLOSED SCAFFOLD (F-15, build
+// 64): registered here and parsed by parseChaseAlertText, but the
+// Chase path is DISABLED in gmail-poll (CHASE_ALERTS_ENABLED =
+// false) until a real redacted Chase alert is verified against the
+// parser — no sample exists in the repo. Capital One: not started.
+export const EMAIL_SOURCES = ['amex_alert', 'chase_alert'] as const;
 export function isEmailSource(source: string): boolean {
   return (EMAIL_SOURCES as readonly string[]).includes(source);
 }

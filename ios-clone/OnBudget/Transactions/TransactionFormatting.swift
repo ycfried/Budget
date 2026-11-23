@@ -74,9 +74,12 @@ public enum TransactionFormatting {
     // Models.swift) maps the same rule at the kit level (charity
     // → primary, transfer → muted grey) and its test pins it.
     // `inflowDisplay`
-    // below still returns green: it is a separate path for known
+    // below used to return green: it is a separate path for known
     // inflows that are not transaction rows (charity income rows,
-    // fund top-ups, surplus releases), not a row amount.
+    // fund top-ups, surplus releases), not a row amount. Build 64
+    // (maturity pass, F-20): it returns the money-in DEEP BLUE now
+    // — the four-colour rule has no green anywhere; direction is
+    // shown by the "+" prefix only.
     // Display only: the model cents, the week math, and the totals
     // are untouched — only the text and colour of a rendered row
     // change.
@@ -121,12 +124,15 @@ public enum TransactionFormatting {
 
     /// Display for an amount already known to be money in —
     /// charity income rows, fund top-ups, savings transfer-in /
-    /// interest, a released surplus: "+$X" green. A zero or
-    /// negative input falls back to the plain rendering: a known
-    /// inflow is positive by construction, so this is only a guard.
+    /// interest, a released surplus: "+$X" in the money-in DEEP
+    /// BLUE (build 64, F-20 — the old success green is retired;
+    /// the four-colour rule has no green, direction is the "+"
+    /// prefix). A zero or negative input falls back to the plain
+    /// rendering: a known inflow is positive by construction, so
+    /// this is only a guard.
     public static func inflowDisplay(cents: Int) -> (text: String, color: Color) {
         guard cents > 0 else { return (formatCents(cents), DesignTokens.ink) }
-        return ("+" + formatCents(cents), DesignTokens.success)
+        return ("+" + formatCents(cents), DesignTokens.deep)
     }
 
     /// Strict money parsing (live.js:52-60 `parseDollarsStrict`):
@@ -862,6 +868,16 @@ public struct TransactionFilters: Equatable {
     /// Refunds that ARE in `shown` are already subtracted by the
     /// refund arm below — the caller only ever passes refunds not
     /// in `shown`, so nothing is subtracted twice.
+    ///
+    /// Build 64 (owner rule, Nov 23, 2026 — supersedes the audit's
+    /// fund-first logic): a refund restores to the classification
+    /// of the charge it links to (fund charge → fund, spending
+    /// charge → reduces spending); a pending refund counts right
+    /// away; a fund charge counts 0 toward spending (the whole
+    /// charge is fund-covered — a split cannot happen); each
+    /// charge's netting is capped at that charge and the total is
+    /// floored at 0. See WeekTransactionsNetting.spendingTotal,
+    /// which defines the rule once.
     public static func shownTotal(
         for shown: [Transaction],
         status: TransactionStatusFilter,

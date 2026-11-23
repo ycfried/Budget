@@ -224,10 +224,14 @@ struct PastWeeksView: View {
 
                 SettingsCard(title: "Week History") {
                     if viewModel.isLoading && viewModel.weeks.isEmpty {
-                        HStack {
-                            Spacer()
-                            BrandedLoader()
-                            Spacer()
+                        // Build 64 (F-35): skeletons shaped like the
+                        // week blocks that follow — a heading + three
+                        // metric rows — not a spinning ring.
+                        VStack(alignment: .leading, spacing: 8) {
+                            SkeletonBlock(width: 140, height: 16, cornerRadius: 6)
+                            SkeletonBlock(width: 220, height: 14, cornerRadius: 6)
+                            SkeletonBlock(width: 200, height: 14, cornerRadius: 6)
+                            SkeletonBlock(width: 180, height: 14, cornerRadius: 6)
                         }
                         .padding(.top, 24)
                     } else if let error = viewModel.loadError {
@@ -263,9 +267,10 @@ struct PastWeeksView: View {
                 metricRow(label: "Surplus", value: week.moneyOrMissing(week.surplusCents))
                 metricRow(label: "Debt carried out", value: week.moneyOrMissing(week.outgoingDebtCents))
                 // The release is money moved INTO the Extra Fund —
-                // green with a "+" prefix under the shared kind
-                // rule, but only once actually released. A held or
-                // pending release has not moved yet, so it stays
+                // deep blue with a "+" prefix under the shared kind
+                // rule (build 64, F-20 — the old success green is
+                // retired), but only once actually released. A held
+                // or pending release has not moved yet, so it stays
                 // plain ink; "N/A" stays plain too.
                 metricRow(
                     label: week.releaseLabel,
@@ -298,7 +303,7 @@ struct PastWeeksView: View {
             Text(value)
                 .font(.subheadline)
                 .fontWeight(.semibold)
-                .foregroundStyle(isInflow ? DesignTokens.success : DesignTokens.ink)
+                .foregroundStyle(isInflow ? DesignTokens.deep : DesignTokens.ink)
         }
     }
 }

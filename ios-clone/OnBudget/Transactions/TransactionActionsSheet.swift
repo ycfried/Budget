@@ -13,7 +13,13 @@ import OnBudgetKit
 ///   category first (marked with a checkmark, not a Button — it is
 ///   the current state, not an action), then the actions that drive
 ///   the math, in the brief's order — Purchase, Income, Tzedaka,
-///   Cover with Savings, Add to Savings, Exclude, Delete (RED).
+///   Rename Merchant (build 64, F-41 — out of "More", at the end
+///   of this group). Build 64 (F-33) splits the old seven-row
+///   Group 1: the two fund actions live in their own "Savings"
+///   section below it (Cover with Savings, Add to Savings),
+///   and Exclude + Delete sit below that, Delete last below its
+///   own rule, in its own block — the actions are unchanged,
+///   only the grouping.
 ///   Build 63 (Lean): the group renders as a flat list with no
 ///   "How It Counts" header, and Delete sits last below its own
 ///   rule, in its own block — the actions are unchanged, only
@@ -34,8 +40,13 @@ import OnBudgetKit
 /// does (owner: "The word should just name the category").
 /// - Group 2, "More", collapsed by default behind a "More"
 ///   disclosure row that expands inline: Transfer, Refund, Fund
-///   Charge, Payment, Cashback, Rename Merchant. The sheet opens
-///   showing only Group 1 + the More row.
+///   Charge, Payment, Cashback. The sheet opens showing only
+///   Group 1 + the More row.
+/// - Build 64 (C-4, owner Nov 23, 2026): fitted detents, not a
+///   full-screen cover (reverses the Nov 17 full-screen rule) —
+///   .medium for the list, small for the confirms — with the
+///   merchant + amount summary header at the top of every
+///   confirm flow.
 ///
 /// Subtitles STAY (owner, Nov 21, 2026 — they help many users).
 /// "Tzedaka" IS the Tzedaka reclassify (there is no second
@@ -56,14 +67,14 @@ import OnBudgetKit
 /// build-52 table, reorganised into the two groups (Transfer moves
 /// from TOP to "More" for every kind):
 ///
-/// | kind | Admin — Group 1 | Admin — Group 2 (More) | Member |
-/// | charge | Purchase (current), Income, Tzedaka, Cover with Savings, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | Purchase (current), Cover with Savings |
-/// | refund | Refund (current), Link to Purchase, Purchase, Income, Add to Savings, Exclude, Delete | Transfer, Fund Charge, Payment, Cashback, Rename Merchant | — (no actions) |
-/// | transfer, payment, fund_charge | current kind, Purchase, Income, Exclude, Delete | the other kinds, Rename Merchant | — |
-/// | cashback | Cashback (current), Purchase, Income, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Rename Merchant | — |
-/// | charity | Tzedaka (current), Purchase, Income, Exclude, Delete | Rename Merchant | — |
-/// | income | Income (current), Purchase, Add to Savings, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | — |
-/// | other | Other (current), Purchase, Income, Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback, Rename Merchant | — |
+/// | kind | Admin — Group 1 ("How It Counts" + "Savings" + rest) | Admin — Group 2 (More) | Member |
+/// | charge | Purchase (current), Income, Tzedaka, Rename Merchant; Savings: Cover with Savings, Add to Savings; Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback | Purchase (current); Savings: Cover with Savings |
+/// | refund | Refund (current), Link to Purchase, Purchase, Income, Rename Merchant; Savings: Add to Savings; Exclude, Delete | Transfer, Fund Charge, Payment, Cashback | — (no actions) |
+/// | transfer, payment, fund_charge | current kind, Purchase, Income, Rename Merchant; Savings: Add to Savings where offered; Exclude, Delete | the other kinds | — |
+/// | cashback | Cashback (current), Purchase, Income, Rename Merchant; Savings: Add to Savings; Exclude, Delete | Transfer, Refund, Fund Charge, Payment | — |
+/// | charity | Tzedaka (current), Purchase, Income, Rename Merchant, Exclude, Delete | — (no More group) | — |
+/// | income | Income (current), Purchase, Rename Merchant; Savings: Add to Savings; Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback | — |
+/// | other | Other (current), Purchase, Income, Rename Merchant; Savings: Add to Savings; Exclude, Delete | Transfer, Refund, Fund Charge, Payment, Cashback | — |
 ///
 /// "Add to Savings" only appears when `canDesignateAsSavings`
 /// (admin, non-zero, live row, charge/income/refund/cashback).
@@ -335,6 +346,34 @@ public struct TransactionActionsSheet: View {
         }
     }
 
+    /// Build 64 (F-33/F-41): split the old Group 1 into its
+    /// sections — "How It Counts" (the math-driving reclassifies
+    /// and Link), "Savings" (Cover with Savings + Add to
+    /// Savings — the two fund actions no longer sit adjacent
+    /// inside one seven-row group), and the rest (Exclude,
+    /// Delete). The split is by action id, so the per-kind tables
+    /// in `actionGroups` stay as they were; only the grouping
+    /// changes. A group with a label renders a small section
+    /// header above its rows (see `listContent`); the counting
+    /// group keeps the flat build-63 look with no header.
+    /// Rename Merchant (F-41) arrives here already appended to
+    /// `group1` — it moved out of "More" into Group 1, at the end
+    /// of the counting rows, because it is the most-used typing
+    /// action and was the hardest to reach.
+    private func grouped(_ group1: [SheetAction], more: [SheetAction]) -> [ActionGroup] {
+        let savingsIds: Set<ActionKind> = [.extraFund, .designateSavings]
+        let restIds: Set<ActionKind> = [.exclude, .delete]
+        let counting = group1.filter { !savingsIds.contains($0.id) && !restIds.contains($0.id) }
+        let savings = group1.filter { savingsIds.contains($0.id) }
+        let rest = group1.filter { restIds.contains($0.id) }
+        var groups: [ActionGroup] = []
+        if !counting.isEmpty { groups.append(ActionGroup(label: nil, actions: counting)) }
+        if !savings.isEmpty { groups.append(ActionGroup(label: "Savings", actions: savings)) }
+        if !rest.isEmpty { groups.append(ActionGroup(label: nil, actions: rest)) }
+        if !more.isEmpty { groups.append(ActionGroup(label: nil, actions: more, isMore: true)) }
+        return groups
+    }
+
     private var actionGroups: [ActionGroup] {
         let isVerified = transaction.state == .verified
         let charitySubline = isVerified
@@ -396,15 +435,12 @@ public struct TransactionActionsSheet: View {
                 if canDesignateAsSavings { group1.append(designate) }
                 group1.append(exclude)
                 group1.append(delete)
-                let group2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 } + [rename]
-                return [
-                    ActionGroup(label: "How It Counts", actions: group1),
-                    ActionGroup(label: nil, actions: group2, isMore: true),
-                ]
+                let group2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
+                return grouped(group1 + [rename], more: group2)
             }
             // Owner rule (Nov 13, 2026): no disabled rows — a
             // member simply does not see the Tzedaka action.
-            return [ActionGroup(label: "How It Counts", actions: [current(), extraFund])]
+            return grouped([current(), extraFund], more: [])
         case .refund:
             guard isAdmin else { return [] }
             let linkSubline = transaction.originalPurchaseId != nil
@@ -416,11 +452,8 @@ public struct TransactionActionsSheet: View {
             if canDesignateAsSavings { group1.append(designate) }
             group1.append(exclude)
             group1.append(delete)
-            let group2 = [reclassify(.transfer), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 } + [rename]
-            return [
-                ActionGroup(label: "How It Counts", actions: group1),
-                ActionGroup(label: nil, actions: group2, isMore: true),
-            ]
+            let group2 = [reclassify(.transfer), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
+            return grouped(group1 + [rename], more: group2)
         case .transfer, .payment, .cashback, .fundCharge:
             guard isAdmin else { return [] }
             var group1 = [current()]
@@ -428,11 +461,8 @@ public struct TransactionActionsSheet: View {
             if canDesignateAsSavings { group1.append(designate) }
             group1.append(exclude)
             group1.append(delete)
-            let group2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 } + [rename]
-            return [
-                ActionGroup(label: "How It Counts", actions: group1),
-                ActionGroup(label: nil, actions: group2, isMore: true),
-            ]
+            let group2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
+            return grouped(group1 + [rename], more: group2)
         case .charity:
             // Build 62 (owner, Nov 22, 2026 — "Why shouldn't you
             // be able to reclassify it?"): a charity row can be
@@ -447,10 +477,7 @@ public struct TransactionActionsSheet: View {
             group1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
             group1.append(exclude)
             group1.append(delete)
-            return [
-                ActionGroup(label: "How It Counts", actions: group1),
-                ActionGroup(label: nil, actions: [rename], isMore: true),
-            ]
+            return grouped(group1 + [rename], more: [])
         case .income, .other:
             guard isAdmin else { return [] }
             var group1 = [current()]
@@ -461,11 +488,8 @@ public struct TransactionActionsSheet: View {
             if canDesignateAsSavings { group1.append(designate) }
             group1.append(exclude)
             group1.append(delete)
-            let group2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 } + [rename]
-            return [
-                ActionGroup(label: "How It Counts", actions: group1),
-                ActionGroup(label: nil, actions: group2, isMore: true),
-            ]
+            let group2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
+            return grouped(group1 + [rename], more: group2)
         }
     }
 
@@ -478,6 +502,46 @@ public struct TransactionActionsSheet: View {
 
     // MARK: - Body
 
+    /// Build 64 (C-4): the merchant + amount summary header —
+    /// the same line the list flow shows above its rows — at the
+    /// top of EVERY sub-flow, so a short confirm never ends at
+    /// 1/4 screen with no context for what it is confirming.
+    private var summaryHeader: some View {
+        let amount = TransactionFormatting.amountDisplay(for: transaction)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(TransactionFormatting.displayMerchant(transaction.merchant))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+                Spacer()
+                Text(amount.text)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(amount.color)
+            }
+            Divider()
+                .padding(.top, 12)
+        }
+    }
+
+    /// Build 64 (C-4): fitted detents, not a full-screen cover
+    /// (reverses the Nov 17 full-screen rule, build 43 item 17).
+    /// The list is a half-screen sheet; the confirm flows are
+    /// small (.fraction(0.45), draggable to .medium when the
+    /// content needs it); the taller flows (Rename, Link) get
+    /// .medium. iPad: the 600pt frame (regular size class) keeps
+    /// the sheet a centred card, never full-width or awkwardly
+    /// small — the build-42 detents were the version that did
+    /// not work well, so the width is pinned and the heights
+    /// come from the detents, not from the content.
+    private var sheetDetents: Set<PresentationDetent> {
+        switch flow {
+        case .list, .rename, .linkCandidates:
+            return [.medium, .large]
+        default:
+            return [.fraction(0.45), .medium]
+        }
+    }
+
     public var body: some View {
         // No NavigationStack root (owner, Nov 14, 2026): the
         // toolbar "Cancel" truncated to "Ca…", and a NavigationStack
@@ -485,11 +549,12 @@ public struct TransactionActionsSheet: View {
         // rendered tall and mostly empty (build 24) — a single
         // "Use Extra Fund" row in a full-height card. A plain VStack
         // root + SheetHeader keeps the content at the top of the
-        // full-screen popup (build 43, item 17 — the cover is
-        // full-screen now, no detents; the trailing Spacer below
-        // is what top-anchors it, item 18). On the list flow the
+        // sheet (build 43, item 18 — the trailing Spacer below
+        // is what top-anchors it). On the list flow the
         // header shows X (dismiss); on a sub-flow it shows a back
         // chevron (return to the list).
+        // Build 64 (C-4): fitted detents (see `sheetDetents`) —
+        // the cover is a sheet now, not full-screen.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(
                 title: flowTitle,
@@ -519,9 +584,16 @@ public struct TransactionActionsSheet: View {
         // size class, full-width on iPhone — same treatment as the
         // Weekly Budget sheet. The trailing Spacer is back (build
         // 43, item 18): in the full-screen cover it top-anchors
-        // the short flows — in the old detent sheet it stretched
-        // the middle empty against the tall form sheet.
+        // the short flows — in the fitted sheet (build 64, C-4)
+        // it does the same against the detent height, so short
+        // confirms sit at the top of the sheet instead of
+        // centring themselves in it.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // Build 64 (C-4): the fitted detents for this flow — the
+        // modifier lives on the presented content, so the sheet
+        // resizes when the flow changes (list → confirm).
+        .presentationDetents(sheetDetents)
+        .presentationDragIndicator(.visible)
         // T-P2-1: the failure alert lives on this sheet, not on the
         // Transactions parent — an alert attached behind a presented
         // sheet never surfaces, so failures from markAsCharity,
@@ -553,7 +625,9 @@ public struct TransactionActionsSheet: View {
         case .reclassifyReason: return "Reclassify Transaction"
         case .excludeConfirm: return "Exclude Transaction"
         case .rename: return "Rename Merchant"
-        case .savingsConfirm: return "Designate as \(extraFundName)"
+        // Build 64 (F-29): was "Designate as …" — the old name;
+        // the action is "Add to …", so the confirm title matches it.
+        case .savingsConfirm: return "Add to \(extraFundName)"
         case .deleteConfirm:
             return transaction.source == .manual ? "Delete Transaction" : "Move to Trash"
         }
@@ -616,10 +690,19 @@ public struct TransactionActionsSheet: View {
                     // header — and Delete sits last below its own
                     // rule, in its own block, so the destructive
                     // action reads as separate from the rest. The
-                    // actions themselves are unchanged (Cover with
-                    // Savings, Add to Savings and Rename Merchant
-                    // stay, in Group 1 and More) — only the look
-                    // changes.
+                    // actions themselves are unchanged — only the
+                    // look changes.
+                    // Build 64 (F-33): the one exception is the
+                    // "Savings" section — it carries a small muted
+                    // header, so the two fund actions read as
+                    // their own group instead of a continuation of
+                    // the counting rows. The counting group keeps
+                    // the flat build-63 look with no header.
+                    if let label = group.label {
+                        Text(label)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                    }
                     let mainActions = group.actions.filter { $0.id != .delete }
                     let deleteActions = group.actions.filter { $0.id == .delete }
                     VStack(spacing: 0) {
@@ -783,6 +866,7 @@ public struct TransactionActionsSheet: View {
 
     private var charityConfirmContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
             Text(charityMessage)
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
@@ -840,27 +924,31 @@ public struct TransactionActionsSheet: View {
 
     private var savingsConfirmContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
             Text(savingsMessage)
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
             TwoButtonRow {
-                Button("Designate as \(extraFundName)") {
+                // Build 64 (F-29): same rename as the confirm
+                // title above — the button must read "Add to …",
+                // not the old "Designate as …".
+                Button("Add to \(extraFundName)") {
                     Task {
                         isWorking = true
                         guard let fundsViewModel = makeFundsViewModel() else {
                             isWorking = false
-                            viewModel.showAlert(title: "Could Not Designate", message: "Could not load your household. Try again.")
+                            viewModel.showAlert(title: "Could Not Add to \(extraFundName)", message: "Could not load your household. Try again.")
                             return
                         }
                         let message = await fundsViewModel.designateTransactionAsSavings(transaction)
                         isWorking = false
                         if let message {
-                            viewModel.toastManager.show(message, kind: .success)
+                            viewModel.showConfirmation(message, kind: .success)
                             onDismiss()
                         } else {
                             viewModel.showAlert(
-                                title: fundsViewModel.alertTitle ?? "Could Not Designate",
-                                message: fundsViewModel.alertMessage ?? "Could not designate this transaction. Try again."
+                                title: fundsViewModel.alertTitle ?? "Could Not Add to \(extraFundName)",
+                                message: fundsViewModel.alertMessage ?? "Could not add this transaction to the fund. Try again."
                             )
                         }
                     }
@@ -887,6 +975,7 @@ public struct TransactionActionsSheet: View {
 
     private var extraFundContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
             Text("Ask the admin to cover “\(TransactionFormatting.displayMerchant(transaction.merchant))” (\(TransactionFormatting.amountDisplay(for: transaction).text)) from the \(extraFundName)?")
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
@@ -935,6 +1024,7 @@ public struct TransactionActionsSheet: View {
 
     private var renameContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
             VStack(alignment: .leading, spacing: 6) {
                 Text("From the Bank")
                     .font(.system(size: 14, weight: .semibold))
@@ -1003,6 +1093,7 @@ public struct TransactionActionsSheet: View {
 
     private var linkCandidatesContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
             if let linkCandidates {
                 if linkCandidates.isEmpty {
                     Text("No Matching Purchase Found")
@@ -1066,6 +1157,7 @@ public struct TransactionActionsSheet: View {
 
     private var unlinkConfirmContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
             Text(unlinkMessage)
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
@@ -1108,6 +1200,7 @@ public struct TransactionActionsSheet: View {
     /// and Reclassify).
     private var excludeConfirmContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
             Text("This takes it out of the spending math — it will not count toward weekly spending, and its kind stays as it is. It moves to the Trash. The admin can bring it back from the Trash. Give a reason to continue.")
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
@@ -1146,6 +1239,7 @@ public struct TransactionActionsSheet: View {
 
     private func reclassifyReasonContent(kind: TransactionKind) -> some View {
         VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
             Text("Give a reason for reclassifying this transaction.")
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
@@ -1186,6 +1280,7 @@ public struct TransactionActionsSheet: View {
 
     private var deleteConfirmContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
             if transaction.source == .manual {
                 Text("This removes the hand-entered transaction and cannot be undone.")
                     .font(.system(size: 15))

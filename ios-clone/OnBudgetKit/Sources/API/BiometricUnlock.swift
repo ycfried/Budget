@@ -9,12 +9,16 @@
 // Flow:
 //   Opt in (Settings → "Unlock with Face ID", only shown when
 //     biometrics are enrolled): evaluate Face ID once to prove the
-//     user can authenticate, then move the live session into the
+//     user can authenticate, then move the app-side session into the
 //     biometric Keychain store (`BiometricSessionStore`,
-//     `.biometryCurrentSet`) and clear the UserDefaults copy. From
-//     then on every save — sign-in, token refresh, password change
-//     — lands in the Keychain, because the client keeps that store
-//     until the user opts out or signs out.
+//     `.biometryCurrentSet`). From then on every app-side save —
+//     sign-in, token refresh, password change — lands in the
+//     biometric item, because the client keeps that store until the
+//     user opts out or signs out. The shared App Group Keychain
+//     copy stays in sync through the mirror
+//     (`MirroredSessionStore`, build 64, audit F-17), so the widget
+//     keeps working — Face ID gates opening the app, not the
+//     widget's numbers.
 //   Unlock (next launch, auth screen): the auth screen offers
 //     "Unlock with Face ID" only when a protected session exists
 //     AND biometrics can evaluate. Tapping it evaluates Face ID,
@@ -22,9 +26,9 @@
 //     there is no second prompt), restores the session into the
 //     client, and checks the token refreshes. On success the caller
 //     boots into the app; on any failure the password screen stays.
-//   Opt out (toggle off): swaps the client back to the UserDefaults
-//     store and deletes the Keychain item. No biometric prompt is
-//     needed to turn it off.
+//   Opt out (toggle off): swaps the client back to the default
+//     Keychain store and deletes the biometric Keychain item. No
+//     biometric prompt is needed to turn it off.
 //   Fallbacks (never lock the user out; the password screen is
 //     always the fallback — never the device passcode, so the
 //     policy is `.deviceOwnerAuthenticationWithBiometrics`, not
@@ -32,9 +36,10 @@
 //     - user cancels the prompt → stay on the password screen.
 //     - Face ID locked out (too many failures) → password screen.
 //     - enrolment changed → the Keychain item is invalidated; the
-//       unlock deletes it, swaps the client back to UserDefaults,
-//       and shows the password screen. The user re-opts in after
-//       signing in — it is never silently re-enabled.
+//       unlock deletes it, swaps the client back to the default
+//       Keychain store, and shows the password screen. The user
+//       re-opts in after signing in — it is never silently
+//       re-enabled.
 //     - stored refresh refused → the session is dead; the item is
 //       dropped and the password screen shows.
 //     - biometrics removed / not enrolled any more → the stale item
@@ -245,8 +250,8 @@ public final class LAContextAuthenticator: BiometricAuthenticator {
 
 /// Owns the Face ID opt-in / unlock / opt-out state machine. Holds
 /// no session itself — the session lives in the client's store (the
-/// biometric Keychain store while enabled, the UserDefaults store
-/// otherwise). Stateless apart from its injected keychain +
+/// biometric Keychain store while enabled, the default Keychain
+/// store otherwise). Stateless apart from its injected keychain +
 /// authenticator, so the app can hold one instance per screen and
 /// the Keychain stays the source of truth.
 public final class BiometricUnlock {
@@ -284,24 +289,32 @@ public final class BiometricUnlock {
     /// The store the app constructs its client with at launch: the
     /// biometric store when a protected session exists (its `load()`
     /// returns nil without prompting, so boot lands on the auth
-    /// screen and offers Face ID), else the plain UserDefaults store.
+    /// screen and offers Face ID), else the default shared Keychain
+    /// store (build 64, audit F-17). The legacy migration runs
+    /// first on either path, so a pre-build-64 plaintext session —
+    /// standard UserDefaults or the App Group mirror — is moved
+    /// into the shared Keychain item and deleted before the client
+    /// is built.
     public static func sessionStoreForLaunch(
         keychain: BiometricKeychain = KeychainBiometricStore()
     ) -> SessionStore {
-        keychain.exists()
+        _ = KeychainSessionStore.migrateLegacyCopies()
+        return keychain.exists()
             ? BiometricSessionStore(
                 keychain: keychain,
                 biometryName: LAContextAuthenticator().biometryKind.displayName)
-            : UserDefaultsSessionStore()
+            : KeychainSessionStore()
     }
 
     // MARK: - Opt in / opt out
 
     /// Opt in: prove the user can authenticate with Face ID, then
-    /// move the live session into the biometric Keychain store and
-    /// clear the UserDefaults copy. Throws (and stores nothing)
-    /// when there is no session, biometrics cannot evaluate, the
-    /// user cancels, or the Keychain refuses the item.
+    /// move the app-side session into the biometric Keychain store.
+    /// The shared Keychain copy stays — the mirror keeps it in sync
+    /// so the widget keeps working — only the app-side store moves.
+    /// Throws (and stores nothing) when there is no session,
+    /// biometrics cannot evaluate, the user cancels, or the
+    /// Keychain refuses the item.
     public func enable(client: SupabaseClient) async throws {
         guard let session = client.currentSession else {
             throw BiometricUnlockError.noSession
@@ -314,14 +327,15 @@ public final class BiometricUnlock {
         client.replaceSessionStore(store)
     }
 
-    /// Opt out: swap the client back to the UserDefaults store and
-    /// delete the Keychain item. No biometric prompt — turning it
-    /// off must never require proving a face. No-op when not
-    /// enabled: swapping UserDefaults for a fresh UserDefaults
-    /// store would clear the session key the new store just wrote.
+    /// Opt out: swap the client back to the default Keychain store
+    /// and delete the biometric Keychain item. No biometric prompt
+    /// — turning it off must never require proving a face. No-op
+    /// when not enabled: swapping the default store for a fresh
+    /// default store would clear the session key the new store just
+    /// wrote.
     public func disable(client: SupabaseClient) {
         guard isEnabled else { return }
-        client.replaceSessionStore(UserDefaultsSessionStore())
+        client.replaceSessionStore(KeychainSessionStore())
     }
 
     // MARK: - Unlock
@@ -366,8 +380,9 @@ public final class BiometricUnlock {
         } catch let error as OnBudgetError where error == .sessionExpired {
             // Refresh refused: the stored session is dead. The
             // client's own refresh path already cleared it; drop the
-            // store back to UserDefaults so the password sign-in
-            // does not silently re-create a protected item.
+            // store back to the default Keychain store so the
+            // password sign-in does not silently re-create a
+            // protected item.
             dropStoredSession(client: client)
             throw BiometricUnlockError.sessionExpired
         } catch {
@@ -381,12 +396,12 @@ public final class BiometricUnlock {
     }
 
     /// Delete the protected item and swap the client back to the
-    /// UserDefaults store. Used whenever the stored session proves
+    /// default Keychain store. Used whenever the stored session proves
     /// unusable, so a dead item can never strand the user or
     /// silently re-enable itself on the next password sign-in. The
     /// swap runs only when the client is actually on the biometric
-    /// store — swapping UserDefaults for a fresh UserDefaults store
-    /// would clear the session key the new store just wrote.
+    /// store — swapping the default store for a fresh default store
+    /// would clear the session the new store just wrote.
     /// Build 48 (widget sync): the active store is now always a
     /// MirroredSessionStore (see SupabaseClient.replaceSessionStore),
     /// so this check looks THROUGH the wrapper at the real storage
@@ -402,7 +417,7 @@ public final class BiometricUnlock {
             return false
         }()
         if usesBiometricStore {
-            client.replaceSessionStore(UserDefaultsSessionStore())
+            client.replaceSessionStore(KeychainSessionStore())
         }
     }
 }

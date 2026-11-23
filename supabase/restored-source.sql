@@ -13,12 +13,40 @@
 --   select proname from pg_proc where proname = 'force_restore_transaction';
 --   select grantee, privilege_type from information_schema.routine_privileges
 --     where routine_name = 'force_restore_transaction';
--- Expected: the source check lists ('csv', 'amex_alert', 'plaid',
--- 'manual', 'restored'); force_restore_transaction exists;
+-- Expected: the source check lists ('csv', 'amex_alert', 'chase_alert',
+-- 'plaid', 'manual', 'restored'); force_restore_transaction exists;
 -- authenticated has EXECUTE on it, public/anon do not.
 -- Re-running is safe: the constraint drop is looked up by definition
 -- (never guessed), the re-add is idempotent in effect, and the RPC is
 -- CREATE OR REPLACE.
+--
+-- F-12 (build 61 audit, Nov 23, 2026) — checked, NOT missing:
+-- the audit claimed force_restore_transaction has "no household
+-- check" and no pre_exclusion_state guard. Both are already in
+-- the function below, and this file is the paste-ready vehicle
+-- for landing them (the file itself is NOT yet applied live —
+-- pasting it IS the F-12 fix; nothing else is needed):
+--   * household check: the admin check is scoped to the ROW's
+--     household (household_members where household_id =
+--     v_row.household_id and role = 'admin'), so an admin of
+--     household A cannot force-restore household B's row. The
+--     audit's "no household check" does not match this file.
+--   * snapshot guard: a row WITH a pre_exclusion_state snapshot
+--     is REFUSED here ('transaction has a prior state recorded:
+--     use restore_transaction') — the snapshot is honoured by
+--     routing the row to the normal path, which restores its
+--     stored state and keeps its original source. Only a NULL
+--     snapshot (bank-dropped, never snapshotted) may be
+--     force-restored, as verified + source='restored'. That IS the
+--     guard "with the snapshot where one exists": the snapshot is
+--     never ignored or overwritten by this path.
+--   A cross-household attempt is added to the verification steps
+--   below so the check is provable after applying.
+--
+-- F-15 (build 64): 'chase_alert' joins the source list below so a
+-- Chase email-alert row (gmail-poll, disabled until a real alert
+-- sample is verified — see supabase/functions/_shared/
+-- gmail-parse.ts) can be stored. No other value changes.
 --
 -- WHY: Plaid's /transactions/sync can return a row in removed[] that
 -- the bank still reports — the $3,500 check deposit (Nov 17, 2026)
@@ -75,7 +103,7 @@ end $$;
 
 alter table transactions
   add constraint transactions_source_check
-  check (source in ('csv', 'amex_alert', 'plaid', 'manual', 'restored'));
+  check (source in ('csv', 'amex_alert', 'chase_alert', 'plaid', 'manual', 'restored'));
 
 -- ---------------------------------------------------------------------
 -- force_restore_transaction(txn_id uuid) returns void
@@ -178,7 +206,12 @@ grant execute on function public.force_restore_transaction(uuid) to authenticate
 --     where conrelid = 'transactions'::regclass
 --       and pg_get_constraintdef(oid) like '%restored%';
 --     -- expect: transactions_source_check,
---     -- check (source in ('csv', 'amex_alert', 'plaid', 'manual', 'restored'))
+--     -- check (source in ('csv', 'amex_alert', 'chase_alert', 'plaid', 'manual', 'restored'))
+--   -- Household check (F-12): an admin of household A cannot
+--   -- force-restore a row of household B (as admin of A, throwaway
+--   -- excluded row of B):
+--   select force_restore_transaction('<txn-uuid-in-household-B>');
+--     -- expect: ERROR 'admin only'; row unchanged.
 --   -- Force-restore REFUSES a row WITH a snapshot (as admin,
 --   -- throwaway row excluded via exclude_transaction first):
 --   select force_restore_transaction('<txn-uuid-with-snapshot>');
