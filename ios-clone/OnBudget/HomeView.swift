@@ -668,6 +668,11 @@ public struct HomeView: View {
             // restored if the owner changes his mind. Recent
             // Transactions is shared by both layouts.
             VStack(alignment: .leading, spacing: 12) {
+                // Build 63 (Lean): the page select — Home /
+                // Transactions / Funds, the current page active
+                // as a white floater — sits directly under the
+                // Household header, above both Home layouts.
+                PageSelectControl(selectedTab: $appState.selectedTab)
                 // Build 49 (owner, Nov 19, 2026): when a Gmail
                 // connection is in error state, email alerts have
                 // stopped — Home says so out loud at the top, with a

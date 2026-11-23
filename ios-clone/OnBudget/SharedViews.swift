@@ -73,6 +73,82 @@ public struct PaleButtonStyle: ButtonStyle {
     }
 }
 
+/// Small variant of the Lean soft style for in-row actions
+/// (e.g. the Transactions page-links row): a pale soft-blue
+/// fill with a hairline border, ink text — a real button, not
+/// a bare outline and not a solid blue block. Replaces the
+/// outline and pale small styles (build 63, Lean).
+public struct SmallSoftButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(DesignTokens.ink)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background(DesignTokens.softFill)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(DesignTokens.softBorder, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}
+
+// MARK: - Page select
+
+/// Page select (build 63, Lean): the top segmented control on
+/// Home and Funds — Home / Transactions / Funds, in that order,
+/// the current page active. A light-grey track (#eef0f3, 10pt
+/// radius, 3pt padding); the active tab is a white floater
+/// (white bg, ink semibold text, soft shadow 0/2/7/20%) — never
+/// a blue fill. Tapping a segment switches to that tab (the same
+/// destination as the bottom tab bar). The real app had no page
+/// select — the Lean mockup adds this control directly under the
+/// Household header on Home and Funds, so it is new here.
+/// Left-aligned, sized to its content. State changes are
+/// instant (standing rule) — no slide animation.
+public struct PageSelectControl: View {
+    @Binding var selectedTab: AppTab
+
+    public init(selectedTab: Binding<AppTab>) {
+        self._selectedTab = selectedTab
+    }
+
+    public var body: some View {
+        HStack(spacing: 0) {
+            ForEach(AppTab.allCases, id: \.self) { tab in
+                let isSelected = selectedTab == tab
+                Button {
+                    selectedTab = tab
+                } label: {
+                    Text(tab.rawValue)
+                        .font(.system(size: 13.5, weight: isSelected ? .semibold : .medium))
+                        .foregroundStyle(isSelected ? DesignTokens.ink : DesignTokens.segmentInactive)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(isSelected ? Color.white : Color.clear)
+                                .shadow(
+                                    color: isSelected ? Color.black.opacity(0.2) : .clear,
+                                    radius: 7, x: 0, y: 2
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("pageSelect.\(tab.rawValue.lowercased())")
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(DesignTokens.track)
+        )
+    }
+}
+
 /// Distinct outline: white bg, brand-blue border + text, same
 /// sizing as Primary / Tertiary. The second treatment in a pair
 /// that must not share a colour with a grey tertiary neighbour

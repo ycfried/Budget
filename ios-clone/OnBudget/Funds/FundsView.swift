@@ -238,6 +238,15 @@ public struct FundsView: View {
     public var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                // Build 63 (Lean): the page select — Home /
+                // Transactions / Funds, the current page active
+                // as a white floater — sits directly under the
+                // Household header. Left-aligned (the VStack is
+                // centre-aligned, so the Spacer pins it left).
+                HStack {
+                    PageSelectControl(selectedTab: $appState.selectedTab)
+                    Spacer()
+                }
                 if let form = openForm {
                     backButton
                     // The balance the open form acts on stays visible

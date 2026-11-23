@@ -367,7 +367,11 @@ public struct TransactionsView: View {
                         }
                     }
                 }
-                .buttonStyle(SmallPaleButtonStyle())
+                // Build 63 (Lean, Polished): the Review button is
+                // a soft button (pale soft-blue fill + hairline
+                // border), not a bare pale chip — the Transactions
+                // page-links row reads as real buttons.
+                .buttonStyle(SmallSoftButtonStyle())
             }
             Menu {
                 if let onShowActivity {
@@ -397,7 +401,12 @@ public struct TransactionsView: View {
                         .font(.system(size: 11, weight: .semibold))
                 }
             }
-            .buttonStyle(SmallOutlineButtonStyle())
+            // Build 63 (Lean, Polished): the More chip is a soft
+            // button (pale soft-blue fill + hairline border), not
+            // an outline — the owner keeps flagging outline buttons
+            // as ugly, and the page-links row reads as real
+            // buttons now.
+            .buttonStyle(SmallSoftButtonStyle())
             .accessibilityIdentifier("pageLinks.more")
             Spacer(minLength: 0)
             if viewModel.isAdmin {
@@ -1094,9 +1103,9 @@ struct DateRangeCalendarView: View {
                         .foregroundStyle(DesignTokens.ink)
                     HStack(spacing: 10) {
                         Button("This Week") { choose(.thisWeek) }
-                            .buttonStyle(SmallOutlineButtonStyle())
+                            .buttonStyle(SmallSoftButtonStyle())
                         Button("This Month") { choose(.thisMonth) }
-                            .buttonStyle(SmallOutlineButtonStyle())
+                            .buttonStyle(SmallSoftButtonStyle())
                     }
                 }
 

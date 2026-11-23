@@ -149,6 +149,20 @@ public enum DesignTokens {
     /// distinct from the kind colours.
     public static let actionSlateHex = "#475569"
 
+    // MARK: - Lean (build 63, owner Nov 23, 2026)
+
+    /// Pale soft-blue fill for secondary buttons (Between-style:
+    /// a soft fill with a hairline border, never a bare outline
+    /// and never a solid blue block). Pairs with softBorderHex.
+    public static let softFillHex = "#e9effe"
+    /// Hairline border for soft buttons (the pale blue #bfdbfe).
+    public static let softBorderHex = "#bfdbfe"
+    /// Light-grey track for the page-select segmented control
+    /// (Lean: a white floater on this track, never a blue fill).
+    public static let trackHex = "#eef0f3"
+    /// Inactive segment text on the page select.
+    public static let segmentInactiveHex = "#5b6a84"
+
     // Soft-green inline success box (owner decision, Nov 12, 2026:
     // inline success states are GREEN like the success toasts):
     // pale background, dark green text, soft border — the green
@@ -189,6 +203,10 @@ public enum DesignTokens {
     public static var fund: Color { Color(hex: fundHex) }
     public static var fundDeep: Color { Color(hex: fundDeepHex) }
     public static var actionSlate: Color { Color(hex: actionSlateHex) }
+    public static var softFill: Color { Color(hex: softFillHex) }
+    public static var softBorder: Color { Color(hex: softBorderHex) }
+    public static var track: Color { Color(hex: trackHex) }
+    public static var segmentInactive: Color { Color(hex: segmentInactiveHex) }
     #endif
 }
 

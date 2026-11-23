@@ -14,6 +14,10 @@ import OnBudgetKit
 ///   the current state, not an action), then the actions that drive
 ///   the math, in the brief's order — Purchase, Income, Tzedaka,
 ///   Cover with Savings, Add to Savings, Exclude, Delete (RED).
+///   Build 63 (Lean): the group renders as a flat list with no
+///   "How It Counts" header, and Delete sits last below its own
+///   rule, in its own block — the actions are unchanged, only
+///   the look.
 ///   Purchase IS in the list now (it was not, even though the
 ///   charge IS a purchase). For a kind that lives in Group 2
 ///   (Transfer, Refund, Fund Charge, Payment, Cashback), the
@@ -608,16 +612,28 @@ public struct TransactionActionsSheet: View {
                         }
                     }
                 } else {
-                    if let label = group.label {
-                        Text(label)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                    }
+                    // Build 63 (Lean): a flat list — no group
+                    // header — and Delete sits last below its own
+                    // rule, in its own block, so the destructive
+                    // action reads as separate from the rest. The
+                    // actions themselves are unchanged (Cover with
+                    // Savings, Add to Savings and Rename Merchant
+                    // stay, in Group 1 and More) — only the look
+                    // changes.
+                    let mainActions = group.actions.filter { $0.id != .delete }
+                    let deleteActions = group.actions.filter { $0.id == .delete }
                     VStack(spacing: 0) {
-                        ForEach(group.actions) { action in
+                        ForEach(mainActions) { action in
                             actionRow(action)
-                            if action.id != group.actions.last?.id {
+                            if action.id != mainActions.last?.id {
                                 Divider()
+                            }
+                        }
+                        if !deleteActions.isEmpty {
+                            Divider()
+                                .padding(.top, 12)
+                            ForEach(deleteActions) { action in
+                                actionRow(action)
                             }
                         }
                     }

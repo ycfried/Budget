@@ -57,7 +57,10 @@ public struct FundsPrimaryButton: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, isLarge ? 16 : 13)
                 .padding(.horizontal, 18)
-                .background(DesignTokens.primary)
+                // Build 63 (Lean): the one filled deep-blue
+                // primary in an action group — the deeper blue
+                // (#1d4ed8) among the soft secondaries.
+                .background(DesignTokens.deep)
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
         }
@@ -158,8 +161,16 @@ public struct FundsPaleButton: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, isLarge ? 16 : 13)
                 .padding(.horizontal, 18)
-                .background(DesignTokens.pale)
+                // Build 63 (Lean, Between-style): a pale
+                // soft-blue fill (#e9effe) with a hairline
+                // border (#bfdbfe), ink text — a real button,
+                // not a bare outline and not a solid blue block.
+                .background(DesignTokens.softFill)
                 .foregroundStyle(DesignTokens.ink)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(DesignTokens.softBorder, lineWidth: 1)
+                )
                 .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .disabled(isBusy)
