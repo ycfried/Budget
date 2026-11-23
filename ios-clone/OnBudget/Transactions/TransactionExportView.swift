@@ -335,6 +335,8 @@ public struct TransactionExportView: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
+            // Identifier for a UI test to find the date-range
+            // control (the NavigationLink to the calendar).
             .accessibilityIdentifier("export.filter.when")
 
             // Card / Account — the picker value says it. The
