@@ -216,5 +216,10 @@ public struct TrashView: View {
         // Weekly Budget sheet — detent height + 600pt width in the
         // regular size class; full-width on iPhone (compact).
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
+        // dismisses the cover, matching the top-left Back button.
+        // (The Trash cover has no SheetHeader, so the gesture does
+        // not come from there.)
+        .sheetSwipeBack()
     }
 }

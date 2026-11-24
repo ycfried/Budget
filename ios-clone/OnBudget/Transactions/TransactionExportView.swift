@@ -228,6 +228,12 @@ public struct TransactionExportView: View {
             }
             .frame(width: horizontalSizeClass == .regular ? 600 : nil)
             .accessibilityIdentifier("export.popup")
+            // Build 70, item 2 (owner, Nov 24, 2026): re-enable
+            // the navigation pop gesture so swipe-right pops the
+            // Choose Dates page back to Export. (The cover's
+            // SheetHeader already supplies swipe-right-to-dismiss
+            // for the cover itself.)
+            .enableSwipeBack()
         }
         .task {
             resolvedHouseholdName = householdName

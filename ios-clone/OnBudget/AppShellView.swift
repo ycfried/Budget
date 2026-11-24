@@ -216,6 +216,11 @@ public struct AppShellView: View {
         // a confirmation shows exactly once — here while Settings
         // is open, at the shell root otherwise.
         .confirmationPopupOverlay($appState.toast)
+        // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
+        // dismisses the Settings cover, matching the top-left
+        // Back button. (SettingsView has no SheetHeader, so the
+        // gesture does not come from there.)
+        .sheetSwipeBack()
     }
 
     /// The Settings context the shell owns: session + household from

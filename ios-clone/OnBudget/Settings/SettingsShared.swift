@@ -388,6 +388,13 @@ struct HistoryDateFilterCard: View {
                 DateRangeCalendarView(selection: calendarBinding)
             }
             .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+            // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
+            // dismisses the cover, matching the calendar's own
+            // top-left Back button. (The calendar cover has no
+            // SheetHeader, so the gesture does not come from
+            // there.) The calendar is the stack root, not a push,
+            // so no enableSwipeBack is needed here.
+            .sheetSwipeBack()
         }
     }
 

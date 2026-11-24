@@ -993,6 +993,14 @@ public struct TransactionsFilterSheet: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .toolbar {
+            // Build 70, item 2 (owner, Nov 24, 2026): a back
+            // button top left — the Filters cover had none, so
+            // Cancel was the only way out. Back dismisses
+            // without applying, exactly like Cancel did (item 5
+            // removes the Cancel button now that Back exists).
+            ToolbarItem(placement: .topBarLeading) {
+                BackButton(action: cancel)
+            }
             // Keyboard Done (owner, Nov 13, 2026): the decimal
             // pad has no return key and no other way to dismiss
             // it — this button resigns the amount field.
@@ -1008,6 +1016,14 @@ public struct TransactionsFilterSheet: View {
         // Weekly Budget sheet. The calendar pushed from here also
         // gets the extra width for its month grid.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
+        // dismisses the Filters cover (matching the new Back
+        // button), and re-enables the navigation pop gesture so
+        // swipe-right also pops the Choose Dates page back to
+        // Filters. The Filters cover has no SheetHeader, so
+        // neither gesture comes from there.
+        .sheetSwipeBack()
+        .enableSwipeBack()
     }
 
     /// Draft amount bounds are invalid when both ends parse and
@@ -1269,6 +1285,13 @@ struct DateRangeCalendarView: View {
                 visibleMonth = firstOfMonth
             }
         }
+        // Build 70, item 2 (owner, Nov 24, 2026): the hidden
+        // system back button turns the navigation pop gesture off,
+        // so swipe-right did nothing on this page. Re-enable it —
+        // the page is pushed from the Filters and Export sheets,
+        // and from the Settings calendar cover (where it is the
+        // root, so the gesture is harmless there).
+        .enableSwipeBack()
     }
 
     // MARK: - Range label

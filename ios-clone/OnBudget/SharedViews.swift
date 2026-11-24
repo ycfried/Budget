@@ -298,6 +298,15 @@ public struct SheetHeader: View {
             Spacer()
             Color.clear.frame(width: 44, height: 44)
         }
+        // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
+        // dismisses the sheet/cover, matching the top-left back /
+        // close button. Every sheet/cover that uses a SheetHeader
+        // gets it from here; covers whose root is a NavigationStack
+        // or a plain VStack apply `.sheetSwipeBack()` directly.
+        // The header's own onBack is passed through, so on a
+        // multi-step sheet the swipe returns to the previous step
+        // (like the back chevron) instead of dismissing.
+        .sheetSwipeBack(onBack: onBack)
     }
 }
 
@@ -681,6 +690,156 @@ public extension View {
     /// NavigationStack whose bar is hidden (build 68, item 18).
     func enableSwipeBack() -> some View {
         background(SwipeBackEnabler())
+    }
+
+    /// Swipe-right-to-dismiss for a presented sheet or full-screen
+    /// cover (build 70, item 2). Attach to the content root of a
+    /// sheet or cover; `SheetHeader` applies it itself, so every
+    /// sheet/cover that uses a SheetHeader gets it for free.
+    /// When `onBack` is given (a multi-step sheet whose header
+    /// back chevron returns to a previous step), the swipe calls
+    /// it instead of dismissing — swipe-right behaves exactly
+    /// like the back button.
+    func sheetSwipeBack(onBack: (() -> Void)? = nil) -> some View {
+        background(SheetSwipeBackEnabler(onBack: onBack))
+    }
+}
+
+// MARK: - Swipe-right-to-dismiss for sheets and full-screen covers
+
+/// Swipe-right-to-dismiss for a presented sheet or full-screen
+/// cover (build 70, item 2 — owner, Nov 24, 2026): EVERY popup
+/// and page-within-a-page must have a back button (top left) AND
+/// a working swipe-right-to-go-back. Sheets dismiss by swiping
+/// down natively, but full-screen covers have NO dismiss gesture
+/// at all — the only way out was a Cancel button. This adds a
+/// left-edge swipe-right that dismisses the presented view
+/// controller, mirroring the navigation pop gesture. When `onBack`
+/// is given (a multi-step sheet whose header back chevron returns
+/// to a previous step), the swipe calls it instead of dismissing
+/// — swipe-right behaves exactly like the back button.
+///
+/// A UIScreenEdgePanGestureRecognizer only fires for touches that
+/// START at the screen's left edge, so a slider or other
+/// horizontal control in the middle of the sheet is never stolen.
+/// The delegate additionally refuses to begin when:
+///   - a subpage is pushed inside the sheet/cover (the embedded
+///     navigation controller has more than one view controller) —
+///     the navigation pop gesture owns the edge swipe there, and
+///     this dismiss must not fire under it; or
+///   - the touch lands inside a UIControl (a slider thumb parked
+///     at 0% sits at the left edge) — the control keeps the touch.
+/// Attach with `.sheetSwipeBack()` on the content root of a sheet
+/// or cover. No behaviour changes besides the gesture: the back
+/// and close buttons keep working exactly as before.
+public struct SheetSwipeBackEnabler: UIViewControllerRepresentable {
+    /// Called instead of dismissing when set (a multi-step
+    /// sheet's back step). Updated as the sheet's flow changes.
+    public let onBack: (() -> Void)?
+
+    public init(onBack: (() -> Void)? = nil) {
+        self.onBack = onBack
+    }
+
+    public func makeUIViewController(context: Context) -> UIViewController {
+        let controller = SheetSwipeBackViewController()
+        controller.onBack = onBack
+        return controller
+    }
+
+    public func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        // The back step changes as the sheet's flow changes (the
+        // Actions sheet's header goes X → chevron when a sub-flow
+        // opens) — keep the hosted controller's copy current.
+        if let controller = uiViewController as? SheetSwipeBackViewController {
+            controller.onBack = onBack
+        }
+    }
+
+    private final class SheetSwipeBackViewController: UIViewController, UIGestureRecognizerDelegate {
+        var onBack: (() -> Void)?
+        private var edgePan: UIScreenEdgePanGestureRecognizer?
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            attachEdgePan()
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            attachEdgePan()
+        }
+
+        private func attachEdgePan() {
+            guard edgePan == nil else { return }
+            guard let target = presentedViewController() else { return }
+            let pan = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgePan(_:)))
+            pan.edges = .left
+            pan.delegate = self
+            target.view.addGestureRecognizer(pan)
+            edgePan = pan
+        }
+
+        /// The presented view controller hosting this sheet/cover:
+        /// this hosted VC is a child of the sheet's hosting
+        /// controller, which is the presented VC (its
+        /// presentingViewController is set). Walk up until the
+        /// presented one is found; nil when this view is not
+        /// inside a presented sheet/cover (then nothing attaches).
+        private func presentedViewController() -> UIViewController? {
+            var current: UIViewController? = parent
+            while let vc = current {
+                if vc.presentingViewController != nil { return vc }
+                current = vc.parent
+            }
+            return nil
+        }
+
+        /// The navigation controller embedded in this sheet/cover
+        /// (if any) — a NavigationStack embeds one as a child of
+        /// the hosting controller.
+        private func embeddedNavigationController(in root: UIViewController) -> UINavigationController? {
+            for child in root.children {
+                if let nav = child as? UINavigationController { return nav }
+                if let found = embeddedNavigationController(in: child) { return found }
+            }
+            return nil
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIScreenEdgePanGestureRecognizer,
+                  let target = presentedViewController() else { return false }
+            // A pushed subpage owns the edge swipe: the navigation
+            // controller's interactive pop gesture pops it. This
+            // dismiss only fires on the sheet/cover's root page.
+            if let nav = embeddedNavigationController(in: target), nav.viewControllers.count > 1 {
+                return false
+            }
+            // A control under the touch (a slider thumb parked at
+            // the left edge, a full-width button) keeps the touch
+            // — the sheet must not steal a drag the user meant for
+            // the control.
+            let point = pan.location(in: target.view)
+            if let hit = target.view.hitTest(point, with: nil) {
+                var view: UIView? = hit
+                while let current = view {
+                    if current is UIControl { return false }
+                    view = current.superview
+                }
+            }
+            return true
+        }
+
+        @objc private func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+            guard gesture.state == .ended else { return }
+            // A back step, when the sheet has one (a sub-flow) —
+            // otherwise dismiss the sheet/cover.
+            if let onBack {
+                onBack()
+            } else {
+                presentedViewController()?.dismiss(animated: true)
+            }
+        }
     }
 }
 

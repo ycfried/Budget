@@ -790,6 +790,11 @@ public struct ForgotPasswordSheet: View {
         // Spacer is gone: it stretched the middle empty against
         // the tall form sheet.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
+        // dismisses the cover, matching the top-left Done /
+        // Cancel button. (No SheetHeader here, so the gesture
+        // does not come from there.)
+        .sheetSwipeBack()
     }
 
     /// One step row: bold "Step N:" + short text. Used by the

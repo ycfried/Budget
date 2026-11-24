@@ -271,6 +271,14 @@ struct PastWeeksView: View {
             .padding()
         }
         .task { await viewModel.load() }
+        // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
+        // dismisses the cover when this page is presented as one
+        // (from Home) — matching the top-left Back button. When
+        // pushed onto the Transactions NavigationStack instead,
+        // this view is not inside a presented cover, so the
+        // gesture attaches to nothing and the stack's own
+        // enableSwipeBack owns the swipe.
+        .sheetSwipeBack()
     }
 
     private func weekBlock(_ week: PastWeekRow) -> some View {
