@@ -284,57 +284,80 @@ public struct PayDebtForm: View {
     }
 }
 
-// MARK: - Clear Carried Debt, in part or in full (build 30)
+// MARK: - Debt management: Clear + Adjust in ONE sheet (build 70)
 //
-// The owner asked for a slider, not a choice of amount / % / all:
-// one slider from $0 to the full debt, an editable number above it
-// (two-way bound — typing moves the slider, dragging updates the
-// number), and 10 / 25 / 50 / 75 % quick buttons below it. The
-// slider at max IS "all". A preview shows the remaining debt, then
-// a confirm writes the amount off — audited like the full clear,
-// NOT a payment from the Extra Fund ("Pay from Extra Fund" covers
-// paying). The % buttons floor to the cent, the same as the
-// server's percentage clear.
+// Owner, Nov 24, 2026: the "Edit Overspent (Past)" screen was
+// confusing — TWO redundant fields ("Amount to Add" and "New Total
+// Overspent (Past)"), each with its own Note, on a separate screen
+// from Clear Debt. This ONE sheet replaces BOTH the old Clear Debt
+// form and the Edit Debt sheet: the debt is managed in one place,
+// titled with the plain word "Debt" (the owner named the flow
+// "Debt"; the "Edit Overspent (Past)" name is gone — the sheet's
+// title and buttons read "Debt", not the fund's stored display
+// name, by the owner's explicit rename). A mode slider (the
+// unified slider) offers:
+//   - Clear Debt: write off part or all of the debt — the slider,
+//     % buttons and amount field from the old Clear form. No money
+//     moves; the amount is recorded in the activity log.
+//   - Adjust Debt: correct the total when the real debt differs
+//     from the app's calculated weeks total (e.g. after a cash
+//     payment). The server stores the delta (set_debt).
+// ONE amount field (its meaning follows the mode) and ONE Note
+// field, shared. The confirm is a centered .alert (the Clear Debt
+// precedent, build 37). No Cancel button — the form is inline on
+// the Funds page with a back button above it (build 70, item 5:
+// the back button IS the cancel). Setting the debt to $0 is not
+// offered in Adjust — that is Clear Debt.
+// The debt math and the ledger are untouched (build 69, item 1);
+// this is the management UI only.
+public struct DebtManagementSheet: View {
+    public enum Mode: Hashable {
+        case clear
+        case adjust
+    }
 
-public struct ClearDebtForm: View {
     @ObservedObject public var viewModel: FundsViewModel
-    /// The debt fund's CURRENT display name (build 43, owner Nov
-    /// 17, 2026 — item 16): the heading, buttons, alert titles
-    /// and confirm copy read it, never a hardcoded "Debt".
-    public let debtName: String
+    public let initialMode: Mode
     /// Closes the form back to the Funds list (owned by FundsView).
     public var onClose: () -> Void = {}
+
+    @State private var mode: Mode
     @State private var amountCents = 0
     @State private var amountText = "0"
+    @State private var note = ""
     @State private var showConfirm = false
-    @State private var pendingCents: Int?
+    @State private var pending: PendingChange?
     /// iPad (build 37, owner Nov 16, 2026): the % and action
     /// buttons are larger/taller on the tablet form factor.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     private var isIPad: Bool { horizontalSizeClass == .regular }
 
-    public init(viewModel: FundsViewModel, debtName: String, onClose: @escaping () -> Void = {}) {
+    public init(viewModel: FundsViewModel, initialMode: Mode = .clear, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
-        self.debtName = debtName
+        self.initialMode = initialMode
+        self._mode = State(initialValue: initialMode)
         self.onClose = onClose
+    }
+
+    private struct PendingChange {
+        let mode: Mode
+        let cents: Int
+        let note: String
     }
 
     private var debtCents: Int? { viewModel.debtBalanceCents }
     private var debtDollars: Double { Double(debtCents ?? 0) / 100 }
+    private var currentCents: Int { debtCents ?? 0 }
 
     /// The slider's value in dollars, two-way bound to
-    /// `amountCents`: dragging writes the field text, and the
-    /// field / % buttons write the slider (through `setAmount`).
-    /// Step is one cent, so a % button's floored amount sits
-    /// exactly where the slider says it does. The getter CLAMPS
-    /// to the current debt (build 37, owner Nov 16, 2026 — the
-    /// iPad crash around the Clear Debt flow): after a full clear
-    /// `refresh()` drops the debt to $0 while this form is still
-    /// open, and an unclamped value ($2,988.24) outside a range
-    /// that has collapsed to 0...0 is a degenerate Slider state —
-    /// the one concrete hazard found in the post-clear path. The
-    /// form closes right after, but the re-render in between must
-    /// never hand the Slider an out-of-range value.
+    /// `amountCents` (Clear mode only — the Adjust field writes
+    /// `amountCents` directly). Same clamping as the old Clear
+    /// form (build 37): after a full clear `refresh()` drops the
+    /// debt to $0 while this form is still open, and an unclamped
+    /// value outside a range that has collapsed to 0...0 is a
+    /// degenerate Slider state — the getter CLAMPS to the current
+    /// debt so the re-render in between never hands the Slider an
+    /// out-of-range value.
     private var sliderDollars: Binding<Double> {
         Binding(
             get: { min(max(Double(amountCents) / 100, 0), debtDollars) },
@@ -363,63 +386,109 @@ public struct ClearDebtForm: View {
         return max(0, debt - amountCents)
     }
 
+    /// The confirm only renders for a valid amount (no greyed-out
+    /// buttons, owner Nov 13): Clear needs an amount above $0;
+    /// Adjust needs a total above $0 that differs from the
+    /// current balance (the server refuses a zero delta, and $0
+    /// is Clear Debt's job).
+    private var isConfirmValid: Bool {
+        switch mode {
+        case .clear: return amountCents > 0
+        case .adjust: return amountCents > 0 && amountCents != currentCents
+        }
+    }
+
+    private var confirmLabel: String {
+        switch mode {
+        case .clear: return "Clear \(MoneyFormat.formatCents(amountCents))"
+        case .adjust: return "Set Debt to \(MoneyFormat.formatCents(amountCents))"
+        }
+    }
+
+    private var confirmTitle: String {
+        mode == .clear ? "Clear Debt" : "Adjust Debt"
+    }
+
     public var body: some View {
         FundsCard {
             VStack(alignment: .leading, spacing: 12) {
-                FundsHeading("Clear \(debtName)")
-                FundsMuted("Write off part of the carried debt — or all of it. No money moves; the amount is recorded in the activity log.")
+                FundsHeading("Debt")
+                // Mode choice — the unified slider (one track,
+                // sliding thumb), like the Tzedaka and Adjust
+                // Budget sheets. Switching modes clears the
+                // amount: its meaning follows the mode (an amount
+                // to clear vs a new total), so a Clear amount must
+                // never carry into Adjust.
+                SquarishPicker(
+                    [(Mode.clear, "Clear Debt"), (Mode.adjust, "Adjust Debt")],
+                    selection: $mode
+                )
                 if let debt = debtCents {
-                    FundsMoneyField("Amount to Clear", text: $amountText)
-                        .onChange(of: amountText) { _, newValue in
-                            // Typing moves the slider. A value that
-                            // does not parse yet (mid-type) leaves
-                            // the slider where it was.
-                            if let cents = MoneyFormat.parseDollarsStrict(newValue) {
-                                amountCents = min(max(cents, 0), debt)
+                    if mode == .clear {
+                        FundsMoneyField("Amount to Clear", text: $amountText)
+                            .onChange(of: amountText) { _, newValue in
+                                // Typing moves the slider. A value
+                                // that does not parse yet (mid-type)
+                                // leaves the slider where it was.
+                                if let cents = MoneyFormat.parseDollarsStrict(newValue) {
+                                    amountCents = min(max(cents, 0), debt)
+                                }
+                            }
+                        // The range is never zero-width (build 37 —
+                        // see sliderDollars): at $0 debt the range is
+                        // 0...0.01, not 0...0.
+                        Slider(value: sliderDollars, in: 0...max(debtDollars, 0.01), step: 0.01)
+                            .tint(DesignTokens.primary)
+                        HStack {
+                            Text("$0")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                            Spacer()
+                            Text(MoneyFormat.formatCents(debt))
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                        }
+                        HStack(spacing: 8) {
+                            // Build 37 (owner, Nov 16, 2026): a 100%
+                            // button joins 10 / 25 / 50 / 75% — one tap
+                            // clears the full debt instead of sliding to
+                            // the end.
+                            ForEach([10, 25, 50, 75, 100], id: \.self) { pct in
+                                FundsSmallTertiaryButton("\(pct)%", isLarge: isIPad) {
+                                    setAmount((debt * pct) / 100)
+                                }
                             }
                         }
-                    // The range is never zero-width (build 37 —
-                    // see sliderDollars): at $0 debt the range is
-                    // 0...0.01, not 0...0.
-                    Slider(value: sliderDollars, in: 0...max(debtDollars, 0.01), step: 0.01)
-                        .tint(DesignTokens.primary)
-                    HStack {
-                        Text("$0")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                        Spacer()
-                        Text(MoneyFormat.formatCents(debt))
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                    }
-                    HStack(spacing: 8) {
-                        // Build 37 (owner, Nov 16, 2026): a 100%
-                        // button joins 10 / 25 / 50 / 75% — one tap
-                        // clears the full debt instead of sliding to
-                        // the end. The "Slide to the end" hint is
-                        // gone: the 100% button says it.
-                        ForEach([10, 25, 50, 75, 100], id: \.self) { pct in
-                            FundsSmallTertiaryButton("\(pct)%", isLarge: isIPad) {
-                                setAmount((debt * pct) / 100)
-                            }
+                        if amountCents > 0, let remaining = remainingCents {
+                            FundsBreakdownRow("Remaining Debt", value: MoneyFormat.formatCents(remaining))
+                        } else {
+                            FundsMuted("Drag the slider or type an amount.")
                         }
-                    }
-                    if amountCents > 0, let remaining = remainingCents {
-                        FundsBreakdownRow("Remaining \(debtName)", value: MoneyFormat.formatCents(remaining))
                     } else {
-                        FundsMuted("Drag the slider or type an amount.")
-                    }
-                    HStack(spacing: 12) {
-                        // No greyed-out buttons (owner, Nov 13): the
-                        // confirm only appears once there is an
-                        // amount to clear.
-                        if amountCents > 0 {
-                            FundsPrimaryButton("Clear \(MoneyFormat.formatCents(amountCents))", isLarge: isIPad) {
-                                pendingCents = amountCents
-                                showConfirm = true
+                        // Adjust — ONE amount field: the corrected
+                        // TOTAL (not an amount to add). A correction
+                        // can be larger than the current balance, so
+                        // there is no upper clamp, only a floor at $0.
+                        FundsMoneyField("New Total", text: $amountText)
+                            .onChange(of: amountText) { _, newValue in
+                                if let cents = MoneyFormat.parseDollarsStrict(newValue) {
+                                    amountCents = max(cents, 0)
+                                }
                             }
+                    }
+                    // ONE Note field, shared by both modes.
+                    VStack(alignment: .leading, spacing: 4) {
+                        FieldLabel("Note")
+                        FundsTextField("", text: $note)
+                            .onChange(of: note) { _, newValue in
+                                if newValue.count > 120 { note = String(newValue.prefix(120)) }
+                            }
+                    }
+                    if isConfirmValid {
+                        FundsPrimaryButton(confirmLabel, isLarge: isIPad) {
+                            pending = PendingChange(mode: mode, cents: amountCents, note: note.trimmingCharacters(in: .whitespaces))
+                            showConfirm = true
                         }
-                        FundsTertiaryButton("Cancel", isLarge: isIPad) { onClose() }
                     }
                 } else if let error = viewModel.debtError {
                     FundsErrorBox(error)
@@ -428,148 +497,27 @@ public struct ClearDebtForm: View {
                 }
             }
         }
+        .onChange(of: mode) { _, _ in
+            amountCents = 0
+            amountText = "0"
+        }
         // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
         // confirmationDialog — on iPad a confirmationDialog is a
         // popover anchored at the top of the screen, and the owner
         // reported the Clear Debt confirm floating up there. An
-        // .alert is centred on iPhone and iPad alike (same
-        // precedent as the ReviewView Same Purchase / Separate
-        // confirms). The bottom success toast is untouched.
+        // .alert is centred on iPhone and iPad alike. The bottom
+        // success toast is untouched.
         .alert(
-            "Clear \(debtName)",
+            confirmTitle,
             isPresented: $showConfirm
         ) {
-            Button(TitleCase.apply(to: "Clear \(debtName)")) {
-                if let pendingCents {
-                    Task {
-                        if await viewModel.clearDebt(amountCents: pendingCents, note: "") {
-                            onClose()
-                        }
-                    }
-                }
-            }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            if let pendingCents, let remaining = remainingCents {
-                Text("Write off \(MoneyFormat.formatCents(pendingCents)) of the \(debtName)? \(MoneyFormat.formatCents(remaining)) will remain. No money moves.")
-            }
-        }
-    }
-}
-
-// MARK: - Edit Carried Debt: Add or Set (admin only, build 41)
-//
-// Owner, Nov 17, 2026: the debt fund only let you pay it down, set
-// a repayment rule, and clear it — there was no way to manually
-// increase it or correct it. This sheet holds BOTH manual changes
-// behind the single pale "Edit Debt" button on the Overspent (Past)
-// card (one entry point, not a fourth button on the card):
-//   - Add Debt: increases the carried debt by the entered amount.
-//   - Set Debt: replaces the carried debt with the entered total
-//     (a correction; the server stores the delta).
-// Both are admin-only, audited (add_debt / set_debt), and the new
-// balance shows in the debt fund's Activity feed. Setting the debt
-// to $0 is not offered here — that is the Clear Debt button.
-// The buttons only render for a valid amount (no greyed-out
-// buttons, owner Nov 13), and each change is confirmed with a
-// centered .alert first (the Clear Debt precedent, build 37).
-// Server: add-set-debt.sql (OWED — not applied live yet) plus the
-// compute-week / week-close TS companions; until those land, the
-// RPC returns the new balance but Home/Funds/the widget still show
-// the old one.
-struct EditDebtSheet: View {
-    @ObservedObject var viewModel: FundsViewModel
-    let currentCents: Int
-    let debtName: String
-    let onClose: () -> Void
-
-    @State private var addText = ""
-    @State private var addNote = ""
-    @State private var setText = ""
-    @State private var setNote = ""
-    @State private var pending: PendingDebtChange?
-    @State private var showConfirm = false
-
-    private struct PendingDebtChange {
-        enum Kind { case add, set }
-        let kind: Kind
-        let cents: Int
-        let note: String
-    }
-
-    private var addCents: Int { MoneyFormat.parseDollarsStrict(addText) ?? 0 }
-    private var setCents: Int { MoneyFormat.parseDollarsStrict(setText) ?? 0 }
-
-    var body: some View {
-        FundsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                FundsHeading("Edit \(debtName)")
-                FundsMuted("Current \(debtName) \(MoneyFormat.formatCents(currentCents))")
-                // Add Debt — primary blue (the first action, and
-                // the one that grows the balance).
-                VStack(alignment: .leading, spacing: 12) {
-                    FundsMoneyField("Amount to Add", text: $addText)
-                    VStack(alignment: .leading, spacing: 4) {
-                        FieldLabel("Note")
-                        FundsTextField("", text: $addNote)
-                            .onChange(of: addNote) { _, newValue in
-                                if newValue.count > 120 { addNote = String(newValue.prefix(120)) }
-                            }
-                    }
-                    if addCents > 0 {
-                        FundsPrimaryButton("Add to \(debtName)", isBusy: viewModel.busyAction == "debt-add") {
-                            pending = PendingDebtChange(kind: .add, cents: addCents, note: addNote)
-                            showConfirm = true
-                        }
-                    }
-                }
-                // Set Debt — pale middle tier (the correction, a
-                // different treatment from Add, per the standing
-                // button rule). Only offered for a total that
-                // differs from the current balance — setting it to
-                // the same amount is a no-op the server refuses.
-                VStack(alignment: .leading, spacing: 12) {
-                    FundsMoneyField("New Total \(debtName)", text: $setText)
-                    VStack(alignment: .leading, spacing: 4) {
-                        FieldLabel("Note")
-                        FundsTextField("", text: $setNote)
-                            .onChange(of: setNote) { _, newValue in
-                                if newValue.count > 120 { setNote = String(newValue.prefix(120)) }
-                            }
-                    }
-                    if setCents > 0 && setCents != currentCents {
-                        FundsPaleButton("Set \(debtName)", isBusy: viewModel.busyAction == "debt-set") {
-                            pending = PendingDebtChange(kind: .set, cents: setCents, note: setNote)
-                            showConfirm = true
-                        }
-                    }
-                }
-                FundsTertiaryButton("Cancel") { onClose() }
-            }
-        }
-        // Build 43 (owner, Nov 17, 2026 — item 18): the frame
-        // top-anchors the card in the full-screen cover — a bare
-        // FundsCard root would centre itself vertically in the
-        // full screen. The .padding() gives the card the same
-        // page margins as the other popups. Dismiss is the Cancel
-        // button at the bottom (no swipe-down on a full-screen
-        // cover); there is no SheetHeader here because the
-        // FundsHeading already titles the card.
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding()
-        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
-        // confirmationDialog — the Clear Debt precedent.
-        .alert(
-            pending?.kind == .set ? "Set \(debtName)" : "Add to \(debtName)",
-            isPresented: $showConfirm
-        ) {
-            Button(TitleCase.apply(to: pending?.kind == .set ? "Set \(debtName)" : "Add to \(debtName)")) {
+            Button(TitleCase.apply(to: confirmLabel)) {
                 guard let pending else { return }
                 self.pending = nil
                 Task {
                     let ok: Bool
-                    if pending.kind == .add {
-                        ok = await viewModel.addDebt(amountCents: pending.cents, note: pending.note)
+                    if pending.mode == .clear {
+                        ok = await viewModel.clearDebt(amountCents: pending.cents, note: pending.note)
                     } else {
                         ok = await viewModel.setDebt(amountCents: pending.cents, note: pending.note)
                     }
@@ -579,10 +527,10 @@ struct EditDebtSheet: View {
             Button(TitleCase.apply(to: "Cancel"), role: .cancel) { pending = nil }
         } message: {
             if let pending {
-                if pending.kind == .add {
-                    Text("Add \(MoneyFormat.formatCents(pending.cents)) to \(debtName)? The new total will be \(MoneyFormat.formatCents(currentCents + pending.cents)).")
+                if pending.mode == .clear {
+                    Text("Write off \(MoneyFormat.formatCents(pending.cents)) of the Debt? \(MoneyFormat.formatCents(max(0, currentCents - pending.cents))) will remain. No money moves.")
                 } else {
-                    Text("Set \(debtName) to \(MoneyFormat.formatCents(pending.cents))? This replaces the current \(MoneyFormat.formatCents(currentCents)).")
+                    Text("Set Debt to \(MoneyFormat.formatCents(pending.cents))? This replaces the current \(MoneyFormat.formatCents(currentCents)).")
                 }
             }
         }
@@ -1178,4 +1126,5 @@ public struct RenameFundSheet: View {
         }
     }
 }
+
 

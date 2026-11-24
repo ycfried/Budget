@@ -42,8 +42,11 @@ public enum FundsForm: Equatable {
     case temp
     /// Pay Carried Debt from the Extra Fund (build 29).
     case payDebt
-    /// Clear Carried Debt in part or in full (build 30 — slider).
-    case clearDebt
+    /// Debt management (build 70, owner Nov 24, 2026): ONE sheet
+    /// for the debt — Clear Debt + Adjust Debt — replacing the
+    /// separate Clear Debt form and Edit Debt sheet. The mode
+    /// picks which half of the sheet opens first.
+    case manageDebt(DebtManagementSheet.Mode)
 }
 
 public enum FundsMoreSection: Equatable {
@@ -81,7 +84,13 @@ public enum FundSectionID: String, CaseIterable, Identifiable {
         case .spending: return "Spending"
         case .fund: return "Extra Fund"
         case .charity: return "Charity"
-        case .debt: return "Carried Debt"
+        // Build 70 (owner, Nov 24, 2026): the plain word is
+        // "Debt" — the old "Carried Debt" name is gone from the
+        // flow. A household that stored a custom fund name
+        // still sees its own name on the card (the owner can
+        // rename it via the pencil); this default only names
+        // the section when no custom name exists.
+        case .debt: return "Debt"
         }
     }
 
@@ -210,10 +219,6 @@ public struct FundsView: View {
     /// Build 44 (owner, Nov 18, 2026): the jiggle wobble is removed
     /// — no jiggle phase state any more.
     @State private var draggingId: FundSectionID?
-    /// The Edit Debt sheet (build 41 — Add/Set debt, owner Nov 17,
-    /// 2026): opened by the pale "Edit Debt" button on the
-    /// Overspent (Past) fund, admin only.
-    @State private var showEditDebt = false
     /// The Remove from Savings sheet (build 42, owner Nov 17,
     /// 2026): opened by the grey-tertiary "Remove from Savings"
     /// button on the Savings card, admin only.
@@ -270,8 +275,8 @@ public struct FundsView: View {
                         TemporaryAllowanceView(viewModel: viewModel)
                     case .payDebt:
                         PayDebtForm(viewModel: viewModel, fundName: FundSectionID.fund.displayName(customNames: appState.fundNames), debtName: FundSectionID.debt.displayName(customNames: appState.fundNames), onClose: { openForm = nil })
-                    case .clearDebt:
-                        ClearDebtForm(viewModel: viewModel, debtName: FundSectionID.debt.displayName(customNames: appState.fundNames), onClose: { openForm = nil })
+                    case .manageDebt(let mode):
+                        DebtManagementSheet(viewModel: viewModel, initialMode: mode, onClose: { openForm = nil })
                     }
                 } else {
                     rearrangeRow
@@ -515,7 +520,7 @@ public struct FundsView: View {
                     }
                 }
             }
-        case .clearDebt:
+        case .manageDebt:
             FundsCard {
                 VStack(alignment: .leading, spacing: 8) {
                     if let debt = viewModel.debtBalanceCents {
@@ -1073,11 +1078,11 @@ public struct FundsView: View {
                     // colours (ink, then darker grey), so no group
                     // of three shares a colour. The pale middle
                     // tier is retired for three-button groups.
-                    // "Edit Debt" (build 41, owner Nov 17,
-                    // 2026) opens one sheet holding both manual
-                    // changes — Add Debt and Set Debt — so the card
-                    // keeps one entry point instead of a fourth
-                    // button.
+                    // Build 70 (owner, Nov 24, 2026): ONE Debt
+                    // sheet — "Adjust Debt" and "Clear Debt" both
+                    // open it, pre-set to that mode. The old "Edit
+                    // Overspent (Past)" button is gone; the plain
+                    // word is "Debt".
                     if isAdmin {
                         VStack(alignment: .leading, spacing: 12) {
                             // "Pay from <Fund>" — the full "Pay
@@ -1099,25 +1104,15 @@ public struct FundsView: View {
                             if week.carriedDebtCents > 0 {
                                 FundsPrimaryButton("Pay from \(FundSectionID.fund.displayName(customNames: appState.fundNames))") { openForm = .payDebt }
                             }
-                            FundsInkOutlineButton("Edit \(FundSectionID.debt.displayName(customNames: appState.fundNames))") { showEditDebt = true }
+                            FundsInkOutlineButton("Adjust Debt") { openForm = .manageDebt(.adjust) }
                             // No button that cannot work (owner, Nov 13):
                             // with no debt left there is nothing to clear.
                             if week.carriedDebtCents > 0 {
-                                FundsSlateOutlineButton("Clear \(FundSectionID.debt.displayName(customNames: appState.fundNames))") { openForm = .clearDebt }
+                                FundsSlateOutlineButton("Clear Debt") { openForm = .manageDebt(.clear) }
                             }
                             // Build 37 (owner, Nov 16, 2026): the
                             // grey "Close" button is gone — the card
                             // collapses by tapping its header/chevron.
-                        }
-                        // Build 43 (owner, Nov 17, 2026 — item 17):
-                        // full-screen cover, not a detent sheet.
-                        .fullScreenCover(isPresented: $showEditDebt) {
-                            EditDebtSheet(
-                                viewModel: viewModel,
-                                currentCents: viewModel.debtBalanceCents ?? 0,
-                                debtName: FundSectionID.debt.displayName(customNames: appState.fundNames),
-                                onClose: { showEditDebt = false }
-                            )
                         }
                     }
                     Divider()
