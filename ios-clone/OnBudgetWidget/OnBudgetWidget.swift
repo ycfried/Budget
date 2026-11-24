@@ -446,7 +446,11 @@ struct WidgetView: View {
     /// ~15s on success, red icon persists on failure; 44pt
     /// target, F-37).
     private struct WidgetRefreshButtonStyle: ButtonStyle {
-        func makeBody(configuration: Configuration) -> some View {
+        // NOTE: `ButtonStyle.Configuration` is qualified, not bare
+        // `Configuration` — the bare name resolves to the widget's
+        // own Configuration type here, so the style would not
+        // conform (same trap as build 68's ExpenseDangerButtonStyle).
+        func makeBody(configuration: ButtonStyle.Configuration) -> some View {
             configuration.label
                 .background(
                     Circle()
