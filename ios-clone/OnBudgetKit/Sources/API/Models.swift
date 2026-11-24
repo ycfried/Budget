@@ -750,7 +750,7 @@ public struct DebtPayment: Equatable, Codable, Identifiable, Sendable {
 /// current balance); `balanceAfterCents` is the balance the change
 /// left; `kind` is 'add' or 'set'. The Activity feed reads this
 /// table, so every manual change is listed there.
-public struct DebtAdjustment: Equatable, Codable, Identifiable {
+public struct DebtAdjustment: Equatable, Codable, Identifiable, Sendable {
     public let id: UUID
     public let householdId: UUID
     public let amountCents: Int
@@ -886,7 +886,7 @@ public struct WeekCloseSkipped: Equatable, Codable {
 
 /// One row of `week_closes` (live.js:2170-2172 selects week_start,
 /// surplus_cents, outgoing_debt_cents).
-public struct WeekClose: Equatable, Codable {
+public struct WeekClose: Equatable, Codable, Sendable {
     public let id: UUID?
     public let householdId: UUID
     public let weekStart: String
@@ -1558,6 +1558,45 @@ public struct RecurringExpense: Equatable, Codable, Identifiable, Sendable {
     /// spread over the plan's 4.33 weeks per month.
     public var weeklyCents: Int {
         Int((Double(monthlyCents) / 4.33).rounded())
+    }
+}
+
+/// One row of the shared Calculator income store (build 69,
+/// owner Nov 24, 2026 — "Calculator should be per household").
+/// The Calculator's Expected Income is household data, not
+/// per-device UserDefaults: one row per income source, in
+/// `calculator_income` (`supabase/calculator-income.sql`), so
+/// every member sees the same income and the same suggested
+/// budget on every device. `frequency` is the raw string
+/// ("weekly" / "monthly" / "quarterly" / "yearly") — the app
+/// maps it to its `CalculatorFrequency`; the Kit does not know
+/// that type. Mirrors `RecurringExpense` (same shape, no
+/// transaction link — an income source is not a transaction).
+public struct CalculatorIncomeRow: Equatable, Codable, Identifiable, Sendable {
+    public let id: UUID
+    public let householdId: UUID
+    public var name: String
+    /// The amount per occurrence, in cents.
+    public var amountCents: Int
+    public var frequency: String
+    public let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case householdId = "household_id"
+        case name
+        case amountCents = "amount_cents"
+        case frequency
+        case createdAt = "created_at"
+    }
+
+    public init(id: UUID, householdId: UUID, name: String, amountCents: Int, frequency: String, createdAt: String? = nil) {
+        self.id = id
+        self.householdId = householdId
+        self.name = name
+        self.amountCents = amountCents
+        self.frequency = frequency
+        self.createdAt = createdAt
     }
 }
 

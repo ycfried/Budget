@@ -434,6 +434,28 @@ struct WidgetView: View {
         return WidgetSyncStateStore.isMarkVisible(state: state, at: syncState.date)
     }
 
+    /// The refresh button's pressed feedback (build 69, owner
+    /// Nov 24, 2026 — no immediate press feedback): the button
+    /// used `.buttonStyle(.plain)`, which suppresses the system's
+    /// press highlight — so a tap showed no sign it was touched
+    /// until seconds later, when the intent's state flipped to
+    /// the checkmark. This style draws a pale-blue (#dbeafe) disc
+    /// behind the icon while pressed, so the press reads at once.
+    /// The spinner / checkmark / failure states are unchanged
+    /// (build 42/51/58: spinner while syncing, green checkmark
+    /// ~15s on success, red icon persists on failure; 44pt
+    /// target, F-37).
+    private struct WidgetRefreshButtonStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .background(
+                    Circle()
+                        .fill(Color(hex: "#dbeafe"))
+                        .opacity(configuration.isPressed ? 1 : 0)
+                )
+        }
+    }
+
     private var refreshButton: some View {
         Button(intent: RefreshWidgetIntent()) {
             Group {
@@ -471,7 +493,13 @@ struct WidgetView: View {
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        // Build 69 (owner, Nov 24, 2026): immediate press
+        // feedback — a pale-blue disc while pressed (see
+        // `WidgetRefreshButtonStyle` above). The old
+        // `.buttonStyle(.plain)` suppressed the press highlight,
+        // so a tap showed nothing until the checkmark arrived
+        // seconds later.
+        .buttonStyle(WidgetRefreshButtonStyle())
         // Identifier for a UI test to find the widget refresh button
         // and prove the syncing state shows immediately on tap.
         .accessibilityIdentifier("widget-refresh-button")

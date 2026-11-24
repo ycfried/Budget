@@ -312,9 +312,12 @@ public struct AppShellView: View {
                 Spacer()
                 Menu {
                     Button("Settings") { appState.openSettings() }
-                    // Build 68 (shared standard): destructive /
-                    // remove red is EXACTLY #dc2626 — never
-                    // `role: .destructive` (the system red differs).
+                    // Build 69 (owner, Nov 24, 2026): Sign Out sits
+                    // right under Settings with nothing between
+                    // them — too easy to tap by accident. A divider
+                    // separates it, and it keeps its destructive
+                    // red (#dc2626, not the system role red).
+                    Divider()
                     Button("Sign Out") {
                         Task { await appState.signOut() }
                     }

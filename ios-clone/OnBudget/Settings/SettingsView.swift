@@ -67,6 +67,22 @@ struct SettingsView: View {
             }
             .padding()
         }
+        // Build 69 (owner, Nov 24, 2026): the card headers
+        // scrolled under the translucent status bar and read as
+        // overlapping the time ("Email Alerts" / "Connected
+        // Email" at the top). An opaque strip pinned to the top
+        // safe area keeps the time legible — scrolled content
+        // passes behind it, never through the clock. It takes no
+        // taps (status-bar area only).
+        .overlay(alignment: .top) {
+            GeometryReader { proxy in
+                DesignTokens.background
+                    .frame(height: proxy.safeAreaInsets.top)
+                    .frame(maxWidth: .infinity, alignment: .top)
+            }
+            .frame(height: 0)
+            .allowsHitTesting(false)
+        }
         .toastOverlay(toast) // Top popup toast (owner, Nov 20, 2026 — build 50).
     }
 }
@@ -125,7 +141,10 @@ private struct ReplayTutorialSettingsCard: View {
 /// the auth footer and the old location.
 private struct PrivacyTermsSettingsCard: View {
     var body: some View {
-        SettingsCard(title: "Privacy · Terms") {
+        // Build 69 (owner, Nov 24, 2026): "Privacy · Terms"
+        // appeared twice — a heading AND the link row below it.
+        // The card has no title now; the link row is the one entry.
+        SettingsCard {
             HStack(spacing: 4) {
                 Link("Privacy", destination: URL(string: "https://getstag.us/privacy")!)
                 Text("·")

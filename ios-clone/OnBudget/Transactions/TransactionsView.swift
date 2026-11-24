@@ -36,7 +36,11 @@ import OnBudgetKit
 ///   everything loaded so far.
 /// - Pull-to-refresh + the ⋯ menu's Sync Now: the same manual
 ///   sync (`viewModel.runSync`, Plaid bank + Gmail email halves),
-///   throttled to one sync at a time (`isSyncing`).
+///   throttled to one sync at a time (`isSyncing`). Build 69
+///   (owner, Nov 24, 2026 — auto-sync on open): the page also
+///   syncs itself on appear (`autoSyncIfNeeded`, once per 5
+///   minutes, quiet) so family members see the latest
+///   transactions without tapping Sync.
 /// - Empty / loading / error states per §2.4 — a real error state,
 ///   never an endless spinner. Auth failure: "Your sign-in expired —
 ///   sign in again to see transactions." + "Sign In Again" (calls
@@ -109,6 +113,17 @@ public struct TransactionsView: View {
     public var body: some View {
         scrollContent
             .task { await boot() }
+            // Build 69 (owner, Nov 24, 2026 — auto-sync on open):
+            // the page syncs itself when it appears (Plaid +
+            // Gmail, all roles), so family members see the latest
+            // transactions without tapping Sync. Throttled to once
+            // per 5 minutes inside `autoSyncIfNeeded` (a manual
+            // sync counts too) and quiet — the list just updates.
+            // `.onAppear` (not `boot`'s `.task`) so it also fires
+            // on a tab switch back, not only the first open.
+            .onAppear {
+                Task { await viewModel.autoSyncIfNeeded() }
+            }
             .onChange(of: appState.pendingWeekFilter) { _, _ in consumeHandoffs() }
             .onChange(of: appState.pendingTzedakaFilter) { _, _ in consumeHandoffs() }
             .onChange(of: appState.fundNames) { _, names in viewModel.fundNames = names }

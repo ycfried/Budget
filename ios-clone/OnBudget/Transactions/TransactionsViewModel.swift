@@ -137,6 +137,13 @@ public final class TransactionsViewModel {
     public var expandedTransactionId: UUID?
     public var isSyncing: Bool = false
     public var isSaving: Bool = false
+    /// When the last sync (manual or automatic) STARTED (build 69,
+    /// owner Nov 24, 2026 — auto-sync on open): the auto-sync
+    /// throttle reads it, so opening the page re-syncs at most
+    /// once per 5 minutes. Set at the start of every sync, so a
+    /// failed sync still counts as "tried recently" and never
+    /// retries on every tab switch.
+    public private(set) var lastSyncAt: Date?
 
     /// Alert-style failures (the web's soft-red `showAlert`): title +
     /// server message, shown verbatim.
@@ -742,14 +749,23 @@ public final class TransactionsViewModel {
     /// the app-shell toast (`confirm` → `AppState.showToast`).
     /// The email half is best-effort: a failed email check never
     /// fails the bank sync, it just adds a line to the toast.
-    /// The server auth relax (members allowed to call the sync
-    /// functions) is a separate change and is NOT deployed yet —
-    /// until it lands, a member's tap can come back 403, and that
-    /// shows as one plain line ("Sync isn't available for members
-    /// yet…"), never the server's 403 text.
-    public func runSync() async {
+    /// The server auth relax (F-19, build 64: members may trigger
+    /// a sync too, not just admins) is DEPLOYED (PR #102, Nov 24,
+    /// 2026 — plaid-sync v27, gmail-poll v22). A member's sync
+    /// works now; the 403 fallback below stays as a safety net
+    /// and shows as one plain line ("Sync isn't available for
+    /// members yet…"), never the server's 403 text.
+    ///
+    /// Build 69 (owner, Nov 24, 2026 — auto-sync on open):
+    /// `quiet` runs the same sync without any toast — for the
+    /// automatic sync on page open, so the list just updates and
+    /// a failed auto-sync stays silent (the manual Sync control
+    /// still shows its error). `lastSyncAt` is set at the start
+    /// of every sync, manual or automatic.
+    public func runSync(quiet: Bool = false) async {
         guard !isSyncing else { return }
         isSyncing = true
+        lastSyncAt = Date()
         defer { isSyncing = false }
         // Bank half: the existing Plaid sync. A 403 here is the
         // pre-deploy server (auth relax not live yet) — plain
@@ -758,16 +774,18 @@ public final class TransactionsViewModel {
         do {
             outcome = try await client.functions.plaidSyncAllowingPartialFailure(householdId: householdId)
         } catch let error as OnBudgetError {
-            if case .adminOnly = error {
-                confirm("Sync isn't available for members yet — the server update is still on its way. Try again later.", kind: .error)
-            } else if case .forbidden = error {
-                confirm("Sync isn't available for members yet — the server update is still on its way. Try again later.", kind: .error)
-            } else {
-                confirmError(error.displayMessage)
+            if !quiet {
+                if case .adminOnly = error {
+                    confirm("Sync isn't available for members yet — the server update is still on its way. Try again later.", kind: .error)
+                } else if case .forbidden = error {
+                    confirm("Sync isn't available for members yet — the server update is still on its way. Try again later.", kind: .error)
+                } else {
+                    confirmError(error.displayMessage)
+                }
             }
             return
         } catch {
-            confirmError(OnBudgetError.displayMessage(for: error))
+            if !quiet { confirmError(OnBudgetError.displayMessage(for: error)) }
             return
         }
         // Email half: best-effort Gmail poll alongside the bank
@@ -811,12 +829,30 @@ public final class TransactionsViewModel {
             bankText = "Sync finished, but \(names) failed — \(partial.result.added) new, \(partial.result.updated) updated."
             bankKind = .error
         }
-        if let emailText {
-            confirm("\(bankText) \(emailText)", kind: bankKind)
-        } else {
-            confirm(bankText, kind: bankKind)
+        // ONE combined toast for both halves — unless quiet (the
+        // automatic sync): then the list just updates, silently.
+        if !quiet {
+            if let emailText {
+                confirm("\(bankText) \(emailText)", kind: bankKind)
+            } else {
+                confirm(bankText, kind: bankKind)
+            }
         }
         await load()
+    }
+
+    /// Auto-sync on open (build 69, owner Nov 24, 2026): the
+    /// Transactions page syncs itself when it appears (Plaid +
+    /// Gmail, same `runSync` as the manual control — and members
+    /// too, now the F-19 server relax is deployed), so family
+    /// members see the latest transactions without tapping Sync.
+    /// Throttled to once per 5 minutes — a manual sync counts
+    /// too — and quiet: no toast on success or failure, the list
+    /// just updates. The manual Sync control is unchanged.
+    public func autoSyncIfNeeded() async {
+        if isSyncing { return }
+        if let last = lastSyncAt, Date().timeIntervalSince(last) < 300 { return }
+        await runSync(quiet: true)
     }
 
     // MARK: - Row actions

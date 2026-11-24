@@ -325,6 +325,31 @@ public struct PostgrestClient {
         }
     }
 
+    /// Delete rows matching the filters (`Prefer: return=minimal`,
+    /// no body back). The RLS policy on the table decides who may
+    /// delete what — the caller never checks roles itself. Build 69
+    /// (owner, Nov 24, 2026): the Calculator income store deletes
+    /// rows directly (a calculator income row has no side effects,
+    /// unlike a transaction reclassification, so no RPC is needed).
+    public func delete(table: String, filters: [PostgrestFilter]) async throws {
+        let token = try await tokenProvider()
+        var components = URLComponents(
+            url: configuration.restBaseURL.appendingPathComponent(table),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = filters.map(\.queryItem)
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = configuration.requestTimeoutSeconds
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        let (_, response) = try await transport.send(request)
+        guard (200...299).contains(response.statusCode) else {
+            throw OnBudgetError.fromHTTPResponse(status: response.statusCode, data: Data())
+        }
+    }
+
     // MARK: - Typed reads (columns match live.js exactly)
 
     /// The signed-in user's own membership row (live.js:374-376).
@@ -1199,6 +1224,61 @@ public struct PostgrestClient {
             filters: [.householdId(householdId)],
             orders: [PostgrestOrder("name", ascending: true)]
         ))
+    }
+
+    // MARK: Calculator income (shared household store)
+
+    /// The household's Calculator income rows (build 69, owner
+    /// Nov 24, 2026 — "Calculator should be per household"):
+    /// the Expected Income sources, oldest first, from the shared
+    /// `calculator_income` table — every member sees the same
+    /// income on every device. Empty when nothing is entered yet.
+    public func calculatorIncome(householdId: UUID) async throws -> [CalculatorIncomeRow] {
+        try await fetch(PostgrestQuery(
+            table: "calculator_income",
+            columns: "id,household_id,name,amount_cents,frequency,created_at",
+            filters: [.householdId(householdId)],
+            orders: [PostgrestOrder("created_at", ascending: true), PostgrestOrder("id", ascending: true)]
+        ))
+    }
+
+    /// Add one income source to the shared store. Any household
+    /// member may add (the Calculator is for all roles — the
+    /// income is a shared household input). Returns the inserted
+    /// row, with its server id.
+    public func insertCalculatorIncome(
+        householdId: UUID,
+        name: String,
+        amountCents: Int,
+        frequency: String
+    ) async throws -> CalculatorIncomeRow {
+        struct Insert: Encodable {
+            let householdId: UUID
+            let name: String
+            let amountCents: Int
+            let frequency: String
+            enum CodingKeys: String, CodingKey {
+                case householdId = "household_id"
+                case name
+                case amountCents = "amount_cents"
+                case frequency
+            }
+        }
+        let inserted: [CalculatorIncomeRow] = try await insert(
+            table: "calculator_income",
+            rows: [Insert(householdId: householdId, name: name, amountCents: amountCents, frequency: frequency)],
+            returningColumns: "id,household_id,name,amount_cents,frequency,created_at"
+        )
+        guard let row = inserted.first else {
+            throw OnBudgetError.decodingError("Could not read the saved income.")
+        }
+        return row
+    }
+
+    /// Delete one income source from the shared store. Any
+    /// household member may delete (same rule as insert).
+    public func deleteCalculatorIncome(id: UUID) async throws {
+        try await delete(table: "calculator_income", filters: [.equal("id", id.uuidString)])
     }
 
     /// Refund-link dismissals (live.js:2074).

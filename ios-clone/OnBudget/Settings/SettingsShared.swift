@@ -226,15 +226,27 @@ struct SmallDangerButtonStyle: ButtonStyle {
 /// without it the sections ran together on the white page and it
 /// was not clear where one section ended and the next began).
 struct SettingsCard<Content: View>: View {
-    let title: String
+    /// The card title, in Title Case. Nil renders no title —
+    /// build 69 (owner, Nov 24, 2026): the Privacy · Terms card
+    /// had BOTH a "Privacy · Terms" title AND a "Privacy · Terms"
+    /// link row below it, so the title is dropped there and the
+    /// link row is the one entry. Every other card passes its title.
+    let title: String?
     @ViewBuilder let content: Content
+
+    init(title: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(TitleCase.apply(to: title))
-                .font(.title3)
-                .fontWeight(.bold)
-                .foregroundStyle(DesignTokens.ink)
+            if let title {
+                Text(TitleCase.apply(to: title))
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundStyle(DesignTokens.ink)
+            }
             content
         }
         .padding(16)

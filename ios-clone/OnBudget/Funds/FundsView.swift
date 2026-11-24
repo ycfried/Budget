@@ -2382,7 +2382,23 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// tag, then opens the editor for the new expense.
     @State private var showExpensePicker = false
     @State private var editorExpense: RecurringExpense?
-    @State private var incomeItems: [CalculatorItem] = []
+    /// The income sources (build 69, owner Nov 24, 2026 —
+    /// "Calculator should be per household"): the shared
+    /// household store when a view model is present — every
+    /// member sees the same income and the same suggested budget
+    /// on every device — else the local fallback below (defensive;
+    /// both presenters pass a view model). NOT @State anymore:
+    /// the view model owns the list and publishes it, so an add
+    /// or remove on one device reads through to the others.
+    private var incomeItems: [CalculatorItem] {
+        viewModel?.calculatorIncome ?? localIncomeItems
+    }
+    /// Local fallback when no view model is present (never the
+    /// normal path — kept so the Calculator still works
+    /// standalone). Its UserDefaults key is gone: the shared
+    /// store is the source, and the view model migrates any old
+    /// local entries into it once.
+    @State private var localIncomeItems: [CalculatorItem] = []
     @State private var charityText = ""
     @State private var lifestyle: LifestyleHoldback = .regular
     @State private var customHoldbackText = ""
@@ -2417,10 +2433,12 @@ public struct WeeklyBudgetCalculatorContent: View {
     private func load() {
         guard !didLoad else { return }
         let defaults = UserDefaults.standard
-        if let data = defaults.data(forKey: key("income")),
-           let items = try? JSONDecoder().decode([CalculatorItem].self, from: data) {
-            incomeItems = items
-        }
+        // Build 69 (owner, Nov 24, 2026 — "Calculator should be
+        // per household"): income no longer loads from UserDefaults
+        // — it is the shared household store, loaded by the view
+        // model (`loadCalculatorIncome`, which also migrates any
+        // old local entries once). Only the other inputs still
+        // live per device (see the note in `save()`).
         charityText = defaults.string(forKey: key("charity")) ?? ""
         if let raw = defaults.string(forKey: key("lifestyle")),
            let saved = LifestyleHoldback(rawValue: raw) {
@@ -2435,7 +2453,12 @@ public struct WeeklyBudgetCalculatorContent: View {
     private func save() {
         guard didLoad else { return }
         let defaults = UserDefaults.standard
-        defaults.set(try? JSONEncoder().encode(incomeItems), forKey: key("income"))
+        // Build 69: income is NOT written here anymore — it lives
+        // in the shared household store and each add/remove writes
+        // through the view model at once. The other inputs (charity
+        // %, lifestyle, holdback, household size) still save per
+        // device — sharing them is a follow-up, not this build
+        // (see supabase/calculator-income.sql).
         defaults.set(charityText, forKey: key("charity"))
         defaults.set(lifestyle.rawValue, forKey: key("lifestyle"))
         defaults.set(customHoldbackText, forKey: key("custom-holdback"))
@@ -2535,8 +2558,13 @@ public struct WeeklyBudgetCalculatorContent: View {
             householdSizeSection
         }
         .accessibilityIdentifier("funds.weeklyBudgetCalculator")
-        .onAppear { load() }
-        .onChange(of: incomeItems) { _, _ in save() }
+        .onAppear {
+            load()
+            // Build 69: refresh the shared income on open (only
+            // when stale — the view model throttles to 60s), so a
+            // member always sees another member's latest entries.
+            Task { await viewModel?.ensureCalculatorIncomeLoaded() }
+        }
         .onChange(of: charityText) { _, _ in save() }
         .onChange(of: lifestyle) { _, _ in save() }
         .onChange(of: customHoldbackText) { _, _ in save() }
@@ -2544,16 +2572,21 @@ public struct WeeklyBudgetCalculatorContent: View {
         .alert(TitleCase.apply(to: "Weekly Budget Calculator"), isPresented: $showFormulaInfo) {
             Button("OK") {}
         } message: {
-            Text("Monthly income, minus expected charity, minus recurring charges, divided by 4.33 weeks — then the lifestyle holdback is kept back. Household size shows the suggestion per person. This only suggests a weekly budget — your weekly allowance does not change. Your entries save on this device automatically.")
+            Text("Monthly income, minus expected charity, minus recurring charges, divided by 4.33 weeks — then the lifestyle holdback is kept back. Household size shows the suggestion per person. This only suggests a weekly budget — your weekly allowance does not change. Income is shared with your household; the other entries save on this device automatically.")
         }
     }
 
     /// The suggestion itself: the weekly figure, the per-person
     /// figure, the one-line basis, and the plain statement that
-    /// the allowance does not change. A non-positive suggestion is
-    /// shown as computed — never silently clamped to a confident
-    /// $0 (V2 plan, item 8) — with a plain-language red box saying
-    /// why there is nothing left for the week.
+    /// the allowance does not change. Build 69 (owner, Nov 24,
+    /// 2026 — the Calculator showed a Suggested Weekly Budget of
+    /// -$35.10 with a red error when no income was entered):
+    /// a non-positive suggestion is NEVER shown as a negative
+    /// number — it reads $0.00 with a plain muted prompt to add
+    /// income, not a negative figure with a red error. This
+    /// reverses the V2 plan's "never silently clamped to $0"
+    /// decision: the owner would rather see $0 and a prompt than
+    /// a negative budget.
     private var suggestionBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -2579,10 +2612,12 @@ public struct WeeklyBudgetCalculatorContent: View {
                 .accessibilityLabel("How the suggestion is worked out")
             }
             if hasItems {
-                Text(MoneyFormat.formatCents(suggestedWeeklyCents))
+                // Clamped at $0 — never a negative suggested
+                // budget (build 69, owner Nov 24, 2026).
+                Text(MoneyFormat.formatCents(max(0, suggestedWeeklyCents)))
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
-                FundsMuted("About \(MoneyFormat.formatCents(perPersonCents)) per person each week, for a household of \(householdSize).")
+                FundsMuted("About \(MoneyFormat.formatCents(max(0, perPersonCents))) per person each week, for a household of \(householdSize).")
                 // Build 67 (owner, Nov 23, 2026 — "so many words,
                 // so much clutter"): the two extra muted lines are
                 // gone — the "suggestion only" line and the full
@@ -2590,7 +2625,7 @@ public struct WeeklyBudgetCalculatorContent: View {
                 // (the formula + that the allowance does not
                 // change), so repeating them here was clutter.
                 if suggestedWeeklyCents <= 0 {
-                    FundsErrorBox("That leaves nothing for the week — expected charity and recurring expenses are more than the monthly income.")
+                    FundsMuted("That leaves nothing for the week — add your expected income below, or reduce the recurring expenses.")
                 }
             } else {
                 FundsMuted("Add your expected income below — the suggestion appears here once income and expenses are in.")
@@ -2916,12 +2951,35 @@ public struct WeeklyBudgetCalculatorContent: View {
             frequency: incomeDraftFrequency,
             error: &incomeError
         ) else { return }
-        incomeItems.append(item)
-        incomeDraftName = ""
-        incomeDraftAmount = ""
+        // Build 69 (owner, Nov 24, 2026 — "Calculator should be
+        // per household"): the add writes to the shared household
+        // store through the view model (any member may add), so
+        // every device reads the same income at once. The draft
+        // fields clear only on success — a failed write keeps the
+        // typed input so the user can retry. Without a view model
+        // (defensive), the local fallback takes it.
+        guard let viewModel else {
+            localIncomeItems.append(item)
+            incomeDraftName = ""
+            incomeDraftAmount = ""
+            return
+        }
+        Task {
+            if await viewModel.addCalculatorIncome(name: item.name, amountCents: item.amountCents, frequency: item.frequency) != nil {
+                incomeDraftName = ""
+                incomeDraftAmount = ""
+            }
+        }
     }
 
     private func removeIncomeItem(_ item: CalculatorItem) {
-        incomeItems.removeAll { $0.id == item.id }
+        // Build 69: the remove deletes from the shared household
+        // store through the view model (any member may remove).
+        // Without a view model (defensive), the local fallback.
+        guard let viewModel else {
+            localIncomeItems.removeAll { $0.id == item.id }
+            return
+        }
+        Task { await viewModel.removeCalculatorIncome(item) }
     }
 }

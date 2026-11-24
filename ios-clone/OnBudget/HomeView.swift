@@ -1298,8 +1298,14 @@ public struct HomeView: View {
         // full-width 36pt top/bottom padding makes the half-width
         // Spending card tall and empty next to the Tzedaka card —
         // 20pt in two columns keeps the two cards balanced.
-        .padding(.top, useIPadTwoColumn ? 20 : 36)
-        .padding(.bottom, useIPadTwoColumn ? 20 : 36)
+        // Build 69 (owner, Nov 24, 2026 — the Spending card on
+        // iPhone is too tall, lots of empty space): the 36pt
+        // padding is too much on iPhone too — 20pt, matching the
+        // two-column value and the Tzedaka card's compact body
+        // (18/20pt), so the card fits its content. Full-width
+        // iPad keeps 36pt.
+        .padding(.top, useIPadTwoColumn ? 20 : (isIPad ? 36 : 20))
+        .padding(.bottom, useIPadTwoColumn ? 20 : (isIPad ? 36 : 20))
     }
 
     // Build 64 (C-2 B2): the solid deep-blue banner is gone, so
@@ -1832,6 +1838,16 @@ public struct HomeView: View {
                     Button("Try Again") { Task { await viewModel.refresh() } }
                         .buttonStyle(TertiaryButtonStyle())
                 } else {
+                    // Build 69 (owner, Nov 24, 2026 — the skeletons
+                    // must mirror their loaded cards exactly): the
+                    // label block, the amount + ring row, the
+                    // subline bar AND the chevron row — the loaded
+                    // card has a chevron, so the skeleton holds
+                    // its height while loading instead of growing
+                    // ~24pt when the chevron arrives. The sub bar
+                    // is 180 wide like the Spending hero's, matching
+                    // the loaded subtext ("Set aside for you — 10%
+                    // of income") — the old 150pt bar was short.
                     SkeletonBlock(width: 110, height: 14, cornerRadius: 6)
                     if section == .charity {
                         // Ring skeleton beside the amount skeleton,
@@ -1845,7 +1861,16 @@ public struct HomeView: View {
                     } else {
                         SkeletonBlock(width: 180, height: amountSize + 8, cornerRadius: 6)
                     }
-                    SkeletonBlock(width: 150, height: 13, cornerRadius: 6)
+                    SkeletonBlock(width: 180, height: 13, cornerRadius: 6)
+                    // The chevron row (loaded only when !hero) —
+                    // without it the skeleton card reads ~24pt
+                    // shorter than the loaded card.
+                    if !hero {
+                        HStack {
+                            Spacer()
+                            SkeletonBlock(width: 13, height: 13, cornerRadius: 3)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, hero ? 16 : 18)
@@ -3319,7 +3344,12 @@ public struct TzedakaSheet: View {
                 tzedakaActionsCard
             }
             HStack(spacing: 12) {
-                Button("Show \(charityName) Transactions") {
+                // Build 69 (owner, Nov 24, 2026): "Show Tzedaka
+                // Transactions" wrapped to two lines — the label
+                // was too long for the button. "Show Transactions"
+                // is unambiguous here (this IS the Tzedaka sheet)
+                // and sits cleanly beside Close at the same height.
+                Button("Show Transactions") {
                     dismiss()
                     // Build 65: the Tzedaka pre-filter — the list
                     // lands on the rows behind these numbers (gifts

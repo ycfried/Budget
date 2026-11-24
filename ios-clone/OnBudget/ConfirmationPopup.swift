@@ -129,8 +129,13 @@ public struct ConfirmationPopupView: View {
                 Circle()
                     .fill(DesignTokens.primary)
                     .frame(width: 52, height: 52)
-                Image(systemName: "info")
-                    .font(.system(size: 20, weight: .bold))
+                // Build 69 (owner, Nov 24, 2026): a drawn "i",
+                // not the "info" SF Symbol — the symbol rendered
+                // dark with a yellow "i" on device, so the mark
+                // is a plain white "i" now: brand-blue circle,
+                // white "i", no symbol-rendering ambiguity.
+                Text("i")
+                    .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white)
             }
             .accessibilityHidden(true)
@@ -178,11 +183,13 @@ public struct ConfirmationPopupView: View {
                     // Message CONTENT is untouched here (the sync
                     // wording itself is shortened separately, in
                     // HomeView's sync handler) — this is rendering
-                    // only.
+                    // only. Build 69 (owner, Nov 24, 2026): NO
+                    // line limit — the old `.lineLimit(3)` cut the
+                    // message mid-word ("...older o..."). The
+                    // message wraps fully now, however long it is.
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(messageColor)
                     .multilineTextAlignment(.center)
-                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
             }

@@ -168,6 +168,23 @@ public final class FundsViewModel: ObservableObject {
     /// whose linked transaction is in the Trash.
     @Published public var expenses: [RecurringExpense] = []
 
+    // MARK: - Calculator income (shared household store)
+
+    /// The household's Calculator income sources (build 69,
+    /// owner Nov 24, 2026 — "Calculator should be per
+    /// household"): the Expected Income rows from the shared
+    /// `calculator_income` table, so every member sees the same
+    /// income and the same suggested budget on every device.
+    /// Loaded by `refresh()` and by `ensureCalculatorIncomeLoaded()`
+    /// when the Calculator opens. Fault-tolerant like `expenses`:
+    /// a failed read is an empty list, never a failed page.
+    @Published public var calculatorIncome: [CalculatorItem] = []
+    /// When the shared income was last loaded — the Calculator
+    /// refetches on open only when stale (older than 60s), so a
+    /// member always sees another member's latest entries without
+    /// a fetch on every sheet open.
+    public private(set) var calculatorIncomeLoadedAt: Date?
+
     /// The live expenses: `expenses` minus rows whose linked
     /// transaction is excluded (in the Trash). The list, the
     /// Weekly sheet row and the Calculator all read this, never
@@ -329,6 +346,11 @@ public final class FundsViewModel: ObservableObject {
         async let debtLoad: Void = loadDebt()
         async let merchantRulesLoad: Void = loadMerchantRules()
         async let expensesLoad: Void = loadExpenses()
+        // Build 69 (owner, Nov 24, 2026 — "Calculator should be
+        // per household"): the shared Calculator income loads here
+        // too, so it is ready before the Calculator opens (no flash
+        // of "Nothing added yet" while it fetches).
+        async let calculatorIncomeLoad: Void = loadCalculatorIncome()
         // The four cards reveal together once their four loads have
         // resolved (success or failure — a failed card shows its
         // error state, never a lingering skeleton). The top-ups
@@ -343,6 +365,7 @@ public final class FundsViewModel: ObservableObject {
         await allowanceLoad
         await weeklyTopupsLoad
         await debtLoad
+        await calculatorIncomeLoad
         cardsReady = true
         // The supporting loads finish in their own time.
         await requestsLoad
@@ -1436,6 +1459,150 @@ public final class FundsViewModel: ObservableObject {
             await refresh()
         }
         return created
+    }
+
+    // MARK: - Calculator income (shared household store, build 69)
+
+    /// The per-device UserDefaults key the Calculator used to
+    /// store its income before build 69 (same format as the
+    /// Calculator's own `key()` — `hb-budget-calc-<household>-income`).
+    private var localCalculatorIncomeKey: String {
+        "hb-budget-calc-\(context.householdId)-income"
+    }
+    /// One-time migration flag (per device): set once the local
+    /// income has been uploaded to the shared store.
+    private var calculatorIncomeMigratedKey: String {
+        "hb-budget-calc-\(context.householdId)-income-migrated"
+    }
+
+    /// Load the household's Calculator income from the shared
+    /// `calculator_income` table, oldest first, and run the
+    /// one-time migration of any per-device income (see
+    /// `migrateLocalCalculatorIncome`). Fault-tolerant: a failed
+    /// read is an empty list, never a failed page — the Calculator
+    /// shows "Nothing added yet" and the user can retry by
+    /// reopening it. Called by `refresh()` and by
+    /// `ensureCalculatorIncomeLoaded()` when the Calculator opens.
+    public func loadCalculatorIncome() async {
+        do {
+            var rows = try await context.client.postgrest.calculatorIncome(householdId: context.householdId)
+            // One-time migration: any per-device income this device
+            // still holds is uploaded first (skipping rows already
+            // present, so two devices migrating the same entries do
+            // not duplicate them), then the local key is cleared.
+            // A failed migration leaves the flag unset and the local
+            // key intact — it retries on the next load, and nothing
+            // is lost. The migration never fails this load: the
+            // Calculator reads the shared rows either way.
+            await migrateLocalCalculatorIncome(shared: &rows)
+            calculatorIncome = rows.map { CalculatorItem(
+                id: $0.id, name: $0.name, amountCents: $0.amountCents,
+                frequency: CalculatorFrequency(rawValue: $0.frequency) ?? .monthly) }
+            calculatorIncomeLoadedAt = Date()
+        } catch {
+            calculatorIncome = []
+        }
+    }
+
+    /// Refetch the shared income only when it has never loaded or
+    /// is stale (older than 60s) — the Calculator calls this on
+    /// open, so a member always sees another member's latest
+    /// entries without a fetch on every sheet open.
+    public func ensureCalculatorIncomeLoaded() async {
+        if let loadedAt = calculatorIncomeLoadedAt, Date().timeIntervalSince(loadedAt) < 60 { return }
+        await loadCalculatorIncome()
+    }
+
+    /// Add one income source to the shared store (any household
+    /// member may add — the Calculator is for all roles). Writes
+    /// to Supabase first, then appends the returned row, so the
+    /// Calculator and every other device read the same income at
+    /// once. Returns the created item, or nil on failure (the
+    /// caller shows the error from the guarded toast).
+    public func addCalculatorIncome(name: String, amountCents: Int, frequency: CalculatorFrequency) async -> CalculatorItem? {
+        var created: CalculatorItem?
+        await guarded("add-calculator-income", title: "Could Not Add Income") {
+            let row = try await context.client.postgrest.insertCalculatorIncome(
+                householdId: context.householdId, name: name, amountCents: amountCents,
+                frequency: frequency.rawValue)
+            created = CalculatorItem(
+                id: row.id, name: row.name, amountCents: row.amountCents,
+                frequency: CalculatorFrequency(rawValue: row.frequency) ?? .monthly)
+            if let created { calculatorIncome.append(created) }
+        }
+        return created
+    }
+
+    /// Remove one income source from the shared store (any
+    /// household member may remove). Deletes from Supabase first,
+    /// then drops it from the list, so the Calculator and every
+    /// other device read the same income at once. Returns true on
+    /// success.
+    public func removeCalculatorIncome(_ item: CalculatorItem) async -> Bool {
+        var succeeded = false
+        await guarded("remove-calculator-income", title: "Could Not Remove Income") {
+            try await context.client.postgrest.deleteCalculatorIncome(id: item.id)
+            calculatorIncome.removeAll { $0.id == item.id }
+            succeeded = true
+        }
+        return succeeded
+    }
+
+    /// One-time migration of the per-device income (build 69):
+    /// the Calculator stored its income in UserDefaults until this
+    /// build, so a device that entered income before build 69
+    /// still holds it locally. On the first load after the build,
+    /// each local entry is uploaded to the shared store (skipping
+    /// any already present by name + amount + frequency — two
+    /// devices migrating the same entries must not duplicate
+    /// them), the migration flag is set, and the local key is
+    /// cleared. Runs only while the flag is unset and local entries
+    /// exist. On failure nothing is cleared and the flag stays
+    /// unset, so the next load retries — the local data is never
+    /// destroyed by a failed migration. Appends the uploaded rows
+    /// to `shared` so the caller reads the merged list at once.
+    private func migrateLocalCalculatorIncome(shared: inout [CalculatorIncomeRow]) async {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: calculatorIncomeMigratedKey),
+              let data = defaults.data(forKey: localCalculatorIncomeKey),
+              let local = try? JSONDecoder().decode([CalculatorItem].self, from: data),
+              !local.isEmpty else { return }
+        var uploaded: [CalculatorIncomeRow] = []
+        for item in local {
+            // Skip a row already present (same name + amount +
+            // frequency) — another device may have migrated it.
+            let alreadyThere = shared.contains {
+                $0.name == item.name && $0.amountCents == item.amountCents && $0.frequency == item.frequency.rawValue
+            } || uploaded.contains {
+                $0.name == item.name && $0.amountCents == item.amountCents && $0.frequency == item.frequency.rawValue
+            }
+            guard !alreadyThere else { continue }
+            do {
+                let row = try await context.client.postgrest.insertCalculatorIncome(
+                    householdId: context.householdId, name: item.name,
+                    amountCents: item.amountCents, frequency: item.frequency.rawValue)
+                uploaded.append(row)
+            } catch {
+                // One failed row stops the migration (the flag stays
+                // unset, the local key stays) — the next load
+                // retries the remaining rows. The rows already
+                // uploaded stay in `shared` below.
+                break
+            }
+        }
+        // Only clear the local key once EVERY local entry is
+        // accounted for (uploaded, or already present). A partial
+        // upload keeps the flag unset so the next load retries the
+        // rest — and the uploaded rows are already in `shared`.
+        let accounted = local.allSatisfy { item in
+            shared.contains { $0.name == item.name && $0.amountCents == item.amountCents && $0.frequency == item.frequency.rawValue }
+                || uploaded.contains { $0.name == item.name && $0.amountCents == item.amountCents && $0.frequency == item.frequency.rawValue }
+        }
+        shared += uploaded
+        if accounted {
+            defaults.set(true, forKey: calculatorIncomeMigratedKey)
+            defaults.removeObject(forKey: localCalculatorIncomeKey)
+        }
     }
 
     /// Delete a transaction row from a Funds feed (build 46, owner

@@ -403,6 +403,7 @@ public struct TzedakaActionSheet: View {
     @State private var noteText = ""
     @State private var actionError: String?
     @State private var showAvailableInfo = false
+    @State private var showModeInfo = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(viewModel: FundsViewModel, fundName: String, initialMode: Mode = .add, onClose: @escaping () -> Void = {}) {
@@ -416,18 +417,42 @@ public struct TzedakaActionSheet: View {
     /// (client-side; the RPC re-checks server-side and refuses too).
     private var availableCents: Int? { viewModel.charitySummary?.remainingCents }
 
+    /// Build 69 (owner, Nov 24, 2026 — the same cleanup as the
+    /// Adjust This Week's Budget sheet, item 5): the mode choice
+    /// is the unified slider (SquarishPicker, item 2), the
+    /// confirm reads as the action ("Add to Tzedaka" / "Record
+    /// Donation" — never the mode name "Add" twice), the mode's
+    /// description lives behind an ⓘ (never inline — and the
+    /// inline record line truncated mid-word, "goe…", which an
+    /// alert's wrapping text cannot do), and the sheet is fitted
+    /// to its content (`.presentationSizing(.fitted)` — the
+    /// build-68 fitted-sheet pattern — instead of the
+    /// `.fraction(0.45)` detent that left empty space).
+    /// Behaviour is unchanged (Add = money into Available;
+    /// Record a Donation = money off Available, into Given).
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: fundName), onClose: onClose)
-            SquarishPicker(
-                [(Mode.add, "Add"), (Mode.record, "Record a Donation")],
-                selection: $mode
-            )
-            Text(mode == .add
-                 ? "Puts money into \(fundName) Available."
-                 : "Records a donation given — it comes off Available and goes into Given.")
-                .font(.system(size: 14))
-                .foregroundStyle(Color(hex: "#6b7280"))
+            // The mode slider (the build-69 unified slider), with
+            // the mode's description behind an ⓘ — the standing
+            // rule (explanations behind an info icon, never
+            // inline). The mode choice is the slider, not two
+            // separate boxes.
+            HStack(spacing: 6) {
+                SquarishPicker(
+                    [(Mode.add, "Add"), (Mode.record, "Record a Donation")],
+                    selection: $mode
+                )
+                Button { showModeInfo = true } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About this mode")
+            }
             if mode == .record, let availableCents {
                 HStack(spacing: 6) {
                     Text("Available to give: \(MoneyFormat.formatCents(availableCents)).")
@@ -453,7 +478,10 @@ public struct TzedakaActionSheet: View {
                 FundsErrorBox(actionError)
             }
             HStack(spacing: 12) {
-                FundsPrimaryButton(mode == .add ? "Add" : "Record", isBusy: viewModel.busyAction == "add-charity" || viewModel.busyAction == "record-cash-gift") {
+                // The confirm reads as the ACTION, not the mode:
+                // "Add to Tzedaka" in Add mode (the mode is "Add"),
+                // "Record Donation" in Record mode.
+                FundsPrimaryButton(mode == .add ? "Add to \(fundName)" : "Record Donation", isBusy: viewModel.busyAction == "add-charity" || viewModel.busyAction == "record-cash-gift") {
                     save()
                 }
                 FundsTertiaryButton("Cancel") { onClose() }
@@ -461,9 +489,16 @@ public struct TzedakaActionSheet: View {
         }
         .padding()
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        .presentationDetents([.fraction(0.45), .medium])
+        .presentationSizing(.fitted)
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
+        .alert(mode == .add ? "Add" : "Record a Donation", isPresented: $showModeInfo) {
+            Button("OK") {}
+        } message: {
+            Text(mode == .add
+                 ? "Puts money into \(fundName) Available."
+                 : "Records a donation given — it comes off Available and goes into Given.")
+        }
         .alert(TitleCase.apply(to: "Record a Donation"), isPresented: $showAvailableInfo) {
             Button("OK") {}
         } message: {
