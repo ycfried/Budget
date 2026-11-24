@@ -1274,7 +1274,13 @@ public struct HomeView: View {
                 // Build 46 (owner, Nov 18, 2026): the skeletons
                 // match the loaded body — a big amount-sized block
                 // + a circle + the spent line — so the body holds
-                // its size while loading.
+                // its size while loading. Build 70: the "Available"
+                // label block sits above the amount skeleton (the
+                // loaded body has the label now), so the loading
+                // card holds the same height as the loaded one.
+                if simple {
+                    SkeletonBlock(width: 110, height: 14, cornerRadius: 6)
+                }
                 HStack(spacing: 16) {
                     SkeletonBlock(width: heroAmountSkeletonWidth, height: heroAmountSkeletonHeight, cornerRadius: 6)
                     Spacer()
@@ -1363,14 +1369,11 @@ public struct HomeView: View {
                 .foregroundStyle(StatCardTheme.spending.number)
                 .lineLimit(1)
             Spacer()
-            // The simpler Home (build 46 — the mockup): "This week"
-            // at the right of the header, muted. Only when
-            // loaded — a failed week has no "this week" to name.
-            if simple, case .loaded = viewModel.week {
-                Text("This week")
-                    .font(.system(size: 13))
-                    .foregroundStyle(DesignTokens.muted)
-            }
+            // Build 70 (owner, Nov 24, 2026): the "This week"
+            // label is GONE from the header — it becomes the
+            // "Available" label above the amount in the body
+            // (heroBodyAmountDonut), mirroring the Tzedaka card's
+            // "Ready to give". The refresh icon stays top right.
             // Build 64 (F-19): the sync button shows to EVERY role
             // now — the isAdmin gate around it is gone, so members
             // see it too, and syncBank() itself is open to members
@@ -1536,6 +1539,21 @@ public struct HomeView: View {
         let overBudget = SpendingProgress.isOverBudget(chargesCents: result.chargesCents, capacityCents: capacity)
         let fraction = SpendingProgress.fraction(chargesCents: result.chargesCents, capacityCents: capacity)
         return VStack(alignment: .leading, spacing: 10) {
+            // Build 70 (owner, Nov 24, 2026): the "Available"
+            // label sits above the amount, in the empty space
+            // below the header — it fills the space, makes the
+            // box feel cleaner, and mirrors the Tzedaka card's
+            // "Ready to give" label (same 14pt muted style). The
+            // old "This week" header label is gone. Simple only
+            // (the current Home); the retired classic hero is
+            // untouched. On iPhone the label + amount must not
+            // crowd or wrap — the label is short and the amount
+            // already scales (minimumScaleFactor 0.5).
+            if simple {
+                Text("Available")
+                    .font(.system(size: 14))
+                    .foregroundStyle(DesignTokens.muted)
+            }
             HStack(spacing: 16) {
                 Text(MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false))
                     .font(.system(size: heroAmountSize, weight: .bold))
@@ -1679,7 +1697,11 @@ public struct HomeView: View {
             guard case .loaded(let result) = viewModel.week else { return nil }
             let capacity = result.baseAvailableCents + result.tempCents
             return (
-                label: "Left to spend",
+                // Build 70 (owner, Nov 24, 2026): the label is
+                // "Available", matching the hero's label above the
+                // amount (the old "Left to spend" is gone) — the
+                // same word the Savings card already uses.
+                label: "Available",
                 amountText: MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false),
                 subText: "\(MoneyFormat.string(cents: result.chargesCents)) spent · \(usedPercentText(result: result, capacity: capacity))"
             )
