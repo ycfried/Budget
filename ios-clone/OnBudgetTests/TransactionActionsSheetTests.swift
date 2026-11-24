@@ -145,14 +145,34 @@ final class TransactionActionsSheetTests: XCTestCase {
 
     // Build 67: the expanded detail's Type row reads "Expense"
     // for an expense-tagged row, agreeing with the Actions sheet.
-    func testTypeLabelReadsExpense() {
-        let transaction = Transaction(
-            id: UUID(), householdId: UUID(), date: "2026-11-23", merchant: "TIDEWATER PROPERTY MANAGEMENT",
-            amountCents: 16000, cardSuffix: "1005", source: .plaid, state: .verified,
-            kind: .expense, fundAllocationCents: 0, excluded: false, excludeReason: "",
-            late: false, externalId: nil, dedupeHash: "h", originalPurchaseId: nil,
-            preExclusionState: nil, plaidPendingTransactionId: nil,
-            plaidTransactionId: nil, createdAt: "2026-11-23T00:00:00Z")
+    // `Transaction` has no public memberwise init (the app decodes
+    // rows from Supabase JSON), so the row is decoded from JSON
+    // here — the same shape the app receives.
+    func testTypeLabelReadsExpense() throws {
+        let json: [String: Any] = [
+            "id": UUID().uuidString,
+            "household_id": UUID().uuidString,
+            "date": "2026-11-23",
+            "merchant": "TIDEWATER PROPERTY MANAGEMENT",
+            "amount_cents": 16000,
+            "card_suffix": "1005",
+            "source": "plaid",
+            "state": "verified",
+            "kind": "expense",
+            "fund_allocation_cents": 0,
+            "excluded": false,
+            "exclude_reason": "",
+            "late": false,
+            "external_id": NSNull(),
+            "dedupe_hash": "h",
+            "original_purchase_id": NSNull(),
+            "pre_exclusion_state": NSNull(),
+            "plaid_pending_transaction_id": NSNull(),
+            "plaid_transaction_id": NSNull(),
+            "created_at": "2026-11-23T00:00:00Z",
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let transaction = try JSONDecoder().decode(Transaction.self, from: data)
         XCTAssertEqual(TransactionFormatting.typeLabel(for: transaction), "Expense")
     }
 }
