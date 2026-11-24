@@ -25,8 +25,24 @@
 //     guessed into a transaction.
 
 export function authResultsPass(authResults: string): boolean {
+  return authResultsPassFor('amex_alert', authResults);
+}
+
+// Per-bank Authentication-Results rule. Same shape as the Amex
+// rule: the bank's own domain + dkim=pass + spf=pass. Fail-closed
+// (see the header note): a legitimate alert that fails SPF on some
+// path quarantines instead of ingesting. The Chase domain list is
+// the bank's own sender domains — chase.com and jpmorganchase.com
+// — NOT a guess at the alert format.
+export function authResultsPassFor(source: string, authResults: string): boolean {
   const h = String(authResults ?? '').toLowerCase();
-  return h.includes('americanexpress.com') && h.includes('dkim=pass') && h.includes('spf=pass');
+  const domains: Record<string, string[]> = {
+    amex_alert: ['americanexpress.com'],
+    chase_alert: ['chase.com', 'jpmorganchase.com'],
+  };
+  const wanted = domains[source];
+  if (!wanted) return false;
+  return wanted.some((d) => h.includes(d)) && h.includes('dkim=pass') && h.includes('spf=pass');
 }
 
 // The Amex alert query for the OAuth path. Same scope as the Apps
@@ -42,6 +58,18 @@ export function buildAlertQuery(): string {
   // "Large Purchase" in the subject ("Large Purchase Approved" on the
   // real Nov 2 alert); statements' subjects don't.
   return 'from:(americanexpress.com) subject:"Large Purchase"';
+}
+
+// The Chase alert query for the OAuth path (F-15, build 64).
+// UNPROVEN: no real Chase alert sample exists, so the query is the
+// sender-domain filter only — it does NOT guess a subject phrase
+// (Chase alert subjects are unknown). The Chase path stays
+// DISABLED in gmail-poll (CHASE_ALERTS_ENABLED = false) until a
+// real redacted Chase alert is verified against parseChaseAlertText;
+// flipping the gate before then would poll Chase mail the parser
+// has never seen.
+export function buildChaseAlertQuery(): string {
+  return 'from:(chase.com OR jpmorganchase.com)';
 }
 
 export type GmailHeader = { name: string; value: string };
@@ -231,6 +259,54 @@ export function parseAmexAlertText(input: {
   return { amountCents, merchant, cardSuffix, date };
 }
 
+// Chase alert parser — UNPROVEN SCAFFOLD (F-15, build 64, Nov 23,
+// 2026). No real Chase alert sample exists in the repo, so every
+// pattern below is a best-guess shape, NOT the real format. The
+// parser is fail-closed on purpose: it returns null unless the
+// mail mentions Chase AND carries a $ amount AND a merchant found
+// by a "with/at NAME" phrase, and the whole Chase path is gated
+// OFF in gmail-poll until a real redacted alert is verified
+// against it. Do NOT treat a passing scaffold test as proof the
+// parser understands real Chase mail — the proof is a real alert
+// (see supabase/tests/gmail-chase-scaffold.test.mjs).
+export function parseChaseAlertText(input: {
+  subject: string;
+  body: string;
+  date: string;
+}): ParsedAlert | null {
+  const subject = String(input?.subject ?? '');
+  const text = String(input?.body ?? '');
+  const date = String(input?.date ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const combined = subject + '\n' + text;
+  // Word-boundary match on purpose: the bare substring 'chase'
+  // also occurs inside 'purchase', which would let every Amex
+  // "purchase" alert parse as Chase. A real Chase alert names the
+  // bank as a word (or jpmorganchase.com).
+  if (!/\bchase\b/i.test(combined) && !/jpmorganchase/i.test(combined)) return null;
+  const matches = [...combined.matchAll(/\$([\d,]+\.\d{2})/g)];
+  if (!matches.length) return null;
+  let amountCents = 0;
+  for (const m of matches) {
+    const cents = Math.round(parseFloat(m[1].replace(/,/g, '')) * 100);
+    if (cents > amountCents) amountCents = cents;
+  }
+  if (!amountCents || amountCents <= 0) return null;
+  let merchant: string | null = null;
+  const withMatch = combined.match(/\bwith\s+([A-Za-z0-9][A-Za-z0-9 .&'\-]{1,60})/i);
+  if (withMatch) merchant = withMatch[1].trim().replace(/\s+/g, ' ');
+  if (!merchant) {
+    const atMatch = combined.match(/\bat\s+([A-Za-z0-9][A-Za-z0-9 .&'\-]{1,60})/i);
+    if (atMatch) merchant = atMatch[1].trim().replace(/\s+/g, ' ');
+  }
+  if (!merchant) return null;
+  merchant = merchant.replace(/[.\s]+$/, '');
+  if (!merchant) return null;
+  const suffixMatch = combined.match(/ending in\s*(\d{4})/i);
+  const cardSuffix = suffixMatch ? suffixMatch[1] : '0000';
+  return { amountCents, merchant, cardSuffix, date };
+}
+
 // Server-side dedupe: message ids not already in the processed set.
 // Pure helper; the DB unique constraint is the backstop, not this.
 export function filterNewMessageIds(allIds: string[], processedIds: string[]): string[] {
@@ -238,16 +314,17 @@ export function filterNewMessageIds(allIds: string[], processedIds: string[]): s
   return (allIds ?? []).filter((id) => id && !seen.has(id));
 }
 
-// --- Per-bank parser dispatcher (build 44, item 4) ---
-// Structural skeleton only: the Gmail path knows ONE email source
-// today (Amex Large Purchase alerts). A future bank registers its
-// parser here and adds its source to EMAIL_SOURCES in canonical.ts;
-// the merge paths (autoMergeEligible, findCoveringBankRow,
-// plaid-sync steps 3/3b) then accept that bank's rows with no other
-// code change. Do NOT register a Chase / Capital One parser here:
-// no real redacted sample exists, and no sender/subject format is
-// known — inventing one would mis-parse real mail. That work is
-// blocked on samples from the owner.
+// --- Per-bank parser dispatcher (build 44, item 4; F-15, build 64) ---
+// Amex is the one PROVEN parser. Chase is registered as a
+// FAIL-CLOSED SCAFFOLD (parseChaseAlertText below): the wiring is
+// real, but the Chase path is DISABLED in gmail-poll
+// (CHASE_ALERTS_ENABLED = false) until a real redacted Chase alert
+// is verified against it. The scaffold's extraction patterns
+// (largest $ amount; "with/at NAME" merchant; "ending in NNNN"
+// suffix) are best-guess shapes, NOT a format learned from a real
+// Chase alert — no sample exists in the repo, and nothing here may
+// be treated as the real format until that verification lands.
+// Capital One: not started; same scaffold shape when a sample exists.
 export type EmailAlertParser = (input: {
   subject: string;
   body: string;
@@ -256,6 +333,7 @@ export type EmailAlertParser = (input: {
 
 export const EMAIL_PARSERS: Record<string, EmailAlertParser> = {
   amex_alert: parseAmexAlertText,
+  chase_alert: parseChaseAlertText,
 };
 
 export function parseEmailAlert(

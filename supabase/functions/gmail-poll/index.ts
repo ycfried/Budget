@@ -5,10 +5,11 @@
 // Contract:
 //   Request (POST): { household_id }.
 //   Auth, either of:
-//     (a) a caller JWT: the caller must be an ADMIN of that household
-//         (verified via the JWT + household_members lookup); members
-//         get 403. This is the path the app's "Check email now" button
-//         uses.
+//     (a) a caller JWT: the caller must be a MEMBER of that household
+//         (verified via the JWT + household_members lookup) — F-19,
+//         build 64: members may trigger a manual email check too,
+//         not just admins. Non-members get 403. This is the path the
+//         app's "Check email now" button uses.
 //     (b) a server bearer: the Authorization token equals the
 //         SERVICE_ROLE_SECRET / SUPABASE_SERVICE_ROLE_KEY env value.
 //         Anyone holding that key already has full database access, so
@@ -24,21 +25,24 @@
 //        last_error='reauthorization required' and is skipped until
 //        the admin reconnects. Transient failures leave the status
 //        alone and only record last_error.
-//     2. List messages matching buildAlertQuery(), paginated with
+//     2. List messages matching the alert query (Amex Large
+//        Purchase alerts; Chase alerts join the query only while
+//        CHASE_ALERTS_ENABLED is true, F-15), paginated with
 //        pageToken (50 per page, up to 20 pages — P2-C1, Nov 8, 2026)
 //        so a burst of alerts is processed, not just the first page.
 //     3. Skip message ids already in processed_email_ids for this
 //        connection. NO Gmail labels are read or written — dedupe is
 //        server-side, so only the gmail.readonly scope is ever needed.
 //     4. For each new message: fetch it (format=full) and fail closed.
-//        Authentication-Results must pass the ingest rule
-//        (americanexpress.com + dkim=pass + spf=pass) or the message
+//        Authentication-Results must pass the per-bank ingest rule
+//        (bank domain + dkim=pass + spf=pass) or the message
 //        is recorded 'quarantined' and NEVER stored. An alert that does
 //        not parse is recorded 'unparseable' and never guessed into a
 //        transaction. A message already in transactions (same
 //        external_id) is recorded 'duplicate', never double-stored.
 //     5. A parsed alert inserts ONE provisional transaction, exactly
-//        like ingest-amex-alert: source 'amex_alert', state
+//        like ingest-amex-alert: source 'amex_alert' (or
+//        'chase_alert' while the F-15 gate is on), state
 //        'provisional', kind from classifyMerchantOnly, external_id =
 //        the Gmail message id, dedupe_hash = canonical hash (so a
 //        later Plaid sync can MATCH this row instead of double
@@ -59,15 +63,16 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
-  authResultsPass,
+  authResultsPassFor,
   buildAlertQuery,
+  buildChaseAlertQuery,
   extractPlainText,
   filterNewMessageIds,
   gmailDateToNY,
   headerValue,
-  parseAmexAlertText,
+  parseEmailAlert,
 } from './gmail-parse.ts';
-import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, findCoveringBankRow, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
+import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, findCoveringBankRow, findExistingSameHash, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -75,6 +80,15 @@ const corsHeaders = {
 };
 
 const MAX_MESSAGES_PER_POLL = 50;
+
+// F-15 (build 64, Nov 23, 2026) — Chase alerts: DISABLED until a
+// real redacted Chase alert is verified against parseChaseAlertText
+// (supabase/functions/_shared/gmail-parse.ts). No sample exists in
+// the repo, so the parser's extraction patterns are best-guess
+// shapes, not the real format. Flip this to true ONLY after that
+// verification — before then the poll must not fetch Chase mail the
+// parser has never seen. Amex is unaffected by this gate.
+const CHASE_ALERTS_ENABLED = false;
 
 // Hex key decoding (see gmail-oauth-callback): GMAIL_TOKEN_KEY is
 // 64-char hex, not base64 — atob() on it yields 48 bytes and AES-GCM
@@ -149,7 +163,10 @@ Deno.serve(async (req) => {
     );
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // User path: admin of this household only.
+      // User path: any member of this household (F-19, build 64).
+      // Members could not trigger a manual email check before;
+      // the household's email data is shared, so a member
+      // refreshing it grants nothing new. Non-members still 403.
       const { data: membership } = await supabase
         .from('household_members')
         .select('role')
@@ -157,7 +174,6 @@ Deno.serve(async (req) => {
         .eq('user_id', user.id)
         .maybeSingle();
       if (!membership) return json({ error: 'not a household member' }, 403);
-      if (membership.role !== 'admin') return json({ error: 'admin only' }, 403);
     } else if (!timingSafeEqual(bearer, serviceKey)) {
       // Neither a valid user session nor the server key.
       return json({ error: 'unauthorized' }, 401);
@@ -260,7 +276,12 @@ Deno.serve(async (req) => {
         let pagesFetched = 0;
         const MAX_PAGES_PER_POLL = 20;
         for (;;) {
-          const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(buildAlertQuery())}&maxResults=${MAX_MESSAGES_PER_POLL}` +
+          // F-15: the Chase query joins only while the gate is on.
+          // Gmail OR syntax: {query1 query2}.
+          const alertQuery = CHASE_ALERTS_ENABLED
+            ? `{${buildAlertQuery()} ${buildChaseAlertQuery()}}`
+            : buildAlertQuery();
+          const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(alertQuery)}&maxResults=${MAX_MESSAGES_PER_POLL}` +
             (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
           const listRes = await fetch(listUrl, { headers: gHeaders });
           const listData = await listRes.json().catch(() => ({}));
@@ -297,7 +318,23 @@ Deno.serve(async (req) => {
             const headers = (msg.payload?.headers ?? []) as { name: string; value: string }[];
             const authResults = headerValue(headers, 'Authentication-Results');
             const subject = headerValue(headers, 'Subject');
-            if (!authResultsPass(authResults)) {
+            // F-15: dispatch by sender domain. Amex mail takes the
+            // proven Amex path; Chase mail takes the scaffold path
+            // (parseChaseAlertText) and is skipped entirely while
+            // CHASE_ALERTS_ENABLED is false — defence in depth on
+            // top of the query gate, so a Chase message that
+            // reaches this loop by any other route is never stored.
+            const from = headerValue(headers, 'From');
+            const isChase = /chase\.com|jpmorganchase\.com/i.test(from);
+            const source = isChase ? 'chase_alert' : 'amex_alert';
+            if (isChase && !CHASE_ALERTS_ENABLED) {
+              await supabaseAdmin.from('processed_email_ids').insert({
+                connection_id: conn.id, message_id: messageId, disposition: 'quarantined',
+              });
+              totals.quarantined += 1;
+              continue;
+            }
+            if (!authResultsPassFor(source, authResults)) {
               await supabaseAdmin.from('processed_email_ids').insert({
                 connection_id: conn.id, message_id: messageId, disposition: 'quarantined',
               });
@@ -305,7 +342,7 @@ Deno.serve(async (req) => {
               continue;
             }
             const date = gmailDateToNY(msg.internalDate);
-            const parsed = parseAmexAlertText({
+            const parsed = parseEmailAlert(source, {
               subject,
               body: extractPlainText(msg.payload),
               date,
@@ -348,13 +385,17 @@ Deno.serve(async (req) => {
             // later merges them. Skip when a Plaid row covers this
             // purchase — same amount + same card (or unknown suffix)
             // + date within 2 days + merchant-related (same kind,
-            // same household). Plaid rows only, never an amex_alert
+            // same household). Plaid rows only, never an email-alert
             // row, so two real identical purchases with no bank row
             // still both insert. The exact-hash case is the special
             // case where all of those are equalities. A TOIREMORG
             // alert is never swallowed here: the eligibility check
             // refuses TOIREMORG pairs, so the alert inserts and the
-            // pair stays two real gifts (owner ruling Nov 3).
+            // pair stays two real gifts (owner ruling Nov 3). The
+            // guard is the same for Amex and Chase rows (F-15):
+            // findCoveringBankRow and findExistingSameHash are
+            // source-agnostic, and the insert below stores the
+            // dispatched source.
             const coveringBankRow = await findCoveringBankRow(supabaseAdmin, householdId, {
               merchant, date: parsed.date, amount_cents: parsed.amountCents,
               card_suffix: parsed.cardSuffix, kind,
@@ -367,13 +408,26 @@ Deno.serve(async (req) => {
               totals.duplicates += 1;
               continue;
             }
+            // Build 58 (owner, Nov 22, 2026): same-source duplicate
+            // guard — the same alert ingested twice (two Gmail
+            // message ids, one purchase) used to insert a second
+            // row with an identical dedupe_hash. A live row with
+            // this hash already exists, so this alert adds nothing.
+            const existingSameHash = await findExistingSameHash(supabaseAdmin, householdId, dedupeHash);
+            if (existingSameHash) {
+              await supabaseAdmin.from('processed_email_ids').insert({
+                connection_id: conn.id, message_id: messageId, disposition: 'duplicate',
+              });
+              totals.duplicates += 1;
+              continue;
+            }
             const { data: inserted, error: insertErr } = await supabaseAdmin.from('transactions').insert({
               household_id: householdId,
               date: parsed.date,
               merchant,
               amount_cents: parsed.amountCents,
               card_suffix: parsed.cardSuffix,
-              source: 'amex_alert',
+              source,
               state: 'provisional',
               kind,
               external_id: messageId,
@@ -385,7 +439,7 @@ Deno.serve(async (req) => {
               // review, never auto-merged. Best-effort: never fails poll.
               await flagLookalikes(supabaseAdmin, householdId, {
                 id: inserted.id, merchant, date: parsed.date, amount_cents: parsed.amountCents,
-                card_suffix: parsed.cardSuffix, source: 'amex_alert', created_at: inserted.created_at,
+                card_suffix: parsed.cardSuffix, source, created_at: inserted.created_at,
               });
               // P0-1 (Nov 8, 2026): link this row to its purchase/refund
               // so restoration can reach it (supabase/refund-linking.sql).

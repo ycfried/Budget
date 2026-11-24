@@ -212,10 +212,18 @@ export function isExcludedFromMath(t) {
   // accidentally count it (chargeContribution already returns 0 for
   // non-charge kinds, but the exclusion is the stated rule).
   if (t.kind === 'income') return true;
-  // Pending/provisional REFUNDS restore nothing and are excluded from
-  // week math until they post (state 'verified'). Provisional CHARGES
-  // still count — the distinction is by kind + state, not state alone.
-  if (t.kind === 'refund' && t.state === 'provisional') return true;
+  // F-1 (owner rule, Nov 23, 2026): a PENDING/provisional refund
+  // counts RIGHT AWAY, exactly like a pending charge (owner, Nov 22:
+  // "pending transactions count toward the totals immediately").
+  // The old rule excluded provisional refunds from week math until
+  // they posted; that is gone. A provisional refund that later
+  // disappears is auto-reversed by the Plaid removed[] path
+  // (plaid-sync routes it through exclude_transaction, F-14), so
+  // its effect leaves the totals the same way a vanished pending
+  // charge does. Refunds still contribute 0 via chargeContribution
+  // (below) — they are applied only via linkage / the unlinked
+  // walk in compute-week and week-close, never by blindly netting
+  // every negative row.
   return false;
 }
 
@@ -225,8 +233,12 @@ export function isPendingRefund(t) {
   return t.kind === 'refund' && t.state === 'provisional';
 }
 
-// Absolute cents of pending refunds in a row set (for reporting only;
-// these cents are never counted in C).
+// Absolute cents of pending refunds in a row set (for reporting
+// only). F-1 (Nov 23, 2026): the name is legacy — pending refunds
+// are no longer "excluded" from C, they COUNT toward it (see
+// isExcludedFromMath above), so this sum is the pending-refund
+// cents that ARE counted in the week's math, reported for display.
+// Kept (same arithmetic) so existing callers and tests keep working.
 export function pendingRefundExcludedCents(rows) {
   return (rows ?? [])
     .filter(isPendingRefund)
@@ -264,7 +276,53 @@ export function chargeContribution(t) {
 // suite (P2-M1).
 // ---------------------------------------------------------------------------
 
-// N1 Option A — fund-first, counted once. The NORMAL portion of a
+// N1 — OWNER RULE (Nov 23, 2026, F-1), replacing fund-first.
+// A refund restores to the CLASSIFICATION of the charge it links
+// to: a refund on a spending charge reduces the week's spending
+// (nets against C in full); a refund on a fund charge goes back to
+// the fund (nets 0 against C — the fund is credited by refund
+// restoration, never by this walk). NO SPLITS: Cover with Savings
+// is always the WHOLE charge, never part of it (owner, Nov 23,
+// ~10:44), so a split purchase ($60 fund / $40 normal) cannot
+// happen and there is no "fund portion first, normal portion
+// second" split to compute. The spending portion of a purchase is
+// therefore simply amount − fund_allocation for a charge, and 0
+// for a fund_charge (whose whole amount was fund-covered).
+//   $100 spending purchase, $50 refund -> 50.
+//   $100 fund purchase, $50 refund -> 0.
+//   $100 spending purchase, $120 refund -> 100 (capped at the
+//     purchase's spending portion; the excess is HELD, never netted).
+// Callers net this amount (as a positive cents value) once per
+// purchase, from the CUMULATIVE refund total for that purchase, so
+// partial refunds ($30 + $30) are order-independent by construction.
+// Unlinked refunds have no purchase to split against and keep
+// netting in full, unchanged (capped at the week's charges by
+// applyUnlinkedRefundCap).
+// The old fund-first helper linkedRefundNormalPortionCents below is
+// KEPT (pinned by test/math-fixes-n1-n2.test.mjs) but MOOT under
+// this rule: on every reachable input (no splits) it returns
+// exactly what linkedRefundSpendingPortionCents returns. Do not
+// use it for new code; the compute-week and week-close walks use
+// the classification helper. Shared fixture for the list side
+// (Swift WeekTransactionsNetting must compute the same total):
+// supabase/tests/f1-owner-refund-rule.test.mjs.
+export function linkedRefundSpendingPortionCents(purchaseKind, purchaseAmountCents, fundAllocationCents, totalRefundedCents) {
+  const amount = Math.max(0, Math.floor(purchaseAmountCents ?? 0));
+  const fund = Math.min(Math.max(0, Math.floor(fundAllocationCents ?? 0)), amount);
+  const refunded = Math.max(0, Math.floor(totalRefundedCents ?? 0));
+  // A fund_charge was covered wholly by the fund: its refund goes
+  // back to the fund, nothing nets against spending. A charge nets
+  // its spending portion (amount − fund allocation).
+  const spendingPortion = purchaseKind === 'fund_charge' ? 0 : amount - fund;
+  return Math.min(refunded, spendingPortion);
+}
+
+// N1 (Nov 5, 2026) — fund-first, counted once. MOOT under the
+// owner rule above (Nov 23, 2026, F-1): no split purchase can
+// exist, so on every reachable input this returns exactly what
+// linkedRefundSpendingPortionCents returns. Kept for the pinned
+// tests in test/math-fixes-n1-n2.test.mjs; new code must use the
+// classification helper instead. The NORMAL portion of a
 // linked refund total for one purchase: the refund pays the fund
 // portion back first (same arithmetic as restoration.mjs
 // fundCreditCents = min(refundable, fundAllocation)), and only the
