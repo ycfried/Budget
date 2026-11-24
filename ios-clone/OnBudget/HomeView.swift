@@ -1189,6 +1189,113 @@ public struct HomeView: View {
         }
     }
 
+/// Build 71 (owner, Nov 24, 2026 — the two Home cards must look
+/// the SAME): the ONE shared loaded body for the Spending hero and
+/// the Tzedaka card — label above the amount, amount + donut row,
+/// subline, then the chevron row at the bottom-right. Both cards
+/// render this one view, so their elements sit at the same
+/// positions by construction and cannot drift apart again. The
+/// amount size and the donut size are the SAME for both cards (the
+/// hero's sizes) — the different sizes were part of why the
+/// sublines landed on different baselines. The fund's own colour
+/// and amount weight stay (deep blue + bold for Spending, primary
+/// blue + semibold for Tzedaka), so the cards keep their identity;
+/// only the layout is shared. `extra` is the Spending hero's
+/// debt-math / allowance lines, slotted between the subline and
+/// the chevron so the chevron stays the last row; Tzedaka passes
+/// an empty view.
+private struct HomeCardLoadedBody<Donut: View, Subline: View, Extra: View>: View {
+    let label: String
+    let amountText: String
+    let amountColor: Color
+    let amountWeight: Font.Weight
+    let amountSize: CGFloat
+    let amountAccessibilityIdentifier: String
+    let amountAccessibilityLabel: String
+    let donut: Donut
+    let subline: Subline
+    let extra: Extra
+
+    init(
+        label: String,
+        amountText: String,
+        amountColor: Color,
+        amountWeight: Font.Weight,
+        amountSize: CGFloat,
+        amountAccessibilityIdentifier: String,
+        amountAccessibilityLabel: String,
+        @ViewBuilder donut: () -> Donut,
+        @ViewBuilder subline: () -> Subline,
+        @ViewBuilder extra: () -> Extra
+    ) {
+        self.label = label
+        self.amountText = amountText
+        self.amountColor = amountColor
+        self.amountWeight = amountWeight
+        self.amountSize = amountSize
+        self.amountAccessibilityIdentifier = amountAccessibilityIdentifier
+        self.amountAccessibilityLabel = amountAccessibilityLabel
+        self.donut = donut()
+        self.subline = subline()
+        self.extra = extra()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(size: 14))
+                .foregroundStyle(DesignTokens.muted)
+            HStack(spacing: 16) {
+                Text(amountText)
+                    .font(.system(size: amountSize, weight: amountWeight))
+                    .foregroundStyle(amountColor)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .accessibilityIdentifier(amountAccessibilityIdentifier)
+                    .accessibilityLabel(amountAccessibilityLabel)
+                Spacer()
+                donut
+            }
+            subline
+            extra
+            HStack {
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#9aa3af"))
+            }
+        }
+    }
+}
+
+/// Build 71: the ONE shared loading skeleton for the Spending hero
+/// and the Tzedaka card — built from the same structure as
+/// `HomeCardLoadedBody` (label block, amount + donut row, subline
+/// bar, chevron row), so the two skeletons look identical and each
+/// one mirrors its loaded card. Both cards pass the same sizes, so
+/// the skeletons cannot drift apart either.
+private struct HomeCardSkeletonBody: View {
+    let amountSkeletonWidth: CGFloat
+    let amountSkeletonHeight: CGFloat
+    let donutSize: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SkeletonBlock(width: 110, height: 14, cornerRadius: 6)
+            HStack(spacing: 16) {
+                SkeletonBlock(width: amountSkeletonWidth, height: amountSkeletonHeight, cornerRadius: 6)
+                Spacer()
+                SkeletonBlock(width: donutSize, height: donutSize, cornerRadius: donutSize / 2)
+            }
+            SkeletonBlock(width: 180, height: 14, cornerRadius: 6)
+            HStack {
+                Spacer()
+                SkeletonBlock(width: 13, height: 13, cornerRadius: 3)
+            }
+        }
+    }
+}
+
     // MARK: Hero — Weekly Budget
 
     // Hero — Weekly Budget. Bigger and more prominent than the
@@ -1278,25 +1385,44 @@ public struct HomeView: View {
                 // label block sits above the amount skeleton (the
                 // loaded body has the label now), so the loading
                 // card holds the same height as the loaded one.
+                // Build 71: the simple hero renders the ONE shared
+                // skeleton (HomeCardSkeletonBody) — the same view
+                // the Tzedaka card renders — so the two skeletons
+                // look identical. The retired classic hero keeps
+                // its own blocks below.
                 if simple {
-                    SkeletonBlock(width: 110, height: 14, cornerRadius: 6)
+                    HomeCardSkeletonBody(amountSkeletonWidth: heroAmountSkeletonWidth, amountSkeletonHeight: heroAmountSkeletonHeight, donutSize: heroDonutSize)
+                } else {
+                    HStack(spacing: 16) {
+                        SkeletonBlock(width: heroAmountSkeletonWidth, height: heroAmountSkeletonHeight, cornerRadius: 6)
+                        Spacer()
+                        SkeletonBlock(width: heroDonutSize, height: heroDonutSize, cornerRadius: heroDonutSize / 2)
+                    }
+                    SkeletonBlock(width: 180, height: 14, cornerRadius: 6)
                 }
-                HStack(spacing: 16) {
-                    SkeletonBlock(width: heroAmountSkeletonWidth, height: heroAmountSkeletonHeight, cornerRadius: 6)
-                    Spacer()
-                    SkeletonBlock(width: heroDonutSize, height: heroDonutSize, cornerRadius: heroDonutSize / 2)
-                }
-                SkeletonBlock(width: 180, height: 14, cornerRadius: 6)
             case .failed(let error):
                 // One failure message only: the ErrorBox. The grey
                 // "Could not load…" line above it said the same
-                // thing twice (audit H-P2-4).
-                ErrorBox(weekErrorText(error))
-                Button("Try Again") { Task { await viewModel.refresh() } }
-                    .buttonStyle(TertiaryButtonStyle())
+                // thing twice (audit H-P2-4). Build 71: the 6pt
+                // spacing matches the Tzedaka card's failed body,
+                // so the error states look the same too.
+                VStack(alignment: .leading, spacing: 6) {
+                    ErrorBox(weekErrorText(error))
+                    Button("Try Again") { Task { await viewModel.refresh() } }
+                        .buttonStyle(TertiaryButtonStyle())
+                }
             case .loaded(let result):
-                heroBodyAmountDonut(result, simple: simple)
-                heroLoadedContent(result)
+                if simple {
+                    // Build 71: the simple hero's extra lines
+                    // (debt math, allowance states) ride INSIDE
+                    // the shared card body now — heroBodyAmountDonut
+                    // passes them as the `extra` slot — so the
+                    // chevron stays the last row, as on Tzedaka.
+                    heroBodyAmountDonut(result, simple: true)
+                } else {
+                    heroBodyAmountDonut(result, simple: false)
+                    heroLoadedContent(result)
+                }
             }
         }
         .padding(.horizontal, 20)
@@ -1345,8 +1471,10 @@ public struct HomeView: View {
     /// skeleton can never force the page wider than the screen.
     private var heroAmountSkeletonWidth: CGFloat { useIPadTwoColumn ? 160 : (isIPad ? 320 : 200) }
 
-    // Hero header — icon + title in ONE row, with the sync button
-    // at the trailing end (the top-right corner of the card).
+    // Hero header — icon + title in ONE row (build 71: NO trailing
+    // control any more — the sync button moved to the shell top
+    // bar, so this header is the same height as the Tzedaka
+    // card's header and the two cards' elements line up).
     // Build 64 (C-2 B2 — "Coloured name, no line"): the solid
     // deep-blue banner is GONE — the header is plain white, the
     // name "Spending" is written in its own deep blue #1d4ed8 at
@@ -1370,66 +1498,16 @@ public struct HomeView: View {
                 .foregroundStyle(StatCardTheme.spending.number)
                 .lineLimit(1)
             Spacer()
-            // Build 70 (owner, Nov 24, 2026): the "This week"
-            // label is GONE from the header — it becomes the
-            // "Available" label above the amount in the body
-            // (heroBodyAmountDonut), mirroring the Tzedaka card's
-            // "Ready to give". The refresh icon stays top right.
-            // Build 64 (F-19): the sync button shows to EVERY role
-            // now — the isAdmin gate around it is gone, so members
-            // see it too, and syncBank() itself is open to members
-            // (bank + Gmail, one combined toast) — the button tap
-            // really syncs now, not just shows.
-            switch viewModel.week {
-            case .loading, .loaded:
-                // The real sync button from the first paint
-                // (build 48): syncBank() guards !isSyncing and
-                // refresh() coalesces with the in-flight load, so
-                // showing it while loading is safe — and the header
-                // never jumps when the numbers arrive.
-                syncButton
-            case .failed:
-                EmptyView()
-            }
+            // Build 71: NO trailing control here any more. The
+            // sync button lived in this header (build 48) and its
+            // 44pt frame made the Spending header taller than the
+            // Tzedaka header — the main reason the two cards
+            // looked different. The button now lives in the shell
+            // top bar (AppShellView, Home tab only); the header
+            // here is icon + name only, like the Tzedaka card's.
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-    }
-
-    /// Sync button: a plain arrow in deep blue (ink while no
-    /// allowance is set, so the two states still tell apart) on
-    /// the white header — build 64 (P-6): the white-circle disc
-    /// is gone, and the header is white now, so a white circle
-    /// would be invisible. 44pt hit target. Visible to every
-    /// role (build 64, F-19 — the isAdmin gate is gone from the
-    /// header); the sync itself runs through syncBank().
-    /// Moved here from the figure row (owner, Nov 14, 2026: the
-    /// top-right corner of the card, not mid-right over the
-    /// progress bar).
-    private var syncButton: some View {
-        Button { Task { await viewModel.syncBank() } } label: {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 20, weight: .semibold))
-                // Deep-blue arrow when an allowance is set; dark
-                // ink when not set — both read on white, and the
-                // states still tell apart (audit H-P1-1: white-on-
-                // grey was ~1.1:1 and effectively invisible).
-                .foregroundStyle(viewModel.allowanceSet == true ? DesignTokens.deep : DesignTokens.ink)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-                // Repeating linear spin while syncing: a plain
-                // 0°→360° rotation with no animation renders
-                // identically at both ends, so it never
-                // visibly spun (audit H-P1-2).
-                .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
-                .animation(
-                    viewModel.isSyncing
-                        ? .linear(duration: 0.9).repeatForever(autoreverses: false)
-                        : .default,
-                    value: viewModel.isSyncing)
-        }
-        .disabled(viewModel.isSyncing)
-        .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")
     }
 
     private func weekErrorText(_ error: OnBudgetError) -> String {
@@ -1519,7 +1597,11 @@ public struct HomeView: View {
     }
 
     /// Big amount + progress circle, in the hero's WHITE body
-    /// (build 46, owner Nov 18, 2026): the amount moved DOWN out
+    /// (build 46, owner Nov 18, 2026). Build 71: the simple hero
+    /// renders the shared HomeCardLoadedBody — the chevron is a
+    /// row below the spent line now, as on the Tzedaka card (the
+    /// retired classic hero keeps its inline chevron). The amount
+    /// moved DOWN out
     /// of the header strip into the body (build 64, C-1: 36pt bold
     /// on iPhone / 60pt iPad — see heroAmountSize), with the
     /// widget's progress CIRCLE alongside it — the horizontal
@@ -1535,73 +1617,89 @@ public struct HomeView: View {
     /// 2026). A failed allowance read (nil) still shows
     /// compute-week's numbers — only an explicit never-set hides
     /// them (audit H-P1-4).
+    @ViewBuilder
     private func heroBodyAmountDonut(_ result: WeekResult, simple: Bool = false) -> some View {
         let capacity = result.baseAvailableCents + result.tempCents
         let overBudget = SpendingProgress.isOverBudget(chargesCents: result.chargesCents, capacityCents: capacity)
         let fraction = SpendingProgress.fraction(chargesCents: result.chargesCents, capacityCents: capacity)
-        return VStack(alignment: .leading, spacing: 10) {
-            // Build 70 (owner, Nov 24, 2026): the "Available"
-            // label sits above the amount, in the empty space
-            // below the header — it fills the space, makes the
-            // box feel cleaner, and mirrors the Tzedaka card's
-            // "Ready to give" label (same 14pt muted style). The
-            // old "This week" header label is gone. Simple only
-            // (the current Home); the retired classic hero is
-            // untouched. On iPhone the label + amount must not
-            // crowd or wrap — the label is short and the amount
-            // already scales (minimumScaleFactor 0.5).
-            if simple {
-                Text("Available")
-                    .font(.system(size: 14))
-                    .foregroundStyle(DesignTokens.muted)
-            }
-            HStack(spacing: 16) {
-                Text(MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false))
-                    .font(.system(size: heroAmountSize, weight: .bold))
-                    // Build 64 (C-1 + C-2 B2): 36pt bold (was 52pt
-                    // heavy), in the Spending name colour — deep
-                    // blue #1d4ed8 — in both layouts (the old
-                    // simple-vs-classic split is gone: the amount
-                    // is the same colour as the name). Over budget
-                    // the amount is red in both layouts — the
-                    // over-budget signal is never lost.
-                    .foregroundStyle(overBudget ? DesignTokens.heroOverBudget : StatCardTheme.spending.number)
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("home.heroAmount")
-                    .accessibilityLabel(
-                        result.availableCents < 0
-                            ? "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
-                            : "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
-                    )
-                Spacer()
-                spendingDonut(fraction: fraction, overBudget: overBudget, size: heroDonutSize, showUsedLabel: simple)
-            }
-
-            if simple {
-                // The simpler Home (build 46 — the mockup): the
-                // spent line reads "$236.42 spent so far" — the
-                // spent figure in bold ink, "spent so far" muted —
-                // and NO "· 59% used", because the ring beside the
-                // amount already shows the percentage, and NO
-                // chevron, because the mockup's hero has none.
-                // While no allowance is set the line reads "Not
-                // set".
-                HStack(spacing: 0) {
+        if simple {
+            // Build 71: the simple hero renders the ONE shared
+            // Home card body (HomeCardLoadedBody) — the same view
+            // the Tzedaka card renders — so the two cards'
+            // elements sit at the same positions. The "Available"
+            // label (build 70) stays above the amount, mirroring
+            // the Tzedaka card's "Ready to give". On iPhone the
+            // label + amount must not crowd or wrap — the label is
+            // short and the amount already scales
+            // (minimumScaleFactor 0.5).
+            HomeCardLoadedBody(
+                label: "Available",
+                amountText: MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false),
+                // Build 64 (C-1 + C-2 B2): 36pt bold (was 52pt
+                // heavy), in the Spending name colour — deep blue
+                // #1d4ed8. Over budget the amount is red — the
+                // over-budget signal is never lost.
+                amountColor: overBudget ? DesignTokens.heroOverBudget : StatCardTheme.spending.number,
+                amountWeight: .bold,
+                amountSize: heroAmountSize,
+                amountAccessibilityIdentifier: "home.heroAmount",
+                amountAccessibilityLabel: result.availableCents < 0
+                    ? "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
+                    : "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown",
+                donut: {
+                    spendingDonut(fraction: fraction, overBudget: overBudget, size: heroDonutSize, showUsedLabel: true)
+                },
+                subline: {
+                    // The simpler Home (build 46 — the mockup): the
+                    // spent line reads "$236.42 spent so far" — the
+                    // spent figure in bold ink, "spent so far"
+                    // muted — and NO "· 59% used", because the ring
+                    // beside the amount already shows the
+                    // percentage. While no allowance is set the line
+                    // reads "Not set".
                     if viewModel.allowanceSet != false {
-                        Text(MoneyFormat.string(cents: result.chargesCents))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
-                        Text(" spent so far")
-                            .font(.system(size: 14))
-                            .foregroundStyle(DesignTokens.muted)
+                        HStack(spacing: 0) {
+                            Text(MoneyFormat.string(cents: result.chargesCents))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(DesignTokens.ink)
+                            Text(" spent so far")
+                                .font(.system(size: 14))
+                                .foregroundStyle(DesignTokens.muted)
+                        }
                     } else {
                         Text("Not set")
                             .font(.system(size: 14))
                             .foregroundStyle(DesignTokens.muted)
                     }
+                },
+                extra: {
+                    heroLoadedContent(result)
                 }
-            } else {
+            )
+        } else {
+            // The retired classic hero (unchanged): the amount +
+            // donut, then the spent line + % used + chevron. Same
+            // math as the old bar: charges / capacity, capped at
+            // 100%; over budget the ring is full and red, and the
+            // amount reads in the over-budget red (it sits on
+            // WHITE now, so the red reads — unlike on the old blue
+            // header, where it did not).
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 16) {
+                    Text(MoneyFormat.amountText(cents: result.availableCents, isMoneyIn: false))
+                        .font(.system(size: heroAmountSize, weight: .bold))
+                        .foregroundStyle(overBudget ? DesignTokens.heroOverBudget : StatCardTheme.spending.number)
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                        .accessibilityIdentifier("home.heroAmount")
+                        .accessibilityLabel(
+                            result.availableCents < 0
+                                ? "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
+                                : "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
+                        )
+                    Spacer()
+                    spendingDonut(fraction: fraction, overBudget: overBudget, size: heroDonutSize, showUsedLabel: false)
+                }
                 // Spent line + % used + chevron. While no allowance is
                 // set the line reads "Not set".
                 HStack(spacing: 8) {
@@ -1771,10 +1869,14 @@ public struct HomeView: View {
     private func simpleFundCard(section: FundSectionID, hero: Bool) -> some View {
         let theme = section.theme
         let name = section.displayName(customNames: appState.fundNames)
+        // Build 71: the two Home cards (Spending + Tzedaka) share
+        // the hero amount size — different sizes were part of why
+        // their sublines landed on different baselines. Savings /
+        // Overspent keep the compact card size.
         // Build 64 (C-1): fund amounts are 30pt semibold on
         // iPhone (32pt iPad), down from 42pt heavy / 64pt; a hero
         // card takes the hero size (36/60pt).
-        let amountSize: CGFloat = hero ? heroAmountSize : (isIPad ? 32 : 30)
+        let amountSize: CGFloat = (section == .spending || section == .charity || hero) ? heroAmountSize : (isIPad ? 32 : 30)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: section.resolvedIconName(customIcons: appState.fundIcons))
@@ -1826,34 +1928,56 @@ public struct HomeView: View {
             .padding(.vertical, 14)
             VStack(alignment: .leading, spacing: 6) {
                 if let data = simpleCardData(for: section) {
-                    Text(data.label)
-                        .font(.system(size: 14))
-                        .foregroundStyle(DesignTokens.muted)
                     if section == .charity {
-                        // Tzedaka ring (build 47, owner Nov 19,
-                        // 2026): the amount + the Given ring side
-                        // by side, like the Spending hero's amount
-                        // + ring. The big number stays the
-                        // Available ("left to give").
-                        HStack(spacing: 16) {
-                            simpleAmountText(data.amountText, amountSize: amountSize, section: section, theme: theme)
-                            Spacer()
-                            charityDonut(fraction: charityGivenFraction(), size: charityRingSize(hero: hero))
-                        }
+                        // Build 71: the Tzedaka card renders the
+                        // ONE shared Home card body
+                        // (HomeCardLoadedBody) — the same view the
+                        // Spending hero renders — so the two cards'
+                        // elements sit at the same positions. The
+                        // ring (build 47, owner Nov 19, 2026) is
+                        // the amount + the Given ring side by side,
+                        // like the Spending hero's amount + ring.
+                        // The big number stays the Available
+                        // ("left to give").
+                        HomeCardLoadedBody(
+                            label: data.label,
+                            amountText: data.amountText,
+                            amountColor: theme.number,
+                            amountWeight: .semibold,
+                            amountSize: amountSize,
+                            amountAccessibilityIdentifier: "home.tzedakaAmount",
+                            amountAccessibilityLabel: data.amountText,
+                            donut: {
+                                charityDonut(fraction: charityGivenFraction(), size: heroDonutSize)
+                            },
+                            subline: {
+                                if let subText = data.subText {
+                                    Text(subText)
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(DesignTokens.muted)
+                                }
+                            },
+                            extra: {
+                                EmptyView()
+                            }
+                        )
                     } else {
-                        simpleAmountText(data.amountText, amountSize: amountSize, section: section, theme: theme)
-                    }
-                    if let subText = data.subText {
-                        Text(subText)
-                            .font(.system(size: 13))
+                        Text(data.label)
+                            .font(.system(size: 14))
                             .foregroundStyle(DesignTokens.muted)
-                    }
-                    if !hero {
-                        HStack {
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color(hex: "#9aa3af"))
+                        simpleAmountText(data.amountText, amountSize: amountSize, section: section, theme: theme)
+                        if let subText = data.subText {
+                            Text(subText)
+                                .font(.system(size: 14))
+                                .foregroundStyle(DesignTokens.muted)
+                        }
+                        if !hero {
+                            HStack {
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Color(hex: "#9aa3af"))
+                            }
                         }
                     }
                 } else if simpleCardFailed(for: section) {
@@ -1861,44 +1985,43 @@ public struct HomeView: View {
                     Button("Try Again") { Task { await viewModel.refresh() } }
                         .buttonStyle(TertiaryButtonStyle())
                 } else {
-                    // Build 69 (owner, Nov 24, 2026 — the skeletons
-                    // must mirror their loaded cards exactly): the
-                    // label block, the amount + ring row, the
-                    // subline bar AND the chevron row — the loaded
-                    // card has a chevron, so the skeleton holds
-                    // its height while loading instead of growing
-                    // ~24pt when the chevron arrives. The sub bar
-                    // is 180 wide like the Spending hero's, matching
-                    // the loaded subtext ("Set aside for you — 10%
-                    // of income") — the old 150pt bar was short.
-                    SkeletonBlock(width: 110, height: 14, cornerRadius: 6)
+                    // Build 71: the Tzedaka card shares the ONE
+                    // skeleton (HomeCardSkeletonBody) — the same
+                    // view the Spending hero renders — so the two
+                    // skeletons look identical. The other cards
+                    // keep their own (no ring). Build 69 (owner,
+                    // Nov 24, 2026 — the skeletons must mirror
+                    // their loaded cards exactly): the label block,
+                    // the amount + ring row, the subline bar AND
+                    // the chevron row — the loaded card has a
+                    // chevron, so the skeleton holds its height
+                    // while loading instead of growing ~24pt when
+                    // the chevron arrives.
                     if section == .charity {
-                        // Ring skeleton beside the amount skeleton,
-                        // so the layout holds its size when the
-                        // ring arrives.
-                        HStack(spacing: 16) {
-                            SkeletonBlock(width: 180, height: amountSize + 8, cornerRadius: 6)
-                            Spacer()
-                            SkeletonBlock(width: charityRingSize(hero: hero), height: charityRingSize(hero: hero), cornerRadius: charityRingSize(hero: hero) / 2)
-                        }
+                        HomeCardSkeletonBody(amountSkeletonWidth: heroAmountSkeletonWidth, amountSkeletonHeight: heroAmountSkeletonHeight, donutSize: heroDonutSize)
                     } else {
+                        SkeletonBlock(width: 110, height: 14, cornerRadius: 6)
                         SkeletonBlock(width: 180, height: amountSize + 8, cornerRadius: 6)
-                    }
-                    SkeletonBlock(width: 180, height: 13, cornerRadius: 6)
-                    // The chevron row (loaded only when !hero) —
-                    // without it the skeleton card reads ~24pt
-                    // shorter than the loaded card.
-                    if !hero {
-                        HStack {
-                            Spacer()
-                            SkeletonBlock(width: 13, height: 13, cornerRadius: 3)
+                        SkeletonBlock(width: 180, height: 14, cornerRadius: 6)
+                        // The chevron row (loaded only when !hero) —
+                        // without it the skeleton card reads ~24pt
+                        // shorter than the loaded card.
+                        if !hero {
+                            HStack {
+                                Spacer()
+                                SkeletonBlock(width: 13, height: 13, cornerRadius: 3)
+                            }
                         }
                     }
                 }
             }
-            .padding(.horizontal, hero ? 16 : 18)
-            .padding(.top, hero ? 24 : 18)
-            .padding(.bottom, hero ? 22 : 20)
+            // Build 71: the two Home cards (Spending + Tzedaka)
+            // share the Spending hero's body padding (20/20/20),
+            // so their elements sit at the same positions.
+            // Savings / Overspent keep the compact card padding.
+            .padding(.horizontal, (section == .spending || section == .charity) ? 20 : (hero ? 16 : 18))
+            .padding(.top, (section == .spending || section == .charity) ? 20 : (hero ? 24 : 18))
+            .padding(.bottom, (section == .spending || section == .charity) ? 20 : (hero ? 22 : 20))
             // Build 68 (item 4 — equal height in ALL states): the
             // stretch spacer, same as the hero card's — the
             // two-column row stretches this card's FRAME to the
@@ -1962,15 +2085,6 @@ public struct HomeView: View {
     private func charityGivenFraction() -> Double {
         guard case .loaded(let summary) = viewModel.charity else { return 0 }
         return SpendingProgress.fraction(chargesCents: summary.givenCents, capacityCents: summary.committedCents)
-    }
-
-    /// The Tzedaka ring size (build 47): the hero ring size when
-    /// the card is a hero, a smaller ring for a plain card — 64pt
-    /// on iPhone / 88pt on iPad, so the amount + ring fit side by
-    /// side on iPhone.
-    private func charityRingSize(hero: Bool) -> CGFloat {
-        if hero { return heroDonutSize }
-        return isIPad ? 88 : 64
     }
 
     /// Progress circle for the Tzedaka card (build 47, owner Nov

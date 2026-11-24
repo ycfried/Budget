@@ -18,7 +18,9 @@
 // was removed from OnBudgetApp.init with the TabView — see
 // that file.
 // The top bar keeps just the title
-// (household name) + the profile menu.
+// (household name) + the profile menu, plus the bank-sync button
+// on the left on the Home tab (build 71 — it moved off the
+// Spending card).
 // Settings is NOT a tab — reached from the profile menu only, as a
 // full-screen cover over the current tab.
 // Top bar: white, bottom hairline, title centred, profile button
@@ -314,6 +316,18 @@ public struct AppShellView: View {
                 // names early on narrow phones (audit H-P2-10).
                 .padding(.horizontal, 56)
             HStack {
+                // Build 71: the Home-level bank sync, left of the
+                // title — Home tab only (it refreshes Home's
+                // figures; the other tabs have no use for it). The
+                // 44pt button balances the 44pt profile icon on
+                // the right, so the centred title stays centred.
+                // It used to live on the Spending card (build 48),
+                // where its 44pt frame made the Spending header
+                // taller than the Tzedaka header — the main reason
+                // the two Home cards looked different.
+                if appState.selectedTab == .home, let homeViewModel = appState.homeViewModel {
+                    TopBarSyncButton(viewModel: homeViewModel)
+                }
                 Spacer()
                 Menu {
                     Button("Settings") { appState.openSettings() }
@@ -352,6 +366,45 @@ public struct AppShellView: View {
                 .frame(height: 1),
             alignment: .bottom
         )
+    }
+
+    /// Build 71: the bank-sync button — one Home-level refresh in
+    /// the shell top bar (Home tab only), not on the Spending card.
+    /// Same look and behaviour as the card button it replaces: a
+    /// plain arrow in deep blue (ink while no allowance is set),
+    /// 44pt hit target, spinning while syncing, visible to every
+    /// role (build 64, F-19 — syncBank() itself is open to
+    /// members). It observes the HomeViewModel directly, so the
+    /// spin and the disabled state stay live.
+    private struct TopBarSyncButton: View {
+        @ObservedObject var viewModel: HomeViewModel
+
+        var body: some View {
+            Button { Task { await viewModel.syncBank() } } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 20, weight: .semibold))
+                    // Deep-blue arrow when an allowance is set; dark
+                    // ink when not set — both read on white, and the
+                    // states still tell apart (audit H-P1-1:
+                    // white-on-grey was ~1.1:1 and effectively
+                    // invisible).
+                    .foregroundStyle(viewModel.allowanceSet == true ? DesignTokens.deep : DesignTokens.ink)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    // Repeating linear spin while syncing: a plain
+                    // 0°→360° rotation with no animation renders
+                    // identically at both ends, so it never
+                    // visibly spun (audit H-P1-2).
+                    .rotationEffect(.degrees(viewModel.isSyncing ? 360 : 0))
+                    .animation(
+                        viewModel.isSyncing
+                            ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                            : .default,
+                        value: viewModel.isSyncing)
+            }
+            .disabled(viewModel.isSyncing)
+            .accessibilityLabel(viewModel.isSyncing ? "Syncing Bank" : "Sync Bank")
+        }
     }
 
     @ViewBuilder
