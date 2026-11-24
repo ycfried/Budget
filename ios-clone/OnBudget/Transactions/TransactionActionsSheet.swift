@@ -1276,58 +1276,58 @@ public struct TransactionActionsSheet: View {
             if let excludeReasonError {
                 SoftErrorBox(excludeReasonError)
             }
+            TwoButtonRow {
+                Button("Exclude") {
+                    Task {
+                        let reason = excludeReason.trimmingCharacters(in: .whitespaces)
+                        guard !reason.isEmpty else {
+                            excludeReasonError = "Reason required"
+                            return
+                        }
+                        isWorking = true
+                        let ok = await viewModel.exclude(transaction, reason: reason)
+                        isWorking = false
+                        if ok { onDismiss() }
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(isWorking)
+            } secondary: {
+                Button("Keep It") { flow = .list }
+                    .buttonStyle(TertiaryButtonStyle())
+            }
+        }
+    }
+
+    private func reclassifyReasonContent(kind: TransactionKind) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
+            Text(kind == .expense
+                 ? "Give a reason for tagging this transaction as a recurring expense. It stops counting toward weekly spending, and appears in Recurring Expenses."
+                 : "Give a reason for reclassifying this transaction.")
+                .font(.system(size: 15))
+                .foregroundStyle(DesignTokens.ink)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Reason (Required)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                TextField("Reason", text: $reclassifyReason, axis: .vertical)
+                    // Build 68 (item 7/13): 48pt minimum height,
+                        // 14pt horizontal / 12pt vertical padding,
+                        // 12pt radius — matches the other fields.
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(minHeight: 48, alignment: .leading)
+                    .background(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            if let reclassifyReasonError {
+                SoftErrorBox(reclassifyReasonError)
+            }
             // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
             // button is gone — the header back chevron + swipe-
             // right return to the list, so Cancel duplicated them.
-            Button("Exclude") {
-                Task {
-                    let reason = excludeReason.trimmingCharacters(in: .whitespaces)
-                    guard !reason.isEmpty else {
-                        excludeReasonError = "Reason required"
-                        return
-                    }
-                    isWorking = true
-                    let ok = await viewModel.exclude(transaction, reason: reason)
-                    isWorking = false
-                    if ok { onDismiss() }
-                }
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(isWorking)
-        } secondary: {
-            Button("Keep It") { flow = .list }
-                .buttonStyle(TertiaryButtonStyle())
-        }
-    }
-}
-
-private func reclassifyReasonContent(kind: TransactionKind) -> some View {
-    VStack(alignment: .leading, spacing: 16) {
-        summaryHeader
-        Text(kind == .expense
-             ? "Give a reason for tagging this transaction as a recurring expense. It stops counting toward weekly spending, and appears in Recurring Expenses."
-             : "Give a reason for reclassifying this transaction.")
-            .font(.system(size: 15))
-            .foregroundStyle(DesignTokens.ink)
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Reason (Required)")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
-            TextField("Reason", text: $reclassifyReason, axis: .vertical)
-                // Build 68 (item 7/13): 48pt minimum height,
-                    // 14pt horizontal / 12pt vertical padding,
-                    // 12pt radius — matches the other fields.
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .frame(minHeight: 48, alignment: .leading)
-                .background(.white)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-        if let reclassifyReasonError {
-            SoftErrorBox(reclassifyReasonError)
-        }
-        TwoButtonRow {
             Button(kind == .expense ? "Tag as Expense" : "Continue") {
                 Task {
                     let reason = reclassifyReason.trimmingCharacters(in: .whitespaces)
