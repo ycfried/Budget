@@ -17,7 +17,10 @@ public extension ExpenseFrequency {
 /// Red primary style for the remove confirm (build 68, item 8):
 /// remove/delete confirms are #dc2626 on #fef2f2, never blue.
 private struct ExpenseDangerButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
+    // NOTE: qualified ButtonStyle.Configuration — OnBudgetKit
+    // exports its own `Configuration` enum, so the bare name
+    // resolves to that and the style fails to conform.
+    func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(Color(hex: "#dc2626"))
