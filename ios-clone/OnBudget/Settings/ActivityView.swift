@@ -113,7 +113,9 @@ final class ActivityViewModel: ObservableObject {
                 let day = OnBudgetKit.MoneyFormat.newYorkDayString(row.createdAt) ?? "Unknown date"
                 let entry = AuditDisplayEntry(
                     action: AuditFormatting.formatAction(row.action),
-                    detail: AuditFormatting.formatDetail(row.detail),
+                    // Build 68 (item 16): short, plain wording —
+                    // the surplus-paid detail is shortened here.
+                    detail: shortenActivityDetail(AuditFormatting.formatDetail(row.detail)),
                     actor: AuditFormatting.formatActor(row.actorName),
                     time: OnBudgetKit.MoneyFormat.fmtDateTime(row.createdAt)
                 )
@@ -145,7 +147,16 @@ final class ActivityViewModel: ObservableObject {
             filter.auditShown = shownByDay.values.flatMap { $0 }.count
             filter.auditTotal = total
             groups = dayOrder.compactMap { day in
-                let entries = AuditFormatting.groupDayActivity(shownByDay[day] ?? [])
+                // Build 68 (item 16): collapse repeated IDENTICAL
+                // system entries inside one day — the week is
+                // recomputed/closed repeatedly and each pass re-logs
+                // the same event, so "Surplus Paid Toward Debt —
+                // Surplus $179.99 for week Nov 8, 2026…" appeared
+                // SEVEN times on Nov 23. Display each event once.
+                // Only actor-less (system) rows collapse: two
+                // identical user actions are two real actions and
+                // must both stay.
+                let entries = dedupeIdenticalSystemEntries(AuditFormatting.groupDayActivity(shownByDay[day] ?? []))
                 guard !entries.isEmpty else { return nil }
                 return ActivityDayGroup(day: day, entries: entries)
             }
@@ -154,6 +165,52 @@ final class ActivityViewModel: ObservableObject {
             loadError = "Could not load history. Try again."
             hasMore = false
         }
+    }
+
+    /// Build 68 (item 16): display-side dedupe of identical
+    /// SYSTEM entries inside one day (same action + detail, no
+    /// actor). Week processing re-logs the same event on every
+    /// recompute/close, so the same surplus-paid entry can appear
+    /// many times in one day — the list shows the event once, at
+    /// its newest time. User actions (which carry an actor) never
+    /// collapse: two identical-looking user actions are two real
+    /// actions. This is display-only — the stored audit rows are
+    /// untouched. The logging itself happens server-side in week
+    /// processing (outside this build's files): the server should
+    /// log each week event once instead of once per recompute.
+    /// Flagged as a server follow-up in the build 68 report.
+    private func dedupeIdenticalSystemEntries(_ entries: [AuditDisplayEntry]) -> [AuditDisplayEntry] {
+        var seen: Set<String> = []
+        var output: [AuditDisplayEntry] = []
+        for entry in entries {
+            if entry.actor.isEmpty {
+                let key = "\(entry.action)\n\(entry.detail)"
+                if seen.contains(key) { continue }
+                seen.insert(key)
+            }
+            output.append(entry)
+        }
+        return output
+    }
+
+    /// Build 68 (item 16): shorten the verbose surplus-paid
+    /// detail at display time — "Surplus $179.99 for week Nov 8,
+    /// 2026 paid toward the carried debt before the remainder
+    /// became surplus." becomes "$179.99 to the carried debt ·
+    /// Week of Nov 8, 2026." Display-only; the stored row is
+    /// untouched. The proper home for this rule is
+    /// `AuditFormatting.simplifyDetail` in OnBudgetKit (outside
+    /// this build's files) — flagged as a follow-up in the
+    /// build 68 report.
+    private func shortenActivityDetail(_ detail: String) -> String {
+        let pattern = #"^Surplus (\$[\d,]+\.\d{2}) for week (.+?) paid toward the carried debt before the remainder became surplus\.$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: detail, range: NSRange(detail.startIndex..., in: detail)),
+              match.numberOfRanges == 3,
+              let amountRange = Range(match.range(at: 1), in: detail),
+              let weekRange = Range(match.range(at: 2), in: detail)
+        else { return detail }
+        return "\(detail[amountRange]) to the carried debt · Week of \(detail[weekRange])."
     }
 
     func loadMore() async {

@@ -597,10 +597,37 @@ public struct DuplicatePairCard: View {
         return parts.isEmpty ? "Compare the two records below." : parts.joined(separator: ", ")
     }
 
+    /// Build 68 (owner, Nov 23, 2026 — the Toiremorg $1 pair):
+    /// both rows are charity gifts (kind = charity), not purchases.
+    /// The owner confirmed the two $1.00 Toiremorg rows (Nov 4
+    /// bank + Nov 5 email) are the SAME gift reported twice, and
+    /// he will tap "Same Purchase" himself once build 68 lands —
+    /// so "Same Purchase" stays ENABLED for charity pairs (it is
+    /// never hidden or disabled here), with copy that says plainly
+    /// what merging does. The server's repoint logic still expects
+    /// the kept row to be a live purchase, so the merge itself
+    /// needs the server follow-up flagged in the build 68 report;
+    /// until then a failed tap surfaces a plain-language message
+    /// (see ReviewPageView), not the cryptic server text.
+    /// No data is changed here — nothing is resolved or excluded
+    /// from this screen; the owner merges the pair himself.
+    private var isCharityPair: Bool {
+        guard let keep, let duplicate else { return false }
+        return keep.kind == .charity && duplicate.kind == .charity
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(matchLine)
                 .font(.system(size: 14, weight: .semibold))
+            // Build 68: for a charity pair, one plain line says
+            // what the pair is — two reports of one gift — so the
+            // choice below reads in context.
+            if isCharityPair {
+                Text("Both rows are charity gifts — the same gift reported twice.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
             HStack(alignment: .top, spacing: 16) {
                 DuplicateSide(label: "Keep", transaction: keep, fallback: "Keep: transaction not found")
                 DuplicateSide(label: "Possible Duplicate", transaction: duplicate, fallback: "Possible duplicate: transaction not found")
@@ -626,7 +653,12 @@ public struct DuplicatePairCard: View {
                     Button(TitleCase.apply(to: "Same Purchase")) { onSamePurchase(rememberAlias) }
                     Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
                 } message: {
-                    Text("Keep one transaction and exclude the other from counts? Neither row is deleted.")
+                    // Build 68: a charity pair merges two reports
+                    // of ONE gift — the message says so, instead of
+                    // the generic purchase wording.
+                    Text(isCharityPair
+                         ? "Keep one gift and exclude the other from counts? Both rows are the same gift reported twice. Neither row is deleted."
+                         : "Keep one transaction and exclude the other from counts? Neither row is deleted.")
                 }
                 FundsSmallTertiaryButton("Separate", isBusy: isBusy) {
                     showSeparateConfirm = true

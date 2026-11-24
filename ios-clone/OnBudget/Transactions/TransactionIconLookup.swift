@@ -244,6 +244,7 @@ public enum TransactionIconLookup {
         ("apple", "#000000"),
         ("paypal", "#003087"),
         ("t-mobile", "#e20074"),
+        ("staples", "#cc0000"),
     ]
 
     // No brand colour is invented for the local merchants above

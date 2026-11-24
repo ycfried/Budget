@@ -12,6 +12,10 @@ import OnBudgetKit
 // Lives on the Funds page, as a form opened from the Spending fund
 // (build 30 — the Settings Budget card is gone); built here because
 // the Funds workstream owns the allowance-override wiring.
+// Build 68 (item 29): the Funds page's entry point moved to the
+// merged AdjustWeeklyBudgetSheet (FundsRulesView) — this form
+// remains for the Weekly Budget sheet (HomeView) until that sheet
+// is rewired to the merged one.
 
 public struct TemporaryAllowanceView: View {
     @ObservedObject public var viewModel: FundsViewModel
@@ -119,7 +123,9 @@ public struct TemporaryAllowanceView: View {
             // onward, so the base allowance applies again. Until
             // supabase/remove-weekly-allowance-override.sql is
             // applied live this fails with a plain-language error.
-            FundsEditorQuietButton("Remove Override", isBusy: viewModel.busyAction == "remove-temp") {
+            // Build 68 (item 8): a remove action in the exact
+            // remove red #dc2626 — never grey quiet text.
+            FundsEditorDangerButton("Remove Override", isBusy: viewModel.busyAction == "remove-temp") {
                 Task { await viewModel.removeTemporaryAllowance() }
             }
         }

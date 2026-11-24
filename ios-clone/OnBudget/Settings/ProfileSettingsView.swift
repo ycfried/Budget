@@ -335,7 +335,10 @@ struct ProfileSettingsView: View {
                     Button { showingFaceIDInfo = true } label: {
                         Image(systemName: "info.circle")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Color(hex: "#6b7280"))
+                            // Build 68 (item 28): info icons are brand
+                            // primary blue #2f6bff everywhere — never
+                            // black/grey.
+                            .foregroundStyle(DesignTokens.primary)
                             .frame(width: 28, height: 28)
                             .contentShape(Rectangle())
                     }
@@ -450,12 +453,19 @@ struct ProfileSettingsView: View {
                         SecureField("New password", text: $viewModel.newPassword)
                     }
                 }
-                .textFieldStyle(.roundedBorder)
                 Button(viewModel.showNewPassword ? "Hide" : "Show") {
                     viewModel.showNewPassword.toggle()
                 }
                 .buttonStyle(QuietButtonStyle())
             }
+            // Build 68 (item 7/13): the password field is 48pt, 14pt
+            // horizontal padding, 12pt radius — the old
+            // .roundedBorder style was shorter than the other fields.
+            .padding(.horizontal, 14)
+            .frame(minHeight: 48, alignment: .leading)
+            .background(.white)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             HStack(spacing: 12) {
                 Button("Change Password") {
                     Task { await viewModel.submitNewPassword() }

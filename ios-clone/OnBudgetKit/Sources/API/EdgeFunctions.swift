@@ -374,10 +374,42 @@ public struct EdgeFunctionsClient {
     /// T, or any legacy credit field. Any household member may read
     /// their own week's numbers; no admin check. `week_start` must be
     /// a Sunday date or the function answers 400.
+    ///
+    /// RETRY (build 68, item 3): the owner saw the Spending card fail
+    /// once with "Couldn't update this week's numbers" while Tzedaka
+    /// and Recent Transactions loaded fine, then it loaded on retry
+    /// with no data change — a transient Edge Function invocation
+    /// failure (cold start / brief 5xx / network blip), not a data
+    /// bug (compute-week code is unchanged since build 64, and no
+    /// 'expense' rows existed yet when it happened). compute-week is
+    /// a pure read, so a single automatic retry on transient errors
+    /// (network / timeout / 5xx) means one blip never surfaces as an
+    /// error card. Auth, validation, decoding and 4xx errors are NOT
+    /// retried — retrying those would only repeat the same failure.
     public func computeWeek(householdId: UUID, weekStart: String? = nil) async throws -> WeekResult {
         var body: [String: Any] = ["household_id": householdId.uuidString]
         if let weekStart { body["week_start"] = weekStart }
-        return try await invoke(name: "compute-week", body: body)
+        do {
+            return try await invoke(name: "compute-week", body: body)
+        } catch let error as OnBudgetError where Self.isTransient(error) {
+            try await Task.sleep(nanoseconds: 500_000_000)
+            return try await invoke(name: "compute-week", body: body)
+        }
+    }
+
+    /// True for errors worth one automatic retry: a network failure,
+    /// a timeout, or a 5xx from the server. Anything else (auth,
+    /// validation, decoding, 4xx) fails deterministically and must
+    /// surface at once.
+    private static func isTransient(_ error: OnBudgetError) -> Bool {
+        switch error {
+        case .networkOffline, .networkError, .timedOut:
+            return true
+        case .serverError(let status, _):
+            return status >= 500
+        default:
+            return false
+        }
     }
 
     /// `week-close` — close any due weeks (`week-close/index.ts:993-1009`).

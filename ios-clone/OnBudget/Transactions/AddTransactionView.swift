@@ -353,27 +353,27 @@ private struct CardAccountField: View {
             }
             .pickerStyle(.menu)
             .tint(DesignTokens.ink)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .padding(.horizontal, 14)
             .background(.white)
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
 
             if showingAddCustom {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Last 4 digits", text: $customText)
                         .keyboardType(.numberPad)
-                        .padding(.horizontal, 12)
-                        .frame(maxWidth: 220, minHeight: 44, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: 220, minHeight: 48, alignment: .leading)
                         .background(.white)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                         .onChange(of: customText) { _, new in
                             let digits = new.filter(\.isNumber)
                             customText = String(digits.prefix(4))
@@ -454,14 +454,14 @@ public struct AddPurchaseForm: View {
 
                 FormField("Merchant", required: true) {
                     TextField("Merchant", text: $merchant)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 44, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 48, alignment: .leading)
                         .background(.white)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                         .textInputAutocapitalization(.words)
                 }
                 .onChange(of: merchant) { _, new in
@@ -469,11 +469,12 @@ public struct AddPurchaseForm: View {
                 }
 
                 FormField("Amount", required: true) {
-                    DollarTextField(text: $amountText)
+                    DollarTextField(text: $amountText, minHeight: 48)
                 }
 
                 FormField("Date") {
                     DateField(date: $date)
+                    .frame(minHeight: 48)
                 }
 
                 FormField("Card / Account") {
@@ -638,14 +639,14 @@ public struct AddDonationForm: View {
 
                 FormField("Organization", required: true) {
                     TextField("Organization", text: $organization)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 44, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 48, alignment: .leading)
                         .background(.white)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                         .textInputAutocapitalization(.words)
                 }
                 .onChange(of: organization) { _, new in
@@ -653,11 +654,12 @@ public struct AddDonationForm: View {
                 }
 
                 FormField("Amount", required: true) {
-                    DollarTextField(text: $amountText)
+                    DollarTextField(text: $amountText, minHeight: 48)
                 }
 
                 FormField("Date") {
                     DateField(date: $date)
+                    .frame(minHeight: 48)
                 }
 
                 FormField("Card / Account") {
@@ -670,14 +672,14 @@ public struct AddDonationForm: View {
 
                 FormField("Note") {
                     TextField("Note", text: $note, axis: .vertical)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 44, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 48, alignment: .leading)
                         .background(.white)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .onChange(of: note) { _, new in
                     if new.count > 120 { note = String(new.prefix(120)) }

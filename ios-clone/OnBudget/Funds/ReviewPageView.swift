@@ -19,6 +19,24 @@ public struct ReviewPageView: View {
         self.onBack = onBack
     }
 
+    /// Build 68 (owner, Nov 23, 2026 — the Toiremorg $1 pair):
+    /// translate the server's cryptic resolve refusal into plain
+    /// language. The server's repoint logic expects the kept row
+    /// to be a live purchase, so merging a charity+charity pair
+    /// refuses with "repoint target is not a live purchase" — a
+    /// sentence that says nothing to the owner. Until the server
+    /// follow-up lands (the resolve path must accept a charity
+    /// pair — flagged in the build 68 report), the owner sees
+    /// this instead, and nothing is changed by the failed tap.
+    /// Any other message passes through untouched.
+    private var friendlyAlertMessage: String {
+        let message = viewModel.alertMessage ?? ""
+        if message.localizedCaseInsensitiveContains("repoint target is not a live purchase") {
+            return "These two charity gifts can't be merged yet — the merge needs a small server update first. Nothing was changed."
+        }
+        return message
+    }
+
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -49,7 +67,7 @@ public struct ReviewPageView: View {
         ) {
             Button(TitleCase.apply(to: "Close"), role: .cancel) {}
         } message: {
-            Text(viewModel.alertMessage ?? "")
+            Text(friendlyAlertMessage)
         }
         .task {
             await viewModel.refreshReview()

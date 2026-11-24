@@ -519,6 +519,8 @@ final class ConnectedAccountsViewModel: ObservableObject {
 struct ConnectedAccountsView: View {
     @StateObject private var viewModel: ConnectedAccountsViewModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Build 68 (item 14): the nickname explainer behind the ⓘ.
+    @State private var showingNicknameInfo = false
 
     init(context: SettingsContext, toast: ToastState, plaidLauncher: PlaidLinkLauncher = PlaidLinkNotLinkedLauncher()) {
         _viewModel = StateObject(wrappedValue: ConnectedAccountsViewModel(context: context, toast: toast, plaidLauncher: plaidLauncher))
@@ -705,9 +707,27 @@ struct ConnectedAccountsView: View {
         // keeps the content at the top of the full-screen popup.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: "Nickname", onClose: { viewModel.nicknameTarget = nil })
-            Text("Give this account a short name (up to 40 characters). Leave it blank to remove the nickname. The nickname is only a label — it never changes bank links, matching, or week math.")
-                .font(.subheadline)
-                .foregroundStyle(Color(hex: "#6b7280"))
+            // Build 68 (item 14): the long nickname explainer lives
+            // behind a blue ⓘ — only a short line stays visible.
+            HStack(spacing: 6) {
+                Text("A short name for this account.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                Button { showingNicknameInfo = true } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About Nicknames")
+            }
+            .alert("Nickname", isPresented: $showingNicknameInfo) {
+                Button("OK") {}
+            } message: {
+                Text("Give this account a short name (up to 40 characters). Leave it blank to remove the nickname. The nickname is only a label — it never changes bank links, matching, or week math.")
+            }
             TextField("Nickname", text: $viewModel.nicknameText)
                 // Light-grey filled field, no hard border (owner,
                 // Nov 15, 2026): the .roundedBorder white box with
@@ -715,11 +735,13 @@ struct ConnectedAccountsView: View {
                 // popup. Same treatment as the Search field
                 // ("Search transactions", owner Nov 12, 2026):
                 // systemGray6 fill, comfortably rounded, no border.
+                // Build 68 (item 7/13): 48pt+ tall, 14pt horizontal
+                // / 14pt vertical padding, 12pt radius.
                 .font(.system(size: 17))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
                 .background(Color(.systemGray6))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             HStack(spacing: 12) {
                 Button("Save") {
                     Task { await viewModel.saveNickname() }

@@ -220,7 +220,8 @@ public struct FundsView: View {
     @State private var showRemoveFromSavings = false
     /// The Record a Donation sheet (build 64, B3): opened by the ink
     /// outline "Record a Donation" button on the Tzedaka card, admin
-    /// only. The sheet itself (RecordCashGiftSheet) still lives in
+    /// only. Build 68 (item 30): RecordCashGiftSheet is now the ONE
+    /// compact Tzedaka sheet (Add / Record a Donation choice) in
     /// CharityIncomeForm.swift — this state only drives the
     /// presentation from the B3 button row.
     @State private var showRecordGift = false
@@ -228,6 +229,10 @@ public struct FundsView: View {
     /// 18, 2026): opened by the "Calculate" button in the
     /// expanded Spending card.
     @State private var showCalculator = false
+    /// The merged Adjust This Week's Budget sheet (build 68,
+    /// item 29): the ONE entry point for the one-time top-up
+    /// and the temporary total on the Spending card.
+    @State private var showAdjustWeeklyBudget = false
     /// iPad content width (build 36): the tabs read as a centered
     /// 900pt column on the regular size class.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -575,11 +580,7 @@ public struct FundsView: View {
                 // (owner loading language, Nov 12, 2026) — even if
                 // this card's own figures already arrived, the
                 // detail stays hidden until every card is ready.
-                VStack(alignment: .leading, spacing: 8) {
-                    SkeletonBlock(width: 200, height: 16)
-                    SkeletonBlock(width: 170, height: 16)
-                    SkeletonBlock(width: 190, height: 16)
-                }
+                FundsDetailSkeleton()
             } else if let error = viewModel.allowanceError ?? viewModel.debtError {
                 // The face needs the week's figures (compute-week),
                 // so a debt-load failure fails this card too — the
@@ -619,27 +620,35 @@ public struct FundsView: View {
                         }
                     }
                     Divider()
-                    // Build 56 (owner, Nov 22, 2026): "Calculate"
-                    // moved DOWN into SpendingAllowanceSection,
-                    // grouped with "Top Up Budget" and "Set
-                    // Temporary Allowance" at the bottom of the
-                    // card (Calculate, Top Up Budget, Set Temporary
-                    // Allowance, in that order) — it no longer sits
-                    // alone above the fields. The calculator sheet
-                    // itself is unchanged (full-screen cover, build
-                    // 43) and the button stays visible to every
-                    // role (local-only, suggestion-only).
+                    // Build 68 (item 29): "Calculate" sits with
+                    // the ONE merged entry point at the bottom of
+                    // the card — Calculate, then "Adjust This
+                    // Week's Budget" (the old Top Up Budget and
+                    // Set Temporary Allowance buttons are gone).
+                    // The calculator sheet itself is unchanged and
+                    // the button stays visible to every role
+                    // (local-only, suggestion-only).
                     SpendingAllowanceSection(viewModel: viewModel, bare: true, onCalculate: { showCalculator = true }) {
-                        openForm = .temp
+                        showAdjustWeeklyBudget = true
                     }
-                    // Build 43 (owner, Nov 17, 2026 — item 17):
-                    // full-screen cover, not a detent sheet.
+                    // Build 68 (item 29): the merged sheet holds
+                    // the Add / Set Total choice; the old separate
+                    // Top Up popup and Set This Week's Budget sheet
+                    // have no entry point on this card any more.
+                    .sheet(isPresented: $showAdjustWeeklyBudget) {
+                        AdjustWeeklyBudgetSheet(viewModel: viewModel, onClose: { showAdjustWeeklyBudget = false })
+                    }
+                    // Build 68 (item 9): the Calculator is a
+                    // fitted sheet (detents live in the sheet
+                    // itself), not a full-screen cover — the
+                    // content is a ScrollView, so it works in a
+                    // compact popup on iPad.
                     // Build 67: the Calculator reads its recurring
                     // costs from the tagged expenses (this page's
                     // view model loads them) — the LIVE ones only,
                     // so an expense in the Trash stops counting
                     // at once.
-                    .fullScreenCover(isPresented: $showCalculator) {
+                    .sheet(isPresented: $showCalculator) {
                         WeeklyBudgetCalculatorSheet(
                             householdId: viewModel.context.householdId,
                             charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
@@ -652,11 +661,7 @@ public struct FundsView: View {
                 // Unreachable once the page is ready — every load
                 // sets its figures or its error — kept as a safe
                 // fallback rather than a blank detail.
-                VStack(alignment: .leading, spacing: 8) {
-                    SkeletonBlock(width: 200, height: 16)
-                    SkeletonBlock(width: 170, height: 16)
-                    SkeletonBlock(width: 190, height: 16)
-                }
+                FundsDetailSkeleton()
             }
         }
         .accessibilityIdentifier("funds.spending")
@@ -724,15 +729,23 @@ public struct FundsView: View {
             isAdmin: isAdmin,
             onRename: { renamingFund = .fund },
             fundDescription: FundSectionID.fund.fundDescription,
+            // Build 68 (item 26): Show on Home lives INSIDE the
+            // card (FundsExpandableCard), not in a floating row
+            // below it.
+            showHomeVisibility: FundSectionID.fund.canHideFromHome,
+            isHiddenFromHome: FundSectionID.fund.isHidden(customHidden: appState.fundHidden),
+            onSetHiddenFromHome: { hidden in
+                Task {
+                    if let map = await viewModel.setFundHidden(section: .fund, hidden: hidden) {
+                        appState.fundHidden = map
+                    }
+                }
+            },
         ) {
             if !viewModel.cardsReady {
                 // The page has not revealed yet: skeletons shaped
                 // like the breakdown rows (see spendingCard).
-                VStack(alignment: .leading, spacing: 8) {
-                    SkeletonBlock(width: 200, height: 16)
-                    SkeletonBlock(width: 170, height: 16)
-                    SkeletonBlock(width: 190, height: 16)
-                }
+                FundsDetailSkeleton()
             } else if let error = viewModel.fundError {
                 FundsErrorBox(error)
             } else if let summary = viewModel.fundSummary {
@@ -807,11 +820,7 @@ public struct FundsView: View {
                 // Loading inside the expanded card: skeleton rows
                 // shaped like the breakdown rows, no "Loading…"
                 // text (owner loading language, Nov 12, 2026).
-                VStack(alignment: .leading, spacing: 8) {
-                    SkeletonBlock(width: 200, height: 16)
-                    SkeletonBlock(width: 170, height: 16)
-                    SkeletonBlock(width: 190, height: 16)
-                }
+                FundsDetailSkeleton()
             }
         }
         .accessibilityIdentifier("funds.extraFund")
@@ -872,11 +881,7 @@ public struct FundsView: View {
             if !viewModel.cardsReady {
                 // The page has not revealed yet: skeletons shaped
                 // like the breakdown rows (see spendingCard).
-                VStack(alignment: .leading, spacing: 8) {
-                    SkeletonBlock(width: 200, height: 16)
-                    SkeletonBlock(width: 170, height: 16)
-                    SkeletonBlock(width: 190, height: 16)
-                }
+                FundsDetailSkeleton()
             } else if let error = viewModel.charityError ?? viewModel.transactionsError {
                 // Build 64 (F-16): a failed transactions load
                 // fails this card too — its pending-gift figure
@@ -945,7 +950,12 @@ public struct FundsView: View {
                                 showRecordGift = true
                             }
                             .accessibilityIdentifier("funds.recordCashGift")
-                            .fullScreenCover(isPresented: $showRecordGift) {
+                            // Build 68 (item 30): RecordCashGiftSheet
+                            // is now the single compact Tzedaka sheet
+                            // (Add / Record a Donation choice), so it
+                            // presents as a fitted sheet, not a
+                            // full-screen cover.
+                            .sheet(isPresented: $showRecordGift) {
                                 RecordCashGiftSheet(
                                     viewModel: viewModel,
                                     fundName: FundSectionID.charity.displayName(customNames: appState.fundNames),
@@ -958,11 +968,7 @@ public struct FundsView: View {
                     charityActivitySection
                 }
             } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    SkeletonBlock(width: 200, height: 16)
-                    SkeletonBlock(width: 170, height: 16)
-                    SkeletonBlock(width: 190, height: 16)
-                }
+                FundsDetailSkeleton()
             }
         }
         .accessibilityIdentifier("funds.charity")
@@ -1016,15 +1022,23 @@ public struct FundsView: View {
             isAdmin: isAdmin,
             onRename: { renamingFund = .debt },
             fundDescription: FundSectionID.debt.fundDescription,
+            // Build 68 (item 26): Show on Home lives INSIDE the
+            // card (FundsExpandableCard), not in a floating row
+            // below it.
+            showHomeVisibility: FundSectionID.debt.canHideFromHome,
+            isHiddenFromHome: FundSectionID.debt.isHidden(customHidden: appState.fundHidden),
+            onSetHiddenFromHome: { hidden in
+                Task {
+                    if let map = await viewModel.setFundHidden(section: .debt, hidden: hidden) {
+                        appState.fundHidden = map
+                    }
+                }
+            },
         ) {
             if !viewModel.cardsReady {
                 // The page has not revealed yet: skeletons shaped
                 // like the breakdown rows (see spendingCard).
-                VStack(alignment: .leading, spacing: 8) {
-                    SkeletonBlock(width: 200, height: 16)
-                    SkeletonBlock(width: 170, height: 16)
-                    SkeletonBlock(width: 190, height: 16)
-                }
+                FundsDetailSkeleton()
             } else if let error = viewModel.debtError {
                 FundsErrorBox(error)
             } else if let week = viewModel.debtWeek {
@@ -1110,11 +1124,7 @@ public struct FundsView: View {
                     debtActivitySection
                 }
             } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    SkeletonBlock(width: 200, height: 16)
-                    SkeletonBlock(width: 170, height: 16)
-                    SkeletonBlock(width: 190, height: 16)
-                }
+                FundsDetailSkeleton()
             }
         }
         .accessibilityIdentifier("funds.carriedDebt")
@@ -1174,31 +1184,11 @@ public struct FundsView: View {
                     // Walkthrough anchor (build 48): the Overspent card.
                     .tourAnchor(.debtCard, tour: appState.tour)
             }
-            // Build 47 (owner, Nov 19, 2026): a fund hidden from
-            // Home says so under its Funds card, so the owner can
-            // tell at a glance why it is missing from Home. Build
-            // 48: the way back is a button right here — "Show on
-            // Home" puts it straight back (no pencil, no edit
-            // sheet, no toggle to hunt for). Admin-only; the
-            // server refuses non-admins. The toast ("Back on
-            // Home.") comes from setFundHidden itself.
-            if id.isHidden(customHidden: appState.fundHidden) {
-                HStack(spacing: 12) {
-                    FundsMuted("Hidden from Home.")
-                    Spacer()
-                    if isAdmin {
-                        Button("Show on Home") {
-                            Task {
-                                if let map = await viewModel.setFundHidden(section: id, hidden: false) {
-                                    appState.fundHidden = map
-                                }
-                            }
-                        }
-                        .buttonStyle(SmallTertiaryButtonStyle())
-                        .accessibilityIdentifier("funds.showOnHomeButton.\(id.rawValue)")
-                    }
-                }
-            }
+            // Build 68 (item 26): the floating "Hidden from
+            // Home." + "Show on Home" row below the card is gone
+            // — the control lives INSIDE the fund card itself
+            // (FundsExpandableCard's Show on Home toggle), so a
+            // hidden fund says so where it belongs.
         }
         // Build 44 (owner, Nov 18, 2026): the long-press entry into
         // reorder mode and the jiggle wobble are removed — the cards
@@ -1369,9 +1359,9 @@ public struct FundsView: View {
                     debtName: FundSectionID.debt.displayName(customNames: appState.fundNames)
                 )
                 Divider()
-                Text("Where it came from")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                Text("Where It Came From")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
                 DebtHistoryView(viewModel: viewModel)
             }
         }
@@ -1400,52 +1390,36 @@ public struct FundsView: View {
     ) -> some View {
         if !isAdminOnly || isAdmin {
             VStack(alignment: .leading, spacing: 0) {
-                // Build 48 (owner, Nov 19, 2026 — the Activity
-                // control "looks like a Word document"): a proper
-                // BUTTON, not a bare text row with a "⌄" text glyph.
-                // Build 52 (owner, Nov 20, 2026): PALE #bfdbfe
-                // fill — a coloured button, not white — because the
-                // Tzedaka card already has a solid blue "Add to
-                // Tzedaka" above it and a second stark blue would
-                // repeat the two-blues problem. Build 53 (audit
-                // U5): the 1.5pt brand-blue border is gone — this
-                // was the only pale button that also carried an
-                // outline, and the outline is what made it read
-                // as unfinished next to the other pale buttons.
-                // Build 56 (owner, Nov 22, 2026): the pale fill is
-                // gone too — the bar is now a WHITE background with
-                // a brand-black INK #0f172a outline only (1.5pt),
-                // ink text and ink chevron, NOT a solid fill, so
-                // it sits with everything else without
-                // overpowering it. The outline supersedes the
-                // build-53 removal (owner direction).
-                // Squarish rounded edges (cornerRadius 10, the
-                // no-pills rule), full width — it reads as
-                // something to tap. The chevron is a real SF Symbol
-                // (`chevron.down`, ink), rotating 180° when
-                // open; the "⌄" text character is gone. Press
-                // feedback via DimOnPress (opacity dip while held).
+                // Build 68 (item 25b): the header is a proper
+                // designed row, not a large outlined rectangle —
+                // a soft #f8fafc fill with a hairline #e5e7eb
+                // border, a brand-blue list icon and chevron, and
+                // 14pt vertical padding, so it reads as part of
+                // the card instead of a Word-document box.
                 Button {
                     openMore = openMore == section ? nil : section
                 } label: {
-                    HStack {
+                    HStack(spacing: 10) {
+                        Image(systemName: "list.bullet")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
                         Text(TitleCase.apply(to: title))
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
                         Spacer()
                         Image(systemName: "chevron.down")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
+                            .foregroundStyle(DesignTokens.primary)
                             .rotationEffect(.degrees(openMore == section ? 180 : 0))
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 14)
                     .frame(maxWidth: .infinity)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .background(Color(hex: "#f8fafc"))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(DesignTokens.ink, lineWidth: 1.5)
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                     )
                     .contentShape(Rectangle())
                 }
@@ -1537,10 +1511,7 @@ public struct RemoveFromSavingsSheet: View {
                 }
             }
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
-            TextField("Note", text: $noteText)
-                .font(.system(size: 17))
-                .textFieldStyle(.roundedBorder)
-                .frame(minHeight: 48)
+            FundsTextField("Note", text: $noteText)
                 .autocorrectionDisabled()
             if let removeError {
                 FundsErrorBox(removeError)
@@ -1806,28 +1777,61 @@ public struct DebtActivityView: View {
             } else if entries.isEmpty {
                 FundsMuted("No debt payments yet.")
             } else {
-                // Build 36 (owner, Nov 16, 2026): overview rows are
-                // MINIMAL — the title only — and tapping a row
-                // expands the detail (date, week, note) inline.
-                ForEach(Array(entries.prefix(20).enumerated()), id: \.element.id) { index, entry in
-                    FundsActivityRow {
-                        Text(entry.title)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
-                    } detail: {
-                        Text(entry.detail)
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                    }
-                    if index < min(entries.count, 20) - 1 {
-                        Divider()
+                // Build 68 (item 25b): the feed is a finished list
+                // in a bordered card — a small blue icon, the title
+                // in ink, the date/week/note below it in muted
+                // grey, always visible — not bare plain-text rows
+                // that expand on tap.
+                VStack(spacing: 0) {
+                    ForEach(Array(entries.prefix(20).enumerated()), id: \.element.id) { index, entry in
+                        debtEntryRow(entry)
+                        if index < min(entries.count, 20) - 1 {
+                            Divider()
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
                 if entries.count > 20 {
                     FundsMuted("Showing the latest 20 entries.")
                 }
             }
         }
+    }
+
+    /// One payment / rule / adjustment row: icon + title + detail,
+    /// the detail always visible.
+    private func debtEntryRow(_ entry: Entry) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: entryIconName(entry))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.primary)
+                .frame(width: 32, height: 32)
+                .background(DesignTokens.softFill)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Text(entry.detail)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
+            Spacer()
+        }
+        .padding(.vertical, 10)
+    }
+
+    private func entryIconName(_ entry: Entry) -> String {
+        if entry.id.hasPrefix("audit-") { return "slider.horizontal.3" }
+        if entry.id.hasPrefix("adjustment-") { return "pencil" }
+        return "checkmark.circle"
     }
 }
 
@@ -1845,14 +1849,39 @@ public struct DebtHistoryView: View {
             } else if viewModel.debtHistory.isEmpty {
                 FundsMuted("No closed weeks carried debt out.")
             } else {
-                ForEach(Array(viewModel.debtHistory.prefix(8).enumerated()), id: \.element.weekStart) { index, close in
-                    Text("Week of \(MoneyFormat.fmtLong(close.weekStart)) — \(MoneyFormat.formatCents(close.outgoingDebtCents)) carried out")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color(hex: "#6b7280"))
-                    if index < min(viewModel.debtHistory.count, 8) - 1 {
-                        Divider()
+                // Build 68 (item 25b): each week is a proper row —
+                // the week in ink on the left, the carried-out
+                // amount semibold on the right — in the same
+                // bordered card as the payments above, not bare
+                // muted text lines.
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.debtHistory.prefix(8).enumerated()), id: \.element.weekStart) { index, close in
+                        HStack(spacing: 6) {
+                            Text("Week of \(MoneyFormat.fmtLong(close.weekStart))")
+                                .font(.system(size: 15))
+                                .foregroundStyle(DesignTokens.ink)
+                            Spacer()
+                            Text(MoneyFormat.formatCents(close.outgoingDebtCents))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(DesignTokens.ink)
+                            Text("carried out")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                        }
+                        .padding(.vertical, 10)
+                        if index < min(viewModel.debtHistory.count, 8) - 1 {
+                            Divider()
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
                 if viewModel.debtHistory.count > 8 {
                     FundsMuted("Showing the latest 8 weeks.")
                 }
@@ -1941,6 +1970,17 @@ public enum CalculatorFrequency: String, Codable, CaseIterable {
         }
     }
 
+    /// Compact frequency suffix after an amount (build 68):
+    /// $7,000/mo, $500/wk — replaces "· Monthly" and "a month".
+    public var shortSuffix: String {
+        switch self {
+        case .weekly: return "/wk"
+        case .monthly: return "/mo"
+        case .quarterly: return "/qtr"
+        case .yearly: return "/yr"
+        }
+    }
+
     /// How many of this frequency fit in one month. Weekly uses
     /// 4.33 — the plan's weeks-per-month, the same divisor as the
     /// formula below — so a weekly item and the weekly suggestion
@@ -1980,27 +2020,33 @@ public struct CalculatorItem: Codable, Equatable, Identifiable {
 }
 
 /// The lifestyle holdback presets (V2 plan, owner Nov 15, 2026):
-/// minimalist 10%, regular 5%, loose 0% are STANDARDS/defaults
-/// and are CHANGEABLE by the user — the custom % field in the
-/// card overrides whichever preset is picked.
+/// minimalist 10%, regular 5%, loose 0% are STANDARDS/defaults.
+/// Build 68 (item 12): lifestyle + custom holdback are ONE
+/// sliding bar with four stops — Min. / Reg. / Max. / Custom.
+/// Min. is the tightest (Minimalist), Max. the loosest (Loose,
+/// renamed by the owner), Custom takes its own % field. The
+/// raw values stay, so a stored "loose" still loads as Max.
 public enum LifestyleHoldback: String, Codable, CaseIterable {
     case minimalist
     case regular
     case loose
+    case custom
 
     public var percent: Double {
         switch self {
         case .minimalist: return 10
         case .regular: return 5
         case .loose: return 0
+        case .custom: return 0
         }
     }
 
     public var displayName: String {
         switch self {
-        case .minimalist: return "Minimalist"
-        case .regular: return "Regular"
-        case .loose: return "Loose"
+        case .minimalist: return "Min."
+        case .regular: return "Reg."
+        case .loose: return "Max."
+        case .custom: return "Custom"
         }
     }
 }
@@ -2046,6 +2092,11 @@ public struct WeeklyBudgetCalculatorSheet: View {
         // size class, full-width on iPhone — same treatment as the
         // rename sheet and the Add to Charity popup.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // Build 68 (item 9): fitted detents, not a full page —
+        // the content is a ScrollView, so it works in a compact
+        // popup on iPad.
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -2072,6 +2123,9 @@ public struct WeeklyBudgetCalculatorContent: View {
     @State private var incomeError: String?
     /// The ⓘ in the card header opens the formula explanation.
     @State private var showFormulaInfo = false
+    /// The ⓘ beside Recurring Expenses opens the tagged-expenses
+    /// note (build 68, item 14): the line used to sit inline.
+    @State private var showChargesInfo = false
     /// True once the stored inputs have loaded — saves are
     /// suppressed until then, so loading never overwrites the
     /// stored values with the empty defaults.
@@ -2148,12 +2202,16 @@ public struct WeeklyBudgetCalculatorContent: View {
         MoneyFormat.parseDollarsStrict(charityText) ?? 0
     }
 
-    /// The holdback in effect: a typed custom % wins over the
-    /// preset; an empty or invalid custom field falls back to the
-    /// preset (and the card says so under the field).
+    /// The holdback in effect (build 68, item 12): the picked
+    /// stop's preset — except Custom, which reads its own %
+    /// field and falls back to Regular 5% until a valid % is
+    /// typed (the card says so under the field).
     private var holdbackPercent: Double {
-        if let bp = MoneyFormat.parseRatePercent(customHoldbackText) {
-            return Double(bp) / 100.0
+        if lifestyle == .custom {
+            if let bp = MoneyFormat.parseRatePercent(customHoldbackText) {
+                return Double(bp) / 100.0
+            }
+            return LifestyleHoldback.regular.percent
         }
         return lifestyle.percent
     }
@@ -2294,9 +2352,25 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// from Recurring Expenses on the Weekly Budget sheet.
     private var chargesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Recurring Expenses")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
+            HStack(spacing: 6) {
+                Text("Recurring Expenses")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                // Build 68 (item 14): the "From your tagged
+                // expenses…" line lives behind this ⓘ now, not
+                // inline under the rows.
+                Button {
+                    showChargesInfo = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About recurring expenses")
+            }
             if expenses.isEmpty {
                 FundsMuted("No expenses tagged yet — tag a transaction as an Expense to add one.")
             } else {
@@ -2306,23 +2380,19 @@ public struct WeeklyBudgetCalculatorContent: View {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
                             .lineLimit(1)
-                        Text("·")
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                        Text(expense.frequency.displayName)
-                            .font(.system(size: 15))
-                            .foregroundStyle(Color(hex: "#6b7280"))
                         Spacer()
-                        Text(MoneyFormat.formatCents(expense.monthlyCents))
+                        Text("\(MoneyFormat.formatCents(expense.amountCents))\(expense.frequency.shortSuffix)")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
-                        Text("a month")
-                            .font(.system(size: 15))
-                            .foregroundStyle(Color(hex: "#6b7280"))
                     }
                 }
             }
             FundsBreakdownRow("Monthly Total", value: MoneyFormat.formatCents(monthlyChargesCents))
-            FundsMuted("From your tagged expenses. Manage them from Recurring Expenses on the Weekly Budget sheet.")
+        }
+        .alert("Recurring Expenses", isPresented: $showChargesInfo) {
+            Button("OK") {}
+        } message: {
+            Text("From your tagged expenses. Manage them from Recurring Expenses on the Weekly Budget sheet.")
         }
     }
 
@@ -2354,24 +2424,16 @@ public struct WeeklyBudgetCalculatorContent: View {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
                             .lineLimit(1)
-                        Text("·")
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                        Text(item.frequency.displayName)
-                            .font(.system(size: 15))
-                            .foregroundStyle(Color(hex: "#6b7280"))
                         Spacer()
-                        Text(MoneyFormat.formatCents(item.monthlyCents))
+                        Text("\(MoneyFormat.formatCents(item.amountCents))\(item.frequency.shortSuffix)")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
-                        Text("a month")
-                            .font(.system(size: 15))
-                            .foregroundStyle(Color(hex: "#6b7280"))
                         Button {
                             onRemove(item)
                         } label: {
                             Image(systemName: "trash")
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color(hex: "#6b7280"))
+                                .foregroundStyle(Color(hex: "#dc2626"))
                                 .padding(6)
                                 .contentShape(Rectangle())
                         }
@@ -2380,10 +2442,7 @@ public struct WeeklyBudgetCalculatorContent: View {
                     }
                 }
             }
-            TextField("Name", text: draftName)
-                .font(.system(size: 17))
-                .textFieldStyle(.roundedBorder)
-                .frame(minHeight: 48)
+            FundsTextField("Name", text: draftName)
                 .autocorrectionDisabled()
             HStack(spacing: 8) {
                 DollarTextField(text: draftAmount, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
@@ -2424,46 +2483,42 @@ public struct WeeklyBudgetCalculatorContent: View {
             Text("Lifestyle")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
-            // Build 64 (C-6): the segmented picker is gone — a
-            // squarish control (8pt radius, ink text, pale-blue
-            // selected cell), no pill track. All three choices
-            // stay visible at once.
+            // Build 68 (item 12): ONE sliding bar for lifestyle +
+            // custom holdback — Min. / Reg. / Max. / Custom — the
+            // same squarish pattern as the debt rule. Min. is the
+            // tightest (Minimalist 10%), Max. the loosest (Loose
+            // 0%, renamed by the owner). Custom shows its own %
+            // field below; the other stops need no field.
             SquarishPicker(
                 LifestyleHoldback.allCases.map { ($0, $0.displayName) },
                 selection: $lifestyle
             )
-            HStack(spacing: 8) {
-                Text("Custom Holdback")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                Spacer()
-                // The "%" is a LEFT prefix inside the field (the
-                // rate editor's pattern): the placeholder shows the
-                // preset's percent, so the field reads as an
-                // override, not a second setting.
+            if lifestyle == .custom {
                 HStack(spacing: 2) {
                     Text("%")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
-                    TextField(String(format: "%.0f", lifestyle.percent), text: $customHoldbackText)
+                    TextField("", text: $customHoldbackText)
                         .keyboardType(.decimalPad)
                         .font(.system(size: 17))
-                        .frame(width: 64)
                 }
-                .padding(.horizontal, 12)
-                .frame(minHeight: 48, alignment: .leading)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                 .background(.white)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             // Build 67 (owner, Nov 23, 2026 — "so many words"):
             // the "Holdback in effect…" line is gone — the preset
             // + the field already show the holdback in effect.
+            if lifestyle == .custom, customHoldbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                FundsMuted("Enter your holdback percent — using Regular 5% until then.")
+            }
             if customHoldbackInvalid {
-                FundsMuted("That holdback did not parse — using the preset instead. Enter a percent between 0 and 100.")
+                FundsMuted("That holdback did not parse — using Regular 5% instead. Enter a percent between 0 and 100.")
             }
         }
     }

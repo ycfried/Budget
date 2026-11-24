@@ -507,13 +507,15 @@ public struct TransactionsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        // Build 68 (item 7/13): the search field is 48pt+ like every
+        // other text field — 14pt horizontal, 14pt vertical padding.
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
         // Search fill is systemGray6 (#f2f2f7, owner Nov 12 2026):
         // lighter than systemGray5 so the field sits quietly on
         // the white page, still reading as a field — no border.
         .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
         // Walkthrough anchor (build 48): the search field.
         .tourAnchor(.searchBar, tour: appState.tour)
     }
@@ -868,14 +870,14 @@ public struct TransactionsFilterSheet: View {
                     // reads black, not blue — the menu label
                     // follows the tint.
                     .tint(DesignTokens.ink)
-                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                    .padding(.horizontal, 14)
                     .background(.white)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
+                        RoundedRectangle(cornerRadius: 12)
                             .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
 
                     // When — ONE button + ONE calendar (owner, Nov 11,
                     // 2026). The button shows the range; the calendar
@@ -892,14 +894,15 @@ public struct TransactionsFilterSheet: View {
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(Color(hex: "#6b7280"))
                         }
-                        .padding(10)
-                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                         .background(.white)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
 
                     // Card / Account — the picker value says it.
@@ -911,14 +914,14 @@ public struct TransactionsFilterSheet: View {
                     }
                     .pickerStyle(.menu)
                     .tint(DesignTokens.ink)
-                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                    .padding(.horizontal, 14)
                     .background(.white)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
+                        RoundedRectangle(cornerRadius: 12)
                             .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
 
                     // Amount + Sort on one row on iPad (regular size
                     // class, owner Nov 15, 2026): the sheet is 600pt
@@ -1023,14 +1026,14 @@ public struct TransactionsFilterSheet: View {
                             .keyboardType(.decimalPad)
                             .focused($focusedField, equals: .min)
                     }
-                        .padding(.horizontal, 10)
-                        .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: 140, minHeight: 48, alignment: .leading)
                         .background(.white)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Max")
@@ -1044,14 +1047,14 @@ public struct TransactionsFilterSheet: View {
                             .keyboardType(.decimalPad)
                             .focused($focusedField, equals: .max)
                     }
-                        .padding(.horizontal, 10)
-                        .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: 140, minHeight: 48, alignment: .leading)
                         .background(.white)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
             if draftAmountInvalid {
@@ -1071,14 +1074,14 @@ public struct TransactionsFilterSheet: View {
         }
         .pickerStyle(.menu)
         .tint(DesignTokens.ink)
-        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        .padding(.horizontal, 14)
         .background(.white)
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 12)
                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     /// Apply commits the whole draft (status, when, card, sort,

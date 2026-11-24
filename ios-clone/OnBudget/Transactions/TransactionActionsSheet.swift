@@ -1020,7 +1020,7 @@ public struct TransactionActionsSheet: View {
                 .foregroundStyle(DesignTokens.ink)
             VStack(alignment: .leading, spacing: 6) {
                 FieldLabel("Amount", required: true)
-                DollarTextField(text: $extraFundAmount)
+                DollarTextField(text: $extraFundAmount, minHeight: 48)
             }
             if let extraFundError {
                 SoftErrorBox(extraFundError)
@@ -1077,7 +1077,14 @@ public struct TransactionActionsSheet: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 TextField("", text: $renameName)
-                    .textFieldStyle(.roundedBorder)
+                    // Build 68 (item 7/13): 48pt field, 14pt
+                    // horizontal padding, 12pt radius — same height
+                    // as every other field in this sheet.
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 48, alignment: .leading)
+                    .background(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Match")
@@ -1088,6 +1095,10 @@ public struct TransactionActionsSheet: View {
                     Text("Any Name Containing This").tag("includes")
                 }
                 .pickerStyle(.segmented)
+                // Build 68 (item 20): 48pt tall, so the segmented
+                // control feels substantial instead of thin/short.
+                .frame(minHeight: 48)
+                .padding(.vertical, 4)
                 .accessibilityIdentifier("rename.matchTypePicker")
             }
             VStack(alignment: .leading, spacing: 6) {
@@ -1248,7 +1259,15 @@ public struct TransactionActionsSheet: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 TextField("Reason", text: $excludeReason, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
+                    // Build 68 (item 7/13): 48pt minimum height,
+                        // 14pt horizontal / 12pt vertical padding,
+                        // 12pt radius — matches the other fields.
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(minHeight: 48, alignment: .leading)
+                    .background(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             if let excludeReasonError {
                 SoftErrorBox(excludeReasonError)
@@ -1289,7 +1308,15 @@ public struct TransactionActionsSheet: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 TextField("Reason", text: $reclassifyReason, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
+                    // Build 68 (item 7/13): 48pt minimum height,
+                        // 14pt horizontal / 12pt vertical padding,
+                        // 12pt radius — matches the other fields.
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(minHeight: 48, alignment: .leading)
+                    .background(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             if let reclassifyReasonError {
                 SoftErrorBox(reclassifyReasonError)
@@ -1355,7 +1382,11 @@ public struct TransactionActionsSheet: View {
                             if ok { onDismiss() }
                         }
                     }
-                    .buttonStyle(PrimaryButtonStyle())
+                    // Build 68 (item 8): the delete confirm is solid
+                    // #dc2626, not solid blue — a delete is a
+                    // destructive action, so its primary button is
+                    // the destructive red. Keep It stays grey.
+                    .buttonStyle(DestructivePrimaryButtonStyle())
                     .disabled(isWorking)
                 } secondary: {
                     Button("Keep It") { flow = .list }
@@ -1370,7 +1401,15 @@ public struct TransactionActionsSheet: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     TextField("Reason", text: $deleteReason, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
+                        // Build 68 (item 7/13): 48pt minimum height,
+                        // 14pt horizontal / 12pt vertical padding,
+                        // 12pt radius — matches the other fields.
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .frame(minHeight: 48, alignment: .leading)
+                        .background(.white)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 if let deleteReasonError {
                     SoftErrorBox(deleteReasonError)
@@ -1389,7 +1428,10 @@ public struct TransactionActionsSheet: View {
                             if ok { onDismiss() }
                         }
                     }
-                    .buttonStyle(PrimaryButtonStyle())
+                    // Build 68 (item 8): same destructive red as
+                    // Delete above — moving to Trash is the delete
+                    // action for a bank row. Keep It stays grey.
+                    .buttonStyle(DestructivePrimaryButtonStyle())
                     .disabled(isWorking)
                 } secondary: {
                     Button("Keep It") { flow = .list }

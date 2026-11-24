@@ -216,22 +216,26 @@ public struct CharityRateSection: View {
                         .keyboardType(.decimalPad)
                         .font(.system(size: 17))
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 14)
                 // Build 37 (owner, Nov 16, 2026): the field
                 // expands to fill the row — the 72pt field left
                 // a large empty space on the right. Apply sits at
                 // the row's right end (build 56: Save + Reset are
-                // gone, Reset removed entirely).
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                // gone, Reset removed entirely). Build 68
+                // (item 27): the field and Apply are the same
+                // height (52pt) — the small Apply was shorter
+                // than its field.
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                 .background(.white)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "rate") {
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                FundsEditorPrimaryButton("Apply", isBusy: viewModel.busyAction == "rate") {
                     saveRate()
                 }
+                .frame(minHeight: 52)
             }
             if let pending = pendingRateBp {
                 FundsMuted("New incomes will commit \(MoneyFormat.formatRateBp(pending))% — future incomes only. Past incomes stay as they are.")
@@ -476,9 +480,13 @@ public struct DebtRuleSection: View {
                     selection: $selectedMode,
                     minHeight: 52
                 )
-                FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "debt-rule") {
+                // Build 68 (item 25a): Apply is the SAME HEIGHT
+                // as the slider (52pt) — the small Apply was
+                // shorter than the control beside it.
+                FundsEditorPrimaryButton("Apply", isBusy: viewModel.busyAction == "debt-rule") {
                     saveRule()
                 }
+                .frame(minHeight: 52)
             }
             // Identifier for a UI test to find the picker+Apply row
             // and prove both sit on the same line at iPhone width.
@@ -499,14 +507,14 @@ public struct DebtRuleSection: View {
                         .keyboardType(.decimalPad)
                         .font(.system(size: 17))
                 }
-                .padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                 .background(.white)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             } else if selectedMode == .fixed {
                 DollarTextField(text: $fixedText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
             }
@@ -563,22 +571,22 @@ public struct SpendingAllowanceSection: View {
     /// shape as the allowance field.
     @State private var thresholdText = ""
     @State private var thresholdError: String?
-    /// Add to Budget popup (Nov 16, 2026).
-    @State private var showAddToBudget = false
     /// True inside the Spending fund container: no card of its own.
     public let bare: Bool
-    /// Opens the Temporary Allowance form (owned by FundsView).
-    public let onOpenTemp: () -> Void
+    /// Opens the merged Adjust This Week's Budget sheet (build
+    /// 68, item 29 — owned by FundsView). The old separate Top Up
+    /// / Set Temporary Allowance entry points are gone.
+    public let onAdjustBudget: () -> Void
     /// Opens the Weekly Budget Calculator (owned by FundsView).
     /// Nil when the section is shown without a calculator — the
     /// button is then omitted.
     public let onCalculate: (() -> Void)?
 
-    public init(viewModel: FundsViewModel, bare: Bool = false, onCalculate: (() -> Void)? = nil, onOpenTemp: @escaping () -> Void) {
+    public init(viewModel: FundsViewModel, bare: Bool = false, onCalculate: (() -> Void)? = nil, onAdjustBudget: @escaping () -> Void) {
         self.viewModel = viewModel
         self.bare = bare
         self.onCalculate = onCalculate
-        self.onOpenTemp = onOpenTemp
+        self.onAdjustBudget = onAdjustBudget
     }
 
     private struct AllowanceConfirm: Identifiable {
@@ -707,9 +715,12 @@ public struct SpendingAllowanceSection: View {
                 .foregroundStyle(DesignTokens.ink)
             HStack(spacing: 10) {
                 DollarTextField(text: $thresholdText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
-                FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "large-purchase-threshold") {
+                // Build 68 (item 27): Apply matches its field's
+                // height (52pt) — the small Apply was shorter.
+                FundsEditorPrimaryButton("Apply", isBusy: viewModel.busyAction == "large-purchase-threshold") {
                     thresholdSaveTapped()
                 }
+                .frame(minHeight: 52)
             }
             // Build 42 (owner, Nov 17, 2026 — spending card
             // clutter): the "This is already the large purchase
@@ -757,9 +768,12 @@ public struct SpendingAllowanceSection: View {
                 // left a large empty space on the right. Apply sits
                 // at the row's right end.
                 DollarTextField(text: $allowanceText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
-                FundsSmallPrimaryButton("Apply", isBusy: viewModel.busyAction == "base-allowance") {
+                // Build 68 (item 27): Apply matches its field's
+                // height (52pt) — the small Apply was shorter.
+                FundsEditorPrimaryButton("Apply", isBusy: viewModel.busyAction == "base-allowance") {
                     saveTapped()
                 }
+                .frame(minHeight: 52)
             }
             // Build 42 (owner, Nov 17, 2026 — spending card
             // clutter): the "This is already the weekly
@@ -805,8 +819,7 @@ public struct SpendingAllowanceSection: View {
             // the far right edge, disconnected from its label. The
             // label and its status now sit together in one group:
             // the status directly under the label, so the two read
-            // as one row. The "Set Temporary Allowance" button stays,
-            // at the editor size. No values change: still "Not set"
+            // as one row. No values change: still "Not set"
             // until an override is in effect.
             VStack(alignment: .leading, spacing: 2) {
                 Text("Temporary Allowance")
@@ -820,50 +833,39 @@ public struct SpendingAllowanceSection: View {
             if let temp = tempOverrideCents, let base = savedBase, temp != base {
                 FundsMuted("This week's total is \(MoneyFormat.formatCents(temp)) instead of \(MoneyFormat.formatCents(base)).")
             }
-            // Build 56 (owner, Nov 22, 2026): "Calculate" sits
-            // with the other two buttons at the bottom of the
-            // Spending card — Calculate, Top Up Budget, Set
-            // Temporary Allowance, in that order — instead of at
-            // the top above the fields. It stays visible to every
-            // role (local-only, suggestion-only) while the other
-            // two stay admin-only, so it sits OUTSIDE the
-            // `if isAdmin` block below. Build 64 (C-3 B3): one
-            // solid-blue primary, then two OUTLINES in different
-            // colours — Top Up Budget ink, Set Temporary
-            // Allowance darker grey — so no group of three
-            // shares a colour. The pale middle tier is retired
-            // for three-button groups.
+            // Build 68 (item 29): ONE entry point — "Adjust This
+            // Week's Budget" — for both the one-time top-up and
+            // the temporary total. The merged sheet holds the Add
+            // / Set Total choice and wires to the existing
+            // operations; the old Top Up Budget and Set Temporary
+            // Allowance buttons are gone from this card.
+            // Build 68 (item 11): the Calculate button carries
+            // the custom calculator glyph (CalculatorGlyph) —
+            // the "calculator" SF Symbol renders nothing and
+            // "±" does not read as a calculator.
             if let onCalculate {
-                FundsPrimaryButton("Calculate", isLarge: true) { onCalculate() }
-                    .accessibilityIdentifier("funds.openWeeklyBudgetCalculator")
+                Button(action: onCalculate) {
+                    HStack(spacing: 10) {
+                        CalculatorGlyph(size: 20, color: .white)
+                        Text("Calculate")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .padding(.horizontal, 18)
+                    .background(DesignTokens.deep)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .accessibilityIdentifier("funds.openWeeklyBudgetCalculator")
             }
             if isAdmin {
-                // Top Up Budget (Nov 16, 2026): a one-time top-up to
-                // this week's budget. INK OUTLINE, full-width large
-                // (17pt, 16pt vertical padding) — build 64 (B3):
-                // solid blue here sat as a second stark blue button
-                // below "Calculate" in the same Spending card
-                // (build 52 made it pale for the same reason), and
-                // the Temporary Allowance button below is the
-                // darker-grey outline, so no two adjacent buttons
-                // share a colour.
-                FundsInkOutlineButton("Top Up Budget", isBusy: viewModel.busyAction == "add-budget", isLarge: true) {
-                    showAddToBudget = true
-                }
-                FundsSlateOutlineButton(tempOverrideCents == nil ? "Set Temporary Allowance" : "Change Temporary Allowance", isLarge: true) {
-                    onOpenTemp()
+                FundsInkOutlineButton("Adjust This Week's Budget", isLarge: true) {
+                    onAdjustBudget()
                 }
             }
         }
         .padding(.top, 8)
-        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet,
-        // not a full-screen cover — the form is one amount field
-        // and two buttons, and the full screen left a huge empty
-        // area below it. Same treatment as the Actions sheet's
-        // confirms (C-4 fitted detents).
-        .sheet(isPresented: $showAddToBudget) {
-            AddToBudgetSheet(viewModel: viewModel, onClose: { showAddToBudget = false })
-        }
     }
 }
 
@@ -872,6 +874,9 @@ public struct SpendingAllowanceSection: View {
 /// The Top Up Budget popup (owner, Nov 16, 2026): a one-time top-up
 /// to the CURRENT week's budget only. An amount field + Add/Cancel,
 /// in the Add to Charity popup's style (iPad 600pt centred, 17pt).
+/// Build 68 (item 29): the Funds page's entry point moved to the
+/// merged AdjustWeeklyBudgetSheet below — this popup remains for
+/// the Weekly Budget sheet (HomeView) until that sheet is rewired.
 /// Validation lives here: the amount must be above $0.00 — empty /
 /// zero / negative shows a plain-language error INSIDE the popup and
 /// the popup stays open (the field keeps the typed input). The user
@@ -921,6 +926,7 @@ public struct AddToBudgetSheet: View {
         // buttons, and the full screen left a huge empty area.
         .presentationDetents([.fraction(0.45), .medium])
         .presentationDragIndicator(.visible)
+        .presentationBackground(.white)
     }
 
     private func add() {
@@ -936,6 +942,200 @@ public struct AddToBudgetSheet: View {
                 amountText = ""
                 onClose()
             }
+        }
+    }
+}
+
+// MARK: - Adjust This Week's Budget (build 68, item 29)
+//
+// ONE entry point merging the old "Top Up Budget" popup and the
+// "Set This Week's Budget" (Temporary Allowance) sheet: a slider
+// with two choices — "Add" (a one-time amount added to this week
+// only, the old Top Up) and "Set Total" (a new weekly total for
+// 1–4 weeks, the old Temporary Allowance). The sheet shows the
+// current total, and when a temporary total is already active it
+// shows it with a red (#dc2626) Remove to clear it. Both choices
+// wire to the EXISTING operations — addToBudget and
+// setTemporaryAllowance / removeTemporaryAllowance — so it works
+// with the live server as-is; no new backend API. The old
+// separate entry points are gone from the Spending card; the old
+// AddToBudgetSheet above and TemporaryAllowanceView remain for
+// the Weekly Budget sheet (HomeView) until that sheet is rewired
+// to this one.
+public struct AdjustWeeklyBudgetSheet: View {
+    public enum Mode: Hashable {
+        case add
+        case setTotal
+    }
+
+    @ObservedObject public var viewModel: FundsViewModel
+    public var onClose: () -> Void
+    @State private var mode: Mode = .add
+    @State private var addAmountText = ""
+    @State private var newTotalText = ""
+    @State private var weeks = 1
+    @State private var fieldError: String?
+    @State private var showConfirm = false
+    @State private var showRemoveConfirm = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
+        self.viewModel = viewModel
+        self.onClose = onClose
+    }
+
+    private var addCents: Int? { MoneyFormat.parseDollarsStrict(addAmountText) }
+    private var newTotalCents: Int? { MoneyFormat.parseDollarsStrict(newTotalText) }
+    private var currentTotalCents: Int? { viewModel.currentWeekTotalCents }
+    private var tempOverrideCents: Int? { viewModel.debtWeek?.overrideCents }
+    private var baseCents: Int? { viewModel.baseAllowanceCents }
+
+    /// Preview: "Base `$B` · New total `$N` · `W` week(s) · `Mon D, …`."
+    /// Empty until values are entered. Dates render short ("Nov 15,
+    /// Nov 22"), never raw ISO (F-P2-1).
+    private var previewText: String {
+        guard let base = baseCents,
+              let total = newTotalCents, total >= 0 else { return "" }
+        let dates = MoneyFormat.sundays(from: MoneyFormat.currentSundayNY(), count: weeks)
+            .map { MoneyFormat.fmtShort($0) }
+        return "Base \(MoneyFormat.formatCents(base)) · New total \(MoneyFormat.formatCents(total)) · \(weeks) week(s) · \(dates.joined(separator: ", "))."
+    }
+
+    /// Confirm-dialog text: the new total + weeks + dates, calling
+    /// out $0 explicitly — $0 is allowed only when confirmed here
+    /// (F-P2-3).
+    private var confirmMessage: String {
+        guard let total = newTotalCents else { return "" }
+        let dates = MoneyFormat.sundays(from: MoneyFormat.currentSundayNY(), count: weeks)
+            .map { MoneyFormat.fmtShort($0) }
+        var message = "Set the weekly allowance to \(MoneyFormat.formatCents(total)) for \(weeks) week\(weeks == 1 ? "" : "s") (\(dates.joined(separator: ", ")))."
+        if total == 0 {
+            message += " That is $0.00 — no spending room for those weeks."
+        }
+        return message
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: "Adjust This Week's Budget", onClose: onClose)
+            if let current = currentTotalCents {
+                FundsBreakdownRow("Current Total", value: MoneyFormat.formatCents(current))
+            }
+            if let temp = tempOverrideCents, let base = baseCents, temp != base {
+                HStack(spacing: 8) {
+                    Text("Temporary Total \(MoneyFormat.formatCents(temp))")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    Spacer()
+                    FundsEditorDangerButton("Remove", isBusy: viewModel.busyAction == "remove-temp") {
+                        showRemoveConfirm = true
+                    }
+                }
+            }
+            SquarishPicker(
+                [(Mode.add, "Add"), (Mode.setTotal, "Set Total")],
+                selection: $mode
+            )
+            if mode == .add {
+                Text("Adds a one-time amount to this week only.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                DollarTextField(text: $addAmountText, maxWidth: .infinity, minHeight: 52)
+            } else {
+                Text("Sets a new weekly total for 1–4 weeks.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        FieldLabel("New Total", required: true)
+                        DollarTextField(text: $newTotalText, maxWidth: .infinity, minHeight: 52)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        FieldLabel("Weeks")
+                        Picker("Weeks", selection: $weeks) {
+                            ForEach(1...4, id: \.self) { week in
+                                Text("\(week)").tag(week)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 64, height: 52)
+                        .background(.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                if baseCents == nil {
+                    if let allowanceError = viewModel.allowanceError {
+                        FundsErrorBox(allowanceError)
+                    } else {
+                        FundsMuted("Loading your current allowance…")
+                    }
+                } else if !previewText.isEmpty {
+                    Text(previewText)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+            }
+            if let fieldError {
+                FundsErrorBox(fieldError)
+            }
+            HStack(spacing: 12) {
+                FundsPrimaryButton(mode == .add ? "Add" : "Set New Total", isBusy: viewModel.busyAction == "add-budget" || viewModel.busyAction == "temp") {
+                    saveTapped()
+                }
+                FundsTertiaryButton("Cancel") { onClose() }
+            }
+        }
+        .padding()
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        .presentationDetents([.fraction(0.45), .medium])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(.white)
+        .alert("Set New Total", isPresented: $showConfirm) {
+            Button(TitleCase.apply(to: "Set New Total")) {
+                Task {
+                    guard let cents = newTotalCents else { return }
+                    if await viewModel.setTemporaryAllowance(newTotalCents: cents, weeks: weeks) {
+                        onClose()
+                    }
+                }
+            }
+            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(confirmMessage)
+        }
+        .alert("Remove Temporary Total", isPresented: $showRemoveConfirm) {
+            Button("Remove") {
+                Task { await viewModel.removeTemporaryAllowance() }
+            }
+            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
+        } message: {
+            Text("The base allowance applies again from this week.")
+        }
+    }
+
+    private func saveTapped() {
+        if mode == .add {
+            guard let cents = addCents, cents > 0 else {
+                fieldError = "Enter an amount above $0.00."
+                return
+            }
+            fieldError = nil
+            Task {
+                if await viewModel.addToBudget(amountCents: cents) {
+                    onClose()
+                }
+            }
+        } else {
+            guard let cents = newTotalCents, cents >= 0 else {
+                fieldError = "Enter a valid amount."
+                return
+            }
+            fieldError = nil
+            showConfirm = true
         }
     }
 }

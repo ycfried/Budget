@@ -738,6 +738,38 @@ private struct TwoColumnHeightKey: PreferenceKey {
     }
 }
 
+/// Compact fitted sheet on iPad, full-screen cover on iPhone
+/// (build 68, item 9): the Weekly and Tzedaka sheets rendered as
+/// full-screen covers on iPad — a full page with ~60% empty space
+/// at the bottom (the content is top-anchored with a trailing
+/// Spacer). On iPad they are now a centred sheet sized to their
+/// content (`.presentationSizing(.fitted)`, white presentation
+/// background, visible drag indicator), so they read as a compact
+/// fitted popup. iPhone keeps the full-screen cover, unchanged.
+/// Only the presentation changes — the sheet content itself is
+/// untouched. The drag indicator + white background are the
+/// build-68 sheet standard (see item 6).
+private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
+    @Binding var isPresented: Bool
+    var isIPad: Bool
+    @ViewBuilder var sheetContent: () -> SheetContent
+
+    func body(content: Content) -> some View {
+        if isIPad {
+            content.sheet(isPresented: $isPresented) {
+                sheetContent()
+                    .presentationSizing(.fitted)
+                    .presentationBackground(.white)
+                    .presentationDragIndicator(.visible)
+            }
+        } else {
+            content.fullScreenCover(isPresented: $isPresented) {
+                sheetContent()
+            }
+        }
+    }
+}
+
 public struct HomeView: View {
     @ObservedObject var appState: AppViewModel
     /// Owned by AppState (created at boot so the dashboard can be
@@ -767,6 +799,10 @@ public struct HomeView: View {
     @StateObject private var pastWeeksFilter = HistoryFilterState()
     @State private var showNotLoadedAlert = false
     @State private var notLoadedAlertTitle = "Weekly Budget"
+    /// Build 68 (shared standard): the empty-week explainer lives
+    /// behind a blue info icon, not inline in the hero — the full
+    /// sentence cluttered the card. Tapping the icon reveals it.
+    @State private var showEmptyWeekHint = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// iPad (regular size class): the Home figures scale up
@@ -887,7 +923,11 @@ public struct HomeView: View {
         }
         // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
         // cover, not a detent sheet — popups are always full size.
-        .fullScreenCover(isPresented: $showWeeklySheet) {
+        // Build 68 (item 9): on iPad this is a COMPACT FITTED
+        // popup instead — a full-screen cover left ~60% empty
+        // space at the bottom. iPhone keeps the full-screen
+        // cover; see FittedSheetOnIPad above.
+        .modifier(FittedSheetOnIPad(isPresented: $showWeeklySheet, isIPad: isIPad) {
             if case .loaded(let result) = viewModel.week {
                 WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, purchasesThisWeek: viewModel.purchasesThisWeek, appState: appState, onChanged: { Task { await viewModel.refresh() } })
                     // iPad width (owner, Nov 12 2026): WeeklySheet
@@ -896,20 +936,21 @@ public struct HomeView: View {
                     // centred; on iPhone (compact) the width stays
                     // full-screen.
             }
-        }
+        })
         // Build 65 (owner, Nov 23, 2026 — item 5): the Tzedaka
-        // sheet — the same fitted full-screen presentation as the
-        // Weekly sheet above. It needs both a loaded charity
-        // summary (its numbers) and a loaded week (the week start
-        // its transactions button routes to); otherwise the card
-        // tap shows the not-loaded alert instead (see
+        // sheet — the same presentation as the Weekly sheet above
+        // (compact fitted popup on iPad, full-screen cover on
+        // iPhone — build 68, item 9). It needs both a loaded
+        // charity summary (its numbers) and a loaded week (the
+        // week start its transactions button routes to); otherwise
+        // the card tap shows the not-loaded alert instead (see
         // simpleFundCard).
-        .fullScreenCover(isPresented: $showTzedakaSheet) {
+        .modifier(FittedSheetOnIPad(isPresented: $showTzedakaSheet, isIPad: isIPad) {
             if case .loaded(let summary) = viewModel.charity,
                case .loaded(let result) = viewModel.week {
                 TzedakaSheet(summary: summary, appState: appState, onChanged: { Task { await viewModel.refresh() } })
             }
-        }
+        })
         // Build 64 (F-18): Past Weeks presented from Home, same
         // full-screen cover as the Weekly sheet. Its own toast
         // overlay rides on the cover, so the week-tap toast
@@ -1059,7 +1100,14 @@ public struct HomeView: View {
     /// only scaled the hero down; scaling cannot equalise two
     /// columns whose content differs (Spending has the extra
     /// "spent so far" line and the refresh row), so the height
-    /// itself is equalised here instead.
+    /// itself is equalised here instead. Build 68 (item 4): the
+    /// frame stretch alone did NOT stretch the white card — the
+    /// card's background stopped at its content, so the ERROR
+    /// state (ErrorBox + Try Again, far shorter than a loaded
+    /// body) still read as a shorter card. The hero and fund
+    /// cards now carry a zero-height stretch Spacer, so the
+    /// white card itself fills the equal height in loaded,
+    /// loading AND error states.
     private var simpleContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             if useIPadTwoColumn {
@@ -1164,6 +1212,21 @@ public struct HomeView: View {
             // side by side, spent line below, then the debt math
             // line / allowance states.
             heroWhiteBody(simple: simple)
+            // Build 68 (item 4 — equal height in ALL states): the
+            // stretch spacer. The two-column row stretches this
+            // card's FRAME to the taller column (minHeight +
+            // maxHeight: .infinity in heroTier), but a VStack with
+            // no flexible child sizes to its content — so the
+            // white background stopped at the content and the
+            // card READ short whenever its content was short
+            // (the error state: ErrorBox + Try Again is far
+            // shorter than the loaded body). The zero-height
+            // spacer absorbs any extra height the frame offers,
+            // so the white card itself stretches to the equal
+            // height in loaded, loading AND error states. It
+            // takes no space when no extra height is offered
+            // (iPhone stacked layout), so nothing else moves.
+            Spacer(minLength: 0)
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -1414,12 +1477,34 @@ public struct HomeView: View {
         }
 
         // Empty hint: only once a load has actually returned empty,
-        // never while loading or on failure.
+        // never while loading or on failure. Build 68 (shared
+        // standard): the short line stays, the guidance ("Add one
+        // by hand, or connect a bank account…") lives behind a
+        // brand-blue info icon — the full sentence cluttered the
+        // hero card. Tapping the icon reveals it; tapping again
+        // hides it. The icon button wins over the card's tap
+        // gesture, so it never opens the Weekly sheet by accident.
         if viewModel.allowanceSet == true,
            (viewModel.purchasesThisWeek ?? 1) == 0, result.chargesCents == 0 {
-            Text("No transactions this week yet — the full allowance is still available. Add one by hand, or connect a bank account in Settings.")
-                .font(.system(size: 14))
-                .foregroundStyle(Color(hex: "#6b7280"))
+            HStack(alignment: .top, spacing: 4) {
+                Text("No transactions this week yet.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+                Button { showEmptyWeekHint.toggle() } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showEmptyWeekHint ? "Hide explanation" : "Why is the full allowance still available?")
+            }
+            if showEmptyWeekHint {
+                Text("The full allowance is still available. Add one by hand, or connect a bank account in Settings.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
         }
     }
 
@@ -1766,6 +1851,18 @@ public struct HomeView: View {
             .padding(.horizontal, hero ? 16 : 18)
             .padding(.top, hero ? 24 : 18)
             .padding(.bottom, hero ? 22 : 20)
+            // Build 68 (item 4 — equal height in ALL states): the
+            // stretch spacer, same as the hero card's — the
+            // two-column row stretches this card's FRAME to the
+            // taller column, but without a flexible child the
+            // white background stops at the content, so the
+            // short error body (ErrorBox + Try Again) read as a
+            // shorter card than the loaded Tzedaka card. The
+            // zero-height spacer absorbs the extra height, so
+            // the white card stretches to the equal height in
+            // loaded, loading AND error states, and takes no
+            // space when no extra height is offered.
+            Spacer(minLength: 0)
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -2658,8 +2755,8 @@ public struct HomeView: View {
 // MARK: - Home sheets' fund forms (build 65)
 //
 // The Weekly and Tzedaka sheets reuse the Funds page's own forms
-// (Top Up Budget, Temporary Allowance, Add to Tzedaka, Record a
-// Gift) — the forms live in FundsRulesView / FundsView /
+// (Adjust This Week's Budget, Add to Tzedaka, Record a Gift) —
+// the forms live in FundsRulesView / FundsView /
 // CharityIncomeForm and take a FundsViewModel, which Home does not
 // own. The sheets build one lazily from the same
 // FundsContext the shell builds for the Funds tab
@@ -2697,19 +2794,50 @@ private func makeFundsViewModel(appState: AppViewModel) -> FundsViewModel? {
 /// with the sheet's solid-blue primary / grey Close pair and
 /// never break the button rule.
 private struct SheetActionRow: View {
-    let icon: String
+    let icon: String?
+    /// A custom drawn glyph, used instead of `icon` when set
+    /// (build 68, item 11: the calculator glyph, which no SF
+    /// Symbol renders reliably on device).
+    let glyph: AnyView?
     let iconColor: Color
     let title: String
     let subtitle: String
     let action: () -> Void
 
+    /// The usual row, with an SF Symbol icon.
+    init(icon: String, iconColor: Color, title: String, subtitle: String, action: @escaping () -> Void) {
+        self.icon = icon
+        self.glyph = nil
+        self.iconColor = iconColor
+        self.title = title
+        self.subtitle = subtitle
+        self.action = action
+    }
+
+    /// A row with a custom drawn glyph instead of an SF Symbol.
+    /// The glyph is drawn in `iconColor` by its caller, so the
+    /// row still reads as one consistent list (item 10).
+    init(glyph: AnyView, iconColor: Color, title: String, subtitle: String, action: @escaping () -> Void) {
+        self.icon = nil
+        self.glyph = glyph
+        self.iconColor = iconColor
+        self.title = title
+        self.subtitle = subtitle
+        self.action = action
+    }
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(iconColor)
-                    .frame(width: 22, height: 22)
+                if let glyph {
+                    glyph
+                        .frame(width: 22, height: 22)
+                } else if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(iconColor)
+                        .frame(width: 22, height: 22)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.system(size: 15, weight: .semibold))
@@ -2775,17 +2903,18 @@ public struct WeeklySheet: View {
     var onChanged: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    /// Build 65 (owner, Nov 23, 2026 — item 4): the three action
-    /// rows below the numbers — Top Up Budget, Set This Week's
-    /// Budget, Weekly Budget Calculator.
-    @State private var showTopUp = false
-    @State private var showTempAllowance = false
+    /// Build 65 (owner, Nov 23, 2026 — item 4): the action rows
+    /// below the numbers — Adjust This Week's Budget, Recurring
+    /// Expenses, Weekly Budget Calculator. Build 68 (item 29):
+    /// Top Up Budget + Set This Week's Budget merged into the one
+    /// Adjust This Week's Budget sheet.
+    @State private var showAdjustWeeklyBudget = false
     @State private var showCalculator = false
     /// Build 67 (owner, Nov 23, 2026): the Expenses list, opened
     /// from the Recurring Expenses row in the actions card below.
     @State private var showExpenses = false
-    /// The Funds view model the Top Up / Temporary Allowance forms
-    /// need (see the note above the Weekly sheet section). Built
+    /// The Funds view model the Adjust This Week's Budget form
+    /// needs (see the note above the Weekly sheet section). Built
     /// lazily, once per presentation.
     @State private var fundsViewModel: FundsViewModel?
 
@@ -2882,12 +3011,12 @@ public struct WeeklySheet: View {
             // one white card (not more big buttons, so they never
             // clash with the solid-blue Show Transactions / grey
             // Close pair below and never break the button rule).
-            // Top Up Budget + Set This Week's Budget are admin-only
-            // (the Funds page gates them the same way); the
-            // Calculator is local-only and stays visible to every
-            // role. Each row opens the Funds page's own form — no
-            // logic is duplicated here. The card renders only when
-            // it holds at least one row (admin rows, or the
+            // Adjust This Week's Budget is admin-only (the Funds
+            // page gates it the same way); the Calculator is
+            // local-only and stays visible to every role. Each row
+            // opens the Funds page's own form — no logic is
+            // duplicated here. The card renders only when it holds
+            // at least one row (admin rows, or the
             // calculator for every role) — never an empty white card.
             if appState.isAdmin || appState.householdId != nil {
                 weeklyActionsCard
@@ -2939,36 +3068,20 @@ public struct WeeklySheet: View {
                 fundsViewModel?.toast = nil
             }
         }
-        // Top Up Budget (FundsRulesView.AddToBudgetSheet): a
-        // one-time top-up to the CURRENT week only. Refreshes Home
-        // on dismiss, so the new total shows at once.
-        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet,
-        // not a full-screen cover — the form is one amount field
-        // and two buttons (the detents live in the form itself).
-        .sheet(isPresented: $showTopUp, onDismiss: { onChanged?() }) {
+        // Adjust This Week's Budget (FundsRulesView.
+        // AdjustWeeklyBudgetSheet, build 68 item 29): Top Up
+        // Budget + Set This Week's Budget merged into one sheet —
+        // an Add / Set Total slider, wired to the existing Top Up
+        // and Temporary Allowance operations. Refreshes Home on
+        // dismiss, so the new total shows at once. A fitted sheet
+        // (the detents live in the form itself).
+        .sheet(isPresented: $showAdjustWeeklyBudget, onDismiss: { onChanged?() }) {
             if let fundsViewModel {
-                AddToBudgetSheet(viewModel: fundsViewModel, onClose: { showTopUp = false })
-            }
-        }
-        // Set This Week's Budget (Funds.TemporaryAllowanceView):
-        // a one-week allowance override. The form has no dismiss
-        // control of its own, so it rides under a SheetHeader —
-        // the same chrome the other fund popups use.
-        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet,
-        // not a full-screen cover — the form is two fields and two
-        // buttons, and the full screen left a huge empty area
-        // below it.
-        .sheet(isPresented: $showTempAllowance, onDismiss: { onChanged?() }) {
-            if let fundsViewModel {
-                VStack(alignment: .leading, spacing: 16) {
-                    SheetHeader(title: "Set This Week's Budget", onClose: { showTempAllowance = false })
-                    TemporaryAllowanceView(viewModel: fundsViewModel)
-                    Spacer()
-                }
-                .padding()
-                .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-                .presentationDetents([.fraction(0.45), .medium])
-                .presentationDragIndicator(.visible)
+                AdjustWeeklyBudgetSheet(viewModel: fundsViewModel, onClose: { showAdjustWeeklyBudget = false })
+                    // Build 68 (item 6): a light airy sheet — white
+                    // presentation background, so the sheet sits
+                    // bright against a lighter backdrop.
+                    .presentationBackground(.white)
             }
         }
         // Weekly Budget Calculator (FundsView.
@@ -3006,6 +3119,8 @@ public struct WeeklySheet: View {
                     },
                     onClose: { showExpenses = false }
                 )
+                // Build 68 (item 6): white presentation background.
+                .presentationBackground(.white)
             }
         }
     }
@@ -3018,41 +3133,33 @@ public struct WeeklySheet: View {
         let live = fundsViewModel?.liveExpenses ?? []
         guard !live.isEmpty else { return "No expenses tagged yet" }
         let monthly = live.reduce(0) { $0 + $1.monthlyCents }
-        return "\(live.count) \(live.count == 1 ? "expense" : "expenses") · \(MoneyFormat.formatCents(monthly)) a month"
+        // Build 68 (frequency format): the frequency is a compact
+        // suffix on the amount — "$160.00/mo", never "a month".
+        return "\(live.count) \(live.count == 1 ? "expense" : "expenses") · \(MoneyFormat.formatCents(monthly))/mo"
     }
 
-    /// The week-action rows (build 65, item 4): Top Up Budget and
-    /// Set This Week's Budget for admins, the Weekly Budget
-    /// Calculator for every role. When the Funds view model cannot
-    /// be built (household not yet known — in practice never while
-    /// Home is showing), the two admin rows fall back to the
-    /// Spending fund on the Funds page, where the same actions
-    /// live; the sheet itself never strands the user.
+    /// The week-action rows (build 65, item 4): Adjust This
+    /// Week's Budget for admins (build 68, item 29 — Top Up
+    /// Budget + Set This Week's Budget merged into one sheet),
+    /// Recurring Expenses and the Weekly Budget Calculator for
+    /// every role. When the Funds view model cannot be built
+    /// (household not yet known — in practice never while Home is
+    /// showing), the admin row falls back to the Spending fund on
+    /// the Funds page, where the same action lives; the sheet
+    /// itself never strands the user.
+    /// Build 68 (item 10): all the row icons share one colour —
+    /// brand blue — so the card reads as one consistent list.
     private var weeklyActionsCard: some View {
         VStack(spacing: 0) {
             if appState.isAdmin {
                 SheetActionRow(
-                    icon: "plus.circle",
-                    iconColor: DesignTokens.deep,
-                    title: "Top Up Budget",
-                    subtitle: "Add a one-time amount to this week"
+                    icon: "slider.horizontal.3",
+                    iconColor: DesignTokens.primary,
+                    title: "Adjust This Week's Budget",
+                    subtitle: "Add a one-time amount or set a new total"
                 ) {
                     if ensureFundsViewModel() != nil {
-                        showTopUp = true
-                    } else {
-                        dismiss()
-                        appState.openSpendingFund()
-                    }
-                }
-                SheetActionDivider()
-                SheetActionRow(
-                    icon: "calendar",
-                    iconColor: DesignTokens.ink,
-                    title: "Set This Week's Budget",
-                    subtitle: "Change this week's total for one week"
-                ) {
-                    if ensureFundsViewModel() != nil {
-                        showTempAllowance = true
+                        showAdjustWeeklyBudget = true
                     } else {
                         dismiss()
                         appState.openSpendingFund()
@@ -3068,7 +3175,7 @@ public struct WeeklySheet: View {
                 // Calculator because the Calculator reads from it.
                 SheetActionRow(
                     icon: "house",
-                    iconColor: DesignTokens.ink,
+                    iconColor: DesignTokens.primary,
                     title: "Recurring Expenses",
                     subtitle: expensesSubtitle
                 ) {
@@ -3076,14 +3183,15 @@ public struct WeeklySheet: View {
                 }
                 SheetActionDivider()
                 SheetActionRow(
-                    // Build 66 (owner, Nov 23, 2026 — item 6): the
-                    // calculator icon was missing on device — the
-                    // "calculator" SF Symbol renders nothing there
-                    // (an unavailable symbol name draws empty),
-                    // so this row uses the ± keys glyph instead
-                    // (plus.forwardslash.minus, iOS 13, always
-                    // available) — it reads as calculator keys.
-                    icon: "plus.forwardslash.minus",
+                    // Build 68 (item 11): the "calculator" SF
+                    // Symbol renders NOTHING on device (verified
+                    // build 66), and the ± glyph (plus.
+                    // forwardslash.minus) did not read as a
+                    // calculator — this row now uses the same
+                    // shape-drawn CalculatorGlyph as the Funds
+                    // Calculate button, which cannot fail to
+                    // resolve.
+                    glyph: AnyView(CalculatorGlyph(size: 20, color: DesignTokens.primary)),
                     iconColor: DesignTokens.primary,
                     title: "Weekly Budget Calculator",
                     subtitle: "Work out the right weekly amount"
@@ -3246,25 +3354,25 @@ public struct TzedakaSheet: View {
                 fundsViewModel?.toast = nil
             }
         }
-        // Add to Tzedaka (CharityIncomeForm.AddToCharitySheet):
-        // a manual amount onto the Available balance. Refreshes
-        // Home on dismiss, so the new Available shows at once.
-        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet,
-        // not a full-screen cover — the form is one amount field
-        // and two buttons (the detents live in the form itself).
+        // Build 68 (item 30): Add to Tzedaka + Record a Donation
+        // merged into the one compact TzedakaActionSheet — the
+        // Add / Record a Donation choice sits at the top of the
+        // sheet itself, so both rows open the same sheet pre-set
+        // to their direction. Refreshes Home on dismiss, so the
+        // new Available shows at once. A fitted sheet, not a
+        // full-screen cover (the detents live in the form itself).
         .sheet(isPresented: $showAddToCharity, onDismiss: { onChanged?() }) {
             if let fundsViewModel {
-                AddToCharitySheet(viewModel: fundsViewModel, fundName: charityName, onClose: { showAddToCharity = false })
+                TzedakaActionSheet(viewModel: fundsViewModel, fundName: charityName, initialMode: .add, onClose: { showAddToCharity = false })
+                    // Build 68 (item 6): white presentation background.
+                    .presentationBackground(.white)
             }
         }
-        // Record a Donation (CharityIncomeForm.RecordCashGiftSheet):
-        // a cash donation given off-card — Available down, Given up.
-        // Refreshes Home on dismiss, like Add to Tzedaka.
-        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet,
-        // not a full-screen cover (the detents live in the form).
         .sheet(isPresented: $showRecordGift, onDismiss: { onChanged?() }) {
             if let fundsViewModel {
-                RecordCashGiftSheet(viewModel: fundsViewModel, fundName: charityName, onClose: { showRecordGift = false })
+                TzedakaActionSheet(viewModel: fundsViewModel, fundName: charityName, initialMode: .record, onClose: { showRecordGift = false })
+                    // Build 68 (item 6): white presentation background.
+                    .presentationBackground(.white)
             }
         }
     }
@@ -3292,7 +3400,7 @@ public struct TzedakaSheet: View {
             SheetActionDivider()
             SheetActionRow(
                 icon: "gift",
-                iconColor: DesignTokens.ink,
+                iconColor: DesignTokens.primary,
                 title: "Record a Donation",
                 subtitle: "Record a cash donation given off-card"
             ) {

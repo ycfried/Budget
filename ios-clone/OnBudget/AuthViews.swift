@@ -64,10 +64,14 @@ public struct AuthBrandHeader: View {
             // build 47): the logo + "T · A · G · E", never the logo
             // next to the full word "STAGE" (no second S).
             // Build 54 (owner, Nov 21, 2026): the TAGE letters
-            // are bolder (black weight) and slightly larger
-            // (32pt, was 30pt) — they were a drop too thin and
-            // small next to the S logo.
-            StageWordmarkText(font: .system(size: 32, weight: .black))
+            // were made bolder (black weight) and slightly larger
+            // (32pt, was 30pt). Build 68 (item 17) reverses the
+            // weight only: .light reads thinner and classier, the
+            // same thinning the shell agent applied to the
+            // confirmation popup brand row and the loading page.
+            // (StageWordmarkText itself lives in OnBudgetKit, so
+            // the thinning is done here, at this call site.)
+            StageWordmarkText(font: .system(size: 32, weight: .light))
         }
         // Centered as a unit (owner, Nov 11, 2026): the header was
         // left-aligned, which read as shifted-left on a wide screen.
@@ -222,7 +226,13 @@ public struct AuthView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("auth.email")
-                .padding(12)
+                // Build 68 (item 7/13): exactly 48pt tall with 14pt
+                // horizontal padding — the SAME height as the
+                // Password field below (the Password row used to
+                // render taller, because its 44pt eye/biometric
+                // buttons stretched its padding).
+                .padding(.horizontal, 14)
+                .frame(height: 48, alignment: .leading)
                 .background(.white)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -273,7 +283,12 @@ public struct AuthView: View {
                     .disabled(busy != nil)
                 }
             }
-            .padding(12)
+            // Build 68 (item 7/13): exactly 48pt tall — the same
+            // height as the Email field above. The 44pt eye /
+            // biometric buttons fit inside 48pt; the old .padding(12)
+            // around them made this row ~68pt tall.
+            .padding(.horizontal, 14)
+            .frame(height: 48, alignment: .leading)
             .background(.white)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -575,7 +590,8 @@ public struct NameStepView: View {
                     .textContentType(.givenName)
                     .textInputAutocapitalization(.words)
                     .accessibilityIdentifier("auth.firstName")
-                    .padding(12)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
                     .background(.white)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -585,7 +601,8 @@ public struct NameStepView: View {
                     .textContentType(.familyName)
                     .textInputAutocapitalization(.words)
                     .accessibilityIdentifier("auth.lastName")
-                    .padding(12)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
                     .background(.white)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -745,7 +762,8 @@ public struct ForgotPasswordSheet: View {
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("auth.forgotEmail")
                     .onChange(of: email) { message = nil }
-                    .padding(12)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
                     .background(.white)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -949,7 +967,10 @@ public struct ResetPasswordView: View {
                 .contentShape(Rectangle())
                 .accessibilityLabel(showing.wrappedValue ? "Hide Password" : "Show Password")
             }
-            .padding(12)
+            // Build 68 (item 7/13): exactly 48pt tall, 14pt
+            // horizontal padding — matches the sign-in fields.
+            .padding(.horizontal, 14)
+            .frame(height: 48, alignment: .leading)
             .background(.white)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 12))

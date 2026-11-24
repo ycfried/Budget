@@ -27,6 +27,43 @@ import OnBudgetKit
 /// SharedViews copies, which are the canonical ones (they carry
 /// public inits). Only the Transactions-only helpers below remain.
 
+/// Destructive primary (build 68, owner Nov 23, 2026 — item 8):
+/// the delete/remove confirm action, solid #dc2626
+/// (`DesignTokens.errorText`) with white text — the SAME size and
+/// shape as `PrimaryButtonStyle`, only the fill differs, so a
+/// Delete confirm reads as the primary action in the delete red.
+/// Never `role: .destructive`: the system destructive red differs
+/// from #dc2626.
+public struct DestructivePrimaryButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.vertical, 13)
+            .padding(.horizontal, 18)
+            .frame(maxWidth: .infinity)
+            .background(DesignTokens.errorText)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}
+
+/// Small variant of the destructive primary, for in-row actions.
+public struct SmallDestructiveButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(DesignTokens.errorText)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}
+
 public struct SmallPrimaryButtonStyle: ButtonStyle {
     public func makeBody(configuration: ButtonStyle.Configuration) -> some View {
         configuration.label

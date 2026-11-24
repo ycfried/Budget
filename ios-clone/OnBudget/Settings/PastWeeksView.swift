@@ -193,6 +193,8 @@ final class PastWeeksViewModel: ObservableObject {
 
 struct PastWeeksView: View {
     @StateObject private var viewModel: PastWeeksViewModel
+    /// Build 68 (item 14): the page explainer behind the ⓘ.
+    @State private var showingAboutInfo = false
     let onBack: () -> Void
 
     init(context: SettingsContext, toast: ToastState, filter: HistoryFilterState, onBack: @escaping () -> Void = {}) {
@@ -207,12 +209,28 @@ struct PastWeeksView: View {
                     BackButton(action: onBack)
                     Spacer()
                 }
-                Text("Past Weeks")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                Text("Closed weeks, read-only. Tap a week to see its summary and its transactions.")
-                    .font(.subheadline)
-                    .foregroundStyle(DesignTokens.muted)
+                HStack(spacing: 6) {
+                    Text("Past Weeks")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                    // Build 68 (item 14): the explainer lives behind
+                    // this blue ⓘ, not as an inline line under the
+                    // title.
+                    Button { showingAboutInfo = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("About Past Weeks")
+                }
+                .alert("Past Weeks", isPresented: $showingAboutInfo) {
+                    Button("OK") {}
+                } message: {
+                    Text("Closed weeks, read-only. Tap a week to see its summary and its transactions.")
+                }
 
                 HistoryDateFilterCard(
                     draftFrom: $viewModel.draftFrom,

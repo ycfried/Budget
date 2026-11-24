@@ -96,6 +96,8 @@ final class NotificationsSettingsViewModel: ObservableObject {
 struct NotificationsSettingsView: View {
     @StateObject private var viewModel: NotificationsSettingsViewModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Build 68 (item 14): the notifications explainer behind ⓘ.
+    @State private var showingAboutInfo = false
 
     init(context: SettingsContext, toast: ToastState) {
         _viewModel = StateObject(wrappedValue: NotificationsSettingsViewModel(context: context, toast: toast))
@@ -184,6 +186,18 @@ struct NotificationsSettingsView: View {
                     Text("Notifications")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
+                    // Build 68 (item 14): the explainer lives behind
+                    // this blue ⓘ, not as an inline line under the
+                    // heading.
+                    Button { showingAboutInfo = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("About Notifications")
                     Spacer()
                     if !viewModel.systemIsOn {
                         Button("Open Settings") {
@@ -193,9 +207,11 @@ struct NotificationsSettingsView: View {
                         .foregroundStyle(DesignTokens.primary)
                     }
                 }
-                Text("Get a heads-up when a week closes or a new purchase comes in.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                .alert("Notifications", isPresented: $showingAboutInfo) {
+                    Button("OK") {}
+                } message: {
+                    Text("Get a heads-up when a week closes or a new purchase comes in.")
+                }
                 Divider()
                 if viewModel.isLoading {
                     Text("Loading notification settings…")

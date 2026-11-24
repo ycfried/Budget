@@ -73,8 +73,7 @@ public struct AddMoneyForm: View {
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     FieldLabel("Note")
-                    TextField("", text: $note)
-                        .textFieldStyle(.roundedBorder)
+                    FundsTextField("", text: $note)
                         .onChange(of: note) { _, newValue in
                             if newValue.count > 120 { note = String(newValue.prefix(120)) }
                         }
@@ -202,8 +201,7 @@ public struct PayDebtForm: View {
                 FundsMoneyField("Amount", text: $amountText)
                 VStack(alignment: .leading, spacing: 4) {
                     FieldLabel("Note")
-                    TextField("", text: $note)
-                        .textFieldStyle(.roundedBorder)
+                    FundsTextField("", text: $note)
                 }
                 if let previewText {
                     FundsMuted(previewText)
@@ -441,7 +439,7 @@ public struct ClearDebtForm: View {
             "Clear \(debtName)",
             isPresented: $showConfirm
         ) {
-            Button(TitleCase.apply(to: "Clear \(debtName)"), role: .destructive) {
+            Button(TitleCase.apply(to: "Clear \(debtName)")) {
                 if let pendingCents {
                     Task {
                         if await viewModel.clearDebt(amountCents: pendingCents, note: "") {
@@ -513,8 +511,7 @@ struct EditDebtSheet: View {
                     FundsMoneyField("Amount to Add", text: $addText)
                     VStack(alignment: .leading, spacing: 4) {
                         FieldLabel("Note")
-                        TextField("", text: $addNote)
-                            .textFieldStyle(.roundedBorder)
+                        FundsTextField("", text: $addNote)
                             .onChange(of: addNote) { _, newValue in
                                 if newValue.count > 120 { addNote = String(newValue.prefix(120)) }
                             }
@@ -535,8 +532,7 @@ struct EditDebtSheet: View {
                     FundsMoneyField("New Total \(debtName)", text: $setText)
                     VStack(alignment: .leading, spacing: 4) {
                         FieldLabel("Note")
-                        TextField("", text: $setNote)
-                            .textFieldStyle(.roundedBorder)
+                        FundsTextField("", text: $setNote)
                             .onChange(of: setNote) { _, newValue in
                                 if newValue.count > 120 { setNote = String(newValue.prefix(120)) }
                             }
@@ -623,8 +619,7 @@ public struct AskFundForm: View {
                     FundsMoneyField("Amount", text: $amountText)
                     VStack(alignment: .leading, spacing: 4) {
                         FieldLabel("Note")
-                        TextField("", text: $note)
-                            .textFieldStyle(.roundedBorder)
+                        FundsTextField("", text: $note)
                     }
                     if let fieldError {
                         FundsErrorBox(fieldError)
@@ -738,7 +733,7 @@ public struct FundRequestQueue: View {
                 set: { if !$0 { declining = nil } }
             )
         ) {
-            Button(TitleCase.apply(to: "Decline"), role: .destructive) {
+            Button(TitleCase.apply(to: "Decline")) {
                 if let declining {
                     Task { await viewModel.declineRequest(declining) }
                 }
@@ -1032,10 +1027,7 @@ public struct RenameFundSheet: View {
         // keeps the content at the top of the full-screen popup.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: "Edit \(section.displayName)"), onClose: onClose)
-            TextField("Fund name", text: $nameText)
-                .font(.system(size: 17))
-                .textFieldStyle(.roundedBorder)
-                .frame(minHeight: 48)
+            FundsTextField("Fund name", text: $nameText)
                 .autocorrectionDisabled()
             FundsMuted("Leave blank to use the default name (\(section.displayName)).")
             // Icon picker (build 41 — customizable fund icons,

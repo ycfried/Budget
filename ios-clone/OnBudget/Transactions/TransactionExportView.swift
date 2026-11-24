@@ -3,8 +3,8 @@ import PDFKit
 import OnBudgetKit
 
 /// Transaction export (build 45, Nov 18, 2026): a full-screen popup
-/// on the Transactions page. Scope (Filtered / All) + format (PDF /
-/// CSV) → Generate. A PDF opens an in-app preview first (build 59,
+/// on the Transactions page. ONE filter set + format (PDF / CSV) →
+/// Generate. A PDF opens an in-app preview first (build 59,
 /// Nov 22, 2026 — the finished statement, rendered by PDFKit from
 /// the very file that gets shared, so preview and file can never
 /// differ); Share inside the preview opens the iOS share sheet, so
@@ -13,27 +13,29 @@ import OnBudgetKit
 /// auto-emailed or auto-saved anywhere — the sheet is the choice.
 /// Read-only: it never changes transactions.
 ///
-/// Choosing Filtered opens the filter picker (build 61, Nov 22,
-/// 2026 — owner: "Once choosing filtered you should have to select
-/// how to filter"): kind, date range, amount, and account, picked
-/// right here before exporting. The picks edit a draft of the
-/// shared `TransactionFilters` (one filter system — the same
-/// `apply(to:)` the list uses, never a second one); the count and
-/// the summary update live as the user picks, and Generate commits
-/// the draft to the list's filter in Filtered scope, so the list
-/// and the export agree after a filtered export (build 64, F-7:
-/// exporting All leaves the list's filter untouched, and a commit
-/// toasts "List now shows…"). Cancel discards the draft and leaves
-/// the list untouched — the same snapshot/draft/apply/cancel
-/// pattern as the list's Filters sheet.
+/// Build 68 (item 21, Nov 23, 2026 — the "What to Export:
+/// Filtered / All" switch is gone): the "Filter By" controls ARE
+/// the export's filters — kind, date range, amount, and account,
+/// picked right here before exporting, pre-filled with the
+/// Transactions page's current filters on open (so if the page is
+/// showing Spending, Nov 22–28, the export starts there). The
+/// picks edit a draft of the shared `TransactionFilters` (one
+/// filter system — the same `apply(to:)` the list uses, never a
+/// second one); the count and the summary update live as the user
+/// picks, and Generate commits the draft to the list's filter, so
+/// the list and the export agree after every export (build 64,
+/// F-7: a commit toasts "List now shows…"). "Clear Filters"
+/// resets every Filter By control to "All" (all kinds, all dates,
+/// all cards, no min/max) so a fresh filter can be built. Cancel
+/// discards the draft and leaves the list untouched — the same
+/// snapshot/draft/apply/cancel pattern as the list's Filters sheet.
 ///
 /// The full history is fetched once, in the background, when the
 /// popup opens — the list page only ever holds the rows loaded so
 /// far (25 at a time), so exporting the loaded page alone would
 /// silently miss the rows the user never tapped Load More for.
-/// Switching scope never refetches: the filtered scope applies the
-/// draft filter to the fetched rows, Export all passes them
-/// through untouched.
+/// The draft filter applies to the fetched rows on every change;
+/// no refetch is ever needed.
 ///
 /// Design rules: Title Case headings and labels; two-button row
 /// primary blue first + grey tertiary second; no greyed-out
@@ -58,7 +60,12 @@ public struct TransactionExportView: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    @State private var scope: TransactionExportScope = .filtered
+    // Build 68 (item 21): the "What to Export: Filtered / All"
+    // switch is GONE — the "Filter By" controls below ARE the
+    // export's filters, pre-filled from the Transactions page's
+    // current filters on open (the draft starts as
+    // `viewModel.filters`). "Clear Filters" resets them all to
+    // "All", so a fresh filter can be built from scratch.
     @State private var format: TransactionExportFormat = .pdf
     /// Draft of the shared filter (build 61 — export filter
     /// picker): starts from the list's active filter, so an
@@ -93,6 +100,8 @@ public struct TransactionExportView: View {
     /// preview (a plain-text file) and goes straight to share.
     @State private var previewURL: URL? = nil
     @State private var resolvedHouseholdName: String? = nil
+    /// Build 68 (item 14): the format explainer behind the ⓘ.
+    @State private var showingFormatInfo = false
 
     public init(viewModel: TransactionsViewModel, appState: AppViewModel, householdName: String?, onDismiss: @escaping () -> Void) {
         self.viewModel = viewModel
@@ -142,21 +151,19 @@ public struct TransactionExportView: View {
         return min > max
     }
 
-    /// The rows this scope covers, in export order (filtered:
-    /// the DRAFT filter + sort; all: date desc, as fetched).
-    /// The preview and the file are built from this same array,
-    /// so the count, the preview, and the file can never disagree.
+    /// The rows the export covers: the DRAFT filter + sort,
+    /// applied to the fetched history. The preview and the file
+    /// are built from this same array, so the count, the preview,
+    /// and the file can never disagree. Live — it updates as the
+    /// user changes any Filter By control.
     private var rowsForScope: [Transaction] {
         guard let allRows else { return [] }
-        switch scope {
-        case .all: return allRows
-        case .filtered: return draftFilters.apply(to: allRows)
-        }
+        return draftFilters.apply(to: allRows)
     }
 
-    /// The filter summary under the scope picker: the DRAFT's
-    /// active filters as "This Week · Spending", or the
-    /// no-filters line. Live — it updates as the user picks.
+    /// The filter summary under "Filter By": the DRAFT's active
+    /// filters as "This Week · Spending", or the no-filters line.
+    /// Live — it updates as the user picks.
     private var filterSummary: String {
         let chips = draftFilters.activeChips(customNames: viewModel.fundNames)
         if chips.isEmpty { return "No filters active — this exports every transaction." }
@@ -169,12 +176,10 @@ public struct TransactionExportView: View {
                 SheetHeader(title: "Export Transactions", onClose: onDismiss)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        scopeSection
-                        // The filter picker (build 61): only for
-                        // Filtered — All needs no picks.
-                        if scope == .filtered {
-                            filterSection
-                        }
+                        // Build 68 (item 21): ONE filter set — the
+                        // Filter By controls below, seeded from the
+                        // page's filters on open. No scope switch.
+                        filterSection
                         formatSection
                         statusSection
                         TwoButtonRow {
@@ -185,9 +190,8 @@ public struct TransactionExportView: View {
                                 // Generate the same way the list's
                                 // Filters sheet disables Apply —
                                 // the error box above already says
-                                // why. Only in Filtered scope: the
-                                // draft does not apply to All.
-                                .disabled(scope == .filtered && draftAmountInvalid)
+                                // why.
+                                .disabled(draftAmountInvalid)
                         } secondary: {
                             Button("Cancel") { onDismiss() }
                                 .buttonStyle(TertiaryButtonStyle())
@@ -198,12 +202,13 @@ public struct TransactionExportView: View {
                         // Full-width outline, below the Generate /
                         // Cancel row — a third button in a different
                         // treatment, so no two adjacent buttons
-                        // share a colour. Filtered scope only.
-                        if scope == .filtered {
-                            Button("Clear Filters") { clearDraftFilters() }
-                                .buttonStyle(OutlineButtonStyle())
-                                .accessibilityIdentifier("export.filter.clear")
-                        }
+                        // share a colour. Build 68 (item 21): it
+                        // resets every Filter By control to "All"
+                        // (all kinds, all dates, all cards, no
+                        // min/max), so a fresh filter can be built.
+                        Button("Clear Filters") { clearDraftFilters() }
+                            .buttonStyle(OutlineButtonStyle())
+                            .accessibilityIdentifier("export.filter.clear")
                         // Progress, inline: the Generate button is
                         // never greyed out — a duplicate tap while a
                         // file is being built is ignored instead.
@@ -266,23 +271,6 @@ public struct TransactionExportView: View {
 
     // MARK: - Sections
 
-    private var scopeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("What to Export")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
-            Picker("Scope", selection: $scope) {
-                Text("Filtered").tag(TransactionExportScope.filtered)
-                Text("All").tag(TransactionExportScope.all)
-            }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("export.scope")
-            Text(scope == .filtered ? filterSummary : "All transactions in the household, no date or kind restriction.")
-                .font(.system(size: 13))
-                .foregroundStyle(Color(hex: "#6b7280"))
-        }
-    }
-
     /// The filter picker (build 61, Nov 22, 2026 — owner: "Once
     /// choosing filtered you should have to select how to
     /// filter"): kind, date range, amount, and account. Every
@@ -290,7 +278,7 @@ public struct TransactionExportView: View {
     /// combine (AND), so kind + account + date + amount narrows
     /// to the intersection. The controls reuse the list's Filters
     /// sheet treatment (white field, 1pt #e5e7eb border,
-    /// cornerRadius 10, 40pt, ink tint) and its patterns: the Kind
+    /// cornerRadius 12, 48pt, ink tint) and its patterns: the Kind
     /// and Card menu pickers, the one-button-one-calendar When
     /// control, and the Min/Max amount fields with a $ prefix and
     /// a decimal pad. The count and the summary above update live
@@ -301,6 +289,12 @@ public struct TransactionExportView: View {
             Text("Filter By")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
+            // Build 68 (item 21): the live summary of what the
+            // export covers — it used to sit under the deleted
+            // scope switch. Updates as the user picks.
+            Text(filterSummary)
+                .font(.system(size: 13))
+                .foregroundStyle(Color(hex: "#6b7280"))
             // Kind — the picker value says it.
             Picker("Kind", selection: kindBinding) {
                 Text("All kinds").tag(nil as TransactionKind?)
@@ -310,14 +304,14 @@ public struct TransactionExportView: View {
             }
             .pickerStyle(.menu)
             .tint(DesignTokens.ink)
-            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .padding(.horizontal, 14)
             .background(.white)
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .accessibilityIdentifier("export.filter.kind")
 
             // When — ONE button + ONE calendar (owner, Nov 11,
@@ -335,14 +329,15 @@ public struct TransactionExportView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }
-                .padding(10)
-                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                 .background(.white)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             // Identifier for a UI test to find the date-range
             // control (the NavigationLink to the calendar).
@@ -359,14 +354,14 @@ public struct TransactionExportView: View {
             }
             .pickerStyle(.menu)
             .tint(DesignTokens.ink)
-            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .padding(.horizontal, 14)
             .background(.white)
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .accessibilityIdentifier("export.filter.card")
 
             // Amount — Min / Max side by side, same as the list's
@@ -400,14 +395,14 @@ public struct TransactionExportView: View {
                             .focused($focusedField, equals: .min)
                             .accessibilityIdentifier("export.filter.min")
                     }
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: 140, minHeight: 48, alignment: .leading)
                     .background(.white)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
+                        RoundedRectangle(cornerRadius: 12)
                             .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Max")
@@ -422,14 +417,14 @@ public struct TransactionExportView: View {
                             .focused($focusedField, equals: .max)
                             .accessibilityIdentifier("export.filter.max")
                     }
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: 140, minHeight: 40, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: 140, minHeight: 48, alignment: .leading)
                     .background(.white)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
+                        RoundedRectangle(cornerRadius: 12)
                             .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
             if draftAmountInvalid {
@@ -456,12 +451,36 @@ public struct TransactionExportView: View {
                 Text("CSV").tag(TransactionExportFormat.csv)
             }
             .pickerStyle(.segmented)
+            // Build 68 (item 20): the segmented control is 48pt
+            // tall with comfortable padding, so it feels
+            // substantial instead of thin and short.
+            .frame(minHeight: 48)
+            .padding(.vertical, 4)
             .accessibilityIdentifier("export.format")
-            Text(format == .pdf
-                 ? "A branded statement with charts — preview it before sharing."
-                 : "One row per transaction, opens in any spreadsheet.")
-                .font(.system(size: 13))
-                .foregroundStyle(Color(hex: "#6b7280"))
+            // Build 68 (item 14): the format sentence lives behind
+            // a blue info icon now, not as inline text — the short
+            // line beside it is all that stays visible.
+            HStack(spacing: 6) {
+                Button { showingFormatInfo = true } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About This Format")
+                Text(format == .pdf ? "Preview it before sharing." : "Opens in any spreadsheet.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
+            .alert("Format", isPresented: $showingFormatInfo) {
+                Button("OK") {}
+            } message: {
+                Text(format == .pdf
+                     ? "A branded statement with charts — preview it before sharing."
+                     : "One row per transaction, opens in any spreadsheet.")
+            }
         }
     }
 
@@ -489,10 +508,8 @@ public struct TransactionExportView: View {
             // the amount block above already says why, so this
             // section stays quiet instead of stacking a second,
             // misleading "no match" line.
-            if scope != .filtered || !draftAmountInvalid {
-                Text(scope == .filtered
-                    ? "No transactions match the current filters — change the filters or choose All."
-                    : "No transactions here yet — nothing to export.")
+            if !draftAmountInvalid {
+                Text("No transactions match the current filters — change the filters or clear them.")
                     .font(.system(size: 13))
                     .foregroundStyle(Color(hex: "#6b7280"))
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -556,14 +573,14 @@ public struct TransactionExportView: View {
     /// dead-tapping — via the app-shell toast, which renders
     /// above this full-screen cover.
     ///
-    /// Generate commits the draft to the shared filter ONLY in
-    /// Filtered scope (build 64, F-7): exporting All used to
-    /// silently change the list's filter to the draft picks.
-    /// For All the list's filter is left untouched. When a
-    /// commit happens, the app-shell toast says what the list
-    /// now shows ("List now shows…"). `persistFilters()` only
-    /// (NOT `filterChanged()`): an export must never yank the
-    /// list out of week mode.
+    /// Generate commits the draft to the shared filter (build 64,
+    /// F-7, as revised by build 68 item 21): there is no scope
+    /// switch any more — the Filter By controls ARE the export's
+    /// filters, so the list and the export always agree after a
+    /// generate. When the commit happens, the app-shell toast says
+    /// what the list now shows ("List now shows…").
+    /// `persistFilters()` only (NOT `filterChanged()`): an export
+    /// must never yank the list out of week mode.
     private func generate() {
         guard !isGenerating else { return }
         // Build 64 (F-34): a tap with nothing to export is not
@@ -573,20 +590,18 @@ public struct TransactionExportView: View {
             return
         }
         guard !rowsForScope.isEmpty else {
-            appState.showToast("Nothing matches those filters — change the filters or choose All.", kind: .info)
+            appState.showToast("Nothing matches those filters — change the filters or clear them.", kind: .info)
             return
         }
-        // Build 64 (F-7): commit the draft only when scope is
-        // Filtered; for All, leave the list's filter untouched.
-        if scope == .filtered {
-            viewModel.filters = draftFilters
-            viewModel.persistFilters()
-            let chips = draftFilters.activeChips(customNames: viewModel.fundNames)
-            if chips.isEmpty {
-                appState.showToast("List now shows all transactions.", kind: .info)
-            } else {
-                appState.showToast("List now shows \(chips.map(\.label).joined(separator: " · ")).", kind: .info)
-            }
+        // Build 68 (item 21): always commit the draft — the
+        // export's filters are the list's filters now.
+        viewModel.filters = draftFilters
+        viewModel.persistFilters()
+        let chips = draftFilters.activeChips(customNames: viewModel.fundNames)
+        if chips.isEmpty {
+            appState.showToast("List now shows all transactions.", kind: .info)
+        } else {
+            appState.showToast("List now shows \(chips.map(\.label).joined(separator: " · ")).", kind: .info)
         }
         let scopeRows = rowsForScope
         let fundNames = viewModel.fundNames
@@ -686,14 +701,17 @@ private struct PDFKitView: UIViewRepresentable {
 // MARK: - PDF renderer (UIGraphicsPDFRenderer)
 
 /// Draws a `TransactionExportPDFStatement` as a branded STAGE
-/// statement (build 59, Nov 22, 2026): wordmark header in
-/// uniform stage blue, a Summary section with three donut charts
-/// (Money In vs Out, Spending by Kind, Tzedaka Share) built from
-/// the same transactions as the table, the table (date, merchant —
-/// ALL CAPS, build 65 — amount, kind) with amounts and kinds in the transaction
-/// colour code, footer totals, and a page number on every page.
-/// Letter pages. The content model is kit-tested; this is only
-/// the drawing.
+/// statement (build 59, Nov 22, 2026): the S + wordmark lockup in
+/// exact brand blue #0288dd, a Summary section with three donut
+/// charts (Money In vs Out, Spending by Kind, Tzedaka Share) built
+/// from the same transactions as the table — a single-slice chart
+/// renders as a centred dot + label instead of a solid ring
+/// (build 68, item 19a) — the table (date, merchant — ALL CAPS,
+/// build 65 — amount, kind) with a banded header, alternating row
+/// shading, and amounts and kinds in the transaction colour code,
+/// footer totals under a stage-blue rule, and a page number on
+/// every page. Letter pages. The content model is kit-tested; this
+/// is only the drawing.
 public enum TransactionExportPDFRenderer {
     private static let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792)
     private static let margin: CGFloat = 40
@@ -743,11 +761,15 @@ public enum TransactionExportPDFRenderer {
 
             var y = margin
             context.beginPage()
-            // Branded header: the STAGE wordmark in one uniform
-            // stage blue (no S logo in a PDF — the full wordmark
-            // reads as one word), then household, range, generated.
-            y = draw("S · T · A · G · E", at: y, font: .boldSystemFont(ofSize: 20), color: stageBlue)
-            y = draw(statement.householdName, at: y + 4, font: .boldSystemFont(ofSize: 18), color: ink)
+            // Branded header (build 68, item 19b): the proper S +
+            // wordmark lockup — the real S logo asset (AppLogo, the
+            // same circular mark as the loading page) beside
+            // "T · A · G · E" in the exact brand blue #0288dd. The
+            // old text-only "S · T · A · G · E" rendered teal-ish
+            // and without the S mark.
+            y = drawWordmark(at: y)
+            y = draw("TRANSACTION STATEMENT", at: y + 6, font: .boldSystemFont(ofSize: 10), color: muted)
+            y = draw(statement.householdName, at: y + 6, font: .boldSystemFont(ofSize: 18), color: ink)
             y = draw(statement.dateRange, at: y + 4, font: .systemFont(ofSize: 13), color: muted)
             y = draw(statement.generatedLine, at: y + 2, font: .systemFont(ofSize: 12), color: muted)
             y += 12
@@ -768,13 +790,13 @@ public enum TransactionExportPDFRenderer {
             }
             // Table.
             y = drawTableHeader(at: y)
-            for row in statement.rows {
+            for (index, row) in statement.rows.enumerated() {
                 if y + 20 > pageRect.height - margin - 80 {
                     beginNewPage()
                     y = margin
                     y = drawTableHeader(at: y)
                 }
-                y = drawTableRow(row, at: y)
+                y = drawTableRow(row, at: y, index: index)
             }
             // Footer totals: a new page when they would not fit.
             if y + 76 > pageRect.height - margin {
@@ -782,7 +804,10 @@ public enum TransactionExportPDFRenderer {
                 y = margin
             }
             y += 8
-            drawDivider(at: y)
+            // Build 68 (item 19c): the totals close under a thick
+            // stage-blue rule, like the header — the statement
+            // opens and closes on the brand.
+            drawThickDivider(at: y, color: stageBlue)
             y += 12
             y = drawTotal(label: "Total In", value: statement.totalInText, at: y, bold: false, valueColor: deep)
             y = drawTotal(label: "Total Out", value: statement.totalOutText, at: y, bold: false, valueColor: ink)
@@ -819,13 +844,25 @@ public enum TransactionExportPDFRenderer {
             let centerX = columnX + columnWidth / 2
             // Title, centered over the donut.
             _ = drawCentered(chart.title, at: centerX, y: sectionTop, font: .boldSystemFont(ofSize: 11), color: ink)
-            // Donut, centered in the column.
-            let donutCenter = CGPoint(x: centerX, y: sectionTop + 14 + 8 + donutRadius)
-            drawDonut(chart: chart, center: donutCenter, outerRadius: donutRadius, holeRadius: holeRadius)
-            // Legend, left-aligned in the column.
-            let legendX = columnX + 8
-            let legendY = sectionTop + 14 + 8 + donutRadius * 2 + 8
-            _ = drawLegend(slices: chart.slices, total: chart.totalCents, at: legendX, y: legendY, width: columnWidth - 16)
+            if chart.slices.count == 1 {
+                // Build 68 (item 19a): a single slice IS the whole
+                // chart — a donut ring would be one solid ring in
+                // the slice's colour, which for Spending (ink
+                // #0f172a) rendered as a solid BLACK ring. There is
+                // nothing to compare, so there is no donut: a
+                // centred colour dot + the label, amount and 100%.
+                // The section height is unchanged, so pagination
+                // is unaffected.
+                drawSingleSlice(chart: chart, centerX: centerX, top: sectionTop + 14 + 8)
+            } else {
+                // Donut, centered in the column.
+                let donutCenter = CGPoint(x: centerX, y: sectionTop + 14 + 8 + donutRadius)
+                drawDonut(chart: chart, center: donutCenter, outerRadius: donutRadius, holeRadius: holeRadius)
+                // Legend, left-aligned in the column.
+                let legendX = columnX + 8
+                let legendY = sectionTop + 14 + 8 + donutRadius * 2 + 8
+                _ = drawLegend(slices: chart.slices, total: chart.totalCents, at: legendX, y: legendY, width: columnWidth - 16)
+            }
         }
         return sectionTop + 14 + 8 + donutRadius * 2 + 8 + CGFloat(maxSlices * 26)
     }
@@ -853,6 +890,50 @@ public enum TransactionExportPDFRenderer {
         ))
         UIColor.white.setFill()
         hole.fill()
+    }
+
+    /// The STAGE lockup for the PDF header: the real S logo
+    /// asset (AppLogo) clipped to a circle, beside "T · A · G · E"
+    /// in the exact brand blue #0288dd (DesignTokens.stageBlueHex).
+    /// Falls back to the text-only wordmark when the asset is
+    /// unavailable. Returns the y below the lockup.
+    private static func drawWordmark(at y: CGFloat) -> CGFloat {
+        let logoSize: CGFloat = 26
+        let font = UIFont.boldSystemFont(ofSize: 20)
+        let text = "T · A · G · E"
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: stageBlue]
+        let textSize = (text as NSString).size(withAttributes: attributes)
+        guard let logo = UIImage(named: "AppLogo") else {
+            return draw("S · T · A · G · E", at: y, font: font, color: stageBlue)
+        }
+        let context = UIGraphicsGetCurrentContext()
+        context?.saveGState()
+        let logoRect = CGRect(x: margin, y: y, width: logoSize, height: logoSize)
+        UIBezierPath(ovalIn: logoRect).addClip()
+        logo.draw(in: logoRect)
+        context?.restoreGState()
+        let textY = y + (logoSize - textSize.height) / 2
+        (text as NSString).draw(at: CGPoint(x: margin + logoSize + 8, y: textY), withAttributes: attributes)
+        return y + logoSize
+    }
+
+    /// A single-slice chart (item 19a): one centred colour dot
+    /// with "100%" in white, the slice label under it, then the
+    /// amount — no donut ring, because a 100% ring in the slice
+    /// colour reads as a solid black disc for Spending ink.
+    private static func drawSingleSlice(chart: TransactionExportChart, centerX: CGFloat, top: CGFloat) {
+        guard let slice = chart.slices.first else { return }
+        let dotRadius: CGFloat = 16
+        let dotCenter = CGPoint(x: centerX, y: top + dotRadius + 8)
+        let dot = UIBezierPath(ovalIn: CGRect(
+            x: dotCenter.x - dotRadius, y: dotCenter.y - dotRadius,
+            width: dotRadius * 2, height: dotRadius * 2
+        ))
+        color(hex: slice.colorHex).setFill()
+        dot.fill()
+        _ = drawCentered("100%", at: centerX, y: dotCenter.y - 7, font: .boldSystemFont(ofSize: 11), color: .white)
+        _ = drawCentered(slice.label, at: centerX, y: dotCenter.y + dotRadius + 10, font: .boldSystemFont(ofSize: 12), color: ink)
+        _ = drawCentered(slice.amountText, at: centerX, y: dotCenter.y + dotRadius + 28, font: .systemFont(ofSize: 12), color: muted)
     }
 
     /// The legend under one donut: per slice, a colour dot +
@@ -925,18 +1006,31 @@ public enum TransactionExportPDFRenderer {
     }
 
     private static func drawTableHeader(at y: CGFloat) -> CGFloat {
-        let font = UIFont.boldSystemFont(ofSize: 11)
+        // Build 68 (item 19c): the header sits on a light band
+        // with small-caps labels, so the table reads as a proper
+        // statement table instead of loose rows.
+        let band = UIColor(red: 0xf8 / 255, green: 0xfa / 255, blue: 0xfc / 255, alpha: 1)
+        band.setFill()
+        UIRectFill(CGRect(x: margin, y: y - 4, width: contentWidth, height: 24))
+        let font = UIFont.boldSystemFont(ofSize: 10)
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: muted]
-        ("Date" as NSString).draw(at: CGPoint(x: margin, y: y), withAttributes: attributes)
-        ("Merchant" as NSString).draw(at: CGPoint(x: margin + 100, y: y), withAttributes: attributes)
-        drawRightAligned("Amount", at: CGPoint(x: margin + 348, y: y), width: 92, font: font, color: muted)
-        ("Kind" as NSString).draw(at: CGPoint(x: margin + 448, y: y), withAttributes: attributes)
+        ("DATE" as NSString).draw(at: CGPoint(x: margin, y: y), withAttributes: attributes)
+        ("MERCHANT" as NSString).draw(at: CGPoint(x: margin + 100, y: y), withAttributes: attributes)
+        drawRightAligned("AMOUNT", at: CGPoint(x: margin + 348, y: y), width: 92, font: font, color: muted)
+        ("KIND" as NSString).draw(at: CGPoint(x: margin + 448, y: y), withAttributes: attributes)
         let nextY = y + 16
         drawDivider(at: nextY + 4)
         return nextY + 12
     }
 
-    private static func drawTableRow(_ row: TransactionExportPDFRow, at y: CGFloat) -> CGFloat {
+    private static func drawTableRow(_ row: TransactionExportPDFRow, at y: CGFloat, index: Int = 0) -> CGFloat {
+        // Build 68 (item 19c): alternating row shading — even rows
+        // on a whisper-light fill — so long tables stay scannable.
+        if index % 2 == 0 {
+            let shade = UIColor(red: 0xf9 / 255, green: 0xfa / 255, blue: 0xfb / 255, alpha: 1)
+            shade.setFill()
+            UIRectFill(CGRect(x: margin, y: y - 2, width: contentWidth, height: 20))
+        }
         let font = UIFont.systemFont(ofSize: 12)
         let rowColor = color(hex: row.colorHex)
         let merchantAttributes: [NSAttributedString.Key: Any] = [

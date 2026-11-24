@@ -102,7 +102,7 @@ public struct CharityIncomeForm: View {
                     Button(action: { showingRateInfo = true }) {
                         Image(systemName: "info.circle")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color(hex: "#6b7280"))
+                            .foregroundStyle(DesignTokens.primary)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("About the default rate")
@@ -124,7 +124,7 @@ public struct CharityIncomeForm: View {
                         Button(action: { showingCorrectionInfo = true }) {
                             Image(systemName: "info.circle")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Color(hex: "#6b7280"))
+                                .foregroundStyle(DesignTokens.primary)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("About correcting an entry")
@@ -132,8 +132,7 @@ public struct CharityIncomeForm: View {
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     FieldLabel("Source", required: true)
-                    TextField("", text: $sourceText)
-                        .textFieldStyle(.roundedBorder)
+                    FundsTextField("", text: $sourceText)
                         .onChange(of: sourceText) { _, newValue in
                             if newValue.count > 80 { sourceText = String(newValue.prefix(80)) }
                         }
@@ -145,9 +144,8 @@ public struct CharityIncomeForm: View {
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     FieldLabel("Rate % (blank = default)")
-                    TextField("", text: $rateOverrideText)
+                    FundsTextField("", text: $rateOverrideText)
                         .keyboardType(.decimalPad)
-                        .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 120)
                 }
                 // Build 47 (owner, Nov 19, 2026 — page cleanup):
@@ -160,8 +158,7 @@ public struct CharityIncomeForm: View {
                 if showNoteField {
                     VStack(alignment: .leading, spacing: 4) {
                         FieldLabel("Note")
-                        TextField("", text: $note)
-                            .textFieldStyle(.roundedBorder)
+                        FundsTextField("", text: $note)
                     }
                 } else {
                     FundsQuietButton("Add a Note") {
@@ -378,20 +375,137 @@ public struct AddToCharitySection: View {
     }
 }
 
-/// The Add to Charity popup (owner, Nov 16, 2026 — build 40):
-/// an amount field + Add/Cancel, in the rename sheet's style
-/// (iPad 600pt centred, 17pt). Validation lives here: the amount
-/// must be above $0.00 — empty / zero / negative shows a
-/// plain-language error INSIDE the popup and the popup stays open
-/// (the field keeps the typed input). On success the popup closes,
-/// the field clears, and the Available balance updates everywhere.
+// MARK: - Tzedaka: one compact sheet (build 68, item 30)
+//
+// "Add to Tzedaka" (money IN to Available) and "Record a
+// Donation" (money OUT — off Available, into Given) are opposite
+// directions, so they were two sheets — one fitted, one
+// full-screen, both mostly empty white space. They are now ONE
+// compact fitted sheet with the choice at the top: "Add" vs
+// "Record a Donation", each with its own direction line so the
+// choice is unmistakable. Each choice wires to the existing
+// operation (addToCharity / recordCharityCashGift); no new
+// backend API. The old AddToCharitySheet and RecordCashGiftSheet
+// below are thin wrappers that open this sheet pre-set to their
+// mode, so the Weekly Budget / Tzedaka sheets (HomeView) keep
+// compiling until they are rewired to this one directly.
+public struct TzedakaActionSheet: View {
+    public enum Mode: Hashable {
+        case add
+        case record
+    }
+
+    @ObservedObject public var viewModel: FundsViewModel
+    public let fundName: String
+    public var onClose: () -> Void
+    @State private var mode: Mode
+    @State private var amountText = ""
+    @State private var noteText = ""
+    @State private var actionError: String?
+    @State private var showAvailableInfo = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    public init(viewModel: FundsViewModel, fundName: String, initialMode: Mode = .add, onClose: @escaping () -> Void = {}) {
+        self.viewModel = viewModel
+        self.fundName = fundName
+        self.onClose = onClose
+        self._mode = State(initialValue: initialMode)
+    }
+
+    /// The Available charity balance, for the over-Available check
+    /// (client-side; the RPC re-checks server-side and refuses too).
+    private var availableCents: Int? { viewModel.charitySummary?.remainingCents }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: TitleCase.apply(to: fundName), onClose: onClose)
+            SquarishPicker(
+                [(Mode.add, "Add"), (Mode.record, "Record a Donation")],
+                selection: $mode
+            )
+            Text(mode == .add
+                 ? "Puts money into \(fundName) Available."
+                 : "Records a donation given — it comes off Available and goes into Given.")
+                .font(.system(size: 14))
+                .foregroundStyle(Color(hex: "#6b7280"))
+            if mode == .record, let availableCents {
+                HStack(spacing: 6) {
+                    Text("Available to give: \(MoneyFormat.formatCents(availableCents)).")
+                        .font(.system(size: 15))
+                        .foregroundStyle(DesignTokens.ink)
+                    Button(action: { showAvailableInfo = true }) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                            .padding(6)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("About recording a donation")
+                }
+            }
+            DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 52)
+            if mode == .record {
+                FundsTextField("Note", text: $noteText)
+                    .autocorrectionDisabled()
+            }
+            if let actionError {
+                FundsErrorBox(actionError)
+            }
+            HStack(spacing: 12) {
+                FundsPrimaryButton(mode == .add ? "Add" : "Record", isBusy: viewModel.busyAction == "add-charity" || viewModel.busyAction == "record-cash-gift") {
+                    save()
+                }
+                FundsTertiaryButton("Cancel") { onClose() }
+            }
+        }
+        .padding()
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        .presentationDetents([.fraction(0.45), .medium])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(.white)
+        .alert(TitleCase.apply(to: "Record a Donation"), isPresented: $showAvailableInfo) {
+            Button("OK") {}
+        } message: {
+            Text("The donation comes off Available and goes into Given.")
+        }
+    }
+
+    private func save() {
+        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else {
+            actionError = "Enter an amount above $0.00."
+            return
+        }
+        if mode == .record, let availableCents, cents > availableCents {
+            actionError = "That is more than the \(MoneyFormat.formatCents(availableCents)) available to give."
+            return
+        }
+        actionError = nil
+        Task {
+            // Clear only on success — on failure the typed input
+            // stays beside the error (F-P1-4).
+            let ok: Bool
+            if mode == .add {
+                ok = await viewModel.addToCharity(amountCents: cents)
+            } else {
+                ok = await viewModel.recordCharityCashGift(amountCents: cents, note: noteText)
+            }
+            if ok {
+                amountText = ""
+                noteText = ""
+                onClose()
+            }
+        }
+    }
+}
+
+/// The Add to Charity popup (owner, Nov 16, 2026 — build 40).
+/// Build 68 (item 30): the popup itself is TzedakaActionSheet
+/// above (pre-set to Add) — see there for the behaviour.
 public struct AddToCharitySheet: View {
     @ObservedObject public var viewModel: FundsViewModel
     public let fundName: String
     public var onClose: () -> Void
-    @State private var amountText = ""
-    @State private var addError: String?
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(viewModel: FundsViewModel, fundName: String, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
@@ -399,52 +513,13 @@ public struct AddToCharitySheet: View {
         self.onClose = onClose
     }
 
+    // Build 68 (item 30): this sheet IS the single compact
+    // Tzedaka sheet now (TzedakaActionSheet, pre-set to Add) —
+    // the old amount-only popup is gone. Kept as a wrapper so
+    // the Tzedaka sheet (HomeView) keeps compiling until it
+    // opens TzedakaActionSheet directly.
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SheetHeader(title: TitleCase.apply(to: "Add to \(fundName)"), onClose: onClose)
-            DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
-            if let addError {
-                FundsErrorBox(addError)
-            }
-            HStack(spacing: 12) {
-                FundsPrimaryButton("Add", isBusy: viewModel.busyAction == "add-charity") {
-                    add()
-                }
-                FundsTertiaryButton("Cancel") { onClose() }
-            }
-            // Build 43 (owner, Nov 17, 2026 — item 18): the
-            // trailing Spacer top-anchors the content in the
-            // sheet — without it the short form centres itself
-            // vertically in the detent.
-            Spacer()
-        }
-        .padding()
-        // iPad width (owner, Nov 12, 2026): 600pt in the regular
-        // size class, full-width on iPhone — same treatment as the
-        // rename sheet.
-        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet
-        // sized to the content (C-4 fitted detents), not a
-        // full-screen page — the form is one field and two
-        // buttons, and the full screen left a huge empty area.
-        .presentationDetents([.fraction(0.45), .medium])
-        .presentationDragIndicator(.visible)
-    }
-
-    private func add() {
-        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else {
-            addError = "Enter an amount above $0.00."
-            return
-        }
-        addError = nil
-        Task {
-            // Clear only on success — on failure the typed input
-            // stays beside the error (F-P1-4).
-            if await viewModel.addToCharity(amountCents: cents) {
-                amountText = ""
-                onClose()
-            }
-        }
+        TzedakaActionSheet(viewModel: viewModel, fundName: fundName, initialMode: .add, onClose: onClose)
     }
 }
 
@@ -505,22 +580,14 @@ public struct RecordCashGiftSection: View {
     }
 }
 
-/// The Record a Transaction popup (owner, Nov 16, 2026 — build 40): an
-/// amount field + a note + Record/Cancel, in the rename
-/// sheet's style (iPad 600pt centred, 17pt). Validation lives here:
-/// the amount must be above $0.00 and must not exceed the Available
-/// balance — empty / zero / negative / over-Available shows a
-/// plain-language error INSIDE the popup and the popup stays open
-/// (the field keeps the typed input). On success the popup closes,
-/// the field clears, and the balances update everywhere.
+/// The Record a Transaction popup (owner, Nov 16, 2026 — build 40).
+/// Build 68 (item 30): the popup itself is TzedakaActionSheet
+/// above (pre-set to Record a Donation) — see there for the
+/// behaviour, including the over-Available check.
 public struct RecordCashGiftSheet: View {
     @ObservedObject public var viewModel: FundsViewModel
     public let fundName: String
     public var onClose: () -> Void
-    @State private var amountText = ""
-    @State private var noteText = ""
-    @State private var giftError: String?
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(viewModel: FundsViewModel, fundName: String, onClose: @escaping () -> Void = {}) {
         self.viewModel = viewModel
@@ -528,69 +595,14 @@ public struct RecordCashGiftSheet: View {
         self.onClose = onClose
     }
 
-    /// The Available charity balance, for the over-Available check
-    /// (client-side; the RPC re-checks server-side and refuses too).
-    private var availableCents: Int? { viewModel.charitySummary?.remainingCents }
-
+    // Build 68 (item 30): this sheet IS the single compact
+    // Tzedaka sheet now (TzedakaActionSheet, pre-set to Record
+    // a Donation) — the old full-screen sheet with its inline
+    // explainer is gone. Kept as a wrapper so the Tzedaka sheet
+    // (HomeView) keeps compiling until it opens
+    // TzedakaActionSheet directly.
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SheetHeader(title: TitleCase.apply(to: "Record a Transaction to \(fundName)"), onClose: onClose)
-            if let availableCents {
-                FundsMuted("Available to give: \(MoneyFormat.formatCents(availableCents)). The donation comes off Available and goes into Given.")
-            }
-            DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
-            TextField("Note", text: $noteText)
-                .font(.system(size: 17))
-                .textFieldStyle(.roundedBorder)
-                .frame(minHeight: 48)
-                .autocorrectionDisabled()
-            if let giftError {
-                FundsErrorBox(giftError)
-            }
-            HStack(spacing: 12) {
-                FundsPrimaryButton("Record", isBusy: viewModel.busyAction == "record-cash-gift") {
-                    record()
-                }
-                FundsTertiaryButton("Cancel") { onClose() }
-            }
-            // Build 43 (owner, Nov 17, 2026 — item 18): the
-            // trailing Spacer top-anchors the content in the
-            // sheet — without it the short form centres itself
-            // vertically in the detent.
-            Spacer()
-        }
-        .padding()
-        // iPad width (owner, Nov 12, 2026): 600pt in the regular
-        // size class, full-width on iPhone — same treatment as the
-        // rename sheet.
-        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet
-        // sized to the content (C-4 fitted detents), not a
-        // full-screen page — the form is two fields and two
-        // buttons, and the full screen left a huge empty area.
-        .presentationDetents([.fraction(0.45), .medium])
-        .presentationDragIndicator(.visible)
-    }
-
-    private func record() {
-        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else {
-            giftError = "Enter an amount above $0.00."
-            return
-        }
-        if let availableCents, cents > availableCents {
-            giftError = "That is more than the \(MoneyFormat.formatCents(availableCents)) available to give."
-            return
-        }
-        giftError = nil
-        Task {
-            // Clear only on success — on failure the typed input
-            // stays beside the error (F-P1-4).
-            if await viewModel.recordCharityCashGift(amountCents: cents, note: noteText) {
-                amountText = ""
-                noteText = ""
-                onClose()
-            }
-        }
+        TzedakaActionSheet(viewModel: viewModel, fundName: fundName, initialMode: .record, onClose: onClose)
     }
 }
 
@@ -837,7 +849,7 @@ public struct CharityIncomeHistory: View {
                                 .font(.system(size: 14))
                                 .foregroundStyle(DesignTokens.ink)
                             HStack(spacing: 12) {
-                                FundsPrimaryButton("Delete", isBusy: viewModel.busyAction == "delete-cash-gift") {
+                                FundsDangerButton("Delete", isBusy: viewModel.busyAction == "delete-cash-gift") {
                                     Task {
                                         if await viewModel.deleteCharityCashGift(gift) {
                                             confirmingCashGiftId = nil

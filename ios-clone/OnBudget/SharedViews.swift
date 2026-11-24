@@ -14,6 +14,9 @@
 // 2026), auto-dismiss 4s. Clone basis: live web v66.
 
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 import OnBudgetKit
 
 // MARK: - Buttons
@@ -111,6 +114,11 @@ public struct SmallSoftButtonStyle: ButtonStyle {
 /// glide, restored build 66 — build 65's instant jump read as
 /// broken); the slide is the page-select exception to the
 /// instant-change rule, which covers expand/collapse only.
+/// Build 68 (owner, Nov 23, 2026 — "Header is small and ugly..
+/// The slide bar is tiny.."): BIGGER and more prominent — larger
+/// text (16pt), larger padding/tap targets, and a bigger/taller
+/// sliding pill, so the header reads as a real control, not a
+/// tiny sliver.
 public struct PageSelectControl: View {
     @Binding var selectedTab: AppTab
     /// Build 66: the namespace for the sliding indicator — the
@@ -130,14 +138,14 @@ public struct PageSelectControl: View {
                     selectedTab = tab
                 } label: {
                     Text(tab.rawValue)
-                        .font(.system(size: 13.5, weight: isSelected ? .semibold : .medium))
+                        .font(.system(size: 16, weight: isSelected ? .semibold : .medium))
                         .foregroundStyle(isSelected ? DesignTokens.ink : DesignTokens.segmentInactive)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 20)
                         .background(
                             Group {
                                 if isSelected {
-                                    RoundedRectangle(cornerRadius: 8)
+                                    RoundedRectangle(cornerRadius: 12)
                                         .fill(DesignTokens.track)
                                         .matchedGeometryEffect(id: "pageSelectIndicator", in: indicatorNamespace)
                                 }
@@ -148,9 +156,9 @@ public struct PageSelectControl: View {
                 .accessibilityIdentifier("pageSelect.\(tab.rawValue.lowercased())")
             }
         }
-        .padding(3)
+        .padding(6)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 16)
                 .fill(Color.white)
                 .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 2)
         )
@@ -309,7 +317,7 @@ public struct DollarTextField: View {
     public let maxWidth: CGFloat?
     public let minHeight: CGFloat
 
-    public init(text: Binding<String>, placeholder: String = "0.00", maxWidth: CGFloat? = 220, minHeight: CGFloat = 44) {
+    public init(text: Binding<String>, placeholder: String = "0.00", maxWidth: CGFloat? = 220, minHeight: CGFloat = 48) {
         self._text = text
         self.placeholder = placeholder
         self.maxWidth = maxWidth
@@ -324,14 +332,14 @@ public struct DollarTextField: View {
             TextField(placeholder, text: $text)
                 .keyboardType(.decimalPad)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .frame(maxWidth: maxWidth, minHeight: minHeight, alignment: .leading)
         .background(.white)
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 12)
                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -368,14 +376,14 @@ public struct DateField: View {
                     .font(.system(size: 15))
                     .foregroundStyle(Color(hex: "#6b7280"))
             }
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             .background(.white)
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             // Whole-area tap target (owner, Nov 15, 2026 app-wide
             // pass): the padded box responds across its full frame.
             .contentShape(Rectangle())
@@ -556,11 +564,12 @@ public struct LoadingView: View {
                 // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
                 // build 47): the logo + "T · A · G · E", never the logo
                 // next to the full word "STAGE" (no second S).
-                // Build 54 (owner, Nov 21, 2026): the TAGE letters
-                // are bolder (black weight) and slightly larger
-                // (30pt, was 28pt) — they were a drop too thin and
-                // small next to the S logo.
-                StageWordmarkText(font: .system(size: 30, weight: .black))
+                // Build 68 (owner, Nov 23, 2026 — item 17): the TAGE
+                // letters are THINNER and classier — light weight,
+                // not black. Build 54 had made them black/bolder
+                // ("a drop too thin"); the owner now wants the
+                // thinner, more elegant letterforms instead.
+                StageWordmarkText(font: .system(size: 30, weight: .light))
             }
             // Build 54 (owner, Nov 21, 2026): the loading page says
             // the tagline "Spend, Track & Give Easily" instead of
@@ -620,6 +629,58 @@ public struct BrandedLoader: View {
                 .clipShape(Circle())
         }
         .accessibilityLabel("Loading")
+    }
+}
+
+// MARK: - Swipe-back gesture (build 68, item 18)
+//
+// The edge-swipe-back gesture stopped navigating back: only the
+// back button worked. Hiding the navigation bar (the Transactions
+// stack and the Settings cover both use `.toolbar(.hidden, for:
+// .navigationBar)` with their own chevron back buttons) turns the
+// navigation controller's interactive pop gesture off, so a
+// left-edge swipe does nothing. This re-enables it: a tiny hosted
+// view controller that finds its navigation controller and forces
+// the gesture recogniser back on whenever its view appears or
+// lays out (SwiftUI re-disables it when a new screen is pushed,
+// so a one-time call is not enough). The delegate is deliberately
+// left alone — SwiftUI owns it, and only the enabled flag is
+// forced. Attach with `.enableSwipeBack()` inside any
+// NavigationStack content (the Transactions tab + its subpages,
+// the Settings cover). No behaviour changes besides the gesture:
+// the back buttons keep working exactly as before.
+public struct SwipeBackEnabler: UIViewControllerRepresentable {
+    public init() {}
+
+    public func makeUIViewController(context: Context) -> UIViewController {
+        SwipeBackViewController()
+    }
+
+    public func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+
+    private final class SwipeBackViewController: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            enablePopGesture()
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            enablePopGesture()
+        }
+
+        private func enablePopGesture() {
+            guard let navigationController else { return }
+            navigationController.interactivePopGestureRecognizer?.isEnabled = true
+        }
+    }
+}
+
+public extension View {
+    /// Restore the left-edge swipe-back gesture inside a
+    /// NavigationStack whose bar is hidden (build 68, item 18).
+    func enableSwipeBack() -> some View {
+        background(SwipeBackEnabler())
     }
 }
 

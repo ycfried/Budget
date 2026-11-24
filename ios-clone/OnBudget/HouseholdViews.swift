@@ -124,7 +124,12 @@ public struct HouseholdView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("household.inviteCode")
-                .padding(12)
+                // Build 68 (shared text-field standard): a
+                // comfortable 48pt height, 12pt vertical / 14pt
+                // horizontal padding, 12pt corners.
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(minHeight: 48)
                 .background(.white)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))

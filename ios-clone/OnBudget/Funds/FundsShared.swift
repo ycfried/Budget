@@ -511,6 +511,161 @@ public struct FundsEditorQuietButton: View {
     }
 }
 
+// MARK: - Build 68 shared pieces
+//
+// CalculatorGlyph (item 11), FundsTextField (items 7/13),
+// FundsDetailSkeleton (item 23) and the red remove/delete
+// buttons (item 8) live here so every Funds screen shares them.
+
+/// A calculator glyph that always renders (build 68, item 11):
+/// the "calculator" SF Symbol draws NOTHING on device (verified
+/// build 66) and "±" (plus.forwardslash.minus) reads as maths
+/// keys, not a calculator. This glyph is drawn from shapes — an
+/// outlined body, a display bar, a 3×3 keypad — so it can never
+/// fail to resolve. `color` is white on a blue button by default;
+/// pass brand blue (#2f6bff) on a white row.
+public struct CalculatorGlyph: View {
+    public let size: CGFloat
+    public let color: Color
+
+    public init(size: CGFloat = 20, color: Color = .white) {
+        self.size = size
+        self.color = color
+    }
+
+    public var body: some View {
+        VStack(spacing: size * 0.12) {
+            RoundedRectangle(cornerRadius: size * 0.06)
+                .frame(width: size * 0.62, height: size * 0.14)
+            VStack(spacing: size * 0.12) {
+                ForEach(0..<3, id: \.self) { _ in
+                    HStack(spacing: size * 0.12) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            Circle()
+                                .frame(width: size * 0.09, height: size * 0.09)
+                        }
+                    }
+                }
+            }
+        }
+        .foregroundStyle(color)
+        .frame(width: size * 0.8, height: size)
+        .overlay(
+            RoundedRectangle(cornerRadius: size * 0.18)
+                .stroke(color, lineWidth: max(1.5, size * 0.07))
+        )
+    }
+}
+
+/// The standard plain text field (build 68, items 7/13): the
+/// shared comfortable size — 17pt text, 14pt horizontal / 12pt
+/// vertical padding, 12pt radius, white with a #e5e7eb hairline,
+/// minimum 48pt tall — matching DollarTextField's treatment, so
+/// every field in a form reads as one family. Plain
+/// `.textFieldStyle(.roundedBorder)` fields varied in height and
+/// radius; use this instead. Extra modifiers (keyboard type,
+/// autocorrection, onChange caps) apply at the call site.
+public struct FundsTextField: View {
+    public let placeholder: String
+    @Binding public var text: String
+    public let axis: Axis
+
+    public init(_ placeholder: String, text: Binding<String>, axis: Axis = .horizontal) {
+        self.placeholder = placeholder
+        self._text = text
+        self.axis = axis
+    }
+
+    public var body: some View {
+        TextField(placeholder, text: $text, axis: axis)
+            .font(.system(size: 17))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// The Funds page loading skeleton (build 68, item 23): bigger,
+/// shaped like the loaded card detail — three 20pt rows plus a
+/// full-width 52pt button block — so the card holds its loaded
+/// size while loading instead of three thin 16pt lines.
+public struct FundsDetailSkeleton: View {
+    public init() {}
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SkeletonBlock(width: 220, height: 20)
+            SkeletonBlock(width: 190, height: 20)
+            SkeletonBlock(width: 210, height: 20)
+            SkeletonBlock(width: nil, height: 52, cornerRadius: 10)
+        }
+    }
+}
+
+/// Small red button for list-row remove/delete actions (build
+/// 68, item 8): the app's error red #dc2626 on #fef2f2 — the
+/// same soft-red treatment as FundsDangerButton, at the small
+/// list-row size. Delete actions are never grey tertiary.
+public struct FundsSmallDangerButton: View {
+    public let label: String
+    public let isBusy: Bool
+    public let action: () -> Void
+
+    public init(_ label: String, isBusy: Bool = false, action: @escaping () -> Void) {
+        self.label = label
+        self.isBusy = isBusy
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(TitleCase.apply(to: label))
+                .font(.system(size: 14, weight: .semibold))
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(DesignTokens.errorBackground)
+                .foregroundStyle(DesignTokens.errorText)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.6 : 1.0)
+    }
+}
+
+/// Editor-size red text button (build 68, item 8): "Remove
+/// Override" and friends — a remove action at editor size, in
+/// the exact remove red #dc2626, never grey quiet text and never
+/// the system destructive role (whose red differs).
+public struct FundsEditorDangerButton: View {
+    public let label: String
+    public let isBusy: Bool
+    public let action: () -> Void
+
+    public init(_ label: String, isBusy: Bool = false, action: @escaping () -> Void) {
+        self.label = label
+        self.isBusy = isBusy
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(TitleCase.apply(to: label))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color(hex: "#dc2626"))
+                .padding(.vertical, 13)
+                .padding(.horizontal, 14)
+        }
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.6 : 1.0)
+    }
+}
+
 // MARK: - Activity rows (build 36)
 //
 // Minimal overview rows for "Activity & Transactions" (owner, Nov 16,
@@ -539,7 +694,11 @@ public struct FundsActivityRow<Summary: View, Detail: View>: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        // Build 68 (item 25b): the chevron is brand blue (an
+        // action hint, not muted text) and the expanded detail
+        // sits in a soft #f8fafc box, so it reads as a designed
+        // panel instead of bare plain text under the row.
+        VStack(alignment: .leading, spacing: 8) {
             Button {
                 isExpanded.toggle()
             } label: {
@@ -548,7 +707,7 @@ public struct FundsActivityRow<Summary: View, Detail: View>: View {
                     Spacer()
                     Text("⌄")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(DesignTokens.muted)
+                        .foregroundStyle(DesignTokens.primary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                 }
                 .contentShape(Rectangle())
@@ -556,6 +715,10 @@ public struct FundsActivityRow<Summary: View, Detail: View>: View {
             .buttonStyle(.plain)
             if isExpanded {
                 detail
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(hex: "#f8fafc"))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
     }
@@ -662,15 +825,14 @@ public struct FundTransactionRow: View {
                                     Text("Reason (Required)")
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundStyle(DesignTokens.ink)
-                                    TextField("Reason", text: $deleteReason, axis: .vertical)
-                                        .textFieldStyle(.roundedBorder)
+                                    FundsTextField("Reason", text: $deleteReason, axis: .vertical)
                                 }
                                 if let deleteReasonError {
                                     FundsErrorBox(deleteReasonError)
                                 }
                             }
                             HStack(spacing: 12) {
-                                FundsPrimaryButton(
+                                FundsDangerButton(
                                     transaction.source == .manual ? "Delete" : "Move to Trash",
                                     isBusy: isDeleting
                                 ) {
@@ -699,7 +861,7 @@ public struct FundTransactionRow: View {
                             }
                         }
                     } else {
-                        FundsSmallTertiaryButton("Delete") {
+                        FundsSmallDangerButton("Delete") {
                             deleteReason = ""
                             deleteReasonError = nil
                             confirmingDelete = true
@@ -870,6 +1032,13 @@ public struct FundsExpandableCard<Expanded: View>: View {
     /// 2026): shown by tapping the ⓘ in the header. Nil hides
     /// the icon entirely.
     public let fundDescription: String?
+    /// Show on Home control (build 68, item 26): only funds that
+    /// can be hidden from Home (Savings, Overspent (Past)) pass
+    /// this; the control lives INSIDE the card, in the expanded
+    /// detail, instead of the old floating row below the card.
+    public let showHomeVisibility: Bool
+    public let isHiddenFromHome: Bool
+    public let onSetHiddenFromHome: ((Bool) -> Void)?
     public let expanded: Expanded
     @State private var showingDescription = false
 
@@ -887,6 +1056,9 @@ public struct FundsExpandableCard<Expanded: View>: View {
         isAdmin: Bool = false,
         onRename: (() -> Void)? = nil,
         fundDescription: String? = nil,
+        showHomeVisibility: Bool = false,
+        isHiddenFromHome: Bool = false,
+        onSetHiddenFromHome: ((Bool) -> Void)? = nil,
         @ViewBuilder expanded: () -> Expanded
     ) {
         self.title = title
@@ -902,6 +1074,9 @@ public struct FundsExpandableCard<Expanded: View>: View {
         self.isAdmin = isAdmin
         self.onRename = onRename
         self.fundDescription = fundDescription
+        self.showHomeVisibility = showHomeVisibility
+        self.isHiddenFromHome = isHiddenFromHome
+        self.onSetHiddenFromHome = onSetHiddenFromHome
         self.expanded = expanded()
     }
 
@@ -969,10 +1144,45 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 // the amount body above already separates the
                 // detail from the header, so the old 28pt top
                 // padding would leave a dead gap.
-                expanded
-                    .padding(.horizontal, pad)
-                    .padding(.top, 8)
-                    .padding(.bottom, 28)
+                VStack(alignment: .leading, spacing: 0) {
+                    expanded
+                    // Build 68 (item 26): Show on Home lives
+                    // INSIDE the card, at the foot of the expanded
+                    // detail — a blue eye icon, the label, and a
+                    // brand-blue toggle — never a floating row
+                    // between cards.
+                    if showHomeVisibility, let onSetHiddenFromHome {
+                        Divider()
+                            .padding(.top, 20)
+                        HStack(spacing: 10) {
+                            Image(systemName: isHiddenFromHome ? "eye.slash" : "eye")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(DesignTokens.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Show on Home")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.ink)
+                                if isHiddenFromHome {
+                                    Text("Hidden from Home — it won't appear on Home.")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Color(hex: "#6b7280"))
+                                }
+                            }
+                            Spacer()
+                            Toggle("", isOn: Binding(
+                                get: { !isHiddenFromHome },
+                                set: { show in onSetHiddenFromHome(!show) }
+                            ))
+                            .labelsHidden()
+                            .tint(DesignTokens.primary)
+                            .accessibilityLabel("Show on Home")
+                        }
+                        .padding(.top, 16)
+                    }
+                }
+                .padding(.horizontal, pad)
+                .padding(.top, 8)
+                .padding(.bottom, 28)
             }
         }
         .background(Color.white)
@@ -1027,9 +1237,9 @@ public struct FundsExpandableCard<Expanded: View>: View {
                     // the name's colour, so icon + name read as
                     // one fund identity.
                     Image(systemName: iconName ?? theme.iconName)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(theme.number)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 24, height: 24)
                 }
             }
             if isLoading {
@@ -1040,7 +1250,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 SkeletonBlock(width: 140, height: 22, cornerRadius: 6, animated: true)
             } else {
                 Text(TitleCase.apply(to: title))
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(titleColor)
                     .lineLimit(2)
             }
@@ -1068,9 +1278,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
             Spacer()
             // Info icon (build 42 — owner, Nov 17, 2026: fund
             // descriptions live behind an info icon, not as a
-            // text line in the expanded card). Sits on the right
-            // side of the header, between the amount and the
-            // chevron, in the header's text colour. A child Button
+            // text line in the expanded card; build 68, item 28:
+            // info icons are brand blue #2f6bff everywhere).
+            // Sits on the right side of the header, between the
+            // amount and the chevron. A child Button
             // wins over the header's tap gesture (like the pencil),
             // so tapping it shows the description instead of
             // toggling the card. Hidden in reorder mode and while
@@ -1080,7 +1291,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 Button(action: { showingDescription = true }) {
                     Image(systemName: "info.circle")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(hintColor)
+                        .foregroundStyle(DesignTokens.primary)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -1105,30 +1316,32 @@ public struct FundsExpandableCard<Expanded: View>: View {
     /// The amount body (build 50, owner Nov 20, 2026): the fund's
     /// amount on the white card body, always visible (collapsed or
     /// expanded) — NAME in the header, AMOUNT in the body. Build 64
-    /// (C-1): one uniform 24pt semibold on every card, in the
-    /// theme's number colour — Spending deep #1d4ed8, Tzedaka
-    /// primary #2f6bff, Savings muted grey #6b7280, Overspent ink
-    /// (the B2 rule: the amount is the same colour as the name) —
-    /// on the full card width with NO minimumScaleFactor, so a long
-    /// amount never shrinks to a different size per card and never
-    /// truncates on an iPhone. Loading shows the same 150-wide
-    /// skeleton block the header used to show (sized to the 24pt
-    /// amount); a failed load shows it static, never a bare "—".
+    /// (C-1): one uniform size on every card, in the theme's
+    /// number colour — Spending deep #1d4ed8, Tzedaka primary
+    /// #2f6bff, Savings muted grey #6b7280, Overspent ink (the B2
+    /// rule: the amount is the same colour as the name) — on the
+    /// full card width with NO minimumScaleFactor, so a long amount
+    /// never shrinks to a different size per card and never
+    /// truncates on an iPhone. Build 68 (item 24): 32pt, with
+    /// tighter top/bottom padding, so the cards feel substantial
+    /// instead of a small number in empty white space. Loading
+    /// shows the same skeleton block (sized to the 32pt amount);
+    /// a failed load shows it static, never a bare "—".
     private func amountBody(pad: CGFloat) -> some View {
         Group {
             if isLoading || amountIsStatus {
-                SkeletonBlock(width: 150, height: 30, cornerRadius: 8, animated: isLoading)
+                SkeletonBlock(width: 180, height: 40, cornerRadius: 8, animated: isLoading)
             } else {
                 Text(amountText)
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(.system(size: 32, weight: .semibold))
                     .foregroundStyle(theme?.number ?? DesignTokens.ink)
                     .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, pad)
-        .padding(.top, 20)
-        .padding(.bottom, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
     }
 }
 

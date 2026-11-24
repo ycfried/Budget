@@ -199,6 +199,11 @@ public struct AppShellView: View {
                     },
                     plaidLauncher: PlaidLinkKitLauncher()
                 )
+                // Build 68 (item 18): the Settings cover is its
+                // own NavigationStack with a hidden bar — the
+                // edge swipe back needs re-enabling inside the
+                // stack (see enableSwipeBack in SharedViews).
+                .enableSwipeBack()
             } else {
                 LoadingView()
             }
@@ -259,7 +264,7 @@ public struct AppShellView: View {
             Spacer()
         }
         .padding(.horizontal, 16)
-        .padding(.top, 12)
+        .padding(.top, 16)
         .background(DesignTokens.background)
         .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
     }
@@ -307,9 +312,13 @@ public struct AppShellView: View {
                 Spacer()
                 Menu {
                     Button("Settings") { appState.openSettings() }
-                    Button("Sign Out", role: .destructive) {
+                    // Build 68 (shared standard): destructive /
+                    // remove red is EXACTLY #dc2626 — never
+                    // `role: .destructive` (the system red differs).
+                    Button("Sign Out") {
                         Task { await appState.signOut() }
                     }
+                    .foregroundStyle(Color(hex: "#dc2626"))
                 } label: {
                     Image(systemName: "person.circle")
                         .font(.system(size: 28))
@@ -354,6 +363,10 @@ public struct AppShellView: View {
     /// the stack — each screen renders its own "← Back" button, as
     /// the web clone does — and the history toast overlay sits on
     /// the stack so the week-tap toast survives the pop.
+    /// Build 68 (item 18): the hidden bar turns the edge swipe
+    /// back off, so `.enableSwipeBack()` re-enables it on the
+    /// stack root and on every subpage (SwiftUI re-disables it
+    /// when a new screen is pushed).
     @ViewBuilder
     private var transactionsTab: some View {
         if let viewModel = transactionsViewModel,
@@ -368,6 +381,7 @@ public struct AppShellView: View {
                     onShowReview: { transactionsPath.append(.review) },
                     onShowMerchantNames: { transactionsPath.append(.merchantNames) }
                 )
+                .enableSwipeBack()
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: TransactionsSubpage.self) { page in
                     transactionsSubpage(page)
@@ -385,19 +399,23 @@ public struct AppShellView: View {
             switch page {
             case .pastWeeks:
                 PastWeeksView(context: context, toast: historyToast, filter: historyFilter, onBack: popTransactionsSubpage)
+                    .enableSwipeBack()
                     .toolbar(.hidden, for: .navigationBar)
             case .activity:
                 ActivityView(context: context, filter: historyFilter, onBack: popTransactionsSubpage)
+                    .enableSwipeBack()
                     .toolbar(.hidden, for: .navigationBar)
             case .review:
                 if let reviewViewModel = reviewViewModel {
                     ReviewPageView(viewModel: reviewViewModel, onBack: popTransactionsSubpage)
+                        .enableSwipeBack()
                         .toolbar(.hidden, for: .navigationBar)
                 } else {
                     LoadingView()
                 }
             case .merchantNames:
                 MerchantNamesPageView(context: context, toast: historyToast, onBack: popTransactionsSubpage)
+                    .enableSwipeBack()
                     .toolbar(.hidden, for: .navigationBar)
             }
         } else {

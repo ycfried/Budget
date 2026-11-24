@@ -273,7 +273,10 @@ private struct TourDimCutout: View {
                 cornerSize: CGSize(width: 12, height: 12)
             )
         }
-        .fill(Color.black.opacity(0.55), style: FillStyle(eoFill: true))
+        // Build 68 (item 6): a LIGHTER dim (0.32, was 0.55) so
+        // the dimmed background fits the light, airy theme — the
+        // page behind the tour still reads through it.
+        .fill(Color.black.opacity(0.32), style: FillStyle(eoFill: true))
     }
 }
 
@@ -349,7 +352,9 @@ public struct TourOverlayView: View {
                         .frame(width: target.width + 12, height: target.height + 12)
                         .position(x: target.midX, y: target.midY)
                 } else {
-                    Color.black.opacity(0.55)
+                    // Build 68 (item 6): same lighter dim as the
+                    // cutout above (0.32, was 0.55).
+                    Color.black.opacity(0.32)
                 }
                 // Arrow on the card's edge, pointing at the target.
                 if let target {

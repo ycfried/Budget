@@ -243,6 +243,8 @@ struct CSVDocumentPicker: UIViewControllerRepresentable {
 
 struct CSVImportView: View {
     @StateObject private var viewModel: CSVImportViewModel
+    /// Build 68 (item 14): the format explainer behind the ⓘ.
+    @State private var showingFormatInfo = false
 
     init(context: SettingsContext, toast: ToastState) {
         _viewModel = StateObject(wrappedValue: CSVImportViewModel(context: context, toast: toast))
@@ -250,15 +252,25 @@ struct CSVImportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Import Transactions from a CSV File")
-                .font(.title3)
-                .fontWeight(.bold)
-            Text("Expected columns: Date, Description, Amount, Card Ending.")
-                .font(.subheadline)
-                .foregroundStyle(Color(hex: "#6b7280"))
-            Text("Preview first — nothing is added until you confirm.")
-                .font(.subheadline)
-                .foregroundStyle(Color(hex: "#6b7280"))
+            HStack(spacing: 6) {
+                Text("Import Transactions from a CSV File")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                Button { showingFormatInfo = true } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About CSV Import")
+            }
+            .alert("CSV Import", isPresented: $showingFormatInfo) {
+                Button("OK") {}
+            } message: {
+                Text("Expected columns: Date, Description, Amount, Card Ending. Preview first — nothing is added until you confirm.")
+            }
 
             HStack(spacing: 12) {
                 Button("Choose File") {

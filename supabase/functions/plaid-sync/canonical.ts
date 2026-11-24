@@ -188,11 +188,11 @@ export async function hmacSha256Hex(secret: string, message: string): Promise<st
 // value; clients title-case on render (as they already do).
 // Fixed kinds: a rule's fixed kind auto-applies to matching NEW
 // transactions (and to rows a rename applies to) — EXCEPT the sign
-// guard below: a money-out kind (charge/charity/fund_charge) never
-// overrides a money-in (negative) row, and a money-in kind
-// (refund/payment/cashback/income) never overrides a money-out
-// row. A refund of a gift keeps the classifier's kind. 'transfer'
-// applies to either sign.
+// guard below: a money-out kind (charge/charity/fund_charge/
+// expense) never overrides a money-in (negative) row, and a
+// money-in kind (refund/payment/cashback/income) never overrides
+// a money-out row. A refund of a gift keeps the classifier's
+// kind. 'transfer' applies to either sign.
 
 export function merchantRuleKey(name: string): string {
   return String(name ?? '')
@@ -217,7 +217,7 @@ export type MerchantRule = {
   created_at?: string;
 };
 
-const MONEY_OUT_KINDS = new Set(['charge', 'charity', 'fund_charge']);
+const MONEY_OUT_KINDS = new Set(['charge', 'charity', 'fund_charge', 'expense']);
 const MONEY_IN_KINDS = new Set(['refund', 'payment', 'cashback', 'income']);
 
 export function fixedKindApplies(fixedKind: string | null | undefined, amountCents: number): boolean {

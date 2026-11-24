@@ -141,6 +141,27 @@ begin
        set excluded = true, state = 'excluded',
            pre_exclusion_state = case when v_dup.state <> 'excluded' then v_dup.state else v_dup.pre_exclusion_state end
      where id = v_cand.duplicate_transaction_id;
+    -- Refund-link guard (Nov 20, 2026 — Walmart case): a refund
+    -- may link to the duplicate row. Move live linked refunds to
+    -- the kept canonical row so the refund restores the purchase
+    -- that is actually counted.
+    -- Build 68 (Nov 23, 2026 — Toiremorg charity case): only
+    -- re-point when the kept row is a LIVE PURCHASE (charge /
+    -- fund_charge). A charity (or other non-purchase) kept row
+    -- cannot receive linked refunds — repoint_refund_links raises
+    -- 'repoint target is not a live purchase' and aborts the whole
+    -- merge. For a non-purchase kept row, unlink any refunds on the
+    -- duplicate instead so they can re-link or fall to the unlinked
+    -- fallback, and let the merge proceed.
+    if exists (select 1 from transactions
+                where id = v_cand.canonical_transaction_id
+                  and kind in ('charge', 'fund_charge')
+                  and excluded is not true
+                  and state not in ('excluded', 'reversed')) then
+      perform public.repoint_refund_links(v_cand.duplicate_transaction_id, v_cand.canonical_transaction_id);
+    else
+      perform public.repoint_refund_links(v_cand.duplicate_transaction_id, null);
+    end if;
     if v_note is null then v_note := 'merge'; end if;
     update duplicate_candidates
       set status = 'merged', resolved_at = now(), resolved_by = auth.uid(), resolution_note = v_note

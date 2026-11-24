@@ -170,6 +170,8 @@ struct MerchantNamesSettingsView: View {
     /// collected as transaction rows render. Loaded when the card
     /// appears; hidden when empty.
     @State private var needsIcon: [String] = []
+    /// Build 68 (item 22): the "no icon yet" explainer behind ⓘ.
+    @State private var showingNeedsIconInfo = false
 
     /// Fixed-kind options: the server's kind values with plain
     /// labels (same list as the transaction Actions sheet).
@@ -315,10 +317,38 @@ struct MerchantNamesSettingsView: View {
                 // nothing to catch up on.
                 if !needsIcon.isEmpty {
                     SettingsCard(title: "Merchants Without an Icon") {
-                        MutedLine(text: "These merchants don't have an icon yet. They'll be added in a future update.")
+                        // Build 68 (item 22): the explainer lives
+                        // behind a blue ⓘ now, not as an inline
+                        // paragraph — the short line beside it is
+                        // all that stays visible.
+                        HStack(spacing: 6) {
+                            Text("Waiting for an icon.")
+                                .font(.subheadline)
+                                .foregroundStyle(DesignTokens.muted)
+                            Button { showingNeedsIconInfo = true } label: {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.primary)
+                                    .frame(width: 28, height: 28)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("About Merchants Without an Icon")
+                        }
+                        .alert("Merchants Without an Icon", isPresented: $showingNeedsIconInfo) {
+                            Button("OK") {}
+                        } message: {
+                            Text("These merchants don't have an icon yet. They'll be added in a future update.")
+                        }
                         VStack(spacing: 0) {
                             ForEach(needsIcon, id: \.self) { name in
-                                HStack {
+                                // Build 68 (item 22): each merchant
+                                // shows its monogram initial tile —
+                                // the same fallback the transaction
+                                // rows use — instead of a bare name
+                                // with no tile at all.
+                                HStack(spacing: 12) {
+                                    TransactionIconView(merchant: name, size: 40)
                                     Text(TitleCase.apply(to: name.lowercased()))
                                         .font(.system(size: 16, weight: .semibold))
                                         .foregroundStyle(DesignTokens.ink)
@@ -362,7 +392,13 @@ struct MerchantNamesSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     FieldLabel("Name as It Appears", required: true)
                     TextField("", text: $patternText)
-                        .textFieldStyle(.roundedBorder)
+                        // Build 68 (item 7/13): 48pt field, 14pt
+                        // horizontal padding, 12pt radius.
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 48, alignment: .leading)
+                        .background(.white)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             } else {
                 VStack(alignment: .leading, spacing: 2) {
@@ -387,13 +423,25 @@ struct MerchantNamesSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     FieldLabel("Pattern", required: true)
                     TextField("", text: $editablePatternText)
-                        .textFieldStyle(.roundedBorder)
+                        // Build 68 (item 7/13): 48pt field, 14pt
+                        // horizontal padding, 12pt radius.
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 48, alignment: .leading)
+                        .background(.white)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
             VStack(alignment: .leading, spacing: 6) {
                 FieldLabel("Show As", required: true)
                 TextField("", text: $displayNameText)
-                    .textFieldStyle(.roundedBorder)
+                    // Build 68 (item 7/13): 48pt field, 14pt
+                    // horizontal padding, 12pt radius.
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 48, alignment: .leading)
+                    .background(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             VStack(alignment: .leading, spacing: 6) {
                 FieldLabel("Match")
@@ -402,6 +450,10 @@ struct MerchantNamesSettingsView: View {
                     Text("Includes").tag("includes")
                 }
                 .pickerStyle(.segmented)
+                // Build 68 (item 20): 48pt tall, so the segmented
+                // control feels substantial instead of thin/short.
+                .frame(minHeight: 48)
+                .padding(.vertical, 4)
                 // What Includes means (owner, Nov 15, 2026 —
                 // build 34): one short plain line, muted hint style.
                 // Label only — it explains the match; the Includes

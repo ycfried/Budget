@@ -462,7 +462,10 @@ struct MembersSettingsView: View {
                 Button { showingRolesInfo = true } label: {
                     Image(systemName: "info.circle")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color(hex: "#6b7280"))
+                        // Build 68 (item 28): info icons are brand
+                        // primary blue #2f6bff everywhere — never
+                        // black/grey.
+                        .foregroundStyle(DesignTokens.primary)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -687,7 +690,10 @@ struct MembersSettingsView: View {
                 Button { showingDeleteInfo = true } label: {
                     Image(systemName: "info.circle")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color(hex: "#6b7280"))
+                        // Build 68 (item 28): info icons are brand
+                        // primary blue #2f6bff everywhere — never
+                        // black/grey.
+                        .foregroundStyle(DesignTokens.primary)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }

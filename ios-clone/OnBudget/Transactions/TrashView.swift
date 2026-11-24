@@ -46,6 +46,8 @@ public struct TrashView: View {
     let errorMessage: String?
 
     @State private var restoringId: UUID?
+    /// Build 68 (item 14): the Trash explainer behind the ⓘ.
+    @State private var showingAboutInfo = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -59,10 +61,6 @@ public struct TrashView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Bank rows you deleted live here. The admin can bring them back.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color(hex: "#6b7280"))
-
                     if let errorMessage {
                         Text(errorMessage)
                             .font(.system(size: 14, weight: .semibold))
@@ -181,6 +179,25 @@ public struct TrashView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     BackButton(action: onBack)
                 }
+                // Build 68 (item 14): the Trash explainer lives
+                // behind this blue ⓘ, not as an inline line at the
+                // top of the list.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingAboutInfo = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("About Trash")
+                }
+            }
+            .alert("Trash", isPresented: $showingAboutInfo) {
+                Button("OK") {}
+            } message: {
+                Text("Bank rows you deleted live here. The admin can bring them back.")
             }
             // T-P2-1: the failure alert lives on this sheet, not on
             // the Transactions parent — a restore failure surfaced

@@ -145,11 +145,24 @@ public struct TransactionIconView: View {
                     // the fit — not fill — is unit-tested. High
                     // interpolation softens the upscale of the
                     // small sources Google serves.
+                    // Build 68 (owner, Nov 23, 2026 — item 2):
+                    // the STAPLES logo rendered off-centre and
+                    // clipped at the tile edges. The image is now
+                    // drawn centred in the tile on both axes
+                    // (explicit centred frame + scaledToFit, not
+                    // just the ZStack default) at 90% of the
+                    // fitted size, so no logo — Staples or any
+                    // other — touches or crosses a tile edge.
+                    // `fittedSize` itself is unchanged (its
+                    // values are pinned by unit tests); the 10%
+                    // breathing room is a render-only inset.
                     Color.white
                     Image(uiImage: uiImage)
                         .resizable()
                         .interpolation(.high)
-                        .frame(width: fitted.width, height: fitted.height)
+                        .scaledToFit()
+                        .frame(width: fitted.width * 0.9, height: fitted.height * 0.9, alignment: .center)
+                        .frame(width: size, height: size, alignment: .center)
                 } else {
                     // Loading or failed: the monogram stays
                     // visible — never a blank tile. The task

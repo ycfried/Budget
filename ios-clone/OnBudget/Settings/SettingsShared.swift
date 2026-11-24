@@ -319,14 +319,18 @@ struct HistoryDateFilterCard: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color(hex: "#6b7280"))
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                // Build 68 (item 7/13): 48pt tall, 14pt horizontal /
+                // 12pt vertical padding, 12pt radius — matches the
+                // text fields it sits beside.
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                 .background(.white)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
                 // Whole-area tap target (owner, Nov 15, 2026
                 // app-wide pass): the padded box responds across
                 // its full frame, not just on the label and icon.
@@ -476,14 +480,16 @@ struct LabeledField: View {
             }
         }
         .font(.system(size: 17))
-        .padding(.horizontal, 12)
+        // Build 68 (item 7/13): 14pt horizontal padding, 12pt
+        // radius, 48pt minimum height — the shared field standard.
+        .padding(.horizontal, 14)
         .frame(maxWidth: maxWidth, minHeight: 48, alignment: .leading)
         .background(.white)
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 12)
                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
         if let focused {
             base.focused(focused)
         } else {

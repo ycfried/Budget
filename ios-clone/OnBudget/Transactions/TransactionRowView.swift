@@ -355,9 +355,19 @@ public struct TransactionDetailView: View {
                     .padding(.vertical, 10)
                 }
             }
+            // Build 68 (owner, Nov 23, 2026 — item 1): the panel
+            // blends with the card — the list card is white, so the
+            // panel is white too, with only a hairline outline to
+            // hold its shape. The old #f8fafc fill read as a
+            // separate grey box inside the white card. Dividers
+            // and structure are unchanged.
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
-            .background(Color(hex: "#f8fafc"))
+            .background(.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color(hex: "#eef0f3"), lineWidth: 1)
+            )
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }

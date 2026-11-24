@@ -1,6 +1,35 @@
 import SwiftUI
 import OnBudgetKit
 
+/// Compact frequency suffix after an amount (build 68):
+/// $7,000/mo, $500/wk — replaces "· Monthly" and "a month".
+public extension ExpenseFrequency {
+    var shortSuffix: String {
+        switch self {
+        case .weekly: return "/wk"
+        case .monthly: return "/mo"
+        case .quarterly: return "/qtr"
+        case .yearly: return "/yr"
+        }
+    }
+}
+
+/// Red primary style for the remove confirm (build 68, item 8):
+/// remove/delete confirms are #dc2626 on #fef2f2, never blue.
+private struct ExpenseDangerButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Color(hex: "#dc2626"))
+            .padding(.vertical, 13)
+            .padding(.horizontal, 18)
+            .frame(maxWidth: .infinity)
+            .background(Color(hex: "#fef2f2"))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}
+
 // MARK: - Recurring Expenses (build 67, owner Nov 23, 2026)
 //
 // A new "Expense" tag for recurring living costs (HOA, mortgage,
@@ -33,6 +62,9 @@ public struct ExpensesListView: View {
     public let onRemove: (RecurringExpense) async -> Bool
     public let onClose: () -> Void
     @State private var selectedExpense: RecurringExpense?
+    /// The ⓘ beside "About These Expenses" (build 68, item 14):
+    /// the explainer used to sit inline under the list.
+    @State private var showAboutInfo = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(
@@ -69,7 +101,7 @@ public struct ExpensesListView: View {
             VStack(spacing: 0) {
                 summaryRow(label: "Monthly Total", value: MoneyFormat.formatCents(monthlyTotalCents))
                 SheetActionDivider()
-                summaryRow(label: "Weekly Impact", value: "About \(MoneyFormat.formatCents(weeklyTotalCents)) a week")
+                summaryRow(label: "Weekly Impact", value: "About \(MoneyFormat.formatCents(weeklyTotalCents))/wk")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
@@ -102,9 +134,18 @@ public struct ExpensesListView: View {
                         .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
                 .fundCardShadow()
-                Text("Expenses do not count toward weekly spending — the Weekly Budget Calculator uses them to work out the allowance.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(DesignTokens.muted)
+                HStack(spacing: 6) {
+                    Button(action: { showAboutInfo = true }) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("About recurring expenses")
+                    Text("About These Expenses")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                }
             }
             Spacer()
         }
@@ -114,6 +155,12 @@ public struct ExpensesListView: View {
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .presentationBackground(.white)
+        .alert("Recurring Expenses", isPresented: $showAboutInfo) {
+            Button("OK") {}
+        } message: {
+            Text("Expenses do not count toward weekly spending — the Weekly Budget Calculator uses them to work out the allowance.")
+        }
         .sheet(item: $selectedExpense) { expense in
             ExpenseEditorSheet(
                 expense: expense,
@@ -156,20 +203,17 @@ public struct ExpensesListView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                         .lineLimit(1)
-                    Text(expense.frequency.displayName)
-                        .font(.system(size: 13))
-                        .foregroundStyle(DesignTokens.muted)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(MoneyFormat.formatCents(expense.amountCents))
+                    Text("\(MoneyFormat.formatCents(expense.amountCents))\(expense.frequency.shortSuffix)")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     // The monthly figure, when the frequency is
                     // not monthly — so a $480 quarterly row reads
-                    // as $160 a month at a glance.
+                    // as $160/mo at a glance.
                     if expense.frequency != .monthly {
-                        Text("\(MoneyFormat.formatCents(expense.monthlyCents)) a month")
+                        Text("\(MoneyFormat.formatCents(expense.monthlyCents))/mo")
                             .font(.system(size: 13))
                             .foregroundStyle(DesignTokens.muted)
                     }
@@ -240,8 +284,7 @@ public struct ExpenseEditorSheet: View {
                 Text("Name")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
-                TextField("Name", text: $name)
-                    .textFieldStyle(.roundedBorder)
+                FundsTextField("Name", text: $name)
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Amount")
@@ -267,7 +310,7 @@ public struct ExpenseEditorSheet: View {
                                     .foregroundStyle(DesignTokens.ink)
                                 Spacer()
                                 if let monthly = monthlyCents(for: option) {
-                                    Text("\(MoneyFormat.formatCents(monthly)) a month")
+                                    Text("\(MoneyFormat.formatCents(monthly))/mo")
                                         .font(.system(size: 14))
                                         .foregroundStyle(DesignTokens.muted)
                                 }
@@ -306,7 +349,7 @@ public struct ExpenseEditorSheet: View {
                             if ok { onClose() }
                         }
                     }
-                    .buttonStyle(PrimaryButtonStyle())
+                    .buttonStyle(ExpenseDangerButtonStyle())
                     .disabled(isWorking)
                 } secondary: {
                     Button("Keep It") { showRemoveConfirm = false }
@@ -352,5 +395,6 @@ public struct ExpenseEditorSheet: View {
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         .presentationDetents([.fraction(0.45), .medium])
         .presentationDragIndicator(.visible)
+        .presentationBackground(.white)
     }
 }
