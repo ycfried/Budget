@@ -108,19 +108,22 @@ final class TransactionExportTests: XCTestCase {
         XCTAssertEqual(TransactionExport.fundName(for: txn(kind: .payment)), "—")
     }
 
-    func testMerchantTitleCasesAndTransferTitlesDeriveDirection() {
-        XCTAssertEqual(TransactionExport.merchantDisplay(for: txn(merchant: "TRADER JOES")), "Trader Joes")
+    // Build 65 (merchant names ALL CAPS, display-only): the
+    // export merchant name is uppercased, matching the app list
+    // — the expectations below read ALL CAPS, not Title Case.
+    func testMerchantUppercasesAndTransferTitlesDeriveDirection() {
+        XCTAssertEqual(TransactionExport.merchantDisplay(for: txn(merchant: "TRADER JOES")), "TRADER JOES")
         XCTAssertEqual(
             TransactionExport.merchantDisplay(for: txn(merchant: "INTERNAL TRANSFER CREDIT: SAVINGS -5939", amount: -9000, kind: .transfer)),
-            "Transfer from ••5939"
+            "TRANSFER FROM ••5939"
         )
         XCTAssertEqual(
             TransactionExport.merchantDisplay(for: txn(merchant: "TRANSFER TO SAVINGS", amount: 10_000, kind: .transfer)),
-            "Transfer to"
+            "TRANSFER TO"
         )
         XCTAssertEqual(
             TransactionExport.merchantDisplay(for: txn(merchant: "TRANSFER", amount: 0, kind: .transfer)),
-            "Transfer"
+            "TRANSFER"
         )
     }
 
@@ -140,9 +143,9 @@ final class TransactionExportTests: XCTestCase {
         let csv = TransactionExport.csvString(transactions: rows)
         let lines = csv.split(separator: "\n", omittingEmptySubsequences: false)
         XCTAssertEqual(String(lines[0]), "Date,Merchant,Amount,Kind,Source,Fund,Card")
-        XCTAssertEqual(String(lines[1]), "2026-11-11,Trader Joes,12.34,Charge,Bank,Spending,••1005")
-        XCTAssertEqual(String(lines[2]), "2026-11-17,Check Deposit,3500.00,Income,Bank,—,Cash")
-        XCTAssertEqual(String(lines[3]), "2026-11-12,Tenyad Kallah Gemach,2.00,Charity,Bank,Charity,Cash")
+        XCTAssertEqual(String(lines[1]), "2026-11-11,TRADER JOES,12.34,Charge,Bank,Spending,••1005")
+        XCTAssertEqual(String(lines[2]), "2026-11-17,CHECK DEPOSIT,3500.00,Income,Bank,—,Cash")
+        XCTAssertEqual(String(lines[3]), "2026-11-12,TENYAD KALLAH GEMACH,2.00,Charity,Bank,Charity,Cash")
         XCTAssertTrue(csv.hasSuffix("\n"))
     }
 
@@ -151,9 +154,10 @@ final class TransactionExportTests: XCTestCase {
         XCTAssertEqual(TransactionExport.csvField("Smith, Jones"), "\"Smith, Jones\"")
         XCTAssertEqual(TransactionExport.csvField("Say \"Hi\""), "\"Say \"\"Hi\"\"\"")
         XCTAssertEqual(TransactionExport.csvField("Line One\nLine Two"), "\"Line One\nLine Two\"")
-        // A merchant with a comma lands quoted inside the row.
+        // A merchant with a comma lands quoted inside the row —
+        // uppercased, like every exported merchant (build 65).
         let csv = TransactionExport.csvString(transactions: [txn(merchant: "SMITH, JONES LLC")])
-        XCTAssertTrue(csv.contains(",\"Smith, Jones LLC\",12.34,"))
+        XCTAssertTrue(csv.contains(",\"SMITH, JONES LLC\",12.34,"))
     }
 
     func testCSVOfEmptyListIsHeaderOnly() {
@@ -168,7 +172,7 @@ final class TransactionExportTests: XCTestCase {
         let spending = txn(merchant: "TRADER JOES", amount: 1234)
         let csv = TransactionExport.csvString(transactions: [spending])
         XCTAssertFalse(csv.contains("Gemach"))
-        XCTAssertTrue(csv.contains("Trader Joes"))
+        XCTAssertTrue(csv.contains("TRADER JOES"))
     }
 
     // MARK: - Totals
@@ -223,7 +227,7 @@ final class TransactionExportTests: XCTestCase {
         XCTAssertEqual(statement.generatedLine, "Generated Nov 18, 2026")
         XCTAssertEqual(statement.rows.count, 2)
         XCTAssertEqual(statement.rows[0].date, "Nov 11, 2026")
-        XCTAssertEqual(statement.rows[0].merchant, "Trader Joes")
+        XCTAssertEqual(statement.rows[0].merchant, "TRADER JOES")
         XCTAssertEqual(statement.rows[0].amount, "$12.34")
         XCTAssertEqual(statement.rows[0].kind, "Charge")
         XCTAssertEqual(statement.rows[1].amount, "+$3,500.00")

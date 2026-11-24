@@ -136,7 +136,8 @@ public struct TransactionsView: View {
                 showingAdd: $showingAdd,
                 showingTrash: $showingTrash,
                 showingExport: $showingExport,
-                actionsTransaction: $actionsTransaction
+                actionsTransaction: $actionsTransaction,
+                taggedExpense: $viewModel.taggedExpense
             ))
     }
 
@@ -209,6 +210,11 @@ public struct TransactionsView: View {
         @Binding var showingTrash: Bool
         @Binding var showingExport: Bool
         @Binding var actionsTransaction: Transaction?
+        /// Build 67: the expense just tagged from the Actions sheet
+        /// — passed as a binding (like `actionsTransaction`) because
+        /// this modifier holds the view model as a plain property,
+        /// so `$viewModel.taggedExpense` does not exist here.
+        @Binding var taggedExpense: RecurringExpense?
 
         func body(content: Content) -> some View {
             content
@@ -305,7 +311,7 @@ public struct TransactionsView: View {
                 // for it. Save / Remove go through the Transactions
                 // view model; the list reloads behind the editor, so
                 // the week figures drop the expense at once.
-                .sheet(item: $viewModel.taggedExpense) { expense in
+                .sheet(item: $taggedExpense) { expense in
                     ExpenseEditorSheet(
                         expense: expense,
                         onSave: { name, amountCents, frequency in
@@ -314,7 +320,7 @@ public struct TransactionsView: View {
                         onRemove: {
                             await viewModel.removeExpense(expense)
                         },
-                        onClose: { viewModel.taggedExpense = nil }
+                        onClose: { taggedExpense = nil }
                     )
                     .confirmationPopupOverlay($appState.toast)
                 }

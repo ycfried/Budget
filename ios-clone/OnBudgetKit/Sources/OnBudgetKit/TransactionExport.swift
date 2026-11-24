@@ -277,8 +277,8 @@ public enum TransactionExport {
         return fallback
     }
 
-    /// The row's merchant as shown: Title-Cased, except transfers,
-    /// which read "Transfer from ••5939" / "Transfer to ••5939"
+    /// The row's merchant as shown: ALL CAPS, except transfers,
+    /// which read "TRANSFER FROM ••5939" / "TRANSFER TO ••5939"
     /// (direction from the signed amount, other account from the
     /// bank description — mirrors `TransactionFormatting.
     /// transferTitle`, app target; the parsing is restated here so
