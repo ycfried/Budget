@@ -1352,7 +1352,8 @@ public struct HomeView: View {
     // name "Spending" is written in its own deep blue #1d4ed8 at
     // 17pt semibold, and the icon is a small 20pt deep-blue glyph
     // directly on white (P-6 — the white-circle disc is gone).
-    // "This week" stays muted. While failed the name keeps its
+    // "Available" is the amount's label in the body (build 70),
+    // not the header. While failed the name keeps its
     // colour (the name is local); the failed signal is the error
     // box in the body below.
     private func heroHeaderStrip(simple: Bool = false) -> some View {

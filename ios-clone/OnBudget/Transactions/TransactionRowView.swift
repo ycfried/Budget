@@ -331,28 +331,36 @@ public struct TransactionDetailView: View {
                         : TransactionFormatting.typeLabel(for: transaction)
                 )
                 Divider()
-                // Build 52 (owner, Nov 20, 2026): a SOLID BLUE
-                // button, not an outline — the outline "looks
-                // ugly". Build 67 (owner, Nov 23, 2026): compact
-                // and left-aligned inside the panel, not
-                // full-width — the full-width button dominated
-                // the row and rendered oddly. A single button in
-                // its row, so this does not conflict with the
-                // no-two-adjacent-buttons-same-colour rule.
+                // Build 70 (owner, Nov 24, 2026): the floating
+                // "Actions" button is GONE — it looked lost and
+                // out of place in the panel, and the full-width
+                // button was tried before and wasn't nice. The
+                // panel's LAST row is "Edit" (matching the Date /
+                // Account / Status / Source / Type rows), and a
+                // tappable "Actions" with a chevron spans the row
+                // — the whole row opens the Actions sheet. The
+                // row reads as clearly tappable (brand-blue
+                // "Actions" + chevron, like a navigation row),
+                // not as a button floating in the panel.
                 if hasActions {
-                    HStack {
-                        Button(action: onActions) {
+                    Button(action: onActions) {
+                        HStack {
+                            Text("Edit")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color(hex: "#475569"))
+                            Spacer()
                             Text("Actions")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 160, height: 40)
-                                .background(DesignTokens.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(DesignTokens.primary)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(DesignTokens.primary)
                         }
-                        .buttonStyle(.plain)
-                        Spacer()
+                        .padding(.vertical, 9)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.vertical, 10)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit transaction — open actions")
                 }
             }
             // Build 68 (owner, Nov 23, 2026 — item 1): the panel

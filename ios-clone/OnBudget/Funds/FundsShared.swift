@@ -1149,8 +1149,20 @@ public struct FundsExpandableCard<Expanded: View>: View {
             // the full card width — nothing cut off, every card
             // the same size. Hidden in reorder mode (the bar is
             // just for dragging then).
+            // Build 70 (owner, Nov 24, 2026): the amount body is
+            // part of the toggle too — the whole collapsed card
+            // (header strip AND amount) expands/collapses on tap.
+            // Before, only the header strip toggled, so tapping
+            // the big amount did nothing and the cards felt
+            // "not so easily tappable". The pencil and info icon
+            // are real Buttons inside the header, so they still
+            // win over the tap gesture (their own actions); the
+            // expanded detail below keeps no gesture, so tapping
+            // an action inside it never collapses the card.
             if !isReorderMode {
                 amountBody(pad: pad)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onToggle() }
             }
             if isExpanded, !isReorderMode {
                 // White body (majority): the detail rows, editors
