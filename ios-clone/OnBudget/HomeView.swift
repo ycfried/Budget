@@ -3118,11 +3118,15 @@ public struct WeeklySheet: View {
         // the LIVE ones only, so an expense in the Trash stops
         // counting at once.
         .fullScreenCover(isPresented: $showCalculator) {
-            if let householdId = appState.householdId {
+            // Build 69: the Calculator needs a view model (its
+            // `@ObservedObject` cannot wrap an Optional), so the
+            // cover unwraps `ensureFundsViewModel()` alongside the
+            // household id — nil only before the household is
+            // known, in practice never while Home is showing.
+            if let householdId = appState.householdId, let fundsViewModel = ensureFundsViewModel() {
                 WeeklyBudgetCalculatorSheet(
                     householdId: householdId,
                     charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
-                    expenses: fundsViewModel?.liveExpenses ?? [],
                     viewModel: fundsViewModel,
                     onClose: { showCalculator = false }
                 )

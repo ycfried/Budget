@@ -652,7 +652,6 @@ public struct FundsView: View {
                         WeeklyBudgetCalculatorSheet(
                             householdId: viewModel.context.householdId,
                             charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
-                            expenses: viewModel.liveExpenses,
                             viewModel: viewModel,
                             onClose: { showCalculator = false }
                         )
@@ -2310,24 +2309,23 @@ public struct WeeklyBudgetCalculatorSheet: View {
     /// Nov 17, 2026 — item 16): the "Expected <fund>" section
     /// reads it, never a hardcoded "Charity".
     public let charityName: String
-    /// The household's tagged recurring expenses (build 67):
-    /// passed through to the content — the Calculator reads its
-    /// recurring costs from them.
-    public let expenses: [RecurringExpense]
     /// The Funds view model (build 69 — the Calculator's "Add
-    /// Recurring Expense" option): the Calculator reads its
-    /// expenses LIVE from it, so an expense added here shows at
-    /// once, and tags through it. Nil when the presenter has
-    /// none — then the content reads the passed-in `expenses`
-    /// snapshot and the Add option is hidden.
-    @ObservedObject public var viewModel: FundsViewModel?
+    /// Recurring Expense" option and its shared income): the
+    /// Calculator reads its expenses AND its income LIVE from it,
+    /// so an expense or income added here shows at once, and tags
+    /// through it. Non-optional: `@ObservedObject` cannot wrap an
+    /// Optional (the build-69 item-4 form, `FundsViewModel?`,
+    /// failed Archive — `ObservedObject` requires a type that
+    /// conforms to `ObservableObject`, and an Optional does not),
+    /// so both presenters guarantee a view model before presenting
+    /// (HomeView unwraps `ensureFundsViewModel()` in its cover).
+    @ObservedObject public var viewModel: FundsViewModel
     public var onClose: () -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    public init(householdId: UUID, charityName: String, expenses: [RecurringExpense] = [], viewModel: FundsViewModel? = nil, onClose: @escaping () -> Void = {}) {
+    public init(householdId: UUID, charityName: String, viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
         self.householdId = householdId
         self.charityName = charityName
-        self.expenses = expenses
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self.onClose = onClose
     }
@@ -2336,7 +2334,7 @@ public struct WeeklyBudgetCalculatorSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 SheetHeader(title: TitleCase.apply(to: "Weekly Budget Calculator"), onClose: onClose)
-                WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName, expenses: expenses, viewModel: viewModel)
+                WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName, viewModel: viewModel)
             }
             .padding()
         }
@@ -2359,23 +2357,17 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// Nov 17, 2026 — item 16): the "Expected <fund>" section
     /// reads it, never a hardcoded "Charity".
     public let charityName: String
-    /// The household's tagged recurring expenses (build 67):
-    /// the single source of truth for the "Recurring Expenses"
-    /// section — derived from real tagged transactions, not
-    /// hand-entered here. Passed in by the presenter (the
-    /// Weekly sheet / Funds page's FundsViewModel loads them).
-    public let expenses: [RecurringExpense]
-    /// The Funds view model (build 69): when present, the
-    /// Calculator reads its expenses LIVE from it — so an expense
-    /// added here shows at once — and the "Add Recurring
-    /// Expense" option tags through it. Nil when the presenter
-    /// has none (then the snapshot above is the source and the
-    /// Add option is hidden).
-    @ObservedObject public var viewModel: FundsViewModel?
+    /// The Funds view model (build 69): the Calculator reads its
+    /// expenses AND its income LIVE from it — so an expense or
+    /// income added here shows at once — and the "Add Recurring
+    /// Expense" option tags through it. Non-optional (see the
+    /// Sheet above: `@ObservedObject` cannot wrap an Optional).
+    @ObservedObject public var viewModel: FundsViewModel
     /// The expenses the Calculator reads: live from the view
-    /// model when present, else the snapshot passed in.
+    /// model. (Build 67's `expenses` snapshot parameter is gone —
+    /// the view model is the single live source now.)
     private var liveExpenses: [RecurringExpense] {
-        viewModel?.liveExpenses ?? expenses
+        viewModel.liveExpenses
     }
     /// The tag picker + editor state (build 69): adding a
     /// recurring expense from the Calculator picks a charge to
@@ -2384,21 +2376,13 @@ public struct WeeklyBudgetCalculatorContent: View {
     @State private var editorExpense: RecurringExpense?
     /// The income sources (build 69, owner Nov 24, 2026 —
     /// "Calculator should be per household"): the shared
-    /// household store when a view model is present — every
-    /// member sees the same income and the same suggested budget
-    /// on every device — else the local fallback below (defensive;
-    /// both presenters pass a view model). NOT @State anymore:
-    /// the view model owns the list and publishes it, so an add
-    /// or remove on one device reads through to the others.
+    /// household store, owned by the view model — every member
+    /// sees the same income and the same suggested budget on
+    /// every device. The view model publishes it, so an add or
+    /// remove on one device reads through to the others.
     private var incomeItems: [CalculatorItem] {
-        viewModel?.calculatorIncome ?? localIncomeItems
+        viewModel.calculatorIncome
     }
-    /// Local fallback when no view model is present (never the
-    /// normal path — kept so the Calculator still works
-    /// standalone). Its UserDefaults key is gone: the shared
-    /// store is the source, and the view model migrates any old
-    /// local entries into it once.
-    @State private var localIncomeItems: [CalculatorItem] = []
     @State private var charityText = ""
     @State private var lifestyle: LifestyleHoldback = .regular
     @State private var customHoldbackText = ""
@@ -2417,10 +2401,9 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// stored values with the empty defaults.
     @State private var didLoad = false
 
-    public init(householdId: UUID, charityName: String, expenses: [RecurringExpense] = [], viewModel: FundsViewModel? = nil) {
+    public init(householdId: UUID, charityName: String, viewModel: FundsViewModel) {
         self.householdId = householdId
         self.charityName = charityName
-        self.expenses = expenses
         self._viewModel = ObservedObject(wrappedValue: viewModel)
     }
 
@@ -2563,7 +2546,7 @@ public struct WeeklyBudgetCalculatorContent: View {
             // Build 69: refresh the shared income on open (only
             // when stale — the view model throttles to 60s), so a
             // member always sees another member's latest entries.
-            Task { await viewModel?.ensureCalculatorIncomeLoaded() }
+            Task { await viewModel.ensureCalculatorIncomeLoaded() }
         }
         .onChange(of: charityText) { _, _ in save() }
         .onChange(of: lifestyle) { _, _ in save() }
@@ -2956,14 +2939,7 @@ public struct WeeklyBudgetCalculatorContent: View {
         // store through the view model (any member may add), so
         // every device reads the same income at once. The draft
         // fields clear only on success — a failed write keeps the
-        // typed input so the user can retry. Without a view model
-        // (defensive), the local fallback takes it.
-        guard let viewModel else {
-            localIncomeItems.append(item)
-            incomeDraftName = ""
-            incomeDraftAmount = ""
-            return
-        }
+        // typed input so the user can retry.
         Task {
             if await viewModel.addCalculatorIncome(name: item.name, amountCents: item.amountCents, frequency: item.frequency) != nil {
                 incomeDraftName = ""
@@ -2975,11 +2951,6 @@ public struct WeeklyBudgetCalculatorContent: View {
     private func removeIncomeItem(_ item: CalculatorItem) {
         // Build 69: the remove deletes from the shared household
         // store through the view model (any member may remove).
-        // Without a view model (defensive), the local fallback.
-        guard let viewModel else {
-            localIncomeItems.removeAll { $0.id == item.id }
-            return
-        }
         Task { await viewModel.removeCalculatorIncome(item) }
     }
 }
