@@ -1410,6 +1410,34 @@ public final class FundsViewModel: ObservableObject {
         return succeeded
     }
 
+    /// Tag a transaction as a recurring Expense (build 69 — the
+    /// Calculator's "Add Recurring Expense" option): the same
+    /// tag_transaction_expense RPC the Transactions Actions sheet
+    /// uses (admin only, 35-day lock, money-out only), so the new
+    /// expense is the SAME row the Recurring Expenses list and the
+    /// Calculator read — never a second, disconnected store.
+    /// Returns the created expense (monthly by default, name and
+    /// amount prefilled from the transaction) so the caller can
+    /// open the editor for it at once. Refreshes, so the list, the
+    /// Weekly sheet row and the Calculator all read the new
+    /// expense at once.
+    public func tagExpense(_ transaction: Transaction, reason: String) async -> RecurringExpense? {
+        var created: RecurringExpense?
+        await guarded("tag-expense", title: "Could Not Tag as Expense") {
+            guard context.isAdmin else {
+                throw OnBudgetError.forbidden("Only the admin can tag transactions as expenses.")
+            }
+            let expenseId = try await context.client.rpcs.tagTransactionExpense(
+                pTransactionId: transaction.id, pFrequency: .monthly, pReason: reason)
+            created = RecurringExpense(
+                id: expenseId, householdId: transaction.householdId, transactionId: transaction.id,
+                name: transaction.merchant, amountCents: transaction.amountCents, frequency: .monthly)
+            succeed("Expense tagged.")
+            await refresh()
+        }
+        return created
+    }
+
     /// Delete a transaction row from a Funds feed (build 46, owner
     /// Nov 18, 2026): the charity / Savings Activity feeds showed
     /// transaction rows with NO Actions button, so Delete was only

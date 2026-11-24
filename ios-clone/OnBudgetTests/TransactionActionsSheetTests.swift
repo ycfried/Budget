@@ -89,7 +89,14 @@ final class TransactionActionsSheetTests: XCTestCase {
         )
     }
 
-    // MARK: - Colour-coded, distinguishable options
+    // MARK: - One neutral ink, Delete red only
+
+    // Build 69 (owner, Nov 24, 2026 — "the delete can stay
+    // red"): ALL Actions sheet options are one neutral ink —
+    // the build-62 colour-coding by category is reversed. Every
+    // kind is ink; the icons stay distinct, so each option is
+    // still spottable by icon. Only Delete stands out, in red
+    // (asserted where the Delete action is built).
 
     func testPurchaseIsInkWithABagIcon() {
         let style = TransactionActionsSheet.kindStyle(.charge)
@@ -97,31 +104,32 @@ final class TransactionActionsSheetTests: XCTestCase {
         XCTAssertEqual(style.icon, "bag")
     }
 
-    func testIncomeIsDeepBlue() {
+    func testIncomeIsInk() {
         let style = TransactionActionsSheet.kindStyle(.income)
-        XCTAssertEqual(style.colorHex, DesignTokens.deepHex)
+        XCTAssertEqual(style.colorHex, DesignTokens.inkHex)
         XCTAssertEqual(style.icon, "arrow.down.left")
     }
 
-    func testTzedakaIsPrimaryBlueWithAHeartIcon() {
+    func testTzedakaIsInkWithAHeartIcon() {
         let style = TransactionActionsSheet.kindStyle(.charity)
-        XCTAssertEqual(style.colorHex, DesignTokens.primaryHex)
+        XCTAssertEqual(style.colorHex, DesignTokens.inkHex)
         XCTAssertEqual(style.icon, "heart")
     }
 
-    func testMoneyInKindsAreDeepBlue() {
-        // Refunds and cashback are money in, like income.
-        XCTAssertEqual(TransactionActionsSheet.kindStyle(.refund).colorHex, DesignTokens.deepHex)
-        XCTAssertEqual(TransactionActionsSheet.kindStyle(.cashback).colorHex, DesignTokens.deepHex)
+    func testMoneyInKindsAreInk() {
+        // Refunds and cashback are money in, like income — and
+        // every option is ink now, so they are ink too.
+        XCTAssertEqual(TransactionActionsSheet.kindStyle(.refund).colorHex, DesignTokens.inkHex)
+        XCTAssertEqual(TransactionActionsSheet.kindStyle(.cashback).colorHex, DesignTokens.inkHex)
     }
 
-    func testTransferAndPaymentAreMutedGrey() {
-        XCTAssertEqual(TransactionActionsSheet.kindStyle(.transfer).colorHex, DesignTokens.mutedHex)
-        XCTAssertEqual(TransactionActionsSheet.kindStyle(.payment).colorHex, DesignTokens.mutedHex)
+    func testTransferAndPaymentAreInk() {
+        XCTAssertEqual(TransactionActionsSheet.kindStyle(.transfer).colorHex, DesignTokens.inkHex)
+        XCTAssertEqual(TransactionActionsSheet.kindStyle(.payment).colorHex, DesignTokens.inkHex)
     }
 
-    func testFundChargeIsFundAmber() {
-        XCTAssertEqual(TransactionActionsSheet.kindStyle(.fundCharge).colorHex, DesignTokens.fundHex)
+    func testFundChargeIsInk() {
+        XCTAssertEqual(TransactionActionsSheet.kindStyle(.fundCharge).colorHex, DesignTokens.inkHex)
     }
 
     // Build 67: Expense is money out, so ink like a purchase —
@@ -133,8 +141,9 @@ final class TransactionActionsSheetTests: XCTestCase {
     }
 
     func testEveryKindHasAnIcon() {
-        // Every kind must be spottable by icon as well as colour —
-        // no empty icon string anywhere.
+        // Every kind must be spottable by icon — colour no longer
+        // distinguishes the options, so no empty icon string
+        // anywhere.
         for kind: TransactionKind in [.charge, .refund, .fundCharge, .transfer, .payment, .cashback, .income, .charity, .expense, .other("custom_kind")] {
             XCTAssertFalse(
                 TransactionActionsSheet.kindStyle(kind).icon.isEmpty,

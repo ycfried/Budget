@@ -363,12 +363,19 @@ public struct FundsSlateOutlineButton: View {
 }
 
 /// Squarish option control (build 64, C-6 — replaces every
-/// `.pickerStyle(.segmented)` in the Funds screens): a row of
-/// squarish cells, 8pt radius, ink text — the selected cell pale
-/// blue (#e9effe soft fill + #bfdbfe hairline), the rest white
-/// with a hairline #e5e7eb border. No pill/capsule track, no
-/// system segmented control anywhere in these screens. One cell
-/// per option; the caller passes (value, label) pairs so enums
+/// `.pickerStyle(.segmented)` in the Funds screens). Build 69
+/// (owner, Nov 24, 2026 — "This was supposed to become a
+/// slider?"): the build-64 version was an HStack with 8pt gaps —
+/// three SEPARATE boxes, each with its own border — so it read as
+/// three buttons, not one slider. This is now ONE unified slider:
+/// a single track (one white container, one hairline border) with
+/// the segments sharing it edge to edge, and the selected segment
+/// a pale-blue thumb that SLIDES between stops via
+/// matchedGeometryEffect (the page select's pattern, build 66 —
+/// 0.25s easeInOut, the owner-requested slide exception to the
+/// instant-change rule). No pill/capsule track, no system
+/// segmented control anywhere in these screens. One cell per
+/// option; the caller passes (value, label) pairs so enums
 /// without a display string still read plainly.
 public struct SquarishPicker<Option: Hashable>: View {
     public let options: [(Option, String)]
@@ -376,6 +383,10 @@ public struct SquarishPicker<Option: Hashable>: View {
     /// Minimum cell height (e.g. 52pt beside the debt-rule Apply
     /// button); nil sizes the cells to their content.
     public let minHeight: CGFloat?
+    /// The namespace for the sliding thumb — the pale-blue
+    /// selected segment glides between stops via
+    /// matchedGeometryEffect (see the background below).
+    @Namespace private var thumbNamespace
 
     public init(_ options: [(Option, String)], selection: Binding<Option>, minHeight: CGFloat? = nil) {
         self.options = options
@@ -384,28 +395,39 @@ public struct SquarishPicker<Option: Hashable>: View {
     }
 
     public var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             ForEach(options, id: \.0) { option, label in
                 let isSelected = selection == option
                 Button { selection = option } label: {
                     Text(label)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(DesignTokens.ink)
+                        .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+                        .foregroundStyle(isSelected ? DesignTokens.ink : DesignTokens.segmentInactive)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .padding(.horizontal, 8)
                         .frame(minHeight: minHeight)
-                        .background(isSelected ? DesignTokens.softFill : .white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(isSelected ? DesignTokens.softBorder : Color(hex: "#e5e7eb"), lineWidth: 1)
+                        .background(
+                            Group {
+                                if isSelected {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(DesignTokens.softFill)
+                                        .matchedGeometryEffect(id: "squarishPickerThumb", in: thumbNamespace)
+                                }
+                            }
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(label + (isSelected ? ", selected" : ""))
             }
         }
+        .padding(4)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
+        .animation(.easeInOut(duration: 0.25), value: selection)
     }
 }
 

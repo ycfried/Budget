@@ -309,12 +309,11 @@ struct WidgetView: View {
             .frame(width: width, height: height)
     }
 
-    /// Soft tinted background (owner, Nov 14, 2026): a faint cool
-    /// grey-blue instead of flat white. The figures stay brand blue
-    /// / ink / red on it — a tint, not a wash. Owner, Nov 15, 2026
-    /// (widget polish): a very pale blue tint #f2f7ff so the card
-    /// reads less plain.
-    private var background: Color { Color(hex: "#f2f7ff") }
+    /// The app background (build 69, owner Nov 24, 2026 — the
+    /// widget restyle): plain white, matching the app's current
+    /// post-maturity-pass look. The pale blue tint #f2f7ff (owner,
+    /// Nov 15, 2026) is gone — the widget reads as the app now.
+    private var background: Color { DesignTokens.background }
 
     /// The Home deep link (build 54): applied to the widget's
     /// CONTENT only — wordmark, dates, figures, footer — never to
@@ -369,8 +368,12 @@ struct WidgetView: View {
     /// (black weight) and slightly larger — they were a drop too
     /// thin and small next to the S logo. Default 19pt (was
     /// headline 17pt semibold); the small layout passes 17pt
-    /// (was subheadline 15pt semibold).
-    private func wordmark(logoSize: CGFloat = 24, font: Font = .system(size: 19, weight: .black)) -> some View {
+    /// (was subheadline 15pt semibold). Build 69 (owner, Nov 24,
+    /// 2026 — the widget restyle): the wordmark goes back to the
+    /// LIGHT weight, matching the app's current wordmark
+    /// (build 68, item 17 — thinner and classier, everywhere
+    /// including the loading page and the confirmation popup).
+    private func wordmark(logoSize: CGFloat = 24, font: Font = .system(size: 19, weight: .light)) -> some View {
         HStack(spacing: 6) {
             Image("AppLogo")
                 .resizable()
@@ -535,7 +538,7 @@ struct WidgetView: View {
                 Circle()
                     .trim(from: 0, to: fraction)
                     .stroke(
-                        overBudget ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                        overBudget ? DesignTokens.heroOverBudget : DesignTokens.deep,
                         style: StrokeStyle(lineWidth: actualLineWidth, lineCap: fraction >= 1 ? .butt : .round)
                     )
                     .rotationEffect(.degrees(-90))
@@ -598,10 +601,14 @@ struct WidgetView: View {
 
     /// Thin horizontal progress bar (build 35): a pale track with a
     /// coloured fill of the given fraction, 6pt tall, filling the
-    /// column width. The budget bar fills spent/allowance in brand
+    /// column width. The budget bar fills spent/allowance in deep
     /// blue (muted red when over budget); the charity bar fills
-    /// given/committed in charity green. A zero fraction shows an
-    /// empty track — no fill is ever faked.
+    /// given/committed in primary blue. Build 69 (owner, Nov 24,
+    /// 2026 — the widget restyle): the charity bar is primary
+    /// blue now, not charity green — the C-2 Tzedaka colour — and
+    /// its track is the same pale blue #dbeafe as the budget bar.
+    /// A zero fraction shows an empty track — no fill is ever
+    /// faked.
     private func progressBar(fraction: Double, fill: Color, track: Color) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
@@ -760,7 +767,7 @@ struct WidgetView: View {
                 figureLabel("Available")
                 figure(
                     cents: snapshot.availableCents,
-                    color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
+                    color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.deep,
                     size: 22
                 )
                 if isPlaceholder {
@@ -768,20 +775,20 @@ struct WidgetView: View {
                 } else {
                     progressBar(
                         fraction: snapshot.spentFraction ?? 0,
-                        fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                        fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.deep,
                         track: Color(hex: "#dbeafe"))
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel(snapshot.charityLeftLabel)
-                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 22)
+                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 22)
                 if isPlaceholder {
                     skeletonBar(width: 90, height: 6)
                 } else {
                     progressBar(
                         fraction: snapshot.charityGivenFraction ?? 0,
-                        fill: DesignTokens.charity,
-                        track: DesignTokens.successBackground)
+                        fill: DesignTokens.primary,
+                        track: Color(hex: "#dbeafe"))
                 }
             }
             Spacer(minLength: 0)
@@ -830,7 +837,7 @@ struct WidgetView: View {
                     figureLabel("Available")
                     figure(
                         cents: snapshot.availableCents,
-                        color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
+                        color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.deep,
                         size: 28
                     )
                     if isPlaceholder {
@@ -838,7 +845,7 @@ struct WidgetView: View {
                     } else {
                         progressBar(
                             fraction: snapshot.spentFraction ?? 0,
-                            fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                            fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.deep,
                             track: Color(hex: "#dbeafe"))
                     }
                 }
@@ -846,14 +853,14 @@ struct WidgetView: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 1) {
                     figureLabel(snapshot.charityLeftLabel)
-                    figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 28)
+                    figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 28)
                     if isPlaceholder {
                         skeletonBar(width: 90, height: 6)
                     } else {
                         progressBar(
                             fraction: snapshot.charityGivenFraction ?? 0,
-                            fill: DesignTokens.charity,
-                            track: DesignTokens.successBackground)
+                            fill: DesignTokens.primary,
+                            track: Color(hex: "#dbeafe"))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -906,7 +913,7 @@ struct WidgetView: View {
                     figureLabel("Available")
                     figure(
                         cents: snapshot.availableCents,
-                        color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
+                        color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.deep,
                         size: 36
                     )
                     if isPlaceholder {
@@ -914,7 +921,7 @@ struct WidgetView: View {
                     } else {
                         progressBar(
                             fraction: snapshot.spentFraction ?? 0,
-                            fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                            fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.deep,
                             track: Color(hex: "#dbeafe"))
                     }
                 }
@@ -924,14 +931,14 @@ struct WidgetView: View {
             Divider()
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel(snapshot.charityLeftLabel)
-                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 36)
+                figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 36)
                 if isPlaceholder {
                     skeletonBar(width: 170, height: 6)
                 } else {
                     progressBar(
                         fraction: snapshot.charityGivenFraction ?? 0,
-                        fill: DesignTokens.charity,
-                        track: DesignTokens.successBackground)
+                        fill: DesignTokens.primary,
+                        track: Color(hex: "#dbeafe"))
                 }
             }
             Spacer(minLength: 0)
@@ -981,7 +988,7 @@ struct WidgetView: View {
                         figureLabel("Available")
                         figure(
                             cents: snapshot.availableCents,
-                            color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.primary,
+                            color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.deep,
                             size: 44
                         )
                         if isPlaceholder {
@@ -989,7 +996,7 @@ struct WidgetView: View {
                         } else {
                             progressBar(
                                 fraction: snapshot.spentFraction ?? 0,
-                                fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.primary,
+                                fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.deep,
                                 track: Color(hex: "#dbeafe"))
                         }
                     }
@@ -997,14 +1004,14 @@ struct WidgetView: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 2) {
                     figureLabel(snapshot.charityLeftLabel)
-                    figure(cents: snapshot.charityRemainingCents, color: DesignTokens.ink, size: 44)
+                    figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 44)
                     if isPlaceholder {
                         skeletonBar(width: 170, height: 6)
                     } else {
                         progressBar(
                             fraction: snapshot.charityGivenFraction ?? 0,
-                            fill: DesignTokens.charity,
-                            track: DesignTokens.successBackground)
+                            fill: DesignTokens.primary,
+                            track: Color(hex: "#dbeafe"))
                     }
                 }
                 Spacer(minLength: 0)

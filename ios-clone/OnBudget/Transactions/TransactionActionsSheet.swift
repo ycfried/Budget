@@ -310,25 +310,32 @@ public struct TransactionActionsSheet: View {
         }
     }
 
-    /// The colour + SF Symbol for one kind (build 62, owner Nov 22,
-    /// 2026 — the Actions options "all look the same"). Colours
-    /// follow the amount rule (Models.fixedAmountColorHex + the
-    /// export chart colours): money-in kinds deep blue, charity
-    /// primary blue, transfer/payment muted grey, fund charge fund
-    /// amber, regular kinds ink. A hex string (not a Color) so the
-    /// mapping is unit-testable.
+    /// The colour + SF Symbol for one kind. Build 62 (owner Nov 22,
+    /// 2026 — the Actions options "all look the same") colour-coded
+    /// the options by category; build 69 (owner, Nov 24, 2026 —
+    /// "the delete can stay red") reverses that — ALL Actions sheet
+    /// options are one neutral ink. Income and Tzedaka no longer
+    /// render in blue, which made them stand out for no good
+    /// reason; the ONLY colour that stands out is Delete, which
+    /// stays red (set where the Delete action is built, not here).
+    /// The icons stay distinct per kind, so every option is still
+    /// spottable by icon. A hex string (not a Color) so the
+    /// mapping is unit-testable. This is the ACTIONS SHEET only —
+    /// the transaction-list colour rule (Income deep blue,
+    /// Spending ink, Charity primary blue, Excluded grey) is
+    /// unchanged.
     static func kindStyle(_ kind: TransactionKind) -> (colorHex: String, icon: String) {
         switch kind {
         case .charge: return (DesignTokens.inkHex, "bag")
-        case .income: return (DesignTokens.deepHex, "arrow.down.left")
-        case .charity: return (DesignTokens.primaryHex, "heart")
-        case .refund: return (DesignTokens.deepHex, "arrow.uturn.left")
-        case .transfer: return (DesignTokens.mutedHex, "arrow.left.arrow.right")
-        case .fundCharge: return (DesignTokens.fundHex, "banknote")
-        case .payment: return (DesignTokens.mutedHex, "creditcard")
-        case .cashback: return (DesignTokens.deepHex, "dollarsign.circle")
+        case .income: return (DesignTokens.inkHex, "arrow.down.left")
+        case .charity: return (DesignTokens.inkHex, "heart")
+        case .refund: return (DesignTokens.inkHex, "arrow.uturn.left")
+        case .transfer: return (DesignTokens.inkHex, "arrow.left.arrow.right")
+        case .fundCharge: return (DesignTokens.inkHex, "banknote")
+        case .payment: return (DesignTokens.inkHex, "creditcard")
+        case .cashback: return (DesignTokens.inkHex, "dollarsign.circle")
         case .expense: return (DesignTokens.inkHex, "house")
-        case .other: return (DesignTokens.mutedHex, "ellipsis.circle")
+        case .other: return (DesignTokens.inkHex, "ellipsis.circle")
         }
     }
 
@@ -385,9 +392,15 @@ public struct TransactionActionsSheet: View {
         let deleteSubline = transaction.source == .manual
             ? "Permanently deletes this hand-entered row"
             : "Moves this row to the Trash"
-        let rename = SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it", colorHex: DesignTokens.mutedHex, icon: "pencil")
+        // Build 69 (owner, Nov 24, 2026): every Actions sheet
+        // option is one neutral ink — only Delete stands out, in
+        // the standard destructive red. (Rename, Exclude, Cover
+        // with Savings and Add to Savings were muted/slate before;
+        // Tzedaka was primary blue; Link to Purchase was deep
+        // blue — all ink now.)
+        let rename = SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it", colorHex: DesignTokens.inkHex, icon: "pencil")
         let delete = SheetAction(id: .delete, label: "Delete", subline: deleteSubline, colorHex: DesignTokens.errorTextHex, icon: "trash")
-        let exclude = SheetAction(id: .exclude, label: "Exclude", subline: "Takes it out of the spending math", colorHex: DesignTokens.mutedHex, icon: "eye.slash")
+        let exclude = SheetAction(id: .exclude, label: "Exclude", subline: "Takes it out of the spending math", colorHex: DesignTokens.inkHex, icon: "eye.slash")
         // Build 54 (owner, Nov 21, 2026): the owner renamed "Pay
         // from Savings" to "Cover with Savings" (build 53 used
         // "Pay from Savings" for audit item 8). "Cover with
@@ -396,9 +409,9 @@ public struct TransactionActionsSheet: View {
         // labels say their direction, so they no longer read as
         // the same thing. Build 62: the two fund actions share
         // one muted slate family so they read as a pair.
-        let extraFund = SheetAction(id: .extraFund, label: "Cover with \(extraFundName)", subline: "Use the fund to cover this charge", colorHex: DesignTokens.actionSlateHex, icon: "shield")
-        let charity = SheetAction(id: .charity, label: charityName, subline: charitySubline, colorHex: DesignTokens.primaryHex, icon: "heart")
-        let designate = SheetAction(id: .designateSavings, label: "Add to \(extraFundName)", subline: "Counts this amount toward the fund", colorHex: DesignTokens.actionSlateHex, icon: "plus.circle")
+        let extraFund = SheetAction(id: .extraFund, label: "Cover with \(extraFundName)", subline: "Use the fund to cover this charge", colorHex: DesignTokens.inkHex, icon: "shield")
+        let charity = SheetAction(id: .charity, label: charityName, subline: charitySubline, colorHex: DesignTokens.inkHex, icon: "heart")
+        let designate = SheetAction(id: .designateSavings, label: "Add to \(extraFundName)", subline: "Counts this amount toward the fund", colorHex: DesignTokens.inkHex, icon: "plus.circle")
 
         /// A reclassify row for a kind — nil when it IS the row's
         /// current kind (reclassifying to what it already is is
@@ -469,7 +482,7 @@ public struct TransactionActionsSheet: View {
             let linkSubline = transaction.originalPurchaseId != nil
                 ? "Change or remove the purchase this refund is linked to"
                 : "Link this refund to the purchase it came from"
-            let link = SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline, colorHex: DesignTokens.deepHex, icon: "link")
+            let link = SheetAction(id: .linkRefund, label: "Link to Purchase", subline: linkSubline, colorHex: DesignTokens.inkHex, icon: "link")
             var group1 = [current(), link]
             group1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
             if canDesignateAsSavings { group1.append(designate) }

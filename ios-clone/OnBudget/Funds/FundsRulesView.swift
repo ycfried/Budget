@@ -977,6 +977,7 @@ public struct AdjustWeeklyBudgetSheet: View {
     @State private var fieldError: String?
     @State private var showConfirm = false
     @State private var showRemoveConfirm = false
+    @State private var showModeInfo = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
@@ -1015,36 +1016,79 @@ public struct AdjustWeeklyBudgetSheet: View {
         return message
     }
 
+    /// Build 69 (owner, Nov 24, 2026 — "looks ugly.. needs to be
+    /// cleaned up and planned better"): the sheet is fitted to
+    /// its content (`.presentationSizing(.fitted)` — the
+    /// build-68 fitted-sheet pattern — instead of the
+    /// `.fraction(0.45)` detent that left a big empty area above
+    /// the title and below the buttons); the current total reads
+    /// in a bordered summary card; the confirm button reads as
+    /// the action ("Add Amount", not the mode name "Add"); and
+    /// both mode descriptions live behind an ⓘ, never inline.
+    /// Behaviour is unchanged (Add = one-time amount this week
+    /// only; Set Total = new weekly total + how many weeks).
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: "Adjust This Week's Budget", onClose: onClose)
+            // The current total, in a bordered summary card — so
+            // the title and the total read as one planned header,
+            // and the temporary total (with its red Remove) lives
+            // inside the same card.
             if let current = currentTotalCents {
-                FundsBreakdownRow("Current Total", value: MoneyFormat.formatCents(current))
-            }
-            if let temp = tempOverrideCents, let base = baseCents, temp != base {
-                HStack(spacing: 8) {
-                    Text("Temporary Total \(MoneyFormat.formatCents(temp))")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(DesignTokens.ink)
-                    Spacer()
-                    FundsEditorDangerButton("Remove", isBusy: viewModel.busyAction == "remove-temp") {
-                        showRemoveConfirm = true
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("Current Total")
+                            .font(.system(size: 15))
+                            .foregroundStyle(DesignTokens.muted)
+                        Spacer()
+                        Text(MoneyFormat.formatCents(current))
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                    }
+                    if let temp = tempOverrideCents, let base = baseCents, temp != base {
+                        Divider()
+                        HStack(spacing: 8) {
+                            Text("Temporary Total \(MoneyFormat.formatCents(temp))")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(DesignTokens.ink)
+                            Spacer()
+                            FundsEditorDangerButton("Remove", isBusy: viewModel.busyAction == "remove-temp") {
+                                showRemoveConfirm = true
+                            }
+                        }
                     }
                 }
+                .padding(16)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
             }
-            SquarishPicker(
-                [(Mode.add, "Add"), (Mode.setTotal, "Set Total")],
-                selection: $mode
-            )
+            // The mode slider (the build-69 unified slider), with
+            // the mode's description behind an ⓘ — the standing
+            // rule (explanations behind an info icon, never
+            // inline). The mode choice is the slider, not two
+            // separate boxes.
+            HStack(spacing: 6) {
+                SquarishPicker(
+                    [(Mode.add, "Add"), (Mode.setTotal, "Set Total")],
+                    selection: $mode
+                )
+                Button { showModeInfo = true } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About this mode")
+            }
             if mode == .add {
-                Text("Adds a one-time amount to this week only.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "#6b7280"))
                 DollarTextField(text: $addAmountText, maxWidth: .infinity, minHeight: 52)
             } else {
-                Text("Sets a new weekly total for 1–4 weeks.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "#6b7280"))
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         FieldLabel("New Total", required: true)
@@ -1074,6 +1118,8 @@ public struct AdjustWeeklyBudgetSheet: View {
                         FundsMuted("Loading your current allowance…")
                     }
                 } else if !previewText.isEmpty {
+                    // Dynamic feedback, not an explainer — it
+                    // stays inline.
                     Text(previewText)
                         .font(.system(size: 14))
                         .foregroundStyle(Color(hex: "#6b7280"))
@@ -1083,7 +1129,10 @@ public struct AdjustWeeklyBudgetSheet: View {
                 FundsErrorBox(fieldError)
             }
             HStack(spacing: 12) {
-                FundsPrimaryButton(mode == .add ? "Add" : "Set New Total", isBusy: viewModel.busyAction == "add-budget" || viewModel.busyAction == "temp") {
+                // The confirm reads as the ACTION, not the mode:
+                // "Add Amount" in Add mode (the mode is "Add"),
+                // "Set New Total" in Set Total mode.
+                FundsPrimaryButton(mode == .add ? "Add Amount" : "Set New Total", isBusy: viewModel.busyAction == "add-budget" || viewModel.busyAction == "temp") {
                     saveTapped()
                 }
                 FundsTertiaryButton("Cancel") { onClose() }
@@ -1091,9 +1140,14 @@ public struct AdjustWeeklyBudgetSheet: View {
         }
         .padding()
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        .presentationDetents([.fraction(0.45), .medium])
+        .presentationSizing(.fitted)
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
+        .alert(mode == .add ? "Add" : "Set Total", isPresented: $showModeInfo) {
+            Button("OK") {}
+        } message: {
+            Text(mode == .add ? "Adds a one-time amount to this week only." : "Sets a new weekly total for 1–4 weeks.")
+        }
         .alert("Set New Total", isPresented: $showConfirm) {
             Button(TitleCase.apply(to: "Set New Total")) {
                 Task {

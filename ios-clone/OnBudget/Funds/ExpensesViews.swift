@@ -401,3 +401,116 @@ public struct ExpenseEditorSheet: View {
         .presentationBackground(.white)
     }
 }
+
+/// The "Add Recurring Expense" picker (build 69 — the Calculator's
+/// "Add Recurring Expense" option): a fitted sheet listing the
+/// charges that can be tagged as an expense, newest first.
+/// Tapping one tags it through the same tag_transaction_expense
+/// RPC the Actions sheet uses (admin only, 35-day lock,
+/// money-out only) and hands the new expense back so the caller
+/// can open the editor for it. The new expense is the SAME row
+/// the Recurring Expenses list and the Calculator read — never a
+/// second, disconnected store.
+public struct ExpenseTagPickerSheet: View {
+    public let transactions: [Transaction]
+    public let onTag: (Transaction) async -> RecurringExpense?
+    public let onTagged: (RecurringExpense) -> Void
+    public let onClose: () -> Void
+    @State private var isWorking = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    public init(
+        transactions: [Transaction],
+        onTag: @escaping (Transaction) async -> RecurringExpense?,
+        onTagged: @escaping (RecurringExpense) -> Void,
+        onClose: @escaping () -> Void
+    ) {
+        self.transactions = transactions
+        self.onTag = onTag
+        self.onTagged = onTagged
+        self.onClose = onClose
+    }
+
+    /// The charges that can be tagged: live money-out charges
+    /// with a positive amount, not already an expense, within
+    /// the server's 35-day tag lock (the current Sunday week no
+    /// more than 35 days past the transaction's Sunday week).
+    /// Newest first, capped at 50.
+    private var candidates: [Transaction] {
+        let currentSunday = MoneyFormat.currentSundayNY()
+        let taggable = transactions.filter { tx in
+            guard tx.kind == .charge, tx.amountCents > 0, !tx.isInTrash,
+                  tx.state == .verified || tx.state == .provisional,
+                  let txSunday = sunday(of: tx.date),
+                  let gap = MoneyFormat.daysBetween(txSunday, currentSunday) else { return false }
+            return gap <= 35
+        }
+        return Array(taggable.sorted { $0.date > $1.date }.prefix(50))
+    }
+
+    /// The Sunday (YYYY-MM-DD) of the week a date falls in —
+    /// the same week the server's 35-day lock counts from.
+    private func sunday(of dateString: String) -> String? {
+        guard let date = MoneyFormat.date(from: dateString) else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        calendar.firstWeekday = 1
+        let weekday = calendar.component(.weekday, from: date)
+        guard let sunday = calendar.date(byAdding: .day, value: -(weekday - 1), to: date) else { return nil }
+        return MoneyFormat.dateString(from: sunday)
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: "Tag a Charge as an Expense", onClose: onClose)
+            FundsMuted("Pick a charge — it becomes a recurring expense and stops counting as weekly spending.")
+            if candidates.isEmpty {
+                FundsMuted("No charges to tag right now — tag a transaction as an Expense from its Actions sheet.")
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(candidates) { tx in
+                            Button {
+                                Task {
+                                    guard !isWorking else { return }
+                                    isWorking = true
+                                    let expense = await onTag(tx)
+                                    isWorking = false
+                                    guard let expense else { return }
+                                    onClose()
+                                    onTagged(expense)
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(tx.merchant.uppercased())
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.ink)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text(MoneyFormat.fmtShort(tx.date))
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(DesignTokens.muted)
+                                    Text(MoneyFormat.formatCents(tx.amountCents))
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.ink)
+                                }
+                                .padding(.vertical, 10)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isWorking)
+                            if tx.id != candidates.last?.id {
+                                SheetActionDivider()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        .presentationDetents([.fraction(0.45), .medium])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(.white)
+    }
+}

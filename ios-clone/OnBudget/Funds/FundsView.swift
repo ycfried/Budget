@@ -653,6 +653,7 @@ public struct FundsView: View {
                             householdId: viewModel.context.householdId,
                             charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
                             expenses: viewModel.liveExpenses,
+                            viewModel: viewModel,
                             onClose: { showCalculator = false }
                         )
                     }
@@ -1344,8 +1345,10 @@ public struct FundsView: View {
         // Build 36: debt has no transaction rows to add — the
         // overspend charges that created the debt are not
         // attributable per week (nothing stored), so the feed stays
-        // payments + rule changes + week closes; nothing is
-        // fabricated to fill a transactions slot.
+        // payments + rule changes; nothing is fabricated to fill a
+        // transactions slot. Build 69: the per-week overspend is
+        // DERIVED from the closes (DebtLedger) and shown in the
+        // ledger below — the old "week closes" list is gone.
         fundsSectionRow(
             title: "Activity & Transactions",
             section: .debtActivity,
@@ -1359,10 +1362,22 @@ public struct FundsView: View {
                     debtName: FundSectionID.debt.displayName(customNames: appState.fundNames)
                 )
                 Divider()
-                Text("Where It Came From")
+                // Build 69 (owner, Nov 24, 2026): the ledger
+                // replaces "Where It Came From" — the old section
+                // showed the debt balance at the end of each week,
+                // cumulative balances that do not add up, so the
+                // owner could not see where the debt came from.
+                // The ledger shows what each week/event did to the
+                // debt, with +/-, and the rows add up to the
+                // current debt; every row is tappable.
+                Text("How It Adds Up")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
-                DebtHistoryView(viewModel: viewModel)
+                DebtLedgerView(
+                    viewModel: viewModel,
+                    fundName: FundSectionID.fund.displayName(customNames: appState.fundNames),
+                    debtName: FundSectionID.debt.displayName(customNames: appState.fundNames)
+                )
             }
         }
     }
@@ -1835,44 +1850,71 @@ public struct DebtActivityView: View {
     }
 }
 
-public struct DebtHistoryView: View {
-    @ObservedObject public var viewModel: FundsViewModel
+// MARK: - Debt ledger (build 69, owner Nov 24, 2026)
+//
+// Replaces DebtHistoryView ("Where It Came From" — build 29/68):
+// that showed the debt balance at the END of each closed week,
+// cumulative balances that do NOT add up to the current total, so
+// the owner could not see where the debt came from ("nothing
+// tappable.. a bit unclear"). The ledger shows what each
+// week/event DID to the debt, with +/-, so the rows add up exactly
+// to the current debt (DebtLedger in OnBudgetKit — the derivation
+// lives there, pinned by DebtLedgerTests against the live
+// household's real figures). Every row is tappable: a week row
+// opens that week's breakdown (spent, budget, refund, overspend /
+// surplus); a payment/adjustment row opens the payment detail.
 
-    public init(viewModel: FundsViewModel) {
+public struct DebtLedgerView: View {
+    @ObservedObject public var viewModel: FundsViewModel
+    /// The funds' CURRENT display names (build 43): the payment
+    /// subtitles read them, never hardcoded names.
+    public let fundName: String
+    public let debtName: String
+    @State private var selectedEntry: DebtLedgerEntry?
+
+    public init(viewModel: FundsViewModel, fundName: String, debtName: String) {
         self.viewModel = viewModel
+        self.fundName = fundName
+        self.debtName = debtName
+    }
+
+    private var entries: [DebtLedgerEntry] {
+        DebtLedger.build(
+            closes: viewModel.debtHistory,
+            payments: viewModel.debtPayments,
+            adjustments: viewModel.debtAdjustments,
+            debtName: debtName,
+            extraFundName: fundName
+        )
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let error = viewModel.debtError {
                 FundsErrorBox(error)
-            } else if viewModel.debtHistory.isEmpty {
-                FundsMuted("No closed weeks carried debt out.")
+            } else if entries.isEmpty {
+                FundsMuted("No debt changes yet.")
             } else {
-                // Build 68 (item 25b): each week is a proper row —
-                // the week in ink on the left, the carried-out
-                // amount semibold on the right — in the same
-                // bordered card as the payments above, not bare
-                // muted text lines.
+                // The ledger in the same bordered card as the
+                // payments above — each row a whole-row tap target
+                // (owner rule, Nov 11 2026) with a chevron, so it
+                // reads as tappable; the total row closes it, so
+                // the rows visibly add up to the current debt.
                 VStack(spacing: 0) {
-                    ForEach(Array(viewModel.debtHistory.prefix(8).enumerated()), id: \.element.weekStart) { index, close in
-                        HStack(spacing: 6) {
-                            Text("Week of \(MoneyFormat.fmtLong(close.weekStart))")
-                                .font(.system(size: 15))
-                                .foregroundStyle(DesignTokens.ink)
-                            Spacer()
-                            Text(MoneyFormat.formatCents(close.outgoingDebtCents))
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(DesignTokens.ink)
-                            Text("carried out")
-                                .font(.system(size: 13))
-                                .foregroundStyle(Color(hex: "#6b7280"))
-                        }
-                        .padding(.vertical, 10)
-                        if index < min(viewModel.debtHistory.count, 8) - 1 {
-                            Divider()
-                        }
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                        ledgerRow(entry)
+                        Divider()
                     }
+                    HStack(spacing: 6) {
+                        Text("Total Now")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Spacer()
+                        Text(MoneyFormat.formatCents(DebtLedger.totalCents(entries)))
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                    }
+                    .padding(.vertical, 12)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -1882,11 +1924,214 @@ public struct DebtHistoryView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
-                if viewModel.debtHistory.count > 8 {
-                    FundsMuted("Showing the latest 8 weeks.")
-                }
             }
         }
+        .sheet(item: $selectedEntry) { entry in
+            if entry.kind == .week {
+                DebtLedgerWeekDetailSheet(entry: entry, transactions: viewModel.allTransactions, onClose: { selectedEntry = nil })
+            } else {
+                DebtLedgerPaymentDetailSheet(entry: entry, onClose: { selectedEntry = nil })
+            }
+        }
+    }
+
+    /// One ledger row: the title + what it did on the left, the
+    /// signed amount + chevron on the right. + is debt added
+    /// (overspent), - is debt paid down — the sign does the work,
+    /// both in ink, so no colour has to be learned.
+    private func ledgerRow(_ entry: DebtLedgerEntry) -> some View {
+        Button {
+            selectedEntry = entry
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    Text(entry.subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
+                Spacer()
+                Text(signedAmount(entry.amountCents))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            }
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(entry.title), \(entry.subtitle), \(signedAmount(entry.amountCents))")
+    }
+
+    private func signedAmount(_ cents: Int) -> String {
+        cents >= 0 ? "+\(MoneyFormat.formatCents(cents))" : MoneyFormat.formatCents(cents)
+    }
+}
+
+/// The week's breakdown behind a ledger week row: what was spent
+/// (charges + fund charges, refunds), the weekly budget, and the
+/// resulting overspend or surplus — the figures that make up the
+/// row's +amount. The budget is derived so the detail always
+/// reconciles to the ledger: overspend = net spending - budget,
+/// so budget = net spending - overspend for an overspent week;
+/// otherwise the close's stored allowance (base + temp increase)
+/// is shown, and when even that is unknown the budget row is
+/// omitted rather than guessed. (Only overspent weeks get a
+/// ledger row, so the stored-allowance branch is a safety net,
+/// not the common path.)
+private struct DebtLedgerWeekDetailSheet: View {
+    let entry: DebtLedgerEntry
+    let transactions: [Transaction]
+    let onClose: () -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var weekTransactions: [Transaction] {
+        transactions.filter { tx in
+            guard tx.state == .verified || tx.state == .provisional, !tx.excluded else { return false }
+            guard let days = MoneyFormat.daysBetween(entry.weekStart, tx.date) else { return false }
+            return days >= 0 && days < 7
+        }
+    }
+
+    private var chargesCents: Int {
+        weekTransactions
+            .filter { $0.kind == .charge || $0.kind == .fundCharge }
+            .reduce(0) { $0 + $1.amountCents }
+    }
+
+    private var refundsCents: Int {
+        weekTransactions
+            .filter { $0.kind == .refund }
+            .reduce(0) { $0 + $1.amountCents }
+    }
+
+    private var netSpendingCents: Int { chargesCents + refundsCents }
+
+    private var overspendCents: Int { entry.weekOverspendCents ?? 0 }
+
+    private var budgetCents: Int? {
+        if overspendCents > 0 {
+            return netSpendingCents - overspendCents
+        }
+        if let close = entry.weekClose {
+            // The stored allowance for the week (base + the
+            // temporary increase, when one was in effect). The
+            // late adjustment is NOT part of the allowance — it
+            // is late-posting spending, not budget.
+            let stored = (close.baseAllowanceCents ?? 0)
+                + (close.tempIncreaseCents ?? 0)
+            if stored > 0 { return stored }
+        }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: entry.title, onClose: onClose)
+            VStack(spacing: 0) {
+                FundsBreakdownRow("Spent", value: MoneyFormat.formatCents(chargesCents))
+                    .padding(.vertical, 10)
+                SheetActionDivider()
+                FundsBreakdownRow("Refunds", value: MoneyFormat.formatCents(refundsCents))
+                    .padding(.vertical, 10)
+                SheetActionDivider()
+                FundsBreakdownRow("Net Spending", value: MoneyFormat.formatCents(netSpendingCents))
+                    .padding(.vertical, 10)
+                if let budget = budgetCents {
+                    SheetActionDivider()
+                    FundsBreakdownRow("Weekly Budget", value: MoneyFormat.formatCents(budget))
+                        .padding(.vertical, 10)
+                    SheetActionDivider()
+                    if overspendCents > 0 {
+                        FundsBreakdownRow("Overspent", value: "+\(MoneyFormat.formatCents(overspendCents))")
+                            .padding(.vertical, 10)
+                    } else {
+                        FundsBreakdownRow("Under Budget By", value: MoneyFormat.formatCents(budget - netSpendingCents))
+                            .padding(.vertical, 10)
+                    }
+                } else if overspendCents > 0 {
+                    SheetActionDivider()
+                    FundsBreakdownRow("Overspent", value: "+\(MoneyFormat.formatCents(overspendCents))")
+                        .padding(.vertical, 10)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 20)
+        .padding(.bottom, 24)
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        .presentationDetents([.fraction(0.45), .medium])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(.white)
+    }
+}
+
+/// The payment / adjustment detail behind a ledger payment row:
+/// the amount, what it was, when it happened and which week it
+/// belongs to — the receipt for the row's -amount.
+private struct DebtLedgerPaymentDetailSheet: View {
+    let entry: DebtLedgerEntry
+    let onClose: () -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: entry.title, onClose: onClose)
+            VStack(spacing: 0) {
+                FundsBreakdownRow("Amount", value: MoneyFormat.formatCents(entry.amountCents))
+                    .padding(.vertical, 10)
+                SheetActionDivider()
+                FundsBreakdownRow("What", value: entry.subtitle)
+                    .padding(.vertical, 10)
+                SheetActionDivider()
+                FundsBreakdownRow("Week", value: "Week of \(MoneyFormat.fmtLong(entry.weekStart))")
+                    .padding(.vertical, 10)
+                if let payment = entry.payment, !payment.note.isEmpty {
+                    SheetActionDivider()
+                    FundsBreakdownRow("Note", value: payment.note)
+                        .padding(.vertical, 10)
+                }
+                if let adjustment = entry.adjustment {
+                    SheetActionDivider()
+                    FundsBreakdownRow("Balance After", value: MoneyFormat.formatCents(adjustment.balanceAfterCents))
+                        .padding(.vertical, 10)
+                    if !adjustment.note.isEmpty {
+                        SheetActionDivider()
+                        FundsBreakdownRow("Note", value: adjustment.note)
+                            .padding(.vertical, 10)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 20)
+        .padding(.bottom, 24)
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        .presentationDetents([.fraction(0.45), .medium])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(.white)
     }
 }
 
@@ -2069,13 +2314,21 @@ public struct WeeklyBudgetCalculatorSheet: View {
     /// passed through to the content — the Calculator reads its
     /// recurring costs from them.
     public let expenses: [RecurringExpense]
+    /// The Funds view model (build 69 — the Calculator's "Add
+    /// Recurring Expense" option): the Calculator reads its
+    /// expenses LIVE from it, so an expense added here shows at
+    /// once, and tags through it. Nil when the presenter has
+    /// none — then the content reads the passed-in `expenses`
+    /// snapshot and the Add option is hidden.
+    @ObservedObject public var viewModel: FundsViewModel?
     public var onClose: () -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    public init(householdId: UUID, charityName: String, expenses: [RecurringExpense] = [], onClose: @escaping () -> Void = {}) {
+    public init(householdId: UUID, charityName: String, expenses: [RecurringExpense] = [], viewModel: FundsViewModel? = nil, onClose: @escaping () -> Void = {}) {
         self.householdId = householdId
         self.charityName = charityName
         self.expenses = expenses
+        self._viewModel = ObservedObject(wrappedValue: viewModel)
         self.onClose = onClose
     }
 
@@ -2083,7 +2336,7 @@ public struct WeeklyBudgetCalculatorSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 SheetHeader(title: TitleCase.apply(to: "Weekly Budget Calculator"), onClose: onClose)
-                WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName, expenses: expenses)
+                WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName, expenses: expenses, viewModel: viewModel)
             }
             .padding()
         }
@@ -2112,6 +2365,23 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// hand-entered here. Passed in by the presenter (the
     /// Weekly sheet / Funds page's FundsViewModel loads them).
     public let expenses: [RecurringExpense]
+    /// The Funds view model (build 69): when present, the
+    /// Calculator reads its expenses LIVE from it — so an expense
+    /// added here shows at once — and the "Add Recurring
+    /// Expense" option tags through it. Nil when the presenter
+    /// has none (then the snapshot above is the source and the
+    /// Add option is hidden).
+    @ObservedObject public var viewModel: FundsViewModel?
+    /// The expenses the Calculator reads: live from the view
+    /// model when present, else the snapshot passed in.
+    private var liveExpenses: [RecurringExpense] {
+        viewModel?.liveExpenses ?? expenses
+    }
+    /// The tag picker + editor state (build 69): adding a
+    /// recurring expense from the Calculator picks a charge to
+    /// tag, then opens the editor for the new expense.
+    @State private var showExpensePicker = false
+    @State private var editorExpense: RecurringExpense?
     @State private var incomeItems: [CalculatorItem] = []
     @State private var charityText = ""
     @State private var lifestyle: LifestyleHoldback = .regular
@@ -2131,10 +2401,11 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// stored values with the empty defaults.
     @State private var didLoad = false
 
-    public init(householdId: UUID, charityName: String, expenses: [RecurringExpense] = []) {
+    public init(householdId: UUID, charityName: String, expenses: [RecurringExpense] = [], viewModel: FundsViewModel? = nil) {
         self.householdId = householdId
         self.charityName = charityName
         self.expenses = expenses
+        self._viewModel = ObservedObject(wrappedValue: viewModel)
     }
 
     // MARK: - Local persistence (per household, no server)
@@ -2195,7 +2466,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// hand-entered charges — the manual "Recurring Charges"
     /// section is gone, replaced by the expenses below.
     private var monthlyChargesCents: Int {
-        expenses.reduce(0) { $0 + $1.monthlyCents }
+        liveExpenses.reduce(0) { $0 + $1.monthlyCents }
     }
 
     private var charityCents: Int {
@@ -2233,7 +2504,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     }
 
     private var hasItems: Bool {
-        !incomeItems.isEmpty || !expenses.isEmpty
+        !incomeItems.isEmpty || !liveExpenses.isEmpty
     }
 
     private var customHoldbackInvalid: Bool {
@@ -2331,6 +2602,7 @@ public struct WeeklyBudgetCalculatorContent: View {
         itemSection(
             title: "Expected Income",
             items: incomeItems,
+            draftTitle: "Add Income",
             draftName: $incomeDraftName,
             draftAmount: $incomeDraftAmount,
             draftFrequency: $incomeDraftFrequency,
@@ -2350,6 +2622,19 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// suggestion above. Nothing is typed here; expenses are
     /// tagged from a transaction's Actions sheet and managed
     /// from Recurring Expenses on the Weekly Budget sheet.
+    /// Build 67 (owner, Nov 23, 2026): the manual "Recurring
+    /// Charges" section is replaced by a read-only section
+    /// driven by tagged expenses. Each row shows the expense
+    /// name and the recurring amount with its frequency
+    /// suffix ($160.00/mo).
+    ///
+    /// Build 69 (owner, Nov 24, 2026): an "Add Recurring
+    /// Expense" option (admin only) — it opens a picker of
+    /// taggable charges, tags the chosen one through the same
+    /// tag_transaction_expense RPC the Actions sheet uses, and
+    /// opens the editor for the new expense. The new expense is
+    /// the SAME row the Recurring Expenses list and the
+    /// Calculator read — never a second, disconnected store.
     private var chargesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
@@ -2371,10 +2656,10 @@ public struct WeeklyBudgetCalculatorContent: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("About recurring expenses")
             }
-            if expenses.isEmpty {
+            if liveExpenses.isEmpty {
                 FundsMuted("No expenses tagged yet — tag a transaction as an Expense to add one.")
             } else {
-                ForEach(expenses) { expense in
+                ForEach(liveExpenses) { expense in
                     HStack(spacing: 4) {
                         Text(expense.name)
                             .font(.system(size: 15, weight: .semibold))
@@ -2387,6 +2672,26 @@ public struct WeeklyBudgetCalculatorContent: View {
                     }
                 }
             }
+            // Build 69 (owner, Nov 24, 2026): add a recurring
+            // expense from the Calculator, matching the "Add
+            // Income" form above it. Admin only — tagging is
+            // admin-only server-side. Hidden when the presenter
+            // passed no view model.
+            if let viewModel, viewModel.context.isAdmin {
+                Button {
+                    showExpensePicker = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("Add Recurring Expense")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(DesignTokens.primary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add recurring expense")
+            }
             FundsBreakdownRow("Monthly Total", value: MoneyFormat.formatCents(monthlyChargesCents))
         }
         .alert("Recurring Expenses", isPresented: $showChargesInfo) {
@@ -2394,15 +2699,54 @@ public struct WeeklyBudgetCalculatorContent: View {
         } message: {
             Text("From your tagged expenses. Manage them from Recurring Expenses on the Weekly Budget sheet.")
         }
+        .sheet(isPresented: $showExpensePicker) {
+            if let viewModel {
+                ExpenseTagPickerSheet(
+                    transactions: viewModel.allTransactions,
+                    onTag: { transaction in
+                        await viewModel.tagExpense(transaction, reason: "")
+                    },
+                    onTagged: { expense in
+                        // The editor cannot open while the picker
+                        // is still dismissing — the build-67
+                        // 400ms pattern.
+                        Task {
+                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            editorExpense = expense
+                        }
+                    },
+                    onClose: { showExpensePicker = false }
+                )
+            }
+        }
+        .sheet(item: $editorExpense) { expense in
+            if let viewModel {
+                ExpenseEditorSheet(
+                    expense: expense,
+                    onSave: { name, amountCents, frequency in
+                        await viewModel.updateExpense(expense, name: name, amountCents: amountCents, frequency: frequency)
+                    },
+                    onRemove: {
+                        await viewModel.removeExpense(expense)
+                    },
+                    onClose: { editorExpense = nil }
+                )
+            }
+        }
     }
 
     /// One hand-entered list (income or charges): the saved rows
     /// with their monthly figure, the add row (name + amount +
     /// frequency + Add), and the monthly total. Rows are minimal —
     /// name + frequency + monthly amount — like the activity rows.
+    ///
+    /// Build 69 (owner, Nov 24, 2026): the add form has its own
+    /// small header (`draftTitle` — "Add Income"), so the fields
+    /// no longer float with nothing saying what they are.
     private func itemSection(
         title: String,
         items: [CalculatorItem],
+        draftTitle: String,
         draftName: Binding<String>,
         draftAmount: Binding<String>,
         draftFrequency: Binding<CalculatorFrequency>,
@@ -2442,6 +2786,13 @@ public struct WeeklyBudgetCalculatorContent: View {
                     }
                 }
             }
+            // Build 69 (owner, Nov 24, 2026): the add form has
+            // its own small header, matching the section headers
+            // above it ("Expected Income", "Recurring Expenses").
+            Text(TitleCase.apply(to: draftTitle))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+                .padding(.top, 4)
             FundsTextField("Name", text: draftName)
                 .autocorrectionDisabled()
             HStack(spacing: 8) {

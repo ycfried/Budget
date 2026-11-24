@@ -3098,6 +3098,7 @@ public struct WeeklySheet: View {
                     householdId: householdId,
                     charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
                     expenses: fundsViewModel?.liveExpenses ?? [],
+                    viewModel: fundsViewModel,
                     onClose: { showCalculator = false }
                 )
             }
