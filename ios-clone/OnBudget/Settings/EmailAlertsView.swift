@@ -535,8 +535,10 @@ struct EmailAlertsView: View {
         // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
         // cover, not a detent sheet — popups are always full size.
         // The picker is a NavigationStack + List, so it fills the
-        // full screen and starts at the top; Cancel in the toolbar
-        // is the dismiss path.
+        // full screen and starts at the top. Build 70, items 2+5
+        // (owner, Nov 24, 2026): the toolbar Cancel is now a back
+        // chevron top left (the dismiss path), and swipe-right
+        // dismisses too — Cancel was a redundant third way out.
         .fullScreenCover(isPresented: Binding(
             get: { viewModel.householdChoices != nil },
             set: { if !$0 { viewModel.cancelHouseholdChoice() } }
@@ -557,10 +559,8 @@ struct EmailAlertsView: View {
             .navigationTitle("Choose Household")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        viewModel.cancelHouseholdChoice()
-                    }
+                ToolbarItem(placement: .topBarLeading) {
+                    BackButton { viewModel.cancelHouseholdChoice() }
                 }
             }
         }
@@ -568,6 +568,10 @@ struct EmailAlertsView: View {
         // regular size class in the full-screen cover; full-width
         // on iPhone.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // Build 70, item 2: swipe-right dismisses the cover,
+        // matching the back chevron. (No SheetHeader here, so the
+        // gesture does not come from there.)
+        .sheetSwipeBack()
     }
 
     private func connectionRow(_ connection: EmailConnectionPublic) -> some View {

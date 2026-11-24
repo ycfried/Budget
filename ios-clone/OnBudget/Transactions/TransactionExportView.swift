@@ -182,20 +182,19 @@ public struct TransactionExportView: View {
                         filterSection
                         formatSection
                         statusSection
-                        TwoButtonRow {
-                            Button(format == .pdf ? "Preview PDF" : "Export as CSV") { generate() }
-                                .buttonStyle(PrimaryButtonStyle())
-                                .accessibilityIdentifier("export.generate")
-                                // A min-above-max range disables
-                                // Generate the same way the list's
-                                // Filters sheet disables Apply —
-                                // the error box above already says
-                                // why.
-                                .disabled(draftAmountInvalid)
-                        } secondary: {
-                            Button("Cancel") { onDismiss() }
-                                .buttonStyle(TertiaryButtonStyle())
-                        }
+                        // Build 70, item 5 (owner, Nov 24, 2026):
+                        // the Cancel button is gone — the SheetHeader
+                        // X + swipe-right dismiss without exporting,
+                        // so Cancel was a third redundant way out.
+                        Button(format == .pdf ? "Preview PDF" : "Export as CSV") { generate() }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .accessibilityIdentifier("export.generate")
+                            // A min-above-max range disables
+                            // Generate the same way the list's
+                            // Filters sheet disables Apply —
+                            // the error box above already says
+                            // why.
+                            .disabled(draftAmountInvalid)
                         // Clear Filters is a real button (owner, Nov
                         // 14, 2026 — a plain grey link under the
                         // buttons did not read as tappable).
@@ -663,15 +662,12 @@ public struct TransactionExportPreviewSheet: View {
                 // preview and prove the finished PDF shows before
                 // anything is shared.
                 .accessibilityIdentifier("export.preview.pdf")
-            TwoButtonRow {
-                Button("Share") { shareURL = url }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .accessibilityIdentifier("export.preview.share")
-            } secondary: {
-                Button("Close") { dismiss() }
-                    .buttonStyle(TertiaryButtonStyle())
-                    .accessibilityIdentifier("export.preview.close")
-            }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Close
+            // button is gone — the SheetHeader X + swipe-right
+            // dismiss, so Close was a third redundant way out.
+            Button("Share") { shareURL = url }
+                .buttonStyle(PrimaryButtonStyle())
+                .accessibilityIdentifier("export.preview.share")
             .padding()
         }
         .accessibilityIdentifier("export.preview")

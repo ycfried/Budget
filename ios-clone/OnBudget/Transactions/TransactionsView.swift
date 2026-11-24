@@ -962,17 +962,16 @@ public struct TransactionsFilterSheet: View {
                         sortPicker
                     }
 
-                    TwoButtonRow {
-                        Button("Apply") { apply() }
-                            .buttonStyle(PrimaryButtonStyle())
-                            // T-P2-2: Apply stays disabled while the
-                            // amount range is invalid — the error box
-                            // above already says why.
-                            .disabled(draftAmountInvalid)
-                    } secondary: {
-                        Button("Cancel") { cancel() }
-                            .buttonStyle(TertiaryButtonStyle())
-                    }
+                    // Build 70, item 5 (owner, Nov 24, 2026): the
+                    // Cancel button is gone — the top-left Back
+                    // button + swipe-right dismiss without applying,
+                    // so Cancel was a third redundant way out.
+                    Button("Apply") { apply() }
+                        .buttonStyle(PrimaryButtonStyle())
+                        // T-P2-2: Apply stays disabled while the
+                        // amount range is invalid — the error box
+                        // above already says why.
+                        .disabled(draftAmountInvalid)
 
                     // Reset is a real button (owner, Nov 14, 2026):
                     // as a plain grey link under Apply / Cancel it

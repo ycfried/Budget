@@ -742,16 +742,14 @@ struct ConnectedAccountsView: View {
                 .padding(.vertical, 14)
                 .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-            HStack(spacing: 12) {
-                Button("Save") {
-                    Task { await viewModel.saveNickname() }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                Button("Cancel") {
-                    viewModel.nicknameTarget = nil
-                }
-                .buttonStyle(TertiaryButtonStyle())
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the SheetHeader X + swipe-right
+            // dismiss without saving, so Cancel was a third
+            // redundant way out.
+            Button("Save") {
+                Task { await viewModel.saveNickname() }
             }
+            .buttonStyle(PrimaryButtonStyle())
             // Build 43 (owner, Nov 17, 2026 — item 18): the
             // trailing Spacer top-anchors the content in the
             // full-screen cover — without it the short form

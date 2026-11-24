@@ -521,11 +521,10 @@ struct MerchantNamesSettingsView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(viewModel.isSaving)
-                Button("Cancel") {
-                    showingForm = false
-                    editingRule = nil
-                }
-                .buttonStyle(TertiaryButtonStyle())
+                // Build 70, item 5 (owner, Nov 24, 2026): the
+                // Cancel button is gone — the SheetHeader X +
+                // swipe-right dismiss without saving, so Cancel
+                // was a third redundant way out.
                 if let editingRule {
                     Spacer()
                     Button("Delete") {

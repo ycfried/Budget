@@ -922,21 +922,19 @@ public struct TransactionActionsSheet: View {
             Text(charityMessage)
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
-            TwoButtonRow {
-                Button("Mark as \(charityName)") {
-                    Task {
-                        isWorking = true
-                        let ok = await viewModel.markAsCharity(transaction)
-                        isWorking = false
-                        if ok { onDismiss() }
-                    }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the header back chevron + swipe-
+            // right return to the list, so Cancel duplicated them.
+            Button("Mark as \(charityName)") {
+                Task {
+                    isWorking = true
+                    let ok = await viewModel.markAsCharity(transaction)
+                    isWorking = false
+                    if ok { onDismiss() }
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isWorking)
-            } secondary: {
-                Button("Cancel") { flow = .list }
-                    .buttonStyle(TertiaryButtonStyle())
             }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isWorking)
         }
     }
 
@@ -980,37 +978,35 @@ public struct TransactionActionsSheet: View {
             Text(savingsMessage)
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
-            TwoButtonRow {
-                // Build 64 (F-29): same rename as the confirm
-                // title above — the button must read "Add to …",
-                // not the old "Designate as …".
-                Button("Add to \(extraFundName)") {
-                    Task {
-                        isWorking = true
-                        guard let fundsViewModel = makeFundsViewModel() else {
-                            isWorking = false
-                            viewModel.showAlert(title: "Could Not Add to \(extraFundName)", message: "Could not load your household. Try again.")
-                            return
-                        }
-                        let message = await fundsViewModel.designateTransactionAsSavings(transaction)
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the header back chevron + swipe-
+            // right return to the list, so Cancel duplicated them.
+            // Build 64 (F-29): same rename as the confirm
+            // title above — the button must read "Add to …",
+            // not the old "Designate as …".
+            Button("Add to \(extraFundName)") {
+                Task {
+                    isWorking = true
+                    guard let fundsViewModel = makeFundsViewModel() else {
                         isWorking = false
-                        if let message {
-                            viewModel.showConfirmation(message, kind: .success)
-                            onDismiss()
-                        } else {
-                            viewModel.showAlert(
-                                title: fundsViewModel.alertTitle ?? "Could Not Add to \(extraFundName)",
-                                message: fundsViewModel.alertMessage ?? "Could not add this transaction to the fund. Try again."
-                            )
-                        }
+                        viewModel.showAlert(title: "Could Not Add to \(extraFundName)", message: "Could not load your household. Try again.")
+                        return
+                    }
+                    let message = await fundsViewModel.designateTransactionAsSavings(transaction)
+                    isWorking = false
+                    if let message {
+                        viewModel.showConfirmation(message, kind: .success)
+                        onDismiss()
+                    } else {
+                        viewModel.showAlert(
+                            title: fundsViewModel.alertTitle ?? "Could Not Add to \(extraFundName)",
+                            message: fundsViewModel.alertMessage ?? "Could not add this transaction to the fund. Try again."
+                        )
                     }
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isWorking)
-            } secondary: {
-                Button("Cancel") { flow = .list }
-                    .buttonStyle(TertiaryButtonStyle())
             }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isWorking)
         }
     }
 
@@ -1038,32 +1034,30 @@ public struct TransactionActionsSheet: View {
             if let extraFundError {
                 SoftErrorBox(extraFundError)
             }
-            TwoButtonRow {
-                Button("Send Request") {
-                    Task {
-                        guard let cents = TransactionFormatting.parseDollarsStrict(extraFundAmount),
-                              cents > 0 else {
-                            extraFundError = "Enter a positive amount."
-                            return
-                        }
-                        // T-P2-6: a request can never exceed the
-                        // charge it covers.
-                        guard cents <= transaction.amountCents else {
-                            extraFundError = "The request can't be more than the charge (\(TransactionFormatting.amountDisplay(for: transaction).text))."
-                            return
-                        }
-                        isWorking = true
-                        let ok = await viewModel.requestExtraFund(for: transaction, amountCents: cents)
-                        isWorking = false
-                        if ok { onDismiss() }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the header back chevron + swipe-
+            // right return to the list, so Cancel duplicated them.
+            Button("Send Request") {
+                Task {
+                    guard let cents = TransactionFormatting.parseDollarsStrict(extraFundAmount),
+                          cents > 0 else {
+                        extraFundError = "Enter a positive amount."
+                        return
                     }
+                    // T-P2-6: a request can never exceed the
+                    // charge it covers.
+                    guard cents <= transaction.amountCents else {
+                        extraFundError = "The request can't be more than the charge (\(TransactionFormatting.amountDisplay(for: transaction).text))."
+                        return
+                    }
+                    isWorking = true
+                    let ok = await viewModel.requestExtraFund(for: transaction, amountCents: cents)
+                    isWorking = false
+                    if ok { onDismiss() }
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isWorking)
-            } secondary: {
-                Button("Cancel") { flow = .list }
-                    .buttonStyle(TertiaryButtonStyle())
             }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isWorking)
         }
     }
 
@@ -1129,26 +1123,24 @@ public struct TransactionActionsSheet: View {
             if let renameError {
                 SoftErrorBox(renameError)
             }
-            TwoButtonRow {
-                Button("Save Name") {
-                    Task {
-                        let name = renameName.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !name.isEmpty else {
-                            renameError = "Enter a name."
-                            return
-                        }
-                        isWorking = true
-                        let ok = await viewModel.renameMerchant(transaction, to: name, fixedKind: renameFixedKind, matchType: renameMatchType)
-                        isWorking = false
-                        if ok { onDismiss() }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the header back chevron + swipe-
+            // right return to the list, so Cancel duplicated them.
+            Button("Save Name") {
+                Task {
+                    let name = renameName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty else {
+                        renameError = "Enter a name."
+                        return
                     }
+                    isWorking = true
+                    let ok = await viewModel.renameMerchant(transaction, to: name, fixedKind: renameFixedKind, matchType: renameMatchType)
+                    isWorking = false
+                    if ok { onDismiss() }
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isWorking)
-            } secondary: {
-                Button("Cancel") { flow = .list }
-                    .buttonStyle(TertiaryButtonStyle())
             }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isWorking)
         }
     }
 
@@ -1213,8 +1205,9 @@ public struct TransactionActionsSheet: View {
                     Spacer()
                 }
             }
-            Button("Cancel") { flow = .list }
-                .buttonStyle(TertiaryButtonStyle())
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the header back chevron + swipe-
+            // right return to the list, so Cancel duplicated them.
         }
     }
 
@@ -1224,21 +1217,19 @@ public struct TransactionActionsSheet: View {
             Text(unlinkMessage)
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
-            TwoButtonRow {
-                Button("Unlink") {
-                    Task {
-                        isWorking = true
-                        let ok = await viewModel.unlinkRefund(transaction)
-                        isWorking = false
-                        if ok { onDismiss() }
-                    }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the header back chevron + swipe-
+            // right return to the list, so Cancel duplicated them.
+            Button("Unlink") {
+                Task {
+                    isWorking = true
+                    let ok = await viewModel.unlinkRefund(transaction)
+                    isWorking = false
+                    if ok { onDismiss() }
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isWorking)
-            } secondary: {
-                Button("Cancel") { flow = .list }
-                    .buttonStyle(TertiaryButtonStyle())
             }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isWorking)
         }
     }
 
@@ -1285,95 +1276,93 @@ public struct TransactionActionsSheet: View {
             if let excludeReasonError {
                 SoftErrorBox(excludeReasonError)
             }
-            TwoButtonRow {
-                Button("Exclude") {
-                    Task {
-                        let reason = excludeReason.trimmingCharacters(in: .whitespaces)
-                        guard !reason.isEmpty else {
-                            excludeReasonError = "Reason required"
-                            return
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the header back chevron + swipe-
+            // right return to the list, so Cancel duplicated them.
+            Button("Exclude") {
+                Task {
+                    let reason = excludeReason.trimmingCharacters(in: .whitespaces)
+                    guard !reason.isEmpty else {
+                        excludeReasonError = "Reason required"
+                        return
+                    }
+                    isWorking = true
+                    let ok = await viewModel.exclude(transaction, reason: reason)
+                    isWorking = false
+                    if ok { onDismiss() }
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isWorking)
+        } secondary: {
+            Button("Keep It") { flow = .list }
+                .buttonStyle(TertiaryButtonStyle())
+        }
+    }
+}
+
+private func reclassifyReasonContent(kind: TransactionKind) -> some View {
+    VStack(alignment: .leading, spacing: 16) {
+        summaryHeader
+        Text(kind == .expense
+             ? "Give a reason for tagging this transaction as a recurring expense. It stops counting toward weekly spending, and appears in Recurring Expenses."
+             : "Give a reason for reclassifying this transaction.")
+            .font(.system(size: 15))
+            .foregroundStyle(DesignTokens.ink)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Reason (Required)")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            TextField("Reason", text: $reclassifyReason, axis: .vertical)
+                // Build 68 (item 7/13): 48pt minimum height,
+                    // 14pt horizontal / 12pt vertical padding,
+                    // 12pt radius — matches the other fields.
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(minHeight: 48, alignment: .leading)
+                .background(.white)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        if let reclassifyReasonError {
+            SoftErrorBox(reclassifyReasonError)
+        }
+        TwoButtonRow {
+            Button(kind == .expense ? "Tag as Expense" : "Continue") {
+                Task {
+                    let reason = reclassifyReason.trimmingCharacters(in: .whitespaces)
+                    guard !reason.isEmpty else {
+                        reclassifyReasonError = "Reason required"
+                        return
+                    }
+                    isWorking = true
+                    if kind == .expense {
+                        // Build 67: tagging is NOT the plain
+                        // reclassify RPC — it also creates the
+                        // expense row. On success the Actions
+                        // sheet closes and the expense editor
+                        // opens (after a beat, so the sheet
+                        // presentation is not dropped while the
+                        // Actions sheet is still animating away).
+                        if let expense = await viewModel.tagExpense(transaction, reason: reason) {
+                            isWorking = false
+                            onDismiss()
+                            Task {
+                                try? await Task.sleep(nanoseconds: 400_000_000)
+                                viewModel.taggedExpense = expense
+                            }
+                        } else {
+                            isWorking = false
                         }
-                        isWorking = true
-                        let ok = await viewModel.exclude(transaction, reason: reason)
+                    } else {
+                        let ok = await viewModel.reclassify(transaction, to: kind, reason: reason)
                         isWorking = false
                         if ok { onDismiss() }
                     }
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isWorking)
-            } secondary: {
-                Button("Keep It") { flow = .list }
-                    .buttonStyle(TertiaryButtonStyle())
             }
-        }
-    }
-
-    private func reclassifyReasonContent(kind: TransactionKind) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            summaryHeader
-            Text(kind == .expense
-                 ? "Give a reason for tagging this transaction as a recurring expense. It stops counting toward weekly spending, and appears in Recurring Expenses."
-                 : "Give a reason for reclassifying this transaction.")
-                .font(.system(size: 15))
-                .foregroundStyle(DesignTokens.ink)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Reason (Required)")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
-                TextField("Reason", text: $reclassifyReason, axis: .vertical)
-                    // Build 68 (item 7/13): 48pt minimum height,
-                        // 14pt horizontal / 12pt vertical padding,
-                        // 12pt radius — matches the other fields.
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .frame(minHeight: 48, alignment: .leading)
-                    .background(.white)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            if let reclassifyReasonError {
-                SoftErrorBox(reclassifyReasonError)
-            }
-            TwoButtonRow {
-                Button(kind == .expense ? "Tag as Expense" : "Continue") {
-                    Task {
-                        let reason = reclassifyReason.trimmingCharacters(in: .whitespaces)
-                        guard !reason.isEmpty else {
-                            reclassifyReasonError = "Reason required"
-                            return
-                        }
-                        isWorking = true
-                        if kind == .expense {
-                            // Build 67: tagging is NOT the plain
-                            // reclassify RPC — it also creates the
-                            // expense row. On success the Actions
-                            // sheet closes and the expense editor
-                            // opens (after a beat, so the sheet
-                            // presentation is not dropped while the
-                            // Actions sheet is still animating away).
-                            if let expense = await viewModel.tagExpense(transaction, reason: reason) {
-                                isWorking = false
-                                onDismiss()
-                                Task {
-                                    try? await Task.sleep(nanoseconds: 400_000_000)
-                                    viewModel.taggedExpense = expense
-                                }
-                            } else {
-                                isWorking = false
-                            }
-                        } else {
-                            let ok = await viewModel.reclassify(transaction, to: kind, reason: reason)
-                            isWorking = false
-                            if ok { onDismiss() }
-                        }
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isWorking)
-            } secondary: {
-                Button("Cancel") { flow = .list }
-                    .buttonStyle(TertiaryButtonStyle())
-            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isWorking)
         }
     }
 

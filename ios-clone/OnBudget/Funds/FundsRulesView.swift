@@ -903,11 +903,12 @@ public struct AddToBudgetSheet: View {
             if let addError {
                 FundsErrorBox(addError)
             }
-            HStack(spacing: 12) {
-                FundsPrimaryButton("Add", isBusy: viewModel.busyAction == "add-budget") {
-                    add()
-                }
-                FundsTertiaryButton("Cancel") { onClose() }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the SheetHeader X + swipe-right
+            // dismiss without saving, so Cancel was a third
+            // redundant way out.
+            FundsPrimaryButton("Add", isBusy: viewModel.busyAction == "add-budget") {
+                add()
             }
             // Build 43 (owner, Nov 17, 2026 — item 18): the
             // trailing Spacer top-anchors the content in the
@@ -1128,14 +1129,15 @@ public struct AdjustWeeklyBudgetSheet: View {
             if let fieldError {
                 FundsErrorBox(fieldError)
             }
-            HStack(spacing: 12) {
-                // The confirm reads as the ACTION, not the mode:
-                // "Add Amount" in Add mode (the mode is "Add"),
-                // "Set New Total" in Set Total mode.
-                FundsPrimaryButton(mode == .add ? "Add Amount" : "Set New Total", isBusy: viewModel.busyAction == "add-budget" || viewModel.busyAction == "temp") {
-                    saveTapped()
-                }
-                FundsTertiaryButton("Cancel") { onClose() }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the SheetHeader X + swipe-right
+            // dismiss without saving, so Cancel was a third
+            // redundant way out.
+            // The confirm reads as the ACTION, not the mode:
+            // "Add Amount" in Add mode (the mode is "Add"),
+            // "Set New Total" in Set Total mode.
+            FundsPrimaryButton(mode == .add ? "Add Amount" : "Set New Total", isBusy: viewModel.busyAction == "add-budget" || viewModel.busyAction == "temp") {
+                saveTapped()
             }
         }
         .padding()

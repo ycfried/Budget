@@ -88,18 +88,12 @@ public struct AddMoneyForm: View {
                 if let fieldError {
                     FundsErrorBox(fieldError)
                 }
-                HStack(spacing: 12) {
-                    FundsPrimaryButton("Save Top-Up", isBusy: viewModel.busyAction == "topup") {
-                        saveTapped()
-                    }
-                    FundsTertiaryButton("Cancel") {
-                        amountText = ""
-                        note = ""
-                        confirmed = false
-                        fieldError = nil
-                        viewModel.toast = nil
-                        onClose()
-                    }
+                // Build 70, item 5 (owner, Nov 24, 2026): the
+                // Cancel button is gone — the back button above
+                // the form closes it without saving, so Cancel
+                // was a redundant way out.
+                FundsPrimaryButton("Save Top-Up", isBusy: viewModel.busyAction == "topup") {
+                    saveTapped()
                 }
                 FundsMuted("Log each deposit only once.")
             }
@@ -209,26 +203,22 @@ public struct PayDebtForm: View {
                 if let fieldError {
                     FundsErrorBox(fieldError)
                 }
-                HStack(spacing: 12) {
-                    FundsPrimaryButton("Pay \(debtName)") {
-                        guard let cents = amountCents, cents > 0 else {
-                            fieldError = "Enter a valid amount."
-                            return
-                        }
-                        if let debt = viewModel.debtBalanceCents, cents > debt {
-                            fieldError = "That is more than the \(MoneyFormat.formatCents(debt)) debt left."
-                            return
-                        }
-                        fieldError = nil
-                        pendingCents = cents
-                        showConfirm = true
+                // Build 70, item 5 (owner, Nov 24, 2026): the
+                // Cancel button is gone — the back button above
+                // the form closes it without saving, so Cancel
+                // was a redundant way out.
+                FundsPrimaryButton("Pay \(debtName)") {
+                    guard let cents = amountCents, cents > 0 else {
+                        fieldError = "Enter a valid amount."
+                        return
                     }
-                    FundsTertiaryButton("Cancel") {
-                        amountText = ""
-                        note = ""
-                        fieldError = nil
-                        onClose()
+                    if let debt = viewModel.debtBalanceCents, cents > debt {
+                        fieldError = "That is more than the \(MoneyFormat.formatCents(debt)) debt left."
+                        return
                     }
+                    fieldError = nil
+                    pendingCents = cents
+                    showConfirm = true
                 }
             }
         }
@@ -572,32 +562,28 @@ public struct AskFundForm: View {
                     if let fieldError {
                         FundsErrorBox(fieldError)
                     }
-                    HStack(spacing: 12) {
-                        FundsPrimaryButton("Send Request", isBusy: viewModel.busyAction == "request") {
-                            guard let cents = amountCents, cents > 0 else {
-                                fieldError = "Enter a valid amount."
-                                return
-                            }
-                            fieldError = nil
-                            Task {
-                                // Clear only on success — on failure
-                                // the typed input stays beside the
-                                // error (F-P1-4).
-                                if await viewModel.createFundRequest(
-                                    amountCents: cents,
-                                    note: note.trimmingCharacters(in: .whitespaces),
-                                    transactionId: nil
-                                ) {
-                                    amountText = ""
-                                    note = ""
-                                }
-                            }
+                    // Build 70, item 5 (owner, Nov 24, 2026):
+                    // the Cancel button is gone — the back button
+                    // above the form closes it without saving, so
+                    // Cancel was a redundant way out.
+                    FundsPrimaryButton("Send Request", isBusy: viewModel.busyAction == "request") {
+                        guard let cents = amountCents, cents > 0 else {
+                            fieldError = "Enter a valid amount."
+                            return
                         }
-                        FundsTertiaryButton("Cancel") {
-                            amountText = ""
-                            note = ""
-                            fieldError = nil
-                            onClose()
+                        fieldError = nil
+                        Task {
+                            // Clear only on success — on failure
+                            // the typed input stays beside the
+                            // error (F-P1-4).
+                            if await viewModel.createFundRequest(
+                                amountCents: cents,
+                                note: note.trimmingCharacters(in: .whitespaces),
+                                transactionId: nil
+                            ) {
+                                amountText = ""
+                                note = ""
+                            }
                         }
                     }
                 }
@@ -842,10 +828,11 @@ public struct ApproveRequestSheet: View {
             if let error {
                 FundsErrorBox(error)
             }
-            HStack(spacing: 12) {
-                FundsPrimaryButton("Approve", action: onApprove)
-                FundsTertiaryButton("Cancel", action: onCancel)
-            }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the SheetHeader X + swipe-right
+            // dismiss without approving, so Cancel was a third
+            // redundant way out.
+            FundsPrimaryButton("Approve", action: onApprove)
             // Build 43 (owner, Nov 17, 2026 — item 18): the
             // trailing Spacer top-anchors the content in the
             // full-screen cover — without it the short form
@@ -1049,11 +1036,12 @@ public struct RenameFundSheet: View {
             if let fieldError {
                 FundsErrorBox(fieldError)
             }
-            HStack(spacing: 12) {
-                FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename" || viewModel.busyAction == "fund-icon" || viewModel.busyAction == "fund-prominence" || viewModel.busyAction == "fund-hidden") {
-                    saveTapped()
-                }
-                FundsTertiaryButton("Cancel") { onClose() }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the SheetHeader X + swipe-right
+            // dismiss without saving, so Cancel was a third
+            // redundant way out.
+            FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename" || viewModel.busyAction == "fund-icon" || viewModel.busyAction == "fund-prominence" || viewModel.busyAction == "fund-hidden") {
+                saveTapped()
             }
             // Build 43 (owner, Nov 17, 2026 — item 18): the
             // trailing Spacer top-anchors the content in the

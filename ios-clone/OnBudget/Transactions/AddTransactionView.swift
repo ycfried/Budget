@@ -489,14 +489,13 @@ public struct AddPurchaseForm: View {
                     SoftErrorBox(errorMessage)
                 }
 
-                TwoButtonRow {
-                    Button("Add Transaction") { save() }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(viewModel.isSaving)
-                } secondary: {
-                    Button("Cancel") { clearAndClose() }
-                        .buttonStyle(TertiaryButtonStyle())
-                }
+                // Build 70, item 5 (owner, Nov 24, 2026): the
+                // Cancel button is gone — the SheetHeader X +
+                // swipe-right dismiss without saving, so Cancel
+                // was a third redundant way out.
+                Button("Add Transaction") { save() }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(viewModel.isSaving)
 
                 Text("Never enter a full card number.")
                     .font(.system(size: 13))
@@ -689,14 +688,13 @@ public struct AddDonationForm: View {
                     SoftErrorBox(errorMessage)
                 }
 
-                TwoButtonRow {
-                    Button("Record Donation") { save() }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(viewModel.isSaving)
-                } secondary: {
-                    Button("Cancel") { clearAndClose() }
-                        .buttonStyle(TertiaryButtonStyle())
-                }
+                // Build 70, item 5 (owner, Nov 24, 2026): the
+                // Cancel button is gone — the SheetHeader X +
+                // swipe-right dismiss without saving, so Cancel
+                // was a third redundant way out.
+                Button("Record Donation") { save() }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(viewModel.isSaving)
             }
         }
         .scrollIndicators(.hidden)

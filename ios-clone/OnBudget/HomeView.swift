@@ -2935,8 +2935,9 @@ struct SheetActionDivider: View {
 /// the spent line). No explainer line under the header (owner,
 /// Nov 12 2026): the "Pending transactions are included and
 /// marked." line crowded the header, and pending state is already
-/// marked on the rows. Show Transactions (primary) + Close
-/// (tertiary) — two-button sheet rule. iPad: 600pt wide, centred
+/// marked on the rows. Show Transactions stands alone, full
+/// width (build 70, items 2+5: the Close beside it is gone).
+/// iPad: 600pt wide, centred
 /// (detents + fixed width in the regular size
 /// class); iPhone: full-width.
 public struct WeeklySheet: View {
@@ -3005,16 +3006,14 @@ public struct WeeklySheet: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Header: air above the title (owner, Nov 12 2026 — the
-            // sheet felt claustrophobic). Single dismiss control:
-            // the bottom "Close" next to "Show Transactions". The
-            // header "Cancel" duplicated it (audit H-P2-3), and its
-            // centring shim was narrower than the rendered button,
-            // so the title now centres on its own frame instead.
-            Text("Weekly Budget")
-                .font(.system(size: 17, weight: .bold))
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 8)
+            // Build 70, items 2+5 (owner, Nov 24, 2026): the
+            // dismiss is the top-left X in the SheetHeader +
+            // swipe-right (the header carries the gesture) — the
+            // bottom "Close" next to "Show Transactions" is gone
+            // (it duplicated the dismiss). The Nov 12 single-
+            // dismiss-control decision is superseded by the
+            // back-button-on-every-popup rule.
+            SheetHeader(title: "Weekly Budget", onClose: { dismiss() })
             // No explainer line here (owner, Nov 12 2026): the
             // "Pending transactions are included and marked." line
             // crowded the header. Pending state is already marked
@@ -3057,8 +3056,8 @@ public struct WeeklySheet: View {
             // used to end at the numbers with dead space below —
             // the week actions live here now, as tappable ROWS in
             // one white card (not more big buttons, so they never
-            // clash with the solid-blue Show Transactions / grey
-            // Close pair below and never break the button rule).
+            // clash with the solid-blue Show Transactions button
+            // below and never break the button rule).
             // Adjust This Week's Budget is admin-only (the Funds
             // page gates it the same way); the Calculator is
             // local-only and stays visible to every role. Each row
@@ -3069,15 +3068,11 @@ public struct WeeklySheet: View {
             if appState.isAdmin || appState.householdId != nil {
                 weeklyActionsCard
             }
-            HStack(spacing: 12) {
-                Button("Show Transactions") {
-                    dismiss()
-                    appState.showTransactionsForWeek(week.weekStart)
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                Button("Close") { dismiss() }
-                    .buttonStyle(TertiaryButtonStyle())
+            Button("Show Transactions") {
+                dismiss()
+                appState.showTransactionsForWeek(week.weekStart)
             }
+            .buttonStyle(PrimaryButtonStyle())
             .padding(.top, 8)
             // Footnote only (owner, Nov 12 2026): the header explainer
             // line was removed, but its second sentence explains the
@@ -3284,7 +3279,9 @@ public struct WeeklySheet: View {
 // the Tzedaka numbers (Available / Given / Pending / Total), the
 // two Tzedaka actions as tappable rows (Add to Tzedaka + Record a
 // Gift — Record Income is NOT here; it lives in the "+ Add" flow),
-// then the Show Transactions (primary) + Close (tertiary) pair.
+// then the Show Transactions button, full width (build 70,
+// items 2+5: the Close beside it is gone — the SheetHeader X +
+// swipe dismiss).
 // The actions are rows, not more big buttons, for the same reason
 // as the Weekly sheet's rows: the sheet already has its
 // solid-blue / grey button pair, and two more full-width buttons
@@ -3328,10 +3325,11 @@ public struct TzedakaSheet: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(charityName)
-                .font(.system(size: 17, weight: .bold))
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 8)
+            // Build 70, items 2+5 (owner, Nov 24, 2026): the
+            // dismiss is the top-left X in the SheetHeader +
+            // swipe-right — the bottom "Close" is gone (see the
+            // Weekly sheet note).
+            SheetHeader(title: charityName, onClose: { dismiss() })
             // The Tzedaka numbers, in the same row shape as the
             // Weekly sheet's rows. All four always show — Available
             // is committed less Given less Pending, so the four
@@ -3370,24 +3368,22 @@ public struct TzedakaSheet: View {
             if appState.isAdmin {
                 tzedakaActionsCard
             }
-            HStack(spacing: 12) {
-                // Build 69 (owner, Nov 24, 2026): "Show Tzedaka
-                // Transactions" wrapped to two lines — the label
-                // was too long for the button. "Show Transactions"
-                // is unambiguous here (this IS the Tzedaka sheet)
-                // and sits cleanly beside Close at the same height.
-                Button("Show Transactions") {
-                    dismiss()
-                    // Build 65: the Tzedaka pre-filter — the list
-                    // lands on the rows behind these numbers (gifts
-                    // given + income rows that accrued charity, all
-                    // time), via the pending-charity handoff.
-                    appState.showTzedakaTransactions()
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                Button("Close") { dismiss() }
-                    .buttonStyle(TertiaryButtonStyle())
+            // Build 69 (owner, Nov 24, 2026): "Show Tzedaka
+            // Transactions" wrapped to two lines — the label
+            // was too long for the button. "Show Transactions"
+            // is unambiguous here (this IS the Tzedaka sheet).
+            // Build 70, items 2+5: the Close beside it is gone
+            // (the SheetHeader X + swipe dismiss), so Show
+            // Transactions stands alone, full width.
+            Button("Show Transactions") {
+                dismiss()
+                // Build 65: the Tzedaka pre-filter — the list
+                // lands on the rows behind these numbers (gifts
+                // given + income rows that accrued charity, all
+                // time), via the pending-charity handoff.
+                appState.showTzedakaTransactions()
             }
+            .buttonStyle(PrimaryButtonStyle())
             .padding(.top, 8)
             Spacer()
         }

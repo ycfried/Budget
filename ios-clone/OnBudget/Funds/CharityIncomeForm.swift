@@ -179,17 +179,18 @@ public struct CharityIncomeForm: View {
                         // Build 47 (owner, Nov 19, 2026): just
                         // "Cancel" — "Correction" struck through.
                         // It reverts to add mode; the back button
-                        // above the form closes it.
+                        // above the form closes it. KEPT in build
+                        // 70, item 5: this Cancel is a mode revert,
+                        // not a dismiss — the back button closes
+                        // the form, it does not revert the mode.
                         FundsTertiaryButton("Cancel") {
                             correcting = nil
                             clearIncomeFields()
                         }
-                    } else {
-                        FundsTertiaryButton("Cancel") {
-                            clearIncomeFields()
-                            onClose()
-                        }
                     }
+                    // Build 70, item 5: the plain (non-correcting)
+                    // Cancel is gone — the back button above the
+                    // form closes it without saving.
                 }
                 if correcting != nil {
                     // Build 47 (owner, Nov 19, 2026 — "even when
@@ -477,14 +478,15 @@ public struct TzedakaActionSheet: View {
             if let actionError {
                 FundsErrorBox(actionError)
             }
-            HStack(spacing: 12) {
-                // The confirm reads as the ACTION, not the mode:
-                // "Add to Tzedaka" in Add mode (the mode is "Add"),
-                // "Record Donation" in Record mode.
-                FundsPrimaryButton(mode == .add ? "Add to \(fundName)" : "Record Donation", isBusy: viewModel.busyAction == "add-charity" || viewModel.busyAction == "record-cash-gift") {
-                    save()
-                }
-                FundsTertiaryButton("Cancel") { onClose() }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the SheetHeader X + swipe-right
+            // dismiss without saving, so Cancel was a third
+            // redundant way out.
+            // The confirm reads as the ACTION, not the mode:
+            // "Add to Tzedaka" in Add mode (the mode is "Add"),
+            // "Record Donation" in Record mode.
+            FundsPrimaryButton(mode == .add ? "Add to \(fundName)" : "Record Donation", isBusy: viewModel.busyAction == "add-charity" || viewModel.busyAction == "record-cash-gift") {
+                save()
             }
         }
         .padding()

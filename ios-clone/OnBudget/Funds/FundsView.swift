@@ -1525,11 +1525,12 @@ public struct RemoveFromSavingsSheet: View {
             if let removeError {
                 FundsErrorBox(removeError)
             }
-            HStack(spacing: 12) {
-                FundsPrimaryButton("Remove", isBusy: viewModel.busyAction == "remove-from-savings") {
-                    remove()
-                }
-                FundsTertiaryButton("Cancel") { onClose() }
+            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+            // button is gone — the SheetHeader X + swipe-right
+            // dismiss without removing, so Cancel was a third
+            // redundant way out.
+            FundsPrimaryButton("Remove", isBusy: viewModel.busyAction == "remove-from-savings") {
+                remove()
             }
             // Build 43 (owner, Nov 17, 2026 — item 18): the
             // trailing Spacer top-anchors the content in the

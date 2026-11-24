@@ -359,34 +359,33 @@ public struct ExpenseEditorSheet: View {
                         .buttonStyle(TertiaryButtonStyle())
                 }
             } else {
-                TwoButtonRow {
-                    Button("Save") {
-                        Task {
-                            let trimmed = name.trimmingCharacters(in: .whitespaces)
-                            guard !trimmed.isEmpty else {
-                                error = "Enter a name."
-                                return
-                            }
-                            guard let cents = enteredCents, cents > 0 else {
-                                error = "Enter an amount above $0.00."
-                                return
-                            }
-                            error = nil
-                            isWorking = true
-                            let ok = await onSave(trimmed, cents, frequency)
-                            isWorking = false
-                            if ok { onClose() }
+                // Build 70, item 5 (owner, Nov 24, 2026): the
+                // Cancel button is gone — the SheetHeader X +
+                // swipe-right dismiss without saving, so Cancel
+                // was a third redundant way out.
+                Button("Save") {
+                    Task {
+                        let trimmed = name.trimmingCharacters(in: .whitespaces)
+                        guard !trimmed.isEmpty else {
+                            error = "Enter a name."
+                            return
                         }
+                        guard let cents = enteredCents, cents > 0 else {
+                            error = "Enter an amount above $0.00."
+                            return
+                        }
+                        error = nil
+                        isWorking = true
+                        let ok = await onSave(trimmed, cents, frequency)
+                        isWorking = false
+                        if ok { onClose() }
                     }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(isWorking)
-                } secondary: {
-                    Button("Cancel") { onClose() }
-                        .buttonStyle(TertiaryButtonStyle())
                 }
-                // Below the Save / Cancel pair, not beside it — a
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(isWorking)
+                // Below the Save button, not beside it — a
                 // red text button, so it never shares a colour or
-                // treatment with either button in the pair.
+                // treatment with it.
                 Button("Remove Expense") { showRemoveConfirm = true }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color(hex: DesignTokens.errorTextHex))
