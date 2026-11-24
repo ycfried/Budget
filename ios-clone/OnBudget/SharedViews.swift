@@ -255,7 +255,11 @@ public struct BackButton: View {
 /// mostly empty (Add / Actions sheets, build 24). A plain VStack
 /// root + this header keeps the content at the top of the sheet. When
 /// onBack is given, the leading control is a back chevron that
-/// returns to the previous step instead of closing.
+/// returns to the previous step instead of closing. Build 70
+/// (item 2): the header also attaches the swipe-right-to-dismiss
+/// gesture (`.sheetSwipeBack()`), so every sheet/cover using it
+/// gets swipe-right matching the top-left button — on a multi-step
+/// sheet the swipe calls onBack instead of dismissing.
 public struct SheetHeader: View {
     let title: String
     let onClose: () -> Void
