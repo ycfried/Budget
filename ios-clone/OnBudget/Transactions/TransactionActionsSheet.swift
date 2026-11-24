@@ -1276,6 +1276,12 @@ public struct TransactionActionsSheet: View {
             if let excludeReasonError {
                 SoftErrorBox(excludeReasonError)
             }
+            // "Keep It" stays (build 70, item 5): this is a
+            // confirmation dialog, and "Keep It" is the explicit
+            // safe choice — the rule's stated exception. The
+            // header back chevron also returns to the list, but
+            // the safe answer in a destructive confirm reads
+            // as a button, not a chevron to discover.
             TwoButtonRow {
                 Button("Exclude") {
                     Task {
