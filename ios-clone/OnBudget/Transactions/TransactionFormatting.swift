@@ -503,12 +503,11 @@ public enum TransactionStatusFilter: String, Equatable, CaseIterable {
     case posted
     case refunds
     /// Build 65 (Tzedaka sheet pre-filter): the rows behind the
-    /// Tzedaka numbers — gifts given (kind .charity) PLUS income
-    /// rows that accrued charity (kind .income whose id is in
-    /// `TransactionFilters.tzedakaAccrualIds`). NOT offered in the
-    /// Filters sheet picker (it needs the accrual set, which only
-    /// the Tzedaka sheet handoff supplies) — the picker filters
-    /// it out of `allCases`.
+    /// Tzedaka numbers — gifts given (kind .charity) only, all
+    /// time. Build 70 (owner, Nov 24, 2026): income rows that
+    /// accrued charity no longer match — the filter is a clean
+    /// list of his donations. NOT offered in the Filters sheet
+    /// picker — the picker filters it out of `allCases`.
     case tzedaka
 
     public var label: String {
@@ -654,13 +653,6 @@ public struct TransactionFilters: Equatable {
     public var maxCents: Int? = nil
     public var search: String = ""
     public var sort: TransactionSort = .dateDesc
-    /// Build 65 (Tzedaka sheet pre-filter): the transaction ids
-    /// whose income accrued charity (active `charity_income` rows'
-    /// `transactionId`). Only consulted when `status == .tzedaka`;
-    /// ignored for every other status. Empty by default — a
-    /// `.tzedaka` filter with an empty set still shows the gifts
-    /// (kind .charity), just no income rows.
-    public var tzedakaAccrualIds: Set<UUID> = []
 
     public init() {}
 
@@ -721,7 +713,7 @@ public struct TransactionFilters: Equatable {
 
     public mutating func clearChip(_ key: String) {
         switch key {
-        case "status": status = .all; tzedakaAccrualIds = []
+        case "status": status = .all
         case "kind": kind = nil
         case "month": month = "all"
         case "card": card = "all"
@@ -831,12 +823,17 @@ public struct TransactionFilters: Equatable {
             case .charity: guard tx.kind == .charity else { return false }
             case .spending: guard tx.kind == .charge else { return false }
             case .extraFund: guard tx.kind == .fundCharge else { return false }
-            // Build 65 (Tzedaka sheet): gifts given (kind
-            // .charity) PLUS income rows that accrued charity
-            // (their id is in tzedakaAccrualIds). The plain
-            // .charity status matches gifts only — that is why
-            // this is a separate case.
-            case .tzedaka: guard tx.kind == .charity || tzedakaAccrualIds.contains(tx.id) else { return false }
+            // Build 70 (owner, Nov 24, 2026): the Tzedaka filter
+            // shows ONLY actual Tzedaka transactions (kind
+            // .charity — the donations/gifts themselves), so it is
+            // a way to see all of his donations. Income rows that
+            // generated a charity accrual are NOT included — the
+            // build-65 rule that added them (gifts PLUS income
+            // rows that accrued charity) is gone: the Cheder
+            // direct-deposit income and the $3,500 check deposit
+            // polluted the list and inflated the total. The plain
+            // .charity status matches gifts only, same as here.
+            case .tzedaka: guard tx.kind == .charity else { return false }
             case .all: break
             }
             // Kind (build 61 — export filter picker): an AND with

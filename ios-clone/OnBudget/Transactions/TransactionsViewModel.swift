@@ -104,11 +104,12 @@ public final class TransactionsViewModel {
     /// Tzedaka mode (build 65, owner Nov 23, 2026): the list
     /// arrived from the Home Tzedaka sheet, so the full history is
     /// loaded at once (no Load More), pre-filtered to the Tzedaka
-    /// rows behind the sheet's numbers — gifts given plus income
-    /// rows that accrued charity — all time, not one week. The
-    /// accrual ids live in `filters.tzedakaAccrualIds`. Cleared by
-    /// "Clear Search and Filters" and by any filter change (back
-    /// to the normal paged list), like week mode.
+    /// rows behind the sheet's numbers — gifts given (kind
+    /// .charity), all time, not one week. Build 70 (owner, Nov 24,
+    /// 2026): gifts ONLY — income rows that accrued charity no
+    /// longer match. Cleared by "Clear Search and Filters" and by
+    /// any filter change (back to the normal paged list), like
+    /// week mode.
     public private(set) var isTzedakaMode: Bool = false
     /// A Load More fetch is in flight: the button disables while
     /// appending so a double-tap cannot fire two appends. The
@@ -603,29 +604,19 @@ public final class TransactionsViewModel {
     }
 
     /// Tzedaka-sheet jump (build 65, owner Nov 23, 2026): show
-    /// the rows behind the Tzedaka sheet's numbers — gifts given
-    /// (kind .charity) PLUS income rows that accrued charity —
-    /// all time, with the FULL history loaded at once (no Load
-    /// More), like week mode. The income rows are identified by
-    /// the active `charity_income` rows' `transactionId`
-    /// (`activeCharityIncome` fetches all pages, no cap — the
-    /// 50-row `charityIncomeHistory` would silently drop older
-    /// income). A failed accrual read falls back to gifts only
-    /// (empty id set) rather than failing the whole list. The
-    /// shell clears `pendingTzedakaFilter` once consumed.
+    /// the rows behind the Tzedaka sheet's numbers — the gifts
+    /// given (kind .charity), all time, with the FULL history
+    /// loaded at once (no Load More), like week mode. Build 70
+    /// (owner, Nov 24, 2026): gifts ONLY — the build-65 income
+    /// rows that accrued charity are gone from this list (the
+    /// `activeCharityIncome` fetch is removed with them), so the
+    /// filter is a clean list of all of his donations. The shell
+    /// clears `pendingTzedakaFilter` once consumed.
     public func applyTzedakaFilter() async {
-        let accrualIds: Set<UUID>
-        do {
-            let income = try await client.postgrest.activeCharityIncome(householdId: householdId)
-            accrualIds = Set(income.compactMap(\.transactionId))
-        } catch {
-            accrualIds = []
-        }
         filters = TransactionFilters()
         persistFilters()
         searchResetNonce += 1
         filters.status = .tzedaka
-        filters.tzedakaAccrualIds = accrualIds
         filterChanged()
         isTzedakaMode = true
         await load()
