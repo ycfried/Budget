@@ -3,6 +3,12 @@
 // search query). ONE contract end to end with
 // integrations/gmail-apps-script.gs — see integrations/INGEST_CONTRACT.md,
 // which is the authoritative contract document. This file implements it.
+// Amex-ONLY by contract: Chase is NOT added here (F-15, build 64).
+// The Apps Script path is a per-household HMAC webhook for the Amex
+// alert format; a Chase alert would need its own script, contract,
+// and sender verification. Chase ingestion lives on the OAuth path
+// (gmail-poll, gated by CHASE_ALERTS_ENABLED) instead — see
+// supabase/functions/_shared/gmail-parse.ts.
 //
 // Security, in order:
 //   1. Per-household HMAC-SHA256 signature (header 'x-budget-signature')
@@ -71,6 +77,7 @@ import {
   canonicalHash,
   classifyMerchantOnly,
   findCoveringBankRow,
+  findExistingSameHash,
   flagLookalikes,
   hmacSha256Hex,
   loadMerchantRules,
@@ -262,6 +269,15 @@ Deno.serve(async (req) => {
     }, { aliases: aliasPairs, rules: merchantRules });
     const bankCovered = !!coveringBankRow;
     if (bankCovered) return json({ stored: true, duplicate: true, state: 'provisional' });
+
+    // Build 58 (owner, Nov 22, 2026): same-source duplicate guard
+    // (see gmail-poll) — the same alert ingested twice (two Gmail
+    // message ids, one purchase) used to insert a second row with an
+    // identical dedupe_hash. A live row with this hash already
+    // exists, so this alert adds nothing. Checked before the nonce
+    // claim, so a duplicate never burns a nonce.
+    const existingSameHash = await findExistingSameHash(supabase, householdId, dedupeHash);
+    if (existingSameHash) return json({ stored: true, duplicate: true, state: 'provisional' });
 
     // 2. Replay: claim the nonce AFTER the quarantine checks and
     // the dedupe check above, and BEFORE the insert. A

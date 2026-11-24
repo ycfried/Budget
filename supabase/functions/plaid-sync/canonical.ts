@@ -188,11 +188,11 @@ export async function hmacSha256Hex(secret: string, message: string): Promise<st
 // value; clients title-case on render (as they already do).
 // Fixed kinds: a rule's fixed kind auto-applies to matching NEW
 // transactions (and to rows a rename applies to) — EXCEPT the sign
-// guard below: a money-out kind (charge/charity/fund_charge) never
-// overrides a money-in (negative) row, and a money-in kind
-// (refund/payment/cashback/income) never overrides a money-out
-// row. A refund of a gift keeps the classifier's kind. 'transfer'
-// applies to either sign.
+// guard below: a money-out kind (charge/charity/fund_charge/
+// expense) never overrides a money-in (negative) row, and a
+// money-in kind (refund/payment/cashback/income) never overrides
+// a money-out row. A refund of a gift keeps the classifier's
+// kind. 'transfer' applies to either sign.
 
 export function merchantRuleKey(name: string): string {
   return String(name ?? '')
@@ -217,7 +217,7 @@ export type MerchantRule = {
   created_at?: string;
 };
 
-const MONEY_OUT_KINDS = new Set(['charge', 'charity', 'fund_charge']);
+const MONEY_OUT_KINDS = new Set(['charge', 'charity', 'fund_charge', 'expense']);
 const MONEY_IN_KINDS = new Set(['refund', 'payment', 'cashback', 'income']);
 
 export function fixedKindApplies(fixedKind: string | null | undefined, amountCents: number): boolean {
@@ -294,12 +294,13 @@ export async function loadMerchantRules(
 // The merge paths below used to hardcode source 'amex_alert'. The
 // set is the single place that knows which transaction sources are
 // email alerts; adding a bank means adding its source here (and a
-// parser in gmail-parse.ts) — no other merge code changes. Today
-// the only email source is the Amex Large Purchase alert.
-// NO Chase / Capital One source exists yet: no parser and no known
-// sender/subject format — do not add one without a real redacted
-// sample from the owner.
-export const EMAIL_SOURCES = ['amex_alert'] as const;
+// parser in gmail-parse.ts) — no other merge code changes. Amex is
+// the proven source; Chase is a FAIL-CLOSED SCAFFOLD (F-15, build
+// 64): registered here and parsed by parseChaseAlertText, but the
+// Chase path is DISABLED in gmail-poll (CHASE_ALERTS_ENABLED =
+// false) until a real redacted Chase alert is verified against the
+// parser — no sample exists in the repo. Capital One: not started.
+export const EMAIL_SOURCES = ['amex_alert', 'chase_alert'] as const;
 export function isEmailSource(source: string): boolean {
   return (EMAIL_SOURCES as readonly string[]).includes(source);
 }
@@ -454,14 +455,60 @@ export async function findCoveringBankRow(
   }
 }
 
+// --- Same-source duplicate guard (build 58, owner Nov 22, 2026) ---
+// The same alert ingested twice (two Gmail message ids, one
+// purchase — the $44.96 Nov 22 and $10.59 Nov 21 Amazon pairs, both
+// amex_alert, identical dedupe_hash, no bank row) used to insert a
+// second row, because the only ingestion guards were the message-id
+// dedupe (different message ids) and the bank-first guard (no bank
+// row). A live row with this dedupe_hash already exists, so the
+// alert adds nothing. Live = not excluded, not reversed. Fail-open:
+// any error returns null (the insert proceeds; the backstop /
+// cleanup catches it later) — a guard must never fail the poll.
+// NOTE (trade-off, owner-decided): two genuinely identical
+// purchases on the same day/card share a hash, so the second one's
+// alert is also suppressed here. Its Plaid row still arrives via
+// plaid-sync (bank rows are never blocked by this guard), so the
+// money is still counted — only the email's early visibility is
+// lost. TOIREMORG is unaffected: the bank and email gifts have
+// different merchants, hence different hashes.
+export async function findExistingSameHash(
+  supabaseAdmin: SupaAdmin,
+  householdId: string,
+  dedupeHash: string,
+): Promise<string | null> {
+  try {
+    const { data } = await supabaseAdmin.from('transactions')
+      .select('id')
+      .eq('household_id', householdId)
+      .eq('dedupe_hash', dedupeHash)
+      .eq('excluded', false)
+      .neq('state', 'reversed')
+      .neq('state', 'excluded')
+      .limit(1);
+    const rows = (data ?? []) as Array<{ id: string }>;
+    return rows.length > 0 ? rows[0].id : null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Charity auto-accrual (build 44, item 5) ---
 // Best-effort hook shared by plaid-sync, gmail-poll and
-// ingest-amex-alert: after an income row lands VERIFIED, accrue
-// charity at the household default rate via the service-role-only
+// ingest-amex-alert: after an income row lands, accrue charity at
+// the household default rate via the service-role-only
 // accrue_charity_for_transaction RPC
-// (supabase/charity-auto-accrue.sql). VERIFIED-only: a provisional
-// income row accrues nothing until the pending→posted transition
-// calls this again. Never fails the caller: a missing SQL apply, a
+// (supabase/charity-auto-accrue.sql). Build 58 (owner, Nov 22,
+// 2026): a provisional (pending) income row accrues IMMEDIATELY —
+// pending transactions count toward the totals, so the numbers are
+// accurate to the minute; charity no longer waits for the row to
+// post. The pre-check below makes this safe: an active accrual
+// already linked to this transaction returns early, so the
+// pending→posted transition (which calls this again) never
+// double-accrues. If the pending income later disappears (excluded
+// or reclassified away), the charity trigger
+// (supabase/reclassify-income-accrual.sql) reverses the accrual —
+// the auto-reverse. Never fails the caller: a missing SQL apply, a
 // race, or a non-income kind is logged, not thrown. The RPC itself
 // is idempotent (unique index on (household_id, transaction_id)
 // WHERE status='active'); the pre-check here just avoids the call
@@ -475,7 +522,7 @@ export async function accrueCharityForIncomeTx(
   kind: string | undefined,
   state: string,
 ): Promise<void> {
-  if (kind !== 'income' || state !== 'verified') return;
+  if (kind !== 'income' || (state !== 'verified' && state !== 'provisional')) return;
   try {
     const { data: already } = await supabaseAdmin.from('charity_income')
       .select('id').eq('household_id', householdId).eq('transaction_id', transactionId)
@@ -517,6 +564,79 @@ export function merchantsRelated(a: string, b: string): boolean {
   return na.includes(nb) || nb.includes(na);
 }
 
+// --- Similar-name review rule (build 65, Nov 23, 2026 — Yaldel case) ---
+// Two $54.00 donation rows ("Yaldel Shluchei Harebbe" vs "Yaldei
+// Shluchei Harebbe Special Needs", same date, same amount, both
+// pending) were the SAME donation, but the auto-merge AND the Review
+// possible-duplicate flag both missed them: the merchant names hash
+// differently, and merchantsRelated() needs one squash to CONTAIN
+// the other — "YALDELSHLUCHEIHAREBBE" contains neither "YALDEI
+// SHLUCHEIHAREBBE..." nor vice versa (the spellings differ in the
+// middle: YALDEL vs YALDEI). This rule catches that class for
+// REVIEW ONLY — never auto-merge (standing no-fuzzy-matching rule
+// for auto-merge). Two names are "similar" when their squashes
+// (UPPER + strip every non-alphanumeric) share a common substring
+// of 8+ characters OR share 2+ whole words (length 3+) OR one
+// contains the other. The Yaldel pair qualifies twice over: shared
+// substring "SHLUCHEIHAREBBE" (16 chars) and shared words SHLUCHEI
+// + HAREBBE. Identical names return false here on purpose: they are
+// handled by the existing identical-Bank+Email branch in
+// flagLookalikes, and two identical same-source rows are two real
+// identical purchases that must never be flagged.
+export function longestCommonSubstringLength(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  let best = 0;
+  let prev = new Array<number>(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    const cur = new Array<number>(n + 1).fill(0);
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        cur[j] = prev[j - 1] + 1;
+        if (cur[j] > best) best = cur[j];
+      }
+    }
+    prev = cur;
+  }
+  return best;
+}
+
+export function sharedWholeWords(a: string, b: string): number {
+  const words = (s: string): Set<string> => new Set(
+    normalizeMerchant(s).split(' ').filter((w) => w.length >= 3),
+  );
+  const wa = words(a);
+  let shared = 0;
+  for (const w of words(b)) if (wa.has(w)) shared++;
+  return shared;
+}
+
+export function merchantsSimilarForReview(a: string, b: string): boolean {
+  const sa = merchantRuleSquash(a);
+  const sb = merchantRuleSquash(b);
+  if (!sa || !sb || sa === sb) return false;
+  if (sa.length < 4 || sb.length < 4) return false;
+  if (sa.includes(sb) || sb.includes(sa)) return true;
+  if (sharedWholeWords(a, b) >= 2) return true;
+  return longestCommonSubstringLength(sa, sb) >= 8;
+}
+
+// --- Pending→posted date preservation (build 65, Nov 23, 2026) ---
+// The Nordstrom $158.97 purchase was made Nov 19 as pending and
+// counted in that week; when it posted Nov 22, plaid-sync
+// overwrote its date to Nov 22 and it jumped into the next week's
+// spending. A pending→posted re-delivery must NOT overwrite the
+// date: the pending date is when the purchase was made, the posted
+// date is only when the bank processed it. Verified→verified
+// re-deliveries still overwrite the date (genuine Plaid
+// corrections), and so do provisional→provisional ones.
+export function shouldPreserveDate(
+  existingState: string | null | undefined,
+  incomingState: string | null | undefined,
+): boolean {
+  return existingState === 'provisional' && incomingState === 'verified';
+}
+
 export type LookalikeRow = {
   id: string;
   merchant: string;
@@ -540,12 +660,42 @@ export function pickCanonicalPair(
 // Best-effort lookalike flagging. Never throws and never fails the
 // sync: if the review tables do not exist yet (SQL not applied),
 // the queries fail inside try/catch and the sync continues.
+//
+// Pass 1 (unchanged, Nov 3 Amazon case): same date + amount +
+// card suffix + related merchant names (one contains the other, a
+// confirmed alias, or a shared rule display name) — plus identical
+// Bank+Email merchants (Royal Farms, Nov 20).
+//
+// Pass 2 — similar-name rule (build 65, Yaldel case): same date +
+// same amount + similar merchant names (merchantsSimilarForReview)
+// flag for Review, never auto-merge. Unlike pass 1 this does NOT
+// require the same card suffix: the Yaldel pair was a Plaid row
+// (real suffix) and an email alert (suffix '0000', unknown), so
+// the suffix filter hid it. Two rows on DIFFERENT known cards are
+// still two real purchases and never flag.
+//
+// TOIREMORG (owner ruling Nov 3): the $2 bank "TOIREMORG" and $2
+// email "TOIREMORG CHARITY" rows are TWO real gifts — never merge,
+// never flag. Guarded up front and on every candidate row, in
+// BOTH passes: the names qualify as similar on their own
+// ("TOIREMORG" is contained in "TOIREMORGCHARITY"), so without
+// this guard the new rule would flag the ruled-separate pair.
+//
+// DISMISSED PAIRS (the dismissed-pairs mechanism): a pair is never
+// flagged twice — the detector skips any pair that already has a
+// duplicate_candidates row in ANY status, either direction. Tapping
+// "Separate" in Review sets status='separate' (resolve_duplicate_
+// candidate), so a dismissed pair is never re-flagged by either
+// pass or by the SQL backstop (backstop_similar_name_duplicates
+// consults the same table). Reopen is the undo: reopen_duplicate_
+// candidate moves a 'separate' row back to 'pending'.
 export async function flagLookalikes(
   supabaseAdmin: SupaAdmin,
   householdId: string,
   newRow: LookalikeRow & { date: string; amount_cents: number; card_suffix: string },
 ): Promise<number> {
   try {
+    if (isToiremorgMerchant(newRow.merchant)) return 0;
     const { data: rows } = await supabaseAdmin.from('transactions')
       .select('id, merchant, source, created_at, excluded, state')
       .eq('household_id', householdId)
@@ -585,32 +735,96 @@ export async function flagLookalikes(
       const r2 = matchMerchantRule(rules, m2);
       return !!r1 && !!r2 && normalizeMerchant(r1.display_name) === normalizeMerchant(r2.display_name);
     };
-    let flagged = 0;
-    for (const r of rows ?? []) {
-      if (flagged >= 5) break;
-      if (r.excluded === true || r.state === 'excluded') continue;
-      if (!related(newRow.merchant, r.merchant)) continue;
-      const [canonical, duplicate] = pickCanonicalPair(
-        { id: r.id, merchant: r.merchant, source: r.source, created_at: r.created_at },
-        newRow,
-      );
+    // A pair with a candidate row in ANY status (pending, merged,
+    // separate) is never flagged again — this is the dismissed-pairs
+    // flag. Fail CLOSED on error: an unreadable review table skips
+    // the flag rather than risking a re-flag of a dismissed pair.
+    const alreadyHasCandidate = async (canonicalId: string, duplicateId: string): Promise<boolean> => {
       try {
         const { data: prior } = await supabaseAdmin.from('duplicate_candidates')
           .select('id').eq('household_id', householdId)
-          .or(`and(canonical_transaction_id.eq.${canonical.id},duplicate_transaction_id.eq.${duplicate.id}),and(canonical_transaction_id.eq.${duplicate.id},duplicate_transaction_id.eq.${canonical.id})`)
+          .or(`and(canonical_transaction_id.eq.${canonicalId},duplicate_transaction_id.eq.${duplicateId}),and(canonical_transaction_id.eq.${duplicateId},duplicate_transaction_id.eq.${canonicalId})`)
           .limit(1).maybeSingle();
-        if (prior) continue;
+        return !!prior;
+      } catch {
+        return true;
+      }
+    };
+    const insertCandidate = async (
+      canonical: LookalikeRow,
+      duplicate: LookalikeRow,
+      reason: string,
+    ): Promise<boolean> => {
+      try {
         const { error } = await supabaseAdmin.from('duplicate_candidates').insert({
           household_id: householdId,
           canonical_transaction_id: canonical.id,
           duplicate_transaction_id: duplicate.id,
-          reason: 'lookalike',
+          reason,
           merchant_a: normalizeMerchant(canonical.merchant),
           merchant_b: normalizeMerchant(duplicate.merchant),
         });
-        if (!error) flagged += 1;
+        return !error;
       } catch {
-        continue;
+        return false;
+      }
+    };
+    let flagged = 0;
+    for (const r of rows ?? []) {
+      if (flagged >= 5) break;
+      if (r.excluded === true || r.state === 'excluded') continue;
+      if (isToiremorgMerchant(r.merchant)) continue;
+      // Royal Farms (Nov 20, 2026): identical merchant names are the
+      // strongest duplicate signal — but only across sources
+      // (Bank+Email). merchantsRelated() deliberately returns false
+      // for identical names (they are "not lookalikes"; the hash /
+      // guard is supposed to catch them), so without this check an
+      // identical-spelling Bank+Email pair the guard missed is
+      // invisible: no merge AND no candidate. Same-source identical
+      // rows are two real identical purchases and stay unflagged.
+      const identicalBankEmail =
+        merchantRuleSquash(newRow.merchant) === merchantRuleSquash(r.merchant) &&
+        ((newRow.source === 'plaid' && isEmailSource(r.source)) ||
+          (r.source === 'plaid' && isEmailSource(newRow.source)));
+      if (!identicalBankEmail && !related(newRow.merchant, r.merchant)) continue;
+      const [canonical, duplicate] = pickCanonicalPair(
+        { id: r.id, merchant: r.merchant, source: r.source, created_at: r.created_at },
+        newRow,
+      );
+      if (await alreadyHasCandidate(canonical.id, duplicate.id)) continue;
+      if (await insertCandidate(canonical, duplicate, 'lookalike')) flagged += 1;
+    }
+    // Pass 2 — similar-name rule (build 65, Yaldel case). Same date
+    // + same amount, NO suffix requirement (the alert side carries
+    // '0000' when the card ending is unknown), similar names only.
+    // Different known suffixes still refuse: two rows on different
+    // cards are two real purchases.
+    if (flagged < 5) {
+      const { data: sameDayRows } = await supabaseAdmin.from('transactions')
+        .select('id, merchant, source, created_at, excluded, state, card_suffix')
+        .eq('household_id', householdId)
+        .eq('date', newRow.date)
+        .eq('amount_cents', newRow.amount_cents)
+        .neq('id', newRow.id)
+        .limit(20);
+      for (const r of sameDayRows ?? []) {
+        if (flagged >= 5) break;
+        if (r.excluded === true || r.state === 'excluded') continue;
+        if (isToiremorgMerchant(r.merchant)) continue;
+        const newSuffix = String(newRow.card_suffix ?? '0000');
+        const oldSuffix = String((r as { card_suffix?: string | null }).card_suffix ?? '0000');
+        if (newSuffix !== '0000' && oldSuffix !== '0000' && newSuffix !== oldSuffix) continue;
+        const identicalBankEmail =
+          merchantRuleSquash(newRow.merchant) === merchantRuleSquash(r.merchant) &&
+          ((newRow.source === 'plaid' && isEmailSource(r.source)) ||
+            (r.source === 'plaid' && isEmailSource(newRow.source)));
+        if (!identicalBankEmail && !merchantsSimilarForReview(newRow.merchant, r.merchant)) continue;
+        const [canonical, duplicate] = pickCanonicalPair(
+          { id: r.id, merchant: r.merchant, source: r.source, created_at: r.created_at },
+          newRow,
+        );
+        if (await alreadyHasCandidate(canonical.id, duplicate.id)) continue;
+        if (await insertCandidate(canonical, duplicate, 'similar-name')) flagged += 1;
       }
     }
     return flagged;
@@ -631,9 +845,20 @@ export async function flagLookalikes(
 // its own row, and the pending row was excluded instead. (A $75 Mobile
 // Check Deposit, Nov 12, is in the same state.) Rules, decided by
 // decideRemovedRow — the caller only ever UPDATEs on 'exclude':
-//   * provisional row in removed[] -> LEAVE it (state stays
-//     provisional, excluded stays false). Only a VERIFIED row is a
-//     genuine reversal.
+//   * provisional row in removed[] -> LEAVE it ONLY when a
+//     replacement / re-issue signal exists in this sync (it posted
+//     under a new id). Build 58 (owner, Nov 22, 2026): when NO
+//     signal exists — no replacement arrival, no pending link, and
+//     the caller finds no replacement in the recent window either —
+//     the pending transaction truly disappeared (it will never
+//     post), so the row is EXCLUDED (auto-reverse: its effect
+//     leaves the totals, and the charity trigger reverses any
+//     accrual from it). This keeps the Nov 17 safeguard — a
+//     provisional row is never excluded without first checking
+//     for a matching new arrival — while no longer leaving a
+//     cancelled pending transaction counted forever. Only a
+//     VERIFIED row with no replacement anywhere is a genuine
+//     reversal, same as before.
 //   * verified row + a same-merchant + same-amount + same-date
 //     arrival in the SAME sync -> LEAVE it: a re-issue, not a
 //     reversal; the new row is the live one.
@@ -711,13 +936,19 @@ export function decideRemovedRow(
   row: RemovedRowLike,
   arrivals: SyncArrivalLike[],
 ): RemovedDecision {
-  if (row.state === 'provisional') {
-    return { action: 'leave', reason: 'provisional-removed-is-normal' };
-  }
   if (row.excluded === true || row.state === 'excluded' || row.state === 'reversed') {
     return { action: 'leave', reason: 'already-excluded' };
   }
-  if (row.state !== 'verified') {
+  // Build 58 (owner, Nov 22, 2026): a provisional row is no longer
+  // left unconditionally. It goes through the same arrival checks
+  // as a verified row below: a replacement / re-issue signal means
+  // it posted under a new id (leave / link as before). Only when no
+  // signal exists does it fall through to 'exclude' — the pending
+  // transaction truly disappeared, so it auto-reverses. (The caller
+  // still checks the recent window for a replacement before
+  // excluding, so this only fires when no replacement exists
+  // anywhere — the Nov 17 safeguard, kept.)
+  if (row.state !== 'verified' && row.state !== 'provisional') {
     return { action: 'leave', reason: 'not-verified' };
   }
   // LIVE ids only. plaid_pending_transaction_id is deliberately NOT
@@ -773,6 +1004,14 @@ export function decideRemovedRow(
     ) {
       return { action: 'leave', reason: 'reissue-pending-link' };
     }
+  }
+  // No replacement / re-issue signal in this sync. A verified row
+  // is a genuine reversal; a provisional row is a pending
+  // transaction that will never post — exclude it (auto-reverse).
+  // The caller checks the recent window first, so this only lands
+  // when no replacement exists anywhere.
+  if (row.state === 'provisional') {
+    return { action: 'exclude', reason: 'provisional-disappeared' };
   }
   return { action: 'exclude', reason: 'verified-reversal' };
 }
