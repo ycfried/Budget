@@ -2693,9 +2693,11 @@ public struct WeeklyBudgetCalculatorContent: View {
             // Build 69 (owner, Nov 24, 2026): add a recurring
             // expense from the Calculator, matching the "Add
             // Income" form above it. Admin only — tagging is
-            // admin-only server-side. Hidden when the presenter
-            // passed no view model.
-            if let viewModel, viewModel.context.isAdmin {
+            // admin-only server-side. (The "hidden when the
+            // presenter passed no view model" clause is gone —
+            // the view model is non-optional now, so the button
+            // shows whenever the user is an admin.)
+            if viewModel.context.isAdmin {
                 Button {
                     showExpensePicker = true
                 } label: {
@@ -2718,38 +2720,34 @@ public struct WeeklyBudgetCalculatorContent: View {
             Text("From your tagged expenses. Manage them from Recurring Expenses on the Weekly Budget sheet.")
         }
         .sheet(isPresented: $showExpensePicker) {
-            if let viewModel {
-                ExpenseTagPickerSheet(
-                    transactions: viewModel.allTransactions,
-                    onTag: { transaction in
-                        await viewModel.tagExpense(transaction, reason: "")
-                    },
-                    onTagged: { expense in
-                        // The editor cannot open while the picker
-                        // is still dismissing — the build-67
-                        // 400ms pattern.
-                        Task {
-                            try? await Task.sleep(nanoseconds: 400_000_000)
-                            editorExpense = expense
-                        }
-                    },
-                    onClose: { showExpensePicker = false }
-                )
-            }
+            ExpenseTagPickerSheet(
+                transactions: viewModel.allTransactions,
+                onTag: { transaction in
+                    await viewModel.tagExpense(transaction, reason: "")
+                },
+                onTagged: { expense in
+                    // The editor cannot open while the picker
+                    // is still dismissing — the build-67
+                    // 400ms pattern.
+                    Task {
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        editorExpense = expense
+                    }
+                },
+                onClose: { showExpensePicker = false }
+            )
         }
         .sheet(item: $editorExpense) { expense in
-            if let viewModel {
-                ExpenseEditorSheet(
-                    expense: expense,
-                    onSave: { name, amountCents, frequency in
-                        await viewModel.updateExpense(expense, name: name, amountCents: amountCents, frequency: frequency)
-                    },
-                    onRemove: {
-                        await viewModel.removeExpense(expense)
-                    },
-                    onClose: { editorExpense = nil }
-                )
-            }
+            ExpenseEditorSheet(
+                expense: expense,
+                onSave: { name, amountCents, frequency in
+                    await viewModel.updateExpense(expense, name: name, amountCents: amountCents, frequency: frequency)
+                },
+                onRemove: {
+                    await viewModel.removeExpense(expense)
+                },
+                onClose: { editorExpense = nil }
+            )
         }
     }
 
