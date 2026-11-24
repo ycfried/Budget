@@ -305,6 +305,7 @@ public struct TransactionActionsSheet: View {
         case .cashback: return "Cashback"
         case .income: return "Income"
         case .charity: return charityName
+        case .expense: return "Expense"
         case .other: return "Other"
         }
     }
@@ -326,6 +327,7 @@ public struct TransactionActionsSheet: View {
         case .fundCharge: return (DesignTokens.fundHex, "banknote")
         case .payment: return (DesignTokens.mutedHex, "creditcard")
         case .cashback: return (DesignTokens.deepHex, "dollarsign.circle")
+        case .expense: return (DesignTokens.inkHex, "house")
         case .other: return (DesignTokens.mutedHex, "ellipsis.circle")
         }
     }
@@ -342,6 +344,7 @@ public struct TransactionActionsSheet: View {
         case .cashback: return "Count it as cash back"
         case .income: return "Count it as money in"
         case .charity: return "Count it as a charity gift"
+        case .expense: return "Count it as a recurring living cost, out of weekly spending"
         case .other: return "Count it as something else"
         }
     }
@@ -431,6 +434,11 @@ public struct TransactionActionsSheet: View {
                 var group1 = [current()]
                 group1 += [reclassify(.income)].compactMap { $0 }
                 group1.append(charity)
+                // Build 67 (owner, Nov 23, 2026): Expense sits in
+                // Group 1 right after Tzedaka — it is a counting
+                // choice (out of weekly spending, into the fixed
+                // expenses), not a "More" afterthought.
+                group1 += [reclassify(.expense)].compactMap { $0 }
                 group1.append(extraFund)
                 if canDesignateAsSavings { group1.append(designate) }
                 group1.append(exclude)
@@ -441,6 +449,21 @@ public struct TransactionActionsSheet: View {
             // Owner rule (Nov 13, 2026): no disabled rows — a
             // member simply does not see the Tzedaka action.
             return grouped([current(), extraFund], more: [])
+        case .expense:
+            // Build 67: a row already tagged as an Expense — the
+            // current category is Expense (marked), and it can be
+            // corrected back to a Purchase or Income, or excluded
+            // / deleted. No Tzedaka or fund actions: an expense is
+            // a fixed living cost, not a charge to cover or a gift
+            // to mark — reclassify to Purchase first, then use
+            // those actions. Removing the expense (back to a
+            // purchase) also lives in the expense editor.
+            guard isAdmin else { return [] }
+            var expenseGroup1 = [current()]
+            expenseGroup1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
+            expenseGroup1.append(exclude)
+            expenseGroup1.append(delete)
+            return grouped(expenseGroup1 + [rename], more: [])
         case .refund:
             guard isAdmin else { return [] }
             let linkSubline = transaction.originalPurchaseId != nil
@@ -457,7 +480,7 @@ public struct TransactionActionsSheet: View {
         case .transfer, .payment, .cashback, .fundCharge:
             guard isAdmin else { return [] }
             var group1 = [current()]
-            group1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
+            group1 += [reclassify(.charge), reclassify(.income), reclassify(.expense)].compactMap { $0 }
             if canDesignateAsSavings { group1.append(designate) }
             group1.append(exclude)
             group1.append(delete)
@@ -478,18 +501,30 @@ public struct TransactionActionsSheet: View {
             group1.append(exclude)
             group1.append(delete)
             return grouped(group1 + [rename], more: [])
-        case .income, .other:
+        case .income:
             guard isAdmin else { return [] }
-            var group1 = [current()]
+            var incomeGroup1 = [current()]
             // For an income row reclassify(.income) is nil (it is
-            // the current kind); for an .other row it is the
-            // Income action — one list covers both.
-            group1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
-            if canDesignateAsSavings { group1.append(designate) }
-            group1.append(exclude)
-            group1.append(delete)
-            let group2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
-            return grouped(group1 + [rename], more: group2)
+            // the current kind). No Expense here: an expense is
+            // money out, and an income row is money in.
+            incomeGroup1 += [reclassify(.charge), reclassify(.income)].compactMap { $0 }
+            if canDesignateAsSavings { incomeGroup1.append(designate) }
+            incomeGroup1.append(exclude)
+            incomeGroup1.append(delete)
+            let incomeGroup2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
+            return grouped(incomeGroup1 + [rename], more: incomeGroup2)
+        case .other:
+            guard isAdmin else { return [] }
+            var otherGroup1 = [current()]
+            // An unclassified row can be a recurring living cost —
+            // Expense is offered here (unlike Income, where money
+            // in can never be an expense).
+            otherGroup1 += [reclassify(.charge), reclassify(.income), reclassify(.expense)].compactMap { $0 }
+            if canDesignateAsSavings { otherGroup1.append(designate) }
+            otherGroup1.append(exclude)
+            otherGroup1.append(delete)
+            let otherGroup2 = [reclassify(.transfer), reclassify(.refund), reclassify(.fundCharge), reclassify(.payment), reclassify(.cashback)].compactMap { $0 }
+            return grouped(otherGroup1 + [rename], more: otherGroup2)
         }
     }
 
@@ -622,7 +657,11 @@ public struct TransactionActionsSheet: View {
         case .extraFund: return "Cover with \(extraFundName)"
         case .linkCandidates: return "Link Refund to Purchase"
         case .unlinkConfirm: return "Unlink Refund"
-        case .reclassifyReason: return "Reclassify Transaction"
+        case .reclassifyReason(let kind):
+            // Build 67: tagging as an Expense is a reclassify
+            // with a different outcome (and its own editor after),
+            // so its title says so.
+            return kind == .expense ? "Tag as Expense" : "Reclassify Transaction"
         case .excludeConfirm: return "Exclude Transaction"
         case .rename: return "Rename Merchant"
         // Build 64 (F-29): was "Designate as …" — the old name;
@@ -1240,7 +1279,9 @@ public struct TransactionActionsSheet: View {
     private func reclassifyReasonContent(kind: TransactionKind) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             summaryHeader
-            Text("Give a reason for reclassifying this transaction.")
+            Text(kind == .expense
+                 ? "Give a reason for tagging this transaction as a recurring expense. It stops counting toward weekly spending, and appears in Recurring Expenses."
+                 : "Give a reason for reclassifying this transaction.")
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.ink)
             VStack(alignment: .leading, spacing: 6) {
@@ -1254,7 +1295,7 @@ public struct TransactionActionsSheet: View {
                 SoftErrorBox(reclassifyReasonError)
             }
             TwoButtonRow {
-                Button("Continue") {
+                Button(kind == .expense ? "Tag as Expense" : "Continue") {
                     Task {
                         let reason = reclassifyReason.trimmingCharacters(in: .whitespaces)
                         guard !reason.isEmpty else {
@@ -1262,9 +1303,29 @@ public struct TransactionActionsSheet: View {
                             return
                         }
                         isWorking = true
-                        let ok = await viewModel.reclassify(transaction, to: kind, reason: reason)
-                        isWorking = false
-                        if ok { onDismiss() }
+                        if kind == .expense {
+                            // Build 67: tagging is NOT the plain
+                            // reclassify RPC — it also creates the
+                            // expense row. On success the Actions
+                            // sheet closes and the expense editor
+                            // opens (after a beat, so the sheet
+                            // presentation is not dropped while the
+                            // Actions sheet is still animating away).
+                            if let expense = await viewModel.tagExpense(transaction, reason: reason) {
+                                isWorking = false
+                                onDismiss()
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 400_000_000)
+                                    viewModel.taggedExpense = expense
+                                }
+                            } else {
+                                isWorking = false
+                            }
+                        } else {
+                            let ok = await viewModel.reclassify(transaction, to: kind, reason: reason)
+                            isWorking = false
+                            if ok { onDismiss() }
+                        }
                     }
                 }
                 .buttonStyle(PrimaryButtonStyle())

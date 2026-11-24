@@ -218,6 +218,51 @@ extension RPCClient {
             "p_transaction_id": pTransactionId.uuidString,
         ])
     }
+
+    /// `tag_transaction_expense(p_transaction_id, p_frequency, p_reason)`
+    /// (build 67, `recurring-expenses.sql` step 5): tag a money-out
+    /// transaction as a recurring Expense — reclassifies it to kind
+    /// 'expense' (admin only, 35-day lock, same guards as
+    /// reclassify) and creates its `recurring_expenses` row at the
+    /// requested frequency (an existing row keeps its frequency).
+    /// Returns the expense id so the app can open the editor for it
+    /// at once.
+    public func tagTransactionExpense(
+        pTransactionId: UUID, pFrequency: ExpenseFrequency, pReason: String
+    ) async throws -> UUID {
+        try await callScalar(name: "tag_transaction_expense", params: [
+            "p_transaction_id": pTransactionId.uuidString,
+            "p_frequency": pFrequency.rawValue,
+            "p_reason": pReason,
+        ])
+    }
+
+    /// `update_recurring_expense(p_expense_id, p_name, p_amount_cents,
+    /// p_frequency)` (build 67, step 6): the expense editor's save.
+    /// Admin only. Edits the expense row only — the linked
+    /// transaction's own amount is never touched.
+    public func updateRecurringExpense(
+        pExpenseId: UUID, pName: String, pAmountCents: Int, pFrequency: ExpenseFrequency
+    ) async throws {
+        try await callVoid(name: "update_recurring_expense", params: [
+            "p_expense_id": pExpenseId.uuidString,
+            "p_name": pName,
+            "p_amount_cents": pAmountCents,
+            "p_frequency": pFrequency.rawValue,
+        ])
+    }
+
+    /// `remove_recurring_expense(p_expense_id, p_reason)` (build 67,
+    /// step 7): the expense editor's Remove. Deletes the expense
+    /// row AND reclassifies the linked transaction back to 'charge',
+    /// so it counts as weekly spending again (same 35-day lock as
+    /// reclassify).
+    public func removeRecurringExpense(pExpenseId: UUID, pReason: String) async throws {
+        try await callVoid(name: "remove_recurring_expense", params: [
+            "p_expense_id": pExpenseId.uuidString,
+            "p_reason": pReason,
+        ])
+    }
 }
 
 // MARK: - Refund linking

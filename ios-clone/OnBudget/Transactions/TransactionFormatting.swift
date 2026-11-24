@@ -443,6 +443,7 @@ public enum TransactionFormatting {
         case .cashback: return "Cashback"
         case .income: return "Income"
         case .charity: return "Tzedaka"
+        case .expense: return "Expense"
         case .other: return "Other"
         }
     }

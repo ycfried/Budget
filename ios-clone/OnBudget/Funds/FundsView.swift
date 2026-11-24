@@ -634,10 +634,16 @@ public struct FundsView: View {
                     }
                     // Build 43 (owner, Nov 17, 2026 — item 17):
                     // full-screen cover, not a detent sheet.
+                    // Build 67: the Calculator reads its recurring
+                    // costs from the tagged expenses (this page's
+                    // view model loads them) — the LIVE ones only,
+                    // so an expense in the Trash stops counting
+                    // at once.
                     .fullScreenCover(isPresented: $showCalculator) {
                         WeeklyBudgetCalculatorSheet(
                             householdId: viewModel.context.householdId,
                             charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
+                            expenses: viewModel.liveExpenses,
                             onClose: { showCalculator = false }
                         )
                     }
@@ -2013,12 +2019,17 @@ public struct WeeklyBudgetCalculatorSheet: View {
     /// Nov 17, 2026 — item 16): the "Expected <fund>" section
     /// reads it, never a hardcoded "Charity".
     public let charityName: String
+    /// The household's tagged recurring expenses (build 67):
+    /// passed through to the content — the Calculator reads its
+    /// recurring costs from them.
+    public let expenses: [RecurringExpense]
     public var onClose: () -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    public init(householdId: UUID, charityName: String, onClose: @escaping () -> Void = {}) {
+    public init(householdId: UUID, charityName: String, expenses: [RecurringExpense] = [], onClose: @escaping () -> Void = {}) {
         self.householdId = householdId
         self.charityName = charityName
+        self.expenses = expenses
         self.onClose = onClose
     }
 
@@ -2026,7 +2037,7 @@ public struct WeeklyBudgetCalculatorSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 SheetHeader(title: TitleCase.apply(to: "Weekly Budget Calculator"), onClose: onClose)
-                WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName)
+                WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName, expenses: expenses)
             }
             .padding()
         }
@@ -2044,8 +2055,13 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// Nov 17, 2026 — item 16): the "Expected <fund>" section
     /// reads it, never a hardcoded "Charity".
     public let charityName: String
+    /// The household's tagged recurring expenses (build 67):
+    /// the single source of truth for the "Recurring Expenses"
+    /// section — derived from real tagged transactions, not
+    /// hand-entered here. Passed in by the presenter (the
+    /// Weekly sheet / Funds page's FundsViewModel loads them).
+    public let expenses: [RecurringExpense]
     @State private var incomeItems: [CalculatorItem] = []
-    @State private var chargeItems: [CalculatorItem] = []
     @State private var charityText = ""
     @State private var lifestyle: LifestyleHoldback = .regular
     @State private var customHoldbackText = ""
@@ -2053,11 +2069,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     @State private var incomeDraftName = ""
     @State private var incomeDraftAmount = ""
     @State private var incomeDraftFrequency: CalculatorFrequency = .monthly
-    @State private var chargeDraftName = ""
-    @State private var chargeDraftAmount = ""
-    @State private var chargeDraftFrequency: CalculatorFrequency = .monthly
     @State private var incomeError: String?
-    @State private var chargeError: String?
     /// The ⓘ in the card header opens the formula explanation.
     @State private var showFormulaInfo = false
     /// True once the stored inputs have loaded — saves are
@@ -2065,9 +2077,10 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// stored values with the empty defaults.
     @State private var didLoad = false
 
-    public init(householdId: UUID, charityName: String) {
+    public init(householdId: UUID, charityName: String, expenses: [RecurringExpense] = []) {
         self.householdId = householdId
         self.charityName = charityName
+        self.expenses = expenses
     }
 
     // MARK: - Local persistence (per household, no server)
@@ -2082,10 +2095,6 @@ public struct WeeklyBudgetCalculatorContent: View {
         if let data = defaults.data(forKey: key("income")),
            let items = try? JSONDecoder().decode([CalculatorItem].self, from: data) {
             incomeItems = items
-        }
-        if let data = defaults.data(forKey: key("charges")),
-           let items = try? JSONDecoder().decode([CalculatorItem].self, from: data) {
-            chargeItems = items
         }
         charityText = defaults.string(forKey: key("charity")) ?? ""
         if let raw = defaults.string(forKey: key("lifestyle")),
@@ -2102,7 +2111,6 @@ public struct WeeklyBudgetCalculatorContent: View {
         guard didLoad else { return }
         let defaults = UserDefaults.standard
         defaults.set(try? JSONEncoder().encode(incomeItems), forKey: key("income"))
-        defaults.set(try? JSONEncoder().encode(chargeItems), forKey: key("charges"))
         defaults.set(charityText, forKey: key("charity"))
         defaults.set(lifestyle.rawValue, forKey: key("lifestyle"))
         defaults.set(customHoldbackText, forKey: key("custom-holdback"))
@@ -2128,8 +2136,12 @@ public struct WeeklyBudgetCalculatorContent: View {
         incomeItems.reduce(0) { $0 + $1.monthlyCents }
     }
 
+    /// Build 67: the recurring costs come from the tagged
+    /// Expenses list (single source of truth), not from
+    /// hand-entered charges — the manual "Recurring Charges"
+    /// section is gone, replaced by the expenses below.
     private var monthlyChargesCents: Int {
-        chargeItems.reduce(0) { $0 + $1.monthlyCents }
+        expenses.reduce(0) { $0 + $1.monthlyCents }
     }
 
     private var charityCents: Int {
@@ -2163,7 +2175,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     }
 
     private var hasItems: Bool {
-        !incomeItems.isEmpty || !chargeItems.isEmpty
+        !incomeItems.isEmpty || !expenses.isEmpty
     }
 
     private var customHoldbackInvalid: Bool {
@@ -2196,7 +2208,6 @@ public struct WeeklyBudgetCalculatorContent: View {
         .accessibilityIdentifier("funds.weeklyBudgetCalculator")
         .onAppear { load() }
         .onChange(of: incomeItems) { _, _ in save() }
-        .onChange(of: chargeItems) { _, _ in save() }
         .onChange(of: charityText) { _, _ in save() }
         .onChange(of: lifestyle) { _, _ in save() }
         .onChange(of: customHoldbackText) { _, _ in save() }
@@ -2243,13 +2254,17 @@ public struct WeeklyBudgetCalculatorContent: View {
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
                 FundsMuted("About \(MoneyFormat.formatCents(perPersonCents)) per person each week, for a household of \(householdSize).")
-                FundsMuted("This is a suggestion only — your weekly allowance does not change.")
-                FundsMuted("\(MoneyFormat.formatCents(monthlyIncomeCents)) income − \(MoneyFormat.formatCents(charityCents)) charity − \(MoneyFormat.formatCents(monthlyChargesCents)) charges = \(MoneyFormat.formatCents(monthlyRemainderCents)) a month. That is \(MoneyFormat.formatCents(weeklyBeforeHoldbackCents)) a week, \(MoneyFormat.formatCents(suggestedWeeklyCents)) after a \(MoneyFormat.formatRateBp(Int((holdbackPercent * 100).rounded())))% holdback.")
+                // Build 67 (owner, Nov 23, 2026 — "so many words,
+                // so much clutter"): the two extra muted lines are
+                // gone — the "suggestion only" line and the full
+                // math breakdown. The ⓘ above already says both
+                // (the formula + that the allowance does not
+                // change), so repeating them here was clutter.
                 if suggestedWeeklyCents <= 0 {
-                    FundsErrorBox("That leaves nothing for the week — expected charity and recurring charges are more than the monthly income.")
+                    FundsErrorBox("That leaves nothing for the week — expected charity and recurring expenses are more than the monthly income.")
                 }
             } else {
-                FundsMuted("Add your expected income and recurring charges below — the suggestion appears here.")
+                FundsMuted("Add your expected income below — the suggestion appears here once income and expenses are in.")
             }
         }
     }
@@ -2268,18 +2283,47 @@ public struct WeeklyBudgetCalculatorContent: View {
         )
     }
 
+    /// Build 67 (owner, Nov 23, 2026): the "Recurring Charges"
+    /// section is GONE as a hand-entered list — the recurring
+    /// costs now come from the tagged Expenses list (single source
+    /// of truth, derived from real transactions). This section
+    /// only READS them: each expense with its frequency and
+    /// monthly figure, and the monthly total that feeds the
+    /// suggestion above. Nothing is typed here; expenses are
+    /// tagged from a transaction's Actions sheet and managed
+    /// from Recurring Expenses on the Weekly Budget sheet.
     private var chargesSection: some View {
-        itemSection(
-            title: "Recurring Charges",
-            items: chargeItems,
-            draftName: $chargeDraftName,
-            draftAmount: $chargeDraftAmount,
-            draftFrequency: $chargeDraftFrequency,
-            error: chargeError,
-            monthlyTotalCents: monthlyChargesCents,
-            onAdd: addChargeItem,
-            onRemove: removeChargeItem
-        )
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Recurring Expenses")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.ink)
+            if expenses.isEmpty {
+                FundsMuted("No expenses tagged yet — tag a transaction as an Expense to add one.")
+            } else {
+                ForEach(expenses) { expense in
+                    HStack(spacing: 4) {
+                        Text(expense.name)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                            .lineLimit(1)
+                        Text("·")
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                        Text(expense.frequency.displayName)
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                        Spacer()
+                        Text(MoneyFormat.formatCents(expense.monthlyCents))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Text("a month")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                    }
+                }
+            }
+            FundsBreakdownRow("Monthly Total", value: MoneyFormat.formatCents(monthlyChargesCents))
+            FundsMuted("From your tagged expenses. Manage them from Recurring Expenses on the Weekly Budget sheet.")
+        }
     }
 
     /// One hand-entered list (income or charges): the saved rows
@@ -2369,7 +2413,9 @@ public struct WeeklyBudgetCalculatorContent: View {
                     charityText = String(format: "%.2f", Double(monthlyIncomeCents) / 10.0 / 100.0)
                 }
             }
-            FundsMuted("Expected charity each month. The 10% button fills in 10% of the expected income above.")
+            // Build 67 (owner, Nov 23, 2026 — "so many words"):
+            // the "Expected charity each month…" explainer is
+            // gone — the field + the button already say it.
         }
     }
 
@@ -2413,7 +2459,9 @@ public struct WeeklyBudgetCalculatorContent: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
-            FundsMuted("Holdback in effect: \(MoneyFormat.formatRateBp(Int((holdbackPercent * 100).rounded())))%. Leave the custom field blank to use the preset above.")
+            // Build 67 (owner, Nov 23, 2026 — "so many words"):
+            // the "Holdback in effect…" line is gone — the preset
+            // + the field already show the holdback in effect.
             if customHoldbackInvalid {
                 FundsMuted("That holdback did not parse — using the preset instead. Enter a percent between 0 and 100.")
             }
@@ -2424,7 +2472,9 @@ public struct WeeklyBudgetCalculatorContent: View {
         VStack(alignment: .leading, spacing: 12) {
             Stepper("Household Size: \(householdSize)", value: $householdSize, in: 1...20)
                 .font(.system(size: 15, weight: .semibold))
-            FundsMuted("Shown per person in the suggestion above.")
+            // Build 67 (owner, Nov 23, 2026 — "so many words"):
+            // the "Shown per person…" line is gone — the
+            // per-person figure sits right above in the suggestion.
         }
     }
 
@@ -2465,23 +2515,7 @@ public struct WeeklyBudgetCalculatorContent: View {
         incomeDraftAmount = ""
     }
 
-    private func addChargeItem() {
-        guard let item = validatedDraftItem(
-            name: chargeDraftName,
-            amountText: chargeDraftAmount,
-            frequency: chargeDraftFrequency,
-            error: &chargeError
-        ) else { return }
-        chargeItems.append(item)
-        chargeDraftName = ""
-        chargeDraftAmount = ""
-    }
-
     private func removeIncomeItem(_ item: CalculatorItem) {
         incomeItems.removeAll { $0.id == item.id }
-    }
-
-    private func removeChargeItem(_ item: CalculatorItem) {
-        chargeItems.removeAll { $0.id == item.id }
     }
 }

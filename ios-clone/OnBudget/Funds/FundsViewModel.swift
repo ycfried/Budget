@@ -156,6 +156,27 @@ public final class FundsViewModel: ObservableObject {
     /// do today — never an error state, never a blank feed.
     @Published public var merchantRules: [MerchantRule] = []
 
+    /// Recurring expenses for this household (build 67, owner Nov
+    /// 23, 2026): the tagged expenses — one row per transaction
+    /// tagged as an Expense. Loaded best-effort, like the merchant
+    /// rules: a failed read leaves the list empty (the Weekly
+    /// sheet's Recurring Expenses row reads "No expenses yet"
+    /// and the Calculator's expenses section reads empty) rather
+    /// than failing the page. Live (not trashed) expenses only:
+    /// an excluded expense keeps its row, and restoring the
+    /// transaction brings it back — the filter below drops rows
+    /// whose linked transaction is in the Trash.
+    @Published public var expenses: [RecurringExpense] = []
+
+    /// The live expenses: `expenses` minus rows whose linked
+    /// transaction is excluded (in the Trash). The list, the
+    /// Weekly sheet row and the Calculator all read this, never
+    /// the raw array.
+    public var liveExpenses: [RecurringExpense] {
+        let trashedIds = Set(allTransactions.filter { $0.isInTrash }.map(\.id))
+        return expenses.filter { !trashedIds.contains($0.transactionId) }
+    }
+
     // MARK: - Allowance (Temporary Allowance preview)
 
     @Published public var baseAllowanceCents: Int?
@@ -307,6 +328,7 @@ public final class FundsViewModel: ObservableObject {
         async let weeklyTopupsLoad: Void = loadWeeklyBudgetTopups()
         async let debtLoad: Void = loadDebt()
         async let merchantRulesLoad: Void = loadMerchantRules()
+        async let expensesLoad: Void = loadExpenses()
         // The four cards reveal together once their four loads have
         // resolved (success or failure — a failed card shows its
         // error state, never a lingering skeleton). The top-ups
@@ -327,6 +349,7 @@ public final class FundsViewModel: ObservableObject {
         await savingsLoad
         await reviewLoad
         await merchantRulesLoad
+        await expensesLoad
     }
 
     /// Review-only refresh (build 30): the Review page lives on
@@ -352,6 +375,18 @@ public final class FundsViewModel: ObservableObject {
             merchantRules = try await context.client.postgrest.merchantRules(householdId: context.householdId)
         } catch {
             merchantRules = []
+        }
+    }
+
+    /// Recurring expenses (build 67): best-effort, like the
+    /// merchant rules — on any error the list reads empty rather
+    /// than failing the page (the table may not exist yet on an
+    /// old server; the load then throws and the list is empty).
+    private func loadExpenses() async {
+        do {
+            expenses = try await context.client.postgrest.recurringExpenses(householdId: context.householdId)
+        } catch {
+            expenses = []
         }
     }
 
@@ -1334,6 +1369,41 @@ public final class FundsViewModel: ObservableObject {
         await guarded("delete-income", title: "Could Not Delete Income") {
             let result = try await context.client.rpcs.reverseCharityIncome(pIncomeId: income.id)
             succeed("Income removed — \(MoneyFormat.formatCents(result.committedCents)) no longer commits to \(charityName).")
+            succeeded = true
+            await refresh()
+        }
+        return succeeded
+    }
+
+    // MARK: - Recurring expenses (build 67, owner Nov 23, 2026)
+
+    /// Save the expense editor's changes (name / amount /
+    /// frequency) for one expense. Edits the expense row only —
+    /// the linked transaction's own amount is never touched.
+    /// Refreshes, so the list, the Weekly sheet row and the
+    /// Calculator all read the new figures at once.
+    public func updateExpense(_ expense: RecurringExpense, name: String, amountCents: Int, frequency: ExpenseFrequency) async -> Bool {
+        var succeeded = false
+        await guarded("update-expense", title: "Could Not Save Expense") {
+            try await context.client.rpcs.updateRecurringExpense(
+                pExpenseId: expense.id, pName: name, pAmountCents: amountCents, pFrequency: frequency)
+            succeed("Expense saved.")
+            succeeded = true
+            await refresh()
+        }
+        return succeeded
+    }
+
+    /// Remove one expense: deletes the expense row AND reclassifies
+    /// the linked transaction back to 'charge', so it counts as
+    /// weekly spending again. Refreshes, so the list, the Weekly
+    /// sheet row, the Calculator and the week figures all read the
+    /// new state at once.
+    public func removeExpense(_ expense: RecurringExpense) async -> Bool {
+        var succeeded = false
+        await guarded("remove-expense", title: "Could Not Remove Expense") {
+            try await context.client.rpcs.removeRecurringExpense(pExpenseId: expense.id, pReason: "")
+            succeed("Expense removed — the transaction counts as a purchase again.")
             succeeded = true
             await refresh()
         }

@@ -87,6 +87,12 @@ public final class TransactionsViewModel {
     /// True exactly when the probe row came back on the latest fetch
     /// (older rows exist on the server).
     public private(set) var hasMore: Bool = false
+    /// The expense just tagged from the Actions sheet (build 67,
+    /// owner Nov 23, 2026): `tagExpense` sets this to the created
+    /// expense so the owning view can open the expense editor for
+    /// it once the Actions sheet has dismissed. Nil otherwise;
+    /// the editor clears it on dismiss.
+    public var taggedExpense: RecurringExpense?
     /// Week mode (build 52, owner Nov 20, 2026): the list arrived
     /// from the Spending card / Weekly sheet for ONE week, so the
     /// whole week is loaded at once (no Load More), pre-filtered
@@ -887,6 +893,86 @@ public final class TransactionsViewModel {
             return false
         } catch {
             fail(title: "Could Not Reclassify", message: OnBudgetError.displayMessage(for: error))
+            return false
+        }
+    }
+
+    // MARK: - Recurring expenses (build 67, owner Nov 23, 2026)
+
+    /// Tag a money-out transaction as a recurring Expense (the
+    /// Actions sheet's Expense row, after the reclassify reason).
+    /// The RPC reclassifies to kind 'expense' (admin only, 35-day
+    /// lock, same guards as reclassify) and creates the expense
+    /// row at Monthly — name and amount prefilled from the
+    /// transaction, exactly what the server stored. Returns the
+    /// created expense so the caller can open the editor for it;
+    /// nil when the tag failed (the error is already shown).
+    /// The list reloads, so the week figures drop the expense
+    /// from spending at once (Home and Transactions read the
+    /// same total — the F-1 rule). No toast here: the editor
+    /// opening IS the confirmation.
+    public func tagExpense(_ transaction: Transaction, reason: String) async -> RecurringExpense? {
+        guard isAdmin else {
+            showAlert(title: "Admin Only", message: "Only the admin can tag transactions as expenses.")
+            return nil
+        }
+        do {
+            let expenseId = try await client.rpcs.tagTransactionExpense(
+                pTransactionId: transaction.id, pFrequency: .monthly, pReason: reason)
+            await reloadAfterMutation()
+            return RecurringExpense(
+                id: expenseId, householdId: householdId, transactionId: transaction.id,
+                name: transaction.merchant, amountCents: transaction.amountCents, frequency: .monthly)
+        } catch let error as OnBudgetError {
+            fail(title: "Could Not Tag as Expense", message: error.displayMessage)
+            return nil
+        } catch {
+            fail(title: "Could Not Tag as Expense", message: OnBudgetError.displayMessage(for: error))
+            return nil
+        }
+    }
+
+    /// Save the expense editor's changes (name / amount /
+    /// frequency) for one expense. Edits the expense row only —
+    /// the linked transaction's own amount is never touched.
+    public func updateExpense(_ expense: RecurringExpense, name: String, amountCents: Int, frequency: ExpenseFrequency) async -> Bool {
+        guard isAdmin else {
+            showAlert(title: "Admin Only", message: "Only the admin can edit expenses.")
+            return false
+        }
+        do {
+            try await client.rpcs.updateRecurringExpense(
+                pExpenseId: expense.id, pName: name, pAmountCents: amountCents, pFrequency: frequency)
+            confirm("Expense saved.", kind: .success)
+            await reloadAfterMutation()
+            return true
+        } catch let error as OnBudgetError {
+            fail(title: "Could Not Save Expense", message: error.displayMessage)
+            return false
+        } catch {
+            fail(title: "Could Not Save Expense", message: OnBudgetError.displayMessage(for: error))
+            return false
+        }
+    }
+
+    /// Remove one expense: deletes the expense row AND reclassifies
+    /// the linked transaction back to 'charge', so it counts as
+    /// weekly spending again.
+    public func removeExpense(_ expense: RecurringExpense) async -> Bool {
+        guard isAdmin else {
+            showAlert(title: "Admin Only", message: "Only the admin can remove expenses.")
+            return false
+        }
+        do {
+            try await client.rpcs.removeRecurringExpense(pExpenseId: expense.id, pReason: "")
+            confirm("Expense removed — the transaction counts as a purchase again.", kind: .success)
+            await reloadAfterMutation()
+            return true
+        } catch let error as OnBudgetError {
+            fail(title: "Could Not Remove Expense", message: error.displayMessage)
+            return false
+        } catch {
+            fail(title: "Could Not Remove Expense", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }

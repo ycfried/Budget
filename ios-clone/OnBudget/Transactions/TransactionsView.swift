@@ -298,6 +298,26 @@ public struct TransactionsView: View {
                     // popup attached here to be seen.
                     .confirmationPopupOverlay($appState.toast)
                 }
+                // Build 67 (owner, Nov 23, 2026): the expense editor,
+                // opened right after tagging from the Actions sheet —
+                // the tag sets `viewModel.taggedExpense` once the
+                // Actions sheet has dismissed, and this sheet opens
+                // for it. Save / Remove go through the Transactions
+                // view model; the list reloads behind the editor, so
+                // the week figures drop the expense at once.
+                .sheet(item: $viewModel.taggedExpense) { expense in
+                    ExpenseEditorSheet(
+                        expense: expense,
+                        onSave: { name, amountCents, frequency in
+                            await viewModel.updateExpense(expense, name: name, amountCents: amountCents, frequency: frequency)
+                        },
+                        onRemove: {
+                            await viewModel.removeExpense(expense)
+                        },
+                        onClose: { viewModel.taggedExpense = nil }
+                    )
+                    .confirmationPopupOverlay($appState.toast)
+                }
         }
     }
 

@@ -123,6 +123,14 @@ public struct TemporaryAllowanceView: View {
                 Task { await viewModel.removeTemporaryAllowance() }
             }
         }
+        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet
+        // sized to the content (C-4 fitted detents), not a
+        // full-screen page — the form is two fields and two
+        // buttons, and the full screen left a huge empty area.
+        // (No effect when this form rides in the Funds page's
+        // full-screen form flow — detents only apply to sheets.)
+        .presentationDetents([.fraction(0.45), .medium])
+        .presentationDragIndicator(.visible)
         // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
         // confirmationDialog — on iPad a confirmationDialog is a
         // popover anchored at the top of the screen (same fix as the

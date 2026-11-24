@@ -37,6 +37,14 @@ public enum TransactionKind: Equatable, Hashable, Codable, Sendable {
     case transfer
     case income
     case charity
+    /// Build 67 (owner, Nov 23, 2026): a recurring living cost
+    /// (HOA, utilities, …) — money out, but DISCONNECTED from
+    /// weekly spending. It is not a purchase, not a donation, not
+    /// income, not a transfer. Week math counts only charge /
+    /// fund_charge (compute-week engine + WeekTransactionsNetting),
+    /// so an expense contributes 0 to weekly spending by kind
+    /// alone, with no engine change.
+    case expense
     case other(String)
 
     public init(from decoder: Decoder) throws {
@@ -51,6 +59,7 @@ public enum TransactionKind: Equatable, Hashable, Codable, Sendable {
         case "transfer": self = .transfer
         case "income": self = .income
         case "charity": self = .charity
+        case "expense": self = .expense
         default: self = .other(raw)
         }
     }
@@ -70,6 +79,7 @@ public enum TransactionKind: Equatable, Hashable, Codable, Sendable {
         case .transfer: return "transfer"
         case .income: return "income"
         case .charity: return "charity"
+        case .expense: return "expense"
         case .other(let raw): return raw
         }
     }
@@ -78,7 +88,7 @@ public enum TransactionKind: Equatable, Hashable, Codable, Sendable {
     /// 'charity' is listed there but is routed to the guarded
     /// mark-as-charity path, never sent to `reclassify_transaction`.
     public static let reclassifiable: [TransactionKind] = [
-        .charge, .refund, .fundCharge, .transfer, .payment, .cashback, .income,
+        .charge, .refund, .fundCharge, .transfer, .payment, .cashback, .income, .expense,
     ]
 
     /// The money-in kind names (owner, Nov 12, 2026): income,
@@ -1464,6 +1474,90 @@ public struct MerchantRule: Equatable, Codable, Identifiable {
         fixedKind = try container.decodeIfPresent(String.self, forKey: .fixedKind)
         createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
         sourceMerchant = try container.decodeIfPresent(String.self, forKey: .sourceMerchant)
+    }
+}
+
+/// How often a recurring expense repeats (build 67, owner Nov 23,
+/// 2026): the same four frequencies the Weekly Budget Calculator
+/// uses (CalculatorFrequency in the app), kept here in the Kit so
+/// the model, the RPCs and the Calculator share one definition.
+/// `monthlyFactor` is the same divisor the Calculator uses — weekly
+/// 4.33 (the plan's weeks-per-month), monthly 1, quarterly 1/3,
+/// yearly 1/12 — so the Expenses list and the Calculator agree.
+public enum ExpenseFrequency: String, Codable, CaseIterable, Sendable {
+    case weekly
+    case monthly
+    case quarterly
+    case yearly
+
+    public var displayName: String {
+        switch self {
+        case .weekly: return "Weekly"
+        case .monthly: return "Monthly"
+        case .quarterly: return "Quarterly"
+        case .yearly: return "Yearly"
+        }
+    }
+
+    /// How many of this frequency fit in one month.
+    public var monthlyFactor: Double {
+        switch self {
+        case .weekly: return 4.33
+        case .monthly: return 1
+        case .quarterly: return 1.0 / 3.0
+        case .yearly: return 1.0 / 12.0
+        }
+    }
+}
+
+/// One row of `recurring_expenses` (build 67, owner Nov 23, 2026):
+/// a transaction tagged as an Expense (kind = 'expense') plus the
+/// recurring details the Expenses list and the Calculator read.
+/// One row per tagged transaction (unique on transaction_id); the
+/// name + amount are prefilled from the transaction at tag time
+/// and editable in the expense editor; the frequency defaults to
+/// monthly. The linked transaction's own amount is never touched
+/// — the expense amount is the recurring amount.
+public struct RecurringExpense: Equatable, Codable, Identifiable, Sendable {
+    public let id: UUID
+    public let householdId: UUID
+    public let transactionId: UUID
+    public var name: String
+    /// The recurring amount per occurrence, in cents.
+    public var amountCents: Int
+    public var frequency: ExpenseFrequency
+    public let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case householdId = "household_id"
+        case transactionId = "transaction_id"
+        case name
+        case amountCents = "amount_cents"
+        case frequency
+        case createdAt = "created_at"
+    }
+
+    public init(id: UUID, householdId: UUID, transactionId: UUID, name: String, amountCents: Int, frequency: ExpenseFrequency, createdAt: String? = nil) {
+        self.id = id
+        self.householdId = householdId
+        self.transactionId = transactionId
+        self.name = name
+        self.amountCents = amountCents
+        self.frequency = frequency
+        self.createdAt = createdAt
+    }
+
+    /// The expense's monthly cost, in cents — amount per
+    /// occurrence × how many occurrences fit in a month.
+    public var monthlyCents: Int {
+        Int((Double(amountCents) * frequency.monthlyFactor).rounded())
+    }
+
+    /// The expense's weekly cost, in cents — the monthly cost
+    /// spread over the plan's 4.33 weeks per month.
+    public var weeklyCents: Int {
+        Int((Double(monthlyCents) / 4.33).rounded())
     }
 }
 

@@ -1187,6 +1187,20 @@ public struct PostgrestClient {
         ))
     }
 
+    /// Recurring expenses (build 67, `recurring_expenses`), ordered
+    /// by name. RLS: household members can read their own
+    /// household's rows. The caller hides rows whose linked
+    /// transaction is trashed (excluded) — an excluded expense
+    /// keeps its row, and restoring the transaction brings it back.
+    public func recurringExpenses(householdId: UUID) async throws -> [RecurringExpense] {
+        try await fetch(PostgrestQuery(
+            table: "recurring_expenses",
+            columns: "id,household_id,transaction_id,name,amount_cents,frequency,created_at",
+            filters: [.householdId(householdId)],
+            orders: [PostgrestOrder("name", ascending: true)]
+        ))
+    }
+
     /// Refund-link dismissals (live.js:2074).
     public func refundLinkDismissals(householdId: UUID) async throws -> [RefundLinkDismissal] {
         try await fetch(PostgrestQuery(

@@ -2,8 +2,12 @@
 //
 // Confirmation popup (build 64, owner Nov 23, 2026 — C-5).
 // Replaces the green/red toast BARS (ToastBanner in SharedViews)
-// with a small STAGE-styled confirmation popup: a compact white
-// card with a soft shadow, never a full-width bar.
+// with a STAGE-styled confirmation popup: a white card with a
+// soft shadow, never a full-width bar. Build 67 (owner, Nov 23,
+// 2026 — the popup "look[s] cheap and small"): the card is
+// BIGGER and more OFFICIAL/BRANDED — 520pt wide, a larger icon
+// and message, and the S logo + T · A · G · E brand row at the
+// top — so it reads as an official branded confirmation.
 //
 //   - Success: brand-blue checkmark in a blue circle + ink message
 //     text (e.g. "Saved — Donation recorded · Tzedaka $533.08").
@@ -54,11 +58,18 @@
 import SwiftUI
 import OnBudgetKit
 
-/// The confirmation popup card itself: a compact white card
-/// (soft-red tint for errors) with a status icon, the message in
-/// ink (dark red for errors), and an X to close early. Compact:
-/// at most 420pt wide, centred on the screen — never a
-/// full-width bar, never a top banner (build 65).
+/// The confirmation popup card itself: a white card (soft-red
+/// tint for errors) with a status icon, the message in ink (dark
+/// red for errors), and an X to close early. Build 67 (owner,
+/// Nov 23, 2026 — the popup "look[s] cheap and small"): BIGGER
+/// and more OFFICIAL/BRANDED — a larger card (520pt wide, more
+/// padding, stronger shadow), a larger status icon (40pt) and
+/// message text (18pt), and a STAGE brand row at the top (the S
+/// logo + T · A · G · E wordmark, the same lockup as the loading
+/// page) so it reads as an official branded confirmation, not a
+/// tiny plain toast. Success stays brand blue, never green.
+/// Centred on the screen — never a full-width bar, never a top
+/// banner (build 65).
 public struct ConfirmationPopupView: View {
     public let toast: Toast
     public let onDismiss: () -> Void
@@ -83,7 +94,8 @@ public struct ConfirmationPopupView: View {
     /// The leading status icon: a brand-blue checkmark in a blue
     /// circle for success, a brand-blue info mark for info, a red
     /// X in a soft-red disc for errors. Success is BRAND BLUE,
-    /// not green (build 64, C-5).
+    /// not green (build 64, C-5). Build 67: 40pt, so the icon
+    /// carries the bigger card.
     @ViewBuilder
     private var statusIcon: some View {
         switch toast.kind {
@@ -91,9 +103,9 @@ public struct ConfirmationPopupView: View {
             ZStack {
                 Circle()
                     .fill(DesignTokens.primary)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 40, height: 40)
                 Image(systemName: "checkmark")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.white)
             }
             .accessibilityHidden(true)
@@ -101,9 +113,9 @@ public struct ConfirmationPopupView: View {
             ZStack {
                 Circle()
                     .fill(DesignTokens.errorBorder)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 40, height: 40)
                 Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(DesignTokens.errorText)
             }
             .accessibilityHidden(true)
@@ -111,9 +123,9 @@ public struct ConfirmationPopupView: View {
             ZStack {
                 Circle()
                     .fill(DesignTokens.primary)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 40, height: 40)
                 Image(systemName: "info")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.white)
             }
             .accessibilityHidden(true)
@@ -121,44 +133,67 @@ public struct ConfirmationPopupView: View {
     }
 
     public var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            statusIcon
-            Text(toast.message)
-                // Larger, centred (build 65, owner Nov 23, 2026):
-                // 17pt semibold, centred text — a clean
-                // confirmation, not a crammed top banner. Message
-                // CONTENT is untouched here (the sync wording
-                // itself is shortened separately, in HomeView's
-                // sync handler) — this is rendering only.
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(messageColor)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, alignment: .center)
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(DesignTokens.muted)
-                    .padding(8)
-                    .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 14) {
+            // Build 67 — the brand row: the S logo + the T · A · G · E
+            // wordmark (the S IS the S of STAGE, so no second S —
+            // same lockup as the loading page), with the X to close
+            // at the right. This is what makes the card read as an
+            // official STAGE confirmation. The row is identical on
+            // all three kinds — the brand is the brand; the error
+            // tint below still says failure.
+            HStack(spacing: 8) {
+                Image("AppLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+                    .clipShape(Circle())
+                    .accessibilityHidden(true)
+                StageWordmarkText(font: .system(size: 15, weight: .black))
+                Spacer()
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(DesignTokens.muted)
+                        .padding(8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss")
+            HStack(alignment: .center, spacing: 14) {
+                Spacer()
+                statusIcon
+                Text(toast.message)
+                    // Larger, centred (build 65, owner Nov 23, 2026):
+                    // 18pt semibold, centred text (was 17pt) — a
+                    // clean confirmation, not a crammed top banner.
+                    // Message CONTENT is untouched here (the sync
+                    // wording itself is shortened separately, in
+                    // HomeView's sync handler) — this is rendering
+                    // only.
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(messageColor)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+            }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 18)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 22)
         .background(cardBackground)
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: 20)
                 .stroke(
                     toast.kind == .error ? DesignTokens.errorBorder : DesignTokens.tertiary,
                     lineWidth: 1
                 )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
-        // Compact card, never a full-width bar: at most 420pt,
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .shadow(color: Color.black.opacity(0.18), radius: 24, x: 0, y: 8)
+        // Bigger card, never a full-width bar: at most 520pt,
         // centred on the screen, with room to breathe on each side.
-        .frame(maxWidth: 420)
+        .frame(maxWidth: 520)
         .padding(.horizontal, 16)
         .accessibilityIdentifier("confirmation-popup")
     }

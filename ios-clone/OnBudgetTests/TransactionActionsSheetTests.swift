@@ -55,6 +55,7 @@ final class TransactionActionsSheetTests: XCTestCase {
         XCTAssertEqual(TransactionActionsSheet.kindLabel(.fundCharge, charityName: charityName), "Fund Charge")
         XCTAssertEqual(TransactionActionsSheet.kindLabel(.payment, charityName: charityName), "Payment")
         XCTAssertEqual(TransactionActionsSheet.kindLabel(.cashback, charityName: charityName), "Cashback")
+        XCTAssertEqual(TransactionActionsSheet.kindLabel(.expense, charityName: charityName), "Expense")
         XCTAssertEqual(TransactionActionsSheet.kindLabel(.other("custom_kind"), charityName: charityName), "Other")
     }
 
@@ -71,6 +72,20 @@ final class TransactionActionsSheetTests: XCTestCase {
         XCTAssertEqual(
             TransactionActionsSheet.kindSubline(.charity),
             "Count it as a charity gift"
+        )
+    }
+
+    // Build 67 (owner, Nov 23, 2026): Expense names the category
+    // and its subline says what it does — out of weekly spending,
+    // into the recurring living costs.
+    func testExpenseLabelAndSubline() {
+        XCTAssertEqual(
+            TransactionActionsSheet.kindLabel(.expense, charityName: "Tzedaka"),
+            "Expense"
+        )
+        XCTAssertEqual(
+            TransactionActionsSheet.kindSubline(.expense),
+            "Count it as a recurring living cost, out of weekly spending"
         )
     }
 
@@ -109,14 +124,35 @@ final class TransactionActionsSheetTests: XCTestCase {
         XCTAssertEqual(TransactionActionsSheet.kindStyle(.fundCharge).colorHex, DesignTokens.fundHex)
     }
 
+    // Build 67: Expense is money out, so ink like a purchase —
+    // with a house icon, so it is spottable as a living cost.
+    func testExpenseIsInkWithAHouseIcon() {
+        let style = TransactionActionsSheet.kindStyle(.expense)
+        XCTAssertEqual(style.colorHex, DesignTokens.inkHex)
+        XCTAssertEqual(style.icon, "house")
+    }
+
     func testEveryKindHasAnIcon() {
         // Every kind must be spottable by icon as well as colour —
         // no empty icon string anywhere.
-        for kind: TransactionKind in [.charge, .refund, .fundCharge, .transfer, .payment, .cashback, .income, .charity, .other("custom_kind")] {
+        for kind: TransactionKind in [.charge, .refund, .fundCharge, .transfer, .payment, .cashback, .income, .charity, .expense, .other("custom_kind")] {
             XCTAssertFalse(
                 TransactionActionsSheet.kindStyle(kind).icon.isEmpty,
                 "\(kind) must have an icon"
             )
         }
+    }
+
+    // Build 67: the expanded detail's Type row reads "Expense"
+    // for an expense-tagged row, agreeing with the Actions sheet.
+    func testTypeLabelReadsExpense() {
+        let transaction = Transaction(
+            id: UUID(), householdId: UUID(), date: "2026-11-23", merchant: "TIDEWATER PROPERTY MANAGEMENT",
+            amountCents: 16000, cardSuffix: "1005", source: .plaid, state: .verified,
+            kind: .expense, fundAllocationCents: 0, excluded: false, excludeReason: "",
+            late: false, externalId: nil, dedupeHash: "h", originalPurchaseId: nil,
+            preExclusionState: nil, plaidPendingTransactionId: nil,
+            plaidTransactionId: nil, createdAt: "2026-11-23T00:00:00Z")
+        XCTAssertEqual(TransactionFormatting.typeLabel(for: transaction), "Expense")
     }
 }

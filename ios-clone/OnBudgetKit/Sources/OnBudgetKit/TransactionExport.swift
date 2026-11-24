@@ -234,6 +234,7 @@ public enum TransactionExport {
         case .transfer: return "Transfer"
         case .income: return "Income"
         case .charity: return "Charity"
+        case .expense: return "Expense"
         case .other(let raw):
             return TitleCase.apply(to: raw.replacingOccurrences(of: "_", with: " "))
         }
@@ -428,7 +429,9 @@ public enum TransactionExport {
     /// The donut-slice colour for one money-out kind: Charge is
     /// Spending ink, Charity primary blue, Payment muted grey,
     /// Fund Charge fund amber, Transfer mid blue, anything else
-    /// light blue. All brand tokens — never a guessed hex.
+    /// light blue. All brand tokens — never a guessed hex. Build
+    /// 67: Expense is Spending ink, like a charge — it is money
+    /// out, and the list and detail render it ink too.
     public static func chartColorHex(for kind: TransactionKind) -> String {
         switch kind {
         case .charge: return DesignTokens.inkHex
@@ -436,6 +439,7 @@ public enum TransactionExport {
         case .payment: return DesignTokens.mutedHex
         case .fundCharge: return DesignTokens.fundHex
         case .transfer: return DesignTokens.midHex
+        case .expense: return DesignTokens.inkHex
         default: return DesignTokens.lightHex
         }
     }

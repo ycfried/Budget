@@ -727,6 +727,17 @@ public final class HomeViewModel: ObservableObject {
 
 // MARK: - Home view
 
+/// The taller of the two iPad Home columns' heights (build 67,
+/// owner Nov 23, 2026 — the two cards still were not the same
+/// size): each column reports its height, the reduce takes the
+/// max, and both columns render at least that tall.
+private struct TwoColumnHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 public struct HomeView: View {
     @ObservedObject var appState: AppViewModel
     /// Owned by AppState (created at boot so the dashboard can be
@@ -740,6 +751,14 @@ public struct HomeView: View {
     /// Funds tab.
     @State private var showTzedakaSheet = false
     @State private var showPastWeeks = false
+    /// Build 67 (owner, Nov 23, 2026 — the two cards still were
+    /// not the same size): the taller of the two iPad columns'
+    /// heights, so both columns render at exactly that height,
+    /// loaded and loading. Applied as a MINIMUM, not a fixed
+    /// height: a column whose content grows past it can still
+    /// grow (never clipped), and the measurement then picks up
+    /// the new taller height so the other column follows.
+    @State private var twoColumnHeight: CGFloat? = nil
     /// Past Weeks presented from Home (build 64, F-18): its own
     /// toast + date filter, like the shell's history pages — the
     /// shell owns the Transactions-tab copies and Home cannot
@@ -1030,20 +1049,49 @@ public struct HomeView: View {
     /// full-width layout. The two-column form applies only when
     /// both tiers are non-empty; otherwise the stacked layout
     /// stays (a lone tier keeps the full width).
+    /// Build 67 (owner, Nov 23, 2026 — the cards still were not
+    /// the same size): the two columns are FORCED to the same
+    /// height — each column reports its height, the taller wins,
+    /// and both columns render at least that tall, with each card
+    /// stretching to fill its column — in BOTH the loaded state
+    /// and the skeleton loading state, so the two cards are
+    /// pixel-identical however much content each holds. Build 66
+    /// only scaled the hero down; scaling cannot equalise two
+    /// columns whose content differs (Spending has the extra
+    /// "spent so far" line and the refresh row), so the height
+    /// itself is equalised here instead.
     private var simpleContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             if useIPadTwoColumn {
                 HStack(alignment: .top, spacing: 14) {
                     heroTier
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(twoColumnHeightProbe)
+                        .frame(minHeight: twoColumnHeight, alignment: .top)
                     cardTier
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(twoColumnHeightProbe)
+                        .frame(minHeight: twoColumnHeight, alignment: .top)
+                }
+                .onPreferenceChange(TwoColumnHeightKey.self) { height in
+                    if height > 0 && height != twoColumnHeight {
+                        twoColumnHeight = height
+                    }
                 }
             } else {
                 heroTier
                 cardTier
             }
             quietCard
+        }
+    }
+
+    /// The height probe for the two-column row (build 67): each
+    /// column reports its own height; the key's reduce takes the
+    /// max, so `twoColumnHeight` is the taller column.
+    private var twoColumnHeightProbe: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: TwoColumnHeightKey.self, value: proxy.size.height)
         }
     }
 
@@ -1069,8 +1117,13 @@ public struct HomeView: View {
                 if section == .spending {
                     heroCard(simple: true)
                         .tourAnchor(.spendingHero, tour: appState.tour)
+                        // Build 67: in the two-column row the card
+                        // stretches to fill the column height, so
+                        // both cards end up the same size.
+                        .frame(maxHeight: useIPadTwoColumn ? .infinity : nil, alignment: .top)
                 } else {
                     simpleFundCard(section: section, hero: true)
+                        .frame(maxHeight: useIPadTwoColumn ? .infinity : nil, alignment: .top)
                 }
             }
         }
@@ -1080,6 +1133,10 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             ForEach(cardSections, id: \.self) { section in
                 simpleFundCard(section: section, hero: false)
+                    // Build 67: in the two-column row the card
+                    // stretches to fill the column height, so both
+                    // cards end up the same size.
+                    .frame(maxHeight: useIPadTwoColumn ? .infinity : nil, alignment: .top)
             }
         }
     }
@@ -2679,8 +2736,9 @@ private struct SheetActionRow: View {
 }
 
 /// The hairline divider between two sheet action rows, matching
-/// the quiet card's divider on Home.
-private struct SheetActionDivider: View {
+/// the quiet card's divider on Home. Shared (build 67): the
+/// Expenses list uses the same divider between its rows.
+struct SheetActionDivider: View {
     var body: some View {
         Rectangle()
             .fill(Color(hex: "#e7eaee"))
@@ -2723,6 +2781,9 @@ public struct WeeklySheet: View {
     @State private var showTopUp = false
     @State private var showTempAllowance = false
     @State private var showCalculator = false
+    /// Build 67 (owner, Nov 23, 2026): the Expenses list, opened
+    /// from the Recurring Expenses row in the actions card below.
+    @State private var showExpenses = false
     /// The Funds view model the Top Up / Temporary Allowance forms
     /// need (see the note above the Weekly sheet section). Built
     /// lazily, once per presentation.
@@ -2793,6 +2854,10 @@ public struct WeeklySheet: View {
             // card treatment (white, 12pt radius, hairline
             // #e5e7eb border, fund shadow) and hairline dividers
             // between the rows, so the two halves read as one sheet.
+            // Build 67 (owner, Nov 23, 2026 — "way too crammed and
+            // claustrophobic"): the rows get real air — 10pt
+            // vertical padding per row and 16pt inside the card —
+            // so the card breathes instead of packing the figures.
             VStack(spacing: 0) {
                 ForEach(weeklyNumbersRows.indices, id: \.self) { index in
                     let row = weeklyNumbersRows[index]
@@ -2803,7 +2868,7 @@ public struct WeeklySheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 16)
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
@@ -2877,7 +2942,10 @@ public struct WeeklySheet: View {
         // Top Up Budget (FundsRulesView.AddToBudgetSheet): a
         // one-time top-up to the CURRENT week only. Refreshes Home
         // on dismiss, so the new total shows at once.
-        .fullScreenCover(isPresented: $showTopUp, onDismiss: { onChanged?() }) {
+        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet,
+        // not a full-screen cover — the form is one amount field
+        // and two buttons (the detents live in the form itself).
+        .sheet(isPresented: $showTopUp, onDismiss: { onChanged?() }) {
             if let fundsViewModel {
                 AddToBudgetSheet(viewModel: fundsViewModel, onClose: { showTopUp = false })
             }
@@ -2886,7 +2954,11 @@ public struct WeeklySheet: View {
         // a one-week allowance override. The form has no dismiss
         // control of its own, so it rides under a SheetHeader —
         // the same chrome the other fund popups use.
-        .fullScreenCover(isPresented: $showTempAllowance, onDismiss: { onChanged?() }) {
+        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet,
+        // not a full-screen cover — the form is two fields and two
+        // buttons, and the full screen left a huge empty area
+        // below it.
+        .sheet(isPresented: $showTempAllowance, onDismiss: { onChanged?() }) {
             if let fundsViewModel {
                 VStack(alignment: .leading, spacing: 16) {
                     SheetHeader(title: "Set This Week's Budget", onClose: { showTempAllowance = false })
@@ -2895,21 +2967,58 @@ public struct WeeklySheet: View {
                 }
                 .padding()
                 .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+                .presentationDetents([.fraction(0.45), .medium])
+                .presentationDragIndicator(.visible)
             }
         }
         // Weekly Budget Calculator (FundsView.
         // WeeklyBudgetCalculatorSheet): the existing calculator,
         // reused as-is — local-only, suggestion-only, no server
-        // write, so no Home refresh on dismiss.
+        // write, so no Home refresh on dismiss. Build 67: the
+        // Calculator reads its recurring costs from the tagged
+        // expenses (the sheet's Funds view model loads them) —
+        // the LIVE ones only, so an expense in the Trash stops
+        // counting at once.
         .fullScreenCover(isPresented: $showCalculator) {
             if let householdId = appState.householdId {
                 WeeklyBudgetCalculatorSheet(
                     householdId: householdId,
                     charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
+                    expenses: fundsViewModel?.liveExpenses ?? [],
                     onClose: { showCalculator = false }
                 )
             }
         }
+        // Recurring Expenses (build 67, owner Nov 23, 2026): the
+        // Expenses list. Refreshes Home on dismiss, so removing
+        // an expense (its transaction counts as a purchase again)
+        // shows in the week figures at once.
+        .sheet(isPresented: $showExpenses, onDismiss: { onChanged?() }) {
+            if let fundsViewModel {
+                ExpensesListView(
+                    expenses: fundsViewModel.liveExpenses,
+                    isAdmin: appState.isAdmin,
+                    onSave: { expense, name, amountCents, frequency in
+                        await fundsViewModel.updateExpense(expense, name: name, amountCents: amountCents, frequency: frequency)
+                    },
+                    onRemove: { expense in
+                        await fundsViewModel.removeExpense(expense)
+                    },
+                    onClose: { showExpenses = false }
+                )
+            }
+        }
+    }
+
+    /// The Recurring Expenses row's subtitle (build 67): the
+    /// count + the monthly total — "2 expenses · $310.00 a
+    /// month". "No expenses tagged yet" while the list is empty
+    /// (or still loading).
+    private var expensesSubtitle: String {
+        let live = fundsViewModel?.liveExpenses ?? []
+        guard !live.isEmpty else { return "No expenses tagged yet" }
+        let monthly = live.reduce(0) { $0 + $1.monthlyCents }
+        return "\(live.count) \(live.count == 1 ? "expense" : "expenses") · \(MoneyFormat.formatCents(monthly)) a month"
     }
 
     /// The week-action rows (build 65, item 4): Top Up Budget and
@@ -2949,11 +3058,23 @@ public struct WeeklySheet: View {
                         appState.openSpendingFund()
                     }
                 }
-                if appState.householdId != nil {
-                    SheetActionDivider()
-                }
             }
             if appState.householdId != nil {
+                SheetActionDivider()
+                // Build 67 (owner, Nov 23, 2026): Recurring
+                // Expenses — visible to every role, like the
+                // Calculator (members see the list read-only; only
+                // the admin can tag or edit). It sits above the
+                // Calculator because the Calculator reads from it.
+                SheetActionRow(
+                    icon: "house",
+                    iconColor: DesignTokens.ink,
+                    title: "Recurring Expenses",
+                    subtitle: expensesSubtitle
+                ) {
+                    showExpenses = true
+                }
+                SheetActionDivider()
                 SheetActionRow(
                     // Build 66 (owner, Nov 23, 2026 — item 6): the
                     // calculator icon was missing on device — the
@@ -2988,7 +3109,10 @@ public struct WeeklySheet: View {
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
         }
-        .padding(.vertical, 4)
+        // Build 67 (owner, Nov 23, 2026 — "way too crammed and
+        // claustrophobic"): 10pt of air per row, so the numbers
+        // card breathes.
+        .padding(.vertical, 10)
     }
 }
 
@@ -3057,6 +3181,9 @@ public struct TzedakaSheet: View {
             // Weekly sheet's numbers card — plain rows on the
             // sheet background read as background noise, not part
             // of the centerpiece.
+            // Build 67 (owner, Nov 23, 2026 — "way too crammed and
+            // claustrophobic"): same air as the Weekly sheet's
+            // numbers card — 10pt per row, 16pt inside the card.
             VStack(spacing: 0) {
                 sheetRow(label: "Available", value: MoneyFormat.signedString(cents: summary.remainingCents))
                 SheetActionDivider()
@@ -3067,7 +3194,7 @@ public struct TzedakaSheet: View {
                 sheetRow(label: "Total", value: MoneyFormat.string(cents: summary.committedCents))
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 16)
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
@@ -3122,7 +3249,10 @@ public struct TzedakaSheet: View {
         // Add to Tzedaka (CharityIncomeForm.AddToCharitySheet):
         // a manual amount onto the Available balance. Refreshes
         // Home on dismiss, so the new Available shows at once.
-        .fullScreenCover(isPresented: $showAddToCharity, onDismiss: { onChanged?() }) {
+        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet,
+        // not a full-screen cover — the form is one amount field
+        // and two buttons (the detents live in the form itself).
+        .sheet(isPresented: $showAddToCharity, onDismiss: { onChanged?() }) {
             if let fundsViewModel {
                 AddToCharitySheet(viewModel: fundsViewModel, fundName: charityName, onClose: { showAddToCharity = false })
             }
@@ -3130,7 +3260,9 @@ public struct TzedakaSheet: View {
         // Record a Donation (CharityIncomeForm.RecordCashGiftSheet):
         // a cash donation given off-card — Available down, Given up.
         // Refreshes Home on dismiss, like Add to Tzedaka.
-        .fullScreenCover(isPresented: $showRecordGift, onDismiss: { onChanged?() }) {
+        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet,
+        // not a full-screen cover (the detents live in the form).
+        .sheet(isPresented: $showRecordGift, onDismiss: { onChanged?() }) {
             if let fundsViewModel {
                 RecordCashGiftSheet(viewModel: fundsViewModel, fundName: charityName, onClose: { showRecordGift = false })
             }
@@ -3189,6 +3321,9 @@ public struct TzedakaSheet: View {
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
         }
-        .padding(.vertical, 4)
+        // Build 67 (owner, Nov 23, 2026 — "way too crammed and
+        // claustrophobic"): 10pt of air per row, so the numbers
+        // card breathes.
+        .padding(.vertical, 10)
     }
 }

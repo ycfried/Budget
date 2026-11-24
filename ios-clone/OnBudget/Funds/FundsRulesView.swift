@@ -856,9 +856,12 @@ public struct SpendingAllowanceSection: View {
             }
         }
         .padding(.top, 8)
-        // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
-        // cover, not a detent sheet — popups are always full size.
-        .fullScreenCover(isPresented: $showAddToBudget) {
+        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet,
+        // not a full-screen cover — the form is one amount field
+        // and two buttons, and the full screen left a huge empty
+        // area below it. Same treatment as the Actions sheet's
+        // confirms (C-4 fitted detents).
+        .sheet(isPresented: $showAddToBudget) {
             AddToBudgetSheet(viewModel: viewModel, onClose: { showAddToBudget = false })
         }
     }
@@ -903,8 +906,8 @@ public struct AddToBudgetSheet: View {
             }
             // Build 43 (owner, Nov 17, 2026 — item 18): the
             // trailing Spacer top-anchors the content in the
-            // full-screen cover — without it the short form
-            // centres itself vertically in the full screen.
+            // sheet — without it the short form centres itself
+            // vertically in the detent.
             Spacer()
         }
         .padding()
@@ -912,6 +915,12 @@ public struct AddToBudgetSheet: View {
         // size class, full-width on iPhone — same treatment as the
         // rename sheet and the Add to Charity popup.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // Build 67 (owner, Nov 23, 2026 — item 3): a fitted sheet
+        // sized to the content (C-4 fitted detents), not a
+        // full-screen page — the form is one field and two
+        // buttons, and the full screen left a huge empty area.
+        .presentationDetents([.fraction(0.45), .medium])
+        .presentationDragIndicator(.visible)
     }
 
     private func add() {

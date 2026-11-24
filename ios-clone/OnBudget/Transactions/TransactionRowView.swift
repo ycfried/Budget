@@ -248,8 +248,17 @@ public struct TransactionDetailView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 12) {
+            // Build 67 (owner, Nov 23, 2026): the detail rows sit
+            // on a proper panel — a muted background with hairline
+            // dividers between rows and a clearer label/value
+            // hierarchy — instead of loose rows on the plain
+            // background with small grey labels, which "look[ed]
+            // cheap and a bit hard to read". The Actions button
+            // sits inside the panel below the rows, as a compact
+            // solid-blue button (not full-width — the full-width
+            // one dominated the row and rendered oddly).
+            VStack(spacing: 0) {
                 // No Week row: the Date already says it (owner,
                 // Nov 12, 2026). Status and Source render as plain
                 // grey text (build 42, owner Nov 17, 2026 —
@@ -257,7 +266,9 @@ public struct TransactionDetailView: View {
                 // The source lives ONLY here — never on the
                 // collapsed row.
                 detailRow(label: "Date", value: TransactionFormatting.fmtLong(transaction.date))
+                Divider()
                 detailRow(label: "Account", value: TransactionFormatting.cardLabel(for: transaction))
+                Divider()
                 // Build 53 (owner, Nov 21, 2026): the status IS
                 // "Refunded" here too — it replaces
                 // "Pending"/"Posted", in the same visible blue as
@@ -273,6 +284,7 @@ public struct TransactionDetailView: View {
                             .foregroundStyle(DesignTokens.muted)
                     }
                 }
+                Divider()
                 // Build 53 (owner, Nov 21, 2026): the collapsed
                 // amount is struck through for a refunded purchase,
                 // so the expanded detail restores the plain original
@@ -282,12 +294,14 @@ public struct TransactionDetailView: View {
                 // not a readable value.
                 if isRefunded {
                     detailRow(label: "Amount", value: TransactionFormatting.amountDisplay(for: transaction).text)
+                    Divider()
                 }
                 detailRow(label: "Source") {
                     Text(TransactionFormatting.sourceLabel(for: transaction.source))
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(DesignTokens.muted)
                 }
+                Divider()
                 if transaction.kind == .refund {
                     detailRow(
                         label: "Refund Link",
@@ -295,6 +309,7 @@ public struct TransactionDetailView: View {
                             ? "Linked to a purchase"
                             : "Not linked to a purchase yet"
                     )
+                    Divider()
                 }
                 // Type row (build 65, owner Nov 23, 2026): the
                 // bottom row, below Source — the kind, in the
@@ -315,31 +330,50 @@ public struct TransactionDetailView: View {
                         ? TransactionFormatting.transferDetailText(for: transaction)
                         : TransactionFormatting.typeLabel(for: transaction)
                 )
+                Divider()
+                // Build 52 (owner, Nov 20, 2026): a SOLID BLUE
+                // button, not an outline — the outline "looks
+                // ugly". Build 67 (owner, Nov 23, 2026): compact
+                // and left-aligned inside the panel, not
+                // full-width — the full-width button dominated
+                // the row and rendered oddly. A single button in
+                // its row, so this does not conflict with the
+                // no-two-adjacent-buttons-same-colour rule.
+                if hasActions {
+                    HStack {
+                        Button(action: onActions) {
+                            Text("Actions")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 160, height: 40)
+                                .background(DesignTokens.primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
+                    }
+                    .padding(.vertical, 10)
+                }
             }
-
-            // Build 52 (owner, Nov 20, 2026): a SOLID BLUE button,
-            // not an outline — the outline "looks ugly". A single
-            // full-width button in its row, so this does not
-            // conflict with the no-two-adjacent-buttons-same-colour
-            // rule.
-            if hasActions {
-                Button("Actions", action: onActions)
-                    .buttonStyle(PrimaryButtonStyle())
-            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(Color(hex: "#f8fafc"))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }
 
     private func detailRow(label: String, value: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 14))
-                .foregroundStyle(Color(hex: "#6b7280"))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(hex: "#475569"))
             Spacer()
             Text(value)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(DesignTokens.ink)
                 .multilineTextAlignment(.trailing)
         }
+        .padding(.vertical, 9)
     }
 
     /// Label + custom value view (Status / Source render their
@@ -347,10 +381,11 @@ public struct TransactionDetailView: View {
     private func detailRow<Content: View>(label: String, @ViewBuilder value: () -> Content) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 14))
-                .foregroundStyle(Color(hex: "#6b7280"))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(hex: "#475569"))
             Spacer()
             value()
         }
+        .padding(.vertical, 9)
     }
 }
