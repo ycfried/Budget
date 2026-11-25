@@ -439,8 +439,11 @@ struct WidgetView: View {
     /// used `.buttonStyle(.plain)`, which suppresses the system's
     /// press highlight — so a tap showed no sign it was touched
     /// until seconds later, when the intent's state flipped to
-    /// the checkmark. This style draws a pale-blue (#dbeafe) disc
-    /// behind the icon while pressed, so the press reads at once.
+    /// the checkmark. This style draws a pale-blue disc behind
+    /// the icon while pressed, so the press reads at once. Build
+    /// 77 (owner, Nov 25, 2026 — the XL widget): the disc is the
+    /// deeper pale blue #bfdbfe (DesignTokens.paleHex), not the
+    /// very pale #dbeafe — the press highlight must be obvious.
     /// The spinner / checkmark / failure states are unchanged
     /// (build 42/51/58: spinner while syncing, green checkmark
     /// ~15s on success, red icon persists on failure; 44pt
@@ -454,7 +457,7 @@ struct WidgetView: View {
             configuration.label
                 .background(
                     Circle()
-                        .fill(Color(hex: "#dbeafe"))
+                        .fill(Color(hex: "#bfdbfe"))
                         .opacity(configuration.isPressed ? 1 : 0)
                 )
         }
@@ -464,12 +467,28 @@ struct WidgetView: View {
         Button(intent: RefreshWidgetIntent()) {
             Group {
                 if syncState.state == .syncing {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        // Build 58: brand blue, not muted — the
-                        // spinner is the in-flight mark and must be
-                        // visible at a glance next to "Updating…".
-                        .tint(DesignTokens.primary)
+                    // Build 77 (owner, Nov 25, 2026 — the XL
+                    // widget): the syncing spinner is BIGGER
+                    // (22pt, on a solid 28pt pale-blue disc) so
+                    // the in-flight state is unmissable at a
+                    // glance — the old 14pt spinner alone was
+                    // too easy to miss. WidgetKit renders views
+                    // statically, so this is a bigger static
+                    // mark, not a spinning animation; the disc
+                    // stays for the whole sync, like the
+                    // "Updating…" footer.
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#dbeafe"))
+                            .frame(width: 28, height: 28)
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            // Build 58: brand blue, not muted — the
+                            // spinner is the in-flight mark and must be
+                            // visible at a glance next to "Updating…".
+                            .tint(DesignTokens.primary)
+                            .frame(width: 22, height: 22)
+                    }
                 } else if isMarkVisible(.succeeded) {
                     Image(systemName: "checkmark")
                         .font(.system(size: 14, weight: .bold))
@@ -484,7 +503,9 @@ struct WidgetView: View {
                         .foregroundStyle(DesignTokens.muted)
                 }
             }
-            .frame(width: 14, height: 14)
+            // The syncing mark is 28pt (disc + spinner); the idle
+            // / success / failure icons stay 14pt.
+            .frame(width: syncState.state == .syncing ? 28 : 14, height: syncState.state == .syncing ? 28 : 14)
             // Build 64 (F-37, owner Nov 23, 2026): 44×44pt hit
             // target — Apple's minimum. It was 26×26pt (14pt icon
             // + 6pt padding), too small to tap reliably, on the
@@ -514,14 +535,18 @@ struct WidgetView: View {
     /// "Nov 14–20" form in brand blue, semibold, one line — never
     /// truncated. The minimum scale factor is a belt-and-braces
     /// against a long month name clipping at the right edge.
+    /// `font` (build 77, owner Nov 25, 2026 — the XL widget):
+    /// the header dates are bigger on the wide canvas so the top
+    /// feels less empty; the default stays caption for the
+    /// smaller sizes.
     @ViewBuilder
-    private func headerDates(_ weekStart: String) -> some View {
+    private func headerDates(_ weekStart: String, font: Font = .caption.weight(.semibold)) -> some View {
         if let range = shortWeekRange(weekStart) {
             if isPlaceholder {
                 skeletonBar(width: 64, height: 12)
             } else {
                 Text(range)
-                    .font(.caption.weight(.semibold))
+                    .font(font)
                     .foregroundStyle(DesignTokens.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -640,8 +665,17 @@ struct WidgetView: View {
     /// blue now, not charity green — the C-2 Tzedaka colour — and
     /// its track is the same pale blue #dbeafe as the budget bar.
     /// A zero fraction shows an empty track — no fill is ever
-    /// faked.
-    private func progressBar(fraction: Double, fill: Color, track: Color) -> some View {
+    /// faked. `width` (build 77, owner Nov 25, 2026 — the XL
+    /// widget): when given, the bar is that FIXED width instead
+    /// of filling its column — the two columns are different
+    /// widths (the GeometryReader stretches to the parent), so
+    /// the Tzedaka bar rendered longer than the Spending bar.
+    /// A fixed width makes both bars identical; the large and
+    /// XL layouts pass the Spending column's width, so the
+    /// Spending bar does not change and the Tzedaka bar shortens
+    /// to match it. Without a width the bar fills its column
+    /// as before (medium/small).
+    private func progressBar(fraction: Double, fill: Color, track: Color, width: CGFloat? = nil) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 3)
@@ -651,7 +685,7 @@ struct WidgetView: View {
                     .frame(width: geo.size.width * CGFloat(min(1.0, max(0.0, fraction))))
             }
         }
-        .frame(height: 6)
+        .frame(width: width, height: 6)
     }
 
     /// Freshness footer (build 35; build 42, owner Nov 17, 2026):
@@ -698,11 +732,14 @@ struct WidgetView: View {
             // footer says so plainly while a sync runs — "Updating…"
             // in brand blue — an unmissable static signal that the
             // tap landed, until the new numbers arrive and the
-            // footer goes back to "As of …".
+            // footer goes back to "As of …". Build 77 (owner,
+            // Nov 25, 2026 — the XL widget): the signal is BOLD
+            // and one size up (subheadline, not caption) so it
+            // reads at a glance next to the bigger spinner.
             HStack(spacing: 5) {
                 Spacer(minLength: 0)
                 Text("Updating…")
-                    .font((compact ? Font.caption2 : Font.caption).weight(.semibold))
+                    .font((compact ? Font.caption : Font.subheadline).weight(.bold))
                     .foregroundStyle(DesignTokens.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -916,10 +953,14 @@ struct WidgetView: View {
     private func large(snapshot: WidgetSnapshot, stale: Bool, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                wordmark()
+                // Build 77 (owner, Nov 25, 2026 — the XL widget):
+                // a modestly bigger wordmark and date range on the
+                // wide large canvas too — the XL sizes would crowd
+                // this narrower canvas.
+                wordmark(logoSize: 28, font: .system(size: 22, weight: .medium))
                     .widgetURL(homeURL)
                 Spacer()
-                headerDates(snapshot.weekStart)
+                headerDates(snapshot.weekStart, font: .system(size: 15, weight: .semibold))
                     .widgetURL(homeURL)
                 refreshButton
             }
@@ -937,7 +978,10 @@ struct WidgetView: View {
             // 110pt height is the donut's designed size — the row's
             // height when the donut is shown.
             GeometryReader { geo in
-            HStack(alignment: .center, spacing: 20) {
+            // Build 77 (owner, Nov 25, 2026 — the XL widget): the
+            // donut-to-figure gap is 32pt, not 20 — the Spending
+            // figure sat too close to the donut.
+            HStack(alignment: .center, spacing: 32) {
                 if snapshot.spentCents != nil {
                     donut(snapshot: snapshot, size: 110, availableWidth: geo.size.width)
                 }
@@ -949,12 +993,13 @@ struct WidgetView: View {
                         size: 36
                     )
                     if isPlaceholder {
-                        skeletonBar(width: 170, height: 6)
+                        skeletonBar(width: 80, height: 6)
                     } else {
                         progressBar(
                             fraction: snapshot.spentFraction ?? 0,
                             fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.deep,
-                            track: Color(hex: "#dbeafe"))
+                            track: Color(hex: "#dbeafe"),
+                            width: 80)
                     }
                 }
             }
@@ -965,12 +1010,20 @@ struct WidgetView: View {
                 figureLabel(snapshot.charityLeftLabel)
                 figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 36)
                 if isPlaceholder {
-                    skeletonBar(width: 170, height: 6)
+                    skeletonBar(width: 80, height: 6)
                 } else {
+                    // Build 77 (owner, Nov 25, 2026 — the XL
+                    // widget): both bars are the same FIXED 80pt
+                    // width — the Tzedaka bar used to stretch to
+                    // its column and render longer than the
+                    // Spending bar. 80pt matches the Spending
+                    // column (36pt figure); the placeholder bar
+                    // above matches, so loading looks the same.
                     progressBar(
                         fraction: snapshot.charityGivenFraction ?? 0,
                         fill: DesignTokens.primary,
-                        track: Color(hex: "#dbeafe"))
+                        track: Color(hex: "#dbeafe"),
+                        width: 80)
                 }
             }
             Spacer(minLength: 0)
@@ -993,10 +1046,14 @@ struct WidgetView: View {
     private func extraLarge(snapshot: WidgetSnapshot, stale: Bool, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                wordmark()
+                // Build 77 (owner, Nov 25, 2026 — the XL widget):
+                // a bigger wordmark (32pt logo, 24pt letters) and
+                // a bigger date range (17pt) so the top of the
+                // wide canvas feels less empty.
+                wordmark(logoSize: 32, font: .system(size: 24, weight: .medium))
                     .widgetURL(homeURL)
                 Spacer()
-                headerDates(snapshot.weekStart)
+                headerDates(snapshot.weekStart, font: .system(size: 17, weight: .semibold))
                     .widgetURL(homeURL)
                 refreshButton
             }
@@ -1012,7 +1069,10 @@ struct WidgetView: View {
             // height when the donut is shown.
             GeometryReader { geo in
             HStack(alignment: .center, spacing: 32) {
-                HStack(alignment: .center, spacing: 20) {
+                // Build 77 (owner, Nov 25, 2026 — the XL widget):
+                // the donut-to-figure gap is 32pt, not 20 — the
+                // Spending figure sat too close to the donut.
+                HStack(alignment: .center, spacing: 32) {
                     if snapshot.spentCents != nil {
                         donut(snapshot: snapshot, size: 120, availableWidth: geo.size.width)
                     }
@@ -1024,28 +1084,45 @@ struct WidgetView: View {
                             size: 44
                         )
                         if isPlaceholder {
-                            skeletonBar(width: 170, height: 6)
+                            skeletonBar(width: 100, height: 6)
                         } else {
                             progressBar(
                                 fraction: snapshot.spentFraction ?? 0,
                                 fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.deep,
-                                track: Color(hex: "#dbeafe"))
+                                track: Color(hex: "#dbeafe"),
+                                width: 100)
                         }
                     }
                 }
                 Divider()
+                // Build 77 (owner, Nov 25, 2026 — the XL widget):
+                // 12pt leading space after the Divider, matching
+                // the 12pt the donut-to-Spending gap grew by — so
+                // the Tzedaka number shifts right by the same
+                // amount as the Spending number, and the two
+                // columns stay balanced.
                 VStack(alignment: .leading, spacing: 2) {
                     figureLabel(snapshot.charityLeftLabel)
                     figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 44)
                     if isPlaceholder {
-                        skeletonBar(width: 170, height: 6)
+                        skeletonBar(width: 100, height: 6)
                     } else {
+                        // Build 77 (owner, Nov 25, 2026 — the XL
+                        // widget): both bars are the same FIXED
+                        // 100pt width — the Tzedaka bar used to
+                        // stretch to its column and render longer
+                        // than the Spending bar. 100pt matches the
+                        // Spending column (44pt figure); the
+                        // placeholder bar above matches, so loading
+                        // looks the same.
                         progressBar(
                             fraction: snapshot.charityGivenFraction ?? 0,
                             fill: DesignTokens.primary,
-                            track: Color(hex: "#dbeafe"))
+                            track: Color(hex: "#dbeafe"),
+                            width: 100)
                     }
                 }
+                .padding(.leading, 12)
                 Spacer(minLength: 0)
             }
             }
