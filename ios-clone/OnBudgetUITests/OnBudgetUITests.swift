@@ -40,8 +40,9 @@
 // testPlaidSandboxConnect: fresh sign-up, CREATE a fresh household
 // (the new account is its admin — only an admin can connect a bank;
 // the test admin account's password is lost, so Proof Household 2
-// cannot be used for this), open Settings → Bank Connection, tap
-// Connect New Account, and drive Plaid Link against Plaid Sandbox
+// cannot be used for this), open Settings → Connections → Bank
+// Connection, tap Connect New Account, and drive Plaid Link against
+// Plaid Sandbox
 // (First Platypus Bank, user_good / pass_good — Plaid's public
 // Sandbox test credentials). HARD assertion: the Link sheet opens
 // (a Link webview appears). The Sandbox drive after that is
@@ -325,16 +326,28 @@ final class OnBudgetUITests: XCTestCase {
     func testGmailCallbackDeepLink() throws {
         signInAndJoinTestHousehold()
 
-        app.buttons["Profile"].tap()
+        // Profile menu → Settings hub → Connections subpage (build
+        // 74 split Settings into a hub; Bank Connection and Email
+        // Alerts both live on the Connections subpage now).
+        // Coordinate taps (see tapCoordinate): menu items and hub
+        // rows are on screen and a plain .tap() risks the AX
+        // scroll-to-visible failure.
+        tapCoordinate(app.buttons["Profile"])
         let settingsItem = app.buttons["Settings"]
         XCTAssertTrue(
             settingsItem.waitForExistence(timeout: 15),
             "Profile menu did not offer Settings"
         )
-        settingsItem.tap()
+        tapCoordinate(settingsItem)
+        let connectionsHubRow = app.buttons["settings.hub.connections"]
+        XCTAssertTrue(
+            connectionsHubRow.waitForExistence(timeout: 30),
+            "Settings hub did not render (no Connections row)"
+        )
+        tapCoordinate(connectionsHubRow)
         XCTAssertTrue(
             app.staticTexts["Bank Connection"].waitForExistence(timeout: 30),
-            "Settings did not render (no Bank Connection card)"
+            "Connections subpage did not render (no Bank Connection card)"
         )
         let callbackLine = app.staticTexts.matching(
             NSPredicate(format: "label BEGINSWITH 'Gmail return:'")
@@ -635,10 +648,16 @@ final class OnBudgetUITests: XCTestCase {
                 .waitForExistence(timeout: 15),
             "Home Charity/Tzedaka card did not appear"
         )
+        // The quiet rows are Buttons (HomeView), not static texts —
+        // a staticTexts lookup never matches them, so query the
+        // Savings quiet row by its identifier (the 'left this
+        // week' and 'Charity' checks above are card containers
+        // whose labels DO surface as static texts, and they passed
+        // in the build-73 run — leave them alone).
         XCTAssertTrue(
-            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Extra Fund'")).firstMatch
+            app.buttons.matching(identifier: "home.quietSavings").firstMatch
                 .waitForExistence(timeout: 15),
-            "Home quiet Extra Fund row did not appear"
+            "Home quiet Extra Fund row did not appear (home.quietSavings)"
         )
         // Let the amounts settle (no skeleton, no toast) before the shot.
         Thread.sleep(forTimeInterval: 3)
@@ -668,13 +687,13 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "video-02-transactions")
 
         // -- Add Transaction, empty Purchase form (scene 6) -----------
-        app.buttons["+ Add"].tap()
+        tapCoordinate(app.buttons["+ Add"])
         let purchaseButton = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Purchase'")).firstMatch
         XCTAssertTrue(
             purchaseButton.waitForExistence(timeout: 15),
             "Add options did not appear after tapping + Add"
         )
-        purchaseButton.tap()
+        tapCoordinate(purchaseButton)
         XCTAssertTrue(
             app.textFields["Merchant"].waitForExistence(timeout: 15),
             "Add Purchase form did not open (no Merchant field)"
@@ -687,7 +706,7 @@ final class OnBudgetUITests: XCTestCase {
         dismissNotificationAlertIfPresent()
         attachScreenshot(named: "video-03-add")
         // Cancel clears the (empty) draft and closes the form.
-        app.buttons["Cancel"].tap()
+        tapCoordinate(app.buttons["Cancel"])
 
         // -- Funds (scenes 4, 5) --------------------------------------
         // NOTE: the Funds cards are BUTTONS (tappable cards), not
@@ -895,13 +914,13 @@ final class OnBudgetUITests: XCTestCase {
         // decimal-pad keyboard interactively on scroll, so swipe
         // before tapping Add.
         tapTab(identifier: "tab.transactions", label: "Transactions")
-        app.buttons["+ Add"].tap()
+        tapCoordinate(app.buttons["+ Add"])
         let purchaseButton = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Purchase'")).firstMatch
         XCTAssertTrue(
             purchaseButton.waitForExistence(timeout: 15),
             "Add options did not appear after tapping + Add"
         )
-        purchaseButton.tap()
+        tapCoordinate(purchaseButton)
         XCTAssertTrue(
             app.textFields["Merchant"].waitForExistence(timeout: 15),
             "Add Purchase form did not open (no Merchant field)"
@@ -953,65 +972,113 @@ final class OnBudgetUITests: XCTestCase {
     /// The reverse RPC (`supabase/reverse-charity-cash-gift.sql`)
     /// must be applied live first, or the delete step fails with a
     /// plain-language error and nothing is changed.
+    /// Cash gift record + delete (build 40, Nov 16, 2026): the
+    /// Charity card's Record a Donation moves Available to Given
+    /// and logs a "Cash donation" row in the Charity Activity
+    /// feed; deleting the row reverses it and the row leaves the
+    /// feed. Rewritten for the current app (build 74): the record
+    /// popup is now the TzedakaActionSheet (mode slider "Add" /
+    /// "Record a Donation", submit "Record Donation", amount field
+    /// placeholder "0.00") and the feed row is labelled "Cash
+    /// donation", not "Cash gift". The test creates its OWN
+    /// household (signInAndCreateTestHousehold) because recording
+    /// a cash gift is admin-only and a member of Proof Household
+    /// 2 can never record one — and it seeds $5 Available first
+    /// via "Add to Charity", because a fresh household has $0
+    /// Available and the record is capped at Available.
     func testDeleteCashGiftFromFundsFeed() throws {
-        signInAndJoinTestHousehold()
+        _ = signInAndCreateTestHousehold()
 
         tapTab(identifier: "tab.funds", label: "Funds")
+        let charityCard = app.buttons.matching(identifier: "funds.charity").firstMatch
         XCTAssertTrue(
-            app.staticTexts["Charity"].waitForExistence(timeout: 90),
+            charityCard.waitForExistence(timeout: 90),
             "Funds did not render (no Charity card)"
         )
-        // Expand the Charity card: the Record a Transaction button
-        // lives in the expanded card.
-        app.staticTexts["Charity"].tap()
+        // Expand the Charity card: the Add / Record buttons live
+        // in the expanded card. Tap by coordinate (see
+        // tapCoordinate) — the card is on screen and a plain
+        // .tap() risks the AX scroll-to-visible failure.
+        tapCoordinate(charityCard)
+
+        // -- Seed $5 Available via "Add to Charity" ---------------
+        let addButton = app.buttons["funds.addToCharity"]
+        XCTAssertTrue(
+            addButton.waitForExistence(timeout: 30),
+            "Charity card did not offer Add to Charity after expanding"
+        )
+        addButton.tap()
+        let addAmountField = app.textFields["0.00"]
+        XCTAssertTrue(
+            addAmountField.waitForExistence(timeout: 15),
+            "Add to Charity sheet did not show an amount field"
+        )
+        tapAndTypeText(addAmountField, "5.00", fieldName: "add amount")
+        dismissKeyboardIfPresent(focusedField: addAmountField)
+        // The sheet's submit shares its "Add to Charity" label
+        // with the section button behind the sheet — tap the
+        // hittable one (the submit), not the covered one.
+        tapHittableButton(label: "Add to Charity")
+        // The sheet closes when the save succeeds — prove it by
+        // the amount field disappearing before going on.
+        let sheetClosed = NSPredicate(format: "exists == false")
+        expectation(for: sheetClosed, evaluatedWith: addAmountField, handler: nil)
+        waitForExpectations(timeout: 15, handler: nil)
+
+        // -- Record a $1 cash donation ------------------------------
         let recordButton = app.buttons["funds.recordCashGift"]
         XCTAssertTrue(
             recordButton.waitForExistence(timeout: 30),
-            "Charity card did not offer Record a Transaction after expanding"
+            "Charity card did not offer Record a Donation after expanding"
         )
         recordButton.tap()
-        XCTAssertTrue(
-            app.staticTexts["Record a Transaction to Charity"].waitForExistence(timeout: 15),
-            "Record a Transaction popup did not open"
-        )
+        // The sheet opens in Record mode (the Record button
+        // pre-sets it); its amount field is the proof it opened —
+        // the "Record a Donation" label also matches the section
+        // button behind the sheet, so it cannot prove anything.
         let amountField = app.textFields["0.00"]
         XCTAssertTrue(
             amountField.waitForExistence(timeout: 15),
-            "Record popup did not show an amount field"
+            "Record sheet did not show an amount field"
         )
-        amountField.tap()
-        amountField.typeText("1.00")
-        app.buttons["Record"].tap()
+        tapAndTypeText(amountField, "1.00", fieldName: "record amount")
+        dismissKeyboardIfPresent(focusedField: amountField)
+        tapCoordinate(app.buttons["Record Donation"])
         XCTAssertTrue(
-            app.staticTexts["Cash gift"].waitForExistence(timeout: 30),
-            "Cash gift did not appear in the Charity Activity feed after recording"
+            app.buttons.matching(NSPredicate(format: "label CONTAINS 'Cash donation'")).firstMatch
+                .waitForExistence(timeout: 30),
+            "Cash donation did not appear in the Charity Activity feed after recording"
         )
 
         // -- Delete it from the feed --------------------------------
-        let cashGiftRows = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Cash gift'"))
+        let cashGiftRows = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Cash donation'"))
         let countBefore = cashGiftRows.count
-        XCTAssertGreaterThan(countBefore, 0, "No Cash gift row to delete")
+        XCTAssertGreaterThan(countBefore, 0, "No Cash donation row to delete")
+        // The row is the most recent feed entry, so it is at the
+        // top of the feed; a plain .tap() scrolls it into view if
+        // needed.
         cashGiftRows.firstMatch.tap()
         let deleteButton = app.buttons["funds.deleteCashGift"]
         XCTAssertTrue(
             deleteButton.waitForExistence(timeout: 15),
-            "Cash gift detail did not offer Delete"
+            "Cash donation detail did not offer Delete"
         )
         deleteButton.tap()
         let confirmButton = app.buttons["funds.confirmDeleteCashGift"]
         XCTAssertTrue(
             confirmButton.waitForExistence(timeout: 15),
-            "Delete confirm did not appear for the cash gift"
+            "Delete confirm did not appear for the cash donation"
         )
         confirmButton.tap()
-        // The row leaves the feed once the reversal lands.
+        // The row leaves the feed once the reversal lands (the
+        // fetch filters status == active).
         let gone = NSPredicate(format: "exists == false")
         expectation(for: gone, evaluatedWith: cashGiftRows.firstMatch, handler: nil)
         waitForExpectations(timeout: 30, handler: nil)
         XCTAssertEqual(
-            app.buttons.matching(NSPredicate(format: "label CONTAINS 'Cash gift'")).count,
+            app.buttons.matching(NSPredicate(format: "label CONTAINS 'Cash donation'")).count,
             countBefore - 1,
-            "Cash gift row is still in the feed after Delete"
+            "Cash donation row is still in the feed after Delete"
         )
         attachScreenshot(named: "13-cash-gift-deleted")
     }
@@ -1050,13 +1117,26 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- Past Weeks pushes -------------------------------------------
         // Build 53 (audit U2): Past Weeks lives in the "More" menu now.
-        app.buttons["header.more"].tap()
+        // Coordinate taps (see tapCoordinate): menu items are on
+        // screen and a plain .tap() risks the AX scroll-to-visible
+        // failure that killed the page-select taps in run
+        // 45542061108. One retry: a tap that lands on the menu's
+        // dismiss area closes the menu without navigating.
+        tapCoordinate(app.buttons["header.more"])
         let pastWeeksLink = app.buttons["Past Weeks"]
         XCTAssertTrue(
             pastWeeksLink.waitForExistence(timeout: 15),
             "Past Weeks link missing on Transactions (shell did not supply the handler)"
         )
-        pastWeeksLink.tap()
+        tapCoordinate(pastWeeksLink)
+        if !app.staticTexts["Closed weeks, read-only. Tap a week to see its summary and its transactions."].waitForExistence(timeout: 15) {
+            tapCoordinate(app.buttons["header.more"])
+            XCTAssertTrue(
+                pastWeeksLink.waitForExistence(timeout: 15),
+                "Past Weeks link missing on Transactions on the retry (shell did not supply the handler)"
+            )
+            tapCoordinate(pastWeeksLink)
+        }
         XCTAssertTrue(
             app.staticTexts["Closed weeks, read-only. Tap a week to see its summary and its transactions."]
                 .waitForExistence(timeout: 60),
@@ -1065,7 +1145,7 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "07-past-weeks")
 
         // -- Back returns to the Transactions list -----------------------
-        app.buttons["Back"].tap()
+        tapCoordinate(app.buttons["Back"])
         XCTAssertTrue(
             app.buttons.matching(identifier: "transaction.row").firstMatch
                 .waitForExistence(timeout: 30),
@@ -1074,13 +1154,21 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- Activity pushes ---------------------------------------------
         // Build 53 (audit U2): Activity lives in the "More" menu now.
-        app.buttons["header.more"].tap()
+        tapCoordinate(app.buttons["header.more"])
         let activityLink = app.buttons["Activity"]
         XCTAssertTrue(
             activityLink.waitForExistence(timeout: 15),
             "Activity link missing on Transactions (shell did not supply the handler)"
         )
-        activityLink.tap()
+        tapCoordinate(activityLink)
+        if !app.staticTexts["General Activity"].waitForExistence(timeout: 15) {
+            tapCoordinate(app.buttons["header.more"])
+            XCTAssertTrue(
+                activityLink.waitForExistence(timeout: 15),
+                "Activity link missing on Transactions on the retry (shell did not supply the handler)"
+            )
+            tapCoordinate(activityLink)
+        }
         XCTAssertTrue(
             app.staticTexts["General Activity"]
                 .waitForExistence(timeout: 60),
@@ -1211,6 +1299,46 @@ final class OnBudgetUITests: XCTestCase {
             "Tab bar missing on Home"
         )
         attachScreenshot(named: "04-home")
+    }
+
+    /// Create a fresh pre-confirmed account, sign in, and CREATE a
+    /// household (instead of joining one). Household creation was
+    /// re-enabled by the owner (build 72, Nov 24, 2026), so the
+    /// test account is the household's OWNER — and therefore an
+    /// admin, which the cash-gift record flow requires (Record a
+    /// Donation is admin-only; joining Proof Household 2 as a
+    /// member can never record one). Returns the household name.
+    /// The household is test data left behind deliberately: each
+    /// run creates a fresh account + household, so nothing is
+    /// shared between runs.
+    private func signInAndCreateTestHousehold() -> String {
+        guard let account = createConfirmedTestAccount() else { return "" }
+        signInWithAccount(email: account.email, password: account.password)
+
+        let householdName = "Cash Gift Test"
+        let createButton = app.buttons["household.createHousehold"]
+        waitForElement(
+            createButton, timeout: 90, screenshotName: "cashgift-household-missing",
+            message: "Household screen did not appear after sign-in (\(diagnosePostSignInState()))"
+        )
+        tapCoordinate(createButton)
+        let nameField = app.textFields["household.nameField"]
+        XCTAssertTrue(
+            nameField.waitForExistence(timeout: 15),
+            "Name panel did not appear after tapping Create Household"
+        )
+        tapAndTypeText(nameField, householdName, fieldName: "household.nameField")
+        dismissKeyboardIfPresent(focusedField: nameField)
+        tapCoordinate(app.buttons["household.createConfirm"])
+
+        // Home renders — its title is the household NAME.
+        waitForElement(
+            app.staticTexts[householdName], timeout: 90, screenshotName: "cashgift-home-missing",
+            message: "Home did not render after creating the household (\(diagnosePostSignInState()))"
+        )
+        settleNotificationAlertIfNeeded()
+        dismissTourIfPresent()
+        return householdName
     }
 
     /// Steps 1–5 of the milestone proof: launch → auth screen →
@@ -1389,17 +1517,15 @@ final class OnBudgetUITests: XCTestCase {
     /// environment variable when present; when neither exists the
     /// test fails fast here instead of burning its 60–90s waits
     /// before failing at the same gate.
+    /// Sign up a fresh account via the public sign-up flow (one
+    /// sign-up per run — the only test that exercises it). Email
+    /// confirmation is OFF (owner, Nov 24, 2026), so after the
+    /// name step the account signs in directly and lands on the
+    /// Household screen — there is no "Check Your Email" step and
+    /// no Admin-API confirm is needed. The @example.com address
+    /// can never receive email, which is fine because none is
+    /// ever sent.
     private func signUpFreshAccount() {
-        guard let serviceKey = Self.uiTestServiceKey(), !serviceKey.isEmpty else {
-            XCTFail(
-                "No service-role key reached the UI test runner: UITestSecrets.serviceRoleKey is empty and "
-                + "SUPABASE_SERVICE_ROLE_KEY is not set in the test runner environment — "
-                + "add it as a CI secret so the simulator workflow can generate UITestSecrets.swift. "
-                + "Email confirmation is ON, so a fresh test account cannot sign in without being confirmed first."
-            )
-            return
-        }
-
         // -- 1. Auth screen renders -------------------------------------
         let emailField = app.textFields["auth.email"]
         XCTAssertTrue(
@@ -1411,8 +1537,7 @@ final class OnBudgetUITests: XCTestCase {
         // -- 2. Sign up a fresh account ---------------------------------
         // Random email per run so re-runs never collide with a previous
         // run's account. example.com is unroutable, which is fine:
-        // the account is confirmed via the Admin API below, never by
-        // email.
+        // no confirmation email is ever sent (confirmation is OFF).
         let runId = UUID().uuidString.lowercased().prefix(8)
         let email = "ios-clone-uitest-\(runId)@example.com"
         // >= 8 chars (AuthValidation.createAccountError); mixed case +
@@ -1450,34 +1575,19 @@ final class OnBudgetUITests: XCTestCase {
         dismissKeyboardIfPresent(focusedField: lastNameField)
         app.buttons["auth.createAccountConfirm"].tap()
 
-        // -- 4. Confirm via the Admin API, then sign in -----------------
-        // Sign-up with confirmation ON lands on the persistent
-        // "Check Your Email" state (NameStepView.confirmationSent).
-        // Build 53 (audit W1): when this fails, the message names
-        // the app's actual error text — the 429 gate was blamed for
-        // 8 failures with no rate-limit string in the log, because
-        // no failure ever captured it.
-        if !app.staticTexts["Check Your Email"].waitForExistence(timeout: 60) {
+        // -- 4. Signed in straight to the Household screen --------------
+        // Confirmation is OFF, so createAccount returns .signedIn
+        // and the app boots straight to the Household screen (the
+        // invite-code field is the proof it landed there). Build 53
+        // (audit W1): when this fails, the message names the app's
+        // actual error text — the 429 gate was blamed for 8
+        // failures with no rate-limit string in the log, because no
+        // failure ever captured it.
+        let inviteField = app.textFields["household.inviteCode"]
+        if !inviteField.waitForExistence(timeout: 60) {
             attachScreenshot(named: "02-signup-failed")
-            XCTFail("Check Your Email did not appear after Create Account (sign-up may have failed or confirmation may be off); visible text: \(visibleErrorText())")
+            XCTFail("Household screen did not appear after Create Account (sign-up may have failed; confirmation is OFF so there is no 'Check Your Email' step); visible text: \(visibleErrorText())")
         }
-        guard confirmTestAccount(email: email, serviceKey: serviceKey) else { return }
-        app.buttons["auth.backToSignIn"].tap()
-
-        let signInEmail = app.textFields["auth.email"]
-        XCTAssertTrue(
-            signInEmail.waitForExistence(timeout: 30),
-            "Sign-in screen did not appear after confirming the test account"
-        )
-        tapAndTypeText(signInEmail, email, fieldName: "auth.email")
-        let signInPassword = app.secureTextFields["auth.password"]
-        XCTAssertTrue(
-            signInPassword.waitForExistence(timeout: 10),
-            "Password field missing on the sign-in screen"
-        )
-        tapAndTypeText(signInPassword, password, fieldName: "auth.password")
-        dismissKeyboardIfPresent(focusedField: signInPassword)
-        app.buttons["auth.signIn"].tap()
     }
 
     /// Service-role key for the Admin-API confirm path. The UI test
@@ -1504,67 +1614,15 @@ final class OnBudgetUITests: XCTestCase {
         return nil
     }
 
-    // MARK: - Admin-API confirmation (email confirmation is ON)
+    // MARK: - Admin API (pre-confirmed accounts only)
 
     /// Supabase Auth Admin API base for the live project (public
     /// URL, same project as the app's Configuration.supabaseURL).
+    /// Used by createConfirmedTestAccount to create pre-confirmed
+    /// test accounts. Email confirmation is OFF (owner, Nov 24,
+    /// 2026), so signUpFreshAccount no longer confirms anything
+    /// via the Admin API — the confirm helpers were removed.
     private static let supabaseAuthAdminBase = "https://tnkhvdkmwmwiogiienee.supabase.co/auth/v1/admin"
-
-    /// Confirms the freshly signed-up test account: list users,
-    /// match the email locally, then PUT email_confirm: true. The
-    /// listUsers pattern (never getUserByEmail — it does not exist
-    /// on supabase-js v2) is the same one the check-email-exists
-    /// Edge Function uses. Returns false on failure (the caller
-    /// returns early; the test is already marked failed). The key
-    /// is never logged.
-    private func confirmTestAccount(email: String, serviceKey: String) -> Bool {
-        guard let userId = adminUserId(forEmail: email, serviceKey: serviceKey) else {
-            XCTFail("Admin API: no user found for \(email) after sign-up — cannot confirm the test account")
-            return false
-        }
-        var request = URLRequest(url: URL(string: "\(Self.supabaseAuthAdminBase)/users/\(userId)")!)
-        request.httpMethod = "PUT"
-        request.setValue(serviceKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(serviceKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["email_confirm": true])
-        let (status, _) = performAdminRequest(request)
-        guard status == 200 else {
-            XCTFail("Admin API confirm failed for \(email) (HTTP \(status))")
-            return false
-        }
-        return true
-    }
-
-    /// Finds the fresh account's id via the Admin API list endpoint,
-    /// polling briefly: the user row is created by sign-up, but the
-    /// list must see it before the confirm can run. Returns nil when
-    /// the user never appears.
-    private func adminUserId(forEmail email: String, serviceKey: String) -> String? {
-        let wanted = email.lowercased()
-        for _ in 0..<15 {
-            var request = URLRequest(url: URL(string: "\(Self.supabaseAuthAdminBase)/users?per_page=1000")!)
-            request.setValue(serviceKey, forHTTPHeaderField: "apikey")
-            request.setValue("Bearer \(serviceKey)", forHTTPHeaderField: "Authorization")
-            let (status, data) = performAdminRequest(request)
-            if status == 200, let data,
-               let json = try? JSONSerialization.jsonObject(with: data) {
-                let users: [[String: Any]]?
-                if let dict = json as? [String: Any] {
-                    users = dict["users"] as? [[String: Any]]
-                } else {
-                    users = json as? [[String: Any]]
-                }
-                if let users,
-                   let match = users.first(where: { ($0["email"] as? String)?.lowercased() == wanted }),
-                   let id = match["id"] as? String {
-                    return id
-                }
-            }
-            Thread.sleep(forTimeInterval: 2)
-        }
-        return nil
-    }
 
     /// Synchronous Admin API call (XCTest is synchronous): returns
     /// the HTTP status and body data, or (0, nil) on a transport
