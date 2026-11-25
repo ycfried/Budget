@@ -541,7 +541,7 @@ public struct LoadingView: View {
     @State private var ringSpinning = false
     public init() {}
     public var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 6) {
             // ONE horizontal line (owner, Nov 20, 2026 — build 50):
             // the S logo IS the S of STAGE — the logo (larger, the
             // main part, with its animated brand-blue ring) + "T ·
@@ -560,35 +560,35 @@ public struct LoadingView: View {
                 // (see the comment on LoadingView) — a light track
                 // ring plus a brand-blue arc that rotates slowly,
                 // so the splash reads as loading, not frozen. The
-                // ring sits 7pt outside the 72pt logo.
+                // ring sits 7pt outside the 48pt logo (build 74 —
+                // was 72pt, ring 86pt).
                 ZStack {
                     Circle()
                         .stroke(DesignTokens.stageBlue.opacity(0.18), lineWidth: 3)
-                        .frame(width: 86, height: 86)
+                        .frame(width: 62, height: 62)
                     Circle()
                         .trim(from: 0, to: 0.3)
                         .stroke(DesignTokens.stageBlue, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .frame(width: 86, height: 86)
+                        .frame(width: 62, height: 62)
                         .rotationEffect(.degrees(ringSpinning ? 360 : 0))
                         .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: ringSpinning)
                     Image("AppLogo")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 72, height: 72)
+                        .frame(width: 48, height: 48)
                         .clipShape(Circle())
                 }
                 .onAppear { ringSpinning = true }
                 // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
                 // build 47): the logo + "T · A · G · E", never the logo
                 // next to the full word "STAGE" (no second S).
-                // Build 74 (owner, Nov 25, 2026 — DECIDED): STAGE on
-                // ONE LINE — the mark + letters tight together (4pt
-                // gap), reading left to right as a single word; the
-                // stacked version is wrong. Letters 34pt medium
-                // (was 30pt light — build 68's thin/classy read too
-                // thin and small next to the mark). Uniform
-                // stageBlue #0288dd.
-                StageWordmarkText(font: .system(size: 34, weight: .medium))
+                // Build 74 (owner, Nov 25, 2026 — DECIDED,
+                // corrected proportions): STAGE on ONE LINE — the
+                // mark (48pt) + letters (40pt medium) tight
+                // together (4pt gap), reading left to right as a
+                // single word; the stacked version is wrong.
+                // Uniform stageBlue #0288dd.
+                StageWordmarkText(font: .system(size: 40, weight: .medium))
             }
             // Build 74 (owner, Nov 25, 2026 — DECIDED): the tagline
             // is "Spending Tracking And Giving Easily" — NO periods,
@@ -596,7 +596,9 @@ public struct LoadingView: View {
             // initials spell STAGE. Replaces "Spend, Track & Give
             // Easily" (build 54/55). Same 15pt semibold base, same
             // uniform stageBlue #0288dd; only the initials are
-            // heavy. The tagline sits BELOW the one-line lockup.
+            // heavy. The tagline sits BELOW the one-line lockup,
+            // 6pt under it (the VStack spacing — was 12pt, and
+            // the tagline floated too far below STAGE).
             (
                 Text("S").fontWeight(.heavy)
                 + Text("pending ")
