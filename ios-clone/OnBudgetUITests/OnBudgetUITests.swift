@@ -3,14 +3,13 @@
 // Milestone (a) UI proof: the native clone RUNNING on the simulator
 // against the live TEST backend (Supabase project
 // tnkhvdkmwmwiogiienee — the same backend the app ships with).
-// Updated Nov 25, 2026 for the current app (build 77): page-select
-// coordinate taps, label-based Home hero queries, Settings hub
-// navigation, TzedakaActionSheet cash-gift flow, sign-up with
-// Trigger: re-run updated UI test suite against build 77 app (all 14
-// items) + Round 2 test fixes — run 45663571002 failed on a closure-
-// capture compile error (fixed in ee062da, explicit self), and run
-// 45667099314 was cancelled by the build-77 push (concurrency), so
-// this commit re-triggers the suite for the current HEAD.
+// Updated Nov 25, 2026 for the current app (build 78 + widget deep
+// links): page-select coordinate taps, label-based Home hero queries,
+// Settings hub navigation, TzedakaActionSheet cash-gift flow, sign-up
+// Trigger: re-run Round 4 test fixes against the current app — run
+// 45701014073 was cancelled by the widget-deep-links push
+// (concurrency), so this commit re-triggers the suite for the
+// current HEAD.
 // confirmation OFF.
 //
 // Flow: launch; setUp signs out first if a previous test in this
