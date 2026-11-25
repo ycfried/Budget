@@ -404,7 +404,7 @@ begin
   -- charity_income_household_transaction_uidx), but loop
   -- defensively so a second active row could never slip through.
   for v_accrual in
-    select id, household_id, amount_cents, rate_bp, merchant
+    select id, household_id, amount_cents, rate_bp, source_label
       from public.charity_income
      where transaction_id = OLD.id
        and status = 'active'
@@ -415,7 +415,7 @@ begin
     v_committed := (v_accrual.amount_cents::bigint * v_accrual.rate_bp + 5000) / 10000;
     insert into public.audit_log (household_id, actor, actor_name, action, detail)
     values (v_accrual.household_id, null, 'auto-accrual', 'Charity income reversed',
-            'Income ' || v_accrual.merchant || ' ' || v_accrual.amount_cents::text || ' cents'
+            'Income ' || v_accrual.source_label || ' ' || v_accrual.amount_cents::text || ' cents'
             || ' at ' || v_accrual.rate_bp::text || ' basis points was deleted; '
             || v_committed::text || ' cents deducted from charity owed.');
   end loop;
