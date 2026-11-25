@@ -675,6 +675,22 @@ public final class AppViewModel: ObservableObject {
         selectedTab = .home
     }
 
+    /// Widget entry (background task, owner Nov 25, 2026): the
+    /// widget's Spending side opens the Transactions page — the
+    /// FULL list, filters/search cleared first, like Home's
+    /// See All. Reuses showAllTransactions() so the landing is
+    /// identical.
+    public func goTransactions() {
+        showAllTransactions()
+    }
+
+    /// Widget entry (background task, owner Nov 25, 2026): the
+    /// widget's Tzedaka side opens the Funds tab with the
+    /// Tzedaka (charity) fund's card expanded.
+    public func goTzedakaFund() {
+        openFund(.charity)
+    }
+
     /// Recent-row tap (live.js:1040-1110): clear Transactions
     /// filters/search first (the Transactions screen does this when
     /// it consumes the jump), open Transactions, expand the row.

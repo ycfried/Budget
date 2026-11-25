@@ -324,6 +324,21 @@ struct WidgetView: View {
     /// sync intent in place. See the configuration comment above.
     private var homeURL: URL? { URL(string: "onbudget://home") }
 
+    /// The Transactions deep link (background task, owner
+    /// Nov 25, 2026): the Spending side opens the Transactions
+    /// page. Applied to the Spending figure — and its donut —
+    /// in every size. The innermost widgetURL wins, so it
+    /// overrides the body container's home link for that column
+    /// (the header, footer and gaps still open Home).
+    private var transactionsURL: URL? { WidgetTransactionsDeepLink.url }
+
+    /// The Funds deep link (background task, owner Nov 25,
+    /// 2026): the Tzedaka side opens the Tzedaka fund. Applied
+    /// to the Tzedaka figure in every size. The innermost
+    /// widgetURL wins, so it overrides the body container's
+    /// home link for that column.
+    private var tzedakaURL: URL? { WidgetFundsDeepLink.url }
+
     var body: some View {
         // Build 48: a placeholder entry carrying REAL data opts out
         // of the system's automatic placeholder redaction, so its
@@ -882,6 +897,7 @@ struct WidgetView: View {
                         track: Color(hex: "#dbeafe"))
                 }
             }
+            .widgetURL(transactionsURL)
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel(snapshot.charityLeftLabel)
                 figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 22)
@@ -894,6 +910,7 @@ struct WidgetView: View {
                         track: Color(hex: "#dbeafe"))
                 }
             }
+            .widgetURL(tzedakaURL)
             Spacer(minLength: 0)
             footer(snapshot: snapshot, stale: stale, now: now, compact: true)
             }
@@ -935,6 +952,7 @@ struct WidgetView: View {
             HStack(alignment: .top, spacing: 14) {
                 if snapshot.spentCents != nil {
                     donut(snapshot: snapshot, size: 64, lineWidth: 10, availableWidth: geo.size.width)
+                        .widgetURL(transactionsURL)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     figureLabel("Available")
@@ -953,6 +971,7 @@ struct WidgetView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .widgetURL(transactionsURL)
                 Divider()
                 VStack(alignment: .leading, spacing: 1) {
                     figureLabel(snapshot.charityLeftLabel)
@@ -967,6 +986,7 @@ struct WidgetView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .widgetURL(tzedakaURL)
             }
             }
             .frame(height: 64)
@@ -1022,6 +1042,7 @@ struct WidgetView: View {
             HStack(alignment: .center, spacing: 24) {
                 if snapshot.spentCents != nil {
                     donut(snapshot: snapshot, size: 110, availableWidth: geo.size.width)
+                        .widgetURL(transactionsURL)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     figureLabel("Available")
@@ -1052,6 +1073,7 @@ struct WidgetView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .widgetURL(transactionsURL)
             }
             }
             .frame(height: 110)
@@ -1077,6 +1099,7 @@ struct WidgetView: View {
                         track: Color(hex: "#dbeafe"))
                 }
             }
+            .widgetURL(tzedakaURL)
             Spacer(minLength: 0)
             footer(snapshot: snapshot, stale: stale, now: now)
             }
@@ -1139,6 +1162,7 @@ struct WidgetView: View {
             HStack(alignment: .center, spacing: 24) {
                 if snapshot.spentCents != nil {
                     donut(snapshot: snapshot, size: 120, availableWidth: geo.size.width)
+                        .widgetURL(transactionsURL)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     figureLabel("Available")
@@ -1160,6 +1184,7 @@ struct WidgetView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .widgetURL(transactionsURL)
                 Divider()
                 VStack(alignment: .leading, spacing: 2) {
                     figureLabel(snapshot.charityLeftLabel)
@@ -1184,6 +1209,7 @@ struct WidgetView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .widgetURL(tzedakaURL)
             }
             }
             .frame(height: 120)

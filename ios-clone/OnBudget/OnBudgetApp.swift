@@ -92,6 +92,13 @@ struct OnBudgetApp: App {
                     //   this URL runs a snapshot refresh + timeline
                     //   reload, so the widget updates. Lands on
                     //   Home, like onbudget://home.
+                    // - onbudget://transactions → the widget
+                    //   Spending side (background task, owner
+                    //   Nov 25, 2026): the full Transactions
+                    //   list, filters cleared.
+                    // - onbudget://funds → the widget Tzedaka
+                    //   side (background task, owner Nov 25,
+                    //   2026): the Funds tab, Tzedaka fund open.
                     if url.host == "gmail-callback" {
                         Task { @MainActor in _ = appState.handleGmailDeepLink(url) }
                     } else if url.host == "home" {
@@ -102,6 +109,10 @@ struct OnBudgetApp: App {
                             _ = await WidgetSnapshotRefresher.refreshSnapshot()
                             WidgetCenter.shared.reloadAllTimelines()
                         }
+                    } else if url.host == "transactions" {
+                        appState.goTransactions()
+                    } else if url.host == "funds" {
+                        appState.goTzedakaFund()
                     } else if url.host == "reset-password" {
                         Task { await appState.handleResetDeepLink(url) }
                     } else if url.host == "email-confirmed" {
