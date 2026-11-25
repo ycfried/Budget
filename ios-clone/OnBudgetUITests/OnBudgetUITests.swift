@@ -815,12 +815,16 @@ final class OnBudgetUITests: XCTestCase {
         // Round 3 (run 45673494611): same stale-`firstMatch` risk
         // as testVideoRecordings scene 7 — the hero reference goes
         // stale across a Home reload, so poll with a fresh query.
-        // Round 4: same 90s total as scene 7 (slow backend refetch).
-        if !waitForStaticTextContaining("left this week", timeout: 45) {
+        // Round 4 re-run (45704206944) hit the 90-min job timeout
+        // with no test results, so the 90s waits are trimmed back
+        // to 60s total (fresh query is the real fix; if it works
+        // the hero appears fast, and if not, 90s only burns
+        // timeout budget).
+        if !waitForStaticTextContaining("left this week", timeout: 30) {
             tapTab(identifier: "tab.home", label: "Home")
         }
         XCTAssertTrue(
-            waitForStaticTextContaining("left this week", timeout: 45),
+            waitForStaticTextContaining("left this week", timeout: 30),
             "Home hero amount did not reappear"
         )
         Thread.sleep(forTimeInterval: 2)
@@ -1063,12 +1067,15 @@ final class OnBudgetUITests: XCTestCase {
         // STILL failed, and the log shows "App animations complete
         // notification not received" — Home's refetch after the
         // Scene-6 add can take very long on the simulator backend.
-        // Give it 90s total (45 + re-tap + 45).
-        if !waitForStaticTextContaining("left this week", timeout: 45) {
+        // Round 4 re-run (45704206944) hit the 90-min job timeout
+        // with no test results, so the 90s waits are trimmed back
+        // to 60s total: the fresh query is the real fix, and if
+        // it works the hero appears fast.
+        if !waitForStaticTextContaining("left this week", timeout: 30) {
             tapTab(identifier: "tab.home", label: "Home")
         }
         XCTAssertTrue(
-            waitForStaticTextContaining("left this week", timeout: 45),
+            waitForStaticTextContaining("left this week", timeout: 30),
             "Home hero amount did not reappear"
         )
         Thread.sleep(forTimeInterval: 6)
