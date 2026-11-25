@@ -146,54 +146,54 @@ public struct TransactionRowView: View {
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         }
                         .frame(height: iconSize / 2)
-                        // Bottom half: state + date meta, collapsed
-                        // only — when open, the detail below says
-                        // all of it (owner, Nov 12, 2026). Badges
-                        // are plain grey text, no pills, no tint
+                        // Bottom half: state + date meta — always
+                        // visible, open or closed (owner, Nov 25,
+                        // 2026): hiding it on expand shrank the
+                        // header a line while the detail grew, and
+                        // the info read as jumping down. Badges are
+                        // plain grey text, no pills, no tint
                         // (build 42, owner Nov 17, 2026 — Version A);
                         // the source is NOT shown here — it shows
                         // only in the expanded detail view.
-                        if !isExpanded {
-                            HStack(spacing: 8) {
-                                // Transfer badge (build 50, owner
-                                // Nov 20, 2026): the merchant stays
-                                // on the top line, and the kind
-                                // reads here as plain grey text, no
-                                // pill (build 42, Version A) —
-                                // never a bare "Transfer to" in
-                                // place of the merchant name.
-                                if transaction.kind == .transfer {
-                                    Text("Transfer")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(DesignTokens.muted)
-                                }
-                                // Build 53 (owner, Nov 21, 2026): the
-                                // status IS "Refunded" — it replaces
-                                // "Pending"/"Posted", it does not sit
-                                // next to it ("Refunded Pending" read
-                                // as neither one clearly). Visible
-                                // style: primary blue semibold, not
-                                // small grey text.
-                                if isRefunded {
-                                    Text("Refunded")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(DesignTokens.primary)
-                                } else {
-                                    Text(TransactionFormatting.stateWord(for: transaction))
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(DesignTokens.muted)
-                                }
-                                Spacer()
-                                // Date + card sit at the row's trailing edge —
-                                // a fixed column that never moves with the
-                                // badge widths (owner, Nov 11, 2026).
-                                Text("\(TransactionFormatting.displayDay(transaction.date)) · \(TransactionFormatting.cardLabel(for: transaction))")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Color(hex: "#6b7280"))
-                                    .lineLimit(1)
+                        HStack(spacing: 8) {
+                            // Transfer badge (build 50, owner
+                            // Nov 20, 2026): the merchant stays
+                            // on the top line, and the kind
+                            // reads here as plain grey text, no
+                            // pill (build 42, Version A) —
+                            // never a bare "Transfer to" in
+                            // place of the merchant name.
+                            if transaction.kind == .transfer {
+                                Text("Transfer")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.muted)
                             }
-                            .frame(height: iconSize / 2)
+                            // Build 53 (owner, Nov 21, 2026): the
+                            // status IS "Refunded" — it replaces
+                            // "Pending"/"Posted", it does not sit
+                            // next to it ("Refunded Pending" read
+                            // as neither one clearly). Visible
+                            // style: primary blue semibold, not
+                            // small grey text.
+                            if isRefunded {
+                                Text("Refunded")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.primary)
+                            } else {
+                                Text(TransactionFormatting.stateWord(for: transaction))
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.muted)
+                            }
+                            Spacer()
+                            // Date + card sit at the row's trailing edge —
+                            // a fixed column that never moves with the
+                            // badge widths (owner, Nov 11, 2026).
+                            Text("\(TransactionFormatting.displayDay(transaction.date)) · \(TransactionFormatting.cardLabel(for: transaction))")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(hex: "#6b7280"))
+                                .lineLimit(1)
                         }
+                        .frame(height: iconSize / 2)
                     }
                 }
                 // The whole card is the tap target — the padding is
@@ -203,7 +203,7 @@ public struct TransactionRowView: View {
                 // so the header keeps only a small bottom gap
                 // (owner, Nov 15, 2026): the full 14pt plus the
                 // detail's own top padding left a dead blank line
-                // between the header and the Date row.
+                // between the header and the first detail row.
                 .padding(.top, 14)
                 .padding(.horizontal, 14)
                 .padding(.bottom, isExpanded ? 4 : 14)
@@ -262,28 +262,14 @@ public struct TransactionDetailView: View {
         // are gone, so header + details read as a single card.
         VStack(alignment: .leading, spacing: 0) {
             // No Week row: the Date already says it (owner,
-            // Nov 12, 2026). Status and Source render as plain
-            // grey text (build 42, owner Nov 17, 2026 —
-            // Version A): no pills, no tint, no background.
+            // Nov 12, 2026). No Date / Account / Status rows
+            // either (owner, Nov 25, 2026): the header's bottom
+            // line already shows them ("Pending · Today ··1005"),
+            // so repeating them here duplicated the info. Source
+            // renders as plain grey text (build 42, owner Nov 17,
+            // 2026 — Version A): no pills, no tint, no background.
             // The source lives ONLY here — never on the
             // collapsed row.
-            detailRow(label: "Date", value: TransactionFormatting.fmtLong(transaction.date))
-            detailRow(label: "Account", value: TransactionFormatting.cardLabel(for: transaction))
-            // Build 53 (owner, Nov 21, 2026): the status IS
-            // "Refunded" here too — it replaces
-            // "Pending"/"Posted", in the same visible blue as
-            // the collapsed row.
-            detailRow(label: "Status") {
-                if isRefunded {
-                    Text("Refunded")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(DesignTokens.primary)
-                } else {
-                    Text(TransactionFormatting.stateWord(for: transaction))
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(DesignTokens.muted)
-                }
-            }
             // Build 53 (owner, Nov 21, 2026): the collapsed
             // amount is struck through for a refunded purchase,
             // so the expanded detail restores the plain original
