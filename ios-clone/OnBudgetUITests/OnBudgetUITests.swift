@@ -305,9 +305,16 @@ final class OnBudgetUITests: XCTestCase {
             app.buttons.matching(identifier: "funds.extraFund").firstMatch.waitForExistence(timeout: 30),
             "Funds page select did not show the Funds screen (no Extra Fund card)"
         )
+        // The household name is the shell's persistent top-bar
+        // title — it shows on EVERY tab (AppShellView topBar), so
+        // its presence cannot prove the switch. The Home hero is
+        // Home-only: its amount ("left this week") must be gone
+        // once Funds is showing (run 45588370579: the old
+        // "household title still showing" assertion failed because
+        // the top bar legitimately keeps the name on Funds).
         XCTAssertFalse(
-            app.staticTexts[proofHouseholdName].exists,
-            "Household title still showing after switching to Funds"
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week' OR label CONTAINS 'over budget'")).firstMatch.exists,
+            "Home hero still showing after switching to Funds"
         )
         tapTab(identifier: "tab.home", label: "Home")
         XCTAssertTrue(
@@ -541,10 +548,14 @@ final class OnBudgetUITests: XCTestCase {
             heroAmount.waitForExistence(timeout: 60),
             "Home hero amount did not appear in the card body (expected a 'left this week' / 'over budget' label)"
         )
-        // Same shadowing for the donut: its identifier sits on the
-        // progress element inside the labelled card, so find it by
-        // its spoken label ("X% of the weekly budget used").
-        let heroDonut = app.otherElements.matching(
+        // The donut's identifier (home.heroDonut) never surfaces as
+        // its own element — the ZStack's children are exposed
+        // individually, and the percent + "used" Texts read as
+        // staticTexts carrying the donut's spoken label ("X percent
+        // of the weekly budget used", run 45588370579 hierarchy
+        // dump). So find it by its spoken label among staticTexts,
+        // not otherElements.
+        let heroDonut = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS 'percent of the weekly budget used'")
         ).firstMatch
         XCTAssertTrue(
@@ -571,13 +582,17 @@ final class OnBudgetUITests: XCTestCase {
         // (see testHomeHeroAmountAndDonut) — find the hero by its
         // spoken label and the Tzedaka amount by the card label,
         // which reads "<name>, $<amount>, show fund" once loaded.
+        // The Tzedaka card's identifier (home.tzedakaCard) lands
+        // on its CHILDREN (Image + staticTexts), not on a separate
+        // Other element — so query staticTexts by identifier, not
+        // otherElements (run 45588370579 hierarchy dump).
         XCTAssertTrue(
             app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS 'left this week' OR label CONTAINS 'over budget'")
             ).firstMatch.waitForExistence(timeout: 60),
             "Simple Home hero amount did not appear (expected a 'left this week' / 'over budget' label)"
         )
-        let tzedakaCard = app.otherElements.matching(identifier: "home.tzedakaCard").firstMatch
+        let tzedakaCard = app.staticTexts.matching(identifier: "home.tzedakaCard").firstMatch
         XCTAssertTrue(
             tzedakaCard.waitForExistence(timeout: 15),
             "Simple Home Tzedaka card did not appear second (home.tzedakaCard)"
@@ -586,15 +601,21 @@ final class OnBudgetUITests: XCTestCase {
             tzedakaCard.label.contains("$"),
             "Simple Home Tzedaka card has no amount (expected a '$' amount in its label; got '\(tzedakaCard.label)')"
         )
+        // The quiet rows are Buttons, but their identifier is the
+        // quiet CARD's (home.quietCard) — the container's
+        // identifier wins over the rows' own home.quietSavings /
+        // home.quietDebt in the AX tree (run 45588370579 dump).
+        // Distinguish the rows by their fund-name label: Proof
+        // Household 2 uses the default names (Extra Fund, Debt).
         XCTAssertTrue(
-            app.buttons.matching(identifier: "home.quietSavings").firstMatch
+            app.buttons.matching(NSPredicate(format: "identifier == 'home.quietCard' AND label CONTAINS 'Extra Fund'")).firstMatch
                 .waitForExistence(timeout: 15),
-            "Simple Home quiet Savings row did not appear (home.quietSavings)"
+            "Simple Home quiet Extra Fund row did not appear (home.quietCard / Extra Fund)"
         )
         XCTAssertTrue(
-            app.buttons.matching(identifier: "home.quietDebt").firstMatch
+            app.buttons.matching(NSPredicate(format: "identifier == 'home.quietCard' AND label CONTAINS 'Debt'")).firstMatch
                 .waitForExistence(timeout: 15),
-            "Simple Home quiet Overspent row did not appear (home.quietDebt)"
+            "Simple Home quiet Debt row did not appear (home.quietCard / Debt)"
         )
         attachScreenshot(named: "13-simple-home-layout")
     }
@@ -654,15 +675,19 @@ final class OnBudgetUITests: XCTestCase {
             "Home Charity/Tzedaka card did not appear"
         )
         // The quiet rows are Buttons (HomeView), not static texts —
-        // a staticTexts lookup never matches them, so query the
-        // Savings quiet row by its identifier (the 'left this
+        // a staticTexts lookup never matches them. Their identifier
+        // is the quiet CARD's (home.quietCard) — the container's
+        // identifier wins over the rows' own home.quietSavings in
+        // the AX tree (run 45588370579 dump) — so query the card
+        // identifier and distinguish the row by its fund-name
+        // label. Goldstein's fund reads "Savings" (the 'left this
         // week' and 'Charity' checks above are card containers
         // whose labels DO surface as static texts, and they passed
         // in the build-73 run — leave them alone).
         XCTAssertTrue(
-            app.buttons.matching(identifier: "home.quietSavings").firstMatch
+            app.buttons.matching(NSPredicate(format: "identifier == 'home.quietCard' AND label CONTAINS 'Savings'")).firstMatch
                 .waitForExistence(timeout: 15),
-            "Home quiet Extra Fund row did not appear (home.quietSavings)"
+            "Home quiet Extra Fund row did not appear (home.quietCard / Savings)"
         )
         // Let the amounts settle (no skeleton, no toast) before the shot.
         Thread.sleep(forTimeInterval: 3)
@@ -1001,13 +1026,32 @@ final class OnBudgetUITests: XCTestCase {
             "Funds did not render (no Charity card)"
         )
         // Expand the Charity card: the Add / Record buttons live
-        // in the expanded card. Tap by coordinate (see
-        // tapCoordinate) — the card is on screen and a plain
+        // in the expanded card. Scroll it into view first — it can
+        // sit below the fold when another card is expanded, and a
+        // coordinate tap on an off-screen card misses (run
+        // 45588370579: the tap never expanded the card and
+        // funds.addToCharity never appeared). Tap by coordinate
+        // (see tapCoordinate) — the card is on screen and a plain
         // .tap() risks the AX scroll-to-visible failure.
+        let fundsScroll = app.scrollViews.firstMatch
+        for _ in 0..<4 {
+            if charityCard.isHittable { break }
+            fundsScroll.swipeUp()
+        }
         tapCoordinate(charityCard)
 
         // -- Seed $5 Available via "Add to Charity" ---------------
+        // If the Add button does not appear, the tap may have been
+        // absorbed — tap again once, but only if the card is not
+        // already expanded (the Record button lives in the same
+        // expanded detail, so its presence proves the card is
+        // open and a second tap would collapse it).
         let addButton = app.buttons["funds.addToCharity"]
+        if !addButton.waitForExistence(timeout: 15) {
+            if !app.buttons["funds.recordCashGift"].exists {
+                tapCoordinate(charityCard)
+            }
+        }
         XCTAssertTrue(
             addButton.waitForExistence(timeout: 30),
             "Charity card did not offer Add to Charity after expanding"
@@ -1134,19 +1178,43 @@ final class OnBudgetUITests: XCTestCase {
             "Past Weeks link missing on Transactions (shell did not supply the handler)"
         )
         tapCoordinate(pastWeeksLink)
-        if !app.staticTexts["Closed weeks, read-only. Tap a week to see its summary and its transactions."].waitForExistence(timeout: 15) {
-            tapCoordinate(app.buttons["header.more"])
-            XCTAssertTrue(
-                pastWeeksLink.waitForExistence(timeout: 15),
-                "Past Weeks link missing on Transactions on the retry (shell did not supply the handler)"
-            )
-            tapCoordinate(pastWeeksLink)
+        // The subpage marker is the "About Past Weeks" ⓘ — build
+        // 68 moved the explainer behind it, so it is no longer an
+        // inline staticText and waiting for the explainer text can
+        // never pass. Retry the menu tap ONLY if the subpage did
+        // not open: tapping header.more while already on the
+        // subpage crashes the query (run 45588370579), because
+        // header.more is not on the subpage.
+        if !app.buttons["About Past Weeks"].waitForExistence(timeout: 15) {
+            // Still on the Transactions list — the first tap missed
+            // the menu item. Retry once, guarded by header.more
+            // still existing.
+            if app.buttons["header.more"].exists {
+                tapCoordinate(app.buttons["header.more"])
+                XCTAssertTrue(
+                    pastWeeksLink.waitForExistence(timeout: 15),
+                    "Past Weeks link missing on Transactions on the retry (shell did not supply the handler)"
+                )
+                tapCoordinate(pastWeeksLink)
+            }
         }
         XCTAssertTrue(
-            app.staticTexts["Closed weeks, read-only. Tap a week to see its summary and its transactions."]
-                .waitForExistence(timeout: 60),
+            app.buttons["About Past Weeks"].waitForExistence(timeout: 60),
             "Past Weeks subpage did not open"
         )
+        // The explainer lives behind the ⓘ — open it, prove the
+        // text is there, then dismiss.
+        tapCoordinate(app.buttons["About Past Weeks"])
+        let aboutAlert = app.alerts["Past Weeks"]
+        XCTAssertTrue(
+            aboutAlert.waitForExistence(timeout: 15),
+            "About Past Weeks did not open the explainer alert"
+        )
+        XCTAssertTrue(
+            aboutAlert.staticTexts["Closed weeks, read-only. Tap a week to see its summary and its transactions."].waitForExistence(timeout: 15),
+            "Explainer alert did not show the Past Weeks explainer text"
+        )
+        aboutAlert.buttons["OK"].tap()
         attachScreenshot(named: "07-past-weeks")
 
         // -- Back returns to the Transactions list -----------------------
@@ -1455,20 +1523,111 @@ final class OnBudgetUITests: XCTestCase {
     }
 
     func testPlaidSandboxConnect() throws {
-        // SKIPPED — invite-only launch (Nov 17, 2026): this test signed
-        // up a fresh account and created its own admin household to
-        // prove the Plaid Link sheet opens. Household creation is now
-        // closed to app users (only an invite code gets you in), so
-        // the test has no admin household to connect a bank to. Plaid
-        // Link opening was proven in earlier simulator runs and the
-        // live Amex connection is proven in production. Re-prove
-        // manually on TestFlight with the test admin account if the
-        // Link flow ever changes. Previous body in git history
-        // (branch point aef4e9e); restore it if creation re-opens.
-        throw XCTSkip(
-            "Household creation is disabled in invite-only mode — "
-            + "this test needs an admin household to connect Plaid."
+        // RESTORED Nov 25, 2026 — household creation re-opened by
+        // the owner (build 72), so the stale invite-only skip is
+        // gone. Body restored from git history (pre-skip commit
+        // c9c1c7b^) and updated for the current app: Settings is
+        // now a hub (build 74 — Bank Connection lives on the
+        // Connections subpage), Home's title is the household NAME
+        // (not "Weekly Budget"), and menu/hub taps use
+        // tapCoordinate (plain .tap() risks the AX scroll-to-
+        // visible failure). The Sandbox drive helper
+        // (drivePlaidSandbox) is restored below with it.
+        signUpFreshAccount()
+
+        // -- Create a FRESH household (this account is its admin) --------
+        // Proof Household 2 cannot be used here: only an admin can
+        // connect a bank, and the test admin's password is lost.
+        let createButton = app.buttons["household.createHousehold"]
+        XCTAssertTrue(
+            createButton.waitForExistence(timeout: 90),
+            "Household screen did not appear after sign-up (account creation or boot failed)"
         )
+        attachScreenshot(named: "plaid-01-household")
+        tapCoordinate(createButton)
+        let nameField = app.textFields["household.nameField"]
+        XCTAssertTrue(
+            nameField.waitForExistence(timeout: 30),
+            "Household name panel did not appear after Create Household"
+        )
+        tapAndTypeText(nameField, "Plaid Test", fieldName: "household.nameField")
+        dismissKeyboardIfPresent(focusedField: nameField)
+        tapCoordinate(app.buttons["household.createConfirm"])
+        XCTAssertTrue(
+            app.staticTexts["Plaid Test"].waitForExistence(timeout: 90),
+            "Home did not render after creating the household"
+        )
+        attachScreenshot(named: "plaid-02-home")
+        settleNotificationAlertIfNeeded()
+        dismissTourIfPresent()
+
+        // -- Settings → Connections → Bank Connection -------------------
+        // Build 74 split Settings into a hub; Bank Connection lives
+        // on the Connections subpage (same navigation as
+        // testGmailCallbackDeepLink).
+        tapCoordinate(app.buttons["Profile"])
+        let settingsItem = app.buttons["Settings"]
+        XCTAssertTrue(
+            settingsItem.waitForExistence(timeout: 15),
+            "Profile menu did not offer Settings"
+        )
+        tapCoordinate(settingsItem)
+        let connectionsHubRow = app.buttons["settings.hub.connections"]
+        XCTAssertTrue(
+            connectionsHubRow.waitForExistence(timeout: 30),
+            "Settings hub did not render (no Connections row)"
+        )
+        tapCoordinate(connectionsHubRow)
+        XCTAssertTrue(
+            app.staticTexts["Bank Connection"].waitForExistence(timeout: 30),
+            "Connections subpage did not render (no Bank Connection card)"
+        )
+        attachScreenshot(named: "plaid-03-settings")
+
+        // -- Connect → HARD assertion: the Link sheet opens --------------
+        let connectButton = app.buttons["bank.connect"]
+        XCTAssertTrue(
+            connectButton.waitForExistence(timeout: 15),
+            "Connect Account button missing (admin-only — is this account admin?)"
+        )
+        tapCoordinate(connectButton)
+        let linkWebView = app.webViews.firstMatch
+        XCTAssertTrue(
+            linkWebView.waitForExistence(timeout: 90),
+            "Plaid Link sheet did not open within 90s of tapping Connect (link-token fetch or LinkKit presentation failed — see plaid-04 screenshot)"
+        )
+        attachScreenshot(named: "plaid-04-link-open")
+
+        // -- Sandbox drive (best effort; see file header) ----------------
+        let outcome = drivePlaidSandbox()
+        attachScreenshot(named: "plaid-09-after-sandbox")
+        guard outcome == .connected else {
+            XCTContext.runActivity(named: "Plaid Sandbox stopped at \(outcome.rawValue) — sheet-open is proven; full connect still needs a human/device run") { _ in }
+            return
+        }
+
+        // -- Connected toast, sync, rows (only on a completed drive) -----
+        let toast = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Connected. Tap'")).firstMatch
+        XCTAssertTrue(
+            toast.waitForExistence(timeout: 90),
+            "No 'Connected' toast after the Sandbox flow finished (exchange may have failed)"
+        )
+        attachScreenshot(named: "plaid-10-connected")
+        tapCoordinate(app.buttons["bank.sync"])
+        let syncedLine = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Last synced'")).firstMatch
+        XCTAssertTrue(
+            syncedLine.waitForExistence(timeout: 180),
+            "Sync did not finish within 180s (no 'Last synced' line in Settings)"
+        )
+        attachScreenshot(named: "plaid-11-synced")
+        tapCoordinate(app.buttons["Back"])
+        tapTab(identifier: "tab.transactions", label: "Transactions")
+        let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
+        XCTAssertTrue(
+            firstRow.waitForExistence(timeout: 120),
+            "No transaction rows after Sync Transactions on the Sandbox-connected household"
+        )
+        attachScreenshot(named: "plaid-12-transactions")
     }
 
     func testForgotPasswordShowsConfirmation() throws {
@@ -1705,9 +1864,168 @@ final class OnBudgetUITests: XCTestCase {
                 tapCoordinate(button)
                 return
             }
+            // A SwiftUI .pickerStyle(.menu) Picker is a PopUpButton
+            // and its options can surface as menuItems, buttons, or
+            // another type depending on the iOS version — match ANY
+            // element type by label so the option is found however
+            // it is exposed (run 45588370579: "Charge" never
+            // appeared as a menuItem or a button).
+            let any = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", label)).firstMatch
+            if any.exists {
+                tapCoordinate(any)
+                return
+            }
             Thread.sleep(forTimeInterval: 0.3)
         }
         XCTFail("Picker/menu did not offer '\(label)' within \(timeout)s; visible text: \(visibleErrorText())")
+    }
+
+    // MARK: - Plaid Sandbox drive (restored Nov 25, 2026 with
+    // testPlaidSandboxConnect; removed in c9c1c7b when the test
+    // was skipped for invite-only). See the file header for the
+    // run-42746242404 defences (probe presentation first on the
+    // webview leaf only; short-slice polls; XCUIScreen
+    // screenshots so a wedged webview can never fail the test
+    // from a screenshot).
+    private enum PlaidSandboxOutcome: String {
+        case connected
+        case sheetNotPresented
+        case noSearchField
+        case noInstitutionResult
+        case noCredentialFields
+        case noSubmit
+        case sheetStillOpen
+    }
+
+    /// Drives Plaid Link in the Sandbox with Plaid's public test
+    /// credentials (First Platypus Bank, user_good / pass_good).
+    /// Each step proceeds only if its element is found; a missing
+    /// element stops the drive with the matching outcome.
+    private func drivePlaidSandbox() -> PlaidSandboxOutcome {
+        // -- 1. Is the Link sheet actually visible? -------------------
+        // In run 42746242404 the webview existed in the AX tree but
+        // nothing Plaid was on screen (Settings still visible,
+        // "Connecting…" still showing), and every existence poll on
+        // the webview's descendants then blocked ~60s on a snapshot
+        // of the WebContent process. So probe the webview LEAF
+        // only — never a descendant: poll up to 30s for the
+        // webview to become hittable (i.e. presented and on
+        // screen). If it never does, the sheet never presented —
+        // stop here instead of querying a tree that may be wedged.
+        let presentedDeadline = Date().addingTimeInterval(30)
+        while Date() < presentedDeadline {
+            if app.webViews.firstMatch.isHittable { break }
+            Thread.sleep(forTimeInterval: 2)
+        }
+        if !app.webViews.firstMatch.isHittable {
+            return .sheetNotPresented
+        }
+
+        // -- 2. First pane: search field, or institution already ----
+        // listed (no search needed). Poll in short slices.
+        let searchDeadline = Date().addingTimeInterval(90)
+        var searchFieldFound = false
+        var institutionListed = false
+        while Date() < searchDeadline {
+            if app.webViews.textFields.firstMatch.waitForExistence(timeout: 5) {
+                searchFieldFound = true
+                break
+            }
+            if app.webViews.searchFields.firstMatch.waitForExistence(timeout: 5) {
+                searchFieldFound = true
+                break
+            }
+            if app.webViews.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Platypus'")
+            ).firstMatch.waitForExistence(timeout: 5) {
+                institutionListed = true
+                break
+            }
+        }
+        guard searchFieldFound || institutionListed else {
+            return .noSearchField
+        }
+        if searchFieldFound {
+            // Institution search: Link's first pane has a search field.
+            let searchField = app.webViews.textFields.firstMatch.exists
+                ? app.webViews.textFields.firstMatch
+                : app.webViews.searchFields.firstMatch
+            tapAndTypeText(searchField, "First Platypus Bank", fieldName: "plaid.search")
+        }
+        let institution = app.webViews.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Platypus'")
+        ).firstMatch
+        guard institution.waitForExistence(timeout: 30) else {
+            return .noInstitutionResult
+        }
+        institution.tap()
+
+        // Credentials pane: username + password. Some flows show an
+        // interstitial first; if the fields are not there yet, try a
+        // Continue button once, then look again.
+        if !credentialFieldsExist(timeout: 45) {
+            if tapWebButtonContaining("Continue", timeout: 15) {
+                attachScreenshot(named: "plaid-05-interstitial")
+            }
+            guard credentialFieldsExist(timeout: 45) else {
+                return .noCredentialFields
+            }
+        }
+        let usernameField = app.webViews.textFields.firstMatch
+        let passwordField = app.webViews.secureTextFields.firstMatch
+        tapAndTypeText(usernameField, "user_good", fieldName: "plaid.username")
+        tapAndTypeText(passwordField, "pass_good", fieldName: "plaid.password")
+        dismissKeyboardIfPresent(focusedField: passwordField)
+        attachScreenshot(named: "plaid-06-credentials")
+
+        let submit = app.webViews.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Submit'")
+        ).firstMatch
+        guard submit.waitForExistence(timeout: 15) else {
+            return .noSubmit
+        }
+        submit.tap()
+        attachScreenshot(named: "plaid-07-submitted")
+
+        // Account select / success panes: tap Continue while one is
+        // offered, and return as soon as the sheet closes. Poll
+        // rather than blocking on a single wait, so a flow that goes
+        // straight to success does not burn a full timeout.
+        let deadline = Date().addingTimeInterval(120)
+        while Date() < deadline {
+            if !app.webViews.firstMatch.exists {
+                return .connected
+            }
+            let cont = app.webViews.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Continue'")
+            ).firstMatch
+            if cont.exists {
+                cont.tap()
+                attachScreenshot(named: "plaid-08-continue")
+            }
+            Thread.sleep(forTimeInterval: 2)
+        }
+        return .sheetStillOpen
+    }
+
+    private func credentialFieldsExist(timeout: TimeInterval) -> Bool {
+        let usernameField = app.webViews.textFields.firstMatch
+        let passwordField = app.webViews.secureTextFields.firstMatch
+        return usernameField.waitForExistence(timeout: timeout)
+            && passwordField.waitForExistence(timeout: 10)
+    }
+
+    /// Taps the first webview button whose label contains `text`.
+    /// Returns false when none appears within `timeout`.
+    @discardableResult
+    private func tapWebButtonContaining(_ text: String, timeout: TimeInterval) -> Bool {
+        let button = app.webViews.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", text)
+        ).firstMatch
+        guard button.waitForExistence(timeout: timeout) else { return false }
+        button.tap()
+        return true
     }
 
     /// Tab-bar buttons carry both the identifier (tab.*) and the
