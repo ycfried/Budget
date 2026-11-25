@@ -976,6 +976,16 @@ public struct TransactionsFilterSheet: View {
                         sortPicker
                     }
 
+                }
+                .padding()
+            }
+            // Build 75 (F-10): the action bar is pinned below the
+            // scrolling fields (safeAreaInset), so Apply + Reset
+            // are always reachable — they used to sit inside the
+            // ScrollView at the bottom, past the fields.
+            .safeAreaInset(edge: .bottom) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Divider()
                     // Build 70, item 5 (owner, Nov 24, 2026): the
                     // Cancel button is gone — the top-left Back
                     // button + swipe-right dismiss without applying,
@@ -989,7 +999,6 @@ public struct TransactionsFilterSheet: View {
                         // pattern) so it never reads as tappable.
                         .disabled(draftAmountInvalid)
                         .opacity(draftAmountInvalid ? 0.6 : 1.0)
-
                     // Reset is a real button (owner, Nov 14, 2026):
                     // as a plain grey link under Apply / Cancel it
                     // did not read as tappable. Full-width outline,
@@ -1000,6 +1009,7 @@ public struct TransactionsFilterSheet: View {
                         .buttonStyle(OutlineButtonStyle())
                 }
                 .padding()
+                .background(.white)
             }
             // Dragging the sheet dismisses the keyboard too — the
             // number pad has no return key, so Done + drag are

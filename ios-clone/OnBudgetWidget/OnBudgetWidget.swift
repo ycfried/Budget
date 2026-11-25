@@ -368,12 +368,12 @@ struct WidgetView: View {
     /// (black weight) and slightly larger — they were a drop too
     /// thin and small next to the S logo. Default 19pt (was
     /// headline 17pt semibold); the small layout passes 17pt
-    /// (was subheadline 15pt semibold). Build 69 (owner, Nov 24,
-    /// 2026 — the widget restyle): the wordmark goes back to the
-    /// LIGHT weight, matching the app's current wordmark
-    /// (build 68, item 17 — thinner and classier, everywhere
-    /// including the loading page and the confirmation popup).
-    private func wordmark(logoSize: CGFloat = 24, font: Font = .system(size: 19, weight: .light)) -> some View {
+    /// (was subheadline 15pt semibold). Build 75 (owner, Nov 25,
+    /// 2026 — audit): the wordmark is MEDIUM weight, matching
+    /// the app's current wordmark (40pt medium, build 74 logo
+    /// FINAL). The build-69 light weight (and the small layout's
+    /// black weight) no longer match the app.
+    private func wordmark(logoSize: CGFloat = 24, font: Font = .system(size: 19, weight: .medium)) -> some View {
         HStack(spacing: 6) {
             Image("AppLogo")
                 .resizable()
@@ -779,7 +779,7 @@ struct WidgetView: View {
                 // Build 54: the wordmark opens Home; the refresh
                 // button does NOT sit inside the link (it runs the
                 // sync intent in place).
-                wordmark(logoSize: 22, font: .system(size: 17, weight: .black))
+                wordmark(logoSize: 22, font: .system(size: 17, weight: .medium))
                     .widgetURL(homeURL)
                 Spacer()
                 refreshButton

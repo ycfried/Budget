@@ -18,13 +18,17 @@ import OnBudgetKit
 /// accessible name: merchant + amount + day + status + "— show
 /// detail".
 ///
-/// Detail panel: labelled rows Date (long) / Account / Status
+/// Detail: labelled rows Date (long) / Account / Status
 /// (plain grey text) / Source (plain grey text) (+ Refund Link row
 /// for refunds; + Amount row for refunded purchases, whose
 /// collapsed amount is struck through; + Type row, the bottom row
 /// — the kind in the Actions sheet's labels, build 65). Then the Actions button —
 /// one small tertiary button, only when the viewer has any action
-/// on that row. The bold merchant — amount header is gone (owner,
+/// on that row. Build 75 (owner, Nov 25, 2026): the detail is ONE
+/// card with the header — the rows flow directly under it, no inner
+/// panel box and no divider rows between them (the old inner box +
+/// dividers read as a listing with a dropdown, not one unit).
+/// The bold merchant — amount header is gone (owner,
 /// Nov 13, 2026): the collapsed row already says both, so
 /// repeating them here said the merchant and the price twice. No
 /// explainer sentences: the facts already say it.
@@ -248,135 +252,111 @@ public struct TransactionDetailView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Build 67 (owner, Nov 23, 2026): the detail rows sit
-            // on a proper panel — a muted background with hairline
-            // dividers between rows and a clearer label/value
-            // hierarchy — instead of loose rows on the plain
-            // background with small grey labels, which "look[ed]
-            // cheap and a bit hard to read". The Actions button
-            // sits inside the panel below the rows, as a compact
-            // solid-blue button (not full-width — the full-width
-            // one dominated the row and rendered oddly).
-            VStack(spacing: 0) {
-                // No Week row: the Date already says it (owner,
-                // Nov 12, 2026). Status and Source render as plain
-                // grey text (build 42, owner Nov 17, 2026 —
-                // Version A): no pills, no tint, no background.
-                // The source lives ONLY here — never on the
-                // collapsed row.
-                detailRow(label: "Date", value: TransactionFormatting.fmtLong(transaction.date))
-                Divider()
-                detailRow(label: "Account", value: TransactionFormatting.cardLabel(for: transaction))
-                Divider()
-                // Build 53 (owner, Nov 21, 2026): the status IS
-                // "Refunded" here too — it replaces
-                // "Pending"/"Posted", in the same visible blue as
-                // the collapsed row.
-                detailRow(label: "Status") {
-                    if isRefunded {
-                        Text("Refunded")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(DesignTokens.primary)
-                    } else {
-                        Text(TransactionFormatting.stateWord(for: transaction))
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(DesignTokens.muted)
-                    }
-                }
-                Divider()
-                // Build 53 (owner, Nov 21, 2026): the collapsed
-                // amount is struck through for a refunded purchase,
-                // so the expanded detail restores the plain original
-                // amount. The Nov 13 rule (no amount in the detail
-                // — the collapsed row already says it) does not
-                // apply here, because a struck-through amount is
-                // not a readable value.
+        // Build 75 (owner, Nov 25, 2026): ONE card — the detail
+        // rows flow directly under the header in the row's own
+        // card, with no inner panel box and no divider rows
+        // between them. The old inner white box (hairline outline,
+        // cornerRadius 10) + Dividers read as a listing with a
+        // dropdown inside the row, not one unit. Same info, same
+        // actions, same row order — only the box and the lines
+        // are gone, so header + details read as a single card.
+        VStack(alignment: .leading, spacing: 0) {
+            // No Week row: the Date already says it (owner,
+            // Nov 12, 2026). Status and Source render as plain
+            // grey text (build 42, owner Nov 17, 2026 —
+            // Version A): no pills, no tint, no background.
+            // The source lives ONLY here — never on the
+            // collapsed row.
+            detailRow(label: "Date", value: TransactionFormatting.fmtLong(transaction.date))
+            detailRow(label: "Account", value: TransactionFormatting.cardLabel(for: transaction))
+            // Build 53 (owner, Nov 21, 2026): the status IS
+            // "Refunded" here too — it replaces
+            // "Pending"/"Posted", in the same visible blue as
+            // the collapsed row.
+            detailRow(label: "Status") {
                 if isRefunded {
-                    detailRow(label: "Amount", value: TransactionFormatting.amountDisplay(for: transaction).text)
-                    Divider()
-                }
-                detailRow(label: "Source") {
-                    Text(TransactionFormatting.sourceLabel(for: transaction.source))
+                    Text("Refunded")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                } else {
+                    Text(TransactionFormatting.stateWord(for: transaction))
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(DesignTokens.muted)
                 }
-                Divider()
-                if transaction.kind == .refund {
-                    detailRow(
-                        label: "Refund Link",
-                        value: transaction.originalPurchaseId != nil
-                            ? "Linked to a purchase"
-                            : "Not linked to a purchase yet"
-                    )
-                    Divider()
-                }
-                // Type row (build 65, owner Nov 23, 2026): the
-                // bottom row, below Source — the kind, in the
-                // Actions sheet's own labels (`typeLabel`:
-                // Purchase / Refund / Fund Charge / Transfer /
-                // Payment / Cashback / Income / Tzedaka / Other).
-                // For transfers the value keeps the old transfer
-                // detail ("Transfer to ••5939" when the other
-                // account's digits are derivable, else bare
-                // "Transfer" — never a dangling "Transfer to"
-                // with no destination, build 50, owner Nov 20,
-                // 2026): that used to be the only Type row, and
-                // the direction is part of what the detail says.
-                // One Type row only — never two.
-                detailRow(
-                    label: "Type",
-                    value: transaction.kind == .transfer
-                        ? TransactionFormatting.transferDetailText(for: transaction)
-                        : TransactionFormatting.typeLabel(for: transaction)
-                )
-                Divider()
-                // Build 70 (owner, Nov 24, 2026): the floating
-                // "Actions" button is GONE — it looked lost and
-                // out of place in the panel, and the full-width
-                // button was tried before and wasn't nice. The
-                // panel's LAST row is "Edit" (matching the Date /
-                // Account / Status / Source / Type rows), and a
-                // tappable "Actions" with a chevron spans the row
-                // — the whole row opens the Actions sheet. The
-                // row reads as clearly tappable (brand-blue
-                // "Actions" + chevron, like a navigation row),
-                // not as a button floating in the panel.
-                if hasActions {
-                    Button(action: onActions) {
-                        HStack {
-                            Text("Edit")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Color(hex: "#475569"))
-                            Spacer()
-                            Text("Actions")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(DesignTokens.primary)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(DesignTokens.primary)
-                        }
-                        .padding(.vertical, 9)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Edit transaction — open actions")
-                }
             }
-            // Build 68 (owner, Nov 23, 2026 — item 1): the panel
-            // blends with the card — the list card is white, so the
-            // panel is white too, with only a hairline outline to
-            // hold its shape. The old #f8fafc fill read as a
-            // separate grey box inside the white card. Dividers
-            // and structure are unchanged.
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            .background(.white)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color(hex: "#eef0f3"), lineWidth: 1)
+            // Build 53 (owner, Nov 21, 2026): the collapsed
+            // amount is struck through for a refunded purchase,
+            // so the expanded detail restores the plain original
+            // amount. The Nov 13 rule (no amount in the detail
+            // — the collapsed row already says it) does not
+            // apply here, because a struck-through amount is
+            // not a readable value.
+            if isRefunded {
+                detailRow(label: "Amount", value: TransactionFormatting.amountDisplay(for: transaction).text)
+            }
+            detailRow(label: "Source") {
+                Text(TransactionFormatting.sourceLabel(for: transaction.source))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(DesignTokens.muted)
+            }
+            if transaction.kind == .refund {
+                detailRow(
+                    label: "Refund Link",
+                    value: transaction.originalPurchaseId != nil
+                        ? "Linked to a purchase"
+                        : "Not linked to a purchase yet"
+                )
+            }
+            // Type row (build 65, owner Nov 23, 2026): the
+            // bottom row, below Source — the kind, in the
+            // Actions sheet's own labels (`typeLabel`:
+            // Purchase / Refund / Fund Charge / Transfer /
+            // Payment / Cashback / Income / Tzedaka / Other).
+            // For transfers the value keeps the old transfer
+            // detail ("Transfer to ••5939" when the other
+            // account's digits are derivable, else bare
+            // "Transfer" — never a dangling "Transfer to"
+            // with no destination, build 50, owner Nov 20,
+            // 2026): that used to be the only Type row, and
+            // the direction is part of what the detail says.
+            // One Type row only — never two.
+            detailRow(
+                label: "Type",
+                value: transaction.kind == .transfer
+                    ? TransactionFormatting.transferDetailText(for: transaction)
+                    : TransactionFormatting.typeLabel(for: transaction)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            // Build 70 (owner, Nov 24, 2026): the floating
+            // "Actions" button is GONE — it looked lost and
+            // out of place in the panel, and the full-width
+            // button was tried before and wasn't nice. The
+            // panel's LAST row is "Edit" (matching the Date /
+            // Account / Status / Source / Type rows), and a
+            // tappable "Actions" with a chevron spans the row
+            // — the whole row opens the Actions sheet. The
+            // row reads as clearly tappable (brand-blue
+            // "Actions" + chevron, like a navigation row),
+            // not as a button floating in the panel.
+            if hasActions {
+                Button(action: onActions) {
+                    HStack {
+                        Text("Edit")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color(hex: "#475569"))
+                        Spacer()
+                        Text("Actions")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                    }
+                    .padding(.vertical, 9)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit transaction — open actions")
+            }
         }
     }
 

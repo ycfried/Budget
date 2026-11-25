@@ -182,43 +182,6 @@ public struct TransactionExportView: View {
                         filterSection
                         formatSection
                         statusSection
-                        // Build 70, item 5 (owner, Nov 24, 2026):
-                        // the Cancel button is gone — the SheetHeader
-                        // X + swipe-right dismiss without exporting,
-                        // so Cancel was a third redundant way out.
-                        Button(format == .pdf ? "Preview PDF" : "Export as CSV") { generate() }
-                            .buttonStyle(PrimaryButtonStyle())
-                            .accessibilityIdentifier("export.generate")
-                            // A min-above-max range disables
-                            // Generate the same way the list's
-                            // Filters sheet disables Apply —
-                            // the error box above already says
-                            // why. Build 74 (B7): dimmed to 0.6
-                            // while disabled (the Funds pattern).
-                            .disabled(draftAmountInvalid)
-                            .opacity(draftAmountInvalid ? 0.6 : 1.0)
-                        // Clear Filters is a real button (owner, Nov
-                        // 14, 2026 — a plain grey link under the
-                        // buttons did not read as tappable).
-                        // Full-width outline, below the Generate /
-                        // Cancel row — a third button in a different
-                        // treatment, so no two adjacent buttons
-                        // share a colour. Build 68 (item 21): it
-                        // resets every Filter By control to "All"
-                        // (all kinds, all dates, all cards, no
-                        // min/max), so a fresh filter can be built.
-                        Button("Clear Filters") { clearDraftFilters() }
-                            .buttonStyle(OutlineButtonStyle())
-                            .accessibilityIdentifier("export.filter.clear")
-                        // Progress, inline: the Generate button is
-                        // never greyed out — a duplicate tap while a
-                        // file is being built is ignored instead.
-                        if isGenerating {
-                            Text("Preparing your file…")
-                                .font(.system(size: 13))
-                                .foregroundStyle(Color(hex: "#6b7280"))
-                                .frame(maxWidth: .infinity, alignment: .center)
-                        }
                     }
                     .padding()
                 }
@@ -226,6 +189,52 @@ public struct TransactionExportView: View {
                 // the number pad has no return key, so Done + drag
                 // are the two ways out (owner, Nov 13, 2026).
                 .scrollDismissesKeyboard(.interactively)
+                // Build 75 (F-10): the action bar is pinned below
+                // the scrolling sections, so Generate + Clear
+                // Filters are always reachable — they used to sit
+                // inside the ScrollView at the bottom, past the
+                // sections.
+                VStack(alignment: .leading, spacing: 12) {
+                    Divider()
+                    // Build 70, item 5 (owner, Nov 24, 2026):
+                    // the Cancel button is gone — the SheetHeader
+                    // X + swipe-right dismiss without exporting,
+                    // so Cancel was a third redundant way out.
+                    Button(format == .pdf ? "Preview PDF" : "Export as CSV") { generate() }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .accessibilityIdentifier("export.generate")
+                        // A min-above-max range disables
+                        // Generate the same way the list's
+                        // Filters sheet disables Apply —
+                        // the error box above already says
+                        // why. Build 74 (B7): dimmed to 0.6
+                        // while disabled (the Funds pattern).
+                        .disabled(draftAmountInvalid)
+                        .opacity(draftAmountInvalid ? 0.6 : 1.0)
+                    // Clear Filters is a real button (owner, Nov
+                    // 14, 2026 — a plain grey link under the
+                    // buttons did not read as tappable).
+                    // Full-width outline, below the Generate /
+                    // Cancel row — a third button in a different
+                    // treatment, so no two adjacent buttons
+                    // share a colour. Build 68 (item 21): it
+                    // resets every Filter By control to "All"
+                    // (all kinds, all dates, all cards, no
+                    // min/max), so a fresh filter can be built.
+                    Button("Clear Filters") { clearDraftFilters() }
+                        .buttonStyle(OutlineButtonStyle())
+                        .accessibilityIdentifier("export.filter.clear")
+                    // Progress, inline: the Generate button is
+                    // never greyed out — a duplicate tap while a
+                    // file is being built is ignored instead.
+                    if isGenerating {
+                        Text("Preparing your file…")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(hex: "#6b7280"))
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                }
+                .padding()
             }
             .frame(width: horizontalSizeClass == .regular ? 600 : nil)
             .accessibilityIdentifier("export.popup")

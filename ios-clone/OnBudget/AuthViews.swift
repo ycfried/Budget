@@ -410,9 +410,9 @@ public struct AuthView: View {
                 // Account created and signed in: remember the email
                 // exactly as a password sign-in would (owner, Nov 12,
                 // 2026) — the next sign-in screen pre-fills it.
-                // (With email confirmation ON, this does not run at
-                // creation; the email is saved at the sign-in after
-                // confirming instead.)
+                // Email confirmation is OFF (owner, Nov 24, 2026),
+                // so sign-up signs in directly and this always
+                // runs at creation.
                 if rememberMe {
                     RememberedEmail().save(email)
                 } else {
@@ -538,10 +538,10 @@ public struct AuthView: View {
 /// `shortMemberName` helper, so the Members list can show the
 /// "First L." form (item 10) without ever storing a full last name
 /// as the display name. Same `signUp` call as before — only the
-/// derived string changes. Email confirmation is ON in the live
-/// project (owner, Nov 12,
-/// 2026), so sign-up returns `.needsConfirmation` and this step shows
-/// the persistent "check your email" state instead of a toast.
+/// derived string changes. Email confirmation is OFF (owner,
+/// Nov 24, 2026), so sign-up signs in directly — there is no
+/// "check your email" step (build 75 removed the dead
+/// confirmation branch and its stale ON comments).
 public struct NameStepView: View {
     let email: String
     let password: String
@@ -553,11 +553,6 @@ public struct NameStepView: View {
     @State private var lastName = ""
     @State private var message: String?
     @State private var busy = false
-    /// Set when sign-up returns `.needsConfirmation` (owner, Nov 12,
-    /// 2026: confirmations are ON). The step then shows the persistent
-    /// "check your email" state instead of a toast that vanishes in
-    /// 4s (audit F-P2-10) — the user must see it until they act.
-    @State private var confirmationSent = false
 
     public init(email: String, password: String, onBack: @escaping () -> Void, onCreated: @escaping () -> Void) {
         self.email = email
@@ -575,21 +570,7 @@ public struct NameStepView: View {
                 BackButton(action: onBack)
                 Spacer()
             }
-            if confirmationSent {
-                Text("Check Your Email")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(DesignTokens.ink)
-                // Inline success is GREEN (owner decision, Nov 12,
-                // 2026), like the success toasts — not the blue InfoBox.
-                SuccessBox("Account created. Check your email to confirm it, then sign in.")
-                Text("The confirmation link opens the STAGE app. If it doesn't open, tap it on the iPhone or iPad where STAGE is installed — the email is confirmed either way, then just sign in.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color(hex: "#6b7280"))
-                Button("Back to Sign In") { onBack() }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .accessibilityIdentifier("auth.backToSignIn")
-            } else {
-                Text("Choose Your Name")
+            Text("Choose Your Name")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
                 FieldLabel("First Name", required: true, weight: .bold)
@@ -619,7 +600,6 @@ public struct NameStepView: View {
                     .buttonStyle(PrimaryButtonStyle())
                     .accessibilityIdentifier("auth.createAccountConfirm")
                     .disabled(busy)
-            }
         }
     }
 
@@ -666,11 +646,16 @@ public struct NameStepView: View {
             case .signedIn:
                 onCreated()
             case .needsConfirmation:
-                // Persistent inline state (owner, Nov 12, 2026): the
-                // user stays on this step until they act — no toast,
-                // no jump back to sign-in. The confirmation link
-                // opens the app via onbudget://email-confirmed.
-                confirmationSent = true
+                // Email confirmation is OFF (owner, Nov 24, 2026),
+                // so the server auto-confirms and this case is
+                // unreachable in practice — but the client API
+                // still defines it, so it stays explicit rather
+                // than a default. If it ever fired, the user is
+                // not signed in, so stay on this step with the
+                // next step in the inline message box (the old
+                // persistent "Check Your Email" screen is gone —
+                // build 75 removed it as dead code).
+                message = "Check your email to confirm it, then sign in."
             }
         } catch let error as OnBudgetError {
             // The server's already-registered error surfaces HERE, at
@@ -719,17 +704,12 @@ public struct ForgotPasswordSheet: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Button(sent ? "Done" : "Cancel") { dismiss() }
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(DesignTokens.mid)
-                    .disabled(busy)
-                Spacer()
-                Text("Forgot Password?")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Color.clear.frame(width: 50)
-            }
+            // Build 75 (B10): the standard SheetHeader — X top
+            // left, Title Case title centred — instead of the
+            // custom Done/Cancel text button + title row. The
+            // swipe-right-to-dismiss comes from SheetHeader too
+            // (the explicit .sheetSwipeBack() below is gone).
+            SheetHeader(title: "Forgot Password?", onClose: { dismiss() })
             if sent {
                 Text("Check Your Email")
                     .font(.system(size: 22, weight: .bold))
@@ -797,11 +777,6 @@ public struct ForgotPasswordSheet: View {
         // Spacer is gone: it stretched the middle empty against
         // the tall form sheet.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
-        // dismisses the cover, matching the top-left Done /
-        // Cancel button. (No SheetHeader here, so the gesture
-        // does not come from there.)
-        .sheetSwipeBack()
     }
 
     /// One step row: bold "Step N:" + short text. Used by the

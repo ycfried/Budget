@@ -1087,6 +1087,12 @@ public struct AppConfirmDialog: View {
             }
         }
         .presentationBackground(.clear)
+        // Build 75 (audit — back+swipe gap): swipe-right
+        // dismisses the dialog, matching the Cancel button.
+        // No back button is added: the Cancel button is the
+        // dialog's dismiss control, and an X would duplicate
+        // it on a small card — see BUILD75-AUDIT.md.
+        .sheetSwipeBack()
     }
 
     private var card: some View {

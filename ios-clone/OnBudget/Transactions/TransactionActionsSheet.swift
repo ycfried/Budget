@@ -359,7 +359,7 @@ public struct TransactionActionsSheet: View {
         case .cashback: return "Count it as cash back"
         case .income: return "Count it as money in"
         case .charity: return "Count it as a charity gift"
-        case .expense: return "Count it as a recurring living cost, out of weekly spending"
+        case .expense: return "Count it as a recurring living cost"
         case .other: return "Count it as something else"
         }
     }
@@ -368,8 +368,10 @@ public struct TransactionActionsSheet: View {
     /// sections — "How It Counts" (the math-driving reclassifies
     /// and Link), "Savings" (Cover with Savings + Add to
     /// Savings — the two fund actions no longer sit adjacent
-    /// inside one seven-row group), and the rest (Exclude,
-    /// Delete). The split is by action id, so the per-kind tables
+    /// inside one seven-row group), and "Remove" (Exclude +
+    /// Delete, build 75 — their own subheader, so the destructive
+    /// rows read as their own group instead of a continuation).
+    /// The split is by action id, so the per-kind tables
     /// in `actionGroups` stay as they were; only the grouping
     /// changes. A group with a label renders a small section
     /// header above its rows (see `listContent`); the counting
@@ -387,7 +389,7 @@ public struct TransactionActionsSheet: View {
         var groups: [ActionGroup] = []
         if !counting.isEmpty { groups.append(ActionGroup(label: nil, actions: counting)) }
         if !savings.isEmpty { groups.append(ActionGroup(label: "Savings", actions: savings)) }
-        if !rest.isEmpty { groups.append(ActionGroup(label: nil, actions: rest)) }
+        if !rest.isEmpty { groups.append(ActionGroup(label: "Remove", actions: rest)) }
         if !more.isEmpty { groups.append(ActionGroup(label: nil, actions: more, isMore: true)) }
         return groups
     }
@@ -396,7 +398,7 @@ public struct TransactionActionsSheet: View {
         let isVerified = transaction.state == .verified
         let charitySubline = isVerified
             ? "Counts it as a charity gift, out of weekly spending"
-            : "Counts as a charity gift once it posts"
+            : "Counts as a charity gift"
         let deleteSubline = transaction.source == .manual
             ? "Permanently deletes this hand-entered row"
             : "Moves this row to the Trash"
@@ -406,7 +408,7 @@ public struct TransactionActionsSheet: View {
         // with Savings and Add to Savings were muted/slate before;
         // Tzedaka was primary blue; Link to Purchase was deep
         // blue — all ink now.)
-        let rename = SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere, and remember it", colorHex: DesignTokens.inkHex, icon: "pencil")
+        let rename = SheetAction(id: .rename, label: "Rename Merchant", subline: "Rename this merchant everywhere", colorHex: DesignTokens.inkHex, icon: "pencil")
         let delete = SheetAction(id: .delete, label: "Delete", subline: deleteSubline, colorHex: DesignTokens.errorTextHex, icon: "trash")
         let exclude = SheetAction(id: .exclude, label: "Exclude", subline: "Takes it out of the spending math", colorHex: DesignTokens.inkHex, icon: "eye.slash")
         // Build 54 (owner, Nov 21, 2026): the owner renamed "Pay
@@ -558,21 +560,70 @@ public struct TransactionActionsSheet: View {
 
     // MARK: - Body
 
-    /// Build 64 (C-4): the merchant + amount summary header —
-    /// the same line the list flow shows above its rows — at the
-    /// top of EVERY sub-flow, so a short confirm never ends at
-    /// 1/4 screen with no context for what it is confirming.
-    private var summaryHeader: some View {
+    /// Build 75 (owner, Nov 25, 2026 — Actions sheet header):
+    /// the merchant + amount IS the header — icon + name +
+    /// amount as ONE unit, the amount directly beside the name
+    /// (never stranded in the far corner), X to close at top
+    /// left (the same 44pt tap target as SheetHeader's X).
+    /// The swipe-right-to-dismiss comes from here (the list
+    /// flow no longer uses SheetHeader, which used to supply
+    /// it) — swipe behaves exactly like the X.
+    private var listHeader: some View {
         let amount = TransactionFormatting.amountDisplay(for: transaction)
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(spacing: 10) {
+                Button(action: { onDismiss() }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.mid)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+                TransactionIconView(
+                    merchant: transaction.merchant,
+                    isBankRow: transaction.kind == .transfer || transaction.kind == .payment,
+                    size: 34
+                )
                 Text(TransactionFormatting.displayMerchant(transaction.merchant))
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
-                Spacer()
+                    .lineLimit(1)
                 Text(amount.text)
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(amount.color)
+                Spacer()
+            }
+            Divider()
+                .padding(.top, 12)
+        }
+        .sheetSwipeBack()
+    }
+
+    /// Build 64 (C-4): the merchant + amount summary header —
+    /// at the top of EVERY sub-flow, so a short confirm never
+    /// ends at 1/4 screen with no context for what it is
+    /// confirming. Build 75: the same compact unit as the list
+    /// header — icon + name + amount together, amount beside
+    /// the name, never stranded in the far corner.
+    private var summaryHeader: some View {
+        let amount = TransactionFormatting.amountDisplay(for: transaction)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                TransactionIconView(
+                    merchant: transaction.merchant,
+                    isBankRow: transaction.kind == .transfer || transaction.kind == .payment,
+                    size: 34
+                )
+                Text(TransactionFormatting.displayMerchant(transaction.merchant))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+                    .lineLimit(1)
+                Text(amount.text)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(amount.color)
+                Spacer()
             }
             Divider()
                 .padding(.top, 12)
@@ -625,11 +676,22 @@ public struct TransactionActionsSheet: View {
         // Build 64 (C-4): fitted detents (see `sheetDetents`) —
         // the cover is a sheet now, not full-screen.
         VStack(alignment: .leading, spacing: 16) {
-            SheetHeader(
-                title: flowTitle,
-                onClose: { onDismiss() },
-                onBack: flow == .list ? nil : { flow = .list }
-            )
+            if flow == .list {
+                // Build 75 (owner, Nov 25, 2026 — Actions sheet
+                // header): the merchant + amount IS the header —
+                // icon + name + amount as ONE unit, the amount
+                // directly beside the name (never stranded in
+                // the far corner), X to close at top left. The
+                // old stretched "AMAZON … $5.30" row and the
+                // "Actions" title are gone.
+                listHeader
+            } else {
+                SheetHeader(
+                    title: flowTitle,
+                    onClose: { onDismiss() },
+                    onBack: { flow = .list }
+                )
+            }
             // Build 74 (owner, Nov 24, 2026 — popup sizing):
             // the flows are unbounded (the list grows with More
             // expanded; link candidates can be many rows) but
@@ -721,22 +783,10 @@ public struct TransactionActionsSheet: View {
 
     private var listContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Build 54: the merchant + amount line is obvious —
-            // bold merchant, bold amount in the transaction's
-            // colour, with a Divider below it separating the
-            // header from the action rows (the old muted
-            // "Merchant — $X" subline read as a caption).
-            let amount = TransactionFormatting.amountDisplay(for: transaction)
-            HStack(alignment: .firstTextBaseline) {
-                Text(TransactionFormatting.displayMerchant(transaction.merchant))
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(DesignTokens.ink)
-                Spacer()
-                Text(amount.text)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(amount.color)
-            }
-            Divider()
+            // Build 75: the merchant + amount now lives in the
+            // pinned list header above (one unit, amount beside
+            // the name) — the old stretched row + Divider here
+            // are gone.
             // Build 54: Group 1 ("How It Counts") renders always;
             // Group 2 ("More") renders behind a disclosure row
             // that expands inline. The sheet opens showing only
@@ -782,25 +832,31 @@ public struct TransactionActionsSheet: View {
                     // their own group instead of a continuation of
                     // the counting rows. The counting group keeps
                     // the flat build-63 look with no header.
-                    if let label = group.label {
-                        Text(label)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color(hex: "#6b7280"))
-                    }
+                    // Build 75: a labelled group (Savings / Remove)
+                    // keeps its header tight to its rows (6pt) —
+                    // the old 16pt (the list's own spacing) left a
+                    // dead gap under the subheader.
                     let mainActions = group.actions.filter { $0.id != .delete }
                     let deleteActions = group.actions.filter { $0.id == .delete }
-                    VStack(spacing: 0) {
-                        ForEach(mainActions) { action in
-                            actionRow(action)
-                            if action.id != mainActions.last?.id {
-                                Divider()
-                            }
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let label = group.label {
+                            Text(label)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(hex: "#6b7280"))
                         }
-                        if !deleteActions.isEmpty {
-                            Divider()
-                                .padding(.top, 12)
-                            ForEach(deleteActions) { action in
+                        VStack(spacing: 0) {
+                            ForEach(mainActions) { action in
                                 actionRow(action)
+                                if action.id != mainActions.last?.id {
+                                    Divider()
+                                }
+                            }
+                            if !deleteActions.isEmpty {
+                                Divider()
+                                    .padding(.top, 12)
+                                ForEach(deleteActions) { action in
+                                    actionRow(action)
+                                }
                             }
                         }
                     }
