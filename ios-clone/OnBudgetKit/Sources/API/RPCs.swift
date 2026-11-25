@@ -822,6 +822,14 @@ extension RPCClient {
 // MARK: - Household & members
 
 extension RPCClient {
+    /// `create_household(p_name)` — the ONLY path to admin; on success
+    /// the client sets membership directly (it does NOT re-read
+    /// membership). Restored Nov 24, 2026: the owner removed the
+    /// invite-only block on household creation.
+    public func createHousehold(pName: String) async throws -> UUID {
+        try await callScalar(name: "create_household", params: ["p_name": pName])
+    }
+
     /// `join_household_by_code(code)` (`n13-invite-rate-limit.sql:90-142`).
     /// Returns the household id, or nil when the code is invalid (the
     /// function logs the failed attempt and returns NULL instead of
