@@ -374,7 +374,10 @@ public struct TransactionsView: View {
         }
         if let jump = appState.pendingTransactionJump {
             appState.pendingTransactionJump = nil
-            viewModel.applyTransactionJump(jump)
+            // Build 77: the jump is async — it reloads the full
+            // list when the row is not in the loaded page (e.g.
+            // after viewing a past week), then expands it.
+            Task { await viewModel.applyTransactionJump(jump) }
         }
         if appState.pendingClearTransactionFilters {
             appState.pendingClearTransactionFilters = false

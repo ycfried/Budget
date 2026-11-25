@@ -676,14 +676,43 @@ public final class TransactionsViewModel {
 
     /// Recent-row jump (live.js:1040-1110): clear search/filters
     /// first, then expand the row — when it is in the loaded page.
-    /// Otherwise the shell's exact toast: the row is not loaded yet.
-    public func applyTransactionJump(_ id: UUID) {
+    /// Build 77 (owner, Nov 25, 2026): if it is NOT in the loaded
+    /// page, do NOT give up with a toast. The common case is the
+    /// user was viewing a past week, so the loaded page holds only
+    /// that week's rows — the tapped row (e.g. a Recent
+    /// Transaction from another week) is not in it. Reload the
+    /// full unfiltered list — first page, then Load More as
+    /// needed, bounded — and expand the row when it turns up.
+    /// Only if it genuinely cannot be found after loading does
+    /// the toast appear.
+    public func applyTransactionJump(_ id: UUID) async {
         clearSearchAndFilters()
         if loadedPage.contains(where: { $0.id == id }) {
             expandedTransactionId = id
-        } else {
-            confirm("That transaction is not in the loaded list — tap Load more for older ones.", kind: .info)
+            return
         }
+        // Not in the loaded page: refetch the full unfiltered
+        // list (filters are cleared and week/tzedaka mode is off,
+        // so load() takes the normal path — the most recent page
+        // first).
+        await load()
+        if loadedPage.contains(where: { $0.id == id }) {
+            expandedTransactionId = id
+            return
+        }
+        // Still not found — it is older than the first page. Keep
+        // loading more pages (bounded, like the auto-fill) until
+        // it turns up or there is nothing left to load.
+        var pagesFetched = 0
+        while hasMore, pagesFetched < 8 {
+            await loadMore()
+            pagesFetched += 1
+            if loadedPage.contains(where: { $0.id == id }) {
+                expandedTransactionId = id
+                return
+            }
+        }
+        confirm("That transaction is not in the loaded list — tap Load more for older ones.", kind: .info)
     }
 
     /// Apply a filter change (status / month / card / week / dates /

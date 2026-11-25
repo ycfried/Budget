@@ -95,7 +95,9 @@ public enum DesignTokens {
 
     // MARK: - Success green (owner rule, Nov 11 2026: success toasts
     // are GREEN, not blue — native only; the web app keeps brand-blue
-    // toasts. Info toasts stay brand blue. Owner, Nov 14, 2026: the
+    // toasts. Info toasts were brand blue until build 77 (owner,
+    // Nov 25, 2026): they are soft light blue now, same soft-tint
+    // style as the green and red toasts. Owner, Nov 14, 2026: the
     // green was too dark — #16a34a → #22c55e, lighter and brighter,
     // white text still readable on banners. Charity keeps its own
     // deeper green below (charityHex) — the card outline does NOT
@@ -112,6 +114,15 @@ public enum DesignTokens {
     // green (successHex) does NOT move — only the toast does.
     public static let toastSuccessBackgroundHex = "#dcfce7"
     public static let toastSuccessTextHex = "#166534"
+
+    // Toast info colours (owner, Nov 25, 2026 — build 77): the info
+    // toast used to be a solid brand-blue bar (#2f6bff) with white
+    // text, which did not match the soft-tint success/error toasts.
+    // Info toasts now use the same soft-tint treatment: light blue
+    // background #dbeafe with dark blue text #1d4ed8 (the Income
+    // deep blue).
+    public static let toastInfoBackgroundHex = "#dbeafe"
+    public static let toastInfoTextHex = "#1d4ed8"
 
     // MARK: - Stat-card deep colours (owner direction, Nov 12 2026,
     // corrected ~2:02 PM the same day: the Home/Funds Charity +

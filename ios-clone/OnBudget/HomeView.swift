@@ -2916,10 +2916,11 @@ private struct HomeCardSkeletonBody: View {
         return Button {
             // Tapping a row jumps to Transactions and expands that
             // row's detail (filters/search cleared first, by the
-            // Transactions screen when it consumes the jump). If the
-            // row is not in the loaded page, that screen toasts:
-            // "That transaction is not in the loaded list — tap Load
-            // more for older ones."
+            // Transactions screen when it consumes the jump). Build
+            // 77: if the row is not in the loaded page (e.g. the
+            // user was viewing a past week), the jump reloads the
+            // full list and expands it — it no longer gives up
+            // with a "not in the loaded list" toast.
             appState.jumpToTransaction(row.id)
         } label: {
             HStack(spacing: 12) {

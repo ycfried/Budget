@@ -6,9 +6,11 @@ import Foundation
 /// forced to the bottom, never centered). A green check leads
 /// success, a red X leads errors; auto-dismiss 4s, tap anywhere
 /// else or the top-corner X closes early.
-/// Information messages stay brand blue; SUCCESS messages are GREEN
-/// (owner rule, Nov 11 2026 — native only, supersedes the web app's
-/// brand-blue success toasts; the web app stays blue); errors use the
+/// Information messages are SOFT LIGHT BLUE (owner, Nov 25, 2026 —
+/// build 77: the solid brand-blue bar did not match the soft-tint
+/// success/error toasts); SUCCESS messages are GREEN (owner rule,
+/// Nov 11 2026 — native only, supersedes the web app's brand-blue
+/// success toasts; the web app stays blue); errors use the
 /// soft-red palette in `DesignTokens` instead.
 /// Success toasts use the Posted status badge treatment (owner,
 /// Nov 15, 2026): light green background #dcfce7 with dark green
@@ -30,13 +32,13 @@ public enum ToastStyle {
         case error
     }
 
-    /// Toast background: brand primary blue for info, the Posted
+    /// Toast background: soft light blue for info, the Posted
     /// badge's light green for success, soft-red background for
     /// errors.
     public static func backgroundHex(for kind: Kind) -> String {
         switch kind {
         case .info:
-            return DesignTokens.primaryHex
+            return DesignTokens.toastInfoBackgroundHex
         case .success:
             return DesignTokens.toastSuccessBackgroundHex
         case .error:
@@ -44,12 +46,13 @@ public enum ToastStyle {
         }
     }
 
-    /// Toast text: white on blue, the Posted badge's dark green on
-    /// the light-green success background, dark red on soft-red.
+    /// Toast text: dark blue on the light-blue info background,
+    /// the Posted badge's dark green on the light-green success
+    /// background, dark red on soft-red.
     public static func textHex(for kind: Kind) -> String {
         switch kind {
         case .info:
-            return "#ffffff"
+            return DesignTokens.toastInfoTextHex
         case .success:
             return DesignTokens.toastSuccessTextHex
         case .error:
