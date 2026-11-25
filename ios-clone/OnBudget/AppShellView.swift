@@ -273,6 +273,14 @@ public struct AppShellView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
+        // Build 76 (owner, Nov 25, 2026 — "The bottom of the
+        // floating bar is not visible.."): the row had NO bottom
+        // padding, so the white card sat flush on the white page
+        // below and its soft shadow was painted over by the tab
+        // content — the bar read as cut off at the bottom. 12pt
+        // below gives the card's rounded bottom + shadow room to
+        // render, so it reads as a floating card.
+        .padding(.bottom, 12)
         .background(DesignTokens.background)
         .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
     }
