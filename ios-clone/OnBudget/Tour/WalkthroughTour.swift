@@ -11,14 +11,14 @@
 // list is the general ideal, not a checklist):
 //   1. Home — the one number (Spending), the star.
 //   2. Home — Charity card, tap to open (10% automatic).
-//   3. Charity rules — change the rate, or turn it off.
+//   3. Charity rules — change the rate (0% pauses giving).
 //   4. + Add.
 //   5. Transactions — the list.
 //   6. Transactions — open a row (see it, change it if it's wrong).
 //   7. Transactions — search and filters.
 //   8. Funds — the tab.
 //   9. Funds — Savings card (your cushion).
-//   10. Funds — Overspent (Past) card (pay it down).
+//   10. Funds — Debt card (pay it down).
 //   11. Close — "That's the app — you're set."
 // Cut (recorded in the plan file): sign-up / household / rules /
 // members (onboarding guides those), profile & settings
@@ -48,7 +48,8 @@ public enum TourAnchor: String, CaseIterable {
     case spendingHero
     /// Home — the Tzedaka card.
     case charityCard
-    /// Funds — the Charity rate editor (change the rate, turn it off).
+    /// Funds — the Charity rate editor (change the rate; 0%
+    /// pauses giving — there is no Off switch, 0% IS off).
     case charityRules
     /// Transactions — the + Add button.
     case addButton
@@ -60,7 +61,8 @@ public enum TourAnchor: String, CaseIterable {
     case searchBar
     /// Funds — the Savings card.
     case savingsCard
-    /// Funds — the Overspent (Past) card.
+    /// Funds — the Debt card (renamed from "Overspent (Past)"
+    /// in build 70).
     case debtCard
     /// The shell's PageSelectControl (Home / Transactions /
     /// Funds) — build 65, the single page select, rendered by
@@ -95,7 +97,7 @@ public enum TourStep: Int, CaseIterable {
         case .charityCard:
             return "This is set aside for giving — 10% of what comes in, automatically."
         case .charityRules:
-            return "You can change the rate, or turn it off."
+            return "You can change the rate — set it to 0% to pause giving."
         case .addButton:
             return "Tap here to add something you paid for."
         case .transactionsList:
@@ -109,7 +111,7 @@ public enum TourStep: Int, CaseIterable {
         case .savingsCard:
             return "Your cushion — add to it, or take from it."
         case .debtCard:
-            return "What you overspent before — pay it down here."
+            return "Your debt — pay it down here."
         case .close:
             return "That's the app — you're set."
         }
@@ -161,9 +163,9 @@ public enum TourStep: Int, CaseIterable {
 /// The walkthrough's live state, owned by `AppViewModel` (`appState.tour`)
 /// so Home, Transactions, Funds, the shell and Settings all read the
 /// same tour. Frames are reported by the anchor views; the overlay
-/// reads them. The "seen" flag is per user per household (UserDefaults),
-/// so a new family member on their own device gets the tour once, and
-/// a new household gets it once too.
+/// reads them. The "seen" flag is per household per device
+/// (UserDefaults), so a new family member on their own device gets
+/// the tour once, and a new household gets it once too.
 @MainActor
 public final class TourState: ObservableObject {
     @Published public var isActive = false
@@ -332,8 +334,8 @@ public struct TourOverlayView: View {
         GeometryReader { proxy in
             let size = proxy.size
             let step = tour.currentStep
-            let target = targetFrame(for: step, containerSize: size, tabBarHeight: tabBarHeight(proxy: proxy))
-            let cardTop = cardTopY(containerSize: size, target: target, tabBarHeight: tabBarHeight(proxy: proxy))
+            let target = targetFrame(for: step, containerSize: size)
+            let cardTop = cardTopY(containerSize: size, target: target, bottomInset: bottomInset(proxy: proxy))
             // Build 54 (owner, Nov 21, 2026): the tooltip card is
             // capped at 600pt and centred — on iPad the uncapped
             // `size.width - 32` made a ~788pt (portrait) / ~1148pt
@@ -384,9 +386,15 @@ public struct TourOverlayView: View {
         .ignoresSafeArea()
     }
 
-    /// The tab bar's height: 49pt + the bottom safe area.
-    private func tabBarHeight(proxy: GeometryProxy) -> CGFloat {
-        49 + proxy.safeAreaInsets.bottom
+    /// The bottom inset below the tab content: the bottom safe
+    /// area ONLY (build 74 — the old `tabBarHeight()` returned
+    /// 49 + safe area for a bottom tab bar that no longer exists;
+    /// build 65 replaced the TabView with the shell's
+    /// PageSelectControl at the TOP, so the Close card sat 49pt
+    /// too high, floating above the bottom with a dead gap, and
+    /// every near-bottom target lost 49pt of room below it).
+    private func bottomInset(proxy: GeometryProxy) -> CGFloat {
+        proxy.safeAreaInsets.bottom
     }
 
     /// The current step's target frame: the reported anchor frame.
@@ -396,7 +404,7 @@ public struct TourOverlayView: View {
     /// item from the container geometry — that branch is gone with
     /// the tab bar; the step now points at the shell's
     /// PageSelectControl via the `.pageSelect` anchor instead.
-    private func targetFrame(for step: TourStep, containerSize: CGSize, tabBarHeight: CGFloat) -> CGRect? {
+    private func targetFrame(for step: TourStep, containerSize: CGSize) -> CGRect? {
         if let anchor = step.anchor {
             return tour.frame(for: anchor)
         }
@@ -405,10 +413,11 @@ public struct TourOverlayView: View {
 
     /// The tooltip card's top edge: below the target when it fits
     /// there, else above the target, else clamped to the screen
-    /// (above the tab bar). No target → the bottom of the screen.
-    private func cardTopY(containerSize: CGSize, target: CGRect?, tabBarHeight: CGFloat) -> CGFloat {
+    /// (above the bottom safe area). No target → the bottom of the
+    /// screen.
+    private func cardTopY(containerSize: CGSize, target: CGRect?, bottomInset: CGFloat) -> CGFloat {
         let topSafe: CGFloat = 8
-        let bottomLimit = containerSize.height - tabBarHeight - 8
+        let bottomLimit = containerSize.height - bottomInset - 8
         guard let target else {
             return max(topSafe, bottomLimit - cardHeight)
         }
@@ -434,6 +443,19 @@ public struct TourOverlayView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(DesignTokens.muted)
                 Spacer()
+                // Build 74 (owner, Nov 24, 2026 — "the skip/x
+                // should work"): an explicit × close button beside
+                // the step count, the same dismiss as "Skip tour"
+                // below. There was no × before — only the quiet
+                // "Skip tour" text link — so a user looking for
+                // the close affordance had nothing to tap.
+                Button { skip() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundStyle(DesignTokens.muted)
+                .accessibilityLabel("Close tour")
+                .accessibilityIdentifier("tour.closeButton")
             }
             Text(step.line)
                 .font(.system(size: 16))
@@ -571,4 +593,16 @@ public struct TourOverlayView: View {
             appState.selectedTab = .home
         }
     }
+}
+
+/// Build 74: scrolls the current tour step's anchor into view —
+/// the tour's targets (the Funds rate editor, the Savings/Debt
+/// cards) can sit below the fold, where the cutout would point at
+/// nothing visible. Called from the tab's ScrollViewReader on
+/// step change; a no-op unless the tour is running on this tab.
+/// The anchored views carry the matching `.id(TourAnchor)` so
+/// `scrollTo` can find them.
+public func scrollTourAnchorIntoView(_ proxy: ScrollViewProxy, tour: TourState, tab: AppTab) {
+    guard tour.isActive, tour.currentStep.tab == tab, let anchor = tour.currentStep.anchor else { return }
+    withAnimation(.none) { proxy.scrollTo(anchor, anchor: .center) }
 }

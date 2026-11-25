@@ -749,6 +749,12 @@ private struct TwoColumnHeightKey: PreferenceKey {
 /// Only the presentation changes — the sheet content itself is
 /// untouched. The drag indicator + white background are the
 /// build-68 sheet standard (see item 6).
+/// Build 74 (owner, Nov 24, 2026 — popup sizing): on iPhone the
+/// cover content scrolls — the sheets have no ScrollView of their
+/// own, and on a short screen / large text the bottom "Show
+/// Transactions" button could be pushed off with no way to reach
+/// it. The iPad branch is untouched (a ScrollView would break the
+/// fitted sizing); swipe-right still dismisses on iPhone.
 private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
     @Binding var isPresented: Bool
     var isIPad: Bool
@@ -764,7 +770,9 @@ private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
             }
         } else {
             content.fullScreenCover(isPresented: $isPresented) {
-                sheetContent()
+                ScrollView {
+                    sheetContent()
+                }
             }
         }
     }
@@ -817,7 +825,11 @@ public struct HomeView: View {
     }
 
     public var body: some View {
-        ScrollView {
+        // Build 74 (tour): the ScrollViewReader lets the tour
+        // scroll its current target into view on step change
+        // (see scrollTourAnchorIntoView).
+        ScrollViewReader { proxy in
+            ScrollView {
             // Build 46 (owner, Nov 18, 2026 — the simpler-Home
             // mockup IS the new Home): the default layout is the
             // mockup — a Spending hero, Tzedaka as the clear second
@@ -886,6 +898,13 @@ public struct HomeView: View {
             }
             .padding(16)
         }
+        // Build 74 (tour): scroll the current step's target into
+        // view on step change — the rate editor and the fund
+        // cards can sit below the fold, where the cutout would
+        // point at nothing visible.
+        .onChange(of: appState.tour.stepIndex) { _, _ in
+            scrollTourAnchorIntoView(proxy, tour: appState.tour, tab: .home)
+        }
         .background(DesignTokens.background)
         // Build 36 (owner, Nov 16, 2026 — iPad): the tab reads as a
         // centered 900pt column on the regular size class (see
@@ -901,6 +920,7 @@ public struct HomeView: View {
             await viewModel.syncBankOnOpenIfDue()
         }
         .refreshable { await viewModel.refresh() }
+        }
         // Settings dismiss (audit H-P1-5): the Settings cover sits
         // over this tab and never re-ran the load, so a just-set
         // allowance still showed the old state. Refresh when the
@@ -1164,14 +1184,29 @@ public struct HomeView: View {
             ForEach(heroSections, id: \.self) { section in
                 if section == .spending {
                     heroCard(simple: true)
-                        .tourAnchor(.spendingHero, tour: appState.tour)
                         // Build 67: in the two-column row the card
                         // stretches to fill the column height, so
                         // both cards end up the same size.
                         .frame(maxHeight: useIPadTwoColumn ? .infinity : nil, alignment: .top)
+                        // Build 74 (tour): the anchor sits AFTER
+                        // the stretch frame, so it reports the
+                        // stretched card's real height — attached
+                        // inside the frame it reported the
+                        // unstretched content height and the
+                        // cutout came up short on iPad.
+                        .tourAnchor(.spendingHero, tour: appState.tour)
+                        .id(TourAnchor.spendingHero)
                 } else {
                     simpleFundCard(section: section, hero: true)
                         .frame(maxHeight: useIPadTwoColumn ? .infinity : nil, alignment: .top)
+                        // Build 74 (tour): same post-stretch anchor
+                        // as the Spending hero above.
+                        .tourAnchor(
+                            section == .charity ? .charityCard
+                                : (section == .spending ? .spendingHero : nil),
+                            tour: appState.tour
+                        )
+                        .id(section == .charity ? TourAnchor.charityCard : (section == .spending ? TourAnchor.spendingHero : nil))
                 }
             }
         }
@@ -1185,6 +1220,17 @@ public struct HomeView: View {
                     // stretches to fill the column height, so both
                     // cards end up the same size.
                     .frame(maxHeight: useIPadTwoColumn ? .infinity : nil, alignment: .top)
+                    // Build 74 (tour): the anchor sits AFTER the
+                    // stretch frame (it used to live inside
+                    // simpleFundCard, where it reported the
+                    // unstretched content height and the cutout
+                    // came up short on iPad).
+                    .tourAnchor(
+                        section == .charity ? .charityCard
+                            : (section == .spending ? .spendingHero : nil),
+                        tour: appState.tour
+                    )
+                    .id(section == .charity ? TourAnchor.charityCard : (section == .spending ? TourAnchor.spendingHero : nil))
             }
         }
     }
@@ -2061,19 +2107,22 @@ private struct HomeCardSkeletonBody: View {
                 appState.openFund(section)
             }
         }
-        .accessibilityIdentifier(section == .charity ? "home.tzedakaCard" : "home.simpleCard.\(section.rawValue)")
-        .accessibilityLabel(
-            simpleCardData(for: section).map { "\(name), \($0.amountText), show fund" } ?? "\(name), loading"
-        )
         // Walkthrough anchors (build 48): the Tzedaka card for the
         // charity step, and the Spending card for the one-number
         // step when Spending is a card rather than the hero (the
         // hero itself carries the anchor in simpleContent).
-        .tourAnchor(
-            section == .charity ? .charityCard
-                : (section == .spending ? .spendingHero : nil),
-            tour: appState.tour
+        // Build 74: the anchor itself moved OUT of here to the
+        // heroTier / cardTier call sites, AFTER the stretch frame
+        // — attached here it reported the unstretched content
+        // height and the cutout came up short on iPad. This
+        // comment stays so the next reader knows where it went.
+        .accessibilityIdentifier(section == .charity ? "home.tzedakaCard" : "home.simpleCard.\(section.rawValue)")
+        .accessibilityLabel(
+            simpleCardData(for: section).map { "\(name), \($0.amountText), show fund" } ?? "\(name), loading"
         )
+        // (Build 74: the tour anchor moved out — see the comment
+        // above the accessibilityIdentifier, and the heroTier /
+        // cardTier call sites.)
     }
 
     /// The Tzedaka ring fraction (build 47, owner Nov 19, 2026):

@@ -35,9 +35,9 @@ struct ContentView: View {
         // Nov 20, 2026 — build 50); no bottom anchoring, so
         // no tab-bar clearance any more.
         // Build 64 (C-5): disabled in the .app phase — AppShellView
-        // renders the same toast as the STAGE confirmation popup
-        // (shell root + inside covers), so leaving the root bars on
-        // would render every confirmation twice (old bars + popup).
+        // renders the same toast (shell root + inside covers), so
+        // leaving the root toast on would render every
+        // confirmation twice.
         .toastOverlay($appState.toast, enabled: appState.phase != .app)
     }
 }

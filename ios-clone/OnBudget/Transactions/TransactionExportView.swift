@@ -193,8 +193,10 @@ public struct TransactionExportView: View {
                             // Generate the same way the list's
                             // Filters sheet disables Apply —
                             // the error box above already says
-                            // why.
+                            // why. Build 74 (B7): dimmed to 0.6
+                            // while disabled (the Funds pattern).
                             .disabled(draftAmountInvalid)
+                            .opacity(draftAmountInvalid ? 0.6 : 1.0)
                         // Clear Filters is a real button (owner, Nov
                         // 14, 2026 — a plain grey link under the
                         // buttons did not read as tappable).
@@ -451,17 +453,11 @@ public struct TransactionExportView: View {
             Text("Format")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(DesignTokens.ink)
-            Picker("Format", selection: $format) {
-                Text("PDF").tag(TransactionExportFormat.pdf)
-                Text("CSV").tag(TransactionExportFormat.csv)
-            }
-            .pickerStyle(.segmented)
-            // Build 68 (item 20): the segmented control is 48pt
-            // tall with comfortable padding, so it feels
-            // substantial instead of thin and short.
-            .frame(minHeight: 48)
-            .padding(.vertical, 4)
-            .accessibilityIdentifier("export.format")
+            // Build 74 (B4): the Funds slider (SquarishPicker),
+            // not a segmented pill — 48pt tall, like the
+            // segmented control it replaces.
+            SquarishPicker([(TransactionExportFormat.pdf, "PDF"), (TransactionExportFormat.csv, "CSV")], selection: $format, minHeight: 48)
+                .accessibilityIdentifier("export.format")
             // Build 68 (item 14): the format sentence lives behind
             // a blue info icon now, not as inline text — the short
             // line beside it is all that stays visible.
@@ -496,7 +492,10 @@ public struct TransactionExportView: View {
             Button("Try Again") {
                 Task { await fetchAllRows() }
             }
-            .buttonStyle(OutlineButtonStyle())
+            // Build 74 (B20): every other "Try Again" is the grey
+            // tertiary — the blue outline here was the odd one out
+            // (and a second blue next to the blue primary).
+            .buttonStyle(TertiaryButtonStyle())
         } else if allRows == nil {
             // Shimmer skeletons shaped like the count line, no
             // spinner, no "Loading..." text (owner loading language).

@@ -160,16 +160,16 @@ public struct TrashView: View {
                 // .alert modifiers on one view fight. The exact
                 // owner-directed message; Confirm force-restores the
                 // row as verified, source='restored'.
-                .alert(item: $viewModel.pendingForceRestoreTransaction) { transaction in
-                    Alert(
-                        title: Text("Restore Transaction"),
-                        message: Text("The bank dropped this transaction. Restore it anyway?"),
-                        primaryButton: .default(Text("Restore Anyway")) {
+                .appConfirmDialog(item: $viewModel.pendingForceRestoreTransaction) { transaction in
+                    AppConfirmDialog.Config(
+                        title: "Restore Transaction",
+                        message: "The bank dropped this transaction. Restore it anyway?",
+                        primaryTitle: "Restore Anyway",
+                        onPrimary: {
                             Task {
                                 _ = await viewModel.forceRestore(transaction)
                             }
-                        },
-                        secondaryButton: .cancel()
+                        }
                     )
                 }
             }

@@ -600,51 +600,52 @@ struct ConnectedAccountsView: View {
             }
         }
         .task { await viewModel.load() }
-        // ONE alert for the whole screen (build 30 — same stacked
+        // ONE dialog for the whole screen (build 30 — same stacked
         // `.alert` collapse as the Members screen: only one of the
-        // four stacked modifiers ever fired).
-        .alert(item: $viewModel.alert) { alert in
+        // four stacked modifiers ever fired; build 74: the
+        // app-styled choice dialog, one modifier, one switch).
+        .appConfirmDialog(item: $viewModel.alert) { alert in
             switch alert {
             case .alreadyConnected(let lines):
-                return Alert(
-                    title: Text("Already Connected?"),
-                    message: Text("You already have \(lines.count == 1 ? "this bank connection" : "these bank connections"):\n\(lines.joined(separator: "\n"))\n\nConnecting the same account again will create a duplicate. You do not need to reconnect an account that is already syncing — only continue if you are connecting a different account."),
-                    primaryButton: .default(Text("Connect Anyway")) {
-                        Task { await viewModel.connectAnywayConfirmed() }
-                    },
-                    secondaryButton: .cancel()
+                return AppConfirmDialog.Config(
+                    title: "Already Connected?",
+                    message: "You already have \(lines.count == 1 ? "this bank connection" : "these bank connections"):\n\(lines.joined(separator: "\n"))\n\nConnecting the same account again will create a duplicate. You do not need to reconnect an account that is already syncing — only continue if you are connecting a different account.",
+                    primaryTitle: "Connect Anyway",
+                    onPrimary: { Task { await viewModel.connectAnywayConfirmed() } }
                 )
             case .disconnect(let row):
                 if row.account != nil {
                     let label = "\(row.displayName)\(row.account?.mask.map { " ••\($0)" } ?? "")"
-                    return Alert(
-                        title: Text("Disconnect Account"),
-                        message: Text("Disconnect \(label)? This stops syncing this account only. Other accounts on the same bank connection keep syncing. Past transactions stay in the list. To sync this account again later, reconnect the bank from the Bank Connection card."),
-                        primaryButton: .destructive(Text("Disconnect")) {
-                            Task { await viewModel.disconnectConfirmed(row) }
-                        },
-                        secondaryButton: .cancel()
+                    return AppConfirmDialog.Config(
+                        title: "Disconnect Account",
+                        message: "Disconnect \(label)? This stops syncing this account only. Other accounts on the same bank connection keep syncing. Past transactions stay in the list. To sync this account again later, reconnect the bank from the Bank Connection card.",
+                        primaryTitle: "Disconnect",
+                        tone: .destructive,
+                        onPrimary: { Task { await viewModel.disconnectConfirmed(row) } }
                     )
                 }
-                return Alert(
-                    title: Text("Disconnect Bank"),
-                    message: Text("Disconnect \(row.item.institutionName ?? "this bank")? The app will stop syncing this connection. Past transactions stay in the list."),
-                    primaryButton: .destructive(Text("Disconnect")) {
-                        Task { await viewModel.disconnectConfirmed(row) }
-                    },
-                    secondaryButton: .cancel()
+                return AppConfirmDialog.Config(
+                    title: "Disconnect Bank",
+                    message: "Disconnect \(row.item.institutionName ?? "this bank")? The app will stop syncing this connection. Past transactions stay in the list.",
+                    primaryTitle: "Disconnect",
+                    tone: .destructive,
+                    onPrimary: { Task { await viewModel.disconnectConfirmed(row) } }
                 )
             case .disconnectFailed:
-                return Alert(
-                    title: Text("Could Not Disconnect"),
-                    message: Text("Could not disconnect this account. Try again."),
-                    dismissButton: .cancel(Text("Close"))
+                return AppConfirmDialog.Config(
+                    title: "Could Not Disconnect",
+                    message: "Could not disconnect this account. Try again.",
+                    primaryTitle: "Close",
+                    secondaryTitle: nil,
+                    onPrimary: {}
                 )
             case .nicknameFailed:
-                return Alert(
-                    title: Text("Could Not Save Nickname"),
-                    message: Text("Could not save this nickname. Try again."),
-                    dismissButton: .cancel(Text("Close"))
+                return AppConfirmDialog.Config(
+                    title: "Could Not Save Nickname",
+                    message: "Could not save this nickname. Try again.",
+                    primaryTitle: "Close",
+                    secondaryTitle: nil,
+                    onPrimary: {}
                 )
             }
         }

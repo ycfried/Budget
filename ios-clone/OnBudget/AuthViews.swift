@@ -896,10 +896,11 @@ public struct ResetPasswordView: View {
                         // branded logo loader replaces ProgressView
                         // app-wide (owner, Nov 14, 2026).
                         VStack(spacing: 12) {
+                            // Build 74 (B6): the loader alone — the
+                            // "Checking your link…" line was the one
+                            // "Loading…" text left in Auth (the
+                            // branded ring already says it is working).
                             BrandedLoader(size: 40)
-                            Text("Checking your link…")
-                                .font(.system(size: 15))
-                                .foregroundStyle(Color(hex: "#6b7280"))
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)

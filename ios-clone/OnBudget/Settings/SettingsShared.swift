@@ -354,14 +354,15 @@ struct HistoryDateFilterCard: View {
             // Live-apply pages (General Activity) have no
             // Apply/Cancel: the range applies when the calendar
             // commits it, and Reset Filters below clears it.
+            // Build 74 (B9): the Cancel button is gone — the
+            // top-left Back button + swipe-right dismiss without
+            // applying, so Cancel was a third redundant way out
+            // (same removal as Filters, Export, Add, Actions,
+            // Merchant Names, Nickname, Approve, Top Up, Adjust
+            // Budget — build 70, item 5).
             if !liveApply {
-                TwoButtonRow {
-                    Button("Apply") { onApply() }
-                        .buttonStyle(PrimaryButtonStyle())
-                } secondary: {
-                    Button("Cancel") { cancelDrafts() }
-                        .buttonStyle(TertiaryButtonStyle())
-                }
+                Button("Apply") { onApply() }
+                    .buttonStyle(PrimaryButtonStyle())
             }
 
             HStack {
@@ -449,12 +450,6 @@ struct HistoryDateFilterCard: View {
         }
     }
 
-    /// Cancel restores the drafts to the applied filter; the list
-    /// is untouched (no reload).
-    private func cancelDrafts() {
-        draftFrom = filter.fromDate
-        draftTo = filter.toDate
-    }
 }
 
 /// A labelled field, sized to what it can hold — money inputs are

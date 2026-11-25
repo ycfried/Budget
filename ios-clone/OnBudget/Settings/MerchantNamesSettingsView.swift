@@ -222,7 +222,7 @@ struct MerchantNamesSettingsView: View {
                                 } label: {
                                     HStack(alignment: .top, spacing: 8) {
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text(TitleCase.apply(to: rule.displayName.lowercased()))
+                                            Text(TransactionFormatting.displayMerchant(rule.displayName))
                                                 .font(.system(size: 16, weight: .bold))
                                                 .foregroundStyle(DesignTokens.ink)
                                             Text(ruleDetailLine(rule))
@@ -280,24 +280,28 @@ struct MerchantNamesSettingsView: View {
                     }
                     .padding()
                     .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-                    // The alert lives on the popup (delete confirm +
+                    // The dialog lives on the popup (delete confirm +
                     // save failures both come from this form).
-                    .alert(item: $viewModel.alert) { alert in
+                    // Build 74: the app-styled choice dialog — the
+                    // system alert rendered both buttons blue (and
+                    // its destructive red differed from #dc2626).
+                    .appConfirmDialog(item: $viewModel.alert) { alert in
                         switch alert {
                         case .deleteRule(let rule):
-                            return Alert(
-                                title: Text("Remove This Name?"),
-                                message: Text("“\(TitleCase.apply(to: rule.displayName.lowercased()))” will stop renaming “\(rule.patternText)” — old rows keep their current names."),
-                                primaryButton: .destructive(Text("Remove")) {
-                                    Task { await viewModel.deleteRule(rule) }
-                                },
-                                secondaryButton: .cancel()
+                            return AppConfirmDialog.Config(
+                                title: "Remove This Name?",
+                                message: "“\(TransactionFormatting.displayMerchant(rule.displayName))” will stop renaming “\(rule.patternText)” — old rows keep their current names.",
+                                primaryTitle: "Remove",
+                                tone: .destructive,
+                                onPrimary: { Task { await viewModel.deleteRule(rule) } }
                             )
                         case .failed(let title, let message):
-                            return Alert(
-                                title: Text(title),
-                                message: Text(message),
-                                dismissButton: .cancel(Text("Close"))
+                            return AppConfirmDialog.Config(
+                                title: title,
+                                message: message,
+                                primaryTitle: "Close",
+                                secondaryTitle: nil,
+                                onPrimary: {}
                             )
                         }
                     }
@@ -349,7 +353,7 @@ struct MerchantNamesSettingsView: View {
                                 // with no tile at all.
                                 HStack(spacing: 12) {
                                     TransactionIconView(merchant: name, size: 40)
-                                    Text(TitleCase.apply(to: name.lowercased()))
+                                    Text(TransactionFormatting.displayMerchant(name))
                                         .font(.system(size: 16, weight: .semibold))
                                         .foregroundStyle(DesignTokens.ink)
                                     Spacer()
@@ -380,7 +384,7 @@ struct MerchantNamesSettingsView: View {
         editingRule = rule
         patternText = rule.patternText
         editablePatternText = rule.patternText
-        displayNameText = TitleCase.apply(to: rule.displayName.lowercased())
+        displayNameText = rule.displayName
         matchType = rule.matchType
         fixedKind = rule.fixedKind
         showingForm = true
@@ -445,15 +449,10 @@ struct MerchantNamesSettingsView: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 FieldLabel("Match")
-                Picker("Match", selection: $matchType) {
-                    Text("Exact").tag("exact")
-                    Text("Includes").tag("includes")
-                }
-                .pickerStyle(.segmented)
-                // Build 68 (item 20): 48pt tall, so the segmented
-                // control feels substantial instead of thin/short.
-                .frame(minHeight: 48)
-                .padding(.vertical, 4)
+                // Build 74 (B4): the Funds slider (SquarishPicker),
+                // not a segmented pill — 48pt tall, like the
+                // segmented control it replaces.
+                SquarishPicker([("exact", "Exact"), ("includes", "Includes")], selection: $matchType, minHeight: 48)
                 // What Includes means (owner, Nov 15, 2026 —
                 // build 34): one short plain line, muted hint style.
                 // Label only — it explains the match; the Includes
@@ -461,7 +460,7 @@ struct MerchantNamesSettingsView: View {
                 MutedLine(text: "Includes: the name must contain the pattern above, anywhere in the name.")
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Always Count As")
+                Text("Always Count as")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 Picker("", selection: $fixedKind) {

@@ -49,6 +49,10 @@ public struct CharityIncomeForm: View {
     /// for the default-rate note and the correction note.
     @State private var showingRateInfo = false
     @State private var showingCorrectionInfo = false
+    /// Build 74 (B17): the delete-confirm paragraph lives behind
+    /// ⓘ too — the confirm shows one short line, the full
+    /// reversal note in an alert.
+    @State private var showingDeleteIncomeInfo = false
     /// Build 47 (owner, Nov 19, 2026 — page cleanup): the Note
     /// field stays collapsed until the owner taps to add one —
     /// an empty note took a full row for nothing. True when a
@@ -207,9 +211,21 @@ public struct CharityIncomeForm: View {
                     // before.
                     if showDeleteConfirm {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("This reverses the income — the \(MoneyFormat.formatCents(correcting?.committedCents ?? 0)) it committed no longer counts toward \(fundName). The entry stays, marked reversed.")
-                                .font(.system(size: 14))
-                                .foregroundStyle(DesignTokens.ink)
+                            // Build 74 (B17): one short line + ⓘ —
+                            // the full reversal note lives in the
+                            // alert, not as an inline paragraph.
+                            HStack(spacing: 6) {
+                                Text("Reverse this income?")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(DesignTokens.ink)
+                                Button(action: { showingDeleteIncomeInfo = true }) {
+                                    Image(systemName: "info.circle")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.primary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("About reversing this income")
+                            }
                             HStack(spacing: 12) {
                                 FundsDangerButton("Delete Income", isBusy: viewModel.busyAction == "delete-income") {
                                     Task {
@@ -226,6 +242,11 @@ public struct CharityIncomeForm: View {
                                     showDeleteConfirm = false
                                 }
                             }
+                        }
+                        .alert("Reverse This Income", isPresented: $showingDeleteIncomeInfo) {
+                            Button("OK") {}
+                        } message: {
+                            Text("This reverses the income — the \(MoneyFormat.formatCents(correcting?.committedCents ?? 0)) it committed no longer counts toward \(fundName). The entry stays, marked reversed.")
                         }
                     } else {
                         FundsDangerButton("Delete This Income") {
@@ -662,6 +683,9 @@ public struct CharityIncomeHistory: View {
     /// confirm is open in the feed — one at a time, like the
     /// fund-transaction confirm inside FundTransactionRow.
     @State private var confirmingCashGiftId: UUID?
+    /// Build 74 (B17): the delete-confirm paragraph lives behind
+    /// ⓘ too (same as the income delete above).
+    @State private var showingDeleteCashGiftInfo = false
 
     public init(viewModel: FundsViewModel, correcting: Binding<CharityIncome?>, openIncomeForm: Binding<Bool>) {
         self.viewModel = viewModel
@@ -882,9 +906,21 @@ public struct CharityIncomeHistory: View {
                 if viewModel.context.isAdmin, gift.status == "active" {
                     if confirmingCashGiftId == gift.id {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("This removes the cash donation — the money goes back to \(viewModel.charityName) Available. The donation stays in the record, marked reversed.")
-                                .font(.system(size: 14))
-                                .foregroundStyle(DesignTokens.ink)
+                            // Build 74 (B17): one short line + ⓘ —
+                            // the full removal note lives in the
+                            // alert, not as an inline paragraph.
+                            HStack(spacing: 6) {
+                                Text("Remove this donation?")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(DesignTokens.ink)
+                                Button(action: { showingDeleteCashGiftInfo = true }) {
+                                    Image(systemName: "info.circle")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.primary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("About removing this donation")
+                            }
                             HStack(spacing: 12) {
                                 FundsDangerButton("Delete", isBusy: viewModel.busyAction == "delete-cash-gift") {
                                     Task {
@@ -898,6 +934,11 @@ public struct CharityIncomeHistory: View {
                                     confirmingCashGiftId = nil
                                 }
                             }
+                        }
+                        .alert("Remove This Donation", isPresented: $showingDeleteCashGiftInfo) {
+                            Button("OK") {}
+                        } message: {
+                            Text("This removes the cash donation — the money goes back to \(viewModel.charityName) Available. The donation stays in the record, marked reversed.")
                         }
                     } else {
                         FundsSmallTertiaryButton("Delete") {

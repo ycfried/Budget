@@ -61,11 +61,12 @@ public struct FundsPrimaryButton: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, isLarge ? 16 : 13)
                 .padding(.horizontal, 18)
-                // Build 63 (Lean): the one filled deep-blue
-                // primary in an action group — the deeper blue
-                // (#1d4ed8) among the soft secondaries. Build 64
-                // (P-3): full-width buttons are 10pt radius.
-                .background(DesignTokens.deep)
+                // Build 63 (Lean): the one filled primary in an
+                // action group. Build 74 (B3): the one primary
+                // blue (#2f6bff) — the deep blue (#1d4ed8) was a
+                // second primary. Build 64 (P-3): full-width
+                // buttons are 10pt radius.
+                .background(DesignTokens.primary)
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
         }
@@ -230,12 +231,16 @@ public struct FundsSmallTertiaryButton: View {
     /// larger/taller on the tablet form factor. False everywhere
     /// else; existing call sites are unchanged.
     public let isLarge: Bool
+    /// Minimum button height (e.g. 48pt beside a 48pt field);
+    /// nil sizes the button to its content.
+    public let minHeight: CGFloat?
     public let action: () -> Void
 
-    public init(_ label: String, isBusy: Bool = false, isLarge: Bool = false, action: @escaping () -> Void) {
+    public init(_ label: String, isBusy: Bool = false, isLarge: Bool = false, minHeight: CGFloat? = nil, action: @escaping () -> Void) {
         self.label = label
         self.isBusy = isBusy
         self.isLarge = isLarge
+        self.minHeight = minHeight
         self.action = action
     }
 
@@ -250,6 +255,7 @@ public struct FundsSmallTertiaryButton: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .disabled(isBusy)
+        .frame(minHeight: minHeight)
         .opacity(isBusy ? 0.6 : 1.0)
     }
 }
@@ -727,7 +733,9 @@ public struct FundsActivityRow<Summary: View, Detail: View>: View {
                 HStack(spacing: 8) {
                     summary
                     Spacer()
-                    Text("⌄")
+                    // Build 74 (B11): chevrons are SF Symbols, not
+                    // text glyphs — the "⌄" read like a Word document.
+                    Image(systemName: "chevron.down")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(DesignTokens.primary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
@@ -1336,7 +1344,9 @@ public struct FundsExpandableCard<Expanded: View>: View {
             // does not expand while reordering, so there is nothing
             // to hint at.
             if !isReorderMode {
-                Text("⌄")
+                // Build 74 (B11): SF Symbol chevron, not the "⌄"
+                // text glyph.
+                Image(systemName: "chevron.down")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(hintColor)
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))

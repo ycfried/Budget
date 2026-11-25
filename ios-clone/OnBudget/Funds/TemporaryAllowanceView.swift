@@ -95,7 +95,12 @@ public struct TemporaryAllowanceView: View {
                         Task { await viewModel.reloadAllowance() }
                     }
                 } else {
-                    FundsMuted("Loading your current allowance…")
+                    // Build 74 (B5): skeletons shaped like the
+                    // allowance field below, not "Loading…" text.
+                    VStack(alignment: .leading, spacing: 12) {
+                        SkeletonBlock(height: 20)
+                        SkeletonBlock(height: 48)
+                    }
                 }
             } else if !previewText.isEmpty {
                 Text(previewText)
@@ -137,16 +142,18 @@ public struct TemporaryAllowanceView: View {
         // full-screen form flow — detents only apply to sheets.)
         .presentationDetents([.fraction(0.45), .medium])
         .presentationDragIndicator(.visible)
-        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
+        // Build 37 (owner, Nov 16, 2026): a CENTRED dialog, not a
         // confirmationDialog — on iPad a confirmationDialog is a
         // popover anchored at the top of the screen (same fix as the
-        // Clear Debt confirm). An .alert is centred on iPhone and
-        // iPad alike.
-        .alert(
-            "Set New Total",
-            isPresented: $showConfirm
-        ) {
-            Button(TitleCase.apply(to: "Set New Total")) {
+        // Clear Debt confirm). Build 74: the app-styled choice
+        // dialog (AppConfirmDialog) — the system alert rendered
+        // both buttons blue.
+        .appConfirmDialog(
+            isPresented: $showConfirm,
+            title: "Set New Total",
+            message: confirmMessage,
+            primaryTitle: "Set New Total",
+            onPrimary: {
                 Task {
                     guard let cents = newTotalCents else { return }
                     // Clear only on success — on failure the typed
@@ -157,9 +164,6 @@ public struct TemporaryAllowanceView: View {
                     }
                 }
             }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            Text(confirmMessage)
-        }
+        )
     }
 }

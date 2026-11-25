@@ -644,38 +644,43 @@ public struct FundRequestQueue: View {
                 // as the Weekly Budget sheet — 600pt width in the
                 // regular size class, in a full-screen cover.
         }
-        .alert("Fund Is Short", isPresented: $showOverride) {
-            TextField("Reason for overriding", text: $overrideReason)
-            Button(TitleCase.apply(to: "Approve Anyway")) {
+        .appConfirmDialog(
+            isPresented: $showOverride,
+            title: "Fund Is Short",
+            message: MoneyFormat.parseDollarsStrict(approveAmountText).map { "The fund does not cover \(MoneyFormat.formatCents($0)). You can still approve with a typed reason — it will be logged." } ?? "",
+            primaryTitle: "Approve Anyway",
+            extra: AnyView(
+                TextField("Reason for overriding", text: $overrideReason)
+                    .padding(.horizontal, 14)
+                    .frame(height: 48, alignment: .leading)
+                    .background(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            ),
+            onPrimary: {
                 Task { await approveTapped(overrideReason: overrideReason.trimmingCharacters(in: .whitespaces)) }
             }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            if let cents = MoneyFormat.parseDollarsStrict(approveAmountText) {
-                Text("The fund does not cover \(MoneyFormat.formatCents(cents)). You can still approve with a typed reason — it will be logged.")
-            }
-        }
-        // Build 37 (owner, Nov 16, 2026): a CENTERED alert, not a
+        )
+        // Build 37 (owner, Nov 16, 2026): a CENTRED dialog, not a
         // confirmationDialog — on iPad a confirmationDialog is a
         // popover anchored at the top of the screen (same fix as the
-        // Clear Debt confirm). An .alert is centred on iPhone and
-        // iPad alike.
-        .alert(
-            "Decline Request",
+        // Clear Debt confirm). Build 74: the app-styled choice
+        // dialog (AppConfirmDialog) — the system alert rendered
+        // both buttons blue.
+        .appConfirmDialog(
             isPresented: Binding(
                 get: { declining != nil },
                 set: { if !$0 { declining = nil } }
-            )
-        ) {
-            Button(TitleCase.apply(to: "Decline")) {
+            ),
+            title: "Decline Request",
+            message: "Decline this fund request?",
+            primaryTitle: "Decline",
+            onPrimary: {
                 if let declining {
                     Task { await viewModel.declineRequest(declining) }
                 }
             }
-            Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-        } message: {
-            Text("Decline this fund request?")
-        }
+        )
     }
 
     private func statusLabel(_ request: FundRequest) -> String {
@@ -716,8 +721,12 @@ public struct FundRequestQueue: View {
                         .foregroundStyle(DesignTokens.ink)
                         .multilineTextAlignment(.leading)
                     Spacer()
-                    Text(expandedId == request.id ? "⌃" : "⌄")
+                    // Build 74 (B11): SF Symbol chevron, not the
+                    // "⌃"/"⌄" text glyphs.
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(DesignTokens.primary)
+                        .rotationEffect(.degrees(expandedId == request.id ? 180 : 0))
                 }
                 // Whole-row tap target (owner, Nov 15, 2026 app-wide
                 // pass): the empty space between the text and the
@@ -728,7 +737,11 @@ public struct FundRequestQueue: View {
             if expandedId == request.id {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Requested: \(MoneyFormat.formatCents(request.amountCents)) · Status: \(statusLabel(request))")
-                    Text("Fund available now: \(viewModel.fundSummary.map { MoneyFormat.formatCents($0.availableCents) } ?? "…")")
+                    // Build 74 (B19): never a "…" while loading —
+                    // the line hides until the summary loads.
+                    if let summary = viewModel.fundSummary {
+                        Text("Fund available now: \(MoneyFormat.formatCents(summary.availableCents))")
+                    }
                     if let approved = request.approvedCents {
                         if request.status == "split" {
                             Text("Approved: \(MoneyFormat.formatCents(approved)) of \(MoneyFormat.formatCents(request.amountCents)) requested — \(MoneyFormat.formatCents(request.remainderCents)) is still unapproved and needs a new request.")
@@ -962,92 +975,99 @@ public struct RenameFundSheet: View {
         // keeps the content at the top of the full-screen popup.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: "Edit \(section.displayName)"), onClose: onClose)
-            FundsTextField("Fund name", text: $nameText)
-                .autocorrectionDisabled()
-            FundsMuted("Leave blank to use the default name (\(section.displayName)).")
-            // Icon picker (build 41 — customizable fund icons,
-            // owner Nov 16, 2026): the pencil opens this one sheet
-            // for name AND icon. A grid of picker symbols; the
-            // picked one saves with the name. Tapping a symbol
-            // only selects it — nothing saves until Save.
-            Text("Icon")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                ForEach(FundIconOptions.all, id: \.self) { symbol in
-                    Button { selectedIcon = symbol } label: {
-                        Image(systemName: symbol)
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(symbol == effectiveIcon ? DesignTokens.primary : DesignTokens.ink)
-                            .frame(width: 52, height: 52)
-                            .background(symbol == effectiveIcon ? DesignTokens.pale : Color(hex: "#f3f4f6"))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+            // Build 74 (owner, Nov 24, 2026 — popup sizing):
+            // the tallest form in the app (the icon grid alone
+            // is several rows) with no ScrollView — on a short
+            // iPhone the Save button fell below the fold with no
+            // way to reach it. The fields now scroll under a
+            // pinned header.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    FundsTextField("Fund name", text: $nameText)
+                        .autocorrectionDisabled()
+                    FundsMuted("Leave blank to use the default name (\(section.displayName)).")
+                    // Icon picker (build 41 — customizable fund icons,
+                    // owner Nov 16, 2026): the pencil opens this one sheet
+                    // for name AND icon. A grid of picker symbols; the
+                    // picked one saves with the name. Tapping a symbol
+                    // only selects it — nothing saves until Save.
+                    Text("Icon")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
+                        ForEach(FundIconOptions.all, id: \.self) { symbol in
+                            Button { selectedIcon = symbol } label: {
+                                Image(systemName: symbol)
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundStyle(symbol == effectiveIcon ? DesignTokens.primary : DesignTokens.ink)
+                                    .frame(width: 52, height: 52)
+                                    .background(symbol == effectiveIcon ? DesignTokens.pale : Color(hex: "#f3f4f6"))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(symbol == effectiveIcon ? "\(symbol), selected" : symbol)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(symbol == effectiveIcon ? "\(symbol), selected" : symbol)
+                    // Reset shows only when a custom icon is picked — an
+                    // action the user cannot perform must not appear (owner
+                    // rule, Nov 13, 2026): with the default showing there
+                    // is nothing to reset.
+                    if !selectedIcon.isEmpty {
+                        Button("Reset to Default Icon") { selectedIcon = "" }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                    }
+                    // Show on Home (build 47 — owner, Nov 19, 2026:
+                    // "The only ones that stay and are built in are
+                    // spending & Charity"). Only Savings and Overspent
+                    // (Past) can be taken off Home and put back; Spending
+                    // and Tzedaka always stay, so they get no toggle.
+                    // Hiding never touches the prominence below — showing
+                    // the fund again puts it back where it was.
+                    if section.canHideFromHome {
+                        Toggle("Show on Home", isOn: $showOnHome)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                            .accessibilityIdentifier("funds.showOnHomeToggle")
+                    }
+                    // Home prominence (build 46 — the simpler Home, owner
+                    // Nov 18, 2026): the owner sets how THIS card shows on
+                    // Home — the star hero, a full card, or a quiet row.
+                    // The same edit sheet already holds the name and the
+                    // icon, so the prominence lives here too, not on a
+                    // separate screen. The pick saves with the name and
+                    // icon below. Build 47: the picker is "Size on Home"
+                    // now — "Show on Home" is the toggle above — and it
+                    // only shows while the fund shows on Home (no point
+                    // picking a size for a hidden fund).
+                    if showOnHome {
+                        Text("Size on Home")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        // Build 64 (C-6): the segmented picker is gone —
+                        // a squarish control (8pt radius, ink text,
+                        // pale-blue selected cell), no pill track.
+                        SquarishPicker(
+                            [(FundProminence.hero, "Hero"), (FundProminence.card, "Card"), (FundProminence.quiet, "Quiet Row")],
+                            selection: $selectedProminence
+                        )
+                        .accessibilityIdentifier("funds.prominencePicker")
+                    }
+                    if let fieldError {
+                        FundsErrorBox(fieldError)
+                    }
+                    // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
+                    // button is gone — the SheetHeader X + swipe-right
+                    // dismiss without saving, so Cancel was a third
+                    // redundant way out.
+                    FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename" || viewModel.busyAction == "fund-icon" || viewModel.busyAction == "fund-prominence" || viewModel.busyAction == "fund-hidden") {
+                        saveTapped()
+                    }
+                    // No trailing Spacer (build 74): inside a
+                    // ScrollView the content top-anchors on its own.
                 }
             }
-            // Reset shows only when a custom icon is picked — an
-            // action the user cannot perform must not appear (owner
-            // rule, Nov 13, 2026): with the default showing there
-            // is nothing to reset.
-            if !selectedIcon.isEmpty {
-                Button("Reset to Default Icon") { selectedIcon = "" }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
-            }
-            // Show on Home (build 47 — owner, Nov 19, 2026:
-            // "The only ones that stay and are built in are
-            // spending & Charity"). Only Savings and Overspent
-            // (Past) can be taken off Home and put back; Spending
-            // and Tzedaka always stay, so they get no toggle.
-            // Hiding never touches the prominence below — showing
-            // the fund again puts it back where it was.
-            if section.canHideFromHome {
-                Toggle("Show on Home", isOn: $showOnHome)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
-                    .accessibilityIdentifier("funds.showOnHomeToggle")
-            }
-            // Home prominence (build 46 — the simpler Home, owner
-            // Nov 18, 2026): the owner sets how THIS card shows on
-            // Home — the star hero, a full card, or a quiet row.
-            // The same edit sheet already holds the name and the
-            // icon, so the prominence lives here too, not on a
-            // separate screen. The pick saves with the name and
-            // icon below. Build 47: the picker is "Size on Home"
-            // now — "Show on Home" is the toggle above — and it
-            // only shows while the fund shows on Home (no point
-            // picking a size for a hidden fund).
-            if showOnHome {
-                Text("Size on Home")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
-                // Build 64 (C-6): the segmented picker is gone —
-                // a squarish control (8pt radius, ink text,
-                // pale-blue selected cell), no pill track.
-                SquarishPicker(
-                    [(FundProminence.hero, "Hero"), (FundProminence.card, "Card"), (FundProminence.quiet, "Quiet Row")],
-                    selection: $selectedProminence
-                )
-                .accessibilityIdentifier("funds.prominencePicker")
-            }
-            if let fieldError {
-                FundsErrorBox(fieldError)
-            }
-            // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
-            // button is gone — the SheetHeader X + swipe-right
-            // dismiss without saving, so Cancel was a third
-            // redundant way out.
-            FundsPrimaryButton("Save", isBusy: viewModel.busyAction == "fund-rename" || viewModel.busyAction == "fund-icon" || viewModel.busyAction == "fund-prominence" || viewModel.busyAction == "fund-hidden") {
-                saveTapped()
-            }
-            // Build 43 (owner, Nov 17, 2026 — item 18): the
-            // trailing Spacer top-anchors the content in the
-            // full-screen cover — without it the short form
-            // centres itself vertically in the full screen.
-            Spacer()
         }
         .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular

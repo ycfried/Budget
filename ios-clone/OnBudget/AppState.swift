@@ -14,6 +14,7 @@
 // Clone basis: live web v66. API calls are OnBudgetKit only.
 
 import SwiftUI
+import Combine
 import WidgetKit
 import OnBudgetKit
 
@@ -111,6 +112,20 @@ public final class AppViewModel: ObservableObject {
     /// shell; the trigger lives on Home; the replay row lives in
     /// Settings.
     @Published public var tour = TourState()
+    /// Forwards the nested `TourState`'s `isActive` changes to this
+    /// object's observers (build 74, Nov 24, 2026 — the Skip fix,
+    /// root cause): `AppShellView` observes `AppViewModel`, not the
+    /// nested `TourState`, so `tour.end()` on its own never
+    /// re-evaluated the shell's `if appState.tour.isActive`
+    /// overlay condition — on step 1 (Home tab) `finish()` changed
+    /// nothing on `AppViewModel` (`selectedTab` was already
+    /// `.home`), so the overlay stayed on screen after Skip/Done
+    /// even though the tour had ended and the seen flag was
+    /// written. Forwarding `isActive` — only it, never the step
+    /// or frame changes, which the overlay itself observes —
+    /// makes the shell mount/unmount the overlay the moment the
+    /// tour starts or ends. Wired in `init` below; retained here.
+    private var tourActiveForwarding: AnyCancellable?
     /// Whether the walkthrough has been seen for this household
     /// on this device (build 50, Nov 20, 2026 — tutorial
     /// one-time fix): the STABLE per-household, per-device flag
@@ -366,6 +381,12 @@ public final class AppViewModel: ObservableObject {
         case "connected": gmailCallbackResult = .connected
         case "failed": gmailCallbackResult = .failed
         default: break
+        }
+        // Build 74 (tour Skip fix — see `tourActiveForwarding`
+        // above): the shell observes this object, not the nested
+        // tour state, so forward the tour's active flag here.
+        tourActiveForwarding = tour.$isActive.sink { [weak self] _ in
+            self?.objectWillChange.send()
         }
     }
 

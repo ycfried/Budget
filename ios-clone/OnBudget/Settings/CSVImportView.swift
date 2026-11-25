@@ -318,12 +318,9 @@ struct CSVImportView: View {
                 if viewModel.resultIsError {
                     ErrorBox(message)
                 } else {
-                    Text(message)
-                        .font(.subheadline)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(hex: "#eef4ff"))
-                        .cornerRadius(12)
+                    // Build 74 (B22): the shared InfoBox, not a
+                    // hand-rolled blue box.
+                    InfoBox(message)
                 }
             }
 
@@ -333,6 +330,9 @@ struct CSVImportView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(viewModel.newRows.isEmpty || viewModel.isImporting)
+                // Build 74 (B7): dimmed to 0.6 while disabled (the
+                // Funds pattern) so it never reads as tappable.
+                .opacity(viewModel.newRows.isEmpty || viewModel.isImporting ? 0.6 : 1.0)
             }
         }
         .sheet(isPresented: $viewModel.showPicker) {

@@ -99,58 +99,66 @@ public struct ExpensesListView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: "Recurring Expenses", onClose: onClose)
-            // Summary card: the monthly total the Calculator
-            // subtracts, and what it works out to per week.
-            VStack(spacing: 0) {
-                summaryRow(label: "Monthly Total", value: MoneyFormat.formatCents(monthlyTotalCents))
-                SheetActionDivider()
-                summaryRow(label: "Weekly Impact", value: "About \(MoneyFormat.formatCents(weeklyTotalCents))/wk")
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-            .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-            )
-            .fundCardShadow()
-            if expenses.isEmpty {
-                Text("No expenses tagged yet — tag a transaction as an Expense from its Actions to add one.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(DesignTokens.muted)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(expenses) { expense in
-                        expenseRow(expense)
-                        if expense.id != expenses.last?.id {
-                            SheetActionDivider()
+            // Build 74 (owner, Nov 24, 2026 — popup sizing): the
+            // rows are unbounded, but this was a plain VStack with
+            // no ScrollView — past ~4-5 expenses the rows ran past
+            // the .medium detent with no way to scroll to them.
+            // The header stays pinned; everything below it scrolls.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Summary card: the monthly total the Calculator
+                    // subtracts, and what it works out to per week.
+                    VStack(spacing: 0) {
+                        summaryRow(label: "Monthly Total", value: MoneyFormat.formatCents(monthlyTotalCents))
+                        SheetActionDivider()
+                        summaryRow(label: "Weekly Impact", value: "About \(MoneyFormat.formatCents(weeklyTotalCents))/wk")
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                    )
+                    .fundCardShadow()
+                    if expenses.isEmpty {
+                        Text("No expenses tagged yet — tag a transaction as an Expense from its Actions to add one.")
+                            .font(.system(size: 15))
+                            .foregroundStyle(DesignTokens.muted)
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(expenses) { expense in
+                                expenseRow(expense)
+                                if expense.id != expenses.last?.id {
+                                    SheetActionDivider()
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                        .fundCardShadow()
+                        HStack(spacing: 6) {
+                            Button(action: { showAboutInfo = true }) {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.primary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("About recurring expenses")
+                            Text("About These Expenses")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(DesignTokens.ink)
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                )
-                .fundCardShadow()
-                HStack(spacing: 6) {
-                    Button(action: { showAboutInfo = true }) {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(DesignTokens.primary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("About recurring expenses")
-                    Text("About These Expenses")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(DesignTokens.ink)
-                }
             }
-            Spacer()
         }
         .padding(.horizontal, 24)
         .padding(.top, 20)
@@ -283,119 +291,130 @@ public struct ExpenseEditorSheet: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: "Expense", onClose: onClose)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Name")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
-                FundsTextField("Name", text: $name)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Amount")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
-                DollarTextField(text: $amountText, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("How Often")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
-                VStack(spacing: 0) {
-                    ForEach(ExpenseFrequency.allCases, id: \.self) { option in
-                        Button {
-                            frequency = option
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: frequency == option ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 18))
-                                    .foregroundStyle(frequency == option ? DesignTokens.primary : Color(hex: "#9ca3af"))
-                                Text(option.displayName)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(DesignTokens.ink)
-                                Spacer()
-                                if let monthly = monthlyCents(for: option) {
-                                    Text("\(MoneyFormat.formatCents(monthly))/mo")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(DesignTokens.muted)
+            // Build 74 (owner, Nov 24, 2026 — popup sizing): this
+            // form is ~545pt tall (Name + Amount + 4 frequency
+            // rows + Save + Remove), but it opened at a 0.45
+            // detent (~383pt on iPhone) with no ScrollView — the
+            // Save button was below even the .medium detent and
+            // unreachable. The form now scrolls under a pinned
+            // header, at [.medium, .large] detents.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Name")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        FundsTextField("Name", text: $name)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Amount")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        DollarTextField(text: $amountText, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("How Often")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        VStack(spacing: 0) {
+                            ForEach(ExpenseFrequency.allCases, id: \.self) { option in
+                                Button {
+                                    frequency = option
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: frequency == option ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(frequency == option ? DesignTokens.primary : Color(hex: "#9ca3af"))
+                                        Text(option.displayName)
+                                            .font(.system(size: 15, weight: .semibold))
+                                            .foregroundStyle(DesignTokens.ink)
+                                        Spacer()
+                                        if let monthly = monthlyCents(for: option) {
+                                            Text("\(MoneyFormat.formatCents(monthly))/mo")
+                                                .font(.system(size: 14))
+                                                .foregroundStyle(DesignTokens.muted)
+                                        }
+                                    }
+                                    .padding(.vertical, 10)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                if option != ExpenseFrequency.allCases.last {
+                                    SheetActionDivider()
                                 }
                             }
-                            .padding(.vertical, 10)
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
-                        if option != ExpenseFrequency.allCases.last {
-                            SheetActionDivider()
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 4)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                        )
+                    }
+                    if let error {
+                        SoftErrorBox(error)
+                    }
+                    if showRemoveConfirm {
+                        Text("Remove this expense? The transaction counts as a purchase again, back in weekly spending.")
+                            .font(.system(size: 15))
+                            .foregroundStyle(DesignTokens.ink)
+                        TwoButtonRow {
+                            Button("Remove Expense") {
+                                Task {
+                                    isWorking = true
+                                    let ok = await onRemove()
+                                    isWorking = false
+                                    if ok { onClose() }
+                                }
+                            }
+                            .buttonStyle(ExpenseDangerButtonStyle())
+                            .disabled(isWorking)
+                        } secondary: {
+                            Button("Keep It") { showRemoveConfirm = false }
+                                .buttonStyle(TertiaryButtonStyle())
                         }
+                    } else {
+                        // Build 70, item 5 (owner, Nov 24, 2026): the
+                        // Cancel button is gone — the SheetHeader X +
+                        // swipe-right dismiss without saving, so Cancel
+                        // was a third redundant way out.
+                        Button("Save") {
+                            Task {
+                                let trimmed = name.trimmingCharacters(in: .whitespaces)
+                                guard !trimmed.isEmpty else {
+                                    error = "Enter a name."
+                                    return
+                                }
+                                guard let cents = enteredCents, cents > 0 else {
+                                    error = "Enter an amount above $0.00."
+                                    return
+                                }
+                                error = nil
+                                isWorking = true
+                                let ok = await onSave(trimmed, cents, frequency)
+                                isWorking = false
+                                if ok { onClose() }
+                            }
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(isWorking)
+                        // Below the Save button, not beside it — a
+                        // red text button, so it never shares a colour or
+                        // treatment with it.
+                        Button("Remove Expense") { showRemoveConfirm = true }
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color(hex: DesignTokens.errorTextHex))
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, 4)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
-                .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                )
-            }
-            if let error {
-                SoftErrorBox(error)
-            }
-            if showRemoveConfirm {
-                Text("Remove this expense? The transaction counts as a purchase again, back in weekly spending.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(DesignTokens.ink)
-                TwoButtonRow {
-                    Button("Remove Expense") {
-                        Task {
-                            isWorking = true
-                            let ok = await onRemove()
-                            isWorking = false
-                            if ok { onClose() }
-                        }
-                    }
-                    .buttonStyle(ExpenseDangerButtonStyle())
-                    .disabled(isWorking)
-                } secondary: {
-                    Button("Keep It") { showRemoveConfirm = false }
-                        .buttonStyle(TertiaryButtonStyle())
-                }
-            } else {
-                // Build 70, item 5 (owner, Nov 24, 2026): the
-                // Cancel button is gone — the SheetHeader X +
-                // swipe-right dismiss without saving, so Cancel
-                // was a third redundant way out.
-                Button("Save") {
-                    Task {
-                        let trimmed = name.trimmingCharacters(in: .whitespaces)
-                        guard !trimmed.isEmpty else {
-                            error = "Enter a name."
-                            return
-                        }
-                        guard let cents = enteredCents, cents > 0 else {
-                            error = "Enter an amount above $0.00."
-                            return
-                        }
-                        error = nil
-                        isWorking = true
-                        let ok = await onSave(trimmed, cents, frequency)
-                        isWorking = false
-                        if ok { onClose() }
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isWorking)
-                // Below the Save button, not beside it — a
-                // red text button, so it never shares a colour or
-                // treatment with it.
-                Button("Remove Expense") { showRemoveConfirm = true }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color(hex: DesignTokens.errorTextHex))
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 4)
             }
         }
         .padding()
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        .presentationDetents([.fraction(0.45), .medium])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
     }
@@ -508,7 +527,11 @@ public struct ExpenseTagPickerSheet: View {
         }
         .padding()
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        .presentationDetents([.fraction(0.45), .medium])
+        // Build 74 (owner, Nov 24, 2026 — popup sizing): a list
+        // of up to 50 charges opened at a 0.45 detent, showing
+        // ~3 rows — the list scrolls, but it opens cramped. Lists
+        // open at [.medium, .large] now.
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
     }

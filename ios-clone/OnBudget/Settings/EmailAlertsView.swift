@@ -494,12 +494,9 @@ struct EmailAlertsView: View {
                 if viewModel.resultIsError {
                     ErrorBox(message)
                 } else {
-                    Text(message)
-                        .font(.subheadline)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(hex: "#eef4ff"))
-                        .cornerRadius(12)
+                    // Build 74 (B22): the shared InfoBox, not a
+                    // hand-rolled blue box.
+                    InfoBox(message)
                 }
             }
         }
@@ -511,24 +508,26 @@ struct EmailAlertsView: View {
             // survives across launches indefinitely as stale state.
             appState.clearGmailCallbackResult()
         }
-        // ONE alert for the whole screen (build 30 — same stacked
-        // `.alert` collapse as the Members screen).
-        .alert(item: $viewModel.alert) { alert in
+        // ONE dialog for the whole screen (build 30 — same stacked
+        // `.alert` collapse as the Members screen; build 74: the
+        // app-styled choice dialog, one modifier, one switch).
+        .appConfirmDialog(item: $viewModel.alert) { alert in
             switch alert {
             case .disconnect(let connection):
-                return Alert(
-                    title: Text("Disconnect Email"),
-                    message: Text("Disconnect \(connection.emailAddress)? The app will stop checking it. Past transactions stay in the list."),
-                    primaryButton: .destructive(Text("Disconnect")) {
-                        Task { await viewModel.disconnectConfirmed(connection) }
-                    },
-                    secondaryButton: .cancel()
+                return AppConfirmDialog.Config(
+                    title: "Disconnect Email",
+                    message: "Disconnect \(connection.emailAddress)? The app will stop checking it. Past transactions stay in the list.",
+                    primaryTitle: "Disconnect",
+                    tone: .destructive,
+                    onPrimary: { Task { await viewModel.disconnectConfirmed(connection) } }
                 )
             case .disconnectFailed:
-                return Alert(
-                    title: Text("Could Not Disconnect"),
-                    message: Text("Could not disconnect this email. Try again."),
-                    dismissButton: .cancel(Text("Close"))
+                return AppConfirmDialog.Config(
+                    title: "Could Not Disconnect",
+                    message: "Could not disconnect this email. Try again.",
+                    primaryTitle: "Close",
+                    secondaryTitle: nil,
+                    onPrimary: {}
                 )
             }
         }

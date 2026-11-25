@@ -5,10 +5,34 @@
 //
 // Choice panel: heading "Your Household", subtext "Create a
 // household as its owner, or join one with an invite code." Create
-// Household (I Am the Owner) (primary, full-width) opens the name
-// panel (it does NOT call the RPC itself). Label "Or Join a
-// Household" + invite-code input (placeholder "Invite Code from
-// the Owner") + Join as Member (tertiary, full-width).
+// Household (primary, full-width) opens the name
+// panel (it does NOT call the RPC itself). An "or" divider, then
+// the Join section: "Join a Household" label + "Invite Code" field
+// label + invite-code input (placeholder "Invite Code from the
+// Owner") + Join as Member (distinct outline, full-width).
+//
+// Build 74 (owner, Nov 24, 2026): the screen was "ugly beyond ..
+// it's the old style and crammed" — the Create button a heavy
+// slab, "Or Join" cramped against it, the invite field a plain
+// grey box, Join a flat grey slab, "Signed in as / Sign Out"
+// crammed under the panel, and the footer bunched at the top with
+// a vast empty area below. Restyled to the sign-in screen's
+// language: vertical balance (GeometryReader + spacers, the Nov 11
+// fix for the same complaint), the "or" divider with real
+// breathing room, Join as the outline treatment instead of the
+// grey slab, the account line in its own separated section, and
+// the same 48pt fields as sign-in.
+// Owner follow-up, Nov 24 (~23:39): BOTH screens (choose + name)
+// are "too big and empty" and need replanning, not just polish.
+// The replan: the content column is 600pt centred on iPad (the
+// width every sheet and cover uses), full-width on iPhone; each
+// panel sits in a white card sized to what it holds; the logo
+// sits on top, account section + footer below the card. And
+// "The tiny sign out in the bottom left corner.." — Sign Out is
+// now a proper full-width button (the Profile Settings treatment),
+// not a tiny text link. Owner, Nov 24 (~23:46): "sign out should
+// always be red" — it is the standard destructive red
+// (FundsDangerButton), never the blue outline.
 //
 // Household creation was closed for the Nov 17, 2026 invite-only
 // launch (server revoke + join-only UI) and RESTORED Nov 24, 2026
@@ -58,24 +82,49 @@ public struct HouseholdView: View {
 
     public init(appState: AppViewModel) { self.appState = appState }
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                AuthBrandHeader()
-                if let bootError = appState.bootError {
-                    bootErrorPanel(bootError)
-                } else if showNamePanel {
-                    namePanel
-                } else {
-                    choicePanel
+        // Layout replan (owner, Nov 24, 2026 — build 74): both
+        // screens were "too big and empty" — the content floated
+        // on a vast background, and on iPad the buttons stretched
+        // full-width into giant slabs. The replan, in the sign-in
+        // screen's language: the content column is 600pt centred
+        // on iPad (the width every sheet and cover in the app
+        // uses), full-width on iPhone; the choice and name panels
+        // sit in a white card sized to what they hold; the column
+        // is vertically centred (GeometryReader + spacers, the
+        // Nov 11 sign-in fix for the same bunched-at-top
+        // complaint); the logo sits on top, the account section
+        // and the footer below the card. Same functionality and
+        // copy throughout.
+        GeometryReader { geometry in
+            ScrollView {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    VStack(alignment: .leading, spacing: 16) {
+                        Spacer(minLength: 0)
+                        AuthBrandHeader()
+                        if let bootError = appState.bootError {
+                            bootErrorPanel(bootError)
+                        } else if showNamePanel {
+                            namePanel
+                        } else {
+                            choicePanel
+                        }
+                        accountFooter
+                        AuthFooter()
+                            .padding(.top, 8)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(20)
+                    .frame(minHeight: geometry.size.height)
+                    .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+                    Spacer(minLength: 0)
                 }
-                accountFooter
-                AuthFooter()
-                    .padding(.top, 8)
             }
-            .padding(20)
+            .background(DesignTokens.background)
         }
-        .background(DesignTokens.background)
         .onChange(of: appState.bootError) { bootErrorBoxHidden = false }
     }
 
@@ -107,19 +156,41 @@ public struct HouseholdView: View {
     /// The signed-in account + a way out (audit F-P1-4): without
     /// this, a wrong-account sign-in is a dead end — no Settings
     /// cover exists on this screen and the email is shown nowhere.
+    /// Build 74 (owner, Nov 24, 2026 — "Your Household" restyle):
+    /// it used to sit crammed right under the panel with no
+    /// breathing room — it now has its own separated section
+    /// (divider + generous spacing, centred like the footer).
+    /// Owner follow-up, Nov 24 (~23:39): "The tiny sign out in
+    /// the bottom left corner.." — Sign Out was a tiny text link
+    /// tucked in the corner. It is now a proper full-width button
+    /// with a comfortable tap target — the standard destructive
+    /// red (FundsDangerButton), per the owner's Nov 24 (~23:46)
+    /// "sign out should always be red" rule — and the divider
+    /// before it matches the profile menu, where a divider
+    /// separates Sign Out from Settings.
     private var accountFooter: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 12) {
+            Divider()
+            // Owner follow-up, Nov 24 (~23:45): centre the
+            // signed-in line — it was left-aligned while the footer
+            // below it is centred. (The VStack is centre-aligned
+            // by default; the explicit alignment states the intent.)
             if let email = appState.client.currentSession?.user.email, !email.isEmpty {
                 Text("Signed in as \(email)")
                     .font(.system(size: 13))
                     .foregroundStyle(Color(hex: "#6b7280"))
+                    .multilineTextAlignment(.center)
             }
-            Button("Sign Out") { Task { await appState.signOut() } }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(DesignTokens.mid)
+            // Owner, Nov 24, 2026 — "sign out should always be
+            // red": the standard destructive red (FundsDangerButton
+            // — soft-red bg, #dc2626 text), the same treatment as
+            // the Profile Settings Sign Out and every Delete/Remove.
+            // (Was the blue outline from the build-74 restyle.)
+            FundsDangerButton("Sign Out") { Task { await appState.signOut() } }
                 .accessibilityIdentifier("household.signOut")
         }
-        .padding(.top, 8)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 16)
     }
 
     // MARK: Choice panel
@@ -133,36 +204,58 @@ public struct HouseholdView: View {
                 .font(.system(size: 15))
                 .foregroundStyle(Color(hex: "#6b7280"))
 
-            Button(busy == "create" ? "Creating…" : "Create Household (I Am the Owner)") {
+            Button(busy == "create" ? "Creating…" : "Create Household") {
                 showNamePanel = true
                 message = nil
             }
             .buttonStyle(PrimaryButtonStyle())
             .accessibilityIdentifier("household.createHousehold")
             .disabled(busy != nil)
+            .padding(.top, 4)
 
-            Text("Or Join a Household")
+            // Build 74 (owner, Nov 24, 2026 — "Your Household"
+            // restyle): "Or Join a Household" used to sit cramped
+            // right against the Create button. The two paths are
+            // now separated by a proper "or" divider with real
+            // breathing room, and the join section gets its own
+            // label + field label like the sign-in fields.
+            orDivider
+                .padding(.vertical, 12)
+
+            // Owner follow-up, Nov 24 (~23:45): centre the
+            // section label — the footer text is centred, so the
+            // Join heading is too, instead of sitting left while
+            // everything below the card is centred.
+            Text("Join a Household")
                 .font(.system(size: 14, weight: .bold))
-                .padding(.top, 8)
+                .foregroundStyle(DesignTokens.ink)
+                .frame(maxWidth: .infinity, alignment: .center)
+            FieldLabel("Invite Code", required: true, weight: .bold)
             TextField("Invite Code from the Owner", text: $joinCode)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("household.inviteCode")
-                // Build 68 (shared text-field standard): a
-                // comfortable 48pt height, 12pt vertical / 14pt
-                // horizontal padding, 12pt corners.
+                // Same 48pt field as the sign-in fields (build 68,
+                // item 7/13): exactly 48pt tall, 14pt horizontal
+                // padding — the old minHeight + 12pt vertical
+                // padding rendered a taller, flatter box.
                 .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .frame(minHeight: 48)
+                .frame(height: 48, alignment: .leading)
                 .background(.white)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .onChange(of: joinCode) { message = nil }
 
+            // Build 74: the old grey-fill tertiary read as a flat
+            // grey slab under the solid blue Create button. Join is
+            // now the distinct outline treatment (white bg,
+            // brand-blue border + text) — the two buttons no longer
+            // share a slab look (owner button rule, Nov 3–4).
             Button(busy == "join" ? "Joining…" : "Join as Member") { Task { await join() } }
-                .buttonStyle(TertiaryButtonStyle())
+                .buttonStyle(OutlineButtonStyle())
                 .accessibilityIdentifier("household.joinAsMember")
                 .disabled(busy != nil)
+                .padding(.top, 4)
 
             // The message sits under the Join button, next to the
             // field that caused it (audit F-P2-7; web renders
@@ -170,6 +263,33 @@ public struct HouseholdView: View {
             if let message {
                 if messageIsError { DismissableErrorBox(message) { self.message = nil } } else { InfoBox(message) }
             }
+        }
+        // Build 74 replan: the panel sits in a white card sized
+        // to what it holds — the fund-card language (white,
+        // hairline border, soft shadow), 16pt radius for a form
+        // card — instead of floating loose on the background.
+        .padding(20)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
+        .fundCardShadow()
+    }
+
+    /// "— or —" divider between the Create and Join paths.
+    private var orDivider: some View {
+        HStack(spacing: 12) {
+            Rectangle()
+                .fill(Color(hex: "#e5e7eb"))
+                .frame(height: 1)
+            Text("or")
+                .font(.system(size: 13))
+                .foregroundStyle(Color(hex: "#6b7280"))
+            Rectangle()
+                .fill(Color(hex: "#e5e7eb"))
+                .frame(height: 1)
         }
     }
 
@@ -215,8 +335,9 @@ public struct HouseholdView: View {
                 messageIsError = true
                 return
             }
-            message = "Joined. Loading shared budget…"
-            messageIsError = false
+            // No "Joined. Loading…" message (build 74, B5):
+            // loading is skeletons, never a "Loading…" line —
+            // the Home skeletons take over as enterHousehold runs.
             await appState.enterHousehold(id: householdId, role: .member)
             // Member-joined notification (Nov 16, 2026): the server
             // notifies the other members. Best-effort — joining
@@ -288,7 +409,10 @@ public struct HouseholdNamePanel: View {
                 .onChange(of: householdName) { _, newValue in
                     if newValue.count > 80 { householdName = String(newValue.prefix(80)) }
                 }
-                .padding(12)
+                // Same 48pt field as the sign-in fields (build 74):
+                // exactly 48pt tall, 14pt horizontal padding.
+                .padding(.horizontal, 14)
+                .frame(height: 48, alignment: .leading)
                 .background(.white)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -298,6 +422,18 @@ public struct HouseholdNamePanel: View {
                 .accessibilityIdentifier("household.createConfirm")
                 .disabled(busy)
         }
+        // Build 74 replan: same white card as the choice panel —
+        // sized to what it holds, so the name screen reads as a
+        // complete card instead of one field floating on a vast
+        // background. The Back chevron sits top-left inside it.
+        .padding(20)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
+        .fundCardShadow()
     }
 
     private func create() async {

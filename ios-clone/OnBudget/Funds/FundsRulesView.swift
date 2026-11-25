@@ -137,7 +137,13 @@ public struct CharityRateSection: View {
                 if let error = viewModel.charityError {
                     FundsErrorBox(error)
                 } else {
-                    FundsMuted("Loading rules…")
+                    // Build 74 (B5): skeletons shaped like the
+                    // rate editor below — a label line + a 48pt
+                    // field — not "Loading…" text.
+                    VStack(alignment: .leading, spacing: 12) {
+                        SkeletonBlock(height: 20)
+                        SkeletonBlock(height: 48)
+                    }
                 }
             } else if isAdmin {
                 rateEditor
@@ -422,7 +428,13 @@ public struct DebtRuleSection: View {
                 if let error = viewModel.debtError {
                     FundsErrorBox(error)
                 } else {
-                    FundsMuted("Loading rules…")
+                    // Build 74 (B5): skeletons shaped like the
+                    // rule editor below — a label line + a 48pt
+                    // field — not "Loading…" text.
+                    VStack(alignment: .leading, spacing: 12) {
+                        SkeletonBlock(height: 20)
+                        SkeletonBlock(height: 48)
+                    }
                 }
             } else if isAdmin {
                 ruleEditor
@@ -644,20 +656,19 @@ public struct SpendingAllowanceSection: View {
         .onAppear { syncField(); syncThresholdField() }
         .onChange(of: savedBase) { _, _ in syncField() }
         .onChange(of: savedThreshold) { _, _ in syncThresholdField() }
-        .alert(item: $confirmChange) { change in
+        .appConfirmDialog(item: $confirmChange) { change in
             let message: String
             if let old = change.oldCents {
                 message = "Change the weekly allowance from \(MoneyFormat.formatCents(old)) to \(MoneyFormat.formatCents(change.newCents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
             } else {
                 message = "Set the weekly allowance to \(MoneyFormat.formatCents(change.newCents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
             }
-            return Alert(
-                title: Text("Change Allowance"),
-                message: Text(message),
-                primaryButton: .default(Text("Change Allowance")) {
-                    Task { await viewModel.setBaseAllowance(cents: change.newCents) }
-                },
-                secondaryButton: .cancel(Text("Keep Current"))
+            return AppConfirmDialog.Config(
+                title: "Change Allowance",
+                message: message,
+                primaryTitle: "Change Allowance",
+                secondaryTitle: "Keep Current",
+                onPrimary: { Task { await viewModel.setBaseAllowance(cents: change.newCents) } }
             )
         }
     }
@@ -689,7 +700,12 @@ public struct SpendingAllowanceSection: View {
                     Task { await viewModel.reloadAllowance() }
                 }
             } else {
-                FundsMuted("Loading allowance…")
+                // Build 74 (B5): skeletons shaped like the
+                // allowance field below, not "Loading…" text.
+                VStack(alignment: .leading, spacing: 12) {
+                    SkeletonBlock(height: 20)
+                    SkeletonBlock(height: 48)
+                }
             }
         }
     }
@@ -853,7 +869,9 @@ public struct SpendingAllowanceSection: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .padding(.horizontal, 18)
-                    .background(DesignTokens.deep)
+                    // Build 74 (B3): the one primary blue (#2f6bff)
+                    // — the deep blue (#1d4ed8) was a second primary.
+                    .background(DesignTokens.primary)
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
@@ -925,7 +943,7 @@ public struct AddToBudgetSheet: View {
         // sized to the content (C-4 fitted detents), not a
         // full-screen page — the form is one field and two
         // buttons, and the full screen left a huge empty area.
-        .presentationDetents([.fraction(0.45), .medium])
+        .presentationSizing(.fitted)
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
     }
@@ -1116,7 +1134,12 @@ public struct AdjustWeeklyBudgetSheet: View {
                     if let allowanceError = viewModel.allowanceError {
                         FundsErrorBox(allowanceError)
                     } else {
-                        FundsMuted("Loading your current allowance…")
+                        // Build 74 (B5): skeletons shaped like the
+                        // allowance field below, not "Loading…" text.
+                        VStack(alignment: .leading, spacing: 12) {
+                            SkeletonBlock(height: 20)
+                            SkeletonBlock(height: 48)
+                        }
                     }
                 } else if !previewText.isEmpty {
                     // Dynamic feedback, not an explainer — it

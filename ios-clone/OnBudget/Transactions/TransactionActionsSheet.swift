@@ -215,13 +215,21 @@ public struct TransactionActionsSheet: View {
     /// Build 47 (owner, Nov 19, 2026): the rename popup shows
     /// HOW the rule matches — "exact" (the current behaviour,
     /// normalised for case/punctuation) or "includes" (any future
-    /// bank name containing the bank name). Pre-filled from the
-    /// existing rule when there is one, else Exact.
+    /// bank name containing the match words — build 74, editable
+    /// in the sheet). Pre-filled from the existing rule when
+    /// there is one, else Exact.
     @State private var renameMatchType: String = "exact"
     /// Build 47: the bank name as the bank sends it — the rule's
     /// stored source merchant when there is one, else this row's
     /// raw merchant. Shown raw, never Title-Cased.
     @State private var renameBankName: String = ""
+    /// Build 74 (owner, Nov 25, 2026): the words an 'includes'
+    /// rule matches on — editable in the sheet, separate from
+    /// "Show as" (the display name) and from "From the Bank"
+    /// (the raw bank name). Defaults to the bank name; pre-filled
+    /// from the existing rule's pattern when there is one. Only
+    /// sent to the server when the match type is "includes".
+    @State private var renameMatchWords: String = ""
     @State private var linkCandidates: [Transaction]?
     @State private var linkedSummary: (merchant: String, amountCents: Int, date: String)?
     @State private var isWorking: Bool = false
@@ -574,8 +582,8 @@ public struct TransactionActionsSheet: View {
     /// Build 64 (C-4): fitted detents, not a full-screen cover
     /// (reverses the Nov 17 full-screen rule, build 43 item 17).
     /// The list is a half-screen sheet; the confirm flows are
-    /// small (.fraction(0.45), draggable to .medium when the
-    /// content needs it); the taller flows (Rename, Link) get
+    /// small (sized to their content, build 74 — see
+    /// `isConfirmFlow`); the taller flows (Rename, Link) get
     /// .medium. iPad: the 600pt frame (regular size class) keeps
     /// the sheet a centred card, never full-width or awkwardly
     /// small — the build-42 detents were the version that did
@@ -590,17 +598,30 @@ public struct TransactionActionsSheet: View {
         }
     }
 
+    /// Build 74 (B12): the short confirm flows size to their
+    /// content (.presentationSizing(.fitted)) instead of opening
+    /// in a half-empty 0.45 sheet; the long flows (list, rename,
+    /// link candidates) keep their detents.
+    private var isConfirmFlow: Bool {
+        switch flow {
+        case .list, .rename, .linkCandidates:
+            return false
+        default:
+            return true
+        }
+    }
+
     public var body: some View {
         // No NavigationStack root (owner, Nov 14, 2026): the
         // toolbar "Cancel" truncated to "Ca…", and a NavigationStack
         // reports an unbounded ideal height, so the fitted sheet
         // rendered tall and mostly empty (build 24) — a single
         // "Use Extra Fund" row in a full-height card. A plain VStack
-        // root + SheetHeader keeps the content at the top of the
-        // sheet (build 43, item 18 — the trailing Spacer below
-        // is what top-anchors it). On the list flow the
-        // header shows X (dismiss); on a sub-flow it shows a back
-        // chevron (return to the list).
+        // root + SheetHeader + ScrollView keeps the content at the
+        // top of the sheet (build 74 — the ScrollView top-anchors;
+        // the build-43 trailing Spacer is gone). On the list flow
+        // the header shows X (dismiss); on a sub-flow it shows a
+        // back chevron (return to the list).
         // Build 64 (C-4): fitted detents (see `sheetDetents`) —
         // the cover is a sheet now, not full-screen.
         VStack(alignment: .leading, spacing: 16) {
@@ -609,38 +630,49 @@ public struct TransactionActionsSheet: View {
                 onClose: { onDismiss() },
                 onBack: flow == .list ? nil : { flow = .list }
             )
-            switch flow {
-            case .list: listContent
-            case .charityConfirm: charityConfirmContent
-            case .extraFund: extraFundContent
-            case .linkCandidates: linkCandidatesContent
-            case .unlinkConfirm: unlinkConfirmContent
-            case .reclassifyReason(let kind): reclassifyReasonContent(kind: kind)
-            case .deleteConfirm: deleteConfirmContent
-            case .excludeConfirm: excludeConfirmContent
-            case .rename: renameContent
-            case .savingsConfirm: savingsConfirmContent
+            // Build 74 (owner, Nov 24, 2026 — popup sizing):
+            // the flows are unbounded (the list grows with More
+            // expanded; link candidates can be many rows) but
+            // there was no ScrollView — rows past the detent were
+            // concealed until the user dragged up. The flows now
+            // scroll under a pinned header; the trailing Spacer
+            // is gone (a ScrollView top-anchors on its own).
+            ScrollView {
+                switch flow {
+                case .list: listContent
+                case .charityConfirm: charityConfirmContent
+                case .extraFund: extraFundContent
+                case .linkCandidates: linkCandidatesContent
+                case .unlinkConfirm: unlinkConfirmContent
+                case .reclassifyReason(let kind): reclassifyReasonContent(kind: kind)
+                case .deleteConfirm: deleteConfirmContent
+                case .excludeConfirm: excludeConfirmContent
+                case .rename: renameContent
+                case .savingsConfirm: savingsConfirmContent
+                }
             }
-            // Build 43 (owner, Nov 17, 2026 — item 18): the
-            // trailing Spacer top-anchors the content in the
-            // full-screen cover — without it the short flows
-            // centre themselves vertically in the full screen.
-            Spacer()
         }
         .padding()
         // iPad width (owner, Nov 12, 2026): 600pt in the regular
         // size class, full-width on iPhone — same treatment as the
-        // Weekly Budget sheet. The trailing Spacer is back (build
-        // 43, item 18): in the full-screen cover it top-anchors
-        // the short flows — in the fitted sheet (build 64, C-4)
-        // it does the same against the detent height, so short
-        // confirms sit at the top of the sheet instead of
-        // centring themselves in it.
+        // Weekly Budget sheet. Short confirms sit at the top of
+        // the sheet (the ScrollView top-anchors them, build 74) —
+        // the build-43 trailing Spacer is gone.
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         // Build 64 (C-4): the fitted detents for this flow — the
         // modifier lives on the presented content, so the sheet
-        // resizes when the flow changes (list → confirm).
-        .presentationDetents(sheetDetents)
+        // resizes when the flow changes (list → confirm). Short
+        // confirms use .presentationSizing(.fitted) (build 74,
+        // B12); long flows keep their detents.
+        .modifier(ConfirmFittedSizing(fitted: isConfirmFlow, detents: sheetDetents))
+        // Build 74 (owner, Nov 25, 2026 — "why is it so dark?"):
+        // the one sheet in the app without an explicit white
+        // background — every other sheet sets
+        // `.presentationBackground(.white)`, so this one rendered
+        // with the system default and read dark against the
+        // dimmed list behind it. The dim itself is the system
+        // sheet scrim (no public API to lighten it).
+        .presentationBackground(.white)
         .presentationDragIndicator(.visible)
         // T-P2-1: the failure alert lives on this sheet, not on the
         // Transactions parent — an alert attached behind a presented
@@ -887,6 +919,7 @@ public struct TransactionActionsSheet: View {
             renameFixedKind = nil
             renameMatchType = "exact"
             renameBankName = transaction.merchant
+            renameMatchWords = transaction.merchant
             renameError = nil
             flow = .rename
             // Build 47: when a rule already matches this bank name,
@@ -899,11 +932,13 @@ public struct TransactionActionsSheet: View {
                 let initialName = renameName
                 let initialKind = renameFixedKind
                 let initialMatch = renameMatchType
+                let initialWords = renameMatchWords
                 if let rule = await viewModel.existingMerchantRule(for: transaction),
-                   renameName == initialName, renameFixedKind == initialKind, renameMatchType == initialMatch {
+                   renameName == initialName, renameFixedKind == initialKind, renameMatchType == initialMatch, renameMatchWords == initialWords {
                     renameName = rule.displayName
                     renameFixedKind = rule.fixedKind
                     renameMatchType = rule.matchType
+                    renameMatchWords = rule.patternText
                     if let source = rule.sourceMerchant, !source.isEmpty {
                         renameBankName = source
                     }
@@ -1065,7 +1100,9 @@ public struct TransactionActionsSheet: View {
     // 47, owner Nov 19, 2026: the popup shows three things
     // plainly — From the Bank (what the bank sends, raw), Show as
     // (the display name), Match (Exact name only vs Any name
-    // containing this). The old description paragraph is gone;
+    // containing this). Build 74 (owner, Nov 25, 2026): a fourth
+    // — Words to Match, editable, shown only for "Any Name
+    // Containing This". The old description paragraph is gone;
     // the fields say it. "Always Count As" is unchanged.
 
     private var renameContent: some View {
@@ -1097,19 +1134,37 @@ public struct TransactionActionsSheet: View {
                 Text("Match")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
-                Picker("Match", selection: $renameMatchType) {
-                    Text("Exact Name Only").tag("exact")
-                    Text("Any Name Containing This").tag("includes")
+                // Build 74 (B4): the Funds slider (SquarishPicker),
+                // not a segmented pill — 48pt tall, like the
+                // segmented control it replaces.
+                SquarishPicker([("exact", "Exact Name Only"), ("includes", "Any Name Containing This")], selection: $renameMatchType, minHeight: 48)
+                    .accessibilityIdentifier("rename.matchTypePicker")
+            }
+            // Build 74 (owner, Nov 25, 2026): the words the rule
+            // matches on, editable — only for "Any Name Containing
+            // This". Separate from "Show as" (the display name)
+            // and from "From the Bank" (the raw bank name): what
+            // the owner types here is what the rule matches on.
+            if renameMatchType == "includes" {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Words to Match")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    TextField("", text: $renameMatchWords)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 48, alignment: .leading)
+                        .background(.white)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .accessibilityIdentifier("rename.matchWords")
+                    // One short plain line, muted hint style — it
+                    // explains the match; the behaviour itself lives
+                    // server-side.
+                    MutedLine(text: "Any future bank name containing these words gets this name.")
                 }
-                .pickerStyle(.segmented)
-                // Build 68 (item 20): 48pt tall, so the segmented
-                // control feels substantial instead of thin/short.
-                .frame(minHeight: 48)
-                .padding(.vertical, 4)
-                .accessibilityIdentifier("rename.matchTypePicker")
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Always Count As")
+                Text("Always Count as")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 Picker("", selection: $renameFixedKind) {
@@ -1133,8 +1188,15 @@ public struct TransactionActionsSheet: View {
                         renameError = "Enter a name."
                         return
                     }
+                    // Build 74: the match words must not be blank
+                    // when the rule matches by containing them.
+                    let words = renameMatchWords.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if renameMatchType == "includes" && words.isEmpty {
+                        renameError = "Enter the words to match."
+                        return
+                    }
                     isWorking = true
-                    let ok = await viewModel.renameMerchant(transaction, to: name, fixedKind: renameFixedKind, matchType: renameMatchType)
+                    let ok = await viewModel.renameMerchant(transaction, to: name, fixedKind: renameFixedKind, matchType: renameMatchType, pattern: renameMatchType == "includes" ? words : nil)
                     isWorking = false
                     if ok { onDismiss() }
                 }
@@ -1382,7 +1444,11 @@ public struct TransactionActionsSheet: View {
                     .font(.system(size: 15))
                     .foregroundStyle(DesignTokens.ink)
                 TwoButtonRow {
-                    Button("Delete") {
+                    // Build 74 (B13): the one delete treatment —
+                    // soft-red (FundsDangerButton), not the solid
+                    // #dc2626 fill the build-68 style used. Keep It
+                    // stays grey.
+                    FundsDangerButton("Delete", isBusy: isWorking) {
                         Task {
                             isWorking = true
                             let ok = await viewModel.delete(transaction, reason: "")
@@ -1390,12 +1456,6 @@ public struct TransactionActionsSheet: View {
                             if ok { onDismiss() }
                         }
                     }
-                    // Build 68 (item 8): the delete confirm is solid
-                    // #dc2626, not solid blue — a delete is a
-                    // destructive action, so its primary button is
-                    // the destructive red. Keep It stays grey.
-                    .buttonStyle(DestructivePrimaryButtonStyle())
-                    .disabled(isWorking)
                 } secondary: {
                     Button("Keep It") { flow = .list }
                         .buttonStyle(TertiaryButtonStyle())
@@ -1423,7 +1483,11 @@ public struct TransactionActionsSheet: View {
                     SoftErrorBox(deleteReasonError)
                 }
                 TwoButtonRow {
-                    Button("Move to Trash") {
+                    // Build 74 (B13): same one delete treatment as
+                    // Delete above — soft-red (FundsDangerButton).
+                    // Moving to Trash is the delete action for a
+                    // bank row. Keep It stays grey.
+                    FundsDangerButton("Move to Trash", isBusy: isWorking) {
                         Task {
                             let reason = deleteReason.trimmingCharacters(in: .whitespaces)
                             guard !reason.isEmpty else {
@@ -1436,16 +1500,26 @@ public struct TransactionActionsSheet: View {
                             if ok { onDismiss() }
                         }
                     }
-                    // Build 68 (item 8): same destructive red as
-                    // Delete above — moving to Trash is the delete
-                    // action for a bank row. Keep It stays grey.
-                    .buttonStyle(DestructivePrimaryButtonStyle())
-                    .disabled(isWorking)
                 } secondary: {
                     Button("Keep It") { flow = .list }
                         .buttonStyle(TertiaryButtonStyle())
                 }
             }
+        }
+    }
+}
+
+/// Build 74 (B12): applies `.presentationSizing(.fitted)` for
+/// short confirm flows, `.presentationDetents` otherwise — the
+/// two cannot both apply to the same sheet.
+private struct ConfirmFittedSizing: ViewModifier {
+    let fitted: Bool
+    let detents: Set<PresentationDetent>
+    func body(content: Content) -> some View {
+        if fitted {
+            content.presentationSizing(.fitted)
+        } else {
+            content.presentationDetents(detents)
         }
     }
 }

@@ -295,7 +295,10 @@ public struct SheetHeader: View {
                 .accessibilityLabel("Close")
             }
             Spacer()
-            Text(title)
+            // Build 74 (B24): headlines are Title Case — the
+            // header applies it, so a raw-title call site can
+            // never slip a capital minor word through again.
+            Text(TitleCase.apply(to: title))
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
                 .lineLimit(1)
@@ -996,6 +999,165 @@ public extension View {
     /// full-width, unchanged.
     func mainContentWidth(horizontalSizeClass: UserInterfaceSizeClass?) -> some View {
         frame(maxWidth: horizontalSizeClass == .regular ? 900 : .infinity)
+    }
+}
+
+// MARK: - Choice dialog
+//
+// App-styled choice dialog (owner, Nov 24, 2026 — build 74):
+// system alerts render both buttons blue (`.default` + `.cancel`
+// are the same blue), so every two-button confirmation uses this
+// instead: a centred white card over a dim background, presented
+// as a full-screen cover with a clear background (so it works
+// from any view, like `.alert`), with the primary action solid
+// blue (or soft-red for a destructive action) and the secondary
+// grey — never two buttons in the same colour. A single-button
+// dialog (secondaryTitle nil) renders one full-width primary.
+// Informational confirmations are the top toast, not this dialog.
+// The card sits in a ScrollView so a dialog with a field (the
+// override-reason field) still clears the keyboard. Taps outside
+// the card do nothing — a choice dialog needs a button, like the
+// system alert it replaces.
+
+/// One choice dialog: title + message + primary / secondary
+/// buttons, rendered as a centred white card.
+public struct AppConfirmDialog: View {
+    public enum Tone { case primary, destructive }
+
+    public struct Config {
+        public var title: String
+        public var message: String
+        public var primaryTitle: String
+        public var tone: Tone
+        /// Nil renders a single full-width primary button.
+        public var secondaryTitle: String?
+        public var onPrimary: () -> Void
+        public var onSecondary: (() -> Void)?
+        /// Optional extra content between the message and the
+        /// buttons (e.g. a reason field) — nil for a plain confirm.
+        public var extra: AnyView?
+
+        public init(title: String, message: String, primaryTitle: String, tone: Tone = .primary, secondaryTitle: String? = "Cancel", onPrimary: @escaping () -> Void, onSecondary: (() -> Void)? = nil, extra: AnyView? = nil) {
+            self.title = title
+            self.message = message
+            self.primaryTitle = primaryTitle
+            self.tone = tone
+            self.secondaryTitle = secondaryTitle
+            self.onPrimary = onPrimary
+            self.onSecondary = onSecondary
+            self.extra = extra
+        }
+    }
+
+    let config: Config
+    let onDismiss: () -> Void
+
+    public init(config: Config, onDismiss: @escaping () -> Void) {
+        self.config = config
+        self.onDismiss = onDismiss
+    }
+
+    public var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .center) {
+                Color.black.opacity(0.35)
+                    .ignoresSafeArea()
+                ScrollView {
+                    VStack {
+                        Spacer(minLength: 0)
+                        card
+                        Spacer(minLength: 0)
+                    }
+                    .frame(minHeight: geometry.size.height)
+                }
+            }
+        }
+        .presentationBackground(.clear)
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(TitleCase.apply(to: config.title))
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(DesignTokens.ink)
+            Text(config.message)
+                .font(.system(size: 15))
+                .foregroundStyle(DesignTokens.ink)
+            if let extra = config.extra {
+                extra
+            }
+            HStack(spacing: 12) {
+                Button(TitleCase.apply(to: config.primaryTitle)) {
+                    config.onPrimary()
+                    onDismiss()
+                }
+                .buttonStyle(AppConfirmPrimaryButtonStyle(tone: config.tone))
+                if let secondaryTitle = config.secondaryTitle {
+                    Button(TitleCase.apply(to: secondaryTitle)) {
+                        config.onSecondary?()
+                        onDismiss()
+                    }
+                    .buttonStyle(TertiaryButtonStyle())
+                }
+            }
+        }
+        .padding(20)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+        )
+        .fundCardShadow()
+        .padding(.horizontal, 20)
+        .frame(maxWidth: 480)
+    }
+}
+
+/// The dialog's primary button: solid brand blue, or the soft-red
+/// delete treatment (the FundsDangerButton colours — soft-red bg
+/// #fef2f2, red text #dc2626) for a destructive action. Same
+/// size/shape as PrimaryButtonStyle.
+private struct AppConfirmPrimaryButtonStyle: ButtonStyle {
+    let tone: AppConfirmDialog.Tone
+    func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(tone == .destructive ? DesignTokens.errorText : .white)
+            .padding(.vertical, 13)
+            .padding(.horizontal, 18)
+            .frame(maxWidth: .infinity)
+            .background(tone == .destructive ? DesignTokens.errorBackground : DesignTokens.primary)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}
+
+public extension View {
+    /// Present the app-styled choice dialog (see AppConfirmDialog).
+    func appConfirmDialog(isPresented: Binding<Bool>, title: String, message: String, primaryTitle: String, tone: AppConfirmDialog.Tone = .primary, secondaryTitle: String? = "Cancel", extra: AnyView? = nil, onPrimary: @escaping () -> Void, onSecondary: (() -> Void)? = nil) -> some View {
+        fullScreenCover(isPresented: isPresented) {
+            AppConfirmDialog(
+                config: AppConfirmDialog.Config(title: title, message: message, primaryTitle: primaryTitle, tone: tone, secondaryTitle: secondaryTitle, onPrimary: onPrimary, onSecondary: onSecondary, extra: extra),
+                onDismiss: { isPresented.wrappedValue = false }
+            )
+        }
+    }
+
+    /// Item-driven variant — mirrors `.alert(item:)`: while the
+    /// item is non-nil the dialog shows, built from that item.
+    /// Dismissal clears the item ONLY if it is still the item the
+    /// dialog opened for — a primary action that advances the
+    /// state machine (e.g. delete step one → step two, by setting
+    /// a new alert value) must not have its next step wiped by
+    /// the dismiss that follows it.
+    func appConfirmDialog<Item: Identifiable>(item: Binding<Item?>, config: @escaping (Item) -> AppConfirmDialog.Config) -> some View {
+        fullScreenCover(item: item) { value in
+            AppConfirmDialog(
+                config: config(value),
+                onDismiss: { if item.wrappedValue?.id == value.id { item.wrappedValue = nil } }
+            )
+        }
     }
 }
 

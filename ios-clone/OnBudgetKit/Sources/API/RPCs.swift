@@ -1092,15 +1092,19 @@ extension RPCClient {
     }
 
     /// `rename_transaction_and_apply_rule(p_transaction_id,
-    /// p_display_name, p_fixed_kind, p_match_type)` — teaches the
-    /// rule from this transaction's spelling and applies it to all
-    /// matching old rows. Returns the count of renamed rows.
-    public func renameTransactionAndApplyRule(pTransactionId: UUID, pDisplayName: String, pFixedKind: String?, pMatchType: String = "exact") async throws -> Int {
+    /// p_display_name, p_fixed_kind, p_match_type, p_pattern)` —
+    /// teaches the rule from this transaction's spelling and applies
+    /// it to all matching old rows. Returns the count of renamed
+    /// rows. `p_pattern` (build 74): the words an 'includes' rule
+    /// matches on, editable in the Rename Merchant sheet — nil
+    /// keeps the transaction's own bank name. Ignored for 'exact'.
+    public func renameTransactionAndApplyRule(pTransactionId: UUID, pDisplayName: String, pFixedKind: String?, pMatchType: String = "exact", pPattern: String? = nil) async throws -> Int {
         try await callScalar(name: "rename_transaction_and_apply_rule", params: [
             "p_transaction_id": pTransactionId.uuidString,
             "p_display_name": pDisplayName,
             "p_fixed_kind": pFixedKind ?? NSNull(),
             "p_match_type": pMatchType,
+            "p_pattern": pPattern ?? NSNull(),
         ])
     }
 

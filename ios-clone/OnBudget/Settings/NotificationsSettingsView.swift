@@ -99,7 +99,15 @@ struct NotificationsSettingsView: View {
     /// Build 68 (item 14): the notifications explainer behind ⓘ.
     @State private var showingAboutInfo = false
 
-    init(context: SettingsContext, toast: ToastState) {
+    /// Build 74: when this card IS the Notifications subpage, the
+    /// page title already says "Notifications" — the card title
+    /// would repeat it (standing rule: never repeat a word the
+    /// heading already says). Default false keeps the title
+    /// everywhere else.
+    private let hideCardTitle: Bool
+
+    init(context: SettingsContext, toast: ToastState, hideCardTitle: Bool = false) {
+        self.hideCardTitle = hideCardTitle
         _viewModel = StateObject(wrappedValue: NotificationsSettingsViewModel(context: context, toast: toast))
     }
 
@@ -175,7 +183,7 @@ struct NotificationsSettingsView: View {
     }
 
     var body: some View {
-        SettingsCard(title: "Notifications") {
+        SettingsCard(title: hideCardTitle ? nil : "Notifications") {
             VStack(alignment: .leading, spacing: 12) {
                 // Build 43 (owner, Nov 17, 2026): the "On" text at
                 // the top right is gone — redundant, the "All
@@ -214,9 +222,13 @@ struct NotificationsSettingsView: View {
                 }
                 Divider()
                 if viewModel.isLoading {
-                    Text("Loading notification settings…")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color(hex: "#6b7280"))
+                    // Build 74 (B5): row skeletons shaped like the
+                    // toggle rows below, not "Loading…" text.
+                    VStack(alignment: .leading, spacing: 12) {
+                        SkeletonBlock(height: 48)
+                        SkeletonBlock(height: 48)
+                        SkeletonBlock(height: 48)
+                    }
                 } else if let error = viewModel.loadError {
                     FundsErrorBox(error)
                     FundsSmallTertiaryButton("Try Again") {
@@ -261,7 +273,9 @@ struct NotificationsSettingsView: View {
                                             .font(.system(size: 15, weight: .semibold))
                                             .foregroundStyle(DesignTokens.ink)
                                         Spacer()
-                                        Text("⌄")
+                                        // Build 74 (B11): SF Symbol
+                                        // chevron, not the "⌄" text glyph.
+                                        Image(systemName: "chevron.down")
                                             .font(.system(size: 15, weight: .semibold))
                                             .foregroundStyle(DesignTokens.primary)
                                             .rotationEffect(.degrees(expandedCategories.contains(category.title) ? 180 : 0))

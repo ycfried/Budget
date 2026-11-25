@@ -47,11 +47,13 @@
 //   (Past Weeks tap opens Transactions filtered to that week).
 // Toasts render at the ContentView root so they also show on the
 // Auth screen (account-created / account-deleted notices).
-// Build 64 (C-5): the app-shell confirmation popup is ALSO
-// attached here (shell root + inside the Settings cover) — see
-// ConfirmationPopup.swift. While both attachments live, the
-// ContentView call must be retired or gated by the coordinator
-// (see that file's header) or the popup renders twice in-app.
+// Build 64 (C-5): the app-shell toast is ALSO attached here
+// (shell root + inside the Settings cover). While both
+// attachments live, the ContentView call stays gated to the
+// non-.app phases (see ContentView) or the toast renders twice
+// in-app. (Build 74: the Nov 23 branded confirmation popup is
+// retired — the top toast is the one confirmation style, owner
+// Nov 24, 2026.)
 //
 // Clone basis: live web v66.
 
@@ -119,19 +121,18 @@ public struct AppShellView: View {
                 )
             }
         }
-        // Build 64 (C-5): the confirmation popup renders at the
-        // APP-SHELL level, above the tab content — so a confirmation
-        // fired from Home / Transactions / Funds is seen. The
-        // `AppState.showToast` API is unchanged; only the rendering
-        // changed, from toast bars to the popup card
-        // (ConfirmationPopup.swift). This overlay still renders
-        // UNDERNEATH any fullScreenCover presented from the shell
-        // or its tabs (covers live above the presenting view), so
-        // the Settings cover gets its own attachment inside its
-        // content below, and TransactionsView's covers need the
-        // same inside theirs. See ConfirmationPopup.swift's header
-        // for the ContentView double-rendering note.
-        .confirmationPopupOverlay($appState.toast)
+        // Build 64 (C-5): the toast renders at the APP-SHELL
+        // level, above the tab content — so a confirmation fired
+        // from Home / Transactions / Funds is seen. This overlay
+        // still renders UNDERNEATH any fullScreenCover presented
+        // from the shell or its tabs (covers live above the
+        // presenting view), so the Settings cover gets its own
+        // attachment inside its content below, and
+        // TransactionsView's covers need the same inside theirs.
+        // (Build 74: the Nov 23 branded popup card is retired —
+        // the top toast is the one confirmation style, owner
+        // Nov 24, 2026.)
+        .toastOverlay($appState.toast)
         .fullScreenCover(isPresented: $appState.showSettings) {
             settingsCover
         }
@@ -210,14 +211,14 @@ public struct AppShellView: View {
                 LoadingView()
             }
         }
-        // Build 64 (C-5): the popup attached INSIDE the Settings
+        // Build 64 (C-5): the toast attached INSIDE the Settings
         // cover's content, so a confirmation fired while Settings
         // is open renders ABOVE the cover instead of underneath
         // it (a shell-root overlay cannot show above a cover the
         // shell presents). Bound to the same `$appState.toast`, so
         // a confirmation shows exactly once — here while Settings
         // is open, at the shell root otherwise.
-        .confirmationPopupOverlay($appState.toast)
+        .toastOverlay($appState.toast)
         // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
         // dismisses the Settings cover, matching the top-left
         // Back button. (SettingsView has no SheetHeader, so the

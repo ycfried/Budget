@@ -394,16 +394,13 @@ private struct HeldRefundRow: View {
                 FundsSmallPrimaryButton("Release", isBusy: isBusy) {
                     showReleaseConfirm = true
                 }
-                .confirmationDialog(
-                    "Release Held Refund",
+                .appConfirmDialog(
                     isPresented: $showReleaseConfirm,
-                    titleVisibility: .visible
-                ) {
-                    Button(TitleCase.apply(to: "Release")) { onRelease() }
-                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-                } message: {
-                    Text("Release \(MoneyFormat.formatCents(held.heldCents)) to spendable surplus? Any amount owed back is covered first.")
-                }
+                    title: "Release Held Refund",
+                    message: "Release \(MoneyFormat.formatCents(held.heldCents)) to spendable surplus? Any amount owed back is covered first.",
+                    primaryTitle: "Release",
+                    onPrimary: { onRelease() }
+                )
             }
         }
     }
@@ -429,7 +426,7 @@ private struct ResolvedDuplicateRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(TitleCase.apply(to: row.merchantA.lowercased())) / \(TitleCase.apply(to: row.merchantB.lowercased()))")
+                Text("\(TransactionFormatting.displayMerchant(row.merchantA)) / \(TransactionFormatting.displayMerchant(row.merchantB))")
                     .font(.system(size: 15, weight: .semibold))
                 Text(statusLine)
                     .font(.system(size: 14))
@@ -440,30 +437,24 @@ private struct ResolvedDuplicateRow: View {
                 FundsSmallTertiaryButton("Reopen", isBusy: isBusy) {
                     showReopenConfirm = true
                 }
-                .confirmationDialog(
-                    "Reopen Duplicate Review",
+                .appConfirmDialog(
                     isPresented: $showReopenConfirm,
-                    titleVisibility: .visible
-                ) {
-                    Button(TitleCase.apply(to: "Reopen")) { onReopen() }
-                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-                } message: {
-                    Text("Show this pair in Possible Duplicates again?")
-                }
+                    title: "Reopen Duplicate Review",
+                    message: "Show this pair in Possible Duplicates again?",
+                    primaryTitle: "Reopen",
+                    onPrimary: { onReopen() }
+                )
             } else if row.status == "merged" {
                 FundsSmallTertiaryButton("Restore", isBusy: isRestoreBusy) {
                     showRestoreConfirm = true
                 }
-                .confirmationDialog(
-                    "Restore This Transaction",
+                .appConfirmDialog(
                     isPresented: $showRestoreConfirm,
-                    titleVisibility: .visible
-                ) {
-                    Button(TitleCase.apply(to: "Restore")) { onRestore() }
-                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-                } message: {
-                    Text("Restore this transaction so it counts again? The pair stays resolved.")
-                }
+                    title: "Restore This Transaction",
+                    message: "Restore this transaction so it counts again? The pair stays resolved.",
+                    primaryTitle: "Restore",
+                    onPrimary: { onRestore() }
+                )
             }
         }
     }
@@ -492,29 +483,23 @@ private struct RefundLinkCard: View {
                 FundsSmallPrimaryButton("Link", isBusy: isLinkBusy) {
                     showLinkConfirm = true
                 }
-                .confirmationDialog(
-                    "Link Refund",
+                .appConfirmDialog(
                     isPresented: $showLinkConfirm,
-                    titleVisibility: .visible
-                ) {
-                    Button(TitleCase.apply(to: "Link Refund")) { onLink() }
-                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-                } message: {
-                    Text("Link this \(TransactionFormatting.amountDisplay(for: suggestion.refund).text) refund from \(TitleCase.apply(to: suggestion.refund.merchant.lowercased())) to \(TitleCase.apply(to: suggestion.purchase.merchant.lowercased())) \(MoneyFormat.formatCents(suggestion.purchase.amountCents))?")
-                }
+                    title: "Link Refund",
+                    message: "Link this \(TransactionFormatting.amountDisplay(for: suggestion.refund).text) refund from \(TransactionFormatting.displayMerchant(suggestion.refund.merchant)) to \(TransactionFormatting.displayMerchant(suggestion.purchase.merchant)) \(MoneyFormat.formatCents(suggestion.purchase.amountCents))?",
+                    primaryTitle: "Link Refund",
+                    onPrimary: { onLink() }
+                )
                 FundsSmallTertiaryButton("Dismiss", isBusy: isDismissBusy) {
                     showDismissConfirm = true
                 }
-                .confirmationDialog(
-                    "Dismiss Suggestion",
+                .appConfirmDialog(
                     isPresented: $showDismissConfirm,
-                    titleVisibility: .visible
-                ) {
-                    Button(TitleCase.apply(to: "Dismiss")) { onDismiss() }
-                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-                } message: {
-                    Text("Hide this suggestion? It will not be shown again.")
-                }
+                    title: "Dismiss Suggestion",
+                    message: "Hide this suggestion? It will not be shown again.",
+                    primaryTitle: "Dismiss",
+                    onPrimary: { onDismiss() }
+                )
             }
         }
         .padding(12)
@@ -531,7 +516,7 @@ private struct RefundLinkCard: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.system(size: 14, weight: .bold))
-            Text(TitleCase.apply(to: transaction.merchant.lowercased()))
+            Text(TransactionFormatting.displayMerchant(transaction.merchant))
                 .font(.system(size: 15, weight: .semibold))
             labeledRow("Amount", display.text, valueColor: display.color)
             labeledRow("Date", MoneyFormat.fmtLong(transaction.date))
@@ -633,45 +618,40 @@ public struct DuplicatePairCard: View {
                 DuplicateSide(label: "Possible Duplicate", transaction: duplicate, fallback: "Possible duplicate: transaction not found")
             }
             HStack(spacing: 12) {
-                // Build 30: the two confirms are CENTERED alerts,
+                // Build 30: the two confirms are CENTRED dialogs,
                 // not popovers — the owner (Nov 15, 2026) wants the
                 // Same Purchase explainer centred on the screen,
-                // not anchored next to its button. (The other four
-                // Review confirms stay button-anchored
-                // confirmationDialogs.) A .alert is centred on
-                // iPhone and iPad alike; a confirmationDialog on
-                // iPad is a popover, which is how the old
-                // root-anchored dialogs ended up floating at the
-                // top of the page.
+                // not anchored next to its button. (Build 74: all
+                // Review confirms are the app-styled choice dialog
+                // now — the system alert rendered both buttons
+                // blue, and a confirmationDialog on iPad is a
+                // popover, which is how the old root-anchored
+                // dialogs ended up floating at the top of the page.)
                 FundsSmallPrimaryButton("Same Purchase", isBusy: isBusy) {
                     showSamePurchaseConfirm = true
                 }
-                .alert(
-                    "Same Purchase",
-                    isPresented: $showSamePurchaseConfirm
-                ) {
-                    Button(TitleCase.apply(to: "Same Purchase")) { onSamePurchase(rememberAlias) }
-                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-                } message: {
+                .appConfirmDialog(
+                    isPresented: $showSamePurchaseConfirm,
+                    title: "Same Purchase",
                     // Build 68: a charity pair merges two reports
                     // of ONE gift — the message says so, instead of
                     // the generic purchase wording.
-                    Text(isCharityPair
-                         ? "Keep one gift and exclude the other from counts? Both rows are the same gift reported twice. Neither row is deleted."
-                         : "Keep one transaction and exclude the other from counts? Neither row is deleted.")
-                }
+                    message: isCharityPair
+                        ? "Keep one gift and exclude the other from counts? Both rows are the same gift reported twice. Neither row is deleted."
+                        : "Keep one transaction and exclude the other from counts? Neither row is deleted.",
+                    primaryTitle: "Same Purchase",
+                    onPrimary: { onSamePurchase(rememberAlias) }
+                )
                 FundsSmallTertiaryButton("Separate", isBusy: isBusy) {
                     showSeparateConfirm = true
                 }
-                .alert(
-                    "Separate Purchases",
-                    isPresented: $showSeparateConfirm
-                ) {
-                    Button(TitleCase.apply(to: "Separate")) { onSeparate() }
-                    Button(TitleCase.apply(to: "Cancel"), role: .cancel) {}
-                } message: {
-                    Text("Keep both transactions and never flag this pair again?")
-                }
+                .appConfirmDialog(
+                    isPresented: $showSeparateConfirm,
+                    title: "Separate Purchases",
+                    message: "Keep both transactions and never flag this pair again?",
+                    primaryTitle: "Separate",
+                    onPrimary: { onSeparate() }
+                )
             }
             Toggle(isOn: $rememberAlias) {
                 Text("Remember as same merchant")
@@ -700,7 +680,7 @@ public struct DuplicateSide: View {
             Text(label)
                 .font(.system(size: 14, weight: .bold))
             if let transaction {
-                Text(TitleCase.apply(to: transaction.merchant.lowercased()))
+                Text(TransactionFormatting.displayMerchant(transaction.merchant))
                     .font(.system(size: 15, weight: .semibold))
                 // The Amount row uses the one shared kind rule
                 // (amountDisplay): money in green with "+",

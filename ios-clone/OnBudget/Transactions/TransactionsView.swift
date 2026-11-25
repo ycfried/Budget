@@ -165,7 +165,11 @@ public struct TransactionsView: View {
         // (.toastOverlay, SharedViews) — the centered ZStack
         // popup (build 38) was "horrendous" (owner, Nov 20,
         // 2026 — build 50) and covered the list mid-screen.
-        ScrollView {
+        // Build 74 (tour): the ScrollViewReader lets the tour
+        // scroll its current target into view on step change
+        // (see scrollTourAnchorIntoView).
+        ScrollViewReader { proxy in
+            ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 header
                 searchBox
@@ -175,6 +179,11 @@ public struct TransactionsView: View {
                 loadMoreButton
             }
             .padding()
+        }
+        // Build 74 (tour): scroll the current step's target into
+        // view on step change.
+        .onChange(of: appState.tour.stepIndex) { _, _ in
+            scrollTourAnchorIntoView(proxy, tour: appState.tour, tab: .transactions)
         }
         .refreshable {
             await viewModel.load()
@@ -187,6 +196,7 @@ public struct TransactionsView: View {
         // centered 900pt column on the regular size class (see
         // mainContentWidth), never stretched edge-to-edge.
         .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
+        }
     }
 
     /// The on-appear work (build 64): extracted from `body`'s `.task`
@@ -248,7 +258,7 @@ public struct TransactionsView: View {
                         // The Filters sheet fires no toast of its own;
                         // the binding is the app-shell toast state, so
                         // any confirmation fired while it is open shows.
-                        .confirmationPopupOverlay($appState.toast)
+                        .toastOverlay($appState.toast)
                 }
                 // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
                 // cover, not a detent sheet. AddTransactionView sets no
@@ -263,7 +273,7 @@ public struct TransactionsView: View {
                         // the view model into the app-shell toast
                         // (`AppViewModel.showToast`), which the shell-root
                         // popup cannot show from underneath this cover.
-                        .confirmationPopupOverlay($appState.toast)
+                        .toastOverlay($appState.toast)
                 }
                 // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
                 // cover, not a detent sheet. The Trash content is a
@@ -276,7 +286,7 @@ public struct TransactionsView: View {
                         // the view model into the app-shell toast, which
                         // the shell-root popup cannot show from
                         // underneath this cover.
-                        .confirmationPopupOverlay($appState.toast)
+                        .toastOverlay($appState.toast)
                 }
                 // Build 45 (Nov 18, 2026): full-screen cover, not a detent
                 // sheet — popups are always full size. The export popup
@@ -294,7 +304,7 @@ public struct TransactionsView: View {
                     // no-match toasts fire via `AppViewModel.showToast`,
                     // which the shell-root popup cannot show from
                     // underneath this cover.
-                    .confirmationPopupOverlay($appState.toast)
+                    .toastOverlay($appState.toast)
                 }
                 // Build 64 (C-4, owner Nov 23, 2026): fitted detents,
                 // NOT a full-screen cover — this reverses the Nov 17
@@ -317,7 +327,7 @@ public struct TransactionsView: View {
                     // so the action confirmations (which fire through
                     // the view model into the app-shell toast) need the
                     // popup attached here to be seen.
-                    .confirmationPopupOverlay($appState.toast)
+                    .toastOverlay($appState.toast)
                 }
                 // Build 67 (owner, Nov 23, 2026): the expense editor,
                 // opened right after tagging from the Actions sheet —
@@ -337,7 +347,7 @@ public struct TransactionsView: View {
                         },
                         onClose: { taggedExpense = nil }
                     )
-                    .confirmationPopupOverlay($appState.toast)
+                    .toastOverlay($appState.toast)
                 }
         }
     }
@@ -400,6 +410,7 @@ public struct TransactionsView: View {
                 .buttonStyle(SmallPrimaryButtonStyle())
                 // Walkthrough anchor (build 48): the + Add button.
                 .tourAnchor(.addButton, tour: appState.tour)
+                .id(TourAnchor.addButton)
             Button("Filters") { showingFilters = true }
                 .buttonStyle(SmallTertiaryButtonStyle())
             Menu {
@@ -533,6 +544,7 @@ public struct TransactionsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         // Walkthrough anchor (build 48): the search field.
         .tourAnchor(.searchBar, tour: appState.tour)
+        .id(TourAnchor.searchBar)
     }
 
     @ViewBuilder
@@ -694,6 +706,7 @@ public struct TransactionsView: View {
                             shown.first?.id == transaction.id ? .firstRow : nil,
                             tour: appState.tour
                         )
+                        .id(shown.first?.id == transaction.id ? TourAnchor.firstRow : nil)
                         if transaction.id != shown.last?.id {
                             Divider()
                                 .padding(.leading, 64)
@@ -705,6 +718,7 @@ public struct TransactionsView: View {
                 .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
                 // Walkthrough anchor (build 48): the list itself.
                 .tourAnchor(.transactionsList, tour: appState.tour)
+                .id(TourAnchor.transactionsList)
             }
         }
     }
@@ -970,8 +984,11 @@ public struct TransactionsFilterSheet: View {
                         .buttonStyle(PrimaryButtonStyle())
                         // T-P2-2: Apply stays disabled while the
                         // amount range is invalid — the error box
-                        // above already says why.
+                        // above already says why. Build 74 (B7): a
+                        // disabled button dims to 0.6 (the Funds
+                        // pattern) so it never reads as tappable.
                         .disabled(draftAmountInvalid)
+                        .opacity(draftAmountInvalid ? 0.6 : 1.0)
 
                     // Reset is a real button (owner, Nov 14, 2026):
                     // as a plain grey link under Apply / Cancel it

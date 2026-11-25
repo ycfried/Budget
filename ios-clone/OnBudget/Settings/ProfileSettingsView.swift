@@ -274,12 +274,19 @@ struct ProfileSettingsView: View {
     /// in FundsShared.swift.
     @State private var showingFaceIDInfo = false
 
-    init(context: SettingsContext, toast: ToastState) {
+    /// Build 74: when this card IS the Profile subpage, the page
+    /// title already says "Profile" — the card title would repeat
+    /// it (standing rule: never repeat a word the heading already
+    /// says). Default false keeps the title everywhere else.
+    private let hideCardTitle: Bool
+
+    init(context: SettingsContext, toast: ToastState, hideCardTitle: Bool = false) {
+        self.hideCardTitle = hideCardTitle
         _viewModel = StateObject(wrappedValue: ProfileSettingsViewModel(context: context, toast: toast))
     }
 
     var body: some View {
-        SettingsCard(title: "Profile") {
+        SettingsCard(title: hideCardTitle ? nil : "Profile") {
             // Persistent save failure (audit CF-1): unlike the
             // toast, this box stays until the next save attempt
             // or a tap dismisses it.
@@ -288,21 +295,33 @@ struct ProfileSettingsView: View {
                     .onTapGesture { viewModel.saveError = nil }
             }
             LabeledField(label: "Name", text: $viewModel.name, placeholder: "Your name", autocapitalization: .words, focused: $nameFocused)
-            Button(viewModel.isSavingName ? "Saving…" : "Save Name") {
-                Task { await viewModel.saveName() }
+            // Build 74 replan (owner, Nov 24, 2026 — "Does this
+            // need to be rethought?"): the two full-width primary
+            // slabs were heavy and repetitive. The saves stay
+            // primary blue (Nov 4 intent) but are compact buttons
+            // tucked right under their field — the action below
+            // the thing it acts on, not a slab per field.
+            HStack {
+                Spacer()
+                Button(viewModel.isSavingName ? "Saving…" : "Save Name") {
+                    Task { await viewModel.saveName() }
+                }
+                .buttonStyle(SmallPrimaryButtonStyle())
+                .disabled(viewModel.isSavingName)
             }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(viewModel.isSavingName)
 
             LabeledField(label: "Email", text: $viewModel.email, placeholder: "you@example.com", keyboardType: .emailAddress, autocapitalization: .never, focused: $emailFocused)
-            Button(viewModel.isSavingEmail ? "Saving…" : "Save Email") {
-                // Build 48: Save Email only ASKS (validates + shows
-                // the confirmation dialog); the send happens from
-                // the dialog's Send Confirmation button.
-                viewModel.requestSaveEmail()
+            HStack {
+                Spacer()
+                Button(viewModel.isSavingEmail ? "Saving…" : "Save Email") {
+                    // Build 48: Save Email only ASKS (validates + shows
+                    // the confirmation dialog); the send happens from
+                    // the dialog's Send Confirmation button.
+                    viewModel.requestSaveEmail()
+                }
+                .buttonStyle(SmallPrimaryButtonStyle())
+                .disabled(viewModel.isSavingEmail)
             }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(viewModel.isSavingEmail)
             if let pending = viewModel.pendingEmailConfirmation {
                 Text("Confirmation pending — check your inbox to confirm \(pending). Your sign-in email stays as it is until then.")
                     .font(.subheadline)
@@ -314,10 +333,17 @@ struct ProfileSettingsView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignTokens.ink)
                 .padding(.top, 4)
-            Button("Change Password") {
-                viewModel.showChangePassword = true
+            // Build 74 replan: same compact right-aligned
+            // treatment as the saves above — one small action per
+            // field, instead of a third full-width slab. Grey
+            // tertiary, as the Nov 4 decision intends.
+            HStack {
+                Spacer()
+                Button("Change Password") {
+                    viewModel.showChangePassword = true
+                }
+                .buttonStyle(SmallTertiaryButtonStyle())
             }
-            .buttonStyle(TertiaryButtonStyle())
 
             // Face ID unlock (native v1, opt-in, default off): hidden
             // entirely when the device cannot evaluate biometrics
@@ -352,16 +378,14 @@ struct ProfileSettingsView: View {
                 }
             }
 
-            Button(viewModel.isSigningOut ? "Signing Out…" : "Sign Out") {
+            // Owner, Nov 24, 2026 — "sign out should always be
+            // red": the standard destructive red (soft-red bg,
+            // #dc2626 text — the same treatment as Delete/Remove
+            // everywhere), not the blue outline it used to be.
+            FundsDangerButton("Sign Out", isBusy: viewModel.isSigningOut) {
                 Task { await viewModel.signOut() }
             }
-            // Distinct outline treatment — never the same grey
-            // tertiary as Change Password above it when the Face ID
-            // section is hidden (audit S-P2-6; owner button rule:
-            // two adjacent buttons never share a colour/treatment).
-            .buttonStyle(OutlineButtonStyle())
             .accessibilityIdentifier("settings.signOut")
-            .disabled(viewModel.isSigningOut)
             .padding(.top, 4)
         }
         // Build 43 (owner, Nov 17, 2026 — item 17): full-screen

@@ -395,11 +395,20 @@ grant execute on function public.delete_merchant_rule(uuid) to authenticated;
 -- match_type defaults to 'exact' — a rename teaches that spelling
 -- only; pass 'includes' when the spelling is a stem (e.g. 'AMAZON'
 -- should also catch 'AMAZON MARKEPLACE NA PA').
+-- p_pattern (build 74, owner Nov 25, 2026): the words an
+-- 'includes' rule matches on, editable in the Rename Merchant
+-- sheet — blank keeps the transaction's own bank name (the
+-- previous behaviour). Only used when match_type is 'includes';
+-- an 'exact' rename always matches the bank name itself.
 -- NOTE: a rename with a fixed kind reclassifies matching rows
 -- under the sign guard (§4); a name-only rename never changes kind.
+-- NOTE: editing the words to a shorter stem can leave the old
+-- bank-name-pattern rule in place (same display name in the
+-- normal case, so nothing shows wrong); the owner can remove a
+-- stale rule in Merchant Names.
 create or replace function public.rename_transaction_and_apply_rule(
   p_transaction_id uuid, p_display_name text, p_fixed_kind text,
-  p_match_type text default 'exact')
+  p_match_type text default 'exact', p_pattern text default null)
 returns integer
 language plpgsql
 security definer
@@ -410,6 +419,7 @@ declare
   v_rule_id uuid;
   v_count integer := 0;
   v_display text := public.merchant_rule_key(p_display_name);
+  v_pattern text;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   if v_display = '' then raise exception 'display name must not be empty'; end if;
@@ -428,13 +438,19 @@ begin
     raise exception 'admin only';
   end if;
   perform 1 from public.households where id = v_txn.household_id for update;
+  -- The match value (build 74): the owner's edited words for an
+  -- 'includes' rule, else the transaction's own bank name.
+  -- source_merchant stays the bank name, for reference.
+  v_pattern := case when p_match_type = 'includes'
+    then coalesce(nullif(btrim(p_pattern), ''), v_txn.merchant)
+    else v_txn.merchant end;
   -- Teach (or reuse) the rule for this transaction's spelling.
   insert into public.merchant_rules
     (household_id, pattern_text, pattern_key, pattern_squash, source_merchant, match_type,
      display_name, fixed_kind, created_by)
-  values (v_txn.household_id, v_txn.merchant,
-          public.merchant_rule_key(v_txn.merchant),
-          public.merchant_rule_squash(v_txn.merchant),
+  values (v_txn.household_id, v_pattern,
+          public.merchant_rule_key(v_pattern),
+          public.merchant_rule_squash(v_pattern),
           v_txn.merchant,
           p_match_type, v_display, p_fixed_kind, auth.uid())
   on conflict (household_id, pattern_key, match_type) do update
@@ -448,12 +464,13 @@ begin
   values (v_txn.household_id, auth.uid(), 'admin', 'Merchant renamed',
           'Renamed "' || v_txn.merchant || '" to "' || v_display || '"'
           || case when p_fixed_kind is null then '' else ' (kind ' || p_fixed_kind || ')' end
+          || case when v_pattern <> v_txn.merchant then ' (matches "' || v_pattern || '")' else '' end
           || ' — ' || v_count::text || ' row(s) updated, rule applies to new rows too.');
   return v_count;
 end;
 $$;
-revoke execute on function public.rename_transaction_and_apply_rule(uuid, text, text, text) from public;
-grant execute on function public.rename_transaction_and_apply_rule(uuid, text, text, text) to authenticated;
+revoke execute on function public.rename_transaction_and_apply_rule(uuid, text, text, text, text) from public;
+grant execute on function public.rename_transaction_and_apply_rule(uuid, text, text, text, text) to authenticated;
 
 -- Re-apply ALL of a household's rules to all of its rows (admin
 -- only). Used after the seed rules below are inserted, or after

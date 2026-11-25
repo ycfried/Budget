@@ -432,13 +432,21 @@ struct MembersSettingsView: View {
     @State private var showingRolesInfo = false
     @State private var showingDeleteInfo = false
 
-    init(context: SettingsContext, toast: ToastState) {
+    /// Build 74: when this card IS the Household & Members
+    /// subpage, the page title already says it — the card title
+    /// ("Account & Household") would repeat it (standing rule:
+    /// never repeat a word the heading already says). Default
+    /// false keeps the title everywhere else.
+    private let hideCardTitle: Bool
+
+    init(context: SettingsContext, toast: ToastState, hideCardTitle: Bool = false) {
+        self.hideCardTitle = hideCardTitle
         self.context = context
         _viewModel = StateObject(wrappedValue: MembersSettingsViewModel(context: context, toast: toast))
     }
 
     var body: some View {
-        SettingsCard(title: "Account & Household") {
+        SettingsCard(title: hideCardTitle ? nil : "Account & Household") {
             // Build 43 (owner, Nov 17, 2026 — item 15): the invite
             // code sits ABOVE the Household / Members section now,
             // not below it.
@@ -516,74 +524,77 @@ struct MembersSettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .displayNameDidChange)) { _ in
             Task { await viewModel.load() }
         }
-        // ONE alert for the whole screen (build 30): SwiftUI only
+        // ONE dialog for the whole screen (build 30): SwiftUI only
         // honours a single `.alert` modifier on a view, so the six
         // this screen used to stack meant only one ever fired — the
         // Remove / Make Admin confirms never appeared. Every case
-        // below is one branch of `viewModel.alert`.
-        .alert(item: $viewModel.alert) { alert in
+        // below is one branch of `viewModel.alert`. (Build 74: the
+        // app-styled choice dialog — the system alert rendered
+        // both buttons blue.)
+        .appConfirmDialog(item: $viewModel.alert) { alert in
             switch alert {
             case .removeMember(let member):
                 let label = viewModel.displayName(for: member)
-                return Alert(
-                    title: Text("Remove Member"),
-                    message: Text("Remove \(label) from the household? They will lose access to the household's data."),
-                    primaryButton: .destructive(Text("Remove")) {
-                        Task { await viewModel.removeConfirmed(member) }
-                    },
-                    secondaryButton: .cancel()
+                return AppConfirmDialog.Config(
+                    title: "Remove Member",
+                    message: "Remove \(label) from the household? They will lose access to the household's data.",
+                    primaryTitle: "Remove",
+                    tone: .destructive,
+                    onPrimary: { Task { await viewModel.removeConfirmed(member) } }
                 )
             case .removeFailed:
-                return Alert(
-                    title: Text("Could Not Remove Member"),
-                    message: Text("Could not remove this member. Try again."),
-                    dismissButton: .cancel(Text("Close"))
+                return AppConfirmDialog.Config(
+                    title: "Could Not Remove Member",
+                    message: "Could not remove this member. Try again.",
+                    primaryTitle: "Close",
+                    secondaryTitle: nil,
+                    onPrimary: {}
                 )
             case .changeRole(let request):
                 let label = viewModel.displayName(for: request.member)
                 let role = request.toRole
-                return Alert(
-                    title: Text(role == .admin ? "Make Admin" : "Make Member"),
-                    message: Text(role == .admin
-                                  ? "Make \(label) an admin? \(HouseholdRole.admin.capabilityNote)"
-                                  : "Change \(label) to a regular member? \(HouseholdRole.member.capabilityNote)"),
-                    primaryButton: .default(Text(role == .admin ? "Make Admin" : "Make Member")) {
-                        Task { await viewModel.roleChangeConfirmed(request) }
-                    },
-                    secondaryButton: .cancel()
+                return AppConfirmDialog.Config(
+                    title: role == .admin ? "Make Admin" : "Make Member",
+                    message: role == .admin
+                        ? "Make \(label) an admin? \(HouseholdRole.admin.capabilityNote)"
+                        : "Change \(label) to a regular member? \(HouseholdRole.member.capabilityNote)",
+                    primaryTitle: role == .admin ? "Make Admin" : "Make Member",
+                    onPrimary: { Task { await viewModel.roleChangeConfirmed(request) } }
                 )
             case .roleChangeFailed:
-                return Alert(
-                    title: Text("Could Not Change Role"),
-                    message: Text("Could not change this member's role. Try again."),
-                    dismissButton: .cancel(Text("Close"))
+                return AppConfirmDialog.Config(
+                    title: "Could Not Change Role",
+                    message: "Could not change this member's role. Try again.",
+                    primaryTitle: "Close",
+                    secondaryTitle: nil,
+                    onPrimary: {}
                 )
             case .delete(let step):
                 switch step {
                 case .confirmDelete:
-                    return Alert(
-                        title: Text("Delete Account"),
-                        message: Text("Delete your account and remove yourself from this household? If you are the last member, the household is deleted too. This cannot be undone."),
-                        primaryButton: .destructive(Text("Delete Account")) {
-                            viewModel.confirmDeleteStepOne()
-                        },
-                        secondaryButton: .cancel()
+                    return AppConfirmDialog.Config(
+                        title: "Delete Account",
+                        message: "Delete your account and remove yourself from this household? If you are the last member, the household is deleted too. This cannot be undone.",
+                        primaryTitle: "Delete Account",
+                        tone: .destructive,
+                        onPrimary: { viewModel.confirmDeleteStepOne() }
                     )
                 case .confirmEverything:
-                    return Alert(
-                        title: Text("Delete Everything?"),
-                        message: Text("This permanently deletes your account and, if you are the last member, the whole household. Are you sure?"),
-                        primaryButton: .destructive(Text("Yes, Delete Everything")) {
-                            Task { await viewModel.confirmDeleteStepTwo() }
-                        },
-                        secondaryButton: .cancel()
+                    return AppConfirmDialog.Config(
+                        title: "Delete Everything?",
+                        message: "This permanently deletes your account and, if you are the last member, the whole household. Are you sure?",
+                        primaryTitle: "Yes, Delete Everything",
+                        tone: .destructive,
+                        onPrimary: { Task { await viewModel.confirmDeleteStepTwo() } }
                     )
                 }
             case .deleteFailed:
-                return Alert(
-                    title: Text("Could Not Delete Account"),
-                    message: Text("Could not delete your account. Nothing was deleted — try again."),
-                    dismissButton: .cancel(Text("Close"))
+                return AppConfirmDialog.Config(
+                    title: "Could Not Delete Account",
+                    message: "Could not delete your account. Nothing was deleted — try again.",
+                    primaryTitle: "Close",
+                    secondaryTitle: nil,
+                    onPrimary: {}
                 )
             }
         }

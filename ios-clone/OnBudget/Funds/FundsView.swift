@@ -253,7 +253,11 @@ public struct FundsView: View {
     private var isAdmin: Bool { viewModel.context.isAdmin }
 
     public var body: some View {
-        ScrollView {
+        // Build 74 (tour): the ScrollViewReader lets the tour
+        // scroll its current target into view on step change
+        // (see scrollTourAnchorIntoView).
+        ScrollViewReader { proxy in
+            ScrollView {
             VStack(spacing: 16) {
                 // Build 65: the page select lives in the shell
                 // (AppShellView) now — one control for all tabs,
@@ -301,6 +305,13 @@ public struct FundsView: View {
                 }
             }
             .padding()
+        }
+        // Build 74 (tour): scroll the current step's target into
+        // view on step change — the rate editor and the fund
+        // cards can sit below the fold, where the cutout would
+        // point at nothing visible.
+        .onChange(of: appState.tour.stepIndex) { _, _ in
+            scrollTourAnchorIntoView(proxy, tour: appState.tour, tab: .funds)
         }
         .background(DesignTokens.background)
         // Build 36 (owner, Nov 16, 2026 — iPad): the page reads as
@@ -408,6 +419,7 @@ public struct FundsView: View {
         }
         .refreshable {
             await viewModel.refresh()
+        }
         }
     }
 
@@ -915,8 +927,10 @@ public struct FundsView: View {
                     Divider()
                     CharityRateSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames)
                         // Walkthrough anchor (build 48): the rate
-                        // editor — "change the rate, or turn it off".
+                        // editor — "change the rate — set it to 0%
+                        // to pause giving" (build 74: no Off switch).
                         .tourAnchor(.charityRules, tour: appState.tour)
+                        .id(TourAnchor.charityRules)
                     // Build 37 (owner, Nov 16, 2026): the grey
                     // "Close" button is gone — the card already
                     // collapses by tapping its header/chevron, so
@@ -1172,12 +1186,14 @@ public struct FundsView: View {
                 fundCard
                     // Walkthrough anchor (build 48): the Savings card.
                     .tourAnchor(.savingsCard, tour: appState.tour)
+                    .id(TourAnchor.savingsCard)
             case .charity:
                 charityCard
             case .debt:
                 debtCard
                     // Walkthrough anchor (build 48): the Overspent card.
                     .tourAnchor(.debtCard, tour: appState.tour)
+                    .id(TourAnchor.debtCard)
             }
             // Build 68 (item 26): the floating "Hidden from
             // Home." + "Show on Home" row below the card is gone
@@ -2068,7 +2084,8 @@ private struct DebtLedgerWeekDetailSheet: View {
         .padding(.top, 20)
         .padding(.bottom, 24)
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        .presentationDetents([.fraction(0.45), .medium])
+        // Build 74 (owner, Nov 24, 2026 — popup sizing): a read-only detail sheet opens at its content size, not a 0.45 detent the 5-row card already fills.
+        .presentationSizing(.fitted)
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
     }
@@ -2124,7 +2141,8 @@ private struct DebtLedgerPaymentDetailSheet: View {
         .padding(.top, 20)
         .padding(.bottom, 24)
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        .presentationDetents([.fraction(0.45), .medium])
+        // Build 74 (owner, Nov 24, 2026 — popup sizing): a read-only detail sheet opens at its content size, not a 0.45 detent the 6-row card already fills.
+        .presentationSizing(.fitted)
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
     }
@@ -2831,7 +2849,9 @@ public struct WeeklyBudgetCalculatorContent: View {
                 .foregroundStyle(DesignTokens.ink)
             HStack(spacing: 8) {
                 DollarTextField(text: $charityText, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
-                FundsSmallTertiaryButton("Use 10% of Income") {
+                // Build 74 (J9): 48pt tall, like the field beside
+                // it — the short button read as a chip.
+                FundsSmallTertiaryButton("Use 10% of Income", minHeight: 48) {
                     charityText = String(format: "%.2f", Double(monthlyIncomeCents) / 10.0 / 100.0)
                 }
             }

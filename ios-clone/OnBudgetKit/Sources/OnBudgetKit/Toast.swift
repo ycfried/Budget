@@ -13,6 +13,13 @@ import Foundation
 /// Success toasts use the Posted status badge treatment (owner,
 /// Nov 15, 2026): light green background #dcfce7 with dark green
 /// text #166534 — NOT the solid #22c55e bar they used to be.
+/// Owner, Nov 24, 2026 — build 74: the green top toast is THE one
+/// confirmation style for the whole app (the Nov 23 branded
+/// confirmation popup card is retired; toasts stay on top, which
+/// also reverses the Nov 11 "toasts at the bottom" rule).
+/// Destructive/choice confirmations (Delete Account, Remove
+/// Expense, …) stay as dialogs — they need a user choice, not
+/// just feedback.
 /// This is the style spec (hex values + behaviour); the SwiftUI
 /// rendering is built with the screens.
 public enum ToastStyle {

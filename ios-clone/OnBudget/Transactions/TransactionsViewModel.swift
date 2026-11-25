@@ -1010,7 +1010,7 @@ public final class TransactionsViewModel {
     /// `fixedKind` is a `TransactionKind` raw value (charge /
     /// refund / fund_charge / payment / cashback / charity /
     /// transfer / income) or nil for name-only.
-    public func renameMerchant(_ transaction: Transaction, to displayName: String, fixedKind: String?, matchType: String = "exact") async -> Bool {
+    public func renameMerchant(_ transaction: Transaction, to displayName: String, fixedKind: String?, matchType: String = "exact", pattern: String? = nil) async -> Bool {
         guard isAdmin else {
             showAlert(title: "Admin Only", message: "Only the admin can rename merchants.")
             return false
@@ -1020,7 +1020,8 @@ public final class TransactionsViewModel {
                 pTransactionId: transaction.id,
                 pDisplayName: displayName,
                 pFixedKind: fixedKind,
-                pMatchType: matchType
+                pMatchType: matchType,
+                pPattern: pattern
             )
             confirm(
                 renamed == 1
