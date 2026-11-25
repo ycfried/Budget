@@ -520,7 +520,8 @@ public struct SuccessBox: View {
 // MARK: - Loading screen
 
 /// Full-screen loading view (live.html:39-43): logo + blue ring,
-/// S logo + "T · A · G · E" wordmark, "Spend, Track & Give Easily".
+/// S logo + "T · A · G · E" wordmark, "Spending Tracking And Giving
+/// Easily" (build 74 — bold initials spell STAGE).
 /// Shown on first paint and kept until the first data load
 /// completes or fails — never a blank or half-built page, and never
 /// an endless spinner with no error. Build 65: logo + tagline
@@ -547,7 +548,7 @@ public struct LoadingView: View {
             // A · G · E" beside it, a blue dot between the S and
             // the T, reading as one word S · T · A · G · E. The
             // stacked layout read as "S" then "TAGE".
-            HStack(spacing: 8) {
+            HStack(spacing: 4) {
                 // The real logo (Assets.xcassets/AppLogo), not the "S"
                 // placeholder ring (owner, Nov 11, 2026) — plain,
                 // no skeleton halo: build 65, the splash holds no
@@ -580,25 +581,34 @@ public struct LoadingView: View {
                 // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
                 // build 47): the logo + "T · A · G · E", never the logo
                 // next to the full word "STAGE" (no second S).
-                // Build 68 (owner, Nov 23, 2026 — item 17): the TAGE
-                // letters are THINNER and classier — light weight,
-                // not black. Build 54 had made them black/bolder
-                // ("a drop too thin"); the owner now wants the
-                // thinner, more elegant letterforms instead.
-                StageWordmarkText(font: .system(size: 30, weight: .light))
+                // Build 74 (owner, Nov 25, 2026 — DECIDED): STAGE on
+                // ONE LINE — the mark + letters tight together (4pt
+                // gap), reading left to right as a single word; the
+                // stacked version is wrong. Letters 34pt medium
+                // (was 30pt light — build 68's thin/classy read too
+                // thin and small next to the mark). Uniform
+                // stageBlue #0288dd.
+                StageWordmarkText(font: .system(size: 34, weight: .medium))
             }
-            // Build 54 (owner, Nov 21, 2026): the loading page says
-            // the tagline "Spend, Track & Give Easily" instead of
-            // "Loading Your Household" — same 15pt size as the old
-            // line; semibold so it reads as a tagline, not a
-            // caption. Build 55 (owner, Nov 22, 2026): the whole
-            // tagline is ONE uniform blue (#0288dd stageBlue,
-            // matching the S logo above it) — the build-54
-            // per-word colours were "ugly beyond", especially the
-            // green Give in the middle of blue text. No green, no
-            // mixed blues; the words stay "Spend, Track & Give
-            // Easily", just all in that one blue.
-            Text("Spend, Track & Give Easily")
+            // Build 74 (owner, Nov 25, 2026 — DECIDED): the tagline
+            // is "Spending Tracking And Giving Easily" — NO periods,
+            // and the FIRST LETTER of each word is BOLD so the bold
+            // initials spell STAGE. Replaces "Spend, Track & Give
+            // Easily" (build 54/55). Same 15pt semibold base, same
+            // uniform stageBlue #0288dd; only the initials are
+            // heavy. The tagline sits BELOW the one-line lockup.
+            (
+                Text("S").fontWeight(.heavy)
+                + Text("pending ")
+                + Text("T").fontWeight(.heavy)
+                + Text("racking ")
+                + Text("A").fontWeight(.heavy)
+                + Text("nd ")
+                + Text("G").fontWeight(.heavy)
+                + Text("iving ")
+                + Text("E").fontWeight(.heavy)
+                + Text("asily")
+            )
                 .foregroundStyle(DesignTokens.stageBlue)
                 .font(.system(size: 15, weight: .semibold))
             // Build 65 (owner, Nov 23, 2026): NO skeleton bars

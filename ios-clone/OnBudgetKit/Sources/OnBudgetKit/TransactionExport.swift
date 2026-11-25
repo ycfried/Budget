@@ -142,6 +142,12 @@ public struct TransactionExportPDFStatement: Equatable {
     public let dateRange: String
     /// "Generated Nov 18, 2026".
     public let generatedLine: String
+    /// The active filter, as the user sees it ("Tzedaka gifts"),
+    /// when the export is filtered — nil for an unfiltered export.
+    /// Drawn under the date range so the document reads as what
+    /// it is. The date range itself stays its own line; a "when"
+    /// chip is never part of this (it would duplicate the range).
+    public let filterLine: String?
     public let rows: [TransactionExportPDFRow]
     public let totals: TransactionExportTotals
     /// "$1,234.56" forms of the totals, for the footer.
@@ -155,6 +161,7 @@ public struct TransactionExportPDFStatement: Equatable {
 
     public init(
         householdName: String, dateRange: String, generatedLine: String,
+        filterLine: String? = nil,
         rows: [TransactionExportPDFRow], totals: TransactionExportTotals,
         totalInText: String, totalOutText: String, netText: String,
         charts: [TransactionExportChart]
@@ -162,6 +169,7 @@ public struct TransactionExportPDFStatement: Equatable {
         self.householdName = householdName
         self.dateRange = dateRange
         self.generatedLine = generatedLine
+        self.filterLine = filterLine
         self.rows = rows
         self.totals = totals
         self.totalInText = totalInText
@@ -451,8 +459,15 @@ public enum TransactionExport {
     /// A chart is left out when it has nothing to show (no money
     /// in or out at all; no charity yet), and a slice is left out
     /// when its amount is zero — a donut never carries an empty
-    /// wedge. Slices are biggest first, so the legend reads in
-    /// size order.
+    /// wedge. Build 74 (owner, Nov 25, 2026): a chart is ALSO left
+    /// out when it would be a SINGLE slice — a 100% donut (or the
+    /// build-68 single-slice dot) reads as ugly and
+    /// claustrophobic, and a donations-only set needs no Summary
+    /// at all: the table + totals tell the story. So every chart
+    /// needs 2+ slices to appear; when all three would be
+    /// single-slice the Summary section is omitted entirely (the
+    /// renderer draws it only when `charts` is non-empty).
+    /// Slices are biggest first, so the legend reads in size order.
     public static func charts(transactions: [Transaction]) -> [TransactionExportChart] {
         let totals = totals(transactions: transactions)
         var result: [TransactionExportChart] = []
@@ -473,7 +488,7 @@ public enum TransactionExport {
                 amountText: MoneyFormat.formatCents(totals.totalOutCents)
             ))
         }
-        if !inOutSlices.isEmpty {
+        if inOutSlices.count >= 2 {
             result.append(TransactionExportChart(title: "Money In vs Out", slices: inOutSlices))
         }
 
@@ -504,29 +519,31 @@ public enum TransactionExport {
                     amountText: MoneyFormat.formatCents(cents)
                 )
             }
-        if !kindSlices.isEmpty {
+        if kindSlices.count >= 2 {
             result.append(TransactionExportChart(title: "Spending by Kind", slices: kindSlices))
         }
 
-        // 3. Tzedaka's share of Money Out.
+        // 3. Tzedaka's share of Money Out — only when there is
+        // something to compare it against. A donations-only set
+        // (Tzedaka is 100% of Money Out) has no second slice, so
+        // the chart is omitted, not drawn as a single dot.
         let charityCents = byKind[.charity] ?? 0
         if totals.totalOutCents > 0, charityCents > 0 {
-            var charitySlices: [TransactionExportChartSlice] = [
-                TransactionExportChartSlice(
-                    label: "Tzedaka", cents: charityCents,
-                    colorHex: DesignTokens.primaryHex,
-                    amountText: MoneyFormat.formatCents(charityCents)
-                ),
-            ]
             let rest = totals.totalOutCents - charityCents
             if rest > 0 {
-                charitySlices.append(TransactionExportChartSlice(
-                    label: "Everything Else", cents: rest,
-                    colorHex: DesignTokens.tertiaryHex,
-                    amountText: MoneyFormat.formatCents(rest)
-                ))
+                result.append(TransactionExportChart(title: "Tzedaka Share", slices: [
+                    TransactionExportChartSlice(
+                        label: "Tzedaka", cents: charityCents,
+                        colorHex: DesignTokens.primaryHex,
+                        amountText: MoneyFormat.formatCents(charityCents)
+                    ),
+                    TransactionExportChartSlice(
+                        label: "Everything Else", cents: rest,
+                        colorHex: DesignTokens.tertiaryHex,
+                        amountText: MoneyFormat.formatCents(rest)
+                    ),
+                ]))
             }
-            result.append(TransactionExportChart(title: "Tzedaka Share", slices: charitySlices))
         }
 
         return result
@@ -562,7 +579,8 @@ public enum TransactionExport {
     public static func pdfStatement(
         transactions: [Transaction],
         householdName: String,
-        generatedDate: String = todayString()
+        generatedDate: String = todayString(),
+        filterLine: String? = nil
     ) -> TransactionExportPDFStatement {
         let totals = totals(transactions: transactions)
         let rows = transactions.map { transaction in
@@ -578,11 +596,12 @@ public enum TransactionExport {
             householdName: householdName,
             dateRange: dateRangeLabel(transactions: transactions),
             generatedLine: "Generated \(MoneyFormat.fmtLong(generatedDate))",
+            filterLine: filterLine,
             rows: rows,
             totals: totals,
             totalInText: MoneyFormat.formatCents(totals.totalInCents),
             totalOutText: MoneyFormat.formatCents(totals.totalOutCents),
-            netText: MoneyFormat.netTotalText(cents: totals.netCents),
+            netText: MoneyFormat.signedNetText(cents: totals.netCents),
             charts: charts(transactions: transactions)
         )
     }

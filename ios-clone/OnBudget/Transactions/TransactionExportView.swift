@@ -619,9 +619,17 @@ public struct TransactionExportView: View {
             case .csv:
                 data = Data(TransactionExport.csvString(transactions: scopeRows, fundNames: fundNames).utf8)
             case .pdf:
+                // Build 74: the filter rides into the statement
+                // as its subtitle (the "when" chip is left out —
+                // the date range already says it), so a filtered
+                // export reads as what it is.
+                let filterChips = draftFilters.activeChips(customNames: fundNames)
+                    .filter { $0.key != "when" }
+                    .map(\.label)
                 let statement = TransactionExport.pdfStatement(
                     transactions: scopeRows,
-                    householdName: household
+                    householdName: household,
+                    filterLine: filterChips.isEmpty ? nil : filterChips.joined(separator: " · ")
                 )
                 data = TransactionExportPDFRenderer.data(statement: statement)
             }
@@ -703,16 +711,18 @@ private struct PDFKitView: UIViewRepresentable {
 
 /// Draws a `TransactionExportPDFStatement` as a branded STAGE
 /// statement (build 59, Nov 22, 2026): the S + wordmark lockup in
-/// exact brand blue #0288dd, a Summary section with three donut
-/// charts (Money In vs Out, Spending by Kind, Tzedaka Share) built
-/// from the same transactions as the table — a single-slice chart
-/// renders as a centred dot + label instead of a solid ring
-/// (build 68, item 19a) — the table (date, merchant — ALL CAPS,
-/// build 65 — amount, kind) with a banded header, alternating row
-/// shading, and amounts and kinds in the transaction colour code,
-/// footer totals under a stage-blue rule, and a page number on
-/// every page. Letter pages. The content model is kit-tested; this
-/// is only the drawing.
+/// exact brand blue #0288dd, a Summary section with donut charts
+/// (Money In vs Out, Spending by Kind, Tzedaka Share) built from
+/// the same transactions as the table — build 74: a chart appears
+/// only with 2+ slices, and the whole Summary is omitted when
+/// none qualify (a donations-only set gets no Summary at all) —
+/// the table (date, merchant — ALL CAPS, build 65 — amount, kind)
+/// with a banded header, alternating row shading, roomy 26pt rows
+/// (build 74, was 20pt), and amounts and kinds in the transaction
+/// colour code, footer totals under a stage-blue rule (a total
+/// line appears only when its total is non-zero — build 74), and
+/// a page number on every page. Letter pages. The content model
+/// is kit-tested; this is only the drawing.
 public enum TransactionExportPDFRenderer {
     private static let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792)
     private static let margin: CGFloat = 40
@@ -769,11 +779,18 @@ public enum TransactionExportPDFRenderer {
             // old text-only "S · T · A · G · E" rendered teal-ish
             // and without the S mark.
             y = drawWordmark(at: y)
-            y = draw("TRANSACTION STATEMENT", at: y + 6, font: .boldSystemFont(ofSize: 10), color: muted)
+            y = draw("TRANSACTION STATEMENT", at: y + 8, font: .boldSystemFont(ofSize: 10), color: muted)
             y = draw(statement.householdName, at: y + 6, font: .boldSystemFont(ofSize: 18), color: ink)
             y = draw(statement.dateRange, at: y + 4, font: .systemFont(ofSize: 13), color: muted)
+            // Build 74: the active filter, when the export is
+            // filtered — so a Tzedaka-gifts export reads as what
+            // it is, not as a generic statement. The date range
+            // stays its own line.
+            if let filterLine = statement.filterLine {
+                y = draw(filterLine, at: y + 2, font: .systemFont(ofSize: 13, weight: .semibold), color: stageBlue)
+            }
             y = draw(statement.generatedLine, at: y + 2, font: .systemFont(ofSize: 12), color: muted)
-            y += 12
+            y += 16
             drawThickDivider(at: y, color: stageBlue)
             y += 14
             // Summary charts (donuts) — the same transactions as
@@ -792,7 +809,7 @@ public enum TransactionExportPDFRenderer {
             // Table.
             y = drawTableHeader(at: y)
             for (index, row) in statement.rows.enumerated() {
-                if y + 20 > pageRect.height - margin - 80 {
+                if y + 26 > pageRect.height - margin - 80 {
                     beginNewPage()
                     y = margin
                     y = drawTableHeader(at: y)
@@ -800,7 +817,22 @@ public enum TransactionExportPDFRenderer {
                 y = drawTableRow(row, at: y, index: index)
             }
             // Footer totals: a new page when they would not fit.
-            if y + 76 > pageRect.height - margin {
+            // Build 74: a total line appears only when it has
+            // something to say — "Total In" is omitted when
+            // nothing came in (a donations-only export showed a
+            // "$0.00 Total In" line that made no sense), and
+            // likewise Total Out when nothing went out. Net always
+            // shows. The page-break reserve follows the lines
+            // actually drawn.
+            var totalLines: [(label: String, value: String, bold: Bool, valueColor: UIColor)] = []
+            if statement.totals.totalInCents > 0 {
+                totalLines.append((label: "Total In", value: statement.totalInText, bold: false, valueColor: deep))
+            }
+            if statement.totals.totalOutCents > 0 {
+                totalLines.append((label: "Total Out", value: statement.totalOutText, bold: false, valueColor: ink))
+            }
+            totalLines.append((label: "Net", value: statement.netText, bold: true, valueColor: stageBlue))
+            if y + 8 + 12 + CGFloat(totalLines.count * 20) > pageRect.height - margin {
                 beginNewPage()
                 y = margin
             }
@@ -810,9 +842,9 @@ public enum TransactionExportPDFRenderer {
             // opens and closes on the brand.
             drawThickDivider(at: y, color: stageBlue)
             y += 12
-            y = drawTotal(label: "Total In", value: statement.totalInText, at: y, bold: false, valueColor: deep)
-            y = drawTotal(label: "Total Out", value: statement.totalOutText, at: y, bold: false, valueColor: ink)
-            y = drawTotal(label: "Net", value: statement.netText, at: y, bold: true, valueColor: stageBlue)
+            for line in totalLines {
+                y = drawTotal(label: line.label, value: line.value, at: y, bold: line.bold, valueColor: line.valueColor)
+            }
             drawPageFooter()
             _ = y
         }
@@ -845,25 +877,16 @@ public enum TransactionExportPDFRenderer {
             let centerX = columnX + columnWidth / 2
             // Title, centered over the donut.
             _ = drawCentered(chart.title, at: centerX, y: sectionTop, font: .boldSystemFont(ofSize: 11), color: ink)
-            if chart.slices.count == 1 {
-                // Build 68 (item 19a): a single slice IS the whole
-                // chart — a donut ring would be one solid ring in
-                // the slice's colour, which for Spending (ink
-                // #0f172a) rendered as a solid BLACK ring. There is
-                // nothing to compare, so there is no donut: a
-                // centred colour dot + the label, amount and 100%.
-                // The section height is unchanged, so pagination
-                // is unaffected.
-                drawSingleSlice(chart: chart, centerX: centerX, top: sectionTop + 14 + 8)
-            } else {
-                // Donut, centered in the column.
-                let donutCenter = CGPoint(x: centerX, y: sectionTop + 14 + 8 + donutRadius)
-                drawDonut(chart: chart, center: donutCenter, outerRadius: donutRadius, holeRadius: holeRadius)
-                // Legend, left-aligned in the column.
-                let legendX = columnX + 8
-                let legendY = sectionTop + 14 + 8 + donutRadius * 2 + 8
-                _ = drawLegend(slices: chart.slices, total: chart.totalCents, at: legendX, y: legendY, width: columnWidth - 16)
-            }
+            // Donut, centered in the column. (Build 74: every
+            // chart here has 2+ slices — a single-slice chart is
+            // omitted in the kit model, so there is no
+            // single-slice dot branch anymore.)
+            let donutCenter = CGPoint(x: centerX, y: sectionTop + 14 + 8 + donutRadius)
+            drawDonut(chart: chart, center: donutCenter, outerRadius: donutRadius, holeRadius: holeRadius)
+            // Legend, left-aligned in the column.
+            let legendX = columnX + 8
+            let legendY = sectionTop + 14 + 8 + donutRadius * 2 + 8
+            _ = drawLegend(slices: chart.slices, total: chart.totalCents, at: legendX, y: legendY, width: columnWidth - 16)
         }
         return sectionTop + 14 + 8 + donutRadius * 2 + 8 + CGFloat(maxSlices * 26)
     }
@@ -896,11 +919,14 @@ public enum TransactionExportPDFRenderer {
     /// The STAGE lockup for the PDF header: the real S logo
     /// asset (AppLogo) clipped to a circle, beside "T · A · G · E"
     /// in the exact brand blue #0288dd (DesignTokens.stageBlueHex).
-    /// Falls back to the text-only wordmark when the asset is
-    /// unavailable. Returns the y below the lockup.
+    /// Build 74: the same one-line connected lockup as the app —
+    /// the mark + letters tight together (4pt gap, was 8pt),
+    /// medium weight (was bold), reading left to right as a
+    /// single word. Falls back to the text-only wordmark when the
+    /// asset is unavailable. Returns the y below the lockup.
     private static func drawWordmark(at y: CGFloat) -> CGFloat {
         let logoSize: CGFloat = 26
-        let font = UIFont.boldSystemFont(ofSize: 20)
+        let font = UIFont.systemFont(ofSize: 20, weight: .medium)
         let text = "T · A · G · E"
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: stageBlue]
         let textSize = (text as NSString).size(withAttributes: attributes)
@@ -914,27 +940,8 @@ public enum TransactionExportPDFRenderer {
         logo.draw(in: logoRect)
         context?.restoreGState()
         let textY = y + (logoSize - textSize.height) / 2
-        (text as NSString).draw(at: CGPoint(x: margin + logoSize + 8, y: textY), withAttributes: attributes)
+        (text as NSString).draw(at: CGPoint(x: margin + logoSize + 4, y: textY), withAttributes: attributes)
         return y + logoSize
-    }
-
-    /// A single-slice chart (item 19a): one centred colour dot
-    /// with "100%" in white, the slice label under it, then the
-    /// amount — no donut ring, because a 100% ring in the slice
-    /// colour reads as a solid black disc for Spending ink.
-    private static func drawSingleSlice(chart: TransactionExportChart, centerX: CGFloat, top: CGFloat) {
-        guard let slice = chart.slices.first else { return }
-        let dotRadius: CGFloat = 16
-        let dotCenter = CGPoint(x: centerX, y: top + dotRadius + 8)
-        let dot = UIBezierPath(ovalIn: CGRect(
-            x: dotCenter.x - dotRadius, y: dotCenter.y - dotRadius,
-            width: dotRadius * 2, height: dotRadius * 2
-        ))
-        color(hex: slice.colorHex).setFill()
-        dot.fill()
-        _ = drawCentered("100%", at: centerX, y: dotCenter.y - 7, font: .boldSystemFont(ofSize: 11), color: .white)
-        _ = drawCentered(slice.label, at: centerX, y: dotCenter.y + dotRadius + 10, font: .boldSystemFont(ofSize: 12), color: ink)
-        _ = drawCentered(slice.amountText, at: centerX, y: dotCenter.y + dotRadius + 28, font: .systemFont(ofSize: 12), color: muted)
     }
 
     /// The legend under one donut: per slice, a colour dot +
@@ -1027,10 +1034,14 @@ public enum TransactionExportPDFRenderer {
     private static func drawTableRow(_ row: TransactionExportPDFRow, at y: CGFloat, index: Int = 0) -> CGFloat {
         // Build 68 (item 19c): alternating row shading — even rows
         // on a whisper-light fill — so long tables stay scannable.
+        // Build 74: rows are 26pt tall (was 20pt) — the table was
+        // cramped/claustrophobic, and the breathing room is the
+        // fix. The shading does the separation; no per-row
+        // hairline on top of it.
         if index % 2 == 0 {
             let shade = UIColor(red: 0xf9 / 255, green: 0xfa / 255, blue: 0xfb / 255, alpha: 1)
             shade.setFill()
-            UIRectFill(CGRect(x: margin, y: y - 2, width: contentWidth, height: 20))
+            UIRectFill(CGRect(x: margin, y: y - 2, width: contentWidth, height: 26))
         }
         let font = UIFont.systemFont(ofSize: 12)
         let rowColor = color(hex: row.colorHex)
@@ -1060,7 +1071,7 @@ public enum TransactionExportPDFRenderer {
             at: CGPoint(x: margin + 448, y: y),
             withAttributes: [.font: font, .foregroundColor: rowColor]
         )
-        return y + 20
+        return y + 26
     }
 
     @discardableResult

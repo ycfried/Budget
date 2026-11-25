@@ -46,12 +46,12 @@ import OnBudgetKit
 public struct AuthBrandHeader: View {
     public init() {}
     public var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 4) {
             // The real logo (Assets.xcassets/AppLogo — the same
             // circular picture the web app uses), not the "S"
             // placeholder ring the clone shipped with (owner, Nov 11,
             // 2026).
-            // Logo 72pt / wordmark 30pt (owner, Nov 12, 2026): the
+            // Logo 72pt / wordmark 34pt (owner, Nov 12, 2026): the
             // sign-in header sat in a lot of empty space — the bump
             // fills it without crowding the fields. Same centered
             // layout and spacing as before.
@@ -63,15 +63,16 @@ public struct AuthBrandHeader: View {
             // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
             // build 47): the logo + "T · A · G · E", never the logo
             // next to the full word "STAGE" (no second S).
-            // Build 54 (owner, Nov 21, 2026): the TAGE letters
-            // were made bolder (black weight) and slightly larger
-            // (32pt, was 30pt). Build 68 (item 17) reverses the
-            // weight only: .light reads thinner and classier, the
-            // same thinning the shell agent applied to the
-            // confirmation popup brand row and the loading page.
+            // Build 74 (owner, Nov 25, 2026 — DECIDED): STAGE on
+            // ONE LINE — the mark + letters tight together (4pt
+            // gap), reading left to right as a single word; the
+            // stacked version is wrong. Letters 34pt medium
+            // (was 32pt light — build 68's thin/classy read too
+            // thin and small next to the mark; build 54's black
+            // was too heavy). Uniform stageBlue #0288dd.
             // (StageWordmarkText itself lives in OnBudgetKit, so
-            // the thinning is done here, at this call site.)
-            StageWordmarkText(font: .system(size: 32, weight: .light))
+            // the size/weight is set here, at this call site.)
+            StageWordmarkText(font: .system(size: 34, weight: .medium))
         }
         // Centered as a unit (owner, Nov 11, 2026): the header was
         // left-aligned, which read as shifted-left on a wide screen.

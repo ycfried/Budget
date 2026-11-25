@@ -112,6 +112,25 @@ public enum MoneyFormat {
         cents < 0 ? "+" + formatCents(abs(cents)) : formatCents(cents)
     }
 
+    /// Signed-net display for the PDF statement (build 74, owner
+    /// Nov 25, 2026 — the statement's Net sign was inverted: a
+    /// donations-only export showed "+$834.85" for $0 in /
+    /// $834.85 out, when the true net is −$834.85). A positive net
+    /// (more in than out) reads "+$X"; a negative net (more out
+    /// than in) reads "-$X"; zero is "$0.00". This is NOT
+    /// `netTotalText`: the Transactions list total uses the
+    /// opposite convention (a negative signed sum is money in
+    /// overall, so it reads "+$X" — pinned by InflowAmountTests),
+    /// and the PDF net is in − out, so the same "+$X" there
+    /// would claim the household gained money it spent. Only the
+    /// PDF statement uses this; the list total keeps
+    /// `netTotalText`.
+    public static func signedNetText(cents: Int) -> String {
+        if cents == 0 { return formatCents(0) }
+        if cents > 0 { return "+" + formatCents(cents) }
+        return formatCents(cents)
+    }
+
     /// Percent from basis points, no trailing zeros: 1000 → "10",
     /// 1050 → "10.5" (live.js rate formatting, spec §9.3).
     public static func formatRateBp(_ basisPoints: Int) -> String {

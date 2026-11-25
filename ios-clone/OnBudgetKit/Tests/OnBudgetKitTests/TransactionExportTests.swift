@@ -234,9 +234,12 @@ final class TransactionExportTests: XCTestCase {
         XCTAssertEqual(statement.rows[1].kind, "Income")
         XCTAssertEqual(statement.totalInText, "$3,500.00")
         XCTAssertEqual(statement.totalOutText, "$12.34")
-        // Net is money in overall here, and the count-line
-        // convention (`netTotalText`) prints a positive net bare.
-        XCTAssertEqual(statement.netText, "$3,487.66")
+        // Net is money in overall here: the PDF prints a
+        // positive net with a "+" (`signedNetText`, build 74) —
+        // the list total's `netTotalText` prints it bare, but
+        // that convention is inverted for the statement (a
+        // negative net there means more out than in).
+        XCTAssertEqual(statement.netText, "+$3,487.66")
     }
 
     func testPDFStatementSingleDateAndEmptyRange() {
@@ -332,20 +335,42 @@ final class TransactionExportTests: XCTestCase {
     func testChartsOmitEmptyAndZeroSlices() {
         // Nothing to chart at all.
         XCTAssertTrue(TransactionExport.charts(transactions: []).isEmpty)
-        // Income only: just the In vs Out chart, one slice.
+        // Income only: the In vs Out chart would be one slice
+        // (build 74 — a single-slice chart is omitted, not drawn
+        // as a dot), so there is no Summary at all.
         let incomeOnly = TransactionExport.charts(transactions: [
             txn(amount: -100_000, kind: .income),
         ])
-        XCTAssertEqual(incomeOnly.count, 1)
-        XCTAssertEqual(incomeOnly[0].slices.count, 1)
-        XCTAssertEqual(incomeOnly[0].slices[0].label, "Money In")
-        // No charity: no Tzedaka Share chart.
+        XCTAssertTrue(incomeOnly.isEmpty)
+        // No charity: no Tzedaka Share chart — and Spending by
+        // Kind is a single charge slice, so it is omitted too;
+        // only Money In vs Out remains.
         let noCharity = TransactionExport.charts(transactions: [
             txn(amount: 5000, kind: .charge),
             txn(amount: -100_000, kind: .income),
         ])
-        XCTAssertEqual(noCharity.count, 2)
+        XCTAssertEqual(noCharity.count, 1)
+        XCTAssertEqual(noCharity[0].title, "Money In vs Out")
         XCTAssertFalse(noCharity.contains { $0.title == "Tzedaka Share" })
+    }
+
+    func testDonationsOnlyExportHasNoSummaryAndNegativeNet() {
+        // Build 74 (owner, Nov 25, 2026): the Tzedaka-gifts
+        // export — $0 in, $834.85 out, all charity. Every chart
+        // would be a single 100% slice, so there is no Summary
+        // at all; the net is negative (more out than in), not
+        // "+$834.85".
+        let rows = [
+            txn(amount: 50_000, kind: .charity),
+            txn(amount: 33_485, kind: .charity),
+        ]
+        let statement = TransactionExport.pdfStatement(
+            transactions: rows, householdName: "H", generatedDate: "2026-11-22"
+        )
+        XCTAssertTrue(statement.charts.isEmpty)
+        XCTAssertEqual(statement.totalInText, "$0.00")
+        XCTAssertEqual(statement.totalOutText, "$834.85")
+        XCTAssertEqual(statement.netText, "-$834.85")
     }
 
     func testRowColorsFollowTheTransactionColourCode() {
@@ -366,7 +391,10 @@ final class TransactionExportTests: XCTestCase {
         )
         XCTAssertEqual(statement.rows[0].colorHex, "#1d4ed8")
         XCTAssertEqual(statement.rows[1].colorHex, "#2f6bff")
-        XCTAssertEqual(statement.charts.count, 3)
+        // One chart only (build 74): Money In vs Out — Spending
+        // by Kind would be a single charity slice and Tzedaka
+        // Share would be 100% Tzedaka, so both are omitted.
+        XCTAssertEqual(statement.charts.count, 1)
     }
 
     // MARK: - Filenames

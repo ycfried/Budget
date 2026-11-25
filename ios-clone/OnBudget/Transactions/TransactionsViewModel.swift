@@ -477,7 +477,13 @@ public final class TransactionsViewModel {
                     guard !Task.isCancelled else { return }
                     self.loadedPage = rows
                     self.hasMore = hasMore
-                    self.loadState = .loaded(rows)
+                    // Build 74 (owner, Nov 25, 2026 — Load More
+                    // auto-fill): under a filter, one raw page may
+                    // hold only 1–2 matching rows — fill the
+                    // visible list to a full page now, instead of
+                    // making the user tap Load More repeatedly.
+                    await self.autoFillFilteredPage()
+                    self.loadState = .loaded(self.loadedPage)
                 }
                 // Best-effort extras (allowance flag for the sync
                 // button, institution map for bank icons) run
@@ -530,11 +536,57 @@ public final class TransactionsViewModel {
             )
             loadedPage.append(contentsOf: rows)
             self.hasMore = hasMore
+            // Build 74: same auto-fill as the first load — a tap
+            // must end with a full page of matching rows, not
+            // another 1–2.
+            await autoFillFilteredPage()
             loadState = .loaded(loadedPage)
         } catch let error as OnBudgetError {
             confirmError(error.displayMessage)
         } catch {
             confirmError(OnBudgetError.displayMessage(for: error))
+        }
+    }
+
+    /// Build 74 (owner, Nov 25, 2026 — Load More auto-fill): when
+    /// a filter is active, one raw page (25 rows of all kinds)
+    /// may hold only 1–2 matching rows, so the visible list
+    /// barely grows per tap. After a load / Load More, keep
+    /// fetching pages until the VISIBLE list reaches a full page
+    /// (`pageSize`) or there are no more rows. Bounded so a
+    /// filter with almost no matches cannot hang the list by
+    /// reading the whole history: at most 8 pages per user
+    /// action, and it stops after 2 consecutive pages that add
+    /// no visible rows. Only in normal paged mode — `hasMore`
+    /// is false in week/tzedaka mode, so the loop is a no-op
+    /// there. A failed fill keeps the rows already loaded and
+    /// the Load More button, so the user can retry. Server-side
+    /// kind/status filtering (the faster fix) is the follow-up:
+    /// it needs the page query to take the filter plus a reload
+    /// trigger when the filter changes.
+    private func autoFillFilteredPage() async {
+        var pagesFetched = 0
+        var emptyPages = 0
+        while shownTransactions.count < pageSize, hasMore, pagesFetched < 8, emptyPages < 2 {
+            guard !Task.isCancelled else { return }
+            pagesFetched += 1
+            let before = shownTransactions.count
+            do {
+                let (rows, more) = try await client.postgrest.transactionsPage(
+                    householdId: householdId,
+                    pageSize: pageSize,
+                    offset: loadedPage.count
+                )
+                loadedPage.append(contentsOf: rows)
+                hasMore = more
+            } catch {
+                return
+            }
+            if shownTransactions.count == before {
+                emptyPages += 1
+            } else {
+                emptyPages = 0
+            }
         }
     }
 
