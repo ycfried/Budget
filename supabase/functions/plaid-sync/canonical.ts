@@ -560,7 +560,11 @@ export function merchantsRelated(a: string, b: string): boolean {
   const na = merchantRuleSquash(a);
   const nb = merchantRuleSquash(b);
   if (!na || !nb || na === nb) return false;
-  if (na.length < 4 || nb.length < 4) return false;
+  // Containment needs both squashes >= 2 letters (owner Nov 25,
+  // 2026 — BP case: "BP" ⊂ "BPFDMSCAT"). The name is never the sole
+  // criterion — amount + kind + date + card + Email/Bank must also
+  // match — so 2 letters suffice.
+  if (na.length < 2 || nb.length < 2) return false;
   return na.includes(nb) || nb.includes(na);
 }
 

@@ -104,9 +104,13 @@ as $$
   select
     -- identical (squashed) names
     public.merchant_rule_squash(p_merchant_a) = public.merchant_rule_squash(p_merchant_b)
-    -- one contains the other (squashed, min length 4, as in canonical.ts)
-    or (length(public.merchant_rule_squash(p_merchant_a)) >= 4
-        and length(public.merchant_rule_squash(p_merchant_b)) >= 4
+    -- one contains the other (squashed, min length 2, as in canonical.ts)
+    -- Owner Nov 25, 2026 (BP case): "BP" (2 letters) is contained in
+    -- "BPFDMSCAT", and with amount + kind + date + card + Email/Bank
+    -- all matching, that is strong evidence of the same purchase —
+    -- the name is never the sole criterion, so 2 letters suffice.
+    or (length(public.merchant_rule_squash(p_merchant_a)) >= 2
+        and length(public.merchant_rule_squash(p_merchant_b)) >= 2
         and (position(public.merchant_rule_squash(p_merchant_b) in public.merchant_rule_squash(p_merchant_a)) > 0
              or position(public.merchant_rule_squash(p_merchant_a) in public.merchant_rule_squash(p_merchant_b)) > 0))
     -- confirmed alias pair, either order (squashed)
