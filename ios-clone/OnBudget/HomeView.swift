@@ -2950,6 +2950,11 @@ private struct HomeCardSkeletonBody: View {
                     .foregroundStyle(display.color)
             }
             .padding(.vertical, 6)
+            // The whole row is the tap target (owner, Nov 25, 2026):
+            // without this only the icon, name and amount register
+            // taps — the empty space the Spacer opens up does not.
+            // Same pattern as the Transactions list rows.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
