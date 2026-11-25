@@ -93,6 +93,14 @@ public final class TransactionsViewModel {
     /// it once the Actions sheet has dismissed. Nil otherwise;
     /// the editor clears it on dismiss.
     public var taggedExpense: RecurringExpense?
+    /// The expense tagged in the Actions sheet, waiting for the
+    /// sheet to finish dismissing (owner, Nov 25, 2026 — same
+    /// fix as build 78 item 9): the editor opens from the
+    /// Actions sheet's onDismiss, not from a sleep — presenting
+    /// a sheet while another is still dismissing collides, so
+    /// the editor waits until the sheet is fully gone. A plain
+    /// close (no tag) leaves this nil and opens nothing.
+    public var pendingTaggedExpense: RecurringExpense?
     /// Week mode (build 52, owner Nov 20, 2026): the list arrived
     /// from the Spending card / Weekly sheet for ONE week, so the
     /// whole week is loaded at once (no Load More), pre-filtered
@@ -1027,7 +1035,11 @@ public final class TransactionsViewModel {
         do {
             let expenseId = try await client.rpcs.tagTransactionExpense(
                 pTransactionId: transaction.id, pFrequency: .monthly, pReason: reason)
-            await reloadAfterMutation()
+            // Owner, Nov 25, 2026 — same fix as build 78 item 9:
+            // the reload runs in the background — the caller opens
+            // the editor from the returned expense at once, instead
+            // of waiting on the full re-fetch.
+            Task { await reloadAfterMutation() }
             return RecurringExpense(
                 id: expenseId, householdId: householdId, transactionId: transaction.id,
                 name: transaction.merchant, amountCents: transaction.amountCents, frequency: .monthly)

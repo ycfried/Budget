@@ -314,7 +314,17 @@ public struct TransactionsView: View {
                 // which knows its flow). iPad width stays 600pt
                 // (regular) via the frame inside the sheet content, so
                 // the sheet is a centred card on iPad, never full-width.
-                .sheet(item: $actionsTransaction) { transaction in
+                .sheet(item: $actionsTransaction, onDismiss: {
+                    // Owner, Nov 25, 2026 — same fix as build 78
+                    // item 9: the editor opens once the Actions
+                    // sheet has fully dismissed — a tagged expense
+                    // waits in pendingTaggedExpense, and a plain
+                    // close leaves it nil and opens nothing.
+                    if let pending = viewModel.pendingTaggedExpense {
+                        viewModel.pendingTaggedExpense = nil
+                        taggedExpense = pending
+                    }
+                }) { transaction in
                     TransactionActionsSheet(
                         transaction: transaction,
                         isAdmin: viewModel.isAdmin,
@@ -331,11 +341,13 @@ public struct TransactionsView: View {
                 }
                 // Build 67 (owner, Nov 23, 2026): the expense editor,
                 // opened right after tagging from the Actions sheet —
-                // the tag sets `viewModel.taggedExpense` once the
-                // Actions sheet has dismissed, and this sheet opens
-                // for it. Save / Remove go through the Transactions
-                // view model; the list reloads behind the editor, so
-                // the week figures drop the expense at once.
+                // the tag waits in `viewModel.pendingTaggedExpense`
+                // and this sheet opens for it once the Actions sheet
+                // has dismissed (see the onDismiss above; owner,
+                // Nov 25, 2026 — same fix as build 78 item 9). Save
+                // / Remove go through the Transactions view model;
+                // the list reloads behind the editor, so the week
+                // figures drop the expense at once.
                 .sheet(item: $taggedExpense) { expense in
                     ExpenseEditorSheet(
                         expense: expense,

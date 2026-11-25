@@ -1465,16 +1465,14 @@ public struct TransactionActionsSheet: View {
                         // reclassify RPC — it also creates the
                         // expense row. On success the Actions
                         // sheet closes and the expense editor
-                        // opens (after a beat, so the sheet
-                        // presentation is not dropped while the
-                        // Actions sheet is still animating away).
+                        // opens from the sheet's onDismiss (see
+                        // pendingTaggedExpense) — the 400ms sleep
+                        // is gone (owner, Nov 25, 2026 — same fix
+                        // as build 78 item 9).
                         if let expense = await viewModel.tagExpense(transaction, reason: reason) {
                             isWorking = false
+                            viewModel.pendingTaggedExpense = expense
                             onDismiss()
-                            Task {
-                                try? await Task.sleep(nanoseconds: 400_000_000)
-                                viewModel.taggedExpense = expense
-                            }
                         } else {
                             isWorking = false
                         }
