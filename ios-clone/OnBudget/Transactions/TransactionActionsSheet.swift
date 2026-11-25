@@ -1016,16 +1016,23 @@ public struct TransactionActionsSheet: View {
             // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
             // button is gone — the header back chevron + swipe-
             // right return to the list, so Cancel duplicated them.
+            // Dismiss at once (owner, Nov 25, 2026): the popup
+            // used to stay open for the RPC + full reload (a few
+            // seconds of lag), and the toast fired while it was
+            // still open, so it rendered twice — once at the top
+            // of the main page, once inside the popup.
+            // Dismissing first means the sheet is gone before
+            // the toast fires, so only the shell-root toast
+            // renders it, once, at the top of the main page.
+            // The action runs in the background; a failure still
+            // surfaces as the error toast on the main page.
             Button("Mark as \(charityName)") {
+                onDismiss()
                 Task {
-                    isWorking = true
-                    let ok = await viewModel.markAsCharity(transaction)
-                    isWorking = false
-                    if ok { onDismiss() }
+                    await viewModel.markAsCharity(transaction)
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(isWorking)
         }
     }
 

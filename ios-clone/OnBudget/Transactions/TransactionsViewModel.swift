@@ -974,7 +974,11 @@ public final class TransactionsViewModel {
                 "Marked as charity gift: \(TransactionFormatting.amountDisplay(for: transaction).text) to \(TransactionFormatting.displayMerchant(transaction.merchant)).",
                 kind: .success
             )
-            await reloadAfterMutation()
+            // Reload in the background (owner, Nov 25, 2026):
+            // the toast is already fired, so the caller does
+            // not wait on the full reload — same pattern as
+            // the Actions-sheet tag fix (build 78 item 9).
+            Task { await reloadAfterMutation() }
             return true
         } catch let error as OnBudgetError {
             if error == .sessionExpired {
