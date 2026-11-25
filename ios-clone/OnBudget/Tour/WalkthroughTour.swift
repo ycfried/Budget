@@ -601,7 +601,10 @@ public struct TourOverlayView: View {
 /// nothing visible. Called from the tab's ScrollViewReader on
 /// step change; a no-op unless the tour is running on this tab.
 /// The anchored views carry the matching `.id(TourAnchor)` so
-/// `scrollTo` can find them.
+/// `scrollTo` can find them. @MainActor: TourState is
+/// main-actor-isolated, so its properties cannot be read from a
+/// nonisolated free function (compile error, build 74 fix-up).
+@MainActor
 public func scrollTourAnchorIntoView(_ proxy: ScrollViewProxy, tour: TourState, tab: AppTab) {
     guard tour.isActive, tour.currentStep.tab == tab, let anchor = tour.currentStep.anchor else { return }
     withAnimation(.none) { proxy.scrollTo(anchor, anchor: .center) }

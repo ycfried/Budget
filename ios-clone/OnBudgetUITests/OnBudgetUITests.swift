@@ -15,11 +15,12 @@
 // Supabase sign-up rate limit cannot block the suite (build 53,
 // audit W1: 8 public sign-ups per run died at the 429 gate and
 // proved nothing past auth). Only testSignUpJoinAndBrowse still
-// exercises the public sign-up flow (one sign-up per run): sign-up
-// returns .needsConfirmation and the app shows "Check Your Email",
-// the helper then confirms the fresh account via the Admin API and
-// signs in with the same credentials; the @example.com address can
-// never receive the confirmation email, so there is no other path.
+// exercises the public sign-up flow (one sign-up per run). Email
+// confirmation is OFF (owner, Nov 24, 2026), so sign-up signs the
+// account in directly and lands on the Household screen — there is
+// no "Check Your Email" step and no Admin-API confirm is needed;
+// the @example.com address can never receive email, which is fine
+// because none is ever sent.
 //   Then join the TEST household "Proof Household 2" as a member via
 //      invite code Q6GFME. Never the real household, never the
 //      owner's account. (The test admin account's password is lost;
@@ -191,33 +192,39 @@ final class OnBudgetUITests: XCTestCase {
             }
         }
 
-        // Profile menu → Settings → Sign Out (the app's own
-        // sign-out path; AppState.signOut dismisses Settings and
-        // lands on the auth screen). The Profile card is first in
-        // Settings, so its Sign Out button needs no scrolling.
-        // Clear any overlay first: run 44980488090's
+        // Profile menu → Settings → Profile subpage → Sign Out
+        // (the app's own sign-out path; AppState.signOut dismisses
+        // Settings and lands on the auth screen). Build 74 split
+        // Settings into a hub: the root is a short list and Sign
+        // Out lives on the Profile subpage, so tap the
+        // settings.hub.profile row after Settings renders. Clear
+        // any overlay first: run 44980488090's
         // testHomeHeroAmountAndDonut and testPageSelectIsSingleNavigation both
         // died here — the Profile tap failed to scroll into view
         // (kAXErrorCannotComplete), which is what an overlay
         // (walkthrough, or the notifications alert) covering Home
-        // looks like from XCTest.
+        // looks like from XCTest. Coordinate taps throughout (see
+        // tapCoordinate): menu items and hub rows are on screen,
+        // and a plain .tap() risks the same AX scroll failure.
         dismissTourIfPresent()
         dismissNotificationAlertIfPresent()
-        app.buttons["Profile"].tap()
+        tapCoordinate(app.buttons["Profile"])
         let settingsItem = app.buttons["Settings"]
         XCTAssertTrue(
             settingsItem.waitForExistence(timeout: 10),
             "Profile menu did not offer Settings"
         )
-        settingsItem.tap()
+        tapCoordinate(settingsItem)
+        let profileHubRow = app.buttons["settings.hub.profile"]
         XCTAssertTrue(
-            app.staticTexts["Bank Connection"].waitForExistence(timeout: 30),
-            "Settings did not render (no Bank Connection card)"
+            profileHubRow.waitForExistence(timeout: 30),
+            "Settings hub did not render (no Profile row)"
         )
+        tapCoordinate(profileHubRow)
         let signOutButton = app.buttons["settings.signOut"]
         XCTAssertTrue(
             signOutButton.waitForExistence(timeout: 10),
-            "Settings Profile card did not offer Sign Out"
+            "Settings Profile subpage did not offer Sign Out"
         )
         signOutButton.tap()
         XCTAssertTrue(
@@ -241,13 +248,18 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "05-transactions")
 
         // -- 7. Funds renders --------------------------------------------
+        // Funds cards are button-like elements whose card container
+        // carries the funds.* identifier AND an accessibilityLabel
+        // — the name is not a separate staticText, so query the
+        // cards as buttons by identifier (a staticTexts["Extra
+        // Fund"] lookup never matches).
         tapTab(identifier: "tab.funds", label: "Funds")
         XCTAssertTrue(
-            app.staticTexts["Extra Fund"].waitForExistence(timeout: 90),
+            app.buttons.matching(identifier: "funds.extraFund").firstMatch.waitForExistence(timeout: 90),
             "Funds did not render (no Extra Fund card)"
         )
         XCTAssertTrue(
-            app.staticTexts["Charity"].waitForExistence(timeout: 30),
+            app.buttons.matching(identifier: "funds.charity").firstMatch.waitForExistence(timeout: 30),
             "Funds did not render (no Charity card)"
         )
         attachScreenshot(named: "06-funds")
@@ -284,7 +296,7 @@ final class OnBudgetUITests: XCTestCase {
         )
         tapTab(identifier: "tab.funds", label: "Funds")
         XCTAssertTrue(
-            app.staticTexts["Extra Fund"].waitForExistence(timeout: 30),
+            app.buttons.matching(identifier: "funds.extraFund").firstMatch.waitForExistence(timeout: 30),
             "Funds page select did not show the Funds screen (no Extra Fund card)"
         )
         XCTAssertFalse(
@@ -363,13 +375,17 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- Export popup opens, history fetch shows a count --------
         // Build 53 (audit U2): Export lives in the "More" menu now.
-        app.buttons["header.more"].tap()
+        // Coordinate taps (see tapCoordinate): menu items and the
+        // export chip are on screen, and a plain .tap() risks the
+        // AX scroll-to-visible failure that killed the page-select
+        // taps in run 45542061108.
+        tapCoordinate(app.buttons["header.more"])
         let exportChip = app.buttons["export.open"]
         XCTAssertTrue(
             exportChip.waitForExistence(timeout: 15),
             "Export chip missing on Transactions"
         )
-        exportChip.tap()
+        tapCoordinate(exportChip)
         XCTAssertTrue(
             app.staticTexts["Export Transactions"].waitForExistence(timeout: 15),
             "Export popup did not open after tapping Export"
@@ -406,13 +422,11 @@ final class OnBudgetUITests: XCTestCase {
             app.textFields["export.filter.max"].waitForExistence(timeout: 15),
             "Max amount field missing on Export popup"
         )
-        kindPicker.tap()
-        let chargeOption = app.menuItems["Charge"]
-        XCTAssertTrue(
-            chargeOption.waitForExistence(timeout: 15),
-            "Kind menu did not offer Charge"
-        )
-        chargeOption.tap()
+        tapCoordinate(kindPicker)
+        // The Menu-style Picker exposes its options as menuItems
+        // or as buttons depending on the iOS version — poll for
+        // either and tap whichever appears.
+        tapPickerOption("Charge")
         // The summary now names the picked kind, and the count
         // still shows (the filtered count).
         let summaryCharge = app.staticTexts
@@ -427,7 +441,7 @@ final class OnBudgetUITests: XCTestCase {
         )
         attachScreenshot(named: "09-export-filtered-kind")
         // Clear Filters restores the no-filters state.
-        app.buttons["export.filter.clear"].tap()
+        tapCoordinate(app.buttons["export.filter.clear"])
         let summaryClear = app.staticTexts
             .containing(NSPredicate(format: "label CONTAINS 'No filters active'")).firstMatch
         XCTAssertTrue(
@@ -439,13 +453,13 @@ final class OnBudgetUITests: XCTestCase {
         // Build 59 (owner, Nov 22, 2026): a PDF is previewed
         // in-app before anything is shared — Generate opens the
         // preview sheet, Share inside it opens the share sheet.
-        app.buttons["export.generate"].tap()
+        tapCoordinate(app.buttons["export.generate"])
         XCTAssertTrue(
             app.buttons["export.preview.share"].waitForExistence(timeout: 30),
             "Preview did not appear after Generate (PDF)"
         )
         attachScreenshot(named: "10-export-preview")
-        app.buttons["export.preview.share"].tap()
+        tapCoordinate(app.buttons["export.preview.share"])
         XCTAssertTrue(
             app.staticTexts["AirDrop"].waitForExistence(timeout: 30),
             "Share sheet did not appear after Share in the preview (no AirDrop section)"
@@ -453,7 +467,7 @@ final class OnBudgetUITests: XCTestCase {
         attachScreenshot(named: "10-export-share-sheet")
         tapHittableCancel()
         // Back on the preview — close it to return to the popup.
-        app.buttons["export.preview.close"].tap()
+        tapCoordinate(app.buttons["export.preview.close"])
         XCTAssertTrue(
             app.staticTexts["export.count"].waitForExistence(timeout: 15),
             "Closing the preview did not return to the export popup"
@@ -466,7 +480,7 @@ final class OnBudgetUITests: XCTestCase {
             app.staticTexts["export.count"].waitForExistence(timeout: 30),
             "Export popup lost its count after switching to All + CSV"
         )
-        app.buttons["export.generate"].tap()
+        tapCoordinate(app.buttons["export.generate"])
         XCTAssertTrue(
             app.staticTexts["AirDrop"].waitForExistence(timeout: 30),
             "Share sheet did not appear after Generate for All + CSV"
@@ -475,7 +489,7 @@ final class OnBudgetUITests: XCTestCase {
         tapHittableCancel()
 
         // -- Close returns to the Transactions list ------------------
-        app.buttons["Close"].tap()
+        tapCoordinate(app.buttons["Close"])
         XCTAssertTrue(
             app.buttons.matching(identifier: "transaction.row").firstMatch
                 .waitForExistence(timeout: 30),
@@ -495,15 +509,29 @@ final class OnBudgetUITests: XCTestCase {
             app.staticTexts["Spending"].waitForExistence(timeout: 60),
             "Home hero did not render (no Spending title)"
         )
+        // The hero amount Text still carries the home.heroAmount
+        // identifier, but it is shadowed by the hero card
+        // container's own accessibilityLabel (the container is the
+        // single AX element) — an identifier query never matches
+        // it. Find it by its spoken label instead, which the
+        // label-based pattern in testVideoScreens already proved
+        // works in this suite.
+        let heroAmount = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS 'left this week' OR label CONTAINS 'over budget'")
+        ).firstMatch
         XCTAssertTrue(
-            app.staticTexts.matching(identifier: "home.heroAmount").firstMatch
-                .waitForExistence(timeout: 60),
-            "Home hero amount did not appear in the card body (home.heroAmount)"
+            heroAmount.waitForExistence(timeout: 60),
+            "Home hero amount did not appear in the card body (expected a 'left this week' / 'over budget' label)"
         )
+        // Same shadowing for the donut: its identifier sits on the
+        // progress element inside the labelled card, so find it by
+        // its spoken label ("X% of the weekly budget used").
+        let heroDonut = app.otherElements.matching(
+            NSPredicate(format: "label CONTAINS 'percent of the weekly budget used'")
+        ).firstMatch
         XCTAssertTrue(
-            app.otherElements.matching(identifier: "home.heroDonut").firstMatch
-                .waitForExistence(timeout: 15),
-            "Home hero progress circle did not appear beside the amount (home.heroDonut)"
+            heroDonut.waitForExistence(timeout: 15),
+            "Home hero progress circle did not appear beside the amount (expected a 'percent of the weekly budget used' label)"
         )
         attachScreenshot(named: "12-home-hero-amount-donut")
     }
@@ -520,20 +548,25 @@ final class OnBudgetUITests: XCTestCase {
     func testSimpleHomeLayout() throws {
         signInAndJoinTestHousehold()
 
+        // The hero amount / Tzedaka amount identifiers are
+        // shadowed by their card containers' accessibilityLabels
+        // (see testHomeHeroAmountAndDonut) — find the hero by its
+        // spoken label and the Tzedaka amount by the card label,
+        // which reads "<name>, $<amount>, show fund" once loaded.
         XCTAssertTrue(
-            app.staticTexts.matching(identifier: "home.heroAmount").firstMatch
-                .waitForExistence(timeout: 60),
-            "Simple Home hero amount did not appear (home.heroAmount)"
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS 'left this week' OR label CONTAINS 'over budget'")
+            ).firstMatch.waitForExistence(timeout: 60),
+            "Simple Home hero amount did not appear (expected a 'left this week' / 'over budget' label)"
         )
+        let tzedakaCard = app.otherElements.matching(identifier: "home.tzedakaCard").firstMatch
         XCTAssertTrue(
-            app.otherElements.matching(identifier: "home.tzedakaCard").firstMatch
-                .waitForExistence(timeout: 15),
+            tzedakaCard.waitForExistence(timeout: 15),
             "Simple Home Tzedaka card did not appear second (home.tzedakaCard)"
         )
         XCTAssertTrue(
-            app.staticTexts.matching(identifier: "home.tzedakaAmount").firstMatch
-                .waitForExistence(timeout: 15),
-            "Simple Home Tzedaka amount did not appear (home.tzedakaAmount)"
+            tzedakaCard.label.contains("$"),
+            "Simple Home Tzedaka card has no amount (expected a '$' amount in its label; got '\(tzedakaCard.label)')"
         )
         XCTAssertTrue(
             app.buttons.matching(identifier: "home.quietSavings").firstMatch
@@ -1551,6 +1584,69 @@ final class OnBudgetUITests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// Tap an element by its centre coordinate, NOT by plain
+    /// .tap(). A plain .tap() asks XCTest to scroll the element
+    /// into view first (AX kAXScrollToVisibleAction), and that
+    /// scroll fails with kAXErrorCannotComplete on elements that
+    /// are already on screen but sit in a non-scrollable container
+    /// — the shell's floating page select (run 45542061108:
+    /// pageSelect.funds / pageSelect.home both died this way) and
+    /// menu items. A coordinate tap goes straight to the element's
+    /// centre without the scroll step. Only use it for elements
+    /// that are already on screen; elements below the fold in a
+    /// scrollable list still want a plain .tap(), which scrolls
+    /// them into view first.
+    private func tapCoordinate(_ element: XCUIElement) {
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    }
+
+    /// Tap the hittable button with the given label. Several
+    /// buttons can share a label (e.g. the "Add to Charity"
+    /// section button behind its own sheet's "Add to Charity"
+    /// submit) — the one behind the sheet is not hittable, so
+    /// firstMatch would tap the wrong one. Polls briefly for a
+    /// hittable match instead of failing on the covered one.
+    private func tapHittableButton(label: String, timeout: TimeInterval = 15) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let buttons = app.buttons.matching(NSPredicate(format: "label == %@", label))
+            for index in 0..<buttons.count {
+                let button = buttons.element(boundBy: index)
+                if button.isHittable {
+                    button.tap()
+                    return
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        XCTFail("No hittable button labelled '\(label)' appeared within \(timeout)s")
+    }
+
+    /// Tap a menu/picker option by label. A SwiftUI Menu or menu
+    /// Picker can expose its options as menuItems or as buttons
+    /// depending on the iOS version and the picker style, so poll
+    /// for either and tap whichever appears, by coordinate (the
+    /// same scroll-to-visible failure as tapTab applies to menu
+    /// items). Fails with the visible menu state when neither
+    /// appears.
+    private func tapPickerOption(_ label: String, timeout: TimeInterval = 15) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let menuItem = app.menuItems[label]
+            if menuItem.exists {
+                tapCoordinate(menuItem)
+                return
+            }
+            let button = app.buttons[label]
+            if button.exists {
+                tapCoordinate(button)
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        XCTFail("Picker/menu did not offer '\(label)' within \(timeout)s; visible text: \(visibleErrorText())")
+    }
+
     /// Tab-bar buttons carry both the identifier (tab.*) and the
     /// visible label; prefer the identifier, fall back to the label.
     private func tapTab(identifier: String, label: String) {
@@ -1561,7 +1657,19 @@ final class OnBudgetUITests: XCTestCase {
         let pageSelectId = identifier.replacingOccurrences(of: "tab.", with: "pageSelect.")
         let byIdentifier = app.buttons[pageSelectId]
         if byIdentifier.waitForExistence(timeout: 15) {
-            byIdentifier.tap()
+            // A top toast can cover the control right after a flow
+            // that shows one (join, add); it auto-dismisses after
+            // ~4s, so wait for the button to become hittable first
+            // rather than tapping through the toast. Then tap by
+            // coordinate (see tapCoordinate): a plain .tap() asks
+            // XCTest to scroll the page-select button into view and
+            // that AX scroll fails (kAXErrorCannotComplete, run
+            // 45542061108) even though the button is on screen.
+            let hittableDeadline = Date().addingTimeInterval(6)
+            while Date() < hittableDeadline, !byIdentifier.isHittable {
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+            tapCoordinate(byIdentifier)
             return
         }
         let byLabel = app.buttons[label]
@@ -1569,7 +1677,7 @@ final class OnBudgetUITests: XCTestCase {
             byLabel.waitForExistence(timeout: 15),
             "Page select button \(label) (\(pageSelectId)) not found"
         )
-        byLabel.tap()
+        tapCoordinate(byLabel)
     }
 
     /// Tap a field and type into it only once it actually holds
