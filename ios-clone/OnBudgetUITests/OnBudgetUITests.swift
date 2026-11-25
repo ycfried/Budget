@@ -456,7 +456,7 @@ final class OnBudgetUITests: XCTestCase {
         // tap — a coordinate tap on the PopUpButton can be absorbed
         // (run 45650165521: 'Charge' never surfaced after one tap),
         // so tapPickerOption re-taps the picker once mid-wait.
-        tapPickerOption("Charge", reopen: { tapCoordinate(kindPicker) })
+        tapPickerOption("Charge", reopen: { self.tapCoordinate(kindPicker) })
         // The summary now names the picked kind, and the count
         // still shows (the filtered count).
         let summaryCharge = app.staticTexts
