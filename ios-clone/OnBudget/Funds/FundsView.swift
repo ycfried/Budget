@@ -474,6 +474,9 @@ public struct FundsView: View {
     /// Available; Add Money keeps its split preview in the form AND
     /// the current Available here; Charity Income shows charity
     /// Available; Temporary Allowance shows the current base.
+    /// Build 77 (owner, Nov 25, 2026): the loading skeleton
+    /// blocks are larger (200x20, was 160x16) — the small
+    /// boxes read as too small while loading.
     @ViewBuilder
     private func formBalanceStrip(for form: FundsForm) -> some View {
         switch form {
@@ -488,7 +491,7 @@ public struct FundsView: View {
                     } else if let error = viewModel.fundError {
                         FundsErrorBox(error)
                     } else {
-                        SkeletonBlock(width: 160, height: 16)
+                        SkeletonBlock(width: 200, height: 20)
                     }
                 }
             }
@@ -501,7 +504,7 @@ public struct FundsView: View {
                     } else if let error = viewModel.charityError {
                         FundsErrorBox(error)
                     } else {
-                        SkeletonBlock(width: 160, height: 16)
+                        SkeletonBlock(width: 200, height: 20)
                     }
                 }
             }
@@ -513,7 +516,7 @@ public struct FundsView: View {
                     } else if let error = viewModel.allowanceError {
                         FundsErrorBox(error)
                     } else {
-                        SkeletonBlock(width: 160, height: 16)
+                        SkeletonBlock(width: 200, height: 20)
                     }
                 }
             }
@@ -525,7 +528,7 @@ public struct FundsView: View {
                     } else if let error = viewModel.debtError {
                         FundsErrorBox(error)
                     } else {
-                        SkeletonBlock(width: 160, height: 16)
+                        SkeletonBlock(width: 200, height: 20)
                     }
                     if let summary = viewModel.fundSummary {
                         FundsBreakdownRow("Available in \(FundSectionID.fund.displayName(customNames: appState.fundNames))", value: MoneyFormat.formatCents(summary.availableCents), isNegative: summary.availableCents < 0)
@@ -540,7 +543,7 @@ public struct FundsView: View {
                     } else if let error = viewModel.debtError {
                         FundsErrorBox(error)
                     } else {
-                        SkeletonBlock(width: 160, height: 16)
+                        SkeletonBlock(width: 200, height: 20)
                     }
                 }
             }
@@ -2544,15 +2547,20 @@ public struct WeeklyBudgetCalculatorContent: View {
         VStack(alignment: .leading, spacing: 16) {
             suggestionBlock
             Divider()
+            // Build 77 (owner, Nov 25, 2026): Lifestyle +
+            // Household Size sit at the TOP, above Expected
+            // Income / Recurring Expenses — income and expenses
+            // come later. Order only; values and behaviour
+            // unchanged.
+            lifestyleSection
+            Divider()
+            householdSizeSection
+            Divider()
             incomeSection
             Divider()
             chargesSection
             Divider()
             charitySection
-            Divider()
-            lifestyleSection
-            Divider()
-            householdSizeSection
         }
         .accessibilityIdentifier("funds.weeklyBudgetCalculator")
         .onAppear {
@@ -2851,7 +2859,11 @@ public struct WeeklyBudgetCalculatorContent: View {
                 DollarTextField(text: $charityText, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
                 // Build 74 (J9): 48pt tall, like the field beside
                 // it — the short button read as a chip.
-                FundsSmallTertiaryButton("Use 10% of Income", minHeight: 48) {
+                // Build 77 (owner, Nov 25, 2026): reworded —
+                // "Use 10% of Income" did not say what it does.
+                // It sets Expected Tzedaka to 10% of monthly
+                // income.
+                FundsSmallTertiaryButton("Set to 10% of Income", minHeight: 48) {
                     charityText = String(format: "%.2f", Double(monthlyIncomeCents) / 10.0 / 100.0)
                 }
             }

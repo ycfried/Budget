@@ -545,6 +545,11 @@ public struct TransactionsView: View {
         // the white page, still reading as a field — no border.
         .background(Color(.systemGray6))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        // Build 77 (owner, Nov 25, 2026 — tap targets): the whole
+        // box focuses the field — tapping the magnifier or the
+        // edge padding used to do nothing.
+        .contentShape(Rectangle())
+        .onTapGesture { searchFocused = true }
         // Walkthrough anchor (build 48): the search field.
         .tourAnchor(.searchBar, tour: appState.tour)
         .id(TourAnchor.searchBar)

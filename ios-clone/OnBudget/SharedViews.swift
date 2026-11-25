@@ -134,6 +134,10 @@ public struct PageSelectControl: View {
         HStack(spacing: 0) {
             ForEach(AppTab.allCases, id: \.self) { tab in
                 let isSelected = selectedTab == tab
+                // Build 77 (owner, Nov 25, 2026 — tap targets):
+                // the whole segment must be tappable, not just
+                // the centred label — same plain-button hit-area
+                // fix as SquarishPicker.
                 Button {
                     selectedTab = tab
                 } label: {
@@ -151,6 +155,7 @@ public struct PageSelectControl: View {
                                 }
                             }
                         )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("pageSelect.\(tab.rawValue.lowercased())")
@@ -332,6 +337,12 @@ public struct DollarTextField: View {
     public let placeholder: String
     public let maxWidth: CGFloat?
     public let minHeight: CGFloat
+    /// Build 77 (owner, Nov 25, 2026 — tap targets): the whole
+    /// box focuses the field — tapping the "$" or the edge
+    /// padding used to do nothing, only the field itself
+    /// registered. Setting focus is idempotent, so a tap that
+    /// also lands on the field itself is harmless.
+    @FocusState private var isFocused: Bool
 
     public init(text: Binding<String>, placeholder: String = "0.00", maxWidth: CGFloat? = 220, minHeight: CGFloat = 48) {
         self._text = text
@@ -347,6 +358,7 @@ public struct DollarTextField: View {
                 .foregroundStyle(DesignTokens.ink)
             TextField(placeholder, text: $text)
                 .keyboardType(.decimalPad)
+                .focused($isFocused)
         }
         .padding(.horizontal, 14)
         .frame(maxWidth: maxWidth, minHeight: minHeight, alignment: .leading)
@@ -356,6 +368,8 @@ public struct DollarTextField: View {
                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .contentShape(Rectangle())
+        .onTapGesture { isFocused = true }
     }
 }
 

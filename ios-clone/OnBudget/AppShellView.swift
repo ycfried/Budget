@@ -186,6 +186,24 @@ public struct AppShellView: View {
             transactionsViewModel?.fundNames = names
             reviewViewModel?.fundNames = names
         }
+        // Build 77 (owner, Nov 25, 2026): the transaction jump
+        // lands with the row ALREADY open. Tapping a Home row
+        // first showed the Transactions page as-is, then the row
+        // expanded a beat later (consumeHandoffs runs in
+        // onAppear, after first paint) — it felt slow. The
+        // Transactions view model is shell-owned and long-lived,
+        // so when a jump is set, pre-expand the row here if it
+        // is already in the loaded page — the first Transactions
+        // frame then renders with the row open. The async jump in
+        // consumeHandoffs stays as the fallback: it clears
+        // filters and loads the full list when the row is not in
+        // the loaded page.
+        .onChange(of: appState.pendingTransactionJump) { _, jumpId in
+            guard let jumpId,
+                  let viewModel = transactionsViewModel,
+                  viewModel.loadedPage.contains(where: { $0.id == jumpId }) else { return }
+            viewModel.expandedTransactionId = jumpId
+        }
     }
 
     /// Settings as a full-screen cover (CLONE_SPEC §2.2 — not a

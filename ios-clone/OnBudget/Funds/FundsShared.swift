@@ -404,6 +404,11 @@ public struct SquarishPicker<Option: Hashable>: View {
         HStack(spacing: 0) {
             ForEach(options, id: \.0) { option, label in
                 let isSelected = selection == option
+                // Build 77 (owner, Nov 25, 2026 — tap targets):
+                // the whole segment must be tappable, not just
+                // the centred label — the padded cell is the
+                // hit area. Without .contentShape the plain
+                // button only registered taps near the text.
                 Button { selection = option } label: {
                     Text(label)
                         .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
@@ -421,6 +426,7 @@ public struct SquarishPicker<Option: Hashable>: View {
                                 }
                             }
                         )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(label + (isSelected ? ", selected" : ""))
@@ -620,18 +626,21 @@ public struct FundsTextField: View {
 }
 
 /// The Funds page loading skeleton (build 68, item 23): bigger,
-/// shaped like the loaded card detail — three 20pt rows plus a
-/// full-width 52pt button block — so the card holds its loaded
+/// shaped like the loaded card detail — three 24pt rows plus a
+/// full-width 56pt button block — so the card holds its loaded
 /// size while loading instead of three thin 16pt lines.
+/// Build 77 (owner, Nov 25, 2026): the loading boxes were too
+/// small — the rows and button are larger now, matching the
+/// real detail content.
 public struct FundsDetailSkeleton: View {
     public init() {}
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SkeletonBlock(width: 220, height: 20)
-            SkeletonBlock(width: 190, height: 20)
-            SkeletonBlock(width: 210, height: 20)
-            SkeletonBlock(width: nil, height: 52, cornerRadius: 10)
+            SkeletonBlock(width: 260, height: 24)
+            SkeletonBlock(width: 230, height: 24)
+            SkeletonBlock(width: 250, height: 24)
+            SkeletonBlock(width: nil, height: 56, cornerRadius: 10)
         }
     }
 }
@@ -1272,7 +1281,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
         return HStack(spacing: 10) {
             if let theme {
                 if isLoading {
-                    SkeletonBlock(width: 22, height: 22, cornerRadius: 6, animated: true)
+                    // Build 77 (owner, Nov 25, 2026): the loading
+                    // boxes were too small — the icon skeleton
+                    // matches the real 24pt icon now.
+                    SkeletonBlock(width: 28, height: 28, cornerRadius: 6, animated: true)
                 } else {
                     // Small glyph directly on white (build 64,
                     // P-6): no white circle disc. The glyph takes
@@ -1289,7 +1301,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 // 2026 — build 38): real dark-ink text on the
                 // placeholder read as a finished card. The failed
                 // state keeps the real title in its colour.
-                SkeletonBlock(width: 140, height: 22, cornerRadius: 6, animated: true)
+                // Build 77 (owner, Nov 25, 2026): the loading
+                // boxes were too small — the title skeleton is
+                // wider and taller now, matching the 18pt name.
+                SkeletonBlock(width: 200, height: 26, cornerRadius: 6, animated: true)
             } else {
                 Text(TitleCase.apply(to: title))
                     .font(.system(size: 18, weight: .semibold))
@@ -1374,7 +1389,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
     private func amountBody(pad: CGFloat) -> some View {
         Group {
             if isLoading || amountIsStatus {
-                SkeletonBlock(width: 180, height: 40, cornerRadius: 8, animated: isLoading)
+                // Build 77 (owner, Nov 25, 2026): the loading
+                // boxes were too small — the amount skeleton is
+                // wider and taller now, matching the 32pt amount.
+                SkeletonBlock(width: 260, height: 48, cornerRadius: 8, animated: isLoading)
             } else {
                 Text(amountText)
                     .font(.system(size: 32, weight: .semibold))

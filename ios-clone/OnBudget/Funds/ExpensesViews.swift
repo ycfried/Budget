@@ -64,10 +64,21 @@ public struct ExpensesListView: View {
     public let onSave: (RecurringExpense, String, Int, ExpenseFrequency) async -> Bool
     public let onRemove: (RecurringExpense) async -> Bool
     public let onClose: () -> Void
+    /// The charges the tag picker offers (build 77, owner
+    /// Nov 25, 2026 — add an expense from this sheet): the
+    /// same live list the Calculator's picker reads.
+    public let transactions: [Transaction]
+    /// Tag a charge as a new expense (build 77): the Funds view
+    /// model's tagExpense, so the new row is the SAME row the
+    /// list and the Calculator read.
+    public let onTag: (Transaction) async -> RecurringExpense?
     @State private var selectedExpense: RecurringExpense?
     /// The ⓘ beside "About These Expenses" (build 68, item 14):
     /// the explainer used to sit inline under the list.
     @State private var showAboutInfo = false
+    /// The tag picker (build 77): adding an expense from this
+    /// sheet picks a charge to tag, then opens the editor.
+    @State private var showExpensePicker = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(
@@ -75,13 +86,17 @@ public struct ExpensesListView: View {
         isAdmin: Bool,
         onSave: @escaping (RecurringExpense, String, Int, ExpenseFrequency) async -> Bool,
         onRemove: @escaping (RecurringExpense) async -> Bool,
-        onClose: @escaping () -> Void
+        onClose: @escaping () -> Void,
+        transactions: [Transaction],
+        onTag: @escaping (Transaction) async -> RecurringExpense?
     ) {
         self.expenses = expenses
         self.isAdmin = isAdmin
         self.onSave = onSave
         self.onRemove = onRemove
         self.onClose = onClose
+        self.transactions = transactions
+        self.onTag = onTag
     }
 
     /// The monthly cost of all the expenses together — the figure
@@ -106,6 +121,23 @@ public struct ExpensesListView: View {
             // The header stays pinned; everything below it scrolls.
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // Build 77 (owner, Nov 25, 2026): "About
+                    // These Expenses" sits ABOVE the section,
+                    // not below it — and it shows always, not
+                    // only when there are expenses. The tap →
+                    // info alert behaviour is unchanged.
+                    HStack(spacing: 6) {
+                        Button(action: { showAboutInfo = true }) {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(DesignTokens.primary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("About recurring expenses")
+                        Text("About These Expenses")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                    }
                     // Summary card: the monthly total the Calculator
                     // subtracts, and what it works out to per week.
                     VStack(spacing: 0) {
@@ -144,18 +176,27 @@ public struct ExpensesListView: View {
                                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                         )
                         .fundCardShadow()
-                        HStack(spacing: 6) {
-                            Button(action: { showAboutInfo = true }) {
-                                Image(systemName: "info.circle")
-                                    .font(.system(size: 17, weight: .semibold))
-                                    .foregroundStyle(DesignTokens.primary)
+                    }
+                    // Build 77 (owner, Nov 25, 2026): add an
+                    // expense from this sheet directly — the
+                    // same tag-a-charge flow the Calculator
+                    // uses. Admin only (tagging is admin-only
+                    // server-side). Tapping a row still edits
+                    // that expense.
+                    if isAdmin {
+                        Button {
+                            showExpensePicker = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "plus.circle")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text("Add Recurring Expense")
+                                    .font(.system(size: 15, weight: .semibold))
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("About recurring expenses")
-                            Text("About These Expenses")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(DesignTokens.ink)
+                            .foregroundStyle(DesignTokens.primary)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Add recurring expense")
                     }
                 }
             }
@@ -182,6 +223,25 @@ public struct ExpensesListView: View {
                     await onRemove(expense)
                 },
                 onClose: { selectedExpense = nil }
+            )
+        }
+        // Build 77: the tag picker for adding an expense from
+        // this sheet — the same picker the Calculator uses.
+        // The editor cannot open while the picker is still
+        // dismissing — the build-67 400ms pattern.
+        .sheet(isPresented: $showExpensePicker) {
+            ExpenseTagPickerSheet(
+                transactions: transactions,
+                onTag: { transaction in
+                    await onTag(transaction)
+                },
+                onTagged: { expense in
+                    Task {
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        selectedExpense = expense
+                    }
+                },
+                onClose: { showExpensePicker = false }
             )
         }
     }

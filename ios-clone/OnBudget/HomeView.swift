@@ -3329,7 +3329,13 @@ public struct WeeklySheet: View {
                     onRemove: { expense in
                         await fundsViewModel.removeExpense(expense)
                     },
-                    onClose: { showExpenses = false }
+                    onClose: { showExpenses = false },
+                    // Build 77: the sheet's own Add flow — the
+                    // same tag-a-charge path the Calculator uses.
+                    transactions: fundsViewModel.allTransactions,
+                    onTag: { transaction in
+                        await fundsViewModel.tagExpense(transaction, reason: "")
+                    }
                 )
                 // Build 68 (item 6): white presentation background.
                 .presentationBackground(.white)

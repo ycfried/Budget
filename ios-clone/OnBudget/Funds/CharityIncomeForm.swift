@@ -403,7 +403,7 @@ public struct AddToCharitySection: View {
 // Donation" (money OUT — off Available, into Given) are opposite
 // directions, so they were two sheets — one fitted, one
 // full-screen, both mostly empty white space. They are now ONE
-// compact fitted sheet with the choice at the top: "Add" vs
+// compact fitted sheet with the choice at the top: "Add Money" vs
 // "Record a Donation", each with its own direction line so the
 // choice is unmistakable. Each choice wires to the existing
 // operation (addToCharity / recordCharityCashGift); no new
@@ -424,7 +424,6 @@ public struct TzedakaActionSheet: View {
     @State private var amountText = ""
     @State private var noteText = ""
     @State private var actionError: String?
-    @State private var showAvailableInfo = false
     @State private var showModeInfo = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -443,7 +442,7 @@ public struct TzedakaActionSheet: View {
     /// Adjust This Week's Budget sheet, item 5): the mode choice
     /// is the unified slider (SquarishPicker, item 2), the
     /// confirm reads as the action ("Add to Tzedaka" / "Record
-    /// Donation" — never the mode name "Add" twice), the mode's
+    /// Donation" — never the mode name "Add Money" twice), the mode's
     /// description lives behind an ⓘ (never inline — and the
     /// inline record line truncated mid-word, "goe…", which an
     /// alert's wrapping text cannot do), and the sheet is fitted
@@ -461,8 +460,12 @@ public struct TzedakaActionSheet: View {
             // inline). The mode choice is the slider, not two
             // separate boxes.
             HStack(spacing: 6) {
+                // Build 77 (owner, Nov 25, 2026): the Add mode
+                // reads "Add Money" — the bare "Add" did not say
+                // what it adds. The confirm still reads
+                // "Add to Tzedaka".
                 SquarishPicker(
-                    [(Mode.add, "Add"), (Mode.record, "Record a Donation")],
+                    [(Mode.add, "Add Money"), (Mode.record, "Record a Donation")],
                     selection: $mode
                 )
                 Button { showModeInfo = true } label: {
@@ -475,21 +478,14 @@ public struct TzedakaActionSheet: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("About this mode")
             }
+            // Build 77 (owner, Nov 25, 2026): the ⓘ beside
+            // "Available to give" is gone — its message repeated
+            // the mode ⓘ's Record-mode message. The amount text
+            // stays; the mode ⓘ above is the one explainer.
             if mode == .record, let availableCents {
-                HStack(spacing: 6) {
-                    Text("Available to give: \(MoneyFormat.formatCents(availableCents)).")
-                        .font(.system(size: 15))
-                        .foregroundStyle(DesignTokens.ink)
-                    Button(action: { showAvailableInfo = true }) {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(DesignTokens.primary)
-                            .padding(6)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("About recording a donation")
-                }
+                Text("Available to give: \(MoneyFormat.formatCents(availableCents)).")
+                    .font(.system(size: 15))
+                    .foregroundStyle(DesignTokens.ink)
             }
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 52)
             if mode == .record {
@@ -504,8 +500,8 @@ public struct TzedakaActionSheet: View {
             // dismiss without saving, so Cancel was a third
             // redundant way out.
             // The confirm reads as the ACTION, not the mode:
-            // "Add to Tzedaka" in Add mode (the mode is "Add"),
-            // "Record Donation" in Record mode.
+            // "Add to Tzedaka" in Add mode (the mode is
+            // "Add Money"), "Record Donation" in Record mode.
             FundsPrimaryButton(mode == .add ? "Add to \(fundName)" : "Record Donation", isBusy: viewModel.busyAction == "add-charity" || viewModel.busyAction == "record-cash-gift") {
                 save()
             }
@@ -515,17 +511,12 @@ public struct TzedakaActionSheet: View {
         .presentationSizing(.fitted)
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
-        .alert(mode == .add ? "Add" : "Record a Donation", isPresented: $showModeInfo) {
+        .alert(mode == .add ? "Add Money" : "Record a Donation", isPresented: $showModeInfo) {
             Button("OK") {}
         } message: {
             Text(mode == .add
                  ? "Puts money into \(fundName) Available."
                  : "Records a donation given — it comes off Available and goes into Given.")
-        }
-        .alert(TitleCase.apply(to: "Record a Donation"), isPresented: $showAvailableInfo) {
-            Button("OK") {}
-        } message: {
-            Text("The donation comes off Available and goes into Given.")
         }
     }
 
