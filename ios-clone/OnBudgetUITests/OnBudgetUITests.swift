@@ -3,10 +3,12 @@
 // Milestone (a) UI proof: the native clone RUNNING on the simulator
 // against the live TEST backend (Supabase project
 // tnkhvdkmwmwiogiienee — the same backend the app ships with).
-// Updated Nov 25, 2026 for the current app (build 74): page-select
+// Updated Nov 25, 2026 for the current app (build 75): page-select
 // coordinate taps, label-based Home hero queries, Settings hub
 // navigation, TzedakaActionSheet cash-gift flow, sign-up with
-// Trigger: re-run updated UI test suite against build 74 (upload done).
+// Trigger: re-run updated UI test suite against build 75 app + build 76 (floating-bar fix) —
+// the ac31f5a run was cancelled by the build-76 push (concurrency), so this
+// commit re-triggers the suite for the current HEAD.
 // confirmation OFF.
 //
 // Flow: launch; setUp signs out first if a previous test in this
