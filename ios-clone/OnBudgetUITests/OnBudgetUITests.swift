@@ -710,9 +710,23 @@ final class OnBudgetUITests: XCTestCase {
         // Home load). So verify the navigation actually landed: if
         // the Transactions header is not there within 10s, tap the
         // tab again before waiting on rows.
+        // Round 3 (run 45673494611): BOTH the first tap and the
+        // Round-2 re-tap were absorbed — the app stayed on Home
+        // (all 5 failure dumps are Home, 0 transaction.row). The
+        // re-tap used the same tapTab coordinate tap that had just
+        // failed, so retrying it changed nothing. Retry with a
+        // plain .tap() on the button instead — a different
+        // mechanism — and verify the header again before waiting
+        // on rows.
         let transactionsHeader = app.staticTexts["Transactions"]
         if !transactionsHeader.waitForExistence(timeout: 10) {
-            tapTab(identifier: "tab.transactions", label: "Transactions")
+            let transactionsButton = app.buttons["pageSelect.transactions"]
+            if transactionsButton.waitForExistence(timeout: 5) {
+                transactionsButton.tap()
+            }
+            if !transactionsHeader.waitForExistence(timeout: 10) {
+                tapTab(identifier: "tab.transactions", label: "Transactions")
+            }
         }
         let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
         // The list can hit a transient server error ("Could not load
@@ -783,12 +797,14 @@ final class OnBudgetUITests: XCTestCase {
         // Round 2: same slow-reload / absorbed-tap risk as
         // testVideoRecordings scene 7 — give the hero 60s and
         // re-tap Home once mid-wait if it has not reappeared.
-        let heroClose = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
-        if !heroClose.waitForExistence(timeout: 30) {
+        // Round 3 (run 45673494611): same stale-`firstMatch` risk
+        // as testVideoRecordings scene 7 — the hero reference goes
+        // stale across a Home reload, so poll with a fresh query.
+        if !waitForStaticTextContaining("left this week", timeout: 30) {
             tapTab(identifier: "tab.home", label: "Home")
         }
         XCTAssertTrue(
-            heroClose.waitForExistence(timeout: 30),
+            waitForStaticTextContaining("left this week", timeout: 30),
             "Home hero amount did not reappear"
         )
         Thread.sleep(forTimeInterval: 2)
@@ -901,9 +917,19 @@ final class OnBudgetUITests: XCTestCase {
         tapTab(identifier: "tab.transactions", label: "Transactions")
         // Round 2: same absorbed-tap risk as testVideoScreens —
         // verify the navigation landed before waiting on rows.
+        // Round 3 (run 45673494611): the Round-2 re-tap used the
+        // same coordinate tap that had just been absorbed, so it
+        // changed nothing. Retry with a plain .tap() — a different
+        // mechanism — and verify again before waiting on rows.
         let transactionsHeader = app.staticTexts["Transactions"]
         if !transactionsHeader.waitForExistence(timeout: 10) {
-            tapTab(identifier: "tab.transactions", label: "Transactions")
+            let transactionsButton = app.buttons["pageSelect.transactions"]
+            if transactionsButton.waitForExistence(timeout: 5) {
+                transactionsButton.tap()
+            }
+            if !transactionsHeader.waitForExistence(timeout: 10) {
+                tapTab(identifier: "tab.transactions", label: "Transactions")
+            }
         }
         let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
         if !firstRow.waitForExistence(timeout: 60) {
@@ -1010,12 +1036,16 @@ final class OnBudgetUITests: XCTestCase {
         // failure-time hierarchy shows the hero DID load (just
         // after the timeout). Give it 60s, and re-tap Home once
         // mid-wait in case the first tab tap was absorbed.
-        let heroAgain = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
-        if !heroAgain.waitForExistence(timeout: 30) {
+        // Round 3 (run 45673494611): the 60s wait STILL failed
+        // even though both failure-time dumps show the hero
+        // StaticText present — the reused `firstMatch` reference
+        // went stale across the Home reload. Poll with a FRESH
+        // query each time (waitForStaticTextContaining) instead.
+        if !waitForStaticTextContaining("left this week", timeout: 30) {
             tapTab(identifier: "tab.home", label: "Home")
         }
         XCTAssertTrue(
-            heroAgain.waitForExistence(timeout: 30),
+            waitForStaticTextContaining("left this week", timeout: 30),
             "Home hero amount did not reappear"
         )
         Thread.sleep(forTimeInterval: 6)
@@ -1059,6 +1089,22 @@ final class OnBudgetUITests: XCTestCase {
         _ = signInAndCreateTestHousehold()
 
         tapTab(identifier: "tab.funds", label: "Funds")
+        // Round 3 (run 45673494611): the Funds tap was absorbed —
+        // the app stayed on Home and funds.charity never appeared
+        // in 90s (the failure-time hierarchy is Home, no funds.*
+        // identifiers). Verify the navigation landed: the Extra
+        // Fund card (funds.extraFund) is the Funds-page marker
+        // testPageSelectIsSingleNavigation proves. If it is not
+        // there in 10s, retry with a plain .tap() — a different
+        // mechanism than tapTab's coordinate tap, which the bar's
+        // bottom position (build 77 item 13) can swallow.
+        let fundsMarker = app.buttons.matching(identifier: "funds.extraFund").firstMatch
+        if !fundsMarker.waitForExistence(timeout: 10) {
+            let fundsButton = app.buttons["pageSelect.funds"]
+            if fundsButton.waitForExistence(timeout: 5) {
+                fundsButton.tap()
+            }
+        }
         let charityCard = app.buttons.matching(identifier: "funds.charity").firstMatch
         XCTAssertTrue(
             charityCard.waitForExistence(timeout: 90),
@@ -1856,6 +1902,25 @@ final class OnBudgetUITests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// Wait for a static text whose label contains `substring`,
+    /// re-querying FRESH on every poll. A single `firstMatch`
+    /// reference held across a view reload goes stale: the Home
+    /// hero is destroyed and recreated when Home refetches after
+    // an add, and `waitForExistence` on the stale reference keeps
+    // returning false even though the hero IS in the hierarchy
+    // (run 45673494611: both failure-time dumps show the hero
+    // StaticText, yet the reused `firstMatch` wait failed twice).
+    /// Rebuilding the query each poll cannot go stale.
+    private func waitForStaticTextContaining(_ substring: String, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let el = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", substring)).firstMatch
+            if el.exists { return true }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
+    }
+
     /// Tap an element by its centre coordinate, NOT by plain
     /// .tap(). A plain .tap() asks XCTest to scroll the element
     /// into view first (AX kAXScrollToVisibleAction), and that
@@ -1902,7 +1967,8 @@ final class OnBudgetUITests: XCTestCase {
     /// items). Fails with the visible menu state when neither
     /// appears.
     private func tapPickerOption(_ label: String, timeout: TimeInterval = 15, reopen: (() -> Void)? = nil) {
-        let deadline = Date().addingTimeInterval(timeout)
+        let start = Date()
+        let deadline = start.addingTimeInterval(timeout)
         var reopened = false
         while Date() < deadline {
             let menuItem = app.menuItems[label]
@@ -1932,7 +1998,13 @@ final class OnBudgetUITests: XCTestCase {
             // absorbed (sheet animation, scroll-view). If the caller
             // gave a reopen tap, fire it once mid-wait so the menu
             // gets a second chance to open.
-            if let reopen, !reopened, Date() < deadline.addingTimeInterval(-5) {
+            // Round 3 (run 45673494611): the reopen fired on the
+            // FIRST poll (Date() < deadline - 5s is true at t=0),
+            // double-tapping the picker and toggling the menu shut
+            // before it opened — 'Charge' never surfaced. Only
+            // re-tap after 5s, once the first tap has had a real
+            // chance to open the menu.
+            if let reopen, !reopened, Date().timeIntervalSince(start) >= 5 {
                 reopened = true
                 reopen()
             }
@@ -2153,11 +2225,45 @@ final class OnBudgetUITests: XCTestCase {
                 // a real typing failure, reported with the actual
                 // value instead of a stale snapshot. Secure fields
                 // read back as bullets — compare the COUNT.
+                // Round 3 (run 45673494611): Plaid's WebView search
+                // field stayed EMPTY after typing ("typed: ;
+                // expected: First Platypus Bank") — the typeText
+                // went nowhere even though focus was gained. A
+                // WebView field can drop the first type; clear and
+                // retype ONCE before failing.
+                if typedValueSettled(field, text: text, timeout: 5) {
+                    return
+                }
+                clearField(field, fieldName: fieldName)
+                field.typeText(text)
+                if typedValueSettled(field, text: text, timeout: 5) {
+                    return
+                }
                 verifyTypedValue(field, text: text, fieldName: fieldName)
                 return
             }
         }
         XCTFail("Field \(fieldName) never gained keyboard focus after 3 taps — cannot type")
+    }
+
+    /// Polls until the field's value matches what was just typed
+    /// (or the bullet count, for secure fields), up to `timeout`.
+    /// Returns true when it settles, false when it never does.
+    /// Non-failing, so callers can retry the typing before giving
+    /// up (see tapAndTypeText).
+    private func typedValueSettled(_ field: XCUIElement, text: String, timeout: TimeInterval) -> Bool {
+        let isSecure = field.elementType == .secureTextField
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if isSecure {
+                let bullets = (field.value as? String)?.count ?? 0
+                if bullets == text.count { return true }
+            } else if fieldText(field) == text {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        return false
     }
 
     /// Polls until the field's value matches what was just typed

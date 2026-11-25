@@ -42,7 +42,12 @@ final class SmokeTests: XCTestCase {
     }
 
     func testToastStyleColours() {
-        XCTAssertEqual(ToastStyle.backgroundHex(for: .info), DesignTokens.primaryHex)
+        // Build 77 (owner, Nov 25, 2026): info toasts are soft
+        // light blue (#dbeafe bg / #1d4ed8 text), the same soft-tint
+        // style as the green/red toasts — NOT the brand-blue
+        // primary. The old primaryHex expectation is stale.
+        XCTAssertEqual(ToastStyle.backgroundHex(for: .info), DesignTokens.toastInfoBackgroundHex)
+        XCTAssertEqual(ToastStyle.textHex(for: .info), DesignTokens.toastInfoTextHex)
         // Success is GREEN on native (owner, Nov 11, 2026: "green like
         // all success messages") — the old brand-blue rule for success
         // toasts is superseded for native only; the web app keeps blue.
