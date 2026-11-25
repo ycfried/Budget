@@ -104,8 +104,15 @@ public struct AppShellView: View {
     public var body: some View {
         VStack(spacing: 0) {
             topBar
-            pageSelectRow
+            // Build 77 (owner, Nov 25, 2026): the pages bar
+            // (Home / Transactions / Funds) sits at the BOTTOM
+            // now, not the top — easier to reach, and the top
+            // reads cleaner. The bar itself is unchanged
+            // (floating white card); only its place in the
+            // VStack moved. The content takes the remaining
+            // height above the bar, so no row hides under it.
             selectedTabContent
+            pageSelectRow
         }
         // The walkthrough's coordinate space (build 48): every tour
         // anchor reports its frame in "tourSpace", and the overlay
@@ -290,15 +297,16 @@ public struct AppShellView: View {
             Spacer()
         }
         .padding(.horizontal, 16)
-        .padding(.top, 16)
-        // Build 76 (owner, Nov 25, 2026 — "The bottom of the
-        // floating bar is not visible.."): the row had NO bottom
-        // padding, so the white card sat flush on the white page
-        // below and its soft shadow was painted over by the tab
-        // content — the bar read as cut off at the bottom. 12pt
-        // below gives the card's rounded bottom + shadow room to
-        // render, so it reads as a floating card.
-        .padding(.bottom, 12)
+        // Build 77 (owner, Nov 25, 2026): the bar moved to the
+        // BOTTOM. The build-76 12pt bottom padding was for the
+        // top position (the card's bottom edge + shadow were
+        // painted over by the content below). At the bottom the
+        // mirror applies: 12pt ABOVE gives the card's rounded
+        // top + shadow room against the content above, and 16pt
+        // below keeps the floating card clear of the home
+        // indicator / screen edge with room for its shadow.
+        .padding(.top, 12)
+        .padding(.bottom, 16)
         .background(DesignTokens.background)
         .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
     }
@@ -308,7 +316,7 @@ public struct AppShellView: View {
     /// build-64 `.tabBarOnly` fix did not hold). The Transactions
     /// tab's own NavigationStack lives inside `transactionsTab`
     /// and is unaffected. Swipe-between-tabs is gone; the owner
-    /// navigates via the page select above.
+    /// navigates via the page select below.
     @ViewBuilder
     private var selectedTabContent: some View {
         switch appState.selectedTab {

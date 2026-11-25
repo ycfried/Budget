@@ -3467,7 +3467,6 @@ public struct TzedakaSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showAddToCharity = false
-    @State private var showRecordGift = false
     /// The Funds view model the Add to Tzedaka / Record a Donation
     /// forms need (see the note above the Weekly sheet section).
     /// Built lazily, once per presentation.
@@ -3581,10 +3580,14 @@ public struct TzedakaSheet: View {
         // Build 68 (item 30): Add to Tzedaka + Record a Donation
         // merged into the one compact TzedakaActionSheet — the
         // Add / Record a Donation choice sits at the top of the
-        // sheet itself, so both rows open the same sheet pre-set
-        // to their direction. Refreshes Home on dismiss, so the
-        // new Available shows at once. A fitted sheet, not a
-        // full-screen cover (the detents live in the form itself).
+        // sheet itself, so the row opens the sheet in Add mode
+        // and the user switches modes inside it. Refreshes Home
+        // on dismiss, so the new Available shows at once. A
+        // fitted sheet, not a full-screen cover (the detents live
+        // in the form itself).
+        // Build 77 (owner, Nov 25, 2026): the second row is
+        // gone — both rows opened this same sheet, so one row
+        // ("Add or Record a Donation") covers both actions.
         .sheet(isPresented: $showAddToCharity, onDismiss: { onChanged?() }) {
             if let fundsViewModel {
                 TzedakaActionSheet(viewModel: fundsViewModel, fundName: charityName, initialMode: .add, onClose: { showAddToCharity = false })
@@ -3592,44 +3595,26 @@ public struct TzedakaSheet: View {
                     .presentationBackground(.white)
             }
         }
-        .sheet(isPresented: $showRecordGift, onDismiss: { onChanged?() }) {
-            if let fundsViewModel {
-                TzedakaActionSheet(viewModel: fundsViewModel, fundName: charityName, initialMode: .record, onClose: { showRecordGift = false })
-                    // Build 68 (item 6): white presentation background.
-                    .presentationBackground(.white)
-            }
-        }
     }
 
-    /// The Tzedaka action rows (build 65, item 5). When the Funds
-    /// view model cannot be built (household not yet known — in
-    /// practice never while Home is showing), the rows fall back
-    /// to the Tzedaka fund on the Funds page, where the same
-    /// actions live; the sheet itself never strands the user.
+    /// The Tzedaka action row (build 65, item 5; build 77,
+    /// owner Nov 25, 2026 — one row, not two: both rows opened
+    /// the same action sheet, which already switches modes
+    /// inside it). When the Funds view model cannot be built
+    /// (household not yet known — in practice never while Home
+    /// is showing), the row falls back to the Tzedaka fund on
+    /// the Funds page, where the same actions live; the sheet
+    /// itself never strands the user.
     private var tzedakaActionsCard: some View {
         VStack(spacing: 0) {
             SheetActionRow(
                 icon: "plus.circle",
                 iconColor: DesignTokens.primary,
-                title: "Add to \(charityName)",
-                subtitle: "Add money to the amount ready to give"
+                title: "Add or Record a Donation",
+                subtitle: "Add money to give, or record a donation given"
             ) {
                 if ensureFundsViewModel() != nil {
                     showAddToCharity = true
-                } else {
-                    dismiss()
-                    appState.openFund(.charity)
-                }
-            }
-            SheetActionDivider()
-            SheetActionRow(
-                icon: "gift",
-                iconColor: DesignTokens.primary,
-                title: "Record a Donation",
-                subtitle: "Record a cash donation given off-card"
-            ) {
-                if ensureFundsViewModel() != nil {
-                    showRecordGift = true
                 } else {
                     dismiss()
                     appState.openFund(.charity)
