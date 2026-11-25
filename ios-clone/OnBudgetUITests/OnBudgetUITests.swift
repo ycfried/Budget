@@ -4,10 +4,11 @@
 // against the live TEST backend (Supabase project
 // tnkhvdkmwmwiogiienee — the same backend the app ships with).
 // Updated Nov 25, 2026 for the current app (build 78 + widget deep
-// links): page-select coordinate taps, label-based Home hero queries,
-// Settings hub navigation, TzedakaActionSheet cash-gift flow, sign-up
+// links + Actions-sheet tag fast fix): page-select coordinate taps,
+// label-based Home hero queries, Settings hub navigation,
+// TzedakaActionSheet cash-gift flow, sign-up
 // Trigger: re-run Round 4 test fixes against the current app — run
-// 45701014073 was cancelled by the widget-deep-links push
+// 45717830965 was cancelled by the Actions-sheet-tag push
 // (concurrency), so this commit re-triggers the suite for the
 // current HEAD.
 // confirmation OFF.
