@@ -451,14 +451,27 @@ final class OnBudgetUITests: XCTestCase {
             app.textFields["export.filter.max"].waitForExistence(timeout: 15),
             "Max amount field missing on Export popup"
         )
-        tapCoordinate(kindPicker)
+        // Round 4 (run 45688666692): open the menu with a plain
+        // .tap(), not a coordinate tap — the coordinate tap was
+        // not activating this menu Picker, so the menu never
+        // opened and 'Charge' never surfaced. The picker sits in
+        // a scrollable sheet (unlike the page select in its
+        // non-scrollable shell), so XCTest can scroll it into
+        // view and a plain tap works.
+        kindPicker.tap()
         // The Menu-style Picker exposes its options as menuItems
         // or as buttons depending on the iOS version — poll for
         // either and tap whichever appears. Round 2: pass a reopen
         // tap — a coordinate tap on the PopUpButton can be absorbed
         // (run 45650165521: 'Charge' never surfaced after one tap),
         // so tapPickerOption re-taps the picker once mid-wait.
-        tapPickerOption("Charge", reopen: { self.tapCoordinate(kindPicker) })
+        // Round 4 (run 45688666692): the menu STILL never opened
+        // — the coordinate tap is not activating this menu Picker
+        // (unlike the page select, the picker sits in a scrollable
+        // sheet, so a plain .tap() is the standard menu open and
+        // XCTest can scroll it into view). Reopen with a plain
+        // .tap() instead of another coordinate tap.
+        tapPickerOption("Charge", reopen: { kindPicker.tap() })
         // The summary now names the picked kind, and the count
         // still shows (the filtered count).
         let summaryCharge = app.staticTexts
@@ -714,17 +727,20 @@ final class OnBudgetUITests: XCTestCase {
         // Round-2 re-tap were absorbed — the app stayed on Home
         // (all 5 failure dumps are Home, 0 transaction.row). The
         // re-tap used the same tapTab coordinate tap that had just
-        // failed, so retrying it changed nothing. Retry with a
-        // plain .tap() on the button instead — a different
-        // mechanism — and verify the header again before waiting
-        // on rows.
+        // failed, so retrying it changed nothing.
+        // Round 4 (run 45688666692): a plain .tap() retry is NOT
+        // the answer — it throws kAXErrorCannotComplete
+        // (scroll-to-visible) on the page-select buttons, failing
+        // the test outright. So retry with tapTab again, but only
+        // after a settle delay: the first tap can land while Home
+        // is still loading/animating, and an immediate re-tap
+        // hits the same unsettled state.
         let transactionsHeader = app.staticTexts["Transactions"]
         if !transactionsHeader.waitForExistence(timeout: 10) {
-            let transactionsButton = app.buttons["pageSelect.transactions"]
-            if transactionsButton.waitForExistence(timeout: 5) {
-                transactionsButton.tap()
-            }
+            Thread.sleep(forTimeInterval: 3)
+            tapTab(identifier: "tab.transactions", label: "Transactions")
             if !transactionsHeader.waitForExistence(timeout: 10) {
+                Thread.sleep(forTimeInterval: 3)
                 tapTab(identifier: "tab.transactions", label: "Transactions")
             }
         }
@@ -800,11 +816,12 @@ final class OnBudgetUITests: XCTestCase {
         // Round 3 (run 45673494611): same stale-`firstMatch` risk
         // as testVideoRecordings scene 7 — the hero reference goes
         // stale across a Home reload, so poll with a fresh query.
-        if !waitForStaticTextContaining("left this week", timeout: 30) {
+        // Round 4: same 90s total as scene 7 (slow backend refetch).
+        if !waitForStaticTextContaining("left this week", timeout: 45) {
             tapTab(identifier: "tab.home", label: "Home")
         }
         XCTAssertTrue(
-            waitForStaticTextContaining("left this week", timeout: 30),
+            waitForStaticTextContaining("left this week", timeout: 45),
             "Home hero amount did not reappear"
         )
         Thread.sleep(forTimeInterval: 2)
@@ -919,15 +936,17 @@ final class OnBudgetUITests: XCTestCase {
         // verify the navigation landed before waiting on rows.
         // Round 3 (run 45673494611): the Round-2 re-tap used the
         // same coordinate tap that had just been absorbed, so it
-        // changed nothing. Retry with a plain .tap() — a different
-        // mechanism — and verify again before waiting on rows.
+        // changed nothing.
+        // Round 4 (run 45688666692): a plain .tap() retry is NOT
+        // the answer — it throws kAXErrorCannotComplete
+        // (scroll-to-visible) on the page-select buttons. Retry
+        // with tapTab again, but only after a settle delay.
         let transactionsHeader = app.staticTexts["Transactions"]
         if !transactionsHeader.waitForExistence(timeout: 10) {
-            let transactionsButton = app.buttons["pageSelect.transactions"]
-            if transactionsButton.waitForExistence(timeout: 5) {
-                transactionsButton.tap()
-            }
+            Thread.sleep(forTimeInterval: 3)
+            tapTab(identifier: "tab.transactions", label: "Transactions")
             if !transactionsHeader.waitForExistence(timeout: 10) {
+                Thread.sleep(forTimeInterval: 3)
                 tapTab(identifier: "tab.transactions", label: "Transactions")
             }
         }
@@ -1041,11 +1060,16 @@ final class OnBudgetUITests: XCTestCase {
         // StaticText present — the reused `firstMatch` reference
         // went stale across the Home reload. Poll with a FRESH
         // query each time (waitForStaticTextContaining) instead.
-        if !waitForStaticTextContaining("left this week", timeout: 30) {
+        // Round 4 (run 45688666692): the fresh-query 60s wait
+        // STILL failed, and the log shows "App animations complete
+        // notification not received" — Home's refetch after the
+        // Scene-6 add can take very long on the simulator backend.
+        // Give it 90s total (45 + re-tap + 45).
+        if !waitForStaticTextContaining("left this week", timeout: 45) {
             tapTab(identifier: "tab.home", label: "Home")
         }
         XCTAssertTrue(
-            waitForStaticTextContaining("left this week", timeout: 30),
+            waitForStaticTextContaining("left this week", timeout: 45),
             "Home hero amount did not reappear"
         )
         Thread.sleep(forTimeInterval: 6)
@@ -1094,15 +1118,19 @@ final class OnBudgetUITests: XCTestCase {
         // in 90s (the failure-time hierarchy is Home, no funds.*
         // identifiers). Verify the navigation landed: the Extra
         // Fund card (funds.extraFund) is the Funds-page marker
-        // testPageSelectIsSingleNavigation proves. If it is not
-        // there in 10s, retry with a plain .tap() — a different
-        // mechanism than tapTab's coordinate tap, which the bar's
-        // bottom position (build 77 item 13) can swallow.
+        // testPageSelectIsSingleNavigation proves.
+        // Round 4 (run 45688666692): a plain .tap() retry is NOT
+        // the answer — it throws kAXErrorCannotComplete
+        // (scroll-to-visible) on the page-select buttons, failing
+        // the test outright. Retry with tapTab again, but only
+        // after a settle delay.
         let fundsMarker = app.buttons.matching(identifier: "funds.extraFund").firstMatch
         if !fundsMarker.waitForExistence(timeout: 10) {
-            let fundsButton = app.buttons["pageSelect.funds"]
-            if fundsButton.waitForExistence(timeout: 5) {
-                fundsButton.tap()
+            Thread.sleep(forTimeInterval: 3)
+            tapTab(identifier: "tab.funds", label: "Funds")
+            if !fundsMarker.waitForExistence(timeout: 10) {
+                Thread.sleep(forTimeInterval: 3)
+                tapTab(identifier: "tab.funds", label: "Funds")
             }
         }
         let charityCard = app.buttons.matching(identifier: "funds.charity").firstMatch
