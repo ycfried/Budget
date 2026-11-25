@@ -560,33 +560,35 @@ public struct LoadingView: View {
                 // (see the comment on LoadingView) — a light track
                 // ring plus a brand-blue arc that rotates slowly,
                 // so the splash reads as loading, not frozen. The
-                // ring sits 7pt outside the 48pt logo (build 74 —
-                // was 72pt, ring 86pt).
+                // ring sits 7pt outside the 72pt logo (build 74
+                // FINAL — the 48pt mark was wrong; the S is not
+                // shrunk).
                 ZStack {
                     Circle()
                         .stroke(DesignTokens.stageBlue.opacity(0.18), lineWidth: 3)
-                        .frame(width: 62, height: 62)
+                        .frame(width: 86, height: 86)
                     Circle()
                         .trim(from: 0, to: 0.3)
                         .stroke(DesignTokens.stageBlue, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .frame(width: 62, height: 62)
+                        .frame(width: 86, height: 86)
                         .rotationEffect(.degrees(ringSpinning ? 360 : 0))
                         .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: ringSpinning)
                     Image("AppLogo")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 48, height: 48)
+                        .frame(width: 72, height: 72)
                         .clipShape(Circle())
                 }
                 .onAppear { ringSpinning = true }
                 // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
                 // build 47): the logo + "T · A · G · E", never the logo
                 // next to the full word "STAGE" (no second S).
-                // Build 74 (owner, Nov 25, 2026 — DECIDED,
-                // corrected proportions): STAGE on ONE LINE — the
-                // mark (48pt) + letters (40pt medium) tight
-                // together (4pt gap), reading left to right as a
-                // single word; the stacked version is wrong.
+                // Build 74 (owner, Nov 25, 2026 — DECIDED, FINAL
+                // proportions, ~00:59): STAGE on ONE LINE — the
+                // mark (72pt, its previous size — NOT shrunk) +
+                // letters (40pt medium, sized up from 32pt light)
+                // tight together (4pt gap), reading left to right
+                // as a single word; the stacked version is wrong.
                 // Uniform stageBlue #0288dd.
                 StageWordmarkText(font: .system(size: 40, weight: .medium))
             }
