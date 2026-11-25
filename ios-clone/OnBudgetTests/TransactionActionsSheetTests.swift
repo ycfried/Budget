@@ -76,8 +76,9 @@ final class TransactionActionsSheetTests: XCTestCase {
     }
 
     // Build 67 (owner, Nov 23, 2026): Expense names the category
-    // and its subline says what it does — out of weekly spending,
-    // into the recurring living costs.
+    // and its subline says what it does — into the recurring living
+    // costs. Build 75 shortened the subline to fit one line
+    // (owner, Nov 25, 2026) — "out of weekly spending" dropped.
     func testExpenseLabelAndSubline() {
         XCTAssertEqual(
             TransactionActionsSheet.kindLabel(.expense, charityName: "Tzedaka"),
@@ -85,7 +86,7 @@ final class TransactionActionsSheetTests: XCTestCase {
         )
         XCTAssertEqual(
             TransactionActionsSheet.kindSubline(.expense),
-            "Count it as a recurring living cost, out of weekly spending"
+            "Count it as a recurring living cost"
         )
     }
 

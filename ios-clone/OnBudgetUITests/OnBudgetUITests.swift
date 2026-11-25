@@ -452,8 +452,11 @@ final class OnBudgetUITests: XCTestCase {
         tapCoordinate(kindPicker)
         // The Menu-style Picker exposes its options as menuItems
         // or as buttons depending on the iOS version — poll for
-        // either and tap whichever appears.
-        tapPickerOption("Charge")
+        // either and tap whichever appears. Round 2: pass a reopen
+        // tap — a coordinate tap on the PopUpButton can be absorbed
+        // (run 45650165521: 'Charge' never surfaced after one tap),
+        // so tapPickerOption re-taps the picker once mid-wait.
+        tapPickerOption("Charge", reopen: { tapCoordinate(kindPicker) })
         // The summary now names the picked kind, and the count
         // still shows (the filtered count).
         let summaryCharge = app.staticTexts
@@ -698,6 +701,17 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- Transactions (scene 3) -----------------------------------
         tapTab(identifier: "tab.transactions", label: "Transactions")
+        // Round 2 (run 45650165521): the tab tap fired but the app
+        // stayed on Home — the failure-time hierarchy shows Home,
+        // no Transactions rows, no Try Again. A tap can be absorbed
+        // (toast/alert covering the page select, or a race with the
+        // Home load). So verify the navigation actually landed: if
+        // the Transactions header is not there within 10s, tap the
+        // tab again before waiting on rows.
+        let transactionsHeader = app.staticTexts["Transactions"]
+        if !transactionsHeader.waitForExistence(timeout: 10) {
+            tapTab(identifier: "tab.transactions", label: "Transactions")
+        }
         let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
         // The list can hit a transient server error ("Could not load
         // transactions — the server did not answer", run 44585656267:
@@ -764,9 +778,15 @@ final class OnBudgetUITests: XCTestCase {
 
         // -- Home again (scene 7 closing) -----------------------------
         tapTab(identifier: "tab.home", label: "Home")
+        // Round 2: same slow-reload / absorbed-tap risk as
+        // testVideoRecordings scene 7 — give the hero 60s and
+        // re-tap Home once mid-wait if it has not reappeared.
+        let heroClose = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
+        if !heroClose.waitForExistence(timeout: 30) {
+            tapTab(identifier: "tab.home", label: "Home")
+        }
         XCTAssertTrue(
-            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
-                .waitForExistence(timeout: 30),
+            heroClose.waitForExistence(timeout: 30),
             "Home hero amount did not reappear"
         )
         Thread.sleep(forTimeInterval: 2)
@@ -877,6 +897,12 @@ final class OnBudgetUITests: XCTestCase {
         // -- Scene 3: Transactions, slow scroll (17.59 + 1.5 = 19.09)
         videoMark("SCENE-3")
         tapTab(identifier: "tab.transactions", label: "Transactions")
+        // Round 2: same absorbed-tap risk as testVideoScreens —
+        // verify the navigation landed before waiting on rows.
+        let transactionsHeader = app.staticTexts["Transactions"]
+        if !transactionsHeader.waitForExistence(timeout: 10) {
+            tapTab(identifier: "tab.transactions", label: "Transactions")
+        }
         let firstRow = app.buttons.matching(identifier: "transaction.row").firstMatch
         if !firstRow.waitForExistence(timeout: 60) {
             let tryAgain = app.buttons["Try Again"]
@@ -976,9 +1002,18 @@ final class OnBudgetUITests: XCTestCase {
         // -- Scene 7: back Home, hold to close (narration 5.64) ----
         videoMark("SCENE-7")
         tapTab(identifier: "tab.home", label: "Home")
+        // Round 2 (run 45650165521): the hero did not reappear
+        // within 30s — Home refetches after the Scene-6 add and
+        // the reload can be slow on the simulator backend, and the
+        // failure-time hierarchy shows the hero DID load (just
+        // after the timeout). Give it 60s, and re-tap Home once
+        // mid-wait in case the first tab tap was absorbed.
+        let heroAgain = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
+        if !heroAgain.waitForExistence(timeout: 30) {
+            tapTab(identifier: "tab.home", label: "Home")
+        }
         XCTAssertTrue(
-            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'left this week'")).firstMatch
-                .waitForExistence(timeout: 30),
+            heroAgain.waitForExistence(timeout: 30),
             "Home hero amount did not reappear"
         )
         Thread.sleep(forTimeInterval: 6)
@@ -1048,9 +1083,17 @@ final class OnBudgetUITests: XCTestCase {
         // already expanded (the Record button lives in the same
         // expanded detail, so its presence proves the card is
         // open and a second tap would collapse it).
-        let addButton = app.buttons["funds.addToCharity"]
+        // Round 2 (run 45650165521): the Add / Record buttons do
+        // NOT surface under funds.addToCharity / funds.recordCashGift
+        // — the card container's identifier 'funds.charity' wins
+        // over the children's own identifiers in the AX tree (the
+        // hierarchy dump proves it: the buttons exist with
+        // identifier 'funds.charity' and labels 'Add to Charity' /
+        // 'Record a Donation'). Query by LABEL instead.
+        let addButton = app.buttons.matching(NSPredicate(format: "label == 'Add to Charity'")).firstMatch
         if !addButton.waitForExistence(timeout: 15) {
-            if !app.buttons["funds.recordCashGift"].exists {
+            let recordIsThere = app.buttons.matching(NSPredicate(format: "label == 'Record a Donation'")).firstMatch
+            if !recordIsThere.exists {
                 tapCoordinate(charityCard)
             }
         }
@@ -1077,7 +1120,10 @@ final class OnBudgetUITests: XCTestCase {
         waitForExpectations(timeout: 15, handler: nil)
 
         // -- Record a $1 cash donation ------------------------------
-        let recordButton = app.buttons["funds.recordCashGift"]
+        // Round 2: same AX rule as the Add button above — the
+        // Record button surfaces with identifier 'funds.charity'
+        // and label 'Record a Donation', not funds.recordCashGift.
+        let recordButton = app.buttons.matching(NSPredicate(format: "label == 'Record a Donation'")).firstMatch
         XCTAssertTrue(
             recordButton.waitForExistence(timeout: 30),
             "Charity card did not offer Record a Donation after expanding"
@@ -1853,8 +1899,9 @@ final class OnBudgetUITests: XCTestCase {
     /// same scroll-to-visible failure as tapTab applies to menu
     /// items). Fails with the visible menu state when neither
     /// appears.
-    private func tapPickerOption(_ label: String, timeout: TimeInterval = 15) {
+    private func tapPickerOption(_ label: String, timeout: TimeInterval = 15, reopen: (() -> Void)? = nil) {
         let deadline = Date().addingTimeInterval(timeout)
+        var reopened = false
         while Date() < deadline {
             let menuItem = app.menuItems[label]
             if menuItem.exists {
@@ -1877,6 +1924,15 @@ final class OnBudgetUITests: XCTestCase {
             if any.exists {
                 tapCoordinate(any)
                 return
+            }
+            // Round 2 (run 45650165521): the menu never opened at
+            // all — a coordinate tap on the PopUpButton can be
+            // absorbed (sheet animation, scroll-view). If the caller
+            // gave a reopen tap, fire it once mid-wait so the menu
+            // gets a second chance to open.
+            if let reopen, !reopened, Date() < deadline.addingTimeInterval(-5) {
+                reopened = true
+                reopen()
             }
             Thread.sleep(forTimeInterval: 0.3)
         }
