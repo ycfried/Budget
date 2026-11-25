@@ -6,6 +6,7 @@
 // Updated Nov 25, 2026 for the current app (build 74): page-select
 // coordinate taps, label-based Home hero queries, Settings hub
 // navigation, TzedakaActionSheet cash-gift flow, sign-up with
+// Trigger: re-run updated UI test suite against build 74 (upload done).
 // confirmation OFF.
 //
 // Flow: launch; setUp signs out first if a previous test in this
