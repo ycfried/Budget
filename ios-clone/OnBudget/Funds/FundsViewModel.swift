@@ -188,10 +188,15 @@ public final class FundsViewModel: ObservableObject {
     /// The live expenses: `expenses` minus rows whose linked
     /// transaction is excluded (in the Trash). The list, the
     /// Weekly sheet row and the Calculator all read this, never
-    /// the raw array.
+    /// the raw array. Build 78: a from-scratch expense has no
+    /// linked transaction (transactionId nil) — it has nothing
+    /// to trash, so it is always kept.
     public var liveExpenses: [RecurringExpense] {
         let trashedIds = Set(allTransactions.filter { $0.isInTrash }.map(\.id))
-        return expenses.filter { !trashedIds.contains($0.transactionId) }
+        return expenses.filter { expense in
+            guard let transactionId = expense.transactionId else { return true }
+            return !trashedIds.contains(transactionId)
+        }
     }
 
     // MARK: - Allowance (Temporary Allowance preview)
@@ -1294,7 +1299,11 @@ public final class FundsViewModel: ObservableObject {
     /// weekly allowance, or Given/Pending. Returns true only when
     /// the save committed, so the caller clears the typed input on
     /// success only (F-P1-4).
-    public func addToCharity(amountCents: Int) async -> Bool {
+    /// Build 78 (owner, Nov 25, 2026): the note typed in the
+    /// Add Money mode of the Tzedaka action sheet is passed
+    /// through to the RPC's pNote (was hardcoded "") so it is
+    /// actually saved, like the Record path already did.
+    public func addToCharity(amountCents: Int, note: String = "") async -> Bool {
         var succeeded = false
         await guarded("add-charity", title: "Could Not Add to \(charityName)") {
             let result = try await context.client.rpcs.recordCharityIncome(
@@ -1303,7 +1312,7 @@ public final class FundsViewModel: ObservableObject {
                 pIncomeDate: MoneyFormat.todayNY(),
                 pSourceLabel: "Manual add",
                 pRateBp: 10000,
-                pNote: ""
+                pNote: note
             )
             succeed("Added \(MoneyFormat.formatCents(result.committedCents)) to \(charityName).")
             succeeded = true
@@ -1441,9 +1450,15 @@ public final class FundsViewModel: ObservableObject {
     /// Calculator read — never a second, disconnected store.
     /// Returns the created expense (monthly by default, name and
     /// amount prefilled from the transaction) so the caller can
-    /// open the editor for it at once. Refreshes, so the list, the
-    /// Weekly sheet row and the Calculator all read the new
-    /// expense at once.
+    /// open the editor for it at once. Build 78 (owner, Nov 25,
+    /// 2026 — "tapping an expense goes really slowly"): the
+    /// editor opens as soon as the tag RPC returns — the full
+    /// refresh runs in the BACKGROUND. The refresh re-fetches
+    /// everything (loadTransactions + the 12 parallel loads) and
+    /// was the main wait alongside the RPC itself; the 400ms
+    /// sleep was the smallest part. The list, the Weekly sheet
+    /// row and the Calculator all read the new expense once the
+    /// refresh lands.
     public func tagExpense(_ transaction: Transaction, reason: String) async -> RecurringExpense? {
         var created: RecurringExpense?
         await guarded("tag-expense", title: "Could Not Tag as Expense") {
@@ -1456,7 +1471,34 @@ public final class FundsViewModel: ObservableObject {
                 id: expenseId, householdId: transaction.householdId, transactionId: transaction.id,
                 name: transaction.merchant, amountCents: transaction.amountCents, frequency: .monthly)
             succeed("Expense tagged.")
-            await refresh()
+            // Build 78: the refresh runs in the background — the
+            // caller opens the editor from the returned expense
+            // at once, instead of waiting on the full re-fetch.
+            Task { await refresh() }
+        }
+        return created
+    }
+
+    /// Create a recurring expense from scratch (build 78, owner
+    /// Nov 25, 2026): no charge to tag — the expense has no
+    /// linked transaction (transaction_id NULL). Validated and
+    /// admin-checked server-side, like update. Returns the
+    /// created expense (built locally, like tagExpense) so the
+    /// caller can close the editor at once; the refresh runs in
+    /// the background, like tagExpense.
+    public func createExpense(name: String, amountCents: Int, frequency: ExpenseFrequency) async -> RecurringExpense? {
+        var created: RecurringExpense?
+        await guarded("create-expense", title: "Could Not Create Expense") {
+            guard context.isAdmin else {
+                throw OnBudgetError.forbidden("Only the admin can create expenses.")
+            }
+            let expenseId = try await context.client.rpcs.createRecurringExpense(
+                pHouseholdId: context.householdId, pName: name, pAmountCents: amountCents, pFrequency: frequency)
+            created = RecurringExpense(
+                id: expenseId, householdId: context.householdId, transactionId: nil,
+                name: name, amountCents: amountCents, frequency: frequency)
+            succeed("Expense created.")
+            Task { await refresh() }
         }
         return created
     }

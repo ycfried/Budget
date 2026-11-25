@@ -478,20 +478,24 @@ public struct TzedakaActionSheet: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("About this mode")
             }
-            // Build 77 (owner, Nov 25, 2026): the ⓘ beside
-            // "Available to give" is gone — its message repeated
-            // the mode ⓘ's Record-mode message. The amount text
-            // stays; the mode ⓘ above is the one explainer.
-            if mode == .record, let availableCents {
-                Text("Available to give: \(MoneyFormat.formatCents(availableCents)).")
+            // Build 78 (owner, Nov 25, 2026): the balance line
+            // shows in BOTH modes — Add Money and Record a
+            // Donation look identical, and the line is renamed
+            // "Current Balance" (the owner's pick). The amount
+            // text stays; the mode ⓘ above is the one explainer.
+            if let availableCents {
+                Text("Current Balance: \(MoneyFormat.formatCents(availableCents)).")
                     .font(.system(size: 15))
                     .foregroundStyle(DesignTokens.ink)
             }
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 52)
-            if mode == .record {
-                FundsTextField("Note", text: $noteText)
-                    .autocorrectionDisabled()
-            }
+            // Build 78 (owner, Nov 25, 2026): the Note field
+            // shows in BOTH modes — Add Money and Record a
+            // Donation look identical. The note typed in Add
+            // mode is saved (save() passes it through
+            // addToCharity's note parameter).
+            FundsTextField("Note", text: $noteText)
+                .autocorrectionDisabled()
             if let actionError {
                 FundsErrorBox(actionError)
             }
@@ -535,7 +539,13 @@ public struct TzedakaActionSheet: View {
             // stays beside the error (F-P1-4).
             let ok: Bool
             if mode == .add {
-                ok = await viewModel.addToCharity(amountCents: cents)
+                // Build 78 (owner, Nov 25, 2026): the note typed
+                // in Add Money mode is passed through to the RPC
+                // (addToCharity's note parameter) instead of
+                // being dropped — the Record path already did
+                // this. The over-available check above stays
+                // Record-only.
+                ok = await viewModel.addToCharity(amountCents: cents, note: noteText)
             } else {
                 ok = await viewModel.recordCharityCashGift(amountCents: cents, note: noteText)
             }

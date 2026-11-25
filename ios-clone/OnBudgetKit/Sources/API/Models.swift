@@ -1517,11 +1517,15 @@ public enum ExpenseFrequency: String, Codable, CaseIterable, Sendable {
 /// name + amount are prefilled from the transaction at tag time
 /// and editable in the expense editor; the frequency defaults to
 /// monthly. The linked transaction's own amount is never touched
-/// — the expense amount is the recurring amount.
+/// — the expense amount is the recurring amount. Build 78 (owner,
+/// Nov 25, 2026): an expense created from scratch has NO linked
+/// transaction (transactionId nil) — the server stores NULL.
+/// A nil transactionId is never a trashed transaction (see
+/// FundsViewModel.liveExpenses).
 public struct RecurringExpense: Equatable, Codable, Identifiable, Sendable {
     public let id: UUID
     public let householdId: UUID
-    public let transactionId: UUID
+    public let transactionId: UUID?
     public var name: String
     /// The recurring amount per occurrence, in cents.
     public var amountCents: Int
@@ -1538,7 +1542,7 @@ public struct RecurringExpense: Equatable, Codable, Identifiable, Sendable {
         case createdAt = "created_at"
     }
 
-    public init(id: UUID, householdId: UUID, transactionId: UUID, name: String, amountCents: Int, frequency: ExpenseFrequency, createdAt: String? = nil) {
+    public init(id: UUID, householdId: UUID, transactionId: UUID?, name: String, amountCents: Int, frequency: ExpenseFrequency, createdAt: String? = nil) {
         self.id = id
         self.householdId = householdId
         self.transactionId = transactionId

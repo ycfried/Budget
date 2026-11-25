@@ -64,14 +64,22 @@ public struct ExpensesListView: View {
     public let onSave: (RecurringExpense, String, Int, ExpenseFrequency) async -> Bool
     public let onRemove: (RecurringExpense) async -> Bool
     public let onClose: () -> Void
-    /// The charges the tag picker offers (build 77, owner
-    /// Nov 25, 2026 — add an expense from this sheet): the
-    /// same live list the Calculator's picker reads.
-    public let transactions: [Transaction]
+    /// The Funds view model (build 78, owner Nov 25, 2026):
+    /// the tag picker reads its live `allTransactions` and
+    /// `isLoading` (it observes the view model itself, so the
+    /// picker fills the moment the fetch lands — a plain
+    /// transactions snapshot went stale and the picker opened
+    /// empty). It also supplies the household id for a
+    /// from-scratch expense.
+    public let viewModel: FundsViewModel
     /// Tag a charge as a new expense (build 77): the Funds view
     /// model's tagExpense, so the new row is the SAME row the
     /// list and the Calculator read.
     public let onTag: (Transaction) async -> RecurringExpense?
+    /// Create an expense from scratch (build 78, owner
+    /// Nov 25, 2026): the Funds view model's createExpense.
+    /// Returns true only when the save committed.
+    public let onCreate: (String, Int, ExpenseFrequency) async -> Bool
     @State private var selectedExpense: RecurringExpense?
     /// The ⓘ beside "About These Expenses" (build 68, item 14):
     /// the explainer used to sit inline under the list.
@@ -79,6 +87,17 @@ public struct ExpensesListView: View {
     /// The tag picker (build 77): adding an expense from this
     /// sheet picks a charge to tag, then opens the editor.
     @State private var showExpensePicker = false
+    /// A from-scratch expense being created (build 78): the
+    /// blank expense, built once on tap so the editor's typed
+    /// input survives re-renders.
+    @State private var newExpense: RecurringExpense?
+    /// The expense tagged in the picker, waiting for the picker
+    /// to finish dismissing (build 78): the editor opens from
+    /// the picker's onDismiss, not from a sleep — presenting a
+    /// sheet while another is still dismissing collides, so the
+    /// editor waits until the picker is fully gone. A plain
+    /// close (no tag) leaves this nil and opens nothing.
+    @State private var pendingExpense: RecurringExpense?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(
@@ -87,16 +106,18 @@ public struct ExpensesListView: View {
         onSave: @escaping (RecurringExpense, String, Int, ExpenseFrequency) async -> Bool,
         onRemove: @escaping (RecurringExpense) async -> Bool,
         onClose: @escaping () -> Void,
-        transactions: [Transaction],
-        onTag: @escaping (Transaction) async -> RecurringExpense?
+        viewModel: FundsViewModel,
+        onTag: @escaping (Transaction) async -> RecurringExpense?,
+        onCreate: @escaping (String, Int, ExpenseFrequency) async -> Bool
     ) {
         self.expenses = expenses
         self.isAdmin = isAdmin
         self.onSave = onSave
         self.onRemove = onRemove
         self.onClose = onClose
-        self.transactions = transactions
+        self.viewModel = viewModel
         self.onTag = onTag
+        self.onCreate = onCreate
     }
 
     /// The monthly cost of all the expenses together — the figure
@@ -177,26 +198,39 @@ public struct ExpensesListView: View {
                         )
                         .fundCardShadow()
                     }
-                    // Build 77 (owner, Nov 25, 2026): add an
-                    // expense from this sheet directly — the
-                    // same tag-a-charge flow the Calculator
-                    // uses. Admin only (tagging is admin-only
-                    // server-side). Tapping a row still edits
-                    // that expense.
+                    // Build 78 (owner, Nov 25, 2026): the Add
+                    // button is a full-width solid-blue primary
+                    // (PrimaryButtonStyle, like "Show
+                    // Transactions" on the Weekly Budget sheet)
+                    // — the bare plus + blue text read as a
+                    // plain link. Admin only (tagging is
+                    // admin-only server-side). Below it, a second
+                    // button creates an expense from scratch
+                    // (no charge to tag) — a distinct tertiary
+                    // OUTLINE button, never a second solid-blue
+                    // primary next to the first.
                     if isAdmin {
                         Button {
                             showExpensePicker = true
                         } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "plus.circle")
-                                    .font(.system(size: 15, weight: .semibold))
-                                Text("Add Recurring Expense")
-                                    .font(.system(size: 15, weight: .semibold))
-                            }
-                            .foregroundStyle(DesignTokens.primary)
+                            Label("Add Recurring Expense", systemImage: "plus.circle")
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PrimaryButtonStyle())
                         .accessibilityLabel("Add recurring expense")
+                        Button {
+                            newExpense = RecurringExpense(
+                                id: UUID(),
+                                householdId: viewModel.context.householdId,
+                                transactionId: nil,
+                                name: "",
+                                amountCents: 0,
+                                frequency: .monthly
+                            )
+                        } label: {
+                            Label("Create a New Expense", systemImage: "plus")
+                        }
+                        .buttonStyle(OutlineButtonStyle())
+                        .accessibilityLabel("Create a new recurring expense")
                     }
                 }
             }
@@ -225,23 +259,42 @@ public struct ExpensesListView: View {
                 onClose: { selectedExpense = nil }
             )
         }
-        // Build 77: the tag picker for adding an expense from
-        // this sheet — the same picker the Calculator uses.
-        // The editor cannot open while the picker is still
-        // dismissing — the build-67 400ms pattern.
-        .sheet(isPresented: $showExpensePicker) {
+        // Build 78 (owner, Nov 25, 2026): the picker reads the
+        // Funds view model live (see the viewModel property) —
+        // it opens instantly and fills when the fetch lands.
+        // The editor opens from the picker's onDismiss (see
+        // pendingExpense) as soon as the tag RPC returns — the
+        // build-67 400ms sleep is gone, and the editor no longer
+        // waits on the full refresh (see tagExpense).
+        .sheet(isPresented: $showExpensePicker, onDismiss: {
+            if let pending = pendingExpense {
+                pendingExpense = nil
+                selectedExpense = pending
+            }
+        }) {
             ExpenseTagPickerSheet(
-                transactions: transactions,
+                viewModel: viewModel,
                 onTag: { transaction in
                     await onTag(transaction)
                 },
                 onTagged: { expense in
-                    Task {
-                        try? await Task.sleep(nanoseconds: 400_000_000)
-                        selectedExpense = expense
-                    }
+                    pendingExpense = expense
                 },
                 onClose: { showExpensePicker = false }
+            )
+        }
+        // Build 78 (owner, Nov 25, 2026): create an expense
+        // from scratch — blank name, $0.00, monthly, NO Remove
+        // (nothing to remove yet). Save creates it via onCreate.
+        .sheet(item: $newExpense) { expense in
+            ExpenseEditorSheet(
+                expense: expense,
+                onSave: { name, amountCents, frequency in
+                    await onCreate(name, amountCents, frequency)
+                },
+                onRemove: { false },
+                onClose: { newExpense = nil },
+                isNew: true
             )
         }
     }
@@ -313,6 +366,11 @@ public struct ExpenseEditorSheet: View {
     public let onSave: (String, Int, ExpenseFrequency) async -> Bool
     public let onRemove: () async -> Bool
     public let onClose: () -> Void
+    /// New from scratch (build 78, owner Nov 25, 2026): the
+    /// editor opens blank (name "", $0.00, monthly) and has NO
+    /// Remove button — there is nothing to remove yet. Save
+    /// creates the expense instead of updating it.
+    public let isNew: Bool
     @State private var name: String
     @State private var amountText: String
     @State private var frequency: ExpenseFrequency
@@ -325,12 +383,14 @@ public struct ExpenseEditorSheet: View {
         expense: RecurringExpense,
         onSave: @escaping (String, Int, ExpenseFrequency) async -> Bool,
         onRemove: @escaping () async -> Bool,
-        onClose: @escaping () -> Void
+        onClose: @escaping () -> Void,
+        isNew: Bool = false
     ) {
         self.expense = expense
         self.onSave = onSave
         self.onRemove = onRemove
         self.onClose = onClose
+        self.isNew = isNew
         self._name = State(initialValue: expense.name)
         self._amountText = State(initialValue: String(format: "%.2f", Double(expense.amountCents) / 100.0))
         self._frequency = State(initialValue: expense.frequency)
@@ -462,12 +522,15 @@ public struct ExpenseEditorSheet: View {
                         .disabled(isWorking)
                         // Below the Save button, not beside it — a
                         // red text button, so it never shares a colour or
-                        // treatment with it.
-                        Button("Remove Expense") { showRemoveConfirm = true }
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color(hex: DesignTokens.errorTextHex))
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 4)
+                        // treatment with it. Hidden for a new expense
+                        // (build 78): nothing to remove yet.
+                        if !isNew {
+                            Button("Remove Expense") { showRemoveConfirm = true }
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color(hex: DesignTokens.errorTextHex))
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.top, 4)
+                        }
                     }
                 }
             }
@@ -480,30 +543,40 @@ public struct ExpenseEditorSheet: View {
     }
 }
 
-/// The "Add Recurring Expense" picker (build 69 — the Calculator's
-/// "Add Recurring Expense" option): a fitted sheet listing the
-/// charges that can be tagged as an expense, newest first.
-/// Tapping one tags it through the same tag_transaction_expense
-/// RPC the Actions sheet uses (admin only, 35-day lock,
-/// money-out only) and hands the new expense back so the caller
-/// can open the editor for it. The new expense is the SAME row
-/// the Recurring Expenses list and the Calculator read — never a
-/// second, disconnected store.
+/// The "Tag a Charge as an Expense" picker (build 77, owner
+/// Nov 25, 2026): pick a recent charge to tag as a recurring
+/// expense. Build 78 (owner, Nov 25, 2026): the picker reads
+/// the Funds view model LIVE (it observes it — the sheet
+/// presents at once and fills the moment the fetch lands, with
+/// skeleton rows shaped like charge rows while loading, never
+/// the premature "No charges" empty state); rows carry the
+/// merchant icon (TransactionIconView, as in the Transactions
+/// list); the list shows 15 rows with Load More and a merchant
+/// search; and tapping a charge opens the editor as soon as
+/// the tag RPC returns (the editor no longer waits on the
+/// full refresh or the 400ms sleep — see onTagged / tagExpense).
 public struct ExpenseTagPickerSheet: View {
-    public let transactions: [Transaction]
+    @ObservedObject public var viewModel: FundsViewModel
     public let onTag: (Transaction) async -> RecurringExpense?
     public let onTagged: (RecurringExpense) -> Void
     public let onClose: () -> Void
     @State private var isWorking = false
+    /// The merchant search (build 78): filters the full
+    /// candidate list by name; the 15-row cap / Load More
+    /// applies to the filtered results.
+    @State private var searchText = ""
+    /// How many rows are shown (build 78): 15 at first, Load
+    /// More reveals the next 15 until all are shown.
+    @State private var visibleCount = 15
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(
-        transactions: [Transaction],
+        viewModel: FundsViewModel,
         onTag: @escaping (Transaction) async -> RecurringExpense?,
         onTagged: @escaping (RecurringExpense) -> Void,
         onClose: @escaping () -> Void
     ) {
-        self.transactions = transactions
+        self.viewModel = viewModel
         self.onTag = onTag
         self.onTagged = onTagged
         self.onClose = onClose
@@ -516,7 +589,7 @@ public struct ExpenseTagPickerSheet: View {
     /// Newest first, capped at 50.
     private var candidates: [Transaction] {
         let currentSunday = MoneyFormat.currentSundayNY()
-        let taggable = transactions.filter { tx in
+        let taggable = viewModel.allTransactions.filter { tx in
             guard tx.kind == .charge, tx.amountCents > 0, !tx.isInTrash,
                   tx.state == .verified || tx.state == .provisional,
                   let txSunday = sunday(of: tx.date),
@@ -524,6 +597,21 @@ public struct ExpenseTagPickerSheet: View {
             return gap <= 35
         }
         return Array(taggable.sorted { $0.date > $1.date }.prefix(50))
+    }
+
+    /// The candidates after the merchant search (build 78):
+    /// case-insensitive contains on the merchant name. An
+    /// empty search shows the full list.
+    private var filteredCandidates: [Transaction] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return candidates }
+        return candidates.filter { $0.merchant.localizedCaseInsensitiveContains(query) }
+    }
+
+    /// The rows actually shown (build 78): the first
+    /// `visibleCount` of the filtered candidates.
+    private var visibleCandidates: [Transaction] {
+        Array(filteredCandidates.prefix(visibleCount))
     }
 
     /// The Sunday (YYYY-MM-DD) of the week a date falls in —
@@ -542,12 +630,51 @@ public struct ExpenseTagPickerSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: "Tag a Charge as an Expense", onClose: onClose)
             FundsMuted("Pick a charge — it becomes a recurring expense and stops counting as weekly spending.")
-            if candidates.isEmpty {
-                FundsMuted("No charges to tag right now — tag a transaction as an Expense from its Actions sheet.")
+            // The merchant search (build 78): the Transactions
+            // search pattern — magnifying glass, placeholder,
+            // clear button.
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(DesignTokens.muted)
+                TextField("Search charges", text: $searchText)
+                    .font(.system(size: 17))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(DesignTokens.muted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(14)
+            .background(Color(hex: "#f3f4f6"))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            if viewModel.isLoading {
+                // Still loading (build 78): skeleton rows shaped
+                // like the charge rows (icon + two text lines),
+                // never a spinner, "Loading…" or a premature
+                // "No charges" empty state.
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(0..<6, id: \.self) { _ in
+                            skeletonRow
+                            SheetActionDivider()
+                        }
+                    }
+                }
+            } else if filteredCandidates.isEmpty {
+                FundsMuted(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "No charges to tag right now — tag a transaction as an Expense from its Actions sheet."
+                    : "No charges match \"\(searchText)\".")
             } else {
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach(candidates) { tx in
+                        ForEach(visibleCandidates) { tx in
                             Button {
                                 Task {
                                     guard !isWorking else { return }
@@ -559,7 +686,17 @@ public struct ExpenseTagPickerSheet: View {
                                     onTagged(expense)
                                 }
                             } label: {
-                                HStack(spacing: 8) {
+                                HStack(spacing: 10) {
+                                    // Build 78: the merchant icon,
+                                    // the same TransactionIconView
+                                    // the Transactions list uses
+                                    // (40pt, ~10pt spacing) — the
+                                    // bare text rows were hard to
+                                    // scan. Charges only, so
+                                    // isBankRow is false and the
+                                    // institution is nil; the
+                                    // monogram fallback comes free.
+                                    TransactionIconView(merchant: tx.merchant, size: 40)
                                     Text(tx.merchant.uppercased())
                                         .font(.system(size: 15, weight: .semibold))
                                         .foregroundStyle(DesignTokens.ink)
@@ -577,9 +714,27 @@ public struct ExpenseTagPickerSheet: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(isWorking)
-                            if tx.id != candidates.last?.id {
+                            if tx.id != visibleCandidates.last?.id {
                                 SheetActionDivider()
                             }
+                        }
+                        // Load More (build 78): the list shows
+                        // 15 rows at first; this reveals the next
+                        // 15 until all candidates are shown. Only
+                        // while more rows remain.
+                        if filteredCandidates.count > visibleCount {
+                            Button {
+                                visibleCount += 15
+                            } label: {
+                                Text("Load More (\(filteredCandidates.count - visibleCount) more)")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.primary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Load more charges")
                         }
                     }
                 }
@@ -594,5 +749,21 @@ public struct ExpenseTagPickerSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
+    }
+
+    /// A skeleton row shaped like a charge row (build 78): a
+    /// 40pt icon tile + two text lines + an amount, in skeleton
+    /// grey.
+    private var skeletonRow: some View {
+        HStack(spacing: 10) {
+            SkeletonBlock(width: 40, height: 40)
+            VStack(alignment: .leading, spacing: 6) {
+                SkeletonBlock(width: 140, height: 14)
+                SkeletonBlock(width: 90, height: 12)
+            }
+            Spacer()
+            SkeletonBlock(width: 56, height: 14)
+        }
+        .padding(.vertical, 10)
     }
 }

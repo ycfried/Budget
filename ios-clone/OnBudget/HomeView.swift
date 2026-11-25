@@ -3330,11 +3330,16 @@ public struct WeeklySheet: View {
                         await fundsViewModel.removeExpense(expense)
                     },
                     onClose: { showExpenses = false },
-                    // Build 77: the sheet's own Add flow — the
+                    // Build 78: the sheet's own Add flow — the
                     // same tag-a-charge path the Calculator uses.
-                    transactions: fundsViewModel.allTransactions,
+                    // The picker reads the view model live (see
+                    // ExpensesListView.viewModel).
+                    viewModel: fundsViewModel,
                     onTag: { transaction in
                         await fundsViewModel.tagExpense(transaction, reason: "")
+                    },
+                    onCreate: { name, amountCents, frequency in
+                        await fundsViewModel.createExpense(name: name, amountCents: amountCents, frequency: frequency) != nil
                     }
                 )
                 // Build 68 (item 6): white presentation background.

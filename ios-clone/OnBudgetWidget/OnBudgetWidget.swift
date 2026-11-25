@@ -302,8 +302,10 @@ struct WidgetView: View {
     /// same height as the loaded figure/label, same skeleton grey
     /// as the app's SkeletonBlock (#ececf1). Shown only while the
     /// view renders as a placeholder; the loaded entry always shows
-    /// real text.
-    private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
+    /// real text. Build 78: the width is optional — omitted, the
+    /// bar fills its column (the progress-bar placeholder, which
+    /// must match the loaded bar that fills the same column).
+    private func skeletonBar(width: CGFloat? = nil, height: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: 6)
             .fill(DesignTokens.skeleton)
             .frame(width: width, height: height)
@@ -603,19 +605,38 @@ struct WidgetView: View {
             if isPlaceholder {
                 skeletonBar(width: 36, height: 18)
             } else {
-                Text("\(Int((fraction * 100).rounded()))%")
-                    .font(.system(size: actualSize * 0.22, weight: .bold))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .foregroundStyle(DesignTokens.ink)
+                // Build 78 (owner, Nov 25, 2026 — the XL widget):
+                // the centre carries "used" under the percentage,
+                // like the app's Home donut (spendingDonut's
+                // showUsedLabel) — the bare % did not say what it
+                // was a share of. Same sizes as the app's ring:
+                // % at size × 0.22 bold, "used" at size × 0.125
+                // muted. Every size that shows the donut gets it.
+                VStack(spacing: 0) {
+                    Text("\(Int((fraction * 100).rounded()))%")
+                        .font(.system(size: actualSize * 0.22, weight: .bold))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(DesignTokens.ink)
+                    Text("used")
+                        .font(.system(size: actualSize * 0.125))
+                        .foregroundStyle(DesignTokens.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
             }
         }
         .frame(width: actualSize, height: actualSize)
         .privacySensitive()
     }
 
-    /// Muted small label above a figure.
+    /// Muted small label above a figure. Build 78 (owner,
+    /// Nov 25, 2026 — the XL widget): one line, never wrapped —
+    /// the build-77 crush wrapped "Available" letter by letter
+    /// when its column was squeezed, so the label carries the
+    /// same lineLimit + minimumScaleFactor safety net as the
+    /// figure below it.
     @ViewBuilder
     private func figureLabel(_ text: String) -> some View {
         if isPlaceholder {
@@ -624,7 +645,22 @@ struct WidgetView: View {
             Text(text)
                 .font(.caption)
                 .foregroundStyle(DesignTokens.muted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
+    }
+
+    /// Small second line under a figure (build 78, owner
+    /// Nov 25, 2026 — the XL widget): "Spent $367.01 so far"
+    /// under Spending, "Given $761.29" under Tzedaka. One line,
+    /// never wrapped — the same safety net as the label, so a
+    /// narrow column shrinks it instead of wrapping it.
+    private func figureSubline(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13))
+            .foregroundStyle(DesignTokens.muted)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
     }
 
     /// A figure: big, bold, tabular numerals so the amount never
@@ -657,35 +693,33 @@ struct WidgetView: View {
     }
 
     /// Thin horizontal progress bar (build 35): a pale track with a
-    /// coloured fill of the given fraction, 6pt tall, filling the
-    /// column width. The budget bar fills spent/allowance in deep
-    /// blue (muted red when over budget); the charity bar fills
-    /// given/committed in primary blue. Build 69 (owner, Nov 24,
-    /// 2026 — the widget restyle): the charity bar is primary
-    /// blue now, not charity green — the C-2 Tzedaka colour — and
-    /// its track is the same pale blue #dbeafe as the budget bar.
-    /// A zero fraction shows an empty track — no fill is ever
-    /// faked. `width` (build 77, owner Nov 25, 2026 — the XL
-    /// widget): when given, the bar is that FIXED width instead
-    /// of filling its column — the two columns are different
-    /// widths (the GeometryReader stretches to the parent), so
-    /// the Tzedaka bar rendered longer than the Spending bar.
-    /// A fixed width makes both bars identical; the large and
-    /// XL layouts pass the Spending column's width, so the
-    /// Spending bar does not change and the Tzedaka bar shortens
-    /// to match it. Without a width the bar fills its column
-    /// as before (medium/small).
-    private func progressBar(fraction: Double, fill: Color, track: Color, width: CGFloat? = nil) -> some View {
+    /// coloured fill of the given fraction, 8pt tall, ALWAYS
+    /// filling its column width. The budget bar fills
+    /// spent/allowance in deep blue (muted red when over budget);
+    /// the charity bar fills given/committed in primary blue.
+    /// Build 69 (owner, Nov 24, 2026 — the widget restyle): the
+    /// charity bar is primary blue now, not charity green — the
+    /// C-2 Tzedaka colour — and its track is the same pale blue
+    /// #dbeafe as the budget bar. A zero fraction shows an empty
+    /// track — no fill is ever faked. Build 78 (owner, Nov 25,
+    /// 2026 — the XL widget): the bar fills its column — the
+    /// build-77 FIXED width is gone (a fixed width
+    /// over-constrained the XL row and crushed the Spending
+    /// column). The two figure columns share the remaining width
+    /// equally, so the two bars are the same length by
+    /// construction, with no fixed number to overflow. 8pt thick
+    /// (was 6pt), so it reads at a glance.
+    private func progressBar(fraction: Double, fill: Color, track: Color) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 3)
+                RoundedRectangle(cornerRadius: 4)
                     .fill(track)
-                RoundedRectangle(cornerRadius: 3)
+                RoundedRectangle(cornerRadius: 4)
                     .fill(fill)
                     .frame(width: geo.size.width * CGFloat(min(1.0, max(0.0, fraction))))
             }
         }
-        .frame(width: width, height: 6)
+        .frame(height: 8)
     }
 
     /// Freshness footer (build 35; build 42, owner Nov 17, 2026):
@@ -840,7 +874,7 @@ struct WidgetView: View {
                     size: 22
                 )
                 if isPlaceholder {
-                    skeletonBar(width: 90, height: 6)
+                    skeletonBar(height: 8)
                 } else {
                     progressBar(
                         fraction: snapshot.spentFraction ?? 0,
@@ -852,7 +886,7 @@ struct WidgetView: View {
                 figureLabel(snapshot.charityLeftLabel)
                 figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 22)
                 if isPlaceholder {
-                    skeletonBar(width: 90, height: 6)
+                    skeletonBar(height: 8)
                 } else {
                     progressBar(
                         fraction: snapshot.charityGivenFraction ?? 0,
@@ -910,7 +944,7 @@ struct WidgetView: View {
                         size: 28
                     )
                     if isPlaceholder {
-                        skeletonBar(width: 110, height: 6)
+                        skeletonBar(height: 8)
                     } else {
                         progressBar(
                             fraction: snapshot.spentFraction ?? 0,
@@ -924,7 +958,7 @@ struct WidgetView: View {
                     figureLabel(snapshot.charityLeftLabel)
                     figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 28)
                     if isPlaceholder {
-                        skeletonBar(width: 90, height: 6)
+                        skeletonBar(height: 8)
                     } else {
                         progressBar(
                             fraction: snapshot.charityGivenFraction ?? 0,
@@ -978,10 +1012,14 @@ struct WidgetView: View {
             // 110pt height is the donut's designed size — the row's
             // height when the donut is shown.
             GeometryReader { geo in
-            // Build 77 (owner, Nov 25, 2026 — the XL widget): the
-            // donut-to-figure gap is 32pt, not 20 — the Spending
-            // figure sat too close to the donut.
-            HStack(alignment: .center, spacing: 32) {
+            // Build 78 (owner, Nov 25, 2026 — the XL widget):
+            // the donut-to-figure gap is 24pt, not 32 — the 32pt
+            // build-77 gap was part of the over-constraint that
+            // crushed the XL Spending column, and this vertical
+            // layout has the same risk on a narrow canvas; 24pt
+            // is still more than the 20pt the owner wanted more
+            // than.
+            HStack(alignment: .center, spacing: 24) {
                 if snapshot.spentCents != nil {
                     donut(snapshot: snapshot, size: 110, availableWidth: geo.size.width)
                 }
@@ -992,16 +1030,28 @@ struct WidgetView: View {
                         color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.deep,
                         size: 36
                     )
+                    if let spent = snapshot.spentCents, !isPlaceholder {
+                        figureSubline("Spent \(MoneyFormat.formatCents(spent)) so far")
+                    }
                     if isPlaceholder {
-                        skeletonBar(width: 80, height: 6)
+                        skeletonBar(height: 8)
                     } else {
+                        // Build 78 (owner, Nov 25, 2026 — the XL
+                        // widget): the bar fills its column — the
+                        // build-77 FIXED 80pt width is gone (a
+                        // fixed width cannot shrink, so the text
+                        // took the hit when the row overflowed).
+                        // This column takes the full remaining
+                        // row width (maxWidth below); the Tzedaka
+                        // bar fills its own column the same way,
+                        // so the two bars are the same length.
                         progressBar(
                             fraction: snapshot.spentFraction ?? 0,
                             fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.deep,
-                            track: Color(hex: "#dbeafe"),
-                            width: 80)
+                            track: Color(hex: "#dbeafe"))
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             }
             .frame(height: 110)
@@ -1009,21 +1059,22 @@ struct WidgetView: View {
             VStack(alignment: .leading, spacing: 2) {
                 figureLabel(snapshot.charityLeftLabel)
                 figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 36)
+                if let given = snapshot.charityGivenCents, !isPlaceholder {
+                    figureSubline("Given \(MoneyFormat.formatCents(given))")
+                }
                 if isPlaceholder {
-                    skeletonBar(width: 80, height: 6)
+                    skeletonBar(height: 8)
                 } else {
-                    // Build 77 (owner, Nov 25, 2026 — the XL
-                    // widget): both bars are the same FIXED 80pt
-                    // width — the Tzedaka bar used to stretch to
-                    // its column and render longer than the
-                    // Spending bar. 80pt matches the Spending
-                    // column (36pt figure); the placeholder bar
-                    // above matches, so loading looks the same.
+                    // Build 78 (owner, Nov 25, 2026 — the XL
+                    // widget): the bar fills its column — the
+                    // build-77 FIXED 80pt width is gone. This
+                    // column is full-width, matching the Spending
+                    // column above, so the two bars are the same
+                    // length by construction.
                     progressBar(
                         fraction: snapshot.charityGivenFraction ?? 0,
                         fill: DesignTokens.primary,
-                        track: Color(hex: "#dbeafe"),
-                        width: 80)
+                        track: Color(hex: "#dbeafe"))
                 }
             }
             Spacer(minLength: 0)
@@ -1068,62 +1119,71 @@ struct WidgetView: View {
             // 120pt height is the donut's designed size — the row's
             // height when the donut is shown.
             GeometryReader { geo in
-            HStack(alignment: .center, spacing: 32) {
-                // Build 77 (owner, Nov 25, 2026 — the XL widget):
-                // the donut-to-figure gap is 32pt, not 20 — the
-                // Spending figure sat too close to the donut.
-                HStack(alignment: .center, spacing: 32) {
-                    if snapshot.spentCents != nil {
-                        donut(snapshot: snapshot, size: 120, availableWidth: geo.size.width)
+            // Build 78 (owner, Nov 25, 2026 — the XL widget,
+            // fixing the build-77 regression): the row is NO
+            // LONGER over-constrained. Build 77's fixed 100pt
+            // bars could not shrink, so when the row's fixed
+            // content exceeded the canvas SwiftUI crushed the
+            // Spending VStack — "Available" wrapped letter by
+            // letter and "$105" clipped to "$". Now the two
+            // figure columns share the remaining width EQUALLY
+            // (equal maxWidth), the bars fill their column
+            // (automatically the same length, no fixed width),
+            // and the donut gap is 24pt (was 32 — the owner
+            // only wanted more than 20pt, not a specific
+            // number). Width budget on the XL canvas (~620pt
+            // content): donut 120 + gaps 72 + Divider 1 leaves
+            // ~425pt for the two columns (~212pt each) — a 44pt
+            // "$105" figure needs ~105pt and the subline ~120pt,
+            // so each column has ~90pt of slack.
+            HStack(alignment: .center, spacing: 24) {
+                if snapshot.spentCents != nil {
+                    donut(snapshot: snapshot, size: 120, availableWidth: geo.size.width)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    figureLabel("Available")
+                    figure(
+                        cents: snapshot.availableCents,
+                        color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.deep,
+                        size: 44
+                    )
+                    if let spent = snapshot.spentCents, !isPlaceholder {
+                        figureSubline("Spent \(MoneyFormat.formatCents(spent)) so far")
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        figureLabel("Available")
-                        figure(
-                            cents: snapshot.availableCents,
-                            color: snapshot.availableCents < 0 ? DesignTokens.errorText : DesignTokens.deep,
-                            size: 44
-                        )
-                        if isPlaceholder {
-                            skeletonBar(width: 100, height: 6)
-                        } else {
-                            progressBar(
-                                fraction: snapshot.spentFraction ?? 0,
-                                fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.deep,
-                                track: Color(hex: "#dbeafe"),
-                                width: 100)
-                        }
+                    if isPlaceholder {
+                        skeletonBar(height: 8)
+                    } else {
+                        progressBar(
+                            fraction: snapshot.spentFraction ?? 0,
+                            fill: snapshot.availableCents < 0 ? DesignTokens.heroOverBudget : DesignTokens.deep,
+                            track: Color(hex: "#dbeafe"))
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 Divider()
-                // Build 77 (owner, Nov 25, 2026 — the XL widget):
-                // 12pt leading space after the Divider, matching
-                // the 12pt the donut-to-Spending gap grew by — so
-                // the Tzedaka number shifts right by the same
-                // amount as the Spending number, and the two
-                // columns stay balanced.
                 VStack(alignment: .leading, spacing: 2) {
                     figureLabel(snapshot.charityLeftLabel)
                     figure(cents: snapshot.charityRemainingCents, color: DesignTokens.primary, size: 44)
+                    if let given = snapshot.charityGivenCents, !isPlaceholder {
+                        figureSubline("Given \(MoneyFormat.formatCents(given))")
+                    }
                     if isPlaceholder {
-                        skeletonBar(width: 100, height: 6)
+                        skeletonBar(height: 8)
                     } else {
-                        // Build 77 (owner, Nov 25, 2026 — the XL
-                        // widget): both bars are the same FIXED
-                        // 100pt width — the Tzedaka bar used to
-                        // stretch to its column and render longer
-                        // than the Spending bar. 100pt matches the
-                        // Spending column (44pt figure); the
-                        // placeholder bar above matches, so loading
-                        // looks the same.
+                        // Build 78 (owner, Nov 25, 2026 — the XL
+                        // widget): the bar fills its column — the
+                        // build-77 FIXED 100pt width is gone.
+                        // This column shares the remaining width
+                        // equally with the Spending column, so
+                        // the two bars are the same length by
+                        // construction.
                         progressBar(
                             fraction: snapshot.charityGivenFraction ?? 0,
                             fill: DesignTokens.primary,
-                            track: Color(hex: "#dbeafe"),
-                            width: 100)
+                            track: Color(hex: "#dbeafe"))
                     }
                 }
-                .padding(.leading, 12)
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             }
             .frame(height: 120)

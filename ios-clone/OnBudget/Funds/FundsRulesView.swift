@@ -1106,7 +1106,16 @@ public struct AdjustWeeklyBudgetSheet: View {
                 .accessibilityLabel("About this mode")
             }
             if mode == .add {
-                DollarTextField(text: $addAmountText, maxWidth: .infinity, minHeight: 52)
+                // Build 78 (owner, Nov 25, 2026): the Add-mode
+                // amount field has the same FieldLabel as Set
+                // Total's "New Total" — the bare field made a
+                // label pop up on switching modes, which read as
+                // a glitch. The Weeks stepper stays Set Total-only
+                // (Add is one week only).
+                VStack(alignment: .leading, spacing: 4) {
+                    FieldLabel("Amount to Add", required: true)
+                    DollarTextField(text: $addAmountText, maxWidth: .infinity, minHeight: 52)
+                }
             } else {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {

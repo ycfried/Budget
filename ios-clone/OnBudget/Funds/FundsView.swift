@@ -2391,6 +2391,17 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// tag, then opens the editor for the new expense.
     @State private var showExpensePicker = false
     @State private var editorExpense: RecurringExpense?
+    /// The expense the Calculator's trash is about to remove
+    /// (build 78, owner Nov 25, 2026): the delete confirm
+    /// dialog binds to this. Nil until a trash is tapped.
+    @State private var expenseToRemove: RecurringExpense?
+    /// The expense tagged in the picker, waiting for the picker
+    /// to finish dismissing (build 78): the editor opens from
+    /// the picker's onDismiss, not from a sleep — presenting a
+    /// sheet while another is still dismissing collides, so the
+    /// editor waits until the picker is fully gone. A plain
+    /// close (no tag) leaves this nil and opens nothing.
+    @State private var pendingExpense: RecurringExpense?
     /// The income sources (build 69, owner Nov 24, 2026 —
     /// "Calculator should be per household"): the shared
     /// household store, owned by the view model — every member
@@ -2544,7 +2555,14 @@ public struct WeeklyBudgetCalculatorContent: View {
     // sections, and add/remove logic are unchanged from build 43.
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        // Build 78 (owner, Nov 25, 2026 — "the headers get
+        // lost"): every Calculator section header is 17pt BOLD
+        // ink (was 15pt semibold — the same size and weight as
+        // the row labels, so the headers blended into the
+        // content), and the sections have 20pt between them
+        // (was 16) so each header stands apart from the previous
+        // section's content. Row labels stay 15pt semibold.
+        VStack(alignment: .leading, spacing: 20) {
             suggestionBlock
             Divider()
             // Build 77 (owner, Nov 25, 2026): Lifestyle +
@@ -2596,7 +2614,7 @@ public struct WeeklyBudgetCalculatorContent: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("Suggested Weekly Budget")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
                 Spacer()
                 // Build 44 (owner, Nov 18, 2026): the ⓘ that
@@ -2679,7 +2697,7 @@ public struct WeeklyBudgetCalculatorContent: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 Text("Recurring Expenses")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
                 // Build 68 (item 14): the "From your tagged
                 // expenses…" line lives behind this ⓘ now, not
@@ -2709,29 +2727,45 @@ public struct WeeklyBudgetCalculatorContent: View {
                         Text("\(MoneyFormat.formatCents(expense.amountCents))\(expense.frequency.shortSuffix)")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(DesignTokens.ink)
+                        // Build 78 (owner, Nov 25, 2026): delete
+                        // from the Calculator — the red trash,
+                        // mirroring the Expected Income rows'
+                        // trash exactly (15pt semibold, #dc2626,
+                        // padding 6, contentShape, plain style).
+                        // Admin only (removal is admin-only
+                        // server-side). Tapping asks first (the
+                        // dialog below); the delete itself is the
+                        // same removeExpense the editor's Remove
+                        // uses, so a locked week's error surfaces
+                        // through its guarded error path.
+                        if viewModel.context.isAdmin {
+                            Button {
+                                expenseToRemove = expense
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Color(hex: "#dc2626"))
+                                    .padding(6)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove \(expense.name)")
+                        }
                     }
                 }
             }
-            // Build 69 (owner, Nov 24, 2026): add a recurring
-            // expense from the Calculator, matching the "Add
-            // Income" form above it. Admin only — tagging is
-            // admin-only server-side. (The "hidden when the
-            // presenter passed no view model" clause is gone —
-            // the view model is non-optional now, so the button
-            // shows whenever the user is an admin.)
+            // Build 78 (owner, Nov 25, 2026): the same proper
+            // solid-blue primary button as the Recurring
+            // Expenses sheet's Add button (item 5) — the bare
+            // plus + blue text read as a plain link. Admin only
+            // — tagging is admin-only server-side.
             if viewModel.context.isAdmin {
                 Button {
                     showExpensePicker = true
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 15, weight: .semibold))
-                        Text("Add Recurring Expense")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .foregroundStyle(DesignTokens.primary)
+                    Label("Add Recurring Expense", systemImage: "plus.circle")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PrimaryButtonStyle())
                 .accessibilityLabel("Add recurring expense")
             }
             FundsBreakdownRow("Monthly Total", value: MoneyFormat.formatCents(monthlyChargesCents))
@@ -2739,22 +2773,46 @@ public struct WeeklyBudgetCalculatorContent: View {
         .alert("Recurring Expenses", isPresented: $showChargesInfo) {
             Button("OK") {}
         } message: {
-            Text("From your tagged expenses. Manage them from Recurring Expenses on the Weekly Budget sheet.")
+            // Build 78 (owner, Nov 25, 2026): removal is now
+            // possible here too (the trash on each row), so the
+            // old "Manage them from Recurring Expenses…" is
+            // wrong.
+            Text("From your tagged expenses. Remove one here with its trash, or manage them from Recurring Expenses on the Weekly Budget sheet.")
         }
-        .sheet(isPresented: $showExpensePicker) {
+        // Build 78 (owner, Nov 25, 2026): the delete confirm —
+        // a destructive dialog (soft-red Remove Expense primary,
+        // grey Keep It secondary — each button a different
+        // colour), worded like the editor's Remove confirm.
+        // The delete is the same removeExpense the editor uses;
+        // a locked week's error surfaces through its guarded
+        // error path, never swallowed.
+        .appConfirmDialog(item: $expenseToRemove) { expense in
+            AppConfirmDialog.Config(
+                title: "Remove Expense",
+                message: "Remove \(expense.name) (\(MoneyFormat.formatCents(expense.amountCents))\(expense.frequency.shortSuffix))? The transaction counts as a purchase again, back in weekly spending.",
+                primaryTitle: "Remove Expense",
+                tone: .destructive,
+                secondaryTitle: "Keep It",
+                onPrimary: { Task { await viewModel.removeExpense(expense) } }
+            )
+        }
+        .sheet(isPresented: $showExpensePicker, onDismiss: {
+            // Build 78 (owner, Nov 25, 2026): the editor opens
+            // from the picker's onDismiss — the picker is fully
+            // gone by then, so there is no sheet-dismiss
+            // collision and no 400ms sleep (see pendingExpense).
+            if let pending = pendingExpense {
+                pendingExpense = nil
+                editorExpense = pending
+            }
+        }) {
             ExpenseTagPickerSheet(
-                transactions: viewModel.allTransactions,
+                viewModel: viewModel,
                 onTag: { transaction in
                     await viewModel.tagExpense(transaction, reason: "")
                 },
                 onTagged: { expense in
-                    // The editor cannot open while the picker
-                    // is still dismissing — the build-67
-                    // 400ms pattern.
-                    Task {
-                        try? await Task.sleep(nanoseconds: 400_000_000)
-                        editorExpense = expense
-                    }
+                    pendingExpense = expense
                 },
                 onClose: { showExpensePicker = false }
             )
@@ -2795,7 +2853,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(TitleCase.apply(to: title))
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
             if items.isEmpty {
                 FundsMuted("Nothing added yet.")
@@ -2828,7 +2886,7 @@ public struct WeeklyBudgetCalculatorContent: View {
             // its own small header, matching the section headers
             // above it ("Expected Income", "Recurring Expenses").
             Text(TitleCase.apply(to: draftTitle))
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
                 .padding(.top, 4)
             FundsTextField("Name", text: draftName)
@@ -2853,20 +2911,24 @@ public struct WeeklyBudgetCalculatorContent: View {
     private var charitySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Expected \(charityName)")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
-            HStack(spacing: 8) {
-                DollarTextField(text: $charityText, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
-                // Build 74 (J9): 48pt tall, like the field beside
-                // it — the short button read as a chip.
-                // Build 77 (owner, Nov 25, 2026): reworded —
-                // "Use 10% of Income" did not say what it does.
-                // It sets Expected Tzedaka to 10% of monthly
-                // income.
-                FundsSmallTertiaryButton("Set to 10% of Income", minHeight: 48) {
-                    charityText = String(format: "%.2f", Double(monthlyIncomeCents) / 10.0 / 100.0)
-                }
+            DollarTextField(text: $charityText, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
+            // Build 78 (owner, Nov 25, 2026 — "the ten percent
+            // button is still a problem.. perhaps rethink it"):
+            // the button is BELOW the field, full-width, as a
+            // proper tertiary OUTLINE button (white bg,
+            // brand-blue border/text) — the small grey pill
+            // squeezed into the field's row read as greyed-out /
+            // disabled, and the long label was cramped beside
+            // the field. Behaviour unchanged: one tap still
+            // fills the field with 10% of monthly income.
+            // Build 77's rewording ("Set to 10% of Income") is
+            // kept; only the placement and treatment change.
+            Button("Set to 10% of Income") {
+                charityText = String(format: "%.2f", Double(monthlyIncomeCents) / 10.0 / 100.0)
             }
+            .buttonStyle(OutlineButtonStyle())
             // Build 67 (owner, Nov 23, 2026 — "so many words"):
             // the "Expected charity each month…" explainer is
             // gone — the field + the button already say it.
@@ -2876,7 +2938,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     private var lifestyleSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Lifestyle")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
             // Build 68 (item 12): ONE sliding bar for lifestyle +
             // custom holdback — Min. / Reg. / Max. / Custom — the
@@ -2921,7 +2983,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     private var householdSizeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Stepper("Household Size: \(householdSize)", value: $householdSize, in: 1...20)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 17, weight: .bold))
             // Build 67 (owner, Nov 23, 2026 — "so many words"):
             // the "Shown per person…" line is gone — the
             // per-person figure sits right above in the suggestion.

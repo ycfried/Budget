@@ -263,6 +263,25 @@ extension RPCClient {
             "p_reason": pReason,
         ])
     }
+
+    /// `create_recurring_expense(p_household_id, p_name,
+    /// p_amount_cents, p_frequency)` (build 78, owner Nov 25,
+    /// 2026): create a recurring expense from scratch — no
+    /// charge to tag, so the row's transaction_id is NULL.
+    /// Same validation (name non-empty, amount > 0, frequency
+    /// weekly/monthly/quarterly/yearly) and the same admin
+    /// check as update_recurring_expense. Returns the new
+    /// expense id.
+    public func createRecurringExpense(
+        pHouseholdId: UUID, pName: String, pAmountCents: Int, pFrequency: ExpenseFrequency
+    ) async throws -> UUID {
+        try await callScalar(name: "create_recurring_expense", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_name": pName,
+            "p_amount_cents": pAmountCents,
+            "p_frequency": pFrequency.rawValue,
+        ])
+    }
 }
 
 // MARK: - Refund linking

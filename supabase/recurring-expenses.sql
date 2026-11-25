@@ -404,6 +404,53 @@ $$;
 revoke execute on function public.remove_recurring_expense(uuid, text) from public;
 grant execute on function public.remove_recurring_expense(uuid, text) to authenticated;
 
+-- STEP 8 — create_recurring_expense(p_household_id, p_name,
+-- p_amount_cents, p_frequency) (build 78, owner Nov 25, 2026):
+-- create a recurring expense from scratch — no charge to tag,
+-- so the row's transaction_id is NULL. Same validation (name
+-- non-empty, amount above $0, frequency valid) and the same
+-- admin check as update_recurring_expense, checked against the
+-- given household (there is no expense row to read the household
+-- from yet). Returns the new expense id so the app can close
+-- the editor at once. The table's transaction_id was NOT NULL
+-- (a tagged expense always has one), so it is relaxed to
+-- nullable first — NULLs never collide on the unique
+-- (transaction_id) index (Postgres treats NULLs as distinct),
+-- and remove_recurring_expense already handles a NULL
+-- transaction (its `if found` guard skips the reclassify).
+-- Audit row records the creation, like the other expense RPCs.
+alter table public.recurring_expenses alter column transaction_id drop not null;
+create or replace function public.create_recurring_expense(
+  p_household_id uuid, p_name text, p_amount_cents integer, p_frequency text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  if p_name is null or btrim(p_name) = '' then raise exception 'enter a name for this expense'; end if;
+  if p_amount_cents is null or p_amount_cents <= 0 then raise exception 'enter an amount above $0.00'; end if;
+  if p_frequency is null or p_frequency not in ('weekly', 'monthly', 'quarterly', 'yearly') then
+    raise exception 'invalid frequency: must be weekly, monthly, quarterly, or yearly';
+  end if;
+  if not exists (select 1 from household_members
+                 where household_id = p_household_id and user_id = auth.uid() and role = 'admin') then
+    raise exception 'admin only'; end if;
+  insert into public.recurring_expenses (household_id, transaction_id, name, amount_cents, frequency)
+    values (p_household_id, null, btrim(p_name), p_amount_cents, p_frequency)
+    returning id into v_id;
+  insert into audit_log (household_id, actor, actor_name, action, detail)
+    values (p_household_id, auth.uid(), 'admin', 'Expense created',
+            btrim(p_name) || ' ' || p_amount_cents::text || ' cents added to recurring expenses.');
+  return v_id;
+end;
+$$;
+revoke execute on function public.create_recurring_expense(uuid, text, integer, text) from public;
+grant execute on function public.create_recurring_expense(uuid, text, integer, text) to authenticated;
+
 -- VERIFICATION (run after applying, read-only):
 --   select conname, pg_get_constraintdef(oid) from pg_constraint
 --     where conrelid = 'transactions'::regclass and conname = 'transactions_kind_check';
