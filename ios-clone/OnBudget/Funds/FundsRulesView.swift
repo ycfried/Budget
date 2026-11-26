@@ -600,11 +600,16 @@ public struct SpendingAllowanceSection: View {
     /// Nil when the section is shown without a calculator — the
     /// button is then omitted.
     public let onCalculate: (() -> Void)?
+    /// The walkthrough state (Nov 26, 2026 refresh): when set,
+    /// the Calculate button carries the `.calculatorButton`
+    /// anchor so the tour can point at it. Nil everywhere else.
+    public let tour: TourState?
 
-    public init(viewModel: FundsViewModel, bare: Bool = false, onCalculate: (() -> Void)? = nil, onAdjustBudget: @escaping () -> Void) {
+    public init(viewModel: FundsViewModel, bare: Bool = false, onCalculate: (() -> Void)? = nil, tour: TourState? = nil, onAdjustBudget: @escaping () -> Void) {
         self.viewModel = viewModel
         self.bare = bare
         self.onCalculate = onCalculate
+        self.tour = tour
         self.onAdjustBudget = onAdjustBudget
     }
 
@@ -941,6 +946,11 @@ public struct SpendingAllowanceSection: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .accessibilityIdentifier("funds.openWeeklyBudgetCalculator")
+                // Walkthrough anchor (Nov 26, 2026 refresh): the
+                // Calculator entry point — the tour expands the
+                // Spending card, then points here.
+                .tourAnchor(.calculatorButton, tour: tour)
+                .id(TourAnchor.calculatorButton)
             }
             if isAdmin {
                 FundsInkOutlineButton("Adjust This Week's Budget", isLarge: true) {

@@ -1,25 +1,37 @@
-// STAGE — In-app walkthrough (build 48, owner Nov 19, 2026).
+// STAGE — In-app walkthrough (build 48, owner Nov 19, 2026;
+// refreshed Nov 26, 2026 — owner: "update walkthrough for new
+// users to be perfect and up to date with sizing, pages, pop ups,
+// style etc.").
 //
 // The first-run guided tour: one element at a time, arrows pointing,
-// one short plain line each. About 11 steps, ~90 seconds to 2 minutes
-// — long enough that nobody is lost, short enough that nobody loses
-// patience. Shows once on first entry to Home after sign-up AND the
+// one short plain line each. 14 steps, ~2 minutes — long enough
+// that nobody is lost, short enough that nobody loses patience.
+// Shows once on first entry to Home after sign-up AND the
 // household is set (invite-only — join-by-code),
 // skippable at any point, re-playable from Settings ("Replay Tutorial").
 //
 // The v2 plan (owner-delegated priorities, Nov 19, 2026 — the full
-// list is the general ideal, not a checklist):
+// list is the general ideal, not a checklist), refreshed Nov 26,
+// 2026 to the CURRENT pages, popups and flows:
 //   1. Home — the one number (Spending), the star.
-//   2. Home — Charity card, tap to open (10% automatic).
-//   3. Charity rules — change the rate (0% pauses giving).
-//   4. + Add.
-//   5. Transactions — the list.
-//   6. Transactions — open a row (see it, change it if it's wrong).
-//   7. Transactions — search and filters.
-//   8. Funds — the tab.
-//   9. Funds — Savings card (your cushion).
-//   10. Funds — Debt card (pay it down).
-//   11. Close — "That's the app — you're set."
+//   2. Home — tap the Spending card: the Weekly Budget sheet
+//      (the week's numbers + the Calculator that works them out).
+//   3. Home — Tzedaka card, tap to open (10% automatic).
+//   4. Page switch — Home / Transactions / Funds.
+//   5. Funds — Tzedaka rules: change the rate (0% pauses giving).
+//   6. Funds — Tzedaka actions: Add to Tzedaka / Record a
+//      Donation (admin-only step — skipped for members, who
+//      never see those buttons).
+//   7. Funds — the Spending card's Calculate button: the Weekly
+//      Budget Calculator (income, Lifestyle holdback, recurring
+//      expenses, Suggested Weekly Budget).
+//   8. + Add — Purchase / Donation / Record Income.
+//   9. Transactions — the list.
+//   10. Transactions — open a row (see it, change it if it's wrong).
+//   11. Transactions — search and filters.
+//   12. Funds — Savings card (your cushion).
+//   13. Funds — Debt card (pay it down).
+//   14. Close — "That's the app — you're set."
 // Cut (recorded in the plan file): sign-up / household / rules /
 // members (onboarding guides those), profile & settings
 // (discoverable), bank & Gmail (explained on the Connect screen),
@@ -51,13 +63,23 @@ public enum TourAnchor: String, CaseIterable {
     /// Funds — the Charity rate editor (change the rate; 0%
     /// pauses giving — there is no Off switch, 0% IS off).
     case charityRules
+    /// Funds — the Tzedaka action buttons in the expanded
+    /// Tzedaka card: Add to Tzedaka (solid blue) + Record a
+    /// Donation (ink outline). Admin-only: the row does not
+    /// exist for members, so the step is skipped for them.
+    case charityActions
+    /// Funds — the Spending card's blue Calculate button, which
+    /// opens the Weekly Budget Calculator. The tour expands the
+    /// Spending card for this step.
+    case calculatorButton
     /// Transactions — the + Add button.
     case addButton
     /// Transactions — the list.
     case transactionsList
     /// Transactions — the first row.
     case firstRow
-    /// Transactions — the search field + Search button.
+    /// Transactions — the search field (live-as-you-type; there
+    /// is no Search button — Filters is a separate header button).
     case searchBar
     /// Funds — the Savings card.
     case savingsCard
@@ -72,20 +94,28 @@ public enum TourAnchor: String, CaseIterable {
     case pageSelect
 }
 
-/// One step of the walkthrough (v2 plan, 11 steps). The `line` is the
-/// one short plain line the tooltip shows; `tab` is the screen the
-/// step lives on; `anchor` is the element the arrow points at (nil
-/// only for Close, which has no target; the Funds-tab step points
-/// at the shell's PageSelectControl via `.pageSelect`).
+/// One step of the walkthrough (v2 plan, 14 steps — refreshed
+/// Nov 26, 2026 to the current pages, popups and flows). The `line`
+/// is the one short plain line the tooltip shows; `tab` is the
+/// screen the step lives on; `anchor` is the element the arrow
+/// points at (nil only for Close, which has no target; the
+/// page-switch step points at the shell's PageSelectControl via
+/// `.pageSelect`; the Weekly Budget step reuses `.spendingHero` —
+/// the sheet itself opens from that card, and sheets present above
+/// the tour overlay, so the tour points at the entry point rather
+/// than opening the sheet).
 public enum TourStep: Int, CaseIterable {
     case spendingNumber
+    case weeklyBudget
     case charityCard
+    case fundsTab
     case charityRules
+    case charityActions
+    case calculator
     case addButton
     case transactionsList
     case openRow
     case searchFilters
-    case fundsTab
     case savingsCard
     case debtCard
     case close
@@ -94,20 +124,32 @@ public enum TourStep: Int, CaseIterable {
         switch self {
         case .spendingNumber:
             return "This is what you have left to spend this week."
+        case .weeklyBudget:
+            return "Tap this card to open the Weekly Budget — the week's numbers, and the Calculator that works them out."
         case .charityCard:
             return "This is set aside for giving — 10% of what comes in, automatically."
+        case .fundsTab:
+            return "Switch pages here — Home, Transactions, or Funds."
         case .charityRules:
             return "You can change the rate — set it to 0% to pause giving."
+        case .charityActions:
+            return "Add money to giving here — or record a donation you gave off the card."
+        case .calculator:
+            return "Tap Calculate to work out the weekly budget from your income and regular expenses."
         case .addButton:
-            return "Tap here to add something you paid for."
+            // Nov 26, 2026: + Add opens the options popup
+            // (Purchase / Donation / Record Income — members see
+            // Purchase only), it no longer adds a purchase
+            // directly, so the line stays role-neutral.
+            return "Tap here to add something new."
         case .transactionsList:
-            return "Everything you spent, all in one place."
+            // Nov 26, 2026: the list holds income and gifts as
+            // well as spending — "everything you spent" was wrong.
+            return "Everything in and out, all in one place."
         case .openRow:
             return "Tap any row to see it — and change it if it's wrong."
         case .searchFilters:
             return "Find anything fast."
-        case .fundsTab:
-            return "Your savings and giving, all in one place."
         case .savingsCard:
             return "Your cushion — add to it, or take from it."
         case .debtCard:
@@ -119,11 +161,11 @@ public enum TourStep: Int, CaseIterable {
 
     public var tab: AppTab? {
         switch self {
-        case .spendingNumber, .charityCard:
+        case .spendingNumber, .weeklyBudget, .charityCard, .fundsTab:
             return .home
-        case .charityRules:
+        case .charityRules, .charityActions, .calculator:
             return .funds
-        case .addButton, .transactionsList, .openRow, .searchFilters, .fundsTab:
+        case .addButton, .transactionsList, .openRow, .searchFilters:
             return .transactions
         case .savingsCard, .debtCard:
             return .funds
@@ -134,12 +176,18 @@ public enum TourStep: Int, CaseIterable {
 
     public var anchor: TourAnchor? {
         switch self {
-        case .spendingNumber:
+        case .spendingNumber, .weeklyBudget:
             return .spendingHero
         case .charityCard:
             return .charityCard
+        case .fundsTab:
+            return .pageSelect
         case .charityRules:
             return .charityRules
+        case .charityActions:
+            return .charityActions
+        case .calculator:
+            return .calculatorButton
         case .addButton:
             return .addButton
         case .transactionsList:
@@ -148,8 +196,6 @@ public enum TourStep: Int, CaseIterable {
             return .firstRow
         case .searchFilters:
             return .searchBar
-        case .fundsTab:
-            return .pageSelect
         case .close:
             return nil
         case .savingsCard:
@@ -222,12 +268,14 @@ public final class TourState: ObservableObject {
 /// Reports a view's frame (in the shell's "tourSpace" coordinate
 /// space) to the tour state, so the overlay can point at it. A nil
 /// anchor is a no-op — the call site stays unconditional and the
-/// anchor is chosen by the section.
+/// anchor is chosen by the section. A nil tour is likewise a no-op
+/// (Nov 26, 2026: sections that only sometimes carry the tour, e.g.
+/// SpendingAllowanceSection, pass nil when they have none).
 public struct TourAnchorModifier: ViewModifier {
     public let anchor: TourAnchor?
-    @ObservedObject public var tour: TourState
+    @ObservedObject public var tour: TourState?
 
-    public init(anchor: TourAnchor?, tour: TourState) {
+    public init(anchor: TourAnchor?, tour: TourState?) {
         self.anchor = anchor
         self.tour = tour
     }
@@ -237,12 +285,12 @@ public struct TourAnchorModifier: ViewModifier {
             GeometryReader { proxy in
                 Color.clear
                     .onAppear {
-                        if let anchor {
+                        if let anchor, let tour {
                             tour.setFrame(anchor, proxy.frame(in: .named("tourSpace")))
                         }
                     }
                     .onChange(of: proxy.frame(in: .named("tourSpace"))) { _, new in
-                        if let anchor {
+                        if let anchor, let tour {
                             tour.setFrame(anchor, new)
                         }
                     }
@@ -253,7 +301,7 @@ public struct TourAnchorModifier: ViewModifier {
 
 public extension View {
     /// Attach a walkthrough anchor to a view (no-op when nil).
-    func tourAnchor(_ anchor: TourAnchor?, tour: TourState) -> some View {
+    func tourAnchor(_ anchor: TourAnchor?, tour: TourState?) -> some View {
         modifier(TourAnchorModifier(anchor: anchor, tour: tour))
     }
 }
@@ -474,7 +522,14 @@ public struct TourOverlayView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 15, weight: .semibold))
                     }
-                    .foregroundStyle(DesignTokens.primary)
+                    // Nov 26, 2026 (walkthrough refresh — standing
+                    // button rule, strengthened Nov 23): the Back
+                    // chevron was primary blue, the same colour as
+                    // the solid-blue Next — two of the three
+                    // controls sharing a colour. Ink now: Back
+                    // (ink chevron), Skip tour (muted text), Next
+                    // (solid blue) are three distinct treatments.
+                    .foregroundStyle(DesignTokens.ink)
                     .accessibilityLabel("Back")
                 }
                 Button("Skip tour") { skip() }
@@ -504,20 +559,36 @@ public struct TourOverlayView: View {
 
     // MARK: - Advancing
 
+    /// Whether a step has nothing to point at for this user, so
+    /// the tour steps over it (forward in `goToStep`, backward in
+    /// `back()` — the two must agree, or Back lands on a step that
+    /// immediately skips forward again). Nov 26, 2026: the
+    /// open-row step (no transactions yet) and the Tzedaka-actions
+    /// step (members never see the Add to Tzedaka / Record a
+    /// Donation buttons — admin-only) are the skippable ones.
+    private func isSkippable(_ step: TourStep) -> Bool {
+        switch step {
+        case .openRow:
+            return transactionsViewModel?.shownTransactions.first == nil
+        case .charityActions:
+            return !appState.isAdmin
+        default:
+            return false
+        }
+    }
+
     /// Move to a step: switch to its tab (keeping the Charity card
     /// open across the switch into the rules step), run the step's
     /// action (open the Charity card, expand the first row), and
     /// collapse the first row again when leaving its step.
     private func goToStep(_ index: Int) {
-        // Build 54: skip the open-row step when there are no
-        // transactions — a brand-new household with zero rows has
-        // no first row, so the anchor never reports and the step
-        // would point at nothing, telling the user to "Tap any
-        // row" when there is no row. Advance straight to the next
-        // step instead of inventing a fake row. Only .openRow is
-        // skippable, so this recurses at most once.
+        // Skip steps with nothing to point at — a brand-new
+        // household with zero rows has no first row, and a member
+        // has no Tzedaka action buttons — instead of pointing at
+        // nothing. Only skippable steps recurse, so this advances
+        // at most past the run of them.
         let step = tour.steps[index]
-        if step == .openRow, transactionsViewModel?.shownTransactions.first == nil {
+        if isSkippable(step) {
             let nextIndex = index + 1
             if nextIndex >= tour.steps.count {
                 finish()
@@ -528,16 +599,21 @@ public struct TourOverlayView: View {
         }
         tour.stepIndex = index
         if let tab = step.tab, appState.selectedTab != tab {
-            if step == .charityRules {
-                // Keep the Charity card open across this switch —
+            if step == .charityRules || step == .charityActions || step == .calculator {
+                // Keep the fund card open across this switch —
                 // the tab-change reset would collapse it otherwise.
                 appState.suppressNextTabReset = true
             }
             appState.selectedTab = tab
         }
         switch step {
-        case .charityRules:
+        case .charityRules, .charityActions:
             appState.expandedCard = .charity
+        case .calculator:
+            // The Calculate button lives in the Spending card's
+            // detail — the card must be open for the anchor to
+            // report a frame.
+            appState.expandedCard = .spending
         case .openRow:
             if let first = transactionsViewModel?.shownTransactions.first {
                 transactionsViewModel?.expandedTransactionId = first.id
@@ -559,15 +635,15 @@ public struct TourOverlayView: View {
         }
     }
 
-    /// Build 64 (F-9): back one step. Steps over the open-row
-    /// step when there are no transactions — `goToStep` would
-    /// skip forward past it again, landing back where we
+    /// Build 64 (F-9): back one step. Steps over skippable steps
+    /// (`isSkippable` — the open-row step with no transactions,
+    /// the Tzedaka-actions step for members) — `goToStep` would
+    /// skip forward past them again, landing back where we
     /// started. No-op on the first step (no Back button there).
     private func back() {
         var target = tour.stepIndex - 1
         while target >= 0 {
-            if tour.steps[target] == .openRow,
-               transactionsViewModel?.shownTransactions.first == nil {
+            if isSkippable(tour.steps[target]) {
                 target -= 1
                 continue
             }

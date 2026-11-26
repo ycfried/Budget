@@ -562,7 +562,10 @@ public struct TransactionsView: View {
         // edge padding used to do nothing.
         .contentShape(Rectangle())
         .onTapGesture { searchFocused = true }
-        // Walkthrough anchor (build 48): the search field.
+        // Walkthrough anchor (build 48): the search field — there
+        // is no Search button (Nov 26, 2026 refresh: the old
+        // "search field + Search button" comment was stale);
+        // Filters is a separate button in the header above.
         .tourAnchor(.searchBar, tour: appState.tour)
         .id(TourAnchor.searchBar)
     }

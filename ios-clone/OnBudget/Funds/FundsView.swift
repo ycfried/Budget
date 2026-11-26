@@ -648,7 +648,7 @@ public struct FundsView: View {
                     // The calculator sheet itself is unchanged and
                     // the button stays visible to every role
                     // (local-only, suggestion-only).
-                    SpendingAllowanceSection(viewModel: viewModel, bare: true, onCalculate: { showCalculator = true }) {
+                    SpendingAllowanceSection(viewModel: viewModel, bare: true, onCalculate: { showCalculator = true }, tour: appState.tour) {
                         showAdjustWeeklyBudget = true
                     }
                     // Build 68 (item 29): the merged sheet holds
@@ -985,6 +985,13 @@ public struct FundsView: View {
                                 )
                             }
                         }
+                        // Walkthrough anchor (Nov 26, 2026 refresh):
+                        // the Tzedaka action buttons — Add to
+                        // Tzedaka (solid blue) + Record a Donation
+                        // (ink outline). Admin-only row: the step
+                        // is skipped for members (see isSkippable).
+                        .tourAnchor(.charityActions, tour: appState.tour)
+                        .id(TourAnchor.charityActions)
                     }
                     Divider()
                     charityActivitySection
@@ -1197,7 +1204,7 @@ public struct FundsView: View {
                 charityCard
             case .debt:
                 debtCard
-                    // Walkthrough anchor (build 48): the Overspent card.
+                    // Walkthrough anchor (build 48): the Debt card.
                     .tourAnchor(.debtCard, tour: appState.tour)
                     .id(TourAnchor.debtCard)
             }
