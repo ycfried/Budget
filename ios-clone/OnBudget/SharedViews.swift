@@ -554,8 +554,10 @@ public struct SuccessBox: View {
 // MARK: - Loading screen
 
 /// Full-screen loading view (live.html:39-43): logo + blue ring,
-/// S logo + "T · A · G · E" wordmark, "Spending Tracking And Giving
-/// Easily" (build 74 — bold initials spell STAGE).
+/// S logo + "T · A · G · E" wordmark, "Spend Track And Give Easily"
+/// (build 74 — bold initials spell STAGE; owner, Nov 26, 2026 —
+/// "Spend Track And Give Easily" replaces "Spending Tracking And
+/// Giving Easily").
 /// Shown on first paint and kept until the first data load
 /// completes or fails — never a blank or half-built page, and never
 /// an endless spinner with no error. Build 65: logo + tagline
@@ -591,16 +593,15 @@ public struct LoadingView: View {
                 // BrandedLoader itself is untouched — it is still
                 // used by other loading states (see its uses).
                 // Build 66: a subtle loading ring circles the logo
-                // (see the comment on LoadingView) — a light track
-                // ring plus a brand-blue arc that rotates slowly,
-                // so the splash reads as loading, not frozen. The
-                // ring sits 7pt outside the 72pt logo (build 74
-                // FINAL — the 48pt mark was wrong; the S is not
-                // shrunk).
+                // (see the comment on LoadingView) — just the
+                // brand-blue arc rotating slowly, so the splash
+                // reads as loading, not frozen. Owner, Nov 26,
+                // 2026: the light full-circle track ring is gone —
+                // it read as an ugly pale circle; only the darker
+                // arc moves around the logo now. The ring sits 7pt
+                // outside the 72pt logo (build 74 FINAL — the 48pt
+                // mark was wrong; the S is not shrunk).
                 ZStack {
-                    Circle()
-                        .stroke(DesignTokens.stageBlue.opacity(0.18), lineWidth: 3)
-                        .frame(width: 86, height: 86)
                     Circle()
                         .trim(from: 0, to: 0.3)
                         .stroke(DesignTokens.stageBlue, style: StrokeStyle(lineWidth: 3, lineCap: .round))
@@ -627,23 +628,25 @@ public struct LoadingView: View {
                 StageWordmarkText(font: .system(size: 40, weight: .medium))
             }
             // Build 74 (owner, Nov 25, 2026 — DECIDED): the tagline
-            // is "Spending Tracking And Giving Easily" — NO periods,
+            // is "Spend Track And Give Easily" — NO periods,
             // and the FIRST LETTER of each word is BOLD so the bold
-            // initials spell STAGE. Replaces "Spend, Track & Give
-            // Easily" (build 54/55). Same 15pt semibold base, same
-            // uniform stageBlue #0288dd; only the initials are
-            // heavy. The tagline sits BELOW the one-line lockup,
-            // 6pt under it (the VStack spacing — was 12pt, and
-            // the tagline floated too far below STAGE).
+            // initials spell STAGE. Owner, Nov 26, 2026: "Spend
+            // Track And Give Easily" replaces "Spending Tracking
+            // And Giving Easily" (build 74) — same 15pt semibold
+            // base, same uniform stageBlue #0288dd; only the
+            // initials are heavy. The tagline sits BELOW the
+            // one-line lockup, 6pt under it (the VStack spacing —
+            // was 12pt, and the tagline floated too far below
+            // STAGE).
             (
                 Text("S").fontWeight(.heavy)
-                + Text("pending ")
+                + Text("pend ")
                 + Text("T").fontWeight(.heavy)
-                + Text("racking ")
+                + Text("rack ")
                 + Text("A").fontWeight(.heavy)
                 + Text("nd ")
                 + Text("G").fontWeight(.heavy)
-                + Text("iving ")
+                + Text("ive ")
                 + Text("E").fontWeight(.heavy)
                 + Text("asily")
             )
