@@ -119,16 +119,27 @@ public struct SmallSoftButtonStyle: ButtonStyle {
 /// text (16pt), larger padding/tap targets, and a bigger/taller
 /// sliding pill, so the header reads as a real control, not a
 /// tiny sliver.
+/// Owner, Nov 26, 2026 (approved treatment): MORE prominent
+/// still — a stronger, softer shadow for lift, a hairline border
+/// to define the edge, and slightly larger on iPad, where the
+/// white pill blended into the large light background.
 public struct PageSelectControl: View {
     @Binding var selectedTab: AppTab
     /// Build 66: the namespace for the sliding indicator — the
     /// selected pill glides between segments via
     /// matchedGeometryEffect (see the background below).
     @Namespace private var indicatorNamespace
+    /// Owner, Nov 26, 2026: the regular size class is the iPad
+    /// proxy — the control grows slightly there.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(selectedTab: Binding<AppTab>) {
         self._selectedTab = selectedTab
     }
+
+    /// Slightly larger on iPad (regular size class): 17pt text
+    /// and roomier tap targets instead of 16pt.
+    private var isPad: Bool { horizontalSizeClass == .regular }
 
     public var body: some View {
         HStack(spacing: 0) {
@@ -142,10 +153,10 @@ public struct PageSelectControl: View {
                     selectedTab = tab
                 } label: {
                     Text(tab.rawValue)
-                        .font(.system(size: 16, weight: isSelected ? .semibold : .medium))
+                        .font(.system(size: isPad ? 17 : 16, weight: isSelected ? .semibold : .medium))
                         .foregroundStyle(isSelected ? DesignTokens.ink : DesignTokens.segmentInactive)
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 20)
+                        .padding(.vertical, isPad ? 14 : 12)
+                        .padding(.horizontal, isPad ? 24 : 20)
                         .background(
                             Group {
                                 if isSelected {
@@ -165,7 +176,16 @@ public struct PageSelectControl: View {
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.white)
-                .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 2)
+                // Owner, Nov 26, 2026 (approved treatment): more
+                // lift — a stronger, softer shadow — plus a
+                // hairline border, so the pill reads as floating
+                // on the iPad's large light background instead of
+                // blending into it.
+                .shadow(color: Color.black.opacity(0.12), radius: 14, x: 0, y: 4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(DesignTokens.tertiary, lineWidth: 1)
+                )
         )
         .animation(.easeInOut(duration: 0.25), value: selectedTab)
     }

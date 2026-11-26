@@ -54,6 +54,10 @@ public struct TransactionRowView: View {
     /// "Pending"/"Posted"); the original amount stays visible in
     /// the expanded detail.
     let isRefunded: Bool
+    /// Owner, Nov 26, 2026 (Needs Review): this row is one side
+    /// of a pending duplicate pair — a small blue dot sits on
+    /// the icon's corner so it can be spotted in the list.
+    let isPendingDuplicate: Bool
     let onToggle: () -> Void
     let onActions: () -> Void
 
@@ -64,6 +68,7 @@ public struct TransactionRowView: View {
         hasActions: Bool,
         searchQuery: String = "",
         isRefunded: Bool = false,
+        isPendingDuplicate: Bool = false,
         onToggle: @escaping () -> Void,
         onActions: @escaping () -> Void
     ) {
@@ -73,6 +78,7 @@ public struct TransactionRowView: View {
         self.hasActions = hasActions
         self.searchQuery = searchQuery
         self.isRefunded = isRefunded
+        self.isPendingDuplicate = isPendingDuplicate
         self.onToggle = onToggle
         self.onActions = onActions
     }
@@ -117,16 +123,29 @@ public struct TransactionRowView: View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: onToggle) {
                 HStack(alignment: .top, spacing: iconTextGap) {
-                    TransactionIconView(
-                        merchant: transaction.merchant,
-                        institutionName: institutionName,
-                        // Build 53 (owner, Nov 21, 2026): only a
-                        // bank row (transfer / card payment) keeps
-                        // the bank logo — an unmapped merchant gets
-                        // the monogram, never the bank logo.
-                        isBankRow: transaction.kind == .transfer || transaction.kind == .payment,
-                        size: iconSize
-                    )
+                    ZStack(alignment: .topTrailing) {
+                        TransactionIconView(
+                            merchant: transaction.merchant,
+                            institutionName: institutionName,
+                            // Build 53 (owner, Nov 21, 2026): only a
+                            // bank row (transfer / card payment) keeps
+                            // the bank logo — an unmapped merchant gets
+                            // the monogram, never the bank logo.
+                            isBankRow: transaction.kind == .transfer || transaction.kind == .payment,
+                            size: iconSize
+                        )
+                        // Owner, Nov 26, 2026 (Needs Review): the
+                        // blue dot on the icon's corner, marking
+                        // a row in a pending duplicate pair. The
+                        // white ring keeps it readable on any logo.
+                        if isPendingDuplicate {
+                            Circle()
+                                .fill(DesignTokens.primary)
+                                .frame(width: 11, height: 11)
+                                .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                .offset(x: 3, y: -3)
+                        }
+                    }
                     VStack(alignment: .leading, spacing: 0) {
                         // Top half: merchant + amount + chevron.
                         // The title is ALWAYS the merchant name

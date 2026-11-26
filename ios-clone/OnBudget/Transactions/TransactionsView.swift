@@ -175,6 +175,7 @@ public struct TransactionsView: View {
                 searchBox
                 activeChips
                 countLine
+                needsReviewBanner
                 listContent
                 loadMoreButton
             }
@@ -626,6 +627,67 @@ public struct TransactionsView: View {
             .accessibilityIdentifier("transactions.countLine")
     }
 
+    /// Needs Review banner (owner, Nov 26, 2026 — approved from
+    /// the mockup): a soft-blue strip at the top of the list,
+    /// shown only when pending review items exist, so they cannot
+    /// be missed. Tapping it opens the Review page — the same
+    /// destination as the "···" menu's Review entry, with the
+    /// same admin gate, so it never leads nowhere for a member.
+    /// Title Case, short and plain.
+    @ViewBuilder
+    private var needsReviewBanner: some View {
+        if viewModel.isAdmin, reviewViewModel.reviewCount > 0 {
+            Button {
+                onShowReview?()
+            } label: {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(DesignTokens.primary)
+                            .frame(width: 22, height: 22)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(reviewBannerTitle)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Text("Duplicates and refunds waiting for you")
+                            .font(.system(size: 13))
+                            .foregroundStyle(DesignTokens.muted)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(DesignTokens.infoBackground)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("transactions.needsReviewBanner")
+        }
+    }
+
+    private var reviewBannerTitle: String {
+        let n = reviewViewModel.reviewCount
+        return n == 1 ? "1 thing needs review" : "\(n) things need review"
+    }
+
+    /// The transaction ids in a pending duplicate pair (owner,
+    /// Nov 26, 2026 — Needs Review dots): both sides of every
+    /// pending duplicate candidate, so the row marks itself. Read
+    /// live from the review view model, which refreshes on appear.
+    private var pendingDuplicateIds: Set<UUID> {
+        Set(reviewViewModel.pendingDuplicates.flatMap {
+            [$0.canonicalTransactionId, $0.duplicateTransactionId]
+        })
+    }
+
     /// Skeleton rows while the list loads (build 47 — owner, Nov
     /// 19, 2026: three rows left a large empty white area below
     /// while loading). A FULL page: ten fills the viewport on
@@ -713,6 +775,10 @@ public struct TransactionsView: View {
                             // mark is exact (build 53: the fetch is
                             // date-range filtered, not whole-history).
                             isRefunded: viewModel.isWeekMode && viewModel.refundedChargeIds.contains(transaction.id),
+                            // Owner, Nov 26, 2026 (Needs Review):
+                            // a row in a pending duplicate pair
+                            // carries a blue dot on its icon.
+                            isPendingDuplicate: pendingDuplicateIds.contains(transaction.id),
                             onToggle: {
                                 if viewModel.expandedTransactionId == transaction.id {
                                     viewModel.expandedTransactionId = nil
