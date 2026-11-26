@@ -2428,7 +2428,6 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// Expense" option tags through it. Non-optional (see the
     /// Sheet above: `@ObservedObject` cannot wrap an Optional).
     @ObservedObject public var viewModel: FundsViewModel
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// The expenses the Calculator reads: live from the view
     /// model. (Build 67's `expenses` snapshot parameter is gone —
     /// the view model is the single live source now.)
