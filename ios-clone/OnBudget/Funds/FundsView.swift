@@ -2736,28 +2736,36 @@ public struct WeeklyBudgetCalculatorContent: View {
             // never share a treatment (standing button rule).
             // Admin only — creating and tagging are admin-only
             // server-side.
+            // Owner, Nov 26, 2026: a bit more air around the
+            // buttons — the group carries 8pt extra vertical
+            // padding, so the gaps above and below it are ~20pt
+            // instead of the section's 12pt. The two buttons keep
+            // the section's 12pt gap between them.
             if viewModel.context.isAdmin {
-                Button {
-                    newExpense = RecurringExpense(
-                        id: UUID(),
-                        householdId: householdId,
-                        transactionId: nil,
-                        name: "",
-                        amountCents: 0,
-                        frequency: .monthly
-                    )
-                } label: {
-                    Label("Create a New Expense", systemImage: "plus")
+                VStack(alignment: .leading, spacing: 12) {
+                    Button {
+                        newExpense = RecurringExpense(
+                            id: UUID(),
+                            householdId: householdId,
+                            transactionId: nil,
+                            name: "",
+                            amountCents: 0,
+                            frequency: .monthly
+                        )
+                    } label: {
+                        Label("Create a New Expense", systemImage: "plus")
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityLabel("Create a new recurring expense")
+                    Button {
+                        showExpensePicker = true
+                    } label: {
+                        Label("Add Recurring Expense", systemImage: "plus.circle")
+                    }
+                    .buttonStyle(OutlineButtonStyle())
+                    .accessibilityLabel("Add recurring expense")
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .accessibilityLabel("Create a new recurring expense")
-                Button {
-                    showExpensePicker = true
-                } label: {
-                    Label("Add Recurring Expense", systemImage: "plus.circle")
-                }
-                .buttonStyle(OutlineButtonStyle())
-                .accessibilityLabel("Add recurring expense")
+                .padding(.vertical, 8)
             }
             calculatorTotalRow(value: MoneyFormat.formatCents(monthlyChargesCents))
         }
