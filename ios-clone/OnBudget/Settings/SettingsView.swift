@@ -295,10 +295,11 @@ private struct ReplayTutorialSettingsCard: View {
                 .font(.system(size: 15))
                 .foregroundStyle(DesignTokens.muted)
             // Build 54 (owner, Nov 21, 2026): the auto-show
-            // toggle — default OFF since build 73 (owner, Nov 24,
-            // 2026: "keep it off for now"), per device
-            // (UserDefaults, `hb-tour-auto-show`, same per-device
-            // UserDefaults pattern).
+            // toggle — default ON (reversed Nov 26, 2026; build
+            // 73 had turned it OFF, owner Nov 24, 2026: "keep it
+            // off for now"), per device (UserDefaults,
+            // `hb-tour-auto-show`, same per-device UserDefaults
+            // pattern).
             // When OFF, the tour never auto-shows on first Home
             // entry; the button below still replays it on demand.
             Toggle("Show on first open", isOn: $appState.tourAutoShow)

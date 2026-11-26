@@ -260,17 +260,20 @@ public final class AppViewModel: ObservableObject {
     /// entry to Home (build 54, owner Nov 21, 2026): a per-device
     /// preference (UserDefaults, not household data — each member
     /// picks on their own device), same pattern as `homeLayout`.
-    /// Default OFF (build 73, owner Nov 24, 2026 — "the tutorial
-    /// needs to be shut off"): a fresh install does NOT auto-show
-    /// the tour. When OFF, `maybeStartTour` never auto-starts
-    /// the tour; the "Replay Tutorial" row in Settings still
-    /// starts it on demand. The Settings screen offers the toggle,
-    /// inside the tour card.
+    /// Default ON (owner Nov 26, 2026 — reversing build 73, owner
+    /// Nov 24, 2026 — "the tutorial needs to be shut off"): a
+    /// fresh install auto-shows the tour. A stored `false` (the
+    /// user turned the toggle OFF in Settings) is still respected
+    /// and the tour never auto-shows on that device. When OFF,
+    /// `maybeStartTour` never auto-starts the tour; the "Replay
+    /// Tutorial" row in Settings still starts it on demand. The
+    /// Settings screen offers the toggle, inside the tour card.
     @Published public var tourAutoShow: Bool = {
         // UserDefaults bool(forKey:) returns false for a missing
-        // key, so read the stored object and default to false
-        // when absent — a fresh install does not auto-show the tour.
-        UserDefaults.standard.object(forKey: "hb-tour-auto-show") as? Bool ?? false
+        // key, so read the stored object and default to true
+        // when absent — a fresh install auto-shows the tour; an
+        // explicit stored false still turns it off.
+        UserDefaults.standard.object(forKey: "hb-tour-auto-show") as? Bool ?? true
     }() {
         didSet {
             UserDefaults.standard.set(tourAutoShow, forKey: "hb-tour-auto-show")

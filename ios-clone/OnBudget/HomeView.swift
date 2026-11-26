@@ -1145,8 +1145,9 @@ public struct HomeView: View {
     /// delay lets the user see Home first; the guards re-run after
     /// the delay, so navigating away in that window cancels the
     /// start. Build 54: the "Show on first open" toggle (default
-    /// ON, Settings → Replay Tutorial) gates the auto-start — when
-    /// OFF the tour never auto-shows, but replay still works.
+    /// ON — reversed Nov 26, 2026; build 73 had turned it OFF
+    /// Nov 24, 2026) gates the auto-start — when OFF the tour
+    /// never auto-shows, but replay still works.
     private func maybeStartTour() {
         let tour = appState.tour
         guard appState.tourAutoShow else { return }
