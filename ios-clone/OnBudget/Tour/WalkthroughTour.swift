@@ -273,7 +273,12 @@ public final class TourState: ObservableObject {
 /// SpendingAllowanceSection, pass nil when they have none).
 public struct TourAnchorModifier: ViewModifier {
     public let anchor: TourAnchor?
-    @ObservedObject public var tour: TourState?
+    /// Plain stored reference, NOT @ObservedObject: the modifier
+    /// only WRITES frames (setFrame) and never reads published
+    /// state, and @ObservedObject requires ObservableObject
+    /// conformance, which Optional does not have (compile error,
+    /// Nov 26, 2026 fix-up).
+    public let tour: TourState?
 
     public init(anchor: TourAnchor?, tour: TourState?) {
         self.anchor = anchor
