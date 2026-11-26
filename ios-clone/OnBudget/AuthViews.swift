@@ -872,20 +872,29 @@ public struct ResetPasswordView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(Color(hex: "#6b7280"))
                     if exchanging {
-                        // Labelled loader (audit A-P2-6): the bare
-                        // spinner said nothing about what was
-                        // happening. Back stays the exit. The
-                        // branded logo loader replaces ProgressView
-                        // app-wide (owner, Nov 14, 2026).
-                        VStack(spacing: 12) {
-                            // Build 74 (B6): the loader alone — the
-                            // "Checking your link…" line was the one
-                            // "Loading…" text left in Auth (the
-                            // branded ring already says it is working).
-                            BrandedLoader(size: 40)
+                        // Nov 26, 2026 (loading audit): while the
+                        // link is being checked the page showed a
+                        // short centred loader where the form
+                        // belongs, so the footer jumped down when
+                        // the two fields + Save button arrived.
+                        // The loading state is now skeleton blocks
+                        // shaped exactly like that form (label +
+                        // 48pt field, twice, then the Save button),
+                        // so the page holds its height until the
+                        // form renders — no spinner, no text.
+                        VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                SkeletonBlock(width: 110, height: 17, cornerRadius: 6)
+                                SkeletonBlock(width: nil, height: 48, cornerRadius: 12)
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                SkeletonBlock(width: 150, height: 17, cornerRadius: 6)
+                                SkeletonBlock(width: nil, height: 48, cornerRadius: 12)
+                            }
+                            SkeletonBlock(width: nil, height: 45, cornerRadius: 10)
+                                .padding(.top, 4)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
+                        .accessibilityLabel("Loading")
                     } else {
                         passwordField(label: "New Password", text: $newPassword, showing: $showNew)
                             .onChange(of: newPassword) { message = nil }

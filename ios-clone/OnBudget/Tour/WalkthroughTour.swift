@@ -373,9 +373,20 @@ public struct TourOverlayView: View {
     @ObservedObject var appState: AppViewModel
     var transactionsViewModel: TransactionsViewModel?
 
-    /// The tooltip card's measured height (140 is the first-frame
-    /// estimate; the GeometryReader below corrects it after layout).
+    /// The tooltip card's measured height (140 is the estimate
+    /// used before the first measurement; the preference below
+    /// reports the real height per step). Nov 26, 2026 (loading
+    /// audit): the card used to render at the 140 estimate on
+    /// first paint and then jump to the measured height — on
+    /// every step whose line wraps differently. The tooltip (and
+    /// its arrow) now stay hidden until the height for the
+    /// CURRENT step is measured (`measuredStepIndex`), so the
+    /// card only ever appears at its final position.
     @State private var cardHeight: CGFloat = 140
+    /// The step whose height `cardHeight` was measured for. Nil
+    /// until the first measurement; stale for one frame after a
+    /// step change, while the tooltip stays hidden.
+    @State private var measuredStepIndex: Int? = nil
 
     public init(tour: TourState, appState: AppViewModel, transactionsViewModel: TransactionsViewModel? = nil) {
         self.tour = tour
@@ -389,6 +400,15 @@ public struct TourOverlayView: View {
             let step = tour.currentStep
             let target = targetFrame(for: step, containerSize: size)
             let cardTop = cardTopY(containerSize: size, target: target, bottomInset: bottomInset(proxy: proxy))
+            // Nov 26, 2026 (loading audit): the tooltip + arrow
+            // render only once the card height for THIS step is
+            // measured — before that they would sit at the
+            // 140pt estimate's position and jump when the real
+            // height landed. One hidden frame, then the card
+            // appears at its final position; the dim + cutout
+            // (which do not depend on the card height) show at
+            // once, so the overlay never looks empty.
+            let tooltipReady = measuredStepIndex == tour.stepIndex
             // Build 54 (owner, Nov 21, 2026): the tooltip card is
             // capped at 600pt and centred — on iPad the uncapped
             // `size.width - 32` made a ~788pt (portrait) / ~1148pt
@@ -430,10 +450,23 @@ public struct TourOverlayView: View {
                             x: arrowX,
                             y: pointsUp ? cardTop - 5 : cardTop + cardHeight + 5
                         )
+                        .opacity(tooltipReady ? 1 : 0)
                 }
                 tooltipCard(step: step)
                     .frame(width: cardWidth)
                     .position(x: size.width / 2, y: cardTop + cardHeight / 2)
+                    .opacity(tooltipReady ? 1 : 0)
+            }
+            // The card height, reported per step (see
+            // TourCardHeightKey): the step rides along so a
+            // step change whose line wraps to the same height
+            // still re-marks the card ready — the height alone
+            // would not fire then, and the tooltip would stay
+            // hidden.
+            .onPreferenceChange(TourCardHeightKey.self) { value in
+                guard let value else { return }
+                cardHeight = value.height
+                measuredStepIndex = value.step
             }
         }
         .ignoresSafeArea()
@@ -553,10 +586,13 @@ public struct TourOverlayView: View {
         .background(
             GeometryReader { cardProxy in
                 Color.clear
-                    .onAppear { cardHeight = cardProxy.size.height }
-                    .onChange(of: cardProxy.size.height) { _, new in
-                        cardHeight = new
-                    }
+                    // Nov 26, 2026 (loading audit): report the
+                    // height together with the step it was
+                    // measured for — the overlay gates the
+                    // tooltip on the measurement for the CURRENT
+                    // step, so the card never renders at a stale
+                    // height and jumps (see TourCardHeightKey).
+                    .preference(key: TourCardHeightKey.self, value: (tour.stepIndex, cardProxy.size.height))
             }
         )
         .accessibilityIdentifier("tour.tooltip")
@@ -673,6 +709,21 @@ public struct TourOverlayView: View {
         if appState.selectedTab != .home {
             appState.selectedTab = .home
         }
+    }
+}
+
+/// The tooltip card's measured height, tagged with the step it
+/// was measured for (Nov 26, 2026 — loading audit). The overlay
+/// positions the card from the height, so the measurement must
+/// carry its step: on a step change the height alone may not
+/// change (two lines wrapping to the same height), and a bare
+/// height preference would not fire — leaving the tooltip hidden
+/// under the per-step readiness gate. The (step, height) tuple
+/// is Equatable, so the change fires on either half changing.
+private struct TourCardHeightKey: PreferenceKey {
+    static var defaultValue: (step: Int, height: CGFloat)? = nil
+    static func reduce(value: inout (step: Int, height: CGFloat)?, nextValue: () -> (step: Int, height: CGFloat)?) {
+        value = nextValue() ?? value
     }
 }
 
