@@ -59,6 +59,25 @@ public final class FundsViewModel: ObservableObject {
     /// AND !cardsReady, so the first card to load revealed
     /// immediately). The expanded detail is gated the same way.
     @Published public var cardsReady = false
+    /// Readiness flags for the supporting loads (owner loading
+    /// mandate, Nov 26, 2026): each flips true once its load has
+    /// resolved (success or failure — a failed read is an empty
+    /// list or an error, never a lingering skeleton), so the views
+    /// that read that data can show skeletons until it is known
+    /// instead of a false empty state that fills in after first
+    /// paint. `cardsReady` does NOT cover these: the page reveals
+    /// before they land, so a list opened in that window would
+    /// flash "No … yet" and then grow rows.
+    /// - expensesReady: the tagged recurring expenses.
+    /// - savingsReady: the past savings records.
+    /// - fundRequestsReady: the fund-request queue.
+    /// - calculatorDataReady: transactions + expenses + shared
+    ///   Calculator income together — everything the Weekly
+    ///   Budget Calculator and the tag-a-charge picker read.
+    @Published public var expensesReady = false
+    @Published public var savingsReady = false
+    @Published public var fundRequestsReady = false
+    @Published public var calculatorDataReady = false
     /// Which action is in flight (per-row busy state + double-tap guard).
     @Published public var busyAction: String?
     @Published public var toast: Toast?
@@ -378,6 +397,11 @@ public final class FundsViewModel: ObservableObject {
         await reviewLoad
         await merchantRulesLoad
         await expensesLoad
+        // The Calculator's three inputs (transactions first,
+        // income in the gate above, expenses just now) are all
+        // known — the Calculator and the tag picker can reveal
+        // at once instead of filling in row by row.
+        calculatorDataReady = true
     }
 
     /// Review-only refresh (build 30): the Review page lives on
@@ -411,6 +435,7 @@ public final class FundsViewModel: ObservableObject {
     /// than failing the page (the table may not exist yet on an
     /// old server; the load then throws and the list is empty).
     private func loadExpenses() async {
+        defer { expensesReady = true }
         do {
             expenses = try await context.client.postgrest.recurringExpenses(householdId: context.householdId)
         } catch {
@@ -530,6 +555,7 @@ public final class FundsViewModel: ObservableObject {
     }
 
     private func loadRequests() async {
+        defer { fundRequestsReady = true }
         do {
             fundRequests = try await context.client.postgrest.fundRequests(householdId: context.householdId)
             fundRequestsError = nil
@@ -540,6 +566,7 @@ public final class FundsViewModel: ObservableObject {
     }
 
     private func loadSavings() async {
+        defer { savingsReady = true }
         do {
             savings = try await context.client.postgrest.savingsLedger(householdId: context.householdId)
             savingsError = nil
@@ -1554,6 +1581,30 @@ public final class FundsViewModel: ObservableObject {
     public func ensureCalculatorIncomeLoaded() async {
         if let loadedAt = calculatorIncomeLoadedAt, Date().timeIntervalSince(loadedAt) < 60 { return }
         await loadCalculatorIncome()
+    }
+
+    /// Make sure the Calculator (and the tag-a-charge picker) has
+    /// everything it reads — transactions, recurring expenses and
+    /// the shared income — before it reveals. The Funds page's
+    /// `refresh()` loads all three, so a Calculator opened from
+    /// there returns at once; a Calculator opened from the Weekly
+    /// Budget sheet (Home) on a view model whose refresh is still
+    /// in flight loads them here instead of flashing "Nothing
+    /// added yet" / "No expenses yet" and then filling in. Once
+    /// ready it stays ready; later opens only refetch stale
+    /// income (see `ensureCalculatorIncomeLoaded`).
+    public func ensureCalculatorDataLoaded() async {
+        if calculatorDataReady {
+            await ensureCalculatorIncomeLoaded()
+            return
+        }
+        async let transactionsLoad: Void = loadTransactions()
+        async let expensesLoad: Void = loadExpenses()
+        async let incomeLoad: Void = loadCalculatorIncome()
+        await transactionsLoad
+        await expensesLoad
+        await incomeLoad
+        calculatorDataReady = true
     }
 
     /// Add one income source to the shared store (any household

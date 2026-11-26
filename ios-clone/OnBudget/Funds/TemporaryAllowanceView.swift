@@ -96,11 +96,13 @@ public struct TemporaryAllowanceView: View {
                     }
                 } else {
                     // Build 74 (B5): skeletons shaped like the
-                    // allowance field below, not "Loading…" text.
-                    VStack(alignment: .leading, spacing: 12) {
-                        SkeletonBlock(height: 20)
-                        SkeletonBlock(height: 48)
-                    }
+                    // preview line below, not "Loading…" text.
+                    // Loading mandate (owner, Nov 26, 2026): the
+                    // old 20+48 block stood in for a one-line
+                    // preview — the buttons jumped ~60pt when the
+                    // base loaded and the block was replaced by
+                    // one line (or nothing).
+                    SkeletonBlock(height: 20)
                 }
             } else if !previewText.isEmpty {
                 Text(previewText)

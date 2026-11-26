@@ -71,7 +71,15 @@ public struct ExpensesListView: View {
     /// transactions snapshot went stale and the picker opened
     /// empty). It also supplies the household id for a
     /// from-scratch expense.
-    public let viewModel: FundsViewModel
+    /// Loading mandate (owner, Nov 26, 2026): the LIST observes
+    /// it too now — the `expenses` snapshot below is captured
+    /// when the sheet presents, which can be before the
+    /// view model's refresh has finished its (supporting)
+    /// expenses load, so the list flashed "No expenses tagged
+    /// yet" with $0.00 totals and never updated. The list reads
+    /// `liveExpenses` below and shows skeletons until
+    /// `expensesReady`.
+    @ObservedObject public var viewModel: FundsViewModel
     /// Tag a charge as a new expense (build 77): the Funds view
     /// model's tagExpense, so the new row is the SAME row the
     /// list and the Calculator read.
@@ -115,21 +123,30 @@ public struct ExpensesListView: View {
         self.onSave = onSave
         self.onRemove = onRemove
         self.onClose = onClose
-        self.viewModel = viewModel
+        self._viewModel = ObservedObject(wrappedValue: viewModel)
         self.onTag = onTag
         self.onCreate = onCreate
+    }
+
+    /// The rows the list shows: the view model's LIVE expenses
+    /// (see the viewModel note above), never the presentation-time
+    /// snapshot — the snapshot can predate the expenses load, and
+    /// a stale list would never catch up while open. Once loaded
+    /// the two are the same rows.
+    private var displayedExpenses: [RecurringExpense] {
+        viewModel.liveExpenses
     }
 
     /// The monthly cost of all the expenses together — the figure
     /// the Calculator subtracts from income.
     private var monthlyTotalCents: Int {
-        expenses.reduce(0) { $0 + $1.monthlyCents }
+        displayedExpenses.reduce(0) { $0 + $1.monthlyCents }
     }
 
     /// The weekly cost — the monthly total spread over the year's
     /// 52 weeks (monthly × 12/52), before the Calculator's holdback.
     private var weeklyTotalCents: Int {
-        expenses.reduce(0) { $0 + $1.weeklyCents }
+        displayedExpenses.reduce(0) { $0 + $1.weeklyCents }
     }
 
     public var body: some View {
@@ -161,35 +178,21 @@ public struct ExpensesListView: View {
                     }
                     // Summary card: the monthly total the Calculator
                     // subtracts, and what it works out to per week.
-                    VStack(spacing: 0) {
-                        summaryRow(label: "Monthly Total", value: MoneyFormat.formatCents(monthlyTotalCents))
-                        SheetActionDivider()
-                        summaryRow(label: "Weekly Impact", value: "About \(MoneyFormat.formatCents(weeklyTotalCents))/wk")
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
-                    )
-                    .fundCardShadow()
-                    if expenses.isEmpty {
-                        Text("No expenses tagged yet — tag a transaction as an Expense from its Actions to add one.")
-                            .font(.system(size: 15))
-                            .foregroundStyle(DesignTokens.muted)
+                    // Loading mandate (owner, Nov 26, 2026): until
+                    // `expensesReady` the summary and the rows are
+                    // skeletons, never a $0.00 summary with a false
+                    // "No expenses tagged yet" that fills in after
+                    // first paint (see displayedExpenses).
+                    if !viewModel.expensesReady {
+                        expensesListSkeleton
                     } else {
                         VStack(spacing: 0) {
-                            ForEach(expenses) { expense in
-                                expenseRow(expense)
-                                if expense.id != expenses.last?.id {
-                                    SheetActionDivider()
-                                }
-                            }
+                            summaryRow(label: "Monthly Total", value: MoneyFormat.formatCents(monthlyTotalCents))
+                            SheetActionDivider()
+                            summaryRow(label: "Weekly Impact", value: "About \(MoneyFormat.formatCents(weeklyTotalCents))/wk")
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 16)
                         .background(Color.white)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
@@ -197,6 +200,29 @@ public struct ExpensesListView: View {
                                 .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                         )
                         .fundCardShadow()
+                        if displayedExpenses.isEmpty {
+                            Text("No expenses tagged yet — tag a transaction as an Expense from its Actions to add one.")
+                                .font(.system(size: 15))
+                                .foregroundStyle(DesignTokens.muted)
+                        } else {
+                            VStack(spacing: 0) {
+                                ForEach(displayedExpenses) { expense in
+                                    expenseRow(expense)
+                                    if expense.id != displayedExpenses.last?.id {
+                                        SheetActionDivider()
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                            )
+                            .fundCardShadow()
+                        }
                     }
                     // Nov 26, 2026 (owner — ExpensesListView
                     // flip, matching item 20's Calculator flip):
@@ -241,6 +267,14 @@ public struct ExpensesListView: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
+        // Loading mandate (owner, Nov 26, 2026): make sure the
+        // expenses (and the transactions the tag picker reads)
+        // are loaded before the list reveals — a list opened
+        // from the Weekly Budget sheet can beat its view model's
+        // refresh, so the load is triggered here too.
+        .task {
+            await viewModel.ensureCalculatorDataLoaded()
+        }
         .alert("Recurring Expenses", isPresented: $showAboutInfo) {
             Button("OK") {}
         } message: {
@@ -295,6 +329,63 @@ public struct ExpensesListView: View {
                 onClose: { newExpense = nil },
                 isNew: true
             )
+        }
+    }
+
+    /// The loading skeleton (owner, Nov 26, 2026): the summary
+    /// card (two rows) plus three expense rows, in the same card
+    /// chrome — see the body. The row count varies once loaded,
+    /// so three rows is the common shape, not an exact height.
+    private var expensesListSkeleton: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(spacing: 0) {
+                HStack {
+                    SkeletonBlock(width: 110, height: 16)
+                    Spacer()
+                    SkeletonBlock(width: 80, height: 16)
+                }
+                .padding(.vertical, 10)
+                SheetActionDivider()
+                HStack {
+                    SkeletonBlock(width: 110, height: 16)
+                    Spacer()
+                    SkeletonBlock(width: 80, height: 16)
+                }
+                .padding(.vertical, 10)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            .fundCardShadow()
+            VStack(spacing: 0) {
+                ForEach(0..<3, id: \.self) { index in
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            SkeletonBlock(width: 140, height: 16)
+                        }
+                        Spacer()
+                        SkeletonBlock(width: 90, height: 16)
+                    }
+                    .padding(.vertical, 10)
+                    if index < 2 {
+                        SheetActionDivider()
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+            )
+            .fundCardShadow()
         }
     }
 
@@ -686,12 +777,19 @@ public struct ExpenseTagPickerSheet: View {
             .padding(14)
             .background(Color(hex: "#f3f4f6"))
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            if viewModel.isLoading || cachedCandidates == nil {
+            if !viewModel.calculatorDataReady || cachedCandidates == nil {
                 // Still loading — or still computing the list
                 // (owner, Nov 25, 2026): skeleton rows shaped
                 // like the charge rows (icon + two text lines),
                 // never a spinner, "Loading…" or a premature
                 // "No charges" empty state.
+                // Loading mandate (owner, Nov 26, 2026): the gate
+                // is the data being ready, NOT `viewModel.isLoading`
+                // — a background refresh (tagging an expense runs
+                // one) used to blank this open picker back to
+                // skeletons mid-use, even though the cached list
+                // was still good. `calculatorDataReady` only flips
+                // once the transactions are actually in.
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(0..<6, id: \.self) { _ in
@@ -783,6 +881,13 @@ public struct ExpenseTagPickerSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
+        // Loading mandate (owner, Nov 26, 2026): make sure the
+        // transactions are loaded before the list reveals — a
+        // picker opened from the Expenses list can beat its view
+        // model's refresh, so the load is triggered here too.
+        .task {
+            await viewModel.ensureCalculatorDataLoaded()
+        }
         // Compute the candidate list once, off the main thread
         // (see cachedCandidates): the sheet is already up with
         // skeletons by the time this lands. Re-runs when the
@@ -800,8 +905,10 @@ public struct ExpenseTagPickerSheet: View {
     }
 
     /// A skeleton row shaped like a charge row (build 78): a
-    /// 40pt icon tile + two text lines + an amount, in skeleton
-    /// grey.
+    /// 40pt icon tile + two text lines + a date + an amount, in
+    /// skeleton grey. Loading mandate (owner, Nov 26, 2026): the
+    /// date block was missing, so the amount sat further left
+    /// than in a real row while loading.
     private var skeletonRow: some View {
         HStack(spacing: 10) {
             SkeletonBlock(width: 40, height: 40)
@@ -810,6 +917,7 @@ public struct ExpenseTagPickerSheet: View {
                 SkeletonBlock(width: 90, height: 12)
             }
             Spacer()
+            SkeletonBlock(width: 44, height: 12)
             SkeletonBlock(width: 56, height: 14)
         }
         .padding(.vertical, 10)

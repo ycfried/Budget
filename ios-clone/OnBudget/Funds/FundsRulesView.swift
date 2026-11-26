@@ -138,11 +138,11 @@ public struct CharityRateSection: View {
                     FundsErrorBox(error)
                 } else {
                     // Build 74 (B5): skeletons shaped like the
-                    // rate editor below — a label line + a 48pt
+                    // rate editor below — a label line + a 52pt
                     // field — not "Loading…" text.
                     VStack(alignment: .leading, spacing: 12) {
                         SkeletonBlock(height: 20)
-                        SkeletonBlock(height: 48)
+                        SkeletonBlock(height: 52)
                     }
                 }
             } else if isAdmin {
@@ -429,11 +429,11 @@ public struct DebtRuleSection: View {
                     FundsErrorBox(error)
                 } else {
                     // Build 74 (B5): skeletons shaped like the
-                    // rule editor below — a label line + a 48pt
+                    // rule editor below — a label line + a 52pt
                     // field — not "Loading…" text.
                     VStack(alignment: .leading, spacing: 12) {
                         SkeletonBlock(height: 20)
-                        SkeletonBlock(height: 48)
+                        SkeletonBlock(height: 52)
                     }
                 }
             } else if isAdmin {
@@ -714,9 +714,12 @@ public struct SpendingAllowanceSection: View {
             } else {
                 // Build 74 (B5): skeletons shaped like the
                 // allowance field below, not "Loading…" text.
+                // Loading mandate (owner, Nov 26, 2026): the field
+                // block is 52pt, like the real field — the old
+                // 48pt block left a 4pt jump on reveal.
                 VStack(alignment: .leading, spacing: 12) {
                     SkeletonBlock(height: 20)
-                    SkeletonBlock(height: 48)
+                    SkeletonBlock(height: 52)
                 }
             }
         }
@@ -1164,6 +1167,31 @@ public struct AdjustWeeklyBudgetSheet: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
                 )
+            } else if let error = viewModel.allowanceError ?? viewModel.debtError {
+                FundsErrorBox(error)
+            } else {
+                // Loading mandate (owner, Nov 26, 2026): the card
+                // holds its space while the total loads — the old
+                // bare `if let` left the sheet without it, so the
+                // mode slider, fields and button all jumped down
+                // a card-height when the total landed. Shaped like
+                // the no-temporary-total card (label + amount row
+                // in the same bordered card); see the report for
+                // the temporary-total case.
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        SkeletonBlock(width: 110, height: 16)
+                        Spacer()
+                        SkeletonBlock(width: 90, height: 24)
+                    }
+                }
+                .padding(16)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
             }
             // The mode slider (the build-69 unified slider), with
             // the mode's description behind an ⓘ — the standing
@@ -1224,11 +1252,13 @@ public struct AdjustWeeklyBudgetSheet: View {
                         FundsErrorBox(allowanceError)
                     } else {
                         // Build 74 (B5): skeletons shaped like the
-                        // allowance field below, not "Loading…" text.
-                        VStack(alignment: .leading, spacing: 12) {
-                            SkeletonBlock(height: 20)
-                            SkeletonBlock(height: 48)
-                        }
+                        // preview line below, not "Loading…" text.
+                        // Loading mandate (owner, Nov 26, 2026):
+                        // the old 20+48 block stood in for a one-
+                        // line preview — the sheet jumped ~60pt
+                        // when the base loaded and the block was
+                        // replaced by one line (or nothing).
+                        SkeletonBlock(height: 20)
                     }
                 } else if !previewText.isEmpty {
                     // Dynamic feedback, not an explainer — it

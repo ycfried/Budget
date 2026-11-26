@@ -245,6 +245,14 @@ public struct FundsView: View {
     public init(context: FundsContext, appState: AppViewModel) {
         self.appState = appState
         self._viewModel = StateObject(wrappedValue: FundsViewModel(context: context))
+        // Loading mandate (owner, Nov 26, 2026): the stored order
+        // loads HERE, synchronously, so the first paint already
+        // shows the user's order — the old `.task { loadFundOrder() }`
+        // painted the default order first and then re-sorted the
+        // cards once the stored order landed, so the cards visibly
+        // jumped. UserDefaults is synchronous, so there is no
+        // loading state to gate on.
+        self._fundOrder = State(initialValue: Self.storedFundOrder(householdId: context.householdId))
     }
 
     /// The shared view model, for Review (same data, one refresh).
@@ -401,7 +409,6 @@ public struct FundsView: View {
             // source as the views — synced here and on every rename
             // below.
             viewModel.fundNames = appState.fundNames
-            loadFundOrder()
             await viewModel.refresh()
         }
         .onChange(of: appState.fundNames) { _, names in
@@ -447,16 +454,18 @@ public struct FundsView: View {
     /// The user's fund order, per household (build 30): Spending,
     /// Extra Fund, Charity, Carried Debt by default; a stored order
     /// with anything missing or extra is ignored, not repaired
-    /// into a wrong order.
-    private var fundOrderKey: String {
-        "hb-fund-order-\(viewModel.context.householdId.uuidString)"
+    /// into a wrong order. Read synchronously in `init` (see there)
+    /// so the first paint already shows it.
+    private static func storedFundOrder(householdId: UUID) -> [FundSectionID] {
+        let key = "hb-fund-order-\(householdId.uuidString)"
+        guard let raw = UserDefaults.standard.array(forKey: key) as? [String] else { return FundSectionID.defaultOrder }
+        let ids = raw.compactMap { FundSectionID(rawValue: $0) }
+        guard Set(ids) == Set(FundSectionID.allCases), ids.count == FundSectionID.allCases.count else { return FundSectionID.defaultOrder }
+        return ids
     }
 
-    private func loadFundOrder() {
-        guard let raw = UserDefaults.standard.array(forKey: fundOrderKey) as? [String] else { return }
-        let ids = raw.compactMap { FundSectionID(rawValue: $0) }
-        guard Set(ids) == Set(FundSectionID.allCases), ids.count == FundSectionID.allCases.count else { return }
-        fundOrder = ids
+    private var fundOrderKey: String {
+        "hb-fund-order-\(viewModel.context.householdId.uuidString)"
     }
 
     private func saveFundOrder() {
@@ -532,6 +541,15 @@ public struct FundsView: View {
                     }
                     if let summary = viewModel.fundSummary {
                         FundsBreakdownRow("Available in \(FundSectionID.fund.displayName(customNames: appState.fundNames))", value: MoneyFormat.formatCents(summary.availableCents), isNegative: summary.availableCents < 0)
+                    } else if let error = viewModel.fundError {
+                        FundsErrorBox(error)
+                    } else {
+                        // Loading mandate (owner, Nov 26, 2026):
+                        // the row below must hold its space — the
+                        // old bare `if let` left the strip one row
+                        // short until the fund summary landed, so
+                        // the form below it jumped down a row.
+                        SkeletonBlock(width: 200, height: 20)
                     }
                 }
             }
@@ -1510,6 +1528,16 @@ public struct RemoveFromSavingsSheet: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("How the amount is taken")
                 }
+            } else if viewModel.fundError == nil {
+                // Loading mandate (owner, Nov 26, 2026): the
+                // figures line holds its row while the fund
+                // summary loads — the old bare `if let` left the
+                // sheet without it, so the field, note and button
+                // all jumped down a row when the figures landed.
+                // A failed load shows nothing here (the remove
+                // still validates server-side); the error surfaces
+                // on the Funds page behind the sheet.
+                SkeletonBlock(width: 260, height: 28)
             }
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
             FundsTextField("Note", text: $noteText)
@@ -1649,10 +1677,43 @@ public struct SavingsSection: View {
         }
     }
 
+    /// The loading skeleton (owner, Nov 26, 2026): breakdown
+    /// rows shaped like the Balance / Transferred In / Withdrawn
+    /// / Interest rows, plus two record rows — see the body.
+    private var savingsSkeleton: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(0..<4, id: \.self) { _ in
+                HStack {
+                    SkeletonBlock(width: 130, height: 16)
+                    Spacer()
+                    SkeletonBlock(width: 80, height: 16)
+                }
+            }
+            Divider()
+            ForEach(0..<2, id: \.self) { _ in
+                HStack(spacing: 4) {
+                    SkeletonBlock(width: 120, height: 16)
+                    Spacer()
+                    SkeletonBlock(width: 80, height: 16)
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let error = viewModel.savingsError {
                 FundsErrorBox(error)
+            } else if !viewModel.savingsReady {
+                // Loading mandate (owner, Nov 26, 2026): the
+                // savings ledger is a supporting load, not in the
+                // page gate — the Activity section can open before
+                // it lands, and the old body flashed "No past
+                // savings records." and then grew four summary
+                // rows plus the records. Skeletons shaped like the
+                // summary rows + records hold the space until then.
+                savingsSkeleton
             } else if viewModel.savings.isEmpty {
                 FundsMuted("No past savings records.")
             } else {
@@ -2432,6 +2493,26 @@ public struct WeeklyBudgetCalculatorContent: View {
         self.householdId = householdId
         self.charityName = charityName
         self._viewModel = ObservedObject(wrappedValue: viewModel)
+        // Loading mandate (owner, Nov 26, 2026): the stored
+        // inputs load HERE, synchronously, so the first paint
+        // already shows them — the old `load()` in `onAppear`
+        // painted the defaults first (Regular, household of 1,
+        // empty charity $) and then swapped in the saved values,
+        // so the fields, the preset highlight and the suggested
+        // total all visibly changed after the sheet opened.
+        // UserDefaults is synchronous, so there is no loading
+        // state to gate on; `load()` below stays as a no-op guard.
+        let defaults = UserDefaults.standard
+        let prefix = "hb-budget-calc-\(householdId.uuidString)-"
+        self._charityText = State(initialValue: defaults.string(forKey: prefix + "charity") ?? "")
+        if let raw = defaults.string(forKey: prefix + "lifestyle"),
+           let saved = LifestyleHoldback(rawValue: raw) {
+            self._lifestyle = State(initialValue: saved)
+        }
+        self._customHoldbackText = State(initialValue: defaults.string(forKey: prefix + "custom-holdback") ?? "")
+        let size = defaults.integer(forKey: prefix + "household-size")
+        if size >= 1 { self._householdSize = State(initialValue: size) }
+        self._didLoad = State(initialValue: true)
     }
 
     // MARK: - Local persistence (per household, no server)
@@ -2564,23 +2645,38 @@ public struct WeeklyBudgetCalculatorContent: View {
         // content), and the sections have 20pt between them
         // (was 16) so each header stands apart from the previous
         // section's content. Row labels stay 15pt semibold.
+        //
+        // Loading mandate (owner, Nov 26, 2026): the sections
+        // read income and expenses from the view model, and both
+        // arrive after the sheet opens when the view model's
+        // refresh is still in flight (the Weekly Budget sheet on
+        // Home, or a fast tap on Funds) — the old body rendered
+        // "Nothing added yet" / "No expenses yet" with a $0.00
+        // suggestion, then the rows popped in and the total
+        // changed. Until `calculatorDataReady` the sheet shows
+        // skeletons shaped like the sections, and reveals the
+        // whole Calculator at once when the data lands.
         VStack(alignment: .leading, spacing: 20) {
-            suggestionBlock
-            Divider()
-            // Build 77 (owner, Nov 25, 2026): Lifestyle +
-            // Household Size sit at the TOP, above Expected
-            // Income / Recurring Expenses — income and expenses
-            // come later. Order only; values and behaviour
-            // unchanged.
-            lifestyleSection
-            Divider()
-            householdSizeSection
-            Divider()
-            incomeSection
-            Divider()
-            chargesSection
-            Divider()
-            charitySection
+            if viewModel.calculatorDataReady {
+                suggestionBlock
+                Divider()
+                // Build 77 (owner, Nov 25, 2026): Lifestyle +
+                // Household Size sit at the TOP, above Expected
+                // Income / Recurring Expenses — income and expenses
+                // come later. Order only; values and behaviour
+                // unchanged.
+                lifestyleSection
+                Divider()
+                householdSizeSection
+                Divider()
+                incomeSection
+                Divider()
+                chargesSection
+                Divider()
+                charitySection
+            } else {
+                calculatorSkeleton
+            }
         }
         .accessibilityIdentifier("funds.weeklyBudgetCalculator")
         .onAppear {
@@ -2588,7 +2684,10 @@ public struct WeeklyBudgetCalculatorContent: View {
             // Build 69: refresh the shared income on open (only
             // when stale — the view model throttles to 60s), so a
             // member always sees another member's latest entries.
-            Task { await viewModel.ensureCalculatorIncomeLoaded() }
+            // Loading mandate (owner, Nov 26, 2026): the expenses
+            // and transactions ride along — the Calculator needs
+            // all three before it reveals (see above).
+            Task { await viewModel.ensureCalculatorDataLoaded() }
         }
         .onChange(of: charityText) { _, _ in save() }
         .onChange(of: lifestyle) { _, _ in save() }
@@ -2598,6 +2697,52 @@ public struct WeeklyBudgetCalculatorContent: View {
             Button("OK") {}
         } message: {
             Text("Monthly income, minus expected charity, minus recurring charges, spread over the year's 52 weeks — then the lifestyle holdback is kept back. Household size shows the suggestion per person. This only suggests a weekly budget — your weekly allowance does not change. Income is shared with your household; the other entries save on this device automatically.")
+        }
+    }
+
+    /// The loading skeleton (owner, Nov 26, 2026): the same
+    /// sections, in the same order and spacing, as skeleton
+    /// blocks — the suggestion (title + big amount + muted
+    /// line), then each section's header + rows + total — so
+    /// the sheet holds its shape until the data lands and the
+    /// whole Calculator reveals at once. The row counts vary
+    /// once loaded (one household has no income rows, another
+    /// has five), so the skeleton carries two rows per list —
+    /// the common shape, not an exact height.
+    private var calculatorSkeleton: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
+                SkeletonBlock(width: 220, height: 22)
+                SkeletonBlock(width: 160, height: 36)
+                SkeletonBlock(width: 260, height: 16)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 12) {
+                SkeletonBlock(width: 120, height: 22)
+                SkeletonBlock(height: 52)
+            }
+            Divider()
+            SkeletonBlock(width: 200, height: 22)
+            Divider()
+            VStack(alignment: .leading, spacing: 12) {
+                SkeletonBlock(width: 160, height: 22)
+                SkeletonBlock(height: 20)
+                SkeletonBlock(height: 20)
+                SkeletonBlock(width: 140, height: 22)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 12) {
+                SkeletonBlock(width: 180, height: 22)
+                SkeletonBlock(height: 20)
+                SkeletonBlock(height: 20)
+                SkeletonBlock(width: 140, height: 22)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 12) {
+                SkeletonBlock(width: 160, height: 22)
+                SkeletonBlock(height: 52)
+                SkeletonBlock(height: 48)
+            }
         }
     }
 

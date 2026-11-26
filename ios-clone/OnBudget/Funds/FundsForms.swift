@@ -483,7 +483,19 @@ public struct DebtManagementSheet: View {
                 } else if let error = viewModel.debtError {
                     FundsErrorBox(error)
                 } else {
-                    SkeletonBlock(width: 200, height: 16)
+                    // Loading mandate (owner, Nov 26, 2026): the
+                    // old single 200x16 block stood in for the
+                    // whole form (mode picker + amount field +
+                    // slider + note + confirm), so the form jumped
+                    // from one thin line to full height when the
+                    // debt loaded. Skeletons shaped like the form
+                    // hold its space instead.
+                    VStack(alignment: .leading, spacing: 12) {
+                        SkeletonBlock(height: 52)
+                        SkeletonBlock(height: 52)
+                        SkeletonBlock(height: 48)
+                        SkeletonBlock(height: 56, cornerRadius: 10)
+                    }
                 }
             }
         }
@@ -613,6 +625,24 @@ public struct FundRequestQueue: View {
                 FundsHeading("Fund Requests")
                 if let error = viewModel.fundRequestsError {
                     FundsErrorBox(error)
+                } else if !viewModel.fundRequestsReady {
+                    // Loading mandate (owner, Nov 26, 2026): the
+                    // requests are a supporting load, not in the
+                    // page gate — the Ask form can open before
+                    // they land, and the old body flashed "No fund
+                    // requests yet." and then grew rows. Skeleton
+                    // rows shaped like request rows hold the space.
+                    ForEach(0..<3, id: \.self) { index in
+                        HStack {
+                            SkeletonBlock(width: 200, height: 16)
+                            Spacer()
+                            SkeletonBlock(width: 24, height: 16)
+                        }
+                        .padding(.vertical, 6)
+                        if index < 2 {
+                            Divider()
+                        }
+                    }
                 } else if viewModel.fundRequests.isEmpty {
                     FundsMuted("No fund requests yet.")
                 } else {

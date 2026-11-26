@@ -101,8 +101,24 @@ public struct CharityIncomeForm: View {
                 // needs, since the Rate field reads "blank =
                 // default".
                 HStack(spacing: 6) {
-                    Text("Current default rate: \(MoneyFormat.formatRateBp(defaultRateBp))%.")
-                        .font(.system(size: 15))
+                    // Loading mandate (owner, Nov 26, 2026): the
+                    // rate reads from the charity settings, which
+                    // can still be loading when this form opens
+                    // from the + Add flow (its view model refreshes
+                    // on appear) — the old row printed the 10%
+                    // fallback as if it were the rate, then changed
+                    // when the settings landed, and the preview
+                    // below changed with it. Until the first load
+                    // finishes (`cardsReady`) the row is a skeleton
+                    // shaped like it; a household with genuinely
+                    // no settings row still reads the fallback
+                    // after the load, never a skeleton forever.
+                    if viewModel.charitySettings == nil, !viewModel.cardsReady {
+                        SkeletonBlock(width: 220, height: 20)
+                    } else {
+                        Text("Current default rate: \(MoneyFormat.formatRateBp(defaultRateBp))%.")
+                            .font(.system(size: 15))
+                    }
                     Button(action: { showingRateInfo = true }) {
                         Image(systemName: "info.circle")
                             .font(.system(size: 14, weight: .semibold))
@@ -169,9 +185,20 @@ public struct CharityIncomeForm: View {
                         showNoteField = true
                     }
                 }
-                Text(previewText)
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "#6b7280"))
+                // Loading mandate (owner, Nov 26, 2026): the
+                // commits figure derives from the default rate,
+                // so while the settings are still loading (see the
+                // rate row above) it is a skeleton, not a figure
+                // computed at the 10% fallback that then changes.
+                // With no amount typed the line is static text and
+                // needs no skeleton.
+                if let cents = amountCents, cents > 0, viewModel.charitySettings == nil, !viewModel.cardsReady {
+                    SkeletonBlock(width: 260, height: 18)
+                } else {
+                    Text(previewText)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                }
                 if let fieldError {
                     FundsErrorBox(fieldError)
                 }
@@ -487,6 +514,15 @@ public struct TzedakaActionSheet: View {
                 Text("Current Balance: \(MoneyFormat.formatCents(availableCents)).")
                     .font(.system(size: 15))
                     .foregroundStyle(DesignTokens.ink)
+            } else if viewModel.charityError == nil {
+                // Loading mandate (owner, Nov 26, 2026): the
+                // balance line holds its row while the charity
+                // summary loads — the old bare `if let` left the
+                // fitted sheet without it, so the field, note and
+                // button all jumped down a row when the balance
+                // landed. A failed load shows nothing here (the
+                // over-available check is skipped then, as before).
+                SkeletonBlock(width: 220, height: 20)
             }
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 52)
             // Build 78 (owner, Nov 25, 2026): the Note field
