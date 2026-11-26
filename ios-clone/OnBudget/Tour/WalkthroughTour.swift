@@ -592,7 +592,7 @@ public struct TourOverlayView: View {
                     // tooltip on the measurement for the CURRENT
                     // step, so the card never renders at a stale
                     // height and jumps (see TourCardHeightKey).
-                    .preference(key: TourCardHeightKey.self, value: (tour.stepIndex, cardProxy.size.height))
+                    .preference(key: TourCardHeightKey.self, value: TourCardHeight(step: tour.stepIndex, height: cardProxy.size.height))
             }
         )
         .accessibilityIdentifier("tour.tooltip")
@@ -718,11 +718,18 @@ public struct TourOverlayView: View {
 /// carry its step: on a step change the height alone may not
 /// change (two lines wrapping to the same height), and a bare
 /// height preference would not fire — leaving the tooltip hidden
-/// under the per-step readiness gate. The (step, height) tuple
-/// is Equatable, so the change fires on either half changing.
+/// under the per-step readiness gate. A small struct (not a
+/// tuple) because a tuple cannot satisfy PreferenceKey's
+/// Equatable Value requirement here — the change fires when
+/// either half changes.
+private struct TourCardHeight: Equatable {
+    let step: Int
+    let height: CGFloat
+}
+
 private struct TourCardHeightKey: PreferenceKey {
-    static var defaultValue: (step: Int, height: CGFloat)? = nil
-    static func reduce(value: inout (step: Int, height: CGFloat)?, nextValue: () -> (step: Int, height: CGFloat)?) {
+    static var defaultValue: TourCardHeight? = nil
+    static func reduce(value: inout TourCardHeight?, nextValue: () -> TourCardHeight?) {
         value = nextValue() ?? value
     }
 }
