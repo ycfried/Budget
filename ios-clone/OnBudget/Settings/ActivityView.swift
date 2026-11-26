@@ -292,15 +292,12 @@ struct ActivityView: View {
                 )
 
                 if viewModel.isLoading && viewModel.groups.isEmpty {
-                    // Branded logo loader, centred (owner, Nov 14,
-                    // 2026 — the bare spinner sat top-left under
-                    // the Filter card). No ProgressView remains.
-                    HStack {
-                        Spacer()
-                        BrandedLoader()
-                        Spacer()
-                    }
-                    .padding(.top, 24)
+                    // Build 99 (loading audit): skeletons shaped
+                    // like the day groups below (heading + rows),
+                    // not the centred logo loader — the list swaps
+                    // in place under the filter card, so nothing
+                    // moves when the entries land.
+                    activityLoadingSkeleton
                 } else if let error = viewModel.loadError {
                     DismissableErrorBox(error) { viewModel.loadError = nil }
                 } else if viewModel.groups.isEmpty {
@@ -325,21 +322,65 @@ struct ActivityView: View {
         .task { await viewModel.load() }
     }
 
+    /// Build 99 (loading audit): skeleton of the activity list
+    /// while the first load runs — two day groups, each a heading
+    /// line plus three rows shaped like the loaded rows (muted
+    /// dot + bold title + detail + time), so the entries swap in
+    /// place under the filter card.
+    private var activityLoadingSkeleton: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(0..<2, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 140, height: 20)
+                    ForEach(0..<3, id: \.self) { _ in
+                        HStack(alignment: .top, spacing: 10) {
+                            SkeletonBlock(width: 10, height: 10, cornerRadius: 5)
+                                .padding(.top, 6)
+                            VStack(alignment: .leading, spacing: 2) {
+                                SkeletonBlock(width: 220, height: 18)
+                                SkeletonBlock(width: 160, height: 18)
+                                SkeletonBlock(width: 100, height: 18)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityLabel("Loading activity")
+    }
+
     /// Type filter (owner, Nov 12 2026): a horizontal chip row
     /// under the title — "All" first and selected by default, then
     /// one chip per type actually present in the log. Single-select
     /// only; combines with the date-range filter. Squarish chips,
     /// never round pills: selected is brand-blue fill with white
     /// text, unselected is a white chip with a light outline.
+    @ViewBuilder
     private var typeFilterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                typeChip(label: "All", selected: viewModel.selectedType == nil) {
-                    Task { await viewModel.selectType(nil) }
+        // Build 99 (loading audit): while the first load is still
+        // running the chip row is skeleton chips in the same slot
+        // — the real chips derive from the loaded log, so "All"
+        // alone showed first and the type chips then popped in,
+        // pushing the date filter card down.
+        if viewModel.isLoading && viewModel.groups.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    SkeletonBlock(width: 48, height: 34, cornerRadius: 8)
+                    SkeletonBlock(width: 76, height: 34, cornerRadius: 8)
+                    SkeletonBlock(width: 64, height: 34, cornerRadius: 8)
                 }
-                ForEach(viewModel.availableTypes, id: \.self) { type in
-                    typeChip(label: type.label, selected: viewModel.selectedType == type) {
-                        Task { await viewModel.selectType(type) }
+            }
+            .accessibilityLabel("Loading activity filters")
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    typeChip(label: "All", selected: viewModel.selectedType == nil) {
+                        Task { await viewModel.selectType(nil) }
+                    }
+                    ForEach(viewModel.availableTypes, id: \.self) { type in
+                        typeChip(label: type.label, selected: viewModel.selectedType == type) {
+                            Task { await viewModel.selectType(type) }
+                        }
                     }
                 }
             }

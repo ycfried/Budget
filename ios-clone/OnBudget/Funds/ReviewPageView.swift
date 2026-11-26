@@ -13,6 +13,12 @@ import OnBudgetKit
 public struct ReviewPageView: View {
     @ObservedObject public var viewModel: FundsViewModel
     public let onBack: () -> Void
+    /// Build 99 (loading audit, owner Nov 26, 2026): false until
+    /// this push's `refreshReview` returns — the view model
+    /// starts with empty arrays, so the page must not render
+    /// ReviewView at once (it would paint the "All clear" card
+    /// and then swap in the real sections once the fetch lands).
+    @State private var reviewReady = false
 
     public init(viewModel: FundsViewModel, onBack: @escaping () -> Void) {
         self.viewModel = viewModel
@@ -51,7 +57,14 @@ public struct ReviewPageView: View {
                 // paragraph at the top is gone — it was a wall of
                 // text above an already long page. What it said
                 // lives as one short muted line at the bottom.
-                ReviewView(viewModel: viewModel)
+                // Build 99 (loading audit): skeletons until this
+                // push's review fetch has resolved — see
+                // `reviewReady` above.
+                if reviewReady {
+                    ReviewView(viewModel: viewModel)
+                } else {
+                    ReviewPageSkeleton()
+                }
                 FundsMuted("Nothing here deletes a transaction.")
             }
             .padding()
@@ -71,6 +84,58 @@ public struct ReviewPageView: View {
         }
         .task {
             await viewModel.refreshReview()
+            reviewReady = true
         }
+    }
+}
+
+/// Build 99 (loading audit): skeleton of the Review page while
+/// `refreshReview` runs — four section cards shaped like the
+/// loaded sections (white card, icon + title header, content
+/// lines; the first card carries the duplicate comparison box
+/// with its two buttons), so the page never first paints the
+/// "All clear" card and then swaps in the real sections once
+/// the fetch lands.
+private struct ReviewPageSkeleton: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            ForEach(0..<4, id: \.self) { index in
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        SkeletonBlock(width: 16, height: 16, cornerRadius: 8)
+                        SkeletonBlock(width: 150, height: 17)
+                        Spacer()
+                        SkeletonBlock(width: 24, height: 14)
+                    }
+                    if index == 0 {
+                        // The duplicate comparison card: a grey
+                        // inner box with two text lines and two
+                        // button-sized blocks.
+                        VStack(alignment: .leading, spacing: 8) {
+                            SkeletonBlock(width: 220, height: 14)
+                            SkeletonBlock(width: 180, height: 14)
+                            HStack(spacing: 12) {
+                                SkeletonBlock(width: 110, height: 32, cornerRadius: 8)
+                                SkeletonBlock(width: 90, height: 32, cornerRadius: 8)
+                            }
+                        }
+                        .padding(12)
+                        .background(Color(hex: "#f9fafb"))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    } else {
+                        SkeletonBlock(width: 240, height: 14)
+                        SkeletonBlock(width: 190, height: 14)
+                    }
+                }
+                .padding(14)
+                .background(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
+            }
+        }
+        .accessibilityLabel("Loading review")
     }
 }

@@ -227,11 +227,21 @@ public struct TransactionExportView: View {
                     // Progress, inline: the Generate button is
                     // never greyed out — a duplicate tap while a
                     // file is being built is ignored instead.
+                    // Build 99 (loading audit): the generating
+                    // state is a skeleton in a RESERVED slot, not
+                    // "Preparing your file…" text appearing under
+                    // the buttons — the text grew the pinned action
+                    // bar and shrank the ScrollView above it while
+                    // the file built. The slot stays (clear) when
+                    // idle, so the bar never changes height.
                     if isGenerating {
-                        Text("Preparing your file…")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color(hex: "#6b7280"))
+                        SkeletonBlock(width: 140, height: 13)
                             .frame(maxWidth: .infinity, alignment: .center)
+                            .accessibilityLabel("Preparing your file")
+                    } else {
+                        Color.clear
+                            .frame(height: 13)
+                            .accessibilityHidden(true)
                     }
                 }
                 .padding()
@@ -506,13 +516,15 @@ public struct TransactionExportView: View {
             // (and a second blue next to the blue primary).
             .buttonStyle(TertiaryButtonStyle())
         } else if allRows == nil {
-            // Shimmer skeletons shaped like the count line, no
-            // spinner, no "Loading..." text (owner loading language).
-            VStack(alignment: .leading, spacing: 8) {
-                SkeletonBlock(width: 180, height: 14)
-                SkeletonBlock(width: 260, height: 14)
-            }
-            .accessibilityLabel("Loading transactions")
+            // Build 99 (loading audit): ONE centred skeleton line
+            // — the loaded state here is one centred line too (the
+            // count, or the no-match line), so the old two-line
+            // block was taller than what replaces it and the
+            // section shrank on arrival. No spinner, no
+            // "Loading..." text (owner loading language).
+            SkeletonBlock(width: 220, height: 13)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .accessibilityLabel("Loading transactions")
         } else if rowsForScope.isEmpty {
             // Build 64 (F-21): "no match" is a normal state, not
             // an error — a quiet neutral line, never a red box

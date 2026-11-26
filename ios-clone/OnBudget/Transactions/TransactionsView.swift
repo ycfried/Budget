@@ -76,6 +76,23 @@ public struct TransactionsView: View {
     @State private var showingFilters: Bool = false
     @State private var showingAdd: Bool = false
     @State private var showingTrash: Bool = false
+    /// Build 99 (loading audit, owner Nov 26, 2026): the Review
+    /// count is not known until `refreshReview` returns — the page
+    /// must not reveal (list, count line, banner, Load More)
+    /// until it is, or the banner pops in above the list and
+    /// pushes it down after first paint.
+    @State private var reviewReady = false
+    /// Build 99 (loading audit): snapshot of the ⋯ menu's
+    /// data-dependent rows, taken when the menu opens — see
+    /// `captureMenuSnapshot`. While the menu is open its rows
+    /// read this snapshot, never the live values, so a load
+    /// landing mid-menu cannot insert or remove a row under the
+    /// user's finger. Initial values match the pre-load state
+    /// (empty list, no review count, no sync running).
+    @State private var menuOpen = false
+    @State private var menuTrashEmpty = true
+    @State private var menuReviewCount = 0
+    @State private var menuSyncing = false
     /// Build 45: the export popup (full-screen cover, like the
     /// other popups on this page).
     @State private var showingExport: Bool = false
@@ -144,6 +161,14 @@ public struct TransactionsView: View {
             .onChange(of: viewModel.searchResetNonce) { _, _ in
                 searchText = ""
             }
+            // Build 99 (loading audit): keep the ⋯ menu snapshot
+            // fresh while the menu is closed, so it is correct
+            // even if the menu's onAppear ever fails to fire —
+            // while the menu is open the snapshot is frozen (see
+            // `captureMenuSnapshot`).
+            .onChange(of: viewModel.trashTransactions.isEmpty) { _, _ in refreshMenuSnapshotIfClosed() }
+            .onChange(of: reviewViewModel.reviewCount) { _, _ in refreshMenuSnapshotIfClosed() }
+            .onChange(of: viewModel.isSyncing) { _, _ in refreshMenuSnapshotIfClosed() }
             .modifier(TransactionCovers(
                 viewModel: viewModel,
                 appState: appState,
@@ -209,6 +234,18 @@ public struct TransactionsView: View {
         // source as the views — synced here and on every rename
         // below.
         viewModel.fundNames = appState.fundNames
+        // Build 99 (loading audit, owner Nov 26, 2026): the
+        // Review count loads ALONGSIDE the list now, not after
+        // it — the old sequence (list, then review) let the list
+        // reveal first and the Needs Review banner pop in above
+        // it a moment later, pushing the whole list down. The
+        // page reveals only once both are settled (`reviewReady`,
+        // see `isListReady`), so the first paint is already the
+        // final layout.
+        let reviewTask = Task {
+            await reviewViewModel.refreshReview()
+            reviewReady = true
+        }
         // Build 52: when a week filter is pending (Spending
         // card / Weekly sheet), skip the page-1 load — the
         // week handoff below fetches the whole history
@@ -217,12 +254,41 @@ public struct TransactionsView: View {
         if case .idle = viewModel.loadState, appState.pendingWeekFilter == nil {
             await viewModel.load()
         }
-        // Build 30: the Review badge count loads with the tab.
-        // The Review page refreshes the same instance on open,
-        // and every review action reloads it, so the badge
-        // stays live without a second load here.
-        await reviewViewModel.refreshReview()
+        await reviewTask.value
         consumeHandoffs()
+    }
+
+    /// Build 99 (loading audit): the ⋯ menu's data-dependent rows
+    /// as they stand right now — Trash's presence (it appears only
+    /// when trashed rows exist), the Review count in its label,
+    /// and the Sync Now / Syncing… label.
+    private func captureMenuSnapshot() {
+        menuTrashEmpty = viewModel.trashTransactions.isEmpty
+        menuReviewCount = reviewViewModel.reviewCount
+        menuSyncing = viewModel.isSyncing
+    }
+
+    /// Refresh the menu snapshot while the menu is closed, so the
+    /// next open shows current values even if the menu content's
+    /// onAppear ever fails to fire. While the menu is open this
+    /// is a no-op — the open menu keeps its snapshot frozen.
+    private func refreshMenuSnapshotIfClosed() {
+        if !menuOpen { captureMenuSnapshot() }
+    }
+
+    /// Build 99 (loading audit): true once the list AND the Review
+    /// count are both settled — the only state in which the page
+    /// may reveal. Before that the page shows skeletons, never a
+    /// partial list with a wrong count line or a banner that pops
+    /// in later.
+    private var isListReady: Bool {
+        if case .loaded = viewModel.loadState, reviewReady { return true }
+        return false
+    }
+
+    private var isLoadFailed: Bool {
+        if case .failed = viewModel.loadState { return true }
+        return false
     }
 
     /// The five presented covers/sheets (build 64): extracted from
@@ -430,69 +496,96 @@ public struct TransactionsView: View {
             Button("Filters") { showingFilters = true }
                 .buttonStyle(SmallTertiaryButtonStyle())
             Menu {
-                // Sync Now: the SAME manual sync the circular
-                // icon ran — `viewModel.runSync()` (Plaid bank +
-                // Gmail email halves, toast confirms the result).
-                // Shown for members too (build 64, F-19 — the
-                // old admin-only gate is gone); disabled while
-                // a sync is already running.
-                Button {
-                    Task { await viewModel.runSync() }
-                } label: {
-                    Label(viewModel.isSyncing ? "Syncing…" : "Sync Now", systemImage: "arrow.clockwise")
-                }
-                .disabled(viewModel.isSyncing)
-                // Review: admin-only, same gate and same handler
-                // as the old pill — pushes the Review page via
-                // the shell. The waiting count rides in the
-                // label (the pill's badge has nowhere to sit in
-                // a menu row).
-                if viewModel.isAdmin, let onShowReview {
-                    Button(action: onShowReview) {
-                        Label(
-                            reviewViewModel.reviewCount > 0
-                                ? "Review (\(reviewViewModel.reviewCount))"
-                                : "Review",
-                            systemImage: "checkmark.circle"
-                        )
+                // Build 99 (loading audit, owner Nov 26, 2026 —
+                // the ⋯ menu's rows visibly dropped as it settled):
+                // the rows below used to read LIVE values — Trash
+                // appears only when trashed rows exist, the Review
+                // count arrives with its own fetch, Sync Now flips
+                // to Syncing… — so any of those landing while the
+                // menu was open inserted, removed, or relabelled a
+                // row and the rows below it dropped. The rows now
+                // read the SNAPSHOT taken when the menu opens
+                // (`captureMenuSnapshot`); a load landing mid-menu
+                // cannot move them. The snapshot refreshes on every
+                // open and on every data change while the menu is
+                // closed, so it is never stale at open time. The
+                // actions themselves still call the live view model
+                // — only the rows' presence and labels are frozen.
+                Group {
+                    // Sync Now: the SAME manual sync the circular
+                    // icon ran — `viewModel.runSync()` (Plaid bank +
+                    // Gmail email halves, toast confirms the result).
+                    // Shown for members too (build 64, F-19 — the
+                    // old admin-only gate is gone); disabled while
+                    // a sync is already running.
+                    Button {
+                        Task { await viewModel.runSync() }
+                    } label: {
+                        Label(menuSyncing ? "Syncing…" : "Sync Now", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(menuSyncing)
+                    // Review: admin-only, same gate and same handler
+                    // as the old pill — pushes the Review page via
+                    // the shell. The waiting count rides in the
+                    // label (the pill's badge has nowhere to sit in
+                    // a menu row).
+                    if viewModel.isAdmin, let onShowReview {
+                        Button(action: onShowReview) {
+                            Label(
+                                menuReviewCount > 0
+                                    ? "Review (\(menuReviewCount))"
+                                    : "Review",
+                                systemImage: "checkmark.circle"
+                            )
+                        }
+                    }
+                    // Weeks: same handler as the old pill — pushes
+                    // Past Weeks via the shell. Hidden until a
+                    // handler is supplied, so it never leads nowhere.
+                    if let onShowPastWeeks {
+                        Button(action: onShowPastWeeks) {
+                            Label("Weeks", systemImage: "calendar")
+                        }
+                        .accessibilityLabel("Past Weeks")
+                    }
+                    // Export: same as the old pill — opens the
+                    // full-screen export popup (PDF / CSV, filtered
+                    // scope or all).
+                    Button {
+                        showingExport = true
+                    } label: {
+                        Label("Export", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityIdentifier("export.open")
+                    Divider()
+                    // The rest of the old "More" menu, unchanged —
+                    // kept here so no destination is lost when the
+                    // pills row goes away.
+                    if let onShowActivity {
+                        Button(action: onShowActivity) {
+                            Label("Activity", systemImage: "list.bullet")
+                        }
+                    }
+                    if viewModel.isAdmin, !menuTrashEmpty {
+                        Button { showingTrash = true } label: {
+                            Label("Trash", systemImage: "trash")
+                        }
+                    }
+                    if viewModel.isAdmin, let onShowMerchantNames {
+                        Button(action: onShowMerchantNames) {
+                            Label("Merchants", systemImage: "tag")
+                        }
                     }
                 }
-                // Weeks: same handler as the old pill — pushes
-                // Past Weeks via the shell. Hidden until a
-                // handler is supplied, so it never leads nowhere.
-                if let onShowPastWeeks {
-                    Button(action: onShowPastWeeks) {
-                        Label("Weeks", systemImage: "calendar")
-                    }
-                    .accessibilityLabel("Past Weeks")
+                .onAppear {
+                    // The menu just opened: freeze its rows as
+                    // they stand right now (see the note above
+                    // the Group).
+                    menuOpen = true
+                    captureMenuSnapshot()
                 }
-                // Export: same as the old pill — opens the
-                // full-screen export popup (PDF / CSV, filtered
-                // scope or all).
-                Button {
-                    showingExport = true
-                } label: {
-                    Label("Export", systemImage: "square.and.arrow.up")
-                }
-                .accessibilityIdentifier("export.open")
-                Divider()
-                // The rest of the old "More" menu, unchanged —
-                // kept here so no destination is lost when the
-                // pills row goes away.
-                if let onShowActivity {
-                    Button(action: onShowActivity) {
-                        Label("Activity", systemImage: "list.bullet")
-                    }
-                }
-                if viewModel.isAdmin, !viewModel.trashTransactions.isEmpty {
-                    Button { showingTrash = true } label: {
-                        Label("Trash", systemImage: "trash")
-                    }
-                }
-                if viewModel.isAdmin, let onShowMerchantNames {
-                    Button(action: onShowMerchantNames) {
-                        Label("Merchants", systemImage: "tag")
-                    }
+                .onDisappear {
+                    menuOpen = false
                 }
             } label: {
                 Text("⋯")
@@ -612,19 +705,33 @@ public struct TransactionsView: View {
     }
 
     private var countLine: some View {
-        // Owner, Nov 12, 2026: one quiet muted line, tighter wording
-        // ("Total", not "Total shown"), smaller than before; the
-        // VStack's 14pt spacing gives it air from the field above
-        // and the list below. Owner, Nov 16, 2026 (build 40): the
-        // older-rows tail is gone from the text, and the line is
-        // CENTERED (it was left-aligned) — same quiet muted style
-        // and size, just centered on the page.
-        Text(viewModel.countLine)
-            .font(.system(size: 13))
-            .foregroundStyle(Color(hex: "#6b7280"))
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .accessibilityIdentifier("transactions.countLine")
+        // Build 99 (loading audit, owner Nov 26, 2026): while the
+        // list (or the Review count it reveals with) is still
+        // loading, this line is a skeleton in its own slot — the
+        // old code computed it from the still-empty loaded page,
+        // so it read "0 transactions · Total $0.00" on first paint
+        // and then jumped to the real count. On failure the line
+        // stays empty, as before — the error box below already
+        // says it (one failure message, not two stacked).
+        if !isListReady, !isLoadFailed {
+            SkeletonBlock(width: 200, height: 13)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .accessibilityLabel("Loading transactions")
+        } else {
+            // Owner, Nov 12, 2026: one quiet muted line, tighter wording
+            // ("Total", not "Total shown"), smaller than before; the
+            // VStack's 14pt spacing gives it air from the field above
+            // and the list below. Owner, Nov 16, 2026 (build 40): the
+            // older-rows tail is gone from the text, and the line is
+            // CENTERED (it was left-aligned) — same quiet muted style
+            // and size, just centered on the page.
+            Text(viewModel.countLine)
+                .font(.system(size: 13))
+                .foregroundStyle(Color(hex: "#6b7280"))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .accessibilityIdentifier("transactions.countLine")
+        }
     }
 
     /// Needs Review banner (owner, Nov 26, 2026 — approved from
@@ -634,9 +741,13 @@ public struct TransactionsView: View {
     /// destination as the "···" menu's Review entry, with the
     /// same admin gate, so it never leads nowhere for a member.
     /// Title Case, short and plain.
+    /// Build 99 (loading audit): gated on `reviewReady` — the
+    /// count is not known until the review fetch returns, and a
+    /// banner popping in above the list after first paint pushes
+    /// the whole list down.
     @ViewBuilder
     private var needsReviewBanner: some View {
-        if viewModel.isAdmin, reviewViewModel.reviewCount > 0 {
+        if reviewReady, viewModel.isAdmin, reviewViewModel.reviewCount > 0 {
             Button {
                 onShowReview?()
             } label: {
@@ -699,26 +810,34 @@ public struct TransactionsView: View {
 
     // MARK: - List
 
+    /// Shimmer skeletons shaped like the loaded list — one white
+    /// card with skeleton rows and dividers, no spinner (owner
+    /// loading language, Nov 12, 2026). Shown for `.idle` /
+    /// `.loading` AND for `.loaded` while the Review count is
+    /// still unknown (`reviewReady` — build 99, loading audit):
+    /// the page reveals only once, with banner, count, and list
+    /// all settled, so nothing below first paint ever moves.
+    private var loadingSkeleton: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<loadingSkeletonCount, id: \.self) { index in
+                TransactionRowSkeleton()
+                    .padding(14)
+                if index < loadingSkeletonCount - 1 {
+                    Divider()
+                        .padding(.leading, 64)
+                }
+            }
+        }
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .accessibilityLabel("Loading transactions")
+    }
+
     @ViewBuilder
     private var listContent: some View {
         switch viewModel.loadState {
         case .idle, .loading:
-            // Shimmer skeletons shaped like the loaded list — one
-            // white card with skeleton rows and dividers, no
-            // spinner (owner loading language, Nov 12, 2026).
-            VStack(spacing: 0) {
-                ForEach(0..<loadingSkeletonCount, id: \.self) { index in
-                    TransactionRowSkeleton()
-                        .padding(14)
-                    if index < loadingSkeletonCount - 1 {
-                        Divider()
-                            .padding(.leading, 64)
-                    }
-                }
-            }
-            .background(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-            .accessibilityLabel("Loading transactions")
+            loadingSkeleton
         case .failed(let error):
             VStack(alignment: .leading, spacing: 12) {
                 if error == .sessionExpired {
@@ -748,10 +867,17 @@ public struct TransactionsView: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 20))
         case .loaded:
-            let shown = viewModel.shownTransactions
-            if shown.isEmpty {
-                emptyState
+            // Build 99 (loading audit): the rows are here but the
+            // Review count is not yet — keep the skeleton until
+            // it is, so the banner's arrival cannot push the
+            // revealed list down.
+            if !reviewReady {
+                loadingSkeleton
             } else {
+                let shown = viewModel.shownTransactions
+                if shown.isEmpty {
+                    emptyState
+                } else {
                 // ONE continuous list (owner, Nov 11, 2026): a single
                 // white card with a divider between rows — not a
                 // separate card per transaction. The divider insets to
@@ -808,6 +934,7 @@ public struct TransactionsView: View {
                 // Walkthrough anchor (build 48): the list itself.
                 .tourAnchor(.transactionsList, tour: appState.tour)
                 .id(TourAnchor.transactionsList)
+                }
             }
         }
     }
@@ -849,7 +976,10 @@ public struct TransactionsView: View {
 
     @ViewBuilder
     private var loadMoreButton: some View {
-        if case .loaded = viewModel.loadState, viewModel.hasMore {
+        // Build 99 (loading audit): hidden until the page has
+        // revealed (`reviewReady`) — it belongs to the loaded list,
+        // not to the skeleton.
+        if case .loaded = viewModel.loadState, reviewReady, viewModel.hasMore {
             Button("Load More") {
                 Task { await viewModel.loadMore() }
             }

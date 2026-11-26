@@ -232,6 +232,19 @@ public struct TransactionActionsSheet: View {
     @State private var renameMatchWords: String = ""
     @State private var linkCandidates: [Transaction]?
     @State private var linkedSummary: (merchant: String, amountCents: Int, date: String)?
+    /// Build 99 (loading audit): true once the linked-purchase
+    /// summary fetch (the sheet's `.task`) has resolved — the
+    /// Unlink confirm's message must not swap from its generic
+    /// fallback to the specific merchant line after the sheet is
+    /// already showing.
+    @State private var linkedSummaryLoaded = false
+    /// Build 99 (loading audit): true once the existing-rule
+    /// lookup for the Rename flow has resolved — the form's
+    /// fields (Show as / Match / Words to Match) are pre-filled
+    /// from it when one exists, so the form must not render with
+    /// the defaults first and then flip. True until a Rename
+    /// flow starts; reset to false on entry (see `select`).
+    @State private var renameRuleLoaded = true
     @State private var isWorking: Bool = false
     /// Build 54: whether the "More" group is expanded. The sheet
     /// opens collapsed (Group 1 + the More row only); the toggle
@@ -754,6 +767,7 @@ public struct TransactionActionsSheet: View {
             if transaction.originalPurchaseId != nil {
                 linkedSummary = await viewModel.linkedPurchaseSummary(for: transaction)
             }
+            linkedSummaryLoaded = true
         }
     }
 
@@ -977,6 +991,12 @@ public struct TransactionActionsSheet: View {
             renameBankName = transaction.merchant
             renameMatchWords = transaction.merchant
             renameError = nil
+            // Build 99 (loading audit): the form must not render
+            // until the existing-rule lookup below has resolved —
+            // it pre-fills the fields, and rendering the defaults
+            // first would flip them (and grow the form by the
+            // Words to Match block) after the sheet is showing.
+            renameRuleLoaded = false
             flow = .rename
             // Build 47: when a rule already matches this bank name,
             // pre-fill from it — the stored display name, match
@@ -985,6 +1005,7 @@ public struct TransactionActionsSheet: View {
             // owner has not already edited while the rule loaded
             // gets overwritten.
             Task {
+                defer { renameRuleLoaded = true }
                 let initialName = renameName
                 let initialKind = renameFixedKind
                 let initialMatch = renameMatchType
@@ -1168,7 +1189,63 @@ public struct TransactionActionsSheet: View {
     // Containing This". The old description paragraph is gone;
     // the fields say it. "Always Count As" is unchanged.
 
+    /// Build 99 (loading audit): skeleton of the Rename form
+    /// while the existing-rule lookup resolves — real labels with
+    /// skeleton values, shaped like the form, so the sheet shows
+    /// its final shape at once instead of defaults that then flip
+    /// (Match flipping to Includes also grows the form by the
+    /// Words to Match block). The summary header is synchronous
+    /// (the row itself), so it renders real.
+    private var renameSkeleton: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            summaryHeader
+            VStack(alignment: .leading, spacing: 6) {
+                Text("From the Bank")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                SkeletonBlock(width: 180, height: 15)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Show as")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                fieldSkeleton
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Match")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                fieldSkeleton
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Always Count as")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                fieldSkeleton
+            }
+            fieldSkeleton
+        }
+        .accessibilityLabel("Loading rename form")
+    }
+
+    /// A full-width shimmer field skeleton, 48pt like the form's
+    /// fields — the GeometryReader sizes it to the sheet, so it
+    /// holds the field's place on iPhone and iPad alike.
+    private var fieldSkeleton: some View {
+        GeometryReader { geometry in
+            SkeletonBlock(width: geometry.size.width, height: 48, cornerRadius: 12)
+        }
+        .frame(height: 48)
+    }
+
+    @ViewBuilder
     private var renameContent: some View {
+        // Build 99 (loading audit): the form renders only once
+        // the existing-rule lookup has resolved — see
+        // `renameRuleLoaded` in `select(.rename)`.
+        if !renameRuleLoaded {
+            renameSkeleton
+        } else {
         VStack(alignment: .leading, spacing: 16) {
             summaryHeader
             VStack(alignment: .leading, spacing: 6) {
@@ -1267,6 +1344,7 @@ public struct TransactionActionsSheet: View {
             .buttonStyle(PrimaryButtonStyle())
             .disabled(isWorking)
         }
+        }
     }
 
     // MARK: - Link / unlink refund
@@ -1324,11 +1402,31 @@ public struct TransactionActionsSheet: View {
                     }
                 }
             } else {
-                HStack {
-                    Spacer()
-                    BrandedLoader(size: 40)
-                    Spacer()
+                // Build 99 (loading audit): skeletons shaped like
+                // the candidate rows (merchant line + amount ·
+                // date line, same padding), not the centred logo
+                // loader — the list swaps in place, top-anchored
+                // under the same prompt line, so nothing moves.
+                Text("Choose the purchase this refund came from.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(DesignTokens.ink)
+                VStack(spacing: 0) {
+                    ForEach(0..<3, id: \.self) { index in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                SkeletonBlock(width: 160, height: 16)
+                                SkeletonBlock(width: 120, height: 14)
+                            }
+                            Spacer()
+                            SkeletonBlock(width: 12, height: 16)
+                        }
+                        .padding(.vertical, 10)
+                        if index < 2 {
+                            Divider()
+                        }
+                    }
                 }
+                .accessibilityLabel("Loading matching purchases")
             }
             // Build 70, item 5 (owner, Nov 24, 2026): the Cancel
             // button is gone — the header back chevron + swipe-
@@ -1336,7 +1434,21 @@ public struct TransactionActionsSheet: View {
         }
     }
 
+    @ViewBuilder
     private var unlinkConfirmContent: some View {
+        // Build 99 (loading audit): the message names the linked
+        // purchase, which arrives with the sheet's `.task` fetch —
+        // until it resolves, skeletons hold the message's place
+        // instead of the generic fallback swapping to the specific
+        // line (and growing the sheet) after the sheet is showing.
+        if !linkedSummaryLoaded {
+            VStack(alignment: .leading, spacing: 16) {
+                summaryHeader
+                SkeletonBlock(width: 260, height: 15)
+                SkeletonBlock(width: 200, height: 15)
+            }
+            .accessibilityLabel("Loading linked purchase")
+        } else {
         VStack(alignment: .leading, spacing: 16) {
             summaryHeader
             Text(unlinkMessage)
@@ -1355,6 +1467,7 @@ public struct TransactionActionsSheet: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(isWorking)
+        }
         }
     }
 
