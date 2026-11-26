@@ -111,6 +111,14 @@ final class MembersSettingsViewModel: ObservableObject {
     /// box used to clear the failure into the empty state).
     @Published var loadFailed = false
     @Published var isLoading = false
+    /// Loading-state gate (Nov 26, 2026 — Funds-page pattern): true
+    /// once the FIRST load has resolved (success or failure). The
+    /// card shows skeletons shaped like its content until then, so
+    /// the invite-code chip, the household line and the member rows
+    /// never pop in one by one and push the Delete Account section
+    /// down. Reloads (role change, remove, rename) keep the stale
+    /// rows on screen — this flag stays true, so nothing flashes.
+    @Published var hasLoaded = false
     /// The ONE alert this screen can show. SwiftUI only honours a
     /// single `.alert` modifier on a view, so the six separate alerts
     /// this screen used to stack (remove confirm/failed, role
@@ -270,11 +278,18 @@ final class MembersSettingsViewModel: ObservableObject {
         // even when the members fetch failed, so a members error
         // never leaves the invite section showing a false "not set
         // up" line either (audit S-P1-1).
-        inviteCodeLoaded = false
-        inviteCodeLoadFailed = false
+        //
+        // Loading-state (Nov 26, 2026): `inviteCodeLoaded` is NOT
+        // reset here. The card is gated on `hasLoaded`, so the
+        // section only renders once this fetch has resolved; on a
+        // reload the stale code stays visible instead of flashing
+        // back to a loader and back to the chip. A success after
+        // a failure clears the failure flag, so a reload that
+        // recovers shows the code, not the stale error box.
         if context.isOwner {
             do {
                 inviteCode = try await context.client.postgrest.inviteCode(householdId: context.householdId)
+                inviteCodeLoadFailed = false
             } catch {
                 inviteCode = nil
                 inviteCodeLoadFailed = true
@@ -283,6 +298,7 @@ final class MembersSettingsViewModel: ObservableObject {
             inviteCode = nil
         }
         inviteCodeLoaded = true
+        hasLoaded = true
     }
 
     // MARK: - Change role (promote / demote)
@@ -447,6 +463,16 @@ struct MembersSettingsView: View {
 
     var body: some View {
         SettingsCard(title: hideCardTitle ? nil : "Account & Household") {
+            // Loading-state gate (Nov 26, 2026 — Funds-page
+            // pattern): the whole card shows skeletons shaped like
+            // its content until the first load resolves. Before
+            // this the card rendered its headings + Delete Account
+            // section immediately and the invite-code chip and the
+            // member rows popped in underneath, pushing everything
+            // below them down after first paint.
+            if !viewModel.hasLoaded {
+                membersLoadingSkeleton
+            } else {
             // Build 43 (owner, Nov 17, 2026 — item 15): the invite
             // code sits ABOVE the Household / Members section now,
             // not below it.
@@ -499,12 +525,12 @@ struct MembersSettingsView: View {
                 .buttonStyle(TertiaryButtonStyle())
             }
             if viewModel.isLoading && viewModel.members.isEmpty {
-                HStack {
-                    Spacer()
-                    BrandedLoader()
-                    Spacer()
-                }
-                .padding(.top, 24)
+                // Reload with an empty list (first load is gated
+                // above): row skeletons, not the branded loader —
+                // the loader is not shaped like the rows and the
+                // Delete section below would jump when they land.
+                memberRowSkeleton
+                memberRowSkeleton
             } else if !viewModel.members.isEmpty {
                 ForEach(viewModel.members) { member in
                     memberRow(member)
@@ -514,6 +540,7 @@ struct MembersSettingsView: View {
             }
 
             deleteAccountSection
+            }
         }
         .task { await viewModel.load() }
         // Build 43 (owner, Nov 17, 2026 — item 9): re-read the list
@@ -603,6 +630,50 @@ struct MembersSettingsView: View {
         }
     }
 
+    /// Loading skeletons shaped like the loaded card (Nov 26,
+    /// 2026): invite-code note lines + chip row (owner only),
+    /// household line, Members heading, two member rows, Delete
+    /// Account heading + button — so the card holds its shape
+    /// until the first load resolves and nothing below a row moves
+    /// when the rows land. Two rows is the representative household
+    /// (owner + spouse); a larger household's card still grows
+    /// from skeleton to content — the row count is only knowable
+    /// after the load.
+    private var membersLoadingSkeleton: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if viewModel.isOwner {
+                SkeletonBlock(width: 230, height: 14)
+                SkeletonBlock(width: 200, height: 14)
+                HStack(spacing: 8) {
+                    SkeletonBlock(width: 120, height: 44, cornerRadius: 10)
+                    SkeletonBlock(width: 64, height: 44, cornerRadius: 10)
+                    SkeletonBlock(width: 64, height: 44, cornerRadius: 10)
+                }
+            }
+            SkeletonBlock(width: 180, height: 16)
+            SkeletonBlock(width: 90, height: 20)
+            memberRowSkeleton
+            memberRowSkeleton
+            SkeletonBlock(width: 130, height: 20)
+            HStack {
+                Spacer()
+                SkeletonBlock(width: 160, height: 44, cornerRadius: 14)
+                Spacer()
+            }
+        }
+    }
+
+    /// One member-row skeleton: name + role lines and the row
+    /// action button, matching the loaded row's shape.
+    private var memberRowSkeleton: some View {
+        HStack(spacing: 8) {
+            SkeletonBlock(width: 120, height: 16)
+            SkeletonBlock(width: 48, height: 14)
+            Spacer()
+            SkeletonBlock(width: 80, height: 32, cornerRadius: 10)
+        }
+    }
+
     private func memberRow(_ member: MemberListRow) -> some View {
         HStack(spacing: 8) {
             Text(viewModel.displayName(for: member) + (viewModel.isOwnRow(member) ? " (you)" : ""))
@@ -649,10 +720,15 @@ struct MembersSettingsView: View {
                 .font(.subheadline)
                 .foregroundStyle(Color(hex: "#6b7280"))
             if !viewModel.inviteCodeLoaded {
-                HStack {
-                    Spacer()
-                    BrandedLoader(size: 40)
-                    Spacer()
+                // Unreachable while the card is gated on
+                // `hasLoaded` (the gate flips only after this
+                // fetch resolves) and kept as the shape for any
+                // future reload path: the chip row skeleton, not
+                // the branded loader.
+                HStack(spacing: 8) {
+                    SkeletonBlock(width: 120, height: 44, cornerRadius: 10)
+                    SkeletonBlock(width: 64, height: 44, cornerRadius: 10)
+                    SkeletonBlock(width: 64, height: 44, cornerRadius: 10)
                 }
             } else if viewModel.inviteCodeLoadFailed {
                 ErrorBox("Could not load the invite code. Try again.")

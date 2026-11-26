@@ -131,6 +131,16 @@ final class ConnectedAccountsViewModel: ObservableObject {
     /// "None." (audit S-P1-2).
     @Published var loadFailed = false
     @Published var isLoading = false
+    /// Loading-state gate (Nov 26, 2026 — Funds-page pattern): true
+    /// once the FIRST load has resolved (success or failure). The
+    /// card shows skeletons shaped like its content until then.
+    /// Before this the card rendered immediately with the
+    /// auto-sync toggle defaulting OFF, the sync line reading
+    /// "Not synced yet.", and the rows popping in below — the
+    /// toggle flipped, the line changed, and the Email Alerts card
+    /// underneath slid down as the rows landed. Reloads keep the
+    /// stale rows on screen; this flag stays true.
+    @Published var hasLoaded = false
     @Published var isSyncing = false
     @Published var autoSyncOn = false
     /// True when the server value could not be read: the toggle keeps
@@ -256,6 +266,7 @@ final class ConnectedAccountsViewModel: ObservableObject {
             loadError = "Could not load bank accounts."
             loadFailed = true
         }
+        hasLoaded = true
     }
 
     // MARK: - Connect Account
@@ -528,6 +539,14 @@ struct ConnectedAccountsView: View {
 
     var body: some View {
         SettingsCard(title: "Bank Connection") {
+            // Loading-state gate (Nov 26, 2026 — Funds-page
+            // pattern): skeletons shaped like the card until the
+            // first load resolves, so the toggle never flashes the
+            // wrong OFF, the sync line never flashes "Not synced
+            // yet.", and the rows never push the card below down.
+            if !viewModel.hasLoaded {
+                connectedLoadingSkeleton
+            } else {
             if viewModel.isAdmin {
                 HStack(spacing: 12) {
                     Button(viewModel.isConnecting ? "Connecting…" : "Connect Account") {
@@ -585,18 +604,18 @@ struct ConnectedAccountsView: View {
                 .buttonStyle(TertiaryButtonStyle())
             }
             if viewModel.isLoading && viewModel.rows.isEmpty {
-                HStack {
-                    Spacer()
-                    BrandedLoader()
-                    Spacer()
-                }
-                .padding(.top, 24)
+                // Reload with an empty list (first load is gated
+                // above): account-row skeletons, not the branded
+                // loader — the loader is not shaped like the rows.
+                accountRowSkeleton
+                accountRowSkeleton
             } else if !viewModel.rows.isEmpty {
                 ForEach(viewModel.rows) { row in
                     accountRow(row)
                 }
             } else if !viewModel.loadFailed {
                 MutedLine(text: "None.")
+            }
             }
         }
         .task { await viewModel.load() }
@@ -656,6 +675,45 @@ struct ConnectedAccountsView: View {
                 // iPad width (owner, Nov 12, 2026): same treatment
                 // as the Weekly Budget sheet — 600pt width in the
                 // regular size class, in a full-screen cover.
+        }
+    }
+
+    /// Loading skeletons shaped like the loaded card (Nov 26,
+    /// 2026): Connect/Sync buttons + auto-sync toggle row (admin
+    /// only — `isAdmin` comes from the sync context, so the shape
+    /// is known before the load), sync line, "Connected Accounts"
+    /// heading, two account rows. Two rows is representative; the
+    /// real row count is only knowable after the load, so a
+    /// household with more accounts still sees the card grow from
+    /// skeleton to content.
+    private var connectedLoadingSkeleton: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if viewModel.isAdmin {
+                HStack(spacing: 12) {
+                    SkeletonBlock(width: 150, height: 44, cornerRadius: 10)
+                    SkeletonBlock(width: 150, height: 44, cornerRadius: 10)
+                }
+                SkeletonBlock(width: 220, height: 32)
+            }
+            SkeletonBlock(width: 200, height: 16)
+            SkeletonBlock(width: 170, height: 20)
+            accountRowSkeleton
+            accountRowSkeleton
+        }
+    }
+
+    /// One account-row skeleton: bank logo tile + three text lines
+    /// + Disconnect button, matching the loaded row's shape.
+    private var accountRowSkeleton: some View {
+        HStack(alignment: .top, spacing: 12) {
+            SkeletonBlock(width: 40, height: 40, cornerRadius: 8)
+            VStack(alignment: .leading, spacing: 6) {
+                SkeletonBlock(width: 150, height: 14)
+                SkeletonBlock(width: 180, height: 12)
+                SkeletonBlock(width: 120, height: 12)
+            }
+            Spacer()
+            SkeletonBlock(width: 92, height: 32, cornerRadius: 10)
         }
     }
 
