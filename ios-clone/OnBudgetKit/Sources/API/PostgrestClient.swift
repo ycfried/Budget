@@ -615,6 +615,27 @@ public struct PostgrestClient {
         ))
     }
 
+    /// Distinct raw merchant names for the household (build 99 —
+    /// Merchant Rules: the "Choose a Merchant" popup and the
+    /// "Known Icons" section both need the merchant list without
+    /// pulling whole transaction rows). Only the `merchant`
+    /// column is fetched, in 1000-row pages; the names are
+    /// deduped and sorted client-side (PostgREST has no DISTINCT
+    /// in this client). Same Nov 1 floor as `allTransactions`.
+    /// A failed page throws — a partial merchant list must never
+    /// present itself as the whole set.
+    public func distinctMerchants(householdId: UUID) async throws -> [String] {
+        struct MerchantRow: Decodable { let merchant: String }
+        let rows: [MerchantRow] = try await fetchAllPages(PostgrestQuery(
+            table: "transactions",
+            columns: "merchant",
+            filters: [.householdId(householdId), .onOrAfterNov1()],
+            orders: [PostgrestOrder("merchant", ascending: true)]
+        ))
+        let names = rows.map(\.merchant).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return Array(Set(names)).sorted()
+    }
+
     /// One week's transactions, server-side date-range filtered
     /// (build 53, audit C6): only the rows dated fromDate...toDate
     /// are pulled. The Spending-card week view used to fetch the

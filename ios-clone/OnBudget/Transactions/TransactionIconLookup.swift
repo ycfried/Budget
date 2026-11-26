@@ -283,8 +283,32 @@ public enum TransactionIconLookup {
         return MerchantKeywordMatch.bestMatch(in: name, from: bankBrandColors.map { (keyword: $0.keyword, value: $0.hex) })
     }
 
+    /// The curated domain for a merchant, or nil when the merchant
+    /// is unmapped. Build 99 (owner, Nov 26, 2026 — Merchant
+    /// Rules, Known Icons): a domain the owner REMOVED (see
+    /// `removedIconDomains`) returns nil here, so the merchant
+    /// falls back to the monogram everywhere — the curated map
+    /// itself is unchanged, this is a runtime exclusion on top of
+    /// it. A custom icon key recorded by an Upload (see
+    /// `customIconDomains`) is consulted when the curated map has
+    /// no entry, so a merchant the owner gave an icon to resolves
+    /// even without a curated domain.
     public static func merchantDomain(for merchant: String) -> String? {
-        MerchantKeywordMatch.bestMatch(in: merchant, from: merchantDomains.map { (keyword: $0.keyword, value: $0.domain) })
+        guard let domain = rawMerchantDomain(for: merchant) else { return nil }
+        return removedIconDomains().contains(domain) ? nil : domain
+    }
+
+    /// The map lookup without the removed-icon exclusion — the
+    /// curated keyword map first, then a custom icon key recorded
+    /// by an Upload. `merchantDomain` above is the public entry
+    /// point; `iconURL` uses this one so a removed domain can
+    /// suppress even a curated override (HomeGoods).
+    private static func rawMerchantDomain(for merchant: String) -> String? {
+        if let domain = MerchantKeywordMatch.bestMatch(in: merchant, from: merchantDomains.map { (keyword: $0.keyword, value: $0.domain) }) {
+            return domain
+        }
+        let key = customIconKey(for: merchant)
+        return customIconDomains()[key]
     }
 
     /// The brand colour hex for a merchant, or nil when the merchant
@@ -323,7 +347,16 @@ public enum TransactionIconLookup {
     /// override when one exists, otherwise the Google s2 favicon
     /// for the curated domain. Nil when the merchant is unmapped
     /// — the caller falls back to the monogram (build 57).
+    /// Build 99 (owner, Nov 26, 2026 — Merchant Rules): a domain
+    /// the owner REMOVED suppresses the icon entirely, even a
+    /// curated override (HomeGoods has both a domain and an
+    /// override URL) — the override check runs only after the
+    /// removed-domain check.
     public static func iconURL(for merchant: String) -> URL? {
+        if let raw = rawMerchantDomain(for: merchant),
+           removedIconDomains().contains(raw) {
+            return nil
+        }
         if let override = MerchantKeywordMatch.bestMatch(in: merchant, from: merchantIconOverrides.map { (keyword: $0.keyword, value: $0.url) }) {
             return URL(string: override)
         }
@@ -370,6 +403,117 @@ public enum TransactionIconLookup {
     public static func clearStaleGuessedIconData() {
         UserDefaults.standard.removeObject(forKey: "hb-merchant-guessed-domains")
         UserDefaults.standard.removeObject(forKey: "hb-merchant-rejected-guesses")
+    }
+
+    // MARK: - Owner-managed icon state (build 99, Merchant Rules)
+
+    /// Domains whose icon the owner REMOVED from the Merchant
+    /// Rules page ("Known Icons" → Remove Icon). `merchantDomain`
+    /// returns nil for these, so the merchant shows the monogram
+    /// instead of re-fetching the favicon, and `iconURL` returns
+    /// nil even for a curated override. The curated map is NOT
+    /// edited — this is a runtime exclusion on top of it. A
+    /// removed domain can come back only by uploading a new icon
+    /// for that merchant (Change / Upload clears the exclusion).
+    private static let removedIconDomainsKey = "hb-merchant-removed-icon-domains"
+
+    public static func removedIconDomains() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: removedIconDomainsKey) ?? [])
+    }
+
+    public static func recordRemovedIconDomain(_ domain: String) {
+        var stored = removedIconDomains()
+        stored.insert(domain.lowercased())
+        UserDefaults.standard.set(Array(stored).sorted(), forKey: removedIconDomainsKey)
+    }
+
+    public static func clearRemovedIconDomain(_ domain: String) {
+        var stored = removedIconDomains()
+        stored.remove(domain.lowercased())
+        UserDefaults.standard.set(Array(stored).sorted(), forKey: removedIconDomainsKey)
+    }
+
+    /// Domains whose icon the owner CONFIRMED ("Known Icons" →
+    /// Confirm Icon). Confirming changes nothing about how the
+    /// icon resolves — the bucket / disk cache already wins — it
+    /// only records that the owner verified this icon, so the
+    /// Merchant Rules page can show it as confirmed.
+    private static let confirmedIconDomainsKey = "hb-merchant-confirmed-icon-domains"
+
+    public static func confirmedIconDomains() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: confirmedIconDomainsKey) ?? [])
+    }
+
+    public static func recordConfirmedIconDomain(_ domain: String) {
+        var stored = confirmedIconDomains()
+        stored.insert(domain.lowercased())
+        UserDefaults.standard.set(Array(stored).sorted(), forKey: confirmedIconDomainsKey)
+    }
+
+    /// Clear a confirmation (Remove Icon clears it — a
+    /// replacement icon uploaded later must be confirmed
+    /// afresh, not inherit the old icon's confirmation).
+    public static func clearConfirmedIconDomain(_ domain: String) {
+        var stored = confirmedIconDomains()
+        stored.remove(domain.lowercased())
+        UserDefaults.standard.set(Array(stored).sorted(), forKey: confirmedIconDomainsKey)
+    }
+
+    /// Merchant → icon-key map for merchants with NO curated
+    /// domain, recorded when the owner uploads an icon for one
+    /// ("Merchants Without an Icon" → Upload Icon). The key is
+    /// the store-number-stripped, lowercased merchant name, so
+    /// "WALMART #1234" and "WALMART #5678" share one entry; the
+    /// value is the Storage key's domain part — a slug of the
+    /// merchant name (see `iconSlug`), NOT a real DNS domain.
+    /// The slug only matters as a Storage key (`<slug>.png`):
+    /// the Storage layer is consulted before Google, so the
+    /// uploaded icon resolves from the bucket and the Google
+    /// favicon for the slug (which 404s) is never reached. The
+    /// curated map always wins over this map — a later curated
+    /// entry for the same merchant takes over.
+    private static let customIconDomainsKey = "hb-merchant-custom-icon-domains"
+
+    public static func customIconDomains() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: customIconDomainsKey) as? [String: String] ?? [:]
+    }
+
+    /// The custom-map key for a merchant: store number stripped,
+    /// lowercased, trimmed — the same normalisation the
+    /// needs-icon list uses, so variants of one merchant share
+    /// one entry.
+    public static func customIconKey(for merchant: String) -> String {
+        stripStoreNumber(merchant.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// Record a slug as the icon key for a merchant (Upload Icon
+    /// for a merchant with no curated domain). Returns false when
+    /// the slug is already claimed by a DIFFERENT merchant — a
+    /// slug collision must not silently steal another merchant's
+    /// icon; the caller surfaces that as an error instead.
+    @discardableResult
+    public static func recordCustomIconDomain(_ slug: String, forMerchant merchant: String) -> Bool {
+        let key = customIconKey(for: merchant)
+        var stored = customIconDomains()
+        if stored[key] == slug { return true }
+        if stored.contains(where: { $0.value == slug && $0.key != key }) {
+            return false
+        }
+        stored[key] = slug
+        UserDefaults.standard.set(stored, forKey: customIconDomainsKey)
+        return true
+    }
+
+    /// The Storage-key slug for a merchant name: lowercase
+    /// alphanumerics joined with hyphens ("BELLUNO CAFE" →
+    /// "belluno-cafe"). Nil when nothing slug-worthy remains
+    /// (a name of pure punctuation) — the caller then cannot
+    /// upload under a slug and must say so.
+    public static func iconSlug(for merchant: String) -> String? {
+        let stripped = stripStoreNumber(merchant.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
+        let parts = stripped.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: "-")
     }
 
     // MARK: Catch-up list (merchants with no icon yet)

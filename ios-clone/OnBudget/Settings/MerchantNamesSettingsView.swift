@@ -1,4 +1,6 @@
+import PhotosUI
 import SwiftUI
+import UIKit
 import OnBudgetKit
 
 // STAGE — Settings: Merchant Rules card (build 30, task E).
@@ -8,11 +10,11 @@ import OnBudgetKit
 // transaction kind, to old rows on rename and to new rows at
 // ingestion. Admin-only — members never see the card at all (owner
 // rule, Nov 13, 2026: no greyed-out controls, only actions that
-// work). The pattern is editable (owner, Nov 15, 2026 — build 34):
-// an Includes rule matches when the merchant name CONTAINS the
-// pattern anywhere, so a short pattern (e.g. "BALTIMORE") catches
-// more spellings; Exact uses the full original name. The original
-// name stays visible as "Name as It Appears" for reference.
+// work). The Pattern is the single "what to match" field (owner,
+// Nov 26, 2026 — build 99): an Includes rule matches when the
+// merchant name CONTAINS the pattern anywhere, so a short pattern
+// (e.g. "BALTIMORE") catches more spellings; Exact uses the full
+// name as the pattern.
 //
 // Wiring:
 // - List: `PostgrestClient.merchantRules(householdId:)`.
@@ -111,6 +113,59 @@ final class MerchantNamesSettingsViewModel: ObservableObject {
             alert = .failed(title: "Could Not Remove Rule", message: OnBudgetError.displayMessage(for: error))
         }
     }
+
+    /// Distinct raw merchant names for the household (build 99 —
+    /// Merchant Rules): fetched once, shared by the "Choose a
+    /// Merchant" popup and the "Known Icons" section — neither
+    /// fetches the list twice. Loaded alongside the rules; the
+    /// popup and the section show skeletons until it lands.
+    @Published var allMerchants: [String] = []
+    @Published var merchantsLoading = false
+    @Published var merchantsLoaded = false
+
+    /// Bumped whenever owner-managed icon state changes
+    /// (confirm / change / remove / upload) so the icon lists
+    /// below re-read UserDefaults — the lists are computed from
+    /// `allMerchants` plus the lookup, and UserDefaults alone
+    /// never notifies. Reading it in the computed properties
+    /// subscribes the view to it.
+    @Published var iconStateVersion = 0
+
+    func noteIconStateChanged() { iconStateVersion += 1 }
+
+    /// Merchants with no rule yet — the "Choose a Merchant"
+    /// popup's list. A merchant is covered when any rule matches
+    /// it (the same `matchingRule` the rename pre-fill uses).
+    /// `allMerchants` arrives sorted, so the filter keeps the
+    /// sort.
+    var merchantsWithoutRules: [String] {
+        _ = iconStateVersion
+        return allMerchants.filter { MerchantDisplayName.matchingRule(for: $0, rules: rules) == nil }
+    }
+
+    /// Merchants with a resolved icon — the "Known Icons"
+    /// section. A merchant counts when the lookup resolves a
+    /// domain for it (curated, or a custom key from an Upload).
+    var knownIconMerchants: [String] {
+        _ = iconStateVersion
+        return allMerchants.filter { TransactionIconLookup.merchantDomain(for: $0) != nil }
+    }
+
+    func loadMerchants() async {
+        guard !merchantsLoaded else { return }
+        merchantsLoading = true
+        defer { merchantsLoading = false }
+        do {
+            allMerchants = try await context.client.postgrest.distinctMerchants(householdId: context.householdId)
+            merchantsLoaded = true
+        } catch {
+            // A failed merchant fetch leaves the popup / Known
+            // Icons empty — the rules list still loads, so this
+            // is not a page-level error; the lists just show
+            // their empty line.
+            allMerchants = []
+        }
+    }
 }
 
 /// Merchant Rules as a Transactions subpage (owner, Nov 15, 2026 —
@@ -150,6 +205,7 @@ struct MerchantNamesPageView: View {
 struct MerchantNamesSettingsView: View {
     @StateObject private var viewModel: MerchantNamesSettingsViewModel
     private let context: SettingsContext
+    private let toast: ToastState
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// The rule being edited, or nil for the add form. The form
@@ -157,10 +213,13 @@ struct MerchantNamesSettingsView: View {
     /// render inline below the list, which was hard to use).
     @State private var editingRule: MerchantRule?
     @State private var showingForm = false
-    @State private var patternText = ""
-    /// The editable Pattern (build 34): what an Includes rule
-    /// matches against. Defaults to the rule's current pattern;
-    /// only shown when Match is Includes (see ruleForm).
+    /// The editable Pattern (build 34): what the rule matches
+    /// against. For an edit it defaults to the rule's current
+    /// pattern; for a new rule it starts empty (blank form) or
+    /// pre-filled from the chosen merchant (Choose a Merchant).
+    /// Shown for both match types since build 99 (the old "Name
+    /// as It Appears" field is gone — the Pattern is the single
+    /// "what to match" field).
     @State private var editablePatternText = ""
     @State private var displayNameText = ""
     @State private var matchType = "exact"
@@ -172,6 +231,51 @@ struct MerchantNamesSettingsView: View {
     @State private var needsIcon: [String] = []
     /// Build 68 (item 22): the "no icon yet" explainer behind ⓘ.
     @State private var showingNeedsIconInfo = false
+
+    /// Build 99 (owner, Nov 26, 2026 — Merchant Rules): the
+    /// "Choose a Merchant" popup — merchants with no rule yet.
+    @State private var showingMerchantPicker = false
+    /// Build 99: the icon action sheet — `.known` for a Known
+    /// Icons row (Confirm / Change / Remove), `.upload` for a
+    /// Merchants Without an Icon row (Upload Icon only).
+    @State private var iconSheet: IconSheetKind?
+    /// Build 99: the Remove-icon destructive confirm.
+    @State private var showingRemoveIconConfirm = false
+    /// Build 99: the photo picker — what the picked image is
+    /// for, and whether an upload is in flight.
+    @State private var iconPickerItem: PhotosPickerItem?
+    @State private var showingIconPicker = false
+    @State private var iconUploadTarget: IconUploadTarget?
+    @State private var isUploadingIcon = false
+
+    /// Which merchant an icon upload is for, and the Storage
+    /// key's domain part. `isSlug` is true when the domain is a
+    /// slug for a merchant with no curated domain — the custom
+    /// map entry is recorded only after the upload succeeds.
+    private struct IconUploadTarget {
+        let merchant: String
+        let domain: String
+        let isSlug: Bool
+    }
+
+    /// The icon action sheet's merchant.
+    private enum IconSheetKind: Identifiable {
+        case known(merchant: String)
+        case upload(merchant: String)
+
+        var id: String {
+            switch self {
+            case .known(let merchant): return "known-\(merchant)"
+            case .upload(let merchant): return "upload-\(merchant)"
+            }
+        }
+
+        var merchant: String {
+            switch self {
+            case .known(let merchant), .upload(let merchant): return merchant
+            }
+        }
+    }
 
     /// Fixed-kind options: the server's kind values with plain
     /// labels (same list as the transaction Actions sheet).
@@ -188,6 +292,7 @@ struct MerchantNamesSettingsView: View {
 
     init(context: SettingsContext, toast: ToastState) {
         self.context = context
+        self.toast = toast
         _viewModel = StateObject(wrappedValue: MerchantNamesSettingsViewModel(context: context, toast: toast))
     }
 
@@ -254,16 +359,13 @@ struct MerchantNamesSettingsView: View {
                             }
                         }
                     }
-                    Button("Add a Rule") {
-                        editingRule = nil
-                        patternText = ""
-                        editablePatternText = ""
-                        displayNameText = ""
-                        matchType = "exact"
-                        fixedKind = nil
-                        showingForm = true
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
+                    // Build 99 (owner, Nov 26, 2026 — Merchant
+                    // Rules): the add buttons no longer live in
+                    // this card — a lone button at the bottom of
+                    // the rules list sat smack in the middle of
+                    // the page, separating the two groups. Both
+                    // add buttons are together at the very bottom
+                    // of the page now (see below).
                 }
                 // The editor is a proper popup, not inline below the
                 // list (owner, Nov 15, 2026 — build 33: the inline
@@ -318,6 +420,7 @@ struct MerchantNamesSettingsView: View {
                 }
                 .task {
                     await viewModel.load()
+                    await viewModel.loadMerchants()
                     needsIcon = TransactionIconLookup.needsIconMerchants()
                 }
                 // Build 52 (owner, Nov 20, 2026 — the smart plan's
@@ -352,7 +455,7 @@ struct MerchantNamesSettingsView: View {
                         .alert("Merchants Without an Icon", isPresented: $showingNeedsIconInfo) {
                             Button("OK") {}
                         } message: {
-                            Text("These merchants don't have an icon yet. They'll be added in a future update.")
+                            Text("These merchants don't have an icon yet. Tap one to upload an icon for it.")
                         }
                         VStack(spacing: 0) {
                             ForEach(needsIcon, id: \.self) { name in
@@ -361,14 +464,30 @@ struct MerchantNamesSettingsView: View {
                                 // the same fallback the transaction
                                 // rows use — instead of a bare name
                                 // with no tile at all.
-                                HStack(spacing: 12) {
-                                    TransactionIconView(merchant: name, size: 40)
-                                    Text(TransactionFormatting.displayMerchant(name))
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundStyle(DesignTokens.ink)
-                                    Spacer()
+                                // Build 99 (owner, Nov 26, 2026 —
+                                // Merchant Rules): the row is
+                                // tappable — it offers Upload Icon
+                                // for this merchant (same photo
+                                // picker + bucket upload as Change
+                                // Icon, keyed by the merchant's
+                                // domain or a slug of its name).
+                                Button {
+                                    iconSheet = .upload(merchant: name)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        TransactionIconView(merchant: name, size: 40)
+                                        Text(TransactionFormatting.displayMerchant(name))
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundStyle(DesignTokens.ink)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(Color(hex: "#6b7280"))
+                                    }
+                                    .padding(.vertical, 6)
+                                    .contentShape(Rectangle())
                                 }
-                                .padding(.vertical, 6)
+                                .buttonStyle(.plain)
                                 if name != needsIcon.last {
                                     Divider()
                                 }
@@ -376,6 +495,95 @@ struct MerchantNamesSettingsView: View {
                         }
                     }
                 }
+                // Build 99 (owner, Nov 26, 2026 — Merchant
+                // Rules): the complement to "Merchants Without
+                // an Icon" — merchants that DO have a resolved
+                // icon, so the owner can confirm, change or
+                // remove each one. Always shown (never an empty
+                // section): while the merchant list loads it
+                // shows skeleton rows; with no known icons it
+                // shows one short line. The two icon sections
+                // sit together, and the add buttons stay at the
+                // very bottom of the page.
+                SettingsCard(title: "Known Icons") {
+                    if viewModel.merchantsLoading && viewModel.allMerchants.isEmpty {
+                        VStack(spacing: 0) {
+                            ForEach(0..<3, id: \.self) { _ in
+                                HStack(spacing: 12) {
+                                    SkeletonBlock(width: 40, height: 40, cornerRadius: 10)
+                                    SkeletonBlock(width: 140, height: 14)
+                                    Spacer()
+                                }
+                                .padding(.vertical, 6)
+                                Divider()
+                            }
+                        }
+                    } else if viewModel.knownIconMerchants.isEmpty {
+                        MutedLine(text: "No merchant icons yet.")
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(viewModel.knownIconMerchants, id: \.self) { name in
+                                Button {
+                                    iconSheet = .known(merchant: name)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        TransactionIconView(merchant: name, size: 40)
+                                        Text(TransactionFormatting.displayMerchant(name))
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundStyle(DesignTokens.ink)
+                                        Spacer()
+                                        // A confirmed icon wears a
+                                        // small blue check — the
+                                        // only visible trace of the
+                                        // Confirm action (the
+                                        // resolution itself is
+                                        // unchanged by confirming).
+                                        if let domain = TransactionIconLookup.merchantDomain(for: name),
+                                           TransactionIconLookup.confirmedIconDomains().contains(domain) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .foregroundStyle(DesignTokens.primary)
+                                        }
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(Color(hex: "#6b7280"))
+                                    }
+                                    .padding(.vertical, 6)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                if name != viewModel.knownIconMerchants.last {
+                                    Divider()
+                                }
+                            }
+                        }
+                    }
+                }
+                // Build 99 (owner, Nov 26, 2026 — Merchant
+                // Rules): both add buttons together at the
+                // very bottom of the page, so no button sits
+                // in the middle separating the groups. "Add a
+                // Rule" is the blank form; "Choose a Merchant"
+                // opens the popup of merchants with no rule
+                // yet. Two distinct treatments (primary solid
+                // blue on top, tertiary outline below) — never
+                // two buttons sharing a colour or look.
+                VStack(spacing: 12) {
+                    Button("Add a Rule") {
+                        startAddingRule()
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    Button("Choose a Merchant") {
+                        showingMerchantPicker = true
+                    }
+                    .buttonStyle(OutlineButtonStyle())
+                }
+            }
+            .sheet(isPresented: $showingMerchantPicker) {
+                merchantPickerSheet
+            }
+            .sheet(item: $iconSheet) { kind in
+                iconSheetContent(kind)
             }
         }
     }
@@ -411,7 +619,6 @@ struct MerchantNamesSettingsView: View {
 
     private func startEditing(_ rule: MerchantRule) {
         editingRule = rule
-        patternText = rule.patternText
         editablePatternText = rule.patternText
         displayNameText = rule.displayName
         matchType = rule.matchType
@@ -419,51 +626,337 @@ struct MerchantNamesSettingsView: View {
         showingForm = true
     }
 
-    private var ruleForm: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if editingRule == nil {
-                VStack(alignment: .leading, spacing: 6) {
-                    FieldLabel("Name as It Appears", required: true)
-                    TextField("", text: $patternText)
-                        // Build 68 (item 7/13): 48pt field, 14pt
-                        // horizontal padding, 12pt radius.
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 48, alignment: .leading)
-                        .background(.white)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+    /// Open the blank rule editor (build 99 — "Add a Rule").
+    private func startAddingRule() {
+        editingRule = nil
+        editablePatternText = ""
+        displayNameText = ""
+        matchType = "exact"
+        fixedKind = nil
+        showingForm = true
+    }
+
+    /// Open the rule editor pre-filled for a merchant with no
+    /// rule yet (build 99 — "Choose a Merchant"): the Pattern is
+    /// the merchant's bank name (shorten it to the words to
+    /// include), the display name starts as the merchant name,
+    /// and Match defaults to Includes so the rule catches the
+    /// merchant's spelling variants.
+    private func startRule(for merchant: String) {
+        editingRule = nil
+        editablePatternText = merchant
+        displayNameText = TransactionFormatting.displayMerchant(merchant)
+        matchType = "includes"
+        fixedKind = nil
+        showingForm = true
+    }
+
+    // MARK: - Choose a Merchant popup (build 99)
+
+    /// "Choose a Merchant": the merchants with no rule yet.
+    /// Skeleton rows while the list loads, one short line when
+    /// every merchant already has a rule. Tapping a row opens
+    /// the rule editor pre-filled for that merchant. Back
+    /// button top-left + swipe-to-dismiss, like every sheet.
+    private var merchantPickerSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: "Choose a Merchant") {
+                showingMerchantPicker = false
+            } onBack: {
+                showingMerchantPicker = false
+            }
+            if viewModel.merchantsLoading && viewModel.allMerchants.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        HStack(spacing: 12) {
+                            SkeletonBlock(width: 40, height: 40, cornerRadius: 10)
+                            SkeletonBlock(width: 160, height: 14)
+                            Spacer()
+                        }
+                        .padding(.vertical, 6)
+                        Divider()
+                    }
                 }
+            } else if viewModel.merchantsWithoutRules.isEmpty {
+                MutedLine(text: "Every merchant already has a rule.")
             } else {
-                VStack(alignment: .leading, spacing: 2) {
-                    FieldLabel("Name as It Appears", required: true)
-                    // The original merchant name, for reference —
-                    // the Pattern below is what the rule matches.
-                    // (source_merchant, build 34; falls back to the
-                    // pattern when the column is not there yet.)
-                    Text(editingRule?.sourceMerchant ?? patternText)
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color(hex: "#6b7280"))
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(viewModel.merchantsWithoutRules, id: \.self) { name in
+                            Button {
+                                showingMerchantPicker = false
+                                startRule(for: name)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    TransactionIconView(merchant: name, size: 40)
+                                    Text(TransactionFormatting.displayMerchant(name))
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.ink)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Color(hex: "#6b7280"))
+                                }
+                                .padding(.vertical, 6)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            if name != viewModel.merchantsWithoutRules.last {
+                                Divider()
+                            }
+                        }
+                    }
                 }
             }
-            // Pattern (owner, Nov 15, 2026 — build 34): editable,
-            // and ONLY shown when Match is Includes — Exact uses
-            // the full "Name as It Appears" as the pattern, so
-            // there is nothing to set. Defaults to the rule's
-            // current pattern; shorten it (e.g. "BALTIMORE") so the
-            // Includes match catches more spellings. Normalizes on
-            // save and re-applies the rule to matching rows.
-            if editingRule != nil, matchType == "includes" {
-                VStack(alignment: .leading, spacing: 6) {
-                    FieldLabel("Pattern", required: true)
-                    TextField("", text: $editablePatternText)
-                        // Build 68 (item 7/13): 48pt field, 14pt
-                        // horizontal padding, 12pt radius.
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 48, alignment: .leading)
-                        .background(.white)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+            Spacer()
+        }
+        .padding()
+        .presentationDetents([.medium, .large])
+    }
+
+    // MARK: - Icon action sheet (build 99)
+
+    /// The icon action sheet: the merchant's icon large at the
+    /// top, the name below it, then the actions. Known icons get
+    /// Confirm / Change / Remove; a merchant without an icon
+    /// gets Upload Icon only. Three distinct treatments
+    /// (primary solid blue, tertiary outline, destructive
+    /// soft-red) plus a muted Cancel — no two share a colour
+    /// or look. Back button top-left + swipe-to-dismiss.
+    private func iconSheetContent(_ kind: IconSheetKind) -> some View {
+        let merchant = kind.merchant
+        return VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: "Merchant Icon") {
+                iconSheet = nil
+            } onBack: {
+                iconSheet = nil
+            }
+            VStack(alignment: .center, spacing: 10) {
+                TransactionIconView(merchant: merchant, size: 64)
+                Text(TransactionFormatting.displayMerchant(merchant))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+            }
+            .frame(maxWidth: .infinity)
+            VStack(spacing: 12) {
+                switch kind {
+                case .known:
+                    Button("Confirm Icon") {
+                        confirmIcon(for: merchant)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(isUploadingIcon)
+                    Button("Change Icon") {
+                        beginIconUpload(for: merchant)
+                    }
+                    .buttonStyle(OutlineButtonStyle())
+                    .disabled(isUploadingIcon)
+                    Button("Remove Icon") {
+                        showingRemoveIconConfirm = true
+                    }
+                    .buttonStyle(DangerButtonStyle())
+                    .disabled(isUploadingIcon)
+                case .upload:
+                    Button("Upload Icon") {
+                        beginIconUpload(for: merchant)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(isUploadingIcon)
                 }
+                Button("Cancel") {
+                    iconSheet = nil
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.muted)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+            }
+            Spacer()
+        }
+        .padding()
+        .presentationDetents([.medium])
+        // The photo picker lives on this sheet (not the page
+        // behind it) — a picker presented from a view under an
+        // open sheet does not reliably appear. The onChange
+        // fires when the owner picks an image.
+        .photosPicker(isPresented: $showingIconPicker, selection: $iconPickerItem, matching: .images)
+        .onChange(of: iconPickerItem) { _, newItem in
+            guard let newItem else { return }
+            Task { await handlePickedIcon(newItem) }
+        }
+        .appConfirmDialog(
+            isPresented: $showingRemoveIconConfirm,
+            title: "Remove This Icon?",
+            message: "“\(TransactionFormatting.displayMerchant(merchant))” will show its initial tile instead of a logo.",
+            primaryTitle: "Remove",
+            tone: .destructive
+        ) {
+            Task { await removeIcon(for: merchant) }
+        }
+    }
+
+    /// Re-read the icon lists after an icon mutation (confirm /
+    /// change / remove / upload): the catch-up list from
+    /// UserDefaults, and the computed lists via the version bump
+    /// (the lookup reads UserDefaults, which never notifies).
+    private func refreshIconLists() {
+        needsIcon = TransactionIconLookup.needsIconMerchants()
+        viewModel.noteIconStateChanged()
+    }
+
+    /// Confirm Icon: record that the owner verified this
+    /// merchant's icon. The resolution itself is unchanged —
+    /// the bucket / disk cache already wins — this only records
+    /// the verification, so the row wears its blue check.
+    private func confirmIcon(for merchant: String) {
+        guard let domain = TransactionIconLookup.merchantDomain(for: merchant) else {
+            toast.show("That merchant has no icon to confirm.", kind: .error)
+            return
+        }
+        TransactionIconLookup.recordConfirmedIconDomain(domain)
+        toast.show("Icon confirmed.", kind: .success)
+        refreshIconLists()
+    }
+
+    /// Start an icon upload for a merchant: resolve the Storage
+    /// key, then open the photo library picker. A curated domain
+    /// wins; otherwise a slug of the merchant name is the key
+    /// (recorded as the merchant's custom icon key only after
+    /// the upload succeeds). A slug already claimed by another
+    /// merchant, or a name that cannot be slugged, surfaces an
+    /// error instead of overwriting or guessing.
+    private func beginIconUpload(for merchant: String) {
+        if let domain = TransactionIconLookup.merchantDomain(for: merchant) {
+            iconUploadTarget = IconUploadTarget(merchant: merchant, domain: domain, isSlug: false)
+            iconPickerItem = nil
+            showingIconPicker = true
+            return
+        }
+        guard let slug = TransactionIconLookup.iconSlug(for: merchant) else {
+            toast.show("Couldn't make an icon key for this merchant.", kind: .error)
+            return
+        }
+        let key = TransactionIconLookup.customIconKey(for: merchant)
+        if TransactionIconLookup.customIconDomains().contains(where: { $0.value == slug && $0.key != key }) {
+            toast.show("That icon key is already used by another merchant.", kind: .error)
+            return
+        }
+        iconUploadTarget = IconUploadTarget(merchant: merchant, domain: slug, isSlug: true)
+        iconPickerItem = nil
+        showingIconPicker = true
+    }
+
+    /// The picked image, uploaded as a PNG to the
+    /// `merchant-logos` bucket under the target's domain key.
+    /// The image is downscaled to 512px on its longest side
+    /// first (a phone photo is far larger than a 40pt tile
+    /// needs). The custom map entry (slug) is recorded only
+    /// after the upload succeeds, so a failed upload never
+    /// leaves a merchant resolving to a key with no file. A
+    /// re-upload clears a removal, and the stale cached image
+    /// is evicted so the new one renders immediately.
+    private func handlePickedIcon(_ item: PhotosPickerItem) async {
+        guard let target = iconUploadTarget else { return }
+        iconPickerItem = nil
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let png = iconPNGData(from: data) else {
+            toast.show("Couldn't read that image. Try another.", kind: .error)
+            return
+        }
+        isUploadingIcon = true
+        defer { isUploadingIcon = false }
+        let ok = await FaviconImageLoader.uploadIcon(data: png, domain: target.domain)
+        guard ok else {
+            toast.show("Couldn't upload the icon. Try again.", kind: .error)
+            return
+        }
+        if target.isSlug {
+            TransactionIconLookup.recordCustomIconDomain(target.domain, forMerchant: target.merchant)
+        }
+        TransactionIconLookup.clearRemovedIconDomain(target.domain)
+        if let url = TransactionIconLookup.iconURL(for: target.merchant) {
+            FaviconImageLoader.shared.evict(url: url)
+        }
+        if let googleURL = TransactionIconLookup.faviconURL(forDomain: target.domain) {
+            FaviconImageLoader.shared.evict(url: googleURL)
+        }
+        iconSheet = nil
+        toast.show(target.isSlug ? "Icon uploaded." : "Icon updated.", kind: .success)
+        refreshIconLists()
+    }
+
+    /// Remove Icon: delete the bucket file for the domain (a
+    /// 404 counts as success — the icon may have come from
+    /// Google, not the bucket), record the domain as removed
+    /// so the lookup shows the monogram, evict the cached
+    /// image, and put the merchant on the catch-up list so it
+    /// can be given a new icon. A real delete failure keeps
+    /// the icon and shows an error — never a half-removal.
+    private func removeIcon(for merchant: String) async {
+        guard let domain = TransactionIconLookup.merchantDomain(for: merchant) else {
+            toast.show("That merchant has no icon to remove.", kind: .error)
+            return
+        }
+        // Capture the favicon URL BEFORE recording the removal —
+        // afterwards the lookup returns nil for this merchant.
+        let iconURL = TransactionIconLookup.iconURL(for: merchant)
+        let googleURL = TransactionIconLookup.faviconURL(forDomain: domain)
+        isUploadingIcon = true
+        defer { isUploadingIcon = false }
+        let deleted = await FaviconImageLoader.deleteIcon(domain: domain)
+        guard deleted else {
+            toast.show("Couldn't remove the icon. Try again.", kind: .error)
+            return
+        }
+        TransactionIconLookup.recordRemovedIconDomain(domain)
+        TransactionIconLookup.clearConfirmedIconDomain(domain)
+        if let iconURL { FaviconImageLoader.shared.evict(url: iconURL) }
+        if let googleURL { FaviconImageLoader.shared.evict(url: googleURL) }
+        TransactionIconLookup.recordNeedsIcon(merchant)
+        iconSheet = nil
+        toast.show("Icon removed.", kind: .success)
+        refreshIconLists()
+    }
+
+    /// A picked image as PNG data, downscaled to 512px on its
+    /// longest side — a phone photo is far larger than a 40pt
+    /// tile needs, and the bucket file should stay small. Nil
+    /// when the data is not a readable image.
+    private func iconPNGData(from imageData: Data) -> Data? {
+        guard let image = UIImage(data: imageData) else { return nil }
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        let maxSide: CGFloat = 512
+        guard max(size.width, size.height) > maxSide else { return image.pngData() }
+        let scale = maxSide / max(size.width, size.height)
+        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+        return resized.pngData()
+    }
+
+    private var ruleForm: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Pattern (build 99 — Merchant Rules): the single
+            // "what to match" field, shown for BOTH match types
+            // and for both add and edit. The old "Name as It
+            // Appears" field is gone (owner, Nov 26, 2026 — it
+            // duplicated the Pattern and confused the form):
+            // for Exact this is the full name to match exactly;
+            // for Includes, the words the name must contain —
+            // shorten it (e.g. "BALTIMORE") so the Includes
+            // match catches more spellings. Normalizes on save
+            // and re-applies the rule to matching rows.
+            VStack(alignment: .leading, spacing: 6) {
+                FieldLabel("Pattern", required: true)
+                TextField("", text: $editablePatternText)
+                    // Build 68 (item 7/13): 48pt field, 14pt
+                    // horizontal padding, 12pt radius.
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 48, alignment: .leading)
+                    .background(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#e5e7eb"), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             VStack(alignment: .leading, spacing: 6) {
                 FieldLabel("Show As", required: true)
@@ -511,26 +1004,22 @@ struct MerchantNamesSettingsView: View {
                             )
                             return
                         }
-                        // Which pattern to save (owner, Nov 15, 2026
-                        // — build 34): a new rule takes the pattern
-                        // from "Name as It Appears"; an Includes edit
-                        // takes the editable Pattern field (empty
-                        // keeps the existing pattern — the server
-                        // never saves a blank one); an Exact edit
-                        // takes the full original name as the pattern.
-                        let pattern: String
-                        if let editingRule {
-                            if matchType == "includes" {
-                                pattern = editablePatternText.trimmingCharacters(in: .whitespacesAndNewlines)
-                            } else {
-                                pattern = editingRule.sourceMerchant ?? patternText
-                            }
-                        } else {
-                            pattern = patternText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        // Which pattern to save (build 99 —
+                        // Merchant Rules): the Pattern field is
+                        // the single source, for both match types
+                        // and for add and edit. A new rule
+                        // requires it; an edit with an empty
+                        // Pattern keeps the existing pattern (the
+                        // server never saves a blank one). The old
+                        // "Name as It Appears" field and the
+                        // Exact-edit sourceMerchant fallback are
+                        // gone with it.
+                        let pattern = editablePatternText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if editingRule == nil {
                             guard !pattern.isEmpty else {
                                 viewModel.alert = .failed(
                                     title: "Could Not Save Rule",
-                                    message: "Enter the name as it appears."
+                                    message: "Enter the pattern to match."
                                 )
                                 return
                             }

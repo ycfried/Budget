@@ -170,6 +170,19 @@ final class FaviconImageLoader: ObservableObject {
            UIImage(data: existing) != nil {
             return true
         }
+        return await uploadToStorage(data, domain: domain, tokenProvider: tokenProvider)
+    }
+
+    /// The raw Storage upload (POST + x-upsert, so it overwrites
+    /// an existing file): the shared body of the best-effort seed
+    /// above and the owner's explicit icon upload below. Returns
+    /// false on any failure (no token, no network, denied) —
+    /// the caller decides how loudly to fail.
+    private static func uploadToStorage(
+        _ data: Data,
+        domain: String,
+        tokenProvider: (() async throws -> String)?
+    ) async -> Bool {
         guard let tokenProvider,
               let token = try? await tokenProvider(),
               let url = storageUploadURL(forDomain: domain) else { return false }
@@ -186,6 +199,61 @@ final class FaviconImageLoader: ObservableObject {
             return true
         } catch {
             return false
+        }
+    }
+
+    /// Owner upload (build 99 — Merchant Rules, Known Icons):
+    /// upload these PNG bytes as the merchant's icon, overwriting
+    /// whatever the bucket holds for the domain. Used by Change
+    /// Icon / Upload Icon — unlike the seed, this one is explicit
+    /// and its result is shown to the owner (toast on success,
+    /// error on failure). Marks the domain seeded on success so
+    /// a later row appearance never re-uploads over it.
+    public static func uploadIcon(data: Data, domain: String) async -> Bool {
+        let ok = await uploadToStorage(data, domain: domain, tokenProvider: shared.tokenProvider)
+        if ok { shared.storageSeededDomains.insert(domain) }
+        return ok
+    }
+
+    /// Owner remove (build 99 — Merchant Rules, Known Icons):
+    /// delete the bucket file for the domain. A 404 counts as
+    /// success — the file is already gone, which is the end state
+    /// the caller wants (e.g. the icon came from Google, not the
+    /// bucket). Any other failure returns false and the caller
+    /// shows the error.
+    public static func deleteIcon(domain: String) async -> Bool {
+        guard let tokenProvider = shared.tokenProvider,
+              let token = try? await tokenProvider(),
+              let url = storageUploadURL(forDomain: domain) else { return false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue(Configuration.supabaseAnonKey, forHTTPHeaderField: "apikey")
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return false }
+            if (200...299).contains(http.statusCode) || http.statusCode == 404 {
+                shared.storageSeededDomains.remove(domain)
+                return true
+            }
+            return false
+        } catch {
+            return false
+        }
+    }
+
+    /// Evict a logo from the in-memory and on-device disk caches
+    /// (build 99 — Merchant Rules): after the owner uploads a
+    /// replacement or removes the icon, the stale cached image
+    /// must not keep rendering. The Storage layer is untouched —
+    /// the caller uploads / deletes there. Pass the favicon URL
+    /// the row actually renders (`TransactionIconLookup.iconURL`
+    /// for the merchant, or the domain's Google favicon URL).
+    public func evict(url: URL) {
+        images.removeValue(forKey: url)
+        Task.detached {
+            guard let file = Self.diskURL(for: url) else { return }
+            try? FileManager.default.removeItem(at: file)
         }
     }
 

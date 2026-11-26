@@ -90,4 +90,65 @@ final class TransactionIconLookupTests: XCTestCase {
         )
         XCTAssertNil(TransactionIconLookup.iconURL(for: "THE Timepiece"))
     }
+
+    // MARK: - Build 99 — owner-managed icon state (Merchant Rules)
+
+    /// The removed / confirmed / custom sets live in
+    /// UserDefaults, shared with the app — every test here
+    /// clears them first and last, so a recorded removal can
+    /// never leak into the curated-map tests above.
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: "hb-merchant-removed-icon-domains")
+        UserDefaults.standard.removeObject(forKey: "hb-merchant-confirmed-icon-domains")
+        UserDefaults.standard.removeObject(forKey: "hb-merchant-custom-icon-domains")
+        super.tearDown()
+    }
+
+    func testRemovedDomainSuppressesIcon() {
+        // Amazon resolves, then the owner removes it: the
+        // lookup returns nil (monogram) and even the icon URL
+        // is gone. Clearing the removal brings it back — the
+        // curated map itself is never edited.
+        XCTAssertEqual(TransactionIconLookup.merchantDomain(for: "Amazon"), "amazon.com")
+        TransactionIconLookup.recordRemovedIconDomain("amazon.com")
+        XCTAssertNil(TransactionIconLookup.merchantDomain(for: "Amazon"))
+        XCTAssertNil(TransactionIconLookup.iconURL(for: "Amazon"))
+        TransactionIconLookup.clearRemovedIconDomain("amazon.com")
+        XCTAssertEqual(TransactionIconLookup.merchantDomain(for: "Amazon"), "amazon.com")
+    }
+
+    func testRemovedDomainSuppressesOverrideToo() {
+        // HomeGoods has both a curated domain AND an override
+        // URL — removing the domain must suppress the override
+        // as well, or Remove would leave the wordmark showing.
+        XCTAssertNotNil(TransactionIconLookup.iconURL(for: "HomeGoods"))
+        TransactionIconLookup.recordRemovedIconDomain("homegoods.com")
+        XCTAssertNil(TransactionIconLookup.iconURL(for: "HomeGoods"))
+        TransactionIconLookup.clearRemovedIconDomain("homegoods.com")
+        XCTAssertNotNil(TransactionIconLookup.iconURL(for: "HomeGoods"))
+    }
+
+    func testConfirmedDomainIsRecorded() {
+        XCTAssertFalse(TransactionIconLookup.confirmedIconDomains().contains("amazon.com"))
+        TransactionIconLookup.recordConfirmedIconDomain("amazon.com")
+        XCTAssertTrue(TransactionIconLookup.confirmedIconDomains().contains("amazon.com"))
+        TransactionIconLookup.clearConfirmedIconDomain("amazon.com")
+        XCTAssertFalse(TransactionIconLookup.confirmedIconDomains().contains("amazon.com"))
+    }
+
+    func testCustomSlugResolvesForUnmappedMerchant() {
+        // Belluno Cafe has no curated domain (it sits on the
+        // Merchants Without an Icon list). Uploading an icon
+        // records its slug, and the lookup then resolves it —
+        // the curated map is consulted first, so a later
+        // curated entry would still win.
+        XCTAssertNil(TransactionIconLookup.merchantDomain(for: "BELLUNO CAFE"))
+        XCTAssertEqual(TransactionIconLookup.iconSlug(for: "BELLUNO CAFE"), "belluno-cafe")
+        XCTAssertTrue(TransactionIconLookup.recordCustomIconDomain("belluno-cafe", forMerchant: "BELLUNO CAFE"))
+        XCTAssertEqual(TransactionIconLookup.merchantDomain(for: "BELLUNO CAFE"), "belluno-cafe")
+        // A slug already claimed by another merchant is refused.
+        XCTAssertFalse(TransactionIconLookup.recordCustomIconDomain("belluno-cafe", forMerchant: "NORIBAR"))
+        // A name of pure punctuation cannot be slugged.
+        XCTAssertNil(TransactionIconLookup.iconSlug(for: "!!!"))
+    }
 }
