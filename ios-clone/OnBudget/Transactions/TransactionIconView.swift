@@ -1,3 +1,4 @@
+import CryptoKit
 import SwiftUI
 import UIKit
 import OnBudgetKit
@@ -12,26 +13,198 @@ import OnBudgetKit
 /// the fallback for merchants with genuinely no logo. Rows that
 /// reappear re-trigger a load (deduped while in flight), so a
 /// transient failure recovers when the user scrolls back.
+///
+/// Build 94 (owner, Nov 25, 2026 — the BP logo disappeared): the
+/// in-memory cache alone meant one failed Google fetch left the
+/// monogram until the row reappeared, and an app restart lost every
+/// logo. The loader is now TWO-LAYER persistent — load order, first
+/// hit wins:
+///   1. In-memory cache (fastest, as before).
+///   2. On-device disk cache — Library/Caches/merchant-icons/,
+///      keyed by the SHA-256 of the favicon URL. Survives restarts,
+///      works offline. No expiry (logos rarely change); a curated
+///      map change that changes the favicon URL changes the key.
+///   3. Supabase Storage bucket `merchant-logos` (public read),
+///      keyed by the curated domain (`bp.com.png`), so one device
+///      seeding a logo makes it available to every device.
+///   4. Google's favicon service (last resort, as before).
+/// A Google fetch saves to disk AND seeds Storage in the background
+/// (best-effort, deduped, never blocking, never loud on failure).
 @MainActor
 final class FaviconImageLoader: ObservableObject {
     static let shared = FaviconImageLoader()
 
+    /// JWT provider for the authenticated Storage upload, wired once
+    /// from AppState at launch (the client's validAccessToken, which
+    /// refreshes when stale). Nil in previews / the widget — uploads
+    /// are then skipped silently; reads from public Storage and
+    /// Google still work.
+    var tokenProvider: (() async throws -> String)?
+
     @Published private(set) var images: [URL: UIImage] = [:]
     private var inFlight: Set<URL> = []
+    /// Domains confirmed present in Storage this session (downloaded
+    /// from it, or uploaded successfully) — no further seed checks.
+    private var storageSeededDomains: Set<String> = []
+    /// Domains with a seed check/upload currently running.
+    private var storageSeedInFlight: Set<String> = []
 
     func image(for url: URL) -> UIImage? { images[url] }
 
-    func load(_ url: URL) {
+    /// Load a logo through the four layers. `domain` is the curated
+    /// merchant/bank domain (the Storage key); nil skips the Storage
+    /// layer — the disk cache (keyed by the favicon URL) still works.
+    func load(_ url: URL, domain: String? = nil) {
         if images[url] != nil || inFlight.contains(url) { return }
         inFlight.insert(url)
         Task {
-            let image = await Self.fetch(url, retries: 1)
+            let image = await resolve(url: url, domain: domain)
             inFlight.remove(url)
             if let image { images[url] = image }
         }
     }
 
-    private static func fetch(_ url: URL, retries: Int) async -> UIImage? {
+    /// The four layers, first hit wins. A disk or Storage hit needs
+    /// nothing further (disk already has it / Storage already has
+    /// it); a Google hit saves to disk and seeds Storage.
+    private func resolve(url: URL, domain: String?) async -> UIImage? {
+        // Layer 2 (phone): the disk cache — survives restarts, works offline.
+        if let data = await Task.detached { Self.readDiskData(for: url) }.value,
+           let image = UIImage(data: data) {
+            if let domain { ensureInStorage(data, domain: domain) }
+            return image
+        }
+        // Layer 3 (platform): Supabase Storage, keyed by curated domain.
+        if let domain,
+           let data = await Self.fetchStorageData(forDomain: domain),
+           let image = UIImage(data: data) {
+            storageSeededDomains.insert(domain)
+            await Self.saveToDisk(data, for: url)
+            return image
+        }
+        // Layer 4 (last resort): Google's favicon service, as before.
+        guard let result = await Self.fetch(url, retries: 1) else { return nil }
+        await Self.saveToDisk(result.data, for: url)
+        if let domain { ensureInStorage(result.data, domain: domain) }
+        return result.image
+    }
+
+    // MARK: - Disk cache (phone layer)
+
+    /// Library/Caches/merchant-icons/ — the OS may purge it under
+    /// storage pressure, but it survives app restarts; the Storage
+    /// layer is the backstop if it is ever purged.
+    private nonisolated static var diskDirectory: URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("merchant-icons", isDirectory: true)
+    }
+
+    /// Stable filename for a favicon URL: SHA-256 of the URL string.
+    /// Merchants sharing a domain share a favicon URL, so they share
+    /// a file; a curated override URL gets its own file (it is a
+    /// different image than the Google favicon for that domain).
+    private nonisolated static func diskURL(for faviconURL: URL) -> URL? {
+        guard let directory = diskDirectory else { return nil }
+        let digest = SHA256.hash(data: Data(faviconURL.absoluteString.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent("\(hex).png")
+    }
+
+    private nonisolated static func readDiskData(for faviconURL: URL) -> Data? {
+        guard let file = diskURL(for: faviconURL) else { return nil }
+        return try? Data(contentsOf: file)
+    }
+
+    private nonisolated static func writeDiskData(_ data: Data, for faviconURL: URL) {
+        guard let file = diskURL(for: faviconURL) else { return }
+        try? FileManager.default.createDirectory(
+            at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: file, options: [.atomic])
+    }
+
+    /// Disk writes run on a detached task — never on the main thread.
+    private static func saveToDisk(_ data: Data, for faviconURL: URL) async {
+        await Task.detached { Self.writeDiskData(data, for: faviconURL) }.value
+    }
+
+    // MARK: - Supabase Storage (platform layer)
+
+    /// Public download URL for a domain's logo (`<domain>.png`).
+    private static func storagePublicURL(forDomain domain: String) -> URL? {
+        URL(string: "\(Configuration.supabaseURL)/storage/v1/object/public/merchant-logos/\(domain).png")
+    }
+
+    /// Upload endpoint for a domain's logo.
+    private static func storageUploadURL(forDomain domain: String) -> URL? {
+        URL(string: "\(Configuration.supabaseURL)/storage/v1/object/merchant-logos/\(domain).png")
+    }
+
+    /// Download a logo from Storage (public read, no auth). Only a
+    /// 2xx response is a hit — anything else (404, network error)
+    /// is a miss and the caller falls through to Google.
+    private static func fetchStorageData(forDomain domain: String) async -> Data? {
+        guard let url = storagePublicURL(forDomain: domain) else { return nil }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
+            return data
+        } catch {
+            return nil
+        }
+    }
+
+    /// Best-effort seed: upload these bytes to Storage ONLY if
+    /// Storage does not already hold a decodable logo for the
+    /// domain (the GET is the dedup — a logo downloaded from
+    /// Storage, or uploaded earlier this session, never re-uploads).
+    /// Returns true when Storage now holds the logo. Every failure
+    /// (no token, no network, bucket missing, denied) returns false
+    /// silently — the logo already displays from disk/Google, and
+    /// the next row appearance retries the seed.
+    private static func uploadIfMissing(
+        _ data: Data,
+        domain: String,
+        tokenProvider: (() async throws -> String)?
+    ) async -> Bool {
+        if let existing = await fetchStorageData(forDomain: domain),
+           UIImage(data: existing) != nil {
+            return true
+        }
+        guard let tokenProvider,
+              let token = try? await tokenProvider(),
+              let url = storageUploadURL(forDomain: domain) else { return false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue(Configuration.supabaseAnonKey, forHTTPHeaderField: "apikey")
+            request.setValue("image/png", forHTTPHeaderField: "Content-Type")
+            request.setValue("true", forHTTPHeaderField: "x-upsert")
+            request.httpBody = data
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return false }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Fire-and-forget seed for a domain, deduped per session:
+    /// skipped when the domain is already confirmed in Storage or a
+    /// seed is already running; a failed seed retries the next time
+    /// the row appears. Never blocks the UI, never fails loudly.
+    private func ensureInStorage(_ data: Data, domain: String) {
+        guard !storageSeededDomains.contains(domain),
+              !storageSeedInFlight.contains(domain) else { return }
+        storageSeedInFlight.insert(domain)
+        Task {
+            let ok = await Self.uploadIfMissing(data, domain: domain, tokenProvider: tokenProvider)
+            storageSeedInFlight.remove(domain)
+            if ok { storageSeededDomains.insert(domain) }
+        }
+    }
+
+    private static func fetch(_ url: URL, retries: Int) async -> (image: UIImage, data: Data)? {
         for attempt in 0...retries {
             do {
                 // Build 53 (audit C1): the HTTP status decides —
@@ -44,7 +217,7 @@ final class FaviconImageLoader: ObservableObject {
                 let (data, response) = try await URLSession.shared.data(from: url)
                 if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
                    let image = UIImage(data: data) {
-                    return image
+                    return (image, data)
                 }
                 // A non-2xx response, or a body that does not
                 // decode, is a miss — fall through to the retry
@@ -84,6 +257,11 @@ final class FaviconImageLoader: ObservableObject {
 /// already the max. (HomeGoods' own favicon is only 48×48, so
 /// its icon comes from a curated higher-resolution override —
 /// see TransactionIconLookup.merchantIconOverrides, build 60.)
+/// Build 94 (owner, Nov 25, 2026): a fetched logo is no longer
+/// memory-only — it persists in TWO layers (on-device disk cache
+/// + Supabase Storage bucket `merchant-logos`, keyed by the curated
+/// domain), so a known logo can never disappear again when the
+/// live Google fetch fails; see FaviconImageLoader above.
 /// The Amex source itself carries no built-in white padding
 /// (verified Nov 12, 2026 from the served bytes: 32×32, mark
 /// touches all four edges), so the margin the owner saw then
@@ -171,7 +349,7 @@ public struct TransactionIconView: View {
                     // this on the next render.
                     monogram
                     Color.clear
-                        .task(id: url) { faviconLoader.load(url) }
+                        .task(id: url) { faviconLoader.load(url, domain: logoDomain) }
                 }
             } else {
                 monogram
@@ -216,6 +394,21 @@ public struct TransactionIconView: View {
             return nil
         }
         return TransactionIconLookup.faviconURL(forDomain: domain)
+    }
+
+    /// The curated domain this logo is keyed by in the platform
+    /// layer (Storage file `<domain>.png`). Mirrors faviconURL:
+    /// merchant domain first, bank domain for bank rows. Nil when
+    /// the merchant is unmapped (monogram) or the icon came from a
+    /// curated override with no domain — the disk cache still works
+    /// (it is keyed by the favicon URL), only the Storage layer is
+    /// skipped.
+    private var logoDomain: String? {
+        if TransactionIconLookup.iconURL(for: merchant) != nil {
+            return TransactionIconLookup.resolvedDomain(for: merchant)
+        }
+        guard isBankRow else { return nil }
+        return TransactionIconLookup.bankDomain(for: institutionName)
     }
 
     /// The aspect-fit size of the loaded logo inside this tile —

@@ -361,6 +361,18 @@ public final class AppViewModel: ObservableObject {
         // store, so the app's auth behavior is unchanged.
         self.client = client ?? SupabaseClient(store: MirroredSessionStore(inner: BiometricUnlock.sessionStoreForLaunch()))
         self.biometricUnlock = biometricUnlock
+        // Merchant logos (build 94, owner Nov 25, 2026): the
+        // two-layer persistent logo cache uploads a freshly fetched
+        // logo to Supabase Storage in the background, so a known
+        // logo can never disappear again. The loader gets its JWT
+        // from this client (refreshed when stale); the weak capture
+        // keeps the singleton from retaining this object. A missing
+        // provider (previews, widget) means uploads are skipped —
+        // reads from public Storage and Google still work.
+        FaviconImageLoader.shared.tokenProvider = { [weak self] in
+            guard let self else { throw OnBudgetError.sessionExpired }
+            return try await self.client.validAccessToken()
+        }
         // Push notifications (Nov 16, 2026): the coordinator owns the
         // permission prompt, the token, and tap routing. The closures
         // capture self weakly; the coordinator is a singleton, so the
