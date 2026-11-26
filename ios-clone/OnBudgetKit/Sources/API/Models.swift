@@ -533,10 +533,12 @@ public struct WeekResult: Equatable, Codable {
     }
 
     /// The Weekly Budget sheet's rows (live.js v69 `openWeeklySheet`,
-    /// PR #64 Fix 1 + PR #65): the reconciliation lines appear exactly
-    /// when they change the number, so a normal week keeps the
-    /// approved three rows (Allowance / Spent / Balance) and a debt or
-    /// temporary week explains itself. `baseAllowanceCents` is the
+    /// PR #64 Fix 1 + PR #65): the Allowance row is FIRST — the
+    /// week's original total — then the reconciliation lines appear
+    /// exactly when they change the number, so a normal week reads
+    /// Allowance / Spent / Balance and a debt or temporary week
+    /// explains itself (Allowance is the total Base + Temporary −
+    /// Debt Payment add up to). `baseAllowanceCents` is the
     /// stored base from the household row (nil when that read failed —
     /// then no Base row and no override line, exactly as the web).
     /// The week's temporary adjustment comes from exactly one source:
@@ -567,6 +569,17 @@ public struct WeekResult: Equatable, Codable {
         let hasDebtPayment = (debtPayment ?? 0) > 0
         let debtRemaining = max(0, carriedDebtCents - (debtPayment ?? 0))
         var rows: [WeekSheetRow] = []
+        // Owner, Nov 25, 2026: the Allowance row is back as the
+        // FIRST line (reversing the build-34 removal, when it was
+        // called "redundant") — the week's original total, so the
+        // card reads Allowance / Spent / Balance. It is the starting
+        // total by the server's own formula (available =
+        // base_available + temp − charges, engine.mjs — neither
+        // side is floored), i.e. available + charges — base room +
+        // temp, exactly as CLONE_SPEC §14 — so Allowance − Spent =
+        // Balance in every week, and in a breakdown week it is the
+        // total the Base / Temporary / Debt Payment rows add up to.
+        rows.append(WeekSheetRow(label: "Allowance", cents: availableCents + chargesCents))
         if let base = baseAllowanceCents, hasTemp || hasTempDecrease || hasDebt {
             rows.append(WeekSheetRow(label: "Base Allowance", cents: base))
         }

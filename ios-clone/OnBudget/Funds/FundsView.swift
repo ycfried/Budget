@@ -2344,6 +2344,14 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// tag, then opens the editor for the new expense.
     @State private var showExpensePicker = false
     @State private var editorExpense: RecurringExpense?
+    /// The blank expense being created from scratch (owner,
+    /// Nov 26, 2026): the Calculator's manual "Create a New
+    /// Expense" opens the same editor ExpensesListView uses.
+    @State private var newExpense: RecurringExpense?
+    /// The Add Income sheet (owner, Nov 25, 2026): the inline add
+    /// form is gone — a single button opens it instead (see
+    /// itemSection).
+    @State private var showIncomeSheet = false
     /// The expense the Calculator's trash is about to remove
     /// (build 78, owner Nov 25, 2026): the delete confirm
     /// dialog binds to this. Nil until a trash is tapped.
@@ -2365,6 +2373,17 @@ public struct WeeklyBudgetCalculatorContent: View {
         viewModel.calculatorIncome
     }
     @State private var charityText = ""
+    /// The Tzedaka Custom % field's text (owner, Nov 25, 2026):
+    /// what the user typed while the % field is focused. When it
+    /// is not focused the field shows the % the $ represents
+    /// instead (see customCharityPercentBinding) — never stale.
+    @State private var customCharityPercentText = ""
+    /// True after tapping Custom until a preset is picked or the
+    /// $ is typed to a preset value — keeps the % field visible
+    /// when the $ happens to equal a preset (the derived
+    /// selection alone would hide it).
+    @State private var showingCustomCharityPercent = false
+    @FocusState private var isCustomCharityPercentFocused: Bool
     @State private var lifestyle: LifestyleHoldback = .regular
     @State private var customHoldbackText = ""
     @State private var householdSize = 1
@@ -2381,6 +2400,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// suppressed until then, so loading never overwrites the
     /// stored values with the empty defaults.
     @State private var didLoad = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(householdId: UUID, charityName: String, viewModel: FundsViewModel) {
         self.householdId = householdId
@@ -2668,7 +2688,7 @@ public struct WeeklyBudgetCalculatorContent: View {
                 .accessibilityLabel("About recurring expenses")
             }
             if liveExpenses.isEmpty {
-                FundsMuted("No expenses tagged yet — tag a transaction as an Expense to add one.")
+                FundsMuted("No expenses yet — create one below, or tag a transaction as an Expense.")
             } else {
                 ForEach(liveExpenses) { expense in
                     HStack(spacing: 4) {
@@ -2707,21 +2727,39 @@ public struct WeeklyBudgetCalculatorContent: View {
                     }
                 }
             }
-            // Build 78 (owner, Nov 25, 2026): the same proper
-            // solid-blue primary button as the Recurring
-            // Expenses sheet's Add button (item 5) — the bare
-            // plus + blue text read as a plain link. Admin only
-            // — tagging is admin-only server-side.
+            // Owner, Nov 26, 2026: manually typing one in is the
+            // MAIN way to add a recurring expense — so the manual
+            // "Create a New Expense" is the solid-blue primary on
+            // top here (the same blank editor ExpensesListView
+            // opens), and "Add Recurring Expense" (tag a charge)
+            // is the tertiary OUTLINE button below it. The two
+            // never share a treatment (standing button rule).
+            // Admin only — creating and tagging are admin-only
+            // server-side.
             if viewModel.context.isAdmin {
+                Button {
+                    newExpense = RecurringExpense(
+                        id: UUID(),
+                        householdId: householdId,
+                        transactionId: nil,
+                        name: "",
+                        amountCents: 0,
+                        frequency: .monthly
+                    )
+                } label: {
+                    Label("Create a New Expense", systemImage: "plus")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .accessibilityLabel("Create a new recurring expense")
                 Button {
                     showExpensePicker = true
                 } label: {
                     Label("Add Recurring Expense", systemImage: "plus.circle")
                 }
-                .buttonStyle(PrimaryButtonStyle())
+                .buttonStyle(OutlineButtonStyle())
                 .accessibilityLabel("Add recurring expense")
             }
-            FundsBreakdownRow("Monthly Total", value: MoneyFormat.formatCents(monthlyChargesCents))
+            calculatorTotalRow(value: MoneyFormat.formatCents(monthlyChargesCents))
         }
         .alert("Recurring Expenses", isPresented: $showChargesInfo) {
             Button("OK") {}
@@ -2742,7 +2780,7 @@ public struct WeeklyBudgetCalculatorContent: View {
         .appConfirmDialog(item: $expenseToRemove) { expense in
             AppConfirmDialog.Config(
                 title: "Remove Expense",
-                message: "Remove \(expense.name) (\(MoneyFormat.formatCents(expense.amountCents))\(expense.frequency.shortSuffix))? The transaction counts as a purchase again, back in weekly spending.",
+                message: "Remove \(expense.name) (\(MoneyFormat.formatCents(expense.amountCents))\(expense.frequency.shortSuffix))? It counts as a purchase again.",
                 primaryTitle: "Remove Expense",
                 tone: .destructive,
                 secondaryTitle: "Keep It",
@@ -2782,16 +2820,52 @@ public struct WeeklyBudgetCalculatorContent: View {
                 onClose: { editorExpense = nil }
             )
         }
+        // Owner, Nov 26, 2026: create an expense from scratch —
+        // blank name, $0.00, monthly, NO Remove (nothing to remove
+        // yet). Save creates it via the view model's createExpense
+        // (the create_recurring_expense path) — the same blank
+        // editor ExpensesListView opens.
+        .sheet(item: $newExpense) { expense in
+            ExpenseEditorSheet(
+                expense: expense,
+                onSave: { name, amountCents, frequency in
+                    await viewModel.createExpense(name: name, amountCents: amountCents, frequency: frequency) != nil
+                },
+                onRemove: { false },
+                onClose: { newExpense = nil },
+                isNew: true
+            )
+        }
+    }
+
+    /// The Calculator's Monthly Total row (owner, Nov 25, 2026):
+    /// a total, not a plain breakdown row — 17pt bold ink on both
+    /// sides (the shared FundsBreakdownRow is 15pt with a grey
+    /// label) with 8pt extra vertical padding, so it stands apart
+    /// from the rows above it. The shared component is untouched.
+    private func calculatorTotalRow(value: String) -> some View {
+        HStack {
+            Text("Monthly Total")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(DesignTokens.ink)
+            Spacer()
+            Text(value)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(DesignTokens.ink)
+        }
+        .padding(.vertical, 8)
     }
 
     /// One hand-entered list (income or charges): the saved rows
-    /// with their monthly figure, the add row (name + amount +
-    /// frequency + Add), and the monthly total. Rows are minimal —
-    /// name + frequency + monthly amount — like the activity rows.
+    /// with their monthly figure, the add button, and the monthly
+    /// total. Rows are minimal — name + frequency + monthly
+    /// amount — like the activity rows.
     ///
-    /// Build 69 (owner, Nov 24, 2026): the add form has its own
-    /// small header (`draftTitle` — "Add Income"), so the fields
-    /// no longer float with nothing saying what they are.
+    /// Owner, Nov 25, 2026: the add form is NOT inline any more —
+    /// the full form (name + amount + frequency + Add) sat on the
+    /// page at all times and read cluttered. It is a single blue
+    /// button now, matching Add Recurring Expense, and the same
+    /// form opens in a sheet. `draftTitle` titles that sheet.
     private func itemSection(
         title: String,
         items: [CalculatorItem],
@@ -2835,30 +2909,150 @@ public struct WeeklyBudgetCalculatorContent: View {
                     }
                 }
             }
-            // Build 69 (owner, Nov 24, 2026): the add form has
-            // its own small header, matching the section headers
-            // above it ("Expected Income", "Recurring Expenses").
-            Text(TitleCase.apply(to: draftTitle))
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(DesignTokens.ink)
-                .padding(.top, 4)
-            FundsTextField("Name", text: draftName)
-                .autocorrectionDisabled()
-            HStack(spacing: 8) {
-                DollarTextField(text: draftAmount, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
-                Picker("How Often", selection: draftFrequency) {
-                    ForEach(CalculatorFrequency.allCases, id: \.self) { frequency in
-                        Text(frequency.displayName).tag(frequency)
-                    }
-                }
-                .pickerStyle(.menu)
-                FundsSmallPrimaryButton("Add") { onAdd() }
+            // Owner, Nov 25, 2026: one blue full-width button, the
+            // same treatment as Add Recurring Expense — the inline
+            // form is gone; tapping opens it in a sheet.
+            Button {
+                showIncomeSheet = true
+            } label: {
+                Label("Add Income", systemImage: "plus.circle")
             }
-            FundsBreakdownRow("Monthly Total", value: MoneyFormat.formatCents(monthlyTotalCents))
-            if let error {
-                FundsErrorBox(error)
+            .buttonStyle(PrimaryButtonStyle())
+            .accessibilityLabel("Add income")
+            calculatorTotalRow(value: MoneyFormat.formatCents(monthlyTotalCents))
+        }
+        .sheet(isPresented: $showIncomeSheet) {
+            // The same add form as before — Name, $ amount,
+            // frequency, Add — only the presentation changed
+            // (inline → sheet). Validation errors show here,
+            // where the form is; a successful add closes the
+            // sheet (see addIncomeItem).
+            VStack(alignment: .leading, spacing: 16) {
+                SheetHeader(title: TitleCase.apply(to: draftTitle), onClose: { showIncomeSheet = false })
+                FundsTextField("Name", text: draftName)
+                    .autocorrectionDisabled()
+                HStack(spacing: 8) {
+                    DollarTextField(text: draftAmount, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
+                    Picker("How Often", selection: draftFrequency) {
+                        ForEach(CalculatorFrequency.allCases, id: \.self) { frequency in
+                            Text(frequency.displayName).tag(frequency)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    FundsSmallPrimaryButton("Add") { onAdd() }
+                }
+                if let error {
+                    FundsErrorBox(error)
+                }
+                Spacer()
+            }
+            .padding()
+            .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(.white)
+        }
+    }
+
+    /// The Tzedaka % presets (owner, Nov 25, 2026): the % row
+    /// above the $ field — 5% / 10% / 20% / Custom, the same
+    /// SquarishPicker treatment as Lifestyle.
+    private enum CharityPercentPreset: String, CaseIterable {
+        case five, ten, twenty, custom
+
+        var displayName: String {
+            switch self {
+            case .five: return "5%"
+            case .ten: return "10%"
+            case .twenty: return "20%"
+            case .custom: return "Custom"
             }
         }
+
+        /// The preset's percent, nil for Custom.
+        var percent: Double? {
+            switch self {
+            case .five: return 5
+            case .ten: return 10
+            case .twenty: return 20
+            case .custom: return nil
+            }
+        }
+    }
+
+    /// The $ amount, in cents, for a % of monthly income — the
+    /// same math the old "Set to 10% of Income" button used
+    /// (monthlyIncomeCents * pct / 100, rounded to the cent).
+    private func charityCents(forPercent pct: Double) -> Int {
+        Int((Double(monthlyIncomeCents) * pct / 100.0).rounded())
+    }
+
+    /// The $ field text for a % of monthly income.
+    private func charityAmountText(forPercent pct: Double) -> String {
+        String(format: "%.2f", Double(charityCents(forPercent: pct)) / 100.0)
+    }
+
+    /// The % the $ field's amount represents of monthly income,
+    /// one decimal place (owner, Nov 26, 2026 — typing a $ shows
+    /// the % it corresponds to; e.g. $800 of $7,800 is 10.3%).
+    /// Empty when there is no income or no $ to reflect.
+    private func derivedCharityPercentText() -> String {
+        guard monthlyIncomeCents > 0,
+              let cents = MoneyFormat.parseDollarsStrict(charityText),
+              cents > 0 else { return "" }
+        return String(format: "%.1f", Double(cents) / Double(monthlyIncomeCents) * 100.0)
+    }
+
+    /// The % row's highlight, DERIVED from the $ field (owner,
+    /// Nov 26, 2026): when the $ equals exactly 5%, 10% or 20%
+    /// of monthly income (integer-cents compare) that preset is
+    /// highlighted, not Custom; anything else is Custom. Never
+    /// stored, so it can never go stale when the income changes.
+    private var charityPercentSelection: CharityPercentPreset {
+        guard monthlyIncomeCents > 0,
+              let cents = MoneyFormat.parseDollarsStrict(charityText) else { return .custom }
+        if cents == charityCents(forPercent: 5) { return .five }
+        if cents == charityCents(forPercent: 10) { return .ten }
+        if cents == charityCents(forPercent: 20) { return .twenty }
+        return .custom
+    }
+
+    /// The picker's binding: tapping a preset fills the $ and
+    /// hides the Custom field; tapping Custom reveals the field
+    /// showing the % the current $ represents.
+    private var charityPercentBinding: Binding<CharityPercentPreset> {
+        Binding(
+            get: { self.charityPercentSelection },
+            set: { preset in
+                if let pct = preset.percent {
+                    self.showingCustomCharityPercent = false
+                    self.charityText = self.charityAmountText(forPercent: pct)
+                } else {
+                    self.customCharityPercentText = self.derivedCharityPercentText()
+                    self.showingCustomCharityPercent = true
+                }
+            }
+        )
+    }
+
+    /// The Custom % field's text: while the user types, the text
+    /// is theirs; otherwise it is the % the $ represents (see
+    /// derivedCharityPercentText), so typing a $ always shows the
+    /// % it corresponds to. Typing a % fills the $ from it.
+    private var customCharityPercentBinding: Binding<String> {
+        Binding(
+            get: {
+                self.isCustomCharityPercentFocused
+                    ? self.customCharityPercentText
+                    : self.derivedCharityPercentText()
+            },
+            set: { newValue in
+                self.customCharityPercentText = newValue
+                if let pct = Double(newValue), pct >= 0, pct <= 100 {
+                    self.charityText = self.charityAmountText(forPercent: pct)
+                }
+            }
+        )
     }
 
     private var charitySection: some View {
@@ -2866,25 +3060,59 @@ public struct WeeklyBudgetCalculatorContent: View {
             Text("Expected \(charityName)")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(DesignTokens.ink)
+            // Owner, Nov 25, 2026: the % row ABOVE the $ field —
+            // 5% / 10% / 20% / Custom, the same SquarishPicker
+            // treatment as Lifestyle. It replaces the "Set to 10%
+            // of Income" button (build 78). Picking a % fills the
+            // $ from it; typing a $ highlights the % it is — or
+            // Custom, with the % shown in the field below.
+            SquarishPicker(
+                CharityPercentPreset.allCases.map { ($0, $0.displayName) },
+                selection: charityPercentBinding
+            )
             DollarTextField(text: $charityText, placeholder: "0.00", maxWidth: .infinity, minHeight: 48)
-            // Build 78 (owner, Nov 25, 2026 — "the ten percent
-            // button is still a problem.. perhaps rethink it"):
-            // the button is BELOW the field, full-width, as a
-            // proper tertiary OUTLINE button (white bg,
-            // brand-blue border/text) — the small grey pill
-            // squeezed into the field's row read as greyed-out /
-            // disabled, and the long label was cramped beside
-            // the field. Behaviour unchanged: one tap still
-            // fills the field with 10% of monthly income.
-            // Build 77's rewording ("Set to 10% of Income") is
-            // kept; only the placement and treatment change.
-            Button("Set to 10% of Income") {
-                charityText = String(format: "%.2f", Double(monthlyIncomeCents) / 10.0 / 100.0)
+            // The Custom % field (owner, Nov 25, 2026 — the same
+            // "%" prefix + decimal-pad field Lifestyle's Custom
+            // reveals): visible when Custom is the row's choice,
+            // when the user tapped Custom, or while it is focused
+            // (so typing exactly "10" does not hide it under the
+            // user mid-typing). The text is the % the $ represents
+            // unless the user is typing (see the binding).
+            if showingCustomCharityPercent || charityPercentSelection == .custom || isCustomCharityPercentFocused {
+                HStack(spacing: 2) {
+                    Text("%")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.ink)
+                    TextField("", text: customCharityPercentBinding)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 17))
+                        .focused($isCustomCharityPercentFocused)
+                }
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .background(.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .buttonStyle(OutlineButtonStyle())
             // Build 67 (owner, Nov 23, 2026 — "so many words"):
             // the "Expected charity each month…" explainer is
-            // gone — the field + the button already say it.
+            // gone — the field + the row already say it.
+        }
+        .onChange(of: charityText) { _, _ in
+            // The $ was typed to a preset value (or a preset was
+            // tapped): the Custom field's reason to stay open is
+            // gone — unless the user is typing in it.
+            if !isCustomCharityPercentFocused && charityPercentSelection != .custom {
+                showingCustomCharityPercent = false
+            }
+        }
+        .onChange(of: isCustomCharityPercentFocused) { _, focused in
+            // Entering the % field: start from the % the current
+            // $ represents, so the user edits that, not stale text.
+            if focused { customCharityPercentText = derivedCharityPercentText() }
         }
     }
 
@@ -2985,6 +3213,11 @@ public struct WeeklyBudgetCalculatorContent: View {
             if await viewModel.addCalculatorIncome(name: item.name, amountCents: item.amountCents, frequency: item.frequency) != nil {
                 incomeDraftName = ""
                 incomeDraftAmount = ""
+                // Owner, Nov 25, 2026: the add form lives in a
+                // sheet now — a successful add closes it. A failed
+                // write keeps the sheet open with the typed input
+                // and the error, so the user can retry.
+                showIncomeSheet = false
             }
         }
     }

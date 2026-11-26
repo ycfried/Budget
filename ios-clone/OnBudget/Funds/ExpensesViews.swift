@@ -568,6 +568,20 @@ public struct ExpenseTagPickerSheet: View {
     /// How many rows are shown (build 78): 15 at first, Load
     /// More reveals the next 15 until all are shown.
     @State private var visibleCount = 15
+    /// The candidate list, computed ONCE — not on every render
+    /// (owner, Nov 25, 2026 — the picker lagged). `candidates`
+    /// used to be a computed property: every body evaluation
+    /// re-filtered and re-sorted all transactions AND ran the
+    /// per-transaction date math (`sunday(of:)` + `daysBetween`,
+    /// each of which builds fresh DateFormatters — see
+    /// MoneyFormat.date(from:) / dateString(from:)) on the main
+    /// thread, including the first render when the sheet opens —
+    /// so the tap felt laggy before the sheet even appeared. The
+    /// list is now computed once, off the main thread, when the
+    /// sheet appears and whenever the transactions change; the
+    /// sheet opens at once with skeleton rows and fills in when
+    /// the list lands. Nil until the first computation finishes.
+    @State private var cachedCandidates: [Transaction]?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(
@@ -586,10 +600,11 @@ public struct ExpenseTagPickerSheet: View {
     /// with a positive amount, not already an expense, within
     /// the server's 35-day tag lock (the current Sunday week no
     /// more than 35 days past the transaction's Sunday week).
-    /// Newest first, capped at 50.
-    private var candidates: [Transaction] {
+    /// Newest first, capped at 50. Pure + Sendable, so the sheet
+    /// can run it off the main thread (see cachedCandidates).
+    private static func computeCandidates(from allTransactions: [Transaction]) -> [Transaction] {
         let currentSunday = MoneyFormat.currentSundayNY()
-        let taggable = viewModel.allTransactions.filter { tx in
+        let taggable = allTransactions.filter { tx in
             guard tx.kind == .charge, tx.amountCents > 0, !tx.isInTrash,
                   tx.state == .verified || tx.state == .provisional,
                   let txSunday = sunday(of: tx.date),
@@ -601,9 +616,13 @@ public struct ExpenseTagPickerSheet: View {
 
     /// The candidates after the merchant search (build 78):
     /// case-insensitive contains on the merchant name. An
-    /// empty search shows the full list.
+    /// empty search shows the full list. Reads the cached list —
+    /// empty until the first computation lands, so the sheet
+    /// shows skeletons (never a premature "No charges") while
+    /// it computes.
     private var filteredCandidates: [Transaction] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidates = cachedCandidates ?? []
         guard !query.isEmpty else { return candidates }
         return candidates.filter { $0.merchant.localizedCaseInsensitiveContains(query) }
     }
@@ -616,7 +635,7 @@ public struct ExpenseTagPickerSheet: View {
 
     /// The Sunday (YYYY-MM-DD) of the week a date falls in —
     /// the same week the server's 35-day lock counts from.
-    private func sunday(of dateString: String) -> String? {
+    private static func sunday(of dateString: String) -> String? {
         guard let date = MoneyFormat.date(from: dateString) else { return nil }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
@@ -654,8 +673,9 @@ public struct ExpenseTagPickerSheet: View {
             .padding(14)
             .background(Color(hex: "#f3f4f6"))
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            if viewModel.isLoading {
-                // Still loading (build 78): skeleton rows shaped
+            if viewModel.isLoading || cachedCandidates == nil {
+                // Still loading — or still computing the list
+                // (owner, Nov 25, 2026): skeleton rows shaped
                 // like the charge rows (icon + two text lines),
                 // never a spinner, "Loading…" or a premature
                 // "No charges" empty state.
@@ -749,6 +769,20 @@ public struct ExpenseTagPickerSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
+        // Compute the candidate list once, off the main thread
+        // (see cachedCandidates): the sheet is already up with
+        // skeletons by the time this lands. Re-runs when the
+        // transactions change; the old list stays on screen until
+        // the new one lands, so there is no flicker back to
+        // skeletons. Transaction is Sendable, so the detached
+        // task can take the array.
+        .task(id: viewModel.allTransactions) {
+            let transactions = viewModel.allTransactions
+            let list = await Task.detached {
+                Self.computeCandidates(from: transactions)
+            }.value
+            cachedCandidates = list
+        }
     }
 
     /// A skeleton row shaped like a charge row (build 78): a

@@ -3106,10 +3106,14 @@ struct SheetActionDivider: View {
 // MARK: - Weekly sheet
 
 /// Weekly sheet (CLONE_SPEC §14, live.js:3457-3500). Opened by
-/// tapping the hero number. Rows, exactly three, in order:
-/// Allowance (= base room + temp) / Spent (server charges_cents) /
-/// Balance (available_cents). Fourth row only when non-zero:
-/// Unlinked refunds. Then the Purchases count (owner, Nov 14,
+/// tapping the hero number. Rows, in order: Allowance first — the
+/// week's original total, back as the first line (owner, Nov 25,
+/// 2026, reversing the build-34 removal) — then Spent (server
+/// charges_cents) / Balance (available_cents). The reconciliation
+/// rows (Base / Temporary / Debt Payment) sit between Allowance
+/// and Spent exactly when they change the number, and Debt
+/// Remaining / Unlinked Refunds trail only when non-zero. Then
+/// the Purchases count (owner, Nov 14,
 /// 2026 — moved here from the hero card, which now shows only
 /// the "Spending" header, the big figure, the progress bar and
 /// the spent line). No explainer line under the header (owner,
@@ -3156,14 +3160,15 @@ public struct WeeklySheet: View {
     }
 
     /// Build 66 (owner, Nov 23, 2026 — item 5): the numbers as
-    /// one list for the numbers card below — the reconciliation
-    /// rows (Base / Spent / Balance / Debt Remaining) plus the
-    /// Purchases count — so the card can lay them out with
-    /// hairline dividers like the actions card. Deduction rows
-    /// print with a leading minus (audit H-P2-2) so Base $375 −
-    /// Debt $50 = Balance $325 adds up on sight; the model cents
-    /// stay positive. Purchases is a count, not money — same row
-    /// shape, no dollar sign (owner, Nov 14, 2026).
+    /// one list for the numbers card below — the Allowance row
+    /// first (owner, Nov 25, 2026 — back as the first line), then
+    /// the reconciliation rows (Base / Spent / Balance / Debt
+    /// Remaining) plus the Purchases count — so the card can lay
+    /// them out with hairline dividers like the actions card.
+    /// Deduction rows print with a leading minus (audit H-P2-2) so
+    /// Base $375 − Debt $50 = Balance $325 adds up on sight; the
+    /// model cents stay positive. Purchases is a count, not money —
+    /// same row shape, no dollar sign (owner, Nov 14, 2026).
     private var weeklyNumbersRows: [(label: String, value: String)] {
         var rows = week.sheetRows(baseAllowanceCents: baseAllowanceCents).map { row in
             (label: row.label, value: MoneyFormat.string(cents: row.isDeduction ? -row.cents : row.cents))
@@ -3198,11 +3203,11 @@ public struct WeeklySheet: View {
             // "Pending transactions are included and marked." line
             // crowded the header. Pending state is already marked
             // on the rows themselves, so nothing replaces it.
-            // Reconciliation rows (live.js v69): Base / Temporary /
-            // Carried debt appear exactly when they change the number;
-            // a normal week keeps the approved two rows (Spent,
-            // Balance) — the redundant Allowance row is gone
-            // (owner, Nov 15, 2026 — build 34).
+            // Reconciliation rows (live.js v69): Allowance is the
+            // first line (owner, Nov 25, 2026 — back after the
+            // build-34 removal); Base / Temporary / Carried debt
+            // appear exactly when they change the number, between
+            // Allowance and Spent.
             // Build 66 (owner, Nov 23, 2026 — item 5): the numbers
             // live on a white card matching the actions card below
             // — plain rows on the sheet background read as
