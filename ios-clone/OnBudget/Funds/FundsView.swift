@@ -2375,12 +2375,31 @@ public struct WeeklyBudgetCalculatorSheet: View {
     @ObservedObject public var viewModel: FundsViewModel
     public var onClose: () -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Read (see `calculatorSheetWidth`) so the width recomputes
+    /// on rotation: the vertical size class flips regular↔compact
+    /// when an iPad rotates, and the width is read from the screen
+    /// bounds, which is not itself a reactive value. Without this
+    /// the sheet would keep its landscape width after rotating to
+    /// portrait on a mini and clip again.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     public init(householdId: UUID, charityName: String, viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
         self.householdId = householdId
         self.charityName = charityName
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self.onClose = onClose
+    }
+
+    /// The Calculator sheet's width on iPad: up to 800pt, but
+    /// never wider than the screen minus a 32pt margin each side
+    /// (see the frame comment in `body`). Nil on iPhone
+    /// (full-width). The `verticalSizeClass` read subscribes
+    /// this view so the width recomputes on rotation; it plays
+    /// no part in the width itself.
+    private var calculatorSheetWidth: CGFloat? {
+        guard horizontalSizeClass == .regular else { return nil }
+        _ = verticalSizeClass
+        return min(800, UIScreen.main.bounds.width - 64)
     }
 
     public var body: some View {
@@ -2401,13 +2420,16 @@ public struct WeeklyBudgetCalculatorSheet: View {
         .padding()
         .background(DesignTokens.background)
         // iPad width (owner, Nov 26, 2026 — the sheet felt too
-        // thin/narrow at 600pt, ~59% of a 1024pt iPad): 800pt in
-        // the regular size class, full-width on iPhone — the
+        // thin/narrow at 600pt, ~59% of a 1024pt iPad): up to 800pt
+        // in the regular size class, full-width on iPhone — the
         // rename sheet and the Add to Charity popup keep their
-        // 600pt. 800 leaves a modest margin on every iPad
-        // (112pt a side on an 11" in portrait) without touching
-        // the edges.
-        .frame(width: horizontalSizeClass == .regular ? 800 : nil)
+        // 600pt. The width is capped by the screen (32pt margin
+        // each side), because a fixed 800pt is WIDER than an iPad
+        // mini in portrait (768pt) and clipped the heading, the
+        // amount, the Custom button and the −/+ buttons (owner,
+        // Nov 26, 2026). Mini portrait 704, 11" portrait 770,
+        // 12.9" portrait and every landscape 800.
+        .frame(width: calculatorSheetWidth)
         // Build 68 (item 9): fitted detents, not a full page —
         // the content is a ScrollView, so it works in a compact
         // popup on iPad.
@@ -2807,6 +2829,10 @@ public struct WeeklyBudgetCalculatorContent: View {
                         SkeletonBlock(height: 20)
                     }
                     SkeletonBlock(width: 140, height: 22)
+                    // Owner, Nov 26, 2026: the Monthly Total sits
+                    // above the button — the skeleton mirrors the
+                    // loaded order (rows → total → button).
+                    SkeletonBlock(height: 52)
                 }
             }
             SettingsCard(title: nil) {
@@ -2816,6 +2842,10 @@ public struct WeeklyBudgetCalculatorContent: View {
                         SkeletonBlock(height: 20)
                     }
                     SkeletonBlock(width: 140, height: 22)
+                    // Owner, Nov 26, 2026: same order as the loaded
+                    // card (rows → total → the two buttons).
+                    SkeletonBlock(height: 52)
+                    SkeletonBlock(height: 52)
                 }
             }
             Divider()
@@ -3005,6 +3035,11 @@ public struct WeeklyBudgetCalculatorContent: View {
                     }
                 }
             }
+            // Owner, Nov 26, 2026: the Monthly Total sits ABOVE
+            // the buttons, directly under the rows it summarises
+            // — it read as an afterthought below them. The total
+            // first, then the actions that add to it.
+            calculatorTotalRow(value: MoneyFormat.formatCents(monthlyChargesCents))
             // Owner, Nov 26, 2026: manually typing one in is the
             // MAIN way to add a recurring expense — so the manual
             // "Create a New Expense" is the solid-blue primary on
@@ -3045,7 +3080,6 @@ public struct WeeklyBudgetCalculatorContent: View {
                 }
                 .padding(.vertical, 8)
             }
-            calculatorTotalRow(value: MoneyFormat.formatCents(monthlyChargesCents))
         }
         .alert("Recurring Expenses", isPresented: $showChargesInfo) {
             Button("OK") {}
@@ -3143,8 +3177,8 @@ public struct WeeklyBudgetCalculatorContent: View {
     }
 
     /// One hand-entered list (income or charges): the saved rows
-    /// with their monthly figure, the add button, and the monthly
-    /// total. Rows are minimal — name + frequency + monthly
+    /// with their monthly figure, the monthly total, then the add
+    /// button. Rows are minimal — name + frequency + monthly
     /// amount — like the activity rows.
     ///
     /// Owner, Nov 25, 2026: the add form is NOT inline any more —
@@ -3215,6 +3249,11 @@ public struct WeeklyBudgetCalculatorContent: View {
                     }
                 }
             }
+            // Owner, Nov 26, 2026: the Monthly Total sits ABOVE
+            // the button, directly under the rows it summarises —
+            // it read as an afterthought below the button. The
+            // total first, then the action that adds to it.
+            calculatorTotalRow(value: MoneyFormat.formatCents(monthlyTotalCents))
             // Owner, Nov 25, 2026: one blue full-width button, the
             // same treatment as Add Recurring Expense — the inline
             // form is gone; tapping opens it in a sheet.
@@ -3225,7 +3264,6 @@ public struct WeeklyBudgetCalculatorContent: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .accessibilityLabel("Add income")
-            calculatorTotalRow(value: MoneyFormat.formatCents(monthlyTotalCents))
         }
         .alert(TitleCase.apply(to: title), isPresented: showInfo) {
             Button("OK") {}

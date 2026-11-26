@@ -523,15 +523,28 @@ public final class TransactionsViewModel {
                         offset: 0
                     )
                     guard !Task.isCancelled else { return }
-                    self.loadedPage = rows
-                    self.hasMore = hasMore
+                    // Count-line flicker (owner, Nov 26, 2026): the
+                    // old code assigned the partial first page to
+                    // loadedPage here and then let
+                    // autoFillFilteredPage() append to it — and
+                    // countLine recomputes from loadedPage on every
+                    // mutation, so the count dipped to the partial
+                    // first page (35) and climbed back (61) as the
+                    // fill appended. The fill now runs on a LOCAL
+                    // copy (filledFilteredPage) and loadedPage is
+                    // assigned ONCE, complete, so the count line and
+                    // the rows update exactly once and the old list
+                    // stays visible until the new one is ready.
                     // Build 74 (owner, Nov 25, 2026 — Load More
                     // auto-fill): under a filter, one raw page may
                     // hold only 1–2 matching rows — fill the
                     // visible list to a full page now, instead of
                     // making the user tap Load More repeatedly.
-                    await self.autoFillFilteredPage()
-                    self.loadState = .loaded(self.loadedPage)
+                    let (filled, filledHasMore) = await self.filledFilteredPage(rows: rows, hasMore: hasMore)
+                    guard !Task.isCancelled else { return }
+                    self.loadedPage = filled
+                    self.hasMore = filledHasMore
+                    self.loadState = .loaded(filled)
                     // A Home-row jump may be waiting for these rows
                     // (first jump after launch): expand it now that
                     // the list has landed.
@@ -603,7 +616,7 @@ public final class TransactionsViewModel {
     /// Build 74 (owner, Nov 25, 2026 — Load More auto-fill): when
     /// a filter is active, one raw page (25 rows of all kinds)
     /// may hold only 1–2 matching rows, so the visible list
-    /// barely grows per tap. After a load / Load More, keep
+    /// barely grows per tap. After a Load More, keep
     /// fetching pages until the VISIBLE list reaches a full page
     /// (`pageSize`) or there are no more rows. Bounded so a
     /// filter with almost no matches cannot hang the list by
@@ -640,6 +653,45 @@ public final class TransactionsViewModel {
                 emptyPages = 0
             }
         }
+    }
+
+    /// The same auto-fill as `autoFillFilteredPage` (build 74),
+    /// but on a LOCAL copy: `load()` must assign `loadedPage`
+    /// ONCE, complete — appending to the live `loadedPage`
+    /// mid-fill made the count line dip to the partial first
+    /// page and climb back as pages landed (owner, Nov 26,
+    /// 2026 — the count flickered 35 → 61). `loadMore` still
+    /// uses `autoFillFilteredPage`, which appends live (a tap
+    /// is meant to grow the list). Returns the filled rows and
+    /// whether more remain; a failed fill keeps the rows
+    /// fetched so far, exactly like the live version.
+    private func filledFilteredPage(rows: [Transaction], hasMore: Bool) async -> ([Transaction], Bool) {
+        var rows = rows
+        var hasMore = hasMore
+        var pagesFetched = 0
+        var emptyPages = 0
+        while TransactionDedupe.byHash(filters.apply(to: rows)).count < pageSize, hasMore, pagesFetched < 8, emptyPages < 2 {
+            guard !Task.isCancelled else { return (rows, hasMore) }
+            pagesFetched += 1
+            let before = TransactionDedupe.byHash(filters.apply(to: rows)).count
+            do {
+                let (next, more) = try await client.postgrest.transactionsPage(
+                    householdId: householdId,
+                    pageSize: pageSize,
+                    offset: rows.count
+                )
+                rows.append(contentsOf: next)
+                hasMore = more
+            } catch {
+                return (rows, hasMore)
+            }
+            if TransactionDedupe.byHash(filters.apply(to: rows)).count == before {
+                emptyPages += 1
+            } else {
+                emptyPages = 0
+            }
+        }
+        return (rows, hasMore)
     }
 
     /// Search is debounced 250ms. Searches loaded transactions
