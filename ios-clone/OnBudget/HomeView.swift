@@ -841,7 +841,13 @@ public struct HomeView: View {
             // as the backup; restore from git if the owner ever
             // wants it back). Recent Transactions is shared by
             // both layouts.
-            VStack(alignment: .leading, spacing: 12) {
+            // Owner, Nov 25, 2026 — Home felt "a little too
+            // tight": the section gap is 16pt (was 12) and the
+            // outer vertical padding is 20pt (was 16), so the
+            // page breathes a little more. Horizontal stays
+            // 16pt. Not 24pt — the owner said 24pt read as
+            // "extra white space" (Nov 16, 2026, build 40).
+            VStack(alignment: .leading, spacing: 16) {
                 // Build 65: the page select lives in the shell
                 // (AppShellView) now — one control for all tabs,
                 // so Home no longer renders its own.
@@ -889,14 +895,16 @@ public struct HomeView: View {
                 // quiet white row, like the quiet fund rows, so
                 // closed weeks are one tap away from Home.
                 pastWeeksButton
-                // Recent Transactions sits on the same 10pt stack
-                // gap as the cards above it (owner, Nov 16, 2026 —
-                // build 40: no extra padding — the old 8pt top
-                // padding on top of the 16pt gap made 24pt, which
-                // read as extra white space).
+                // Recent Transactions sits on the same 16pt stack
+                // gap as the cards above it (owner, Nov 25, 2026 —
+                // a little more breathing room; was 12pt). No
+                // extra padding — the old 8pt top padding on top
+                // of the 16pt gap made 24pt, which read as extra
+                // white space (owner, Nov 16, 2026 — build 40).
                 recentSection
             }
-            .padding(16)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 20)
         }
         // Build 74 (tour): scroll the current step's target into
         // view on step change — the rate editor and the fund
